@@ -1,0 +1,34 @@
+export const ALGORITHM_VERSION='local-exact-1.0.0';
+export const LIMITS={fileBytes:50*1024*1024,textChars:80000,pdfPages:150};
+export function countChars(text){return Array.from(text).filter(c=>/[\p{L}\p{N}]/u.test(c)).length;}
+export function normalize(text){const chars=[],map=[];Array.from(text).forEach((c,i)=>{for(const n of c.normalize('NFKC').toLowerCase()){if(/[\p{L}\p{N}]/u.test(n)){chars.push(n);map.push(i);}}});return{chars,map};}
+export function unionRanges(ranges){const sorted=ranges.map(r=>[...r]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]),out=[];for(const [s,e] of sorted){if(e<=s)continue;const last=out.at(-1);if(last&&s<=last[1])last[1]=Math.max(last[1],e);else out.push([s,e]);}return out;}
+export function subtractRanges(ranges,exclusions){let result=unionRanges(ranges);for(const [xs,xe] of unionRanges(exclusions)){result=result.flatMap(([s,e])=>xe<=s||xs>=e?[[s,e]]:[[s,Math.min(e,xs)],[Math.max(s,xe),e]].filter(([a,b])=>b>a));}return result;}
+export function rangeCount(text,ranges){const chars=Array.from(text);return unionRanges(ranges).reduce((n,[s,e])=>n+countChars(chars.slice(s,e).join('')),0);}
+export function sliceCp(text,start,end){return Array.from(text).slice(start,end).join('');}
+const headingPattern=/^(?:第[一二三四五六七八九十百\d]+[章节]|[一二三四五六七八九十]+[、．]|\d{1,2}[.、]\s*[^\d]|目录$|Contents$|摘要$|Abstract$|参考文献$|References$|致谢$|附录)/i;
+export function parseDocument(text,title='未命名论文'){
+ if(typeof text!=='string'||!text.trim())throw new Error('没有可解析的正文。扫描 PDF 需要先进行 OCR。');
+ if(countChars(text)>LIMITS.textChars)throw new Error('本地体验版最多处理 80,000 个有效字符，请截取章节进行测试。');
+ const sections=[];let section;const lines=text.replace(/\r\n?/g,'\n').split(/\n\s*\n|\n/).map(t=>t.trim()).filter(Boolean);let ordinal=0;
+ for(const line of lines){const heading=line.length<75&&headingPattern.test(line);if(heading){section={id:`section-${sections.length+1}`,title:line,excluded:/^(目录|Contents|参考文献|References|致谢|附录)/i.test(line),paragraphs:[]};sections.push(section);continue;}if(!section){section={id:'section-0',title:'正文概述',excluded:false,paragraphs:[]};sections.push(section);}if(ordinal===0&&line===title)continue;section.paragraphs.push({id:`p-${++ordinal}`,text:line,sectionId:section.id});}
+ const usable=sections.filter(s=>s.paragraphs.length);if(!usable.length)throw new Error('未找到可用正文，请检查解析文本。');
+ return{title,sections:usable,text,totalChars:usable.reduce((n,s)=>n+s.paragraphs.reduce((m,p)=>m+countChars(p.text),0),0)};
+}
+export function compileSources(sources){return sources.filter(s=>s.text?.trim()).map(s=>{const normalized=normalize(s.text),index=new Map();for(let i=0;i<=normalized.chars.length-12;i++){const k=normalized.chars.slice(i,i+12).join('');if(!index.has(k))index.set(k,[]);const values=index.get(k);if(values.length<20)values.push(i);}return{...s,normalized,index};});}
+function citedRanges(text,source,fullText){if(!source.refNo)return[];const parts=fullText.split(/参考文献|References/i);if(parts.length<2)return[];const bibliography=parts.at(-1);if(!bibliography||!bibliography.includes(source.title))return[];const result=[];const regex=/“([^”]+)”\s*\[(\d+)\]/g;for(const m of text.matchAll(regex)){if(m[2]!==source.refNo)continue;const start=Array.from(text.slice(0,m.index+1)).length;result.push([start,start+Array.from(m[1]).length]);}return result;}
+export function compareParagraph(paragraph,sources,fullText=''){
+ const norm=normalize(paragraph.text),all=[];
+ for(const source of sources){const matches=[],seen=new Set(),exclusions=citedRanges(paragraph.text,source,fullText);for(let i=0;i<=norm.chars.length-12;i++){const positions=source.index.get(norm.chars.slice(i,i+12).join(''));if(!positions)continue;for(const j of positions){let a=i,b=j,e=i+12,f=j+12;while(a>0&&b>0&&norm.chars[a-1]===source.normalized.chars[b-1]){a--;b--;}while(e<norm.chars.length&&f<source.normalized.chars.length&&norm.chars[e]===source.normalized.chars[f]){e++;f++;}if(e-a<16)continue;const key=`${a}:${e}:${b}:${f}`;if(seen.has(key))continue;seen.add(key);const range=[norm.map[a],norm.map[e-1]+1],sourceRange=[source.normalized.map[b],source.normalized.map[f-1]+1];const unquoted=subtractRanges([range],exclusions);matches.push({id:`${paragraph.id}-${source.id}-${a}-${b}`,paragraphId:paragraph.id,sourceId:source.id,range,sourceRange,citationStatus:rangeCount(paragraph.text,unquoted)<rangeCount(paragraph.text,[range])?'verified_quotation':'uncited',excludedRanges:exclusions.filter(([s,e])=>s<range[1]&&e>range[0]),textScore:1,semanticScore:null});}}
+  all.push(...matches);
+ }
+ return all;
+}
+export function buildReport(parsed,sourceData,matches,options={}){
+ const selected=options.sectionIds?new Set(options.sectionIds):null;const sections=parsed.sections.map(s=>({...s,included:!s.excluded&&(!selected||selected.has(s.id)),paragraphs:s.paragraphs.map(p=>({...p,matches:matches.filter(m=>m.paragraphId===p.id)}))}));
+ let totalChars=0,similarChars=0,uncitedChars=0;const sourceTotals=new Map();
+ for(const s of sections){s.totalChars=0;s.similarChars=0;s.uncitedChars=0;for(const p of s.paragraphs){p.totalChars=countChars(p.text);p.ranges=s.included?unionRanges(p.matches.map(m=>m.range)):[];p.uncitedRanges=s.included?unionRanges(p.matches.flatMap(m=>subtractRanges([m.range],m.excludedRanges))):[];p.similarChars=rangeCount(p.text,p.ranges);p.uncitedChars=rangeCount(p.text,p.uncitedRanges);p.ratio=p.totalChars?p.similarChars/p.totalChars:0;if(!s.included)continue;s.totalChars+=p.totalChars;s.similarChars+=p.similarChars;s.uncitedChars+=p.uncitedChars;for(const sourceId of new Set(p.matches.map(m=>m.sourceId))){const ranges=p.matches.filter(m=>m.sourceId===sourceId).map(m=>m.range);sourceTotals.set(sourceId,(sourceTotals.get(sourceId)||0)+rangeCount(p.text,ranges));}}s.ratio=s.totalChars?s.similarChars/s.totalChars:0;totalChars+=s.totalChars;similarChars+=s.similarChars;uncitedChars+=s.uncitedChars;}
+ if(!totalChars)throw new Error('请至少选择一个包含正文的章节。');
+ return{id:options.id||crypto.randomUUID(),title:parsed.title,createdAt:new Date().toISOString(),algorithm:ALGORITHM_VERSION,mode:options.mode||'local',fileName:options.fileName||'',degree:options.degree||'本科',sections,sources:sourceData.map(s=>({...s,index:undefined,normalized:undefined,overlapChars:sourceTotals.get(s.id)||0})).sort((a,b)=>b.overlapChars-a.overlapChars),totalChars,similarChars,uncitedChars,ratio:similarChars/totalChars,uncitedRatio:uncitedChars/totalChars,sourceCount:sourceTotals.size,semanticStatus:'not_connected',citationPolicy:'仅识别与演示文献一致的中文引号 + 编号引用；其他引用需人工核对',complete:true,parentId:options.parentId||null};
+}
+export function analyzeDocument(parsed,sources,options={}){const compiled=compileSources(sources),matches=parsed.sections.filter(s=>!s.excluded&&(!options.sectionIds||options.sectionIds.includes(s.id))).flatMap(s=>s.paragraphs.flatMap(p=>compareParagraph(p,compiled,parsed.text)));return buildReport(parsed,sources,matches,options);}

@@ -1,0 +1,20 @@
+{
+  "name": "paperknow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "npm run build && node server.mjs",
+    "start": "node server.mjs",
+    "check": "node --check server.mjs && node --check dist/app.js && node --check dist/home-app.js && node --check dist/precheck/app.mjs && node --check dist/precheck/engine.mjs && node --check dist/workspace/app.mjs && node --check dist/workspace/tools.mjs && node --check dist/workspace/writing.mjs && node --check dist/workspace/state.mjs && node --check dist/workspace/ui.mjs && node --check dist/workspace/overview-model.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^6.4.299"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
