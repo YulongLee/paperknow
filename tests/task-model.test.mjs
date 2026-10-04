@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {normalizeTasks,selectTasks,statusGroup} from '../dist/workspace/task-model.mjs';
+const now=Date.parse('2026-10-05T12:00:00Z');
+const assets=[{id:'1',type:'draft',title:'论文甲',projectId:'p1',url:'#draft/1',data:{}},{id:'r1',type:'report',projectId:'p1',url:'/precheck/#/report/r1',data:{}}];
+const records=[{id:'draft-1',title:'论文甲',kind:'本地大纲保存',status:'completed',createdAt:'2026-10-04T12:00:00Z',url:'#draft/1'},{id:'draft-2',title:'论文甲',kind:'本地保存',createdAt:'2026-08-01T12:00:00Z',url:'#draft/2'}];
+const reports=[{id:'r1',title:'论文甲',createdAt:'2026-10-05T10:00:00Z',projectId:'p1'}];
+test('task normalization preserves distinct same-name records and joins current project and result',()=>{const tasks=normalizeTasks(records,reports,assets);assert.equal(tasks.length,3);assert.equal(tasks[0].category,'check');assert.equal(tasks[1].projectId,'p1');assert.equal(tasks[1].url,'#draft/1');assert.equal(tasks[2].url,'');assert.equal(tasks[2].status,'record');assert.equal(records[0].projectId,undefined);});
+test('report records do not duplicate the same persisted report task',()=>{const t=normalizeTasks([{id:'report-r1',status:'completed',createdAt:reports[0].createdAt,url:assets[1].url}],reports,assets);assert.equal(t.length,1);assert.equal(t[0].category,'check');});
+test('combined filters search project or task ID and apply relative date windows',()=>{const tasks=normalizeTasks(records,reports,assets),projects=[{id:'p1',name:'教育研究'}];assert.equal(selectTasks(tasks,{query:'教育研究',type:'check',days:'7'},projects,now).length,1);assert.equal(selectTasks(tasks,{query:'draft-1'},projects,now).length,1);assert.equal(selectTasks(tasks,{days:'30'},projects,now).length,2);assert.equal(selectTasks(tasks,{project:'none'},projects,now).length,1);assert.equal(selectTasks(tasks,{status:'failed'},projects,now).length,0);});
+test('only explicit queued or running status counts as processing',()=>{assert.equal(statusGroup({status:'queued'}),'processing');assert.equal(statusGroup({status:'running'}),'processing');assert.equal(statusGroup({status:'completed'}),'completed');assert.equal(normalizeTasks([{id:'x',status:'something'}],[],[])[0].status,'record');});
