@@ -1,0 +1,18 @@
+{
+  "format": "paperknow-literature-backup",
+  "version": 1,
+  "papers": [
+    {
+      "id": "metadata-ui-test",
+      "title": "元数据恢复验证（测试材料）",
+      "authors": "本地功能测试",
+      "scope": "metadata",
+      "status": "unread",
+      "tags": [
+        "功能验证"
+      ],
+      "notes": [],
+      "createdAt": "2026-10-05T00:00:00Z"
+    }
+  ]
+}
