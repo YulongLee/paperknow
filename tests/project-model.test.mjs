@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {projectSummary,selectProjects} from '../dist/workspace/project-model.mjs';
+const projects=[{id:'p',name:'教育研究',description:'课堂反馈',status:'active',updatedAt:'2026-01-01',createdAt:'2026-01-01'},{id:'q',name:'学习策略',status:'archived',updatedAt:'2026-02-01',createdAt:'2026-02-01'}];
+const assets=[{id:'d',projectId:'p',type:'draft',tool:'writing',data:{stage:'draft'},stamp:Date.parse('2026-03-01')},{id:'r',projectId:'p',type:'report',stamp:Date.parse('2026-02-15')},{id:'other',projectId:'q',tool:'reading',stamp:1}];
+test('project summary counts only associated real assets and uses latest saved timestamp',()=>{const s=projectSummary(projects[0],assets);assert.deepEqual(s.counts,{草稿:1,报告:1});assert.equal(s.latest.id,'d');assert.equal(s.activity,Date.parse('2026-03-01'));assert.equal(projects[0].stage,undefined);});
+test('activity sorting includes saved assets; creation sorting and archive filter remain independent',()=>{assert.deepEqual(selectProjects(projects,assets).map(p=>p.id),['p','q']);assert.deepEqual(selectProjects(projects,assets,{sort:'created'}).map(p=>p.id),['q','p']);assert.deepEqual(selectProjects(projects,assets,{status:'archived'}).map(p=>p.id),['q']);assert.equal(projects[0].id,'p');});
+test('search finds research descriptions and correctly returns empty results',()=>{assert.deepEqual(selectProjects(projects,assets,{query:' 课堂 '}).map(p=>p.id),['p']);assert.equal(selectProjects(projects,assets,{query:'不存在'}).length,0);});
