@@ -1,0 +1,7 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {parseDocument} from '../dist/precheck/engine.mjs';
+import {detectionChars,selectedDetectionSections,selectDetectionReports,validateDetectionSource} from '../dist/workspace/detection-model.mjs';
+test('selection excludes bibliography even when its ID is supplied and rejects a zero-body scope',()=>{const p=parseDocument('第一章 绪论\n用于测试的实际论文正文\n参考文献\n不应参与计分的参考文献条目');const ids=p.sections.map(s=>s.id);assert.equal(selectedDetectionSections(p,ids).length,1);assert.equal(detectionChars(p,ids),11);assert.equal(detectionChars(p,[]),0);});
+test('report filters preserve distinct same-title reports and do not mutate history',()=>{const rows=[{id:'a',title:'论文',createdAt:'2026-10-01',projectId:'p'},{id:'b',title:'论文',createdAt:'2026-10-02'}];assert.deepEqual(selectDetectionReports(rows).map(r=>r.id),['b','a']);assert.equal(selectDetectionReports(rows,{project:'none'})[0].id,'b');assert.equal(selectDetectionReports(rows,{query:'不存在'}).length,0);assert.equal(rows[0].id,'a');});
+test('sources require actual text and safe URLs; metadata is not invented',()=>{const v={title:'实际对照材料',text:'这是一段长度足够的实际对照正文用于确定性文本比对'};const r=validateDetectionSource(v);assert.equal(r.doi,null);assert.deepEqual(r.authors,[]);assert.throws(()=>validateDetectionSource({...v,text:''}));assert.throws(()=>validateDetectionSource({...v,url:'javascript:alert(1)'}));assert.throws(()=>validateDetectionSource({...v,doi:'invented'}));});
