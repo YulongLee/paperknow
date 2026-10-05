@@ -7,15 +7,18 @@
     "build": "node scripts/build.mjs",
     "dev": "npm run build && node server.mjs",
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check dist/app.js && node --check dist/home-app.js && node --check dist/precheck/app.mjs && node --check dist/precheck/engine.mjs && node --check dist/workspace/app.mjs && node --check dist/workspace/tools.mjs && node --check dist/workspace/writing.mjs && node --check dist/workspace/state.mjs && node --check dist/workspace/ui.mjs && node --check dist/workspace/overview-model.mjs && node --check dist/workspace/project-model.mjs && node --check dist/workspace/asset-model.mjs && node --check dist/precheck/export.mjs && node --check dist/workspace/task-model.mjs && node --check dist/workspace/writing-model.mjs && node --check dist/workspace/literature.mjs && node --check dist/workspace/literature-model.mjs && node --check dist/workspace/revision.mjs && node --check dist/workspace/revision-model.mjs && node --check dist/workspace/detection.mjs && node --check dist/workspace/detection-model.mjs && node --check dist/workspace/presentation.mjs && node --check dist/workspace/presentation-model.mjs && node --check src/presentation-export.js && node --check dist/workspace/research.mjs && node --check dist/workspace/research-model.mjs",
+    "check": "node --check server.mjs && node --check dist/app.js && node --check dist/home-app.js && node --check dist/precheck/app.mjs && node --check dist/precheck/engine.mjs && node --check dist/workspace/app.mjs && node --check dist/workspace/tools.mjs && node --check dist/workspace/writing.mjs && node --check dist/workspace/state.mjs && node --check dist/workspace/ui.mjs && node --check dist/workspace/overview-model.mjs && node --check dist/workspace/project-model.mjs && node --check dist/workspace/asset-model.mjs && node --check dist/precheck/export.mjs && node --check dist/workspace/task-model.mjs && node --check dist/workspace/writing-model.mjs && node --check dist/workspace/literature.mjs && node --check dist/workspace/literature-model.mjs && node --check dist/workspace/revision.mjs && node --check dist/workspace/revision-model.mjs && node --check dist/workspace/detection.mjs && node --check dist/workspace/detection-model.mjs && node --check dist/workspace/presentation.mjs && node --check dist/workspace/presentation-model.mjs && node --check src/presentation-export.js && node --check dist/workspace/research.mjs && node --check dist/workspace/research-model.mjs && node --check dist/workspace/format.mjs && node --check dist/workspace/format-model.mjs && node --check src/format-document.js",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
+    "jszip": "^3.10.2",
     "mammoth": "^1.13.0",
     "pdfjs-dist": "^6.4.299",
     "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "@xmldom/xmldom": "^0.9.12",
+    "esbuild": "^0.28.2",
+    "jsdom": "^29.1.1"
   }
 }
