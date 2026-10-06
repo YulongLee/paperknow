@@ -1,0 +1,363 @@
+{
+  "desktop": [
+    {
+      "breadcrumb": "工作台 / 概览",
+      "h1": [
+        "今天，让研究再进一步"
+      ],
+      "route": "#home",
+      "scrollWidth": 1256,
+      "smallText": 7,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "我的项目",
+      "h1": [
+        "我的项目"
+      ],
+      "route": "#projects",
+      "scrollWidth": 1256,
+      "smallText": 5,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "我的成果",
+      "h1": [
+        "我的成果"
+      ],
+      "route": "#assets",
+      "scrollWidth": 1256,
+      "smallText": 51,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "任务中心",
+      "h1": [
+        "任务中心"
+      ],
+      "route": "#tasks",
+      "scrollWidth": 1256,
+      "smallText": 34,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "AI 写作",
+      "h1": [
+        "创建论文"
+      ],
+      "route": "#category/writing",
+      "scrollWidth": 1256,
+      "smallText": 7,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "文献与研读",
+      "h1": [
+        "文献与研读"
+      ],
+      "route": "#category/literature",
+      "scrollWidth": 1256,
+      "smallText": 17,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "修改与润色",
+      "h1": [
+        "修改与润色"
+      ],
+      "route": "#category/revision",
+      "scrollWidth": 1256,
+      "smallText": 13,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "论文检测",
+      "h1": [
+        "论文检测"
+      ],
+      "route": "#category/detection",
+      "scrollWidth": 1256,
+      "smallText": 41,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "PPT 创作",
+      "h1": [
+        "PPT 创作"
+      ],
+      "route": "#category/ppt",
+      "scrollWidth": 1256,
+      "smallText": 18,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "科研工具",
+      "h1": [
+        "科研工具"
+      ],
+      "route": "#category/research",
+      "scrollWidth": 1256,
+      "smallText": 37,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "格式排版",
+      "h1": [
+        "格式排版"
+      ],
+      "route": "#category/format",
+      "scrollWidth": 1256,
+      "smallText": 26,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "更多工具",
+      "h1": [
+        "更多工具"
+      ],
+      "route": "#category/more",
+      "scrollWidth": 1256,
+      "smallText": 0,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "会员与用量",
+      "h1": [
+        "会员与用量"
+      ],
+      "route": "#membership",
+      "scrollWidth": 1256,
+      "smallText": 27,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "开通会员",
+      "h1": [
+        "会员与购买中心"
+      ],
+      "route": "#membership/plans",
+      "scrollWidth": 1256,
+      "smallText": 5,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "会员与购买中心",
+      "h1": [
+        "会员与购买中心"
+      ],
+      "route": "#membership/bundles",
+      "scrollWidth": 1256,
+      "smallText": 4,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "会员与购买中心",
+      "h1": [
+        "会员与购买中心"
+      ],
+      "route": "#membership/recharge",
+      "scrollWidth": 1256,
+      "smallText": 2,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "会员与购买中心",
+      "h1": [
+        "会员与购买中心"
+      ],
+      "route": "#membership/redeem",
+      "scrollWidth": 1256,
+      "smallText": 2,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "设置中心",
+      "h1": [
+        "设置中心"
+      ],
+      "route": "#settings",
+      "scrollWidth": 1256,
+      "smallText": 6,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "帮助与反馈",
+      "h1": [
+        "帮助与反馈"
+      ],
+      "route": "#help",
+      "scrollWidth": 1256,
+      "smallText": 16,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "账户中心",
+      "h1": [
+        "账户中心"
+      ],
+      "route": "#account",
+      "scrollWidth": 1256,
+      "smallText": 1,
+      "unlabeled": [],
+      "width": 1256
+    },
+    {
+      "breadcrumb": "订单记录",
+      "h1": [
+        "订单记录"
+      ],
+      "route": "#orders",
+      "scrollWidth": 1256,
+      "smallText": 1,
+      "unlabeled": [],
+      "width": 1256
+    }
+  ],
+  "mobile": [
+    {
+      "height": 844,
+      "route": "#home",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#projects",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#assets",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#tasks",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#category/writing",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#category/literature",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#category/revision",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#category/detection",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#category/ppt",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#category/research",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#category/format",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#category/more",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#membership",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#membership/plans",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#membership/bundles",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#membership/recharge",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#membership/redeem",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#settings",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#help",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#account",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "height": 844,
+      "route": "#orders",
+      "scrollWidth": 390,
+      "width": 390
+    }
+  ]
+}
