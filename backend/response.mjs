@@ -1,0 +1,1 @@
+export async function boundedResponse(response,maxBytes=1000000){const chunks=[];let length=0;for await(const chunk of response.body){length+=chunk.length;if(length>maxBytes)throw new Error('模型响应超过安全大小限制');chunks.push(chunk);}return Buffer.concat(chunks).toString('utf8');}
