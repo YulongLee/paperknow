@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile,writeFile} from 'node:fs/promises';
+import JSZip from 'jszip';
+import {DOMParser} from '@xmldom/xmldom';
+import {getDocument} from 'pdfjs-dist/legacy/build/pdf.mjs';
+import {createWritingDocx,createWritingPdf,documentLines} from '../src/writing-document.js';
+const text='真实研究文稿\n毕业论文 · 本科\n\n第一章 绪论\n1.1 研究背景\n中文、English、数字 123 与特殊字符 < & > 均应保留。\n\n参考文献\n用户填写的真实来源';
+test('DOCX is genuine OOXML with escaped Chinese text and semantic headings',async()=>{const bytes=await createWritingDocx(text),zip=await JSZip.loadAsync(bytes),xml=await zip.file('word/document.xml').async('string'),doc=new DOMParser().parseFromString(xml,'application/xml');assert.ok(zip.file('[Content_Types].xml'));assert.ok(zip.file('word/styles.xml'));assert.match(xml,/Heading1/);assert.match(xml,/&lt; &amp; &gt;/);const content=Array.from(doc.getElementsByTagName('w:t')).map(n=>n.textContent).join('\n');assert.equal(content,text);await writeFile('/tmp/paperknow-export-qa.docx',bytes);});
+test('PDF embeds readable Chinese and paginates long current content without truncation',async()=>{const font=await readFile(new URL('../dist/workspace/assets/fonts/NotoSansSC-Regular.otf',import.meta.url)),longText=text+'\n'+Array.from({length:90},(_,i)=>`第 ${i+1} 段真实正文：中文与 English 123，应完整保留。`).join('\n')+'\n最终正文标记',bytes=await createWritingPdf(longText,font);assert.equal(new TextDecoder().decode(bytes.slice(0,5)),'%PDF-');const task=getDocument({data:new Uint8Array(bytes),useSystemFonts:false}),pdf=await task.promise;assert.ok(pdf.numPages>1);let extracted='';for(let i=1;i<=pdf.numPages;i++){const page=await pdf.getPage(i);extracted+=(await page.getTextContent()).items.map(n=>n.str).join('');}assert.match(extracted,/真实研究文稿/);assert.match(extracted,/特殊字符 < & >/);assert.match(extracted,/最终正文标记/);await writeFile('/tmp/paperknow-export-qa.pdf',bytes);await task.destroy();});
+test('exports reject empty results and remove invalid XML controls',()=>{assert.throws(()=>documentLines('  '),/请先填写/);assert.equal(documentLines('题目\n正文\u0001')[1].text,'正文');});
