@@ -21,3 +21,6 @@ export function trackDialogForm(dialog){
  };
 }
 export const workspaceLinks=[['工作空间',[['home','工作台首页','grid'],['projects','我的项目','folder'],['assets','我的成果','file'],['tasks','任务中心','clock']]],['论文与科研',[['category/writing','AI 写作','pen'],['category/literature','文献与研读','book'],['category/revision','修改与润色','pen'],['category/detection','论文检测','shield'],['category/ppt','PPT 创作','chart'],['category/research','科研工具','chart'],['category/format','格式排版','file'],['category/more','更多工具','grid']]],['个人与服务',[['membership','会员与用量','diamond'],['settings','设置中心','settings'],['help','帮助与反馈','help']]]];
+
+// Hash events can queue up during rapid navigation; only the current destination may render.
+export const isCurrentRouteChange=(event,url)=>event.newURL===url;
