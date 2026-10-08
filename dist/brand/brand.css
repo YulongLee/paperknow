@@ -1,0 +1,11 @@
+.brand .brand-symbol,.brand .brand-mark{display:block!important;background:transparent!important;border-radius:0!important;box-shadow:none!important;padding:0!important;flex-shrink:0;width:36px!important;height:36px!important;overflow:visible!important}.brand .brand-symbol img,.brand .brand-mark img{display:block;width:100%;height:100%}.brand .brand-mark:before,.brand .brand-mark:after{display:none!important}.brand .brand-wordmark{display:inline-block;font-family:Arial,"Helvetica Neue",sans-serif;font-size:23px;font-weight:750;letter-spacing:-.8px;line-height:1.1;white-space:nowrap}.brand-paper{color:#173253}.brand-know{color:#2467ef}.brand .brand-wordmark small{display:block;font:10px/1.5 system-ui,sans-serif;letter-spacing:1.5px;margin-top:6px;color:#71849b}.brand{gap:10px!important;text-decoration:none!important}.hub-sidebar .brand,.report-shared-sidebar .brand{align-items:center}.hub-sidebar .brand .brand-wordmark,.report-shared-sidebar .brand .brand-wordmark{font-size:22px}.commerce-footer .brand .brand-mark{width:28px!important;height:28px!important}.commerce-footer .brand .brand-wordmark{font-size:20px}.service-brand{display:inline-flex;align-items:center}.service-brand .brand-wordmark{font-size:22px}@media(max-width:760px){.header .brand .brand-mark{width:30px!important;height:30px!important}.header .brand .brand-wordmark{font-size:21px}}
+@media(max-width:760px){
+  .header .nav-wrap{gap:10px}
+  .header .brand{flex-shrink:0;gap:8px!important}
+  .header .nav-actions{min-width:0;margin-left:auto}
+  .header #account-button{max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+@media(max-width:400px){
+  .header .brand .brand-wordmark{font-size:19px}
+  .header #account-button{max-width:48px}
+}
