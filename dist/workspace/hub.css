@@ -125,3 +125,35 @@
 .category-tabs button:hover{background:#f0f5fd;color:#2c66c7!important}
 .category-tabs .active{background:#246df0!important;color:#fff!important;box-shadow:0 5px 12px rgba(36,109,240,.2)}
 @media(max-width:760px){.hub-tabs,.settings-tabs,.task-tabs,.lit-tabs,.category-tabs{overflow-x:auto;flex-wrap:nowrap}.hub-tabs button,.settings-tabs a,.task-tabs button,.lit-tabs button,.category-tabs button{flex:0 0 auto}.writing-steps{overflow-x:auto}.writing-steps button{min-width:118px}.writing-steps:before{left:70px;right:70px}}
+/* Results and task center: turn dense tables into clear product surfaces */
+.asset-tabs .asset-tabs,.task-tabs .task-tabs{padding:6px 8px!important;border:1px solid #dbe6f4!important;border-radius:13px 13px 0 0;background:#fff;gap:4px!important}
+.asset-tabs .asset-tabs button,.task-tabs .task-tabs button{padding:10px 14px!important;border-radius:9px;color:#7185a4;transition:.18s}
+.asset-tabs .asset-tabs button:hover,.task-tabs .task-tabs button:hover{background:#f0f5fd;color:#2866c8}
+.asset-tabs .asset-tabs button.active,.task-tabs .task-tabs button.active{background:#eaf2ff;color:#2162d4}
+.asset-tabs .asset-tabs button span,.task-tabs .task-tabs button span{background:#f0f4fb!important;color:#7b8aa6!important}
+.asset-tabs .asset-tabs button.active span,.task-tabs .task-tabs button.active span{background:#d8e7ff!important;color:#2162d4!important}
+.asset-tabs .asset-toolbar,.task-tabs .task-toolbar{padding:15px 18px 10px;background:#fff}
+.asset-tabs .asset-table-wrap,.task-tabs .task-table-wrap{margin:0 12px 12px;border:1px solid #e3eaf5;border-radius:12px;overflow:hidden;background:#fff}
+.asset-tabs .asset-table,.task-tabs .task-table{font-size:13px}
+.asset-tabs .asset-table th,.task-tabs .task-table th{background:#f6f9fe;padding:13px 14px;color:#7085a5}
+.asset-tabs .asset-table td,.task-tabs .task-table td{padding:18px 14px;border-bottom:1px solid #edf2f8}
+.asset-tabs .asset-table tbody tr,.task-tabs .task-table tbody tr{transition:background .16s}
+.asset-tabs .asset-table tbody tr:hover,.task-tabs .task-table tbody tr:hover{background:#f8fbff}
+.asset-tabs .asset-table td:first-child,.task-tabs .task-table td:first-child{padding-left:18px}
+.asset-tabs .asset-table td:last-child,.task-tabs .task-table td:last-child{padding-right:18px}
+.asset-tabs .asset-table-caption,.task-tabs .task-table-caption{padding:12px 18px 10px;background:#fff}
+.asset-tabs .asset-search,.task-tabs .asset-search,.task-tabs select{border-color:#d7e3f3;border-radius:9px;background:#fbfdff}
+@media(max-width:760px){.asset-tabs .asset-tabs,.task-tabs .task-tabs{overflow-x:auto;flex-wrap:nowrap}.asset-tabs .asset-tabs button,.task-tabs .task-tabs button{flex:0 0 auto}.asset-tabs .asset-table-wrap,.task-tabs .task-table-wrap{margin:0 5px 8px;overflow-x:auto}.asset-tabs .asset-table,.task-tabs .task-table{min-width:760px}}
+/* Root tab containers used by results and task center */
+.asset-tabs.hub-tabs,.task-tabs.hub-tabs{padding:6px 8px!important;border:1px solid #dbe6f4!important;border-radius:13px 13px 0 0;background:#fff;gap:4px!important}
+.asset-tabs.hub-tabs button,.task-tabs.hub-tabs button{padding:10px 14px!important;border-radius:9px;color:#7185a4;transition:.18s}
+.asset-tabs.hub-tabs button:hover,.task-tabs.hub-tabs button:hover{background:#f0f5fd;color:#2866c8}
+.asset-tabs.hub-tabs button.active,.task-tabs.hub-tabs button.active{background:#eaf2ff;color:#2162d4}
+.asset-tabs.hub-tabs button span,.task-tabs.hub-tabs button span{background:#f0f4fb;color:#7b8aa6}
+.asset-tabs.hub-tabs button.active span,.task-tabs.hub-tabs button.active span{background:#d8e7ff;color:#2162d4}
+.asset-library .asset-toolbar,.task-library .task-toolbar{padding:15px 18px 10px;background:#fff}
+.asset-library .asset-table,.task-library .task-table{border:1px solid #e3eaf5;border-radius:12px;overflow:hidden;background:#fff}
+.asset-library .asset-table th,.task-library .task-table th{background:#f6f9fe;padding:13px 14px;color:#7085a5}
+.asset-library .asset-table td,.task-library .task-table td{padding:18px 14px;border-bottom:1px solid #edf2f8}
+.asset-library .asset-table tbody tr:hover,.task-library .task-table tbody tr:hover{background:#f8fbff}
+.asset-library .asset-table-caption,.task-library .task-table-caption{padding:12px 18px 10px;background:#fff}
