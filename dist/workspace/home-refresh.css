@@ -29,3 +29,34 @@
 }
 @media(max-width:400px){.home-refresh .hub-quick-grid{grid-template-columns:1fr}.home-refresh .hub-resume-row .hub-row-copy{min-width:0;flex-basis:calc(100% - 80px)}.home-refresh .hub-resume-row>.btn{margin-left:auto}}
 .home-context-tabs{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:7px 8px 7px 12px;margin-bottom:18px;border:1px solid #dfe8f5;border-radius:12px;background:#fff;box-shadow:0 4px 16px #23467506}.home-context-links{display:flex;align-items:center;gap:4px;min-width:0;overflow-x:auto}.home-context-links button{position:relative;white-space:nowrap;padding:10px 18px;border-radius:8px;background:transparent;color:#68809f;font-size:13px;font-weight:600}.home-context-links button:hover{background:#f4f7fc;color:#2a61c4}.home-context-links button.active{background:#edf4ff;color:#2467ef}.home-context-links button.active:after{content:'';position:absolute;left:16px;right:16px;bottom:-8px;height:3px;border-radius:3px;background:#2d70f5}.home-context-actions{display:flex;gap:8px;flex-shrink:0}.home-context-actions .btn{font-size:12px;padding:9px 13px;min-height:36px}.home-context-actions .primary{box-shadow:0 4px 10px #2d69ed25}.home-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 20px}.home-metric-card{display:flex;align-items:center;gap:12px;padding:15px 16px;border:1px solid #e0e9f6;border-radius:12px;background:#fff;box-shadow:0 3px 14px #23467505}.home-metric-card .hub-row-icon{width:42px;height:42px;border-radius:11px;color:#fff}.home-metric-card.blue .hub-row-icon{background:linear-gradient(145deg,#4d9bff,#2868e9)}.home-metric-card.mint .hub-row-icon{background:linear-gradient(145deg,#4dc9a7,#159b87)}.home-metric-card.violet .hub-row-icon{background:linear-gradient(145deg,#ad8aff,#7955df)}.home-metric-card.amber .hub-row-icon{background:linear-gradient(145deg,#ffc270,#ec8e2c)}.home-metric-card div{display:grid;gap:4px}.home-metric-card small{font-size:11px;color:#7f93af}.home-metric-card b{font-size:20px;line-height:1;color:#213d66;font-variant-numeric:tabular-nums}.home-refresh .home-tools-heading{margin-top:4px}@media(max-width:1000px){.home-context-tabs{align-items:stretch;flex-direction:column}.home-context-actions{justify-content:flex-end}.home-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:760px){.home-context-tabs{margin-left:-4px;margin-right:-4px}.home-context-links button{padding:9px 13px;font-size:12px}.home-context-actions .btn{flex:1}.home-metrics{gap:8px}.home-metric-card{padding:12px 10px;gap:8px}.home-metric-card .hub-row-icon{width:36px;height:36px}.home-metric-card b{font-size:17px}.home-metric-card small{font-size:10px}}
+/* Workbench visual polish: stronger hierarchy, quieter chrome, richer hero */
+.home-refresh{background:linear-gradient(180deg,#f4f7fd 0%,#f8faff 48%,#f3f6fb 100%);}
+.home-refresh .home-context-tabs{padding:5px 7px 5px 10px;margin-bottom:16px;border-color:#d7e2f2;border-radius:14px;background:rgba(255,255,255,.82);box-shadow:0 8px 24px rgba(31,65,112,.07);backdrop-filter:blur(10px)}
+.home-refresh .home-context-links{gap:2px}
+.home-refresh .home-context-links button{padding:9px 16px;color:#7890ad;font-size:12px;letter-spacing:.1px}
+.home-refresh .home-context-links button.active{background:#eaf2ff;color:#205fd0;box-shadow:inset 0 0 0 1px #d8e7ff}
+.home-refresh .home-context-links button.active:after{bottom:-6px;height:2px;background:#2d70f5}
+.home-refresh .home-context-actions .btn{border-radius:9px}
+.home-refresh .home-welcome{min-height:224px;margin-bottom:18px;padding:18px 18px 18px 34px;border:0;border-radius:20px;background:linear-gradient(112deg,#ffffff 0%,#f9fbff 47%,#e9f2ff 100%);box-shadow:0 14px 34px rgba(36,74,125,.11);isolation:isolate}
+.home-refresh .home-welcome:before{content:'';position:absolute;inset:0;z-index:-1;background:radial-gradient(circle at 74% 12%,rgba(90,151,255,.23),transparent 30%),radial-gradient(circle at 88% 100%,rgba(53,112,236,.11),transparent 31%);pointer-events:none}
+.home-refresh .home-welcome:after{content:'';position:absolute;right:30%;bottom:-95px;width:310px;height:210px;border:1px solid rgba(69,126,222,.15);border-radius:50%;box-shadow:0 0 0 28px rgba(69,126,222,.04),0 0 0 58px rgba(69,126,222,.025);pointer-events:none}
+.home-refresh .home-welcome-copy{padding:10px 0}
+.home-refresh .home-welcome-eyebrow{font-size:9px;letter-spacing:1.8px;color:#6881a2}
+.home-refresh .home-welcome h1{margin-top:15px;font-size:34px;letter-spacing:-1.1px;color:#162e52}
+.home-refresh .home-welcome p{margin:9px 0 20px;color:#647d9f}
+.home-refresh .home-welcome-actions .btn{border-radius:10px}
+.home-refresh .home-agent-entry{align-self:stretch;min-height:188px;border:1px solid rgba(255,255,255,.2);border-radius:17px;background:linear-gradient(145deg,#173866 0%,#285996 100%);box-shadow:0 13px 28px rgba(19,57,106,.2);overflow:hidden}
+.home-refresh .home-agent-entry:before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 85% 18%,rgba(117,177,255,.32),transparent 38%),linear-gradient(120deg,transparent 60%,rgba(255,255,255,.07));pointer-events:none}
+.home-refresh .home-agent-top,.home-refresh .home-agent-title,.home-refresh .home-agent-bottom{position:relative;z-index:1}
+.home-refresh .home-agent-title{font-size:21px;line-height:1.35;letter-spacing:-.4px}
+.home-refresh .home-metrics{gap:14px;margin-bottom:22px}
+.home-refresh .home-metric-card{padding:14px 16px;border-color:#dce6f4;border-radius:14px;background:rgba(255,255,255,.88);box-shadow:0 7px 18px rgba(34,72,122,.06)}
+.home-refresh .home-metric-card small{color:#7890ad}
+.home-refresh .home-metric-card b{font-size:22px;color:#1a3761}
+.home-refresh .home-tools-heading{margin:4px 2px 10px}
+.home-refresh .home-tools-heading h2{font-size:16px;color:#1d385e}
+.home-refresh .hub-quick-grid{gap:11px}
+.home-refresh .hub-quick{border-color:#dbe6f4;border-radius:13px;background:rgba(255,255,255,.9);box-shadow:0 5px 14px rgba(35,73,121,.045);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.home-refresh .hub-quick:hover{transform:translateY(-2px);border-color:#bcd3f5;box-shadow:0 10px 22px rgba(35,89,169,.11)}
+.home-refresh .hub-card,.home-refresh .home-service-side .card{border-color:#dbe6f4;border-radius:16px;box-shadow:0 7px 20px rgba(35,73,121,.05)}
+@media(max-width:760px){.home-refresh .home-welcome{padding:16px;min-height:0}.home-refresh .home-welcome h1{font-size:28px}.home-refresh .home-welcome:after{right:-80px}.home-refresh .home-agent-entry{min-height:170px}}
