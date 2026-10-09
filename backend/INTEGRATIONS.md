@@ -25,3 +25,19 @@
 - 跨产品目录用于组织文件，并不等于 RAM 权限隔离；需要独立权限时，为 PaperKnow 配置限制到该目录的独立凭证。
 
 SDK 参考：[OSS 上传与下载](https://www.alibabacloud.com/help/en/oss/user-guide/oss-sdk-quick-start)。
+
+## Codex 科研智能任务
+
+`PK_AGENT_ENABLED=1` 启用 Codex SDK 任务入口。入口位于服务平台的“科研智能助手”，也支持认证后的 `POST /api/jobs`，参数 `type: "agent"`、`text`、`requirements`、`projectId`、`fileIds` 与 `idempotencyKey`。材料只能选择当前账户所属原件，最多 5 份、解析正文合计 40,000 字符。
+
+执行路径：账户鉴权 → 原有任务队列 → 服务端读取本次授权原件（支持 OSS）→ Codex SDK → 当前模型的 Responses 接口 → PaperKnow MCP 材料工具 → 成果与实际用量保存。已使用百炼 `deepseek-v4.1-flash` 真实验证 Responses 调用与 MCP 工具循环；这属于第三方模型接入，不代表具有 OpenAI Codex 模型的相同质量或全部功能。
+
+- 每次执行使用新的私有临时目录和独立 CODEX_HOME，不读取开发者个人 Codex 登录、技能、插件或会话配置。任务结束清除临时文件，正式成果仍保存在 PaperKnow 数据库。
+- SDK 子进程只接收必要的 PATH、CODEX_HOME 与当前模型密钥，不继承整个后端环境。OSS 凭证和数据库不交给 Codex。
+- 默认系统命令与网络搜索关闭，文件系统为 read-only。MCP 仅提供本次快照的 `list_materials`、`read_material`、`text_statistics`，不接受任意文件路径或 SQL。
+- 智能任务最长 180 秒，最多记录 20 次 MCP 调用，超过限制或模型失败不保存成功成果；失败不自动重试。管理员替换或暂停模型同样影响新智能任务。
+- 页面支持取消任务、查看状态、查看材料与工具记录、编辑结果、保存新版本和导出文本。用量来源标识为 `codex_sdk`，不存在虚构额度。
+- 当前能力是研究计划、材料阅读、文本整理和建议生成。DOCX/PDF/PPTX 自动生成、统计程序执行、图表制作等后续能力需单独注册受控工具；接入 SDK 不会自动使这些功能可用。需要终端执行能力时必须先接入独立的隔离执行环境，不在共享产品服务器上开放任意命令。
+- 部署环境通过 npm 安装 Codex SDK 及其匹配平台的运行时；需 Node.js 与可运行的 MCP 子进程。更换模型前需验证该模型对 Responses 及工具调用的兼容性。当前不启用历史会话续接，后续可在用户授权隔离的前提下扩展。
+
+官方参考：[Codex SDK](https://developers.openai.com/codex/sdk/)、[自定义模型与 MCP 配置](https://developers.openai.com/codex/config-reference/)。

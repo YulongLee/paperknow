@@ -42,3 +42,17 @@ test('OSS original files remain private, parse correctly and enforce owner downl
  objects.set(file.storage_key,Buffer.from('corrupted'));const broken=await f.request(`/files/${file.id}/download`,undefined,a.cookie);assert.equal(broken.status,500);
  client.put=async()=>{throw new Error('secret-provider-message');};assert.equal((await f.request('/files',{name:'failure.txt',data:Buffer.from('测试').toString('base64')},a.cookie)).status,500);assert.equal(f.db.prepare('SELECT count(*) n FROM files').get().n,1);
 });
+test('agent jobs validate material ownership and save actual runner results and usage',async t=>{
+ let received;const f=await fixture(t,{agentEnabled:true,aiURL:'https://example.invalid/v1/chat/completions',aiKey:'test-secret',aiModel:'test-model',agentRunner:async params=>{received=params;return {body:{original:params.input.text,suggestion:'测试桩结果',model:params.ai.aiModel,engine:'codex_sdk',materials:params.materials.map(m=>({id:m.id,name:m.name})),trace:[]},usage:{input:5,output:7}};}}),a=await f.register(),b=await f.register('foreign@example.com');
+ const file=(await f.request('/files',{name:'资料.txt',data:Buffer.from('只有授权用户可以读取的测试正文').toString('base64')},a.cookie)).value.id;
+ assert.equal((await f.request('/jobs',{type:'agent',text:'整理材料',fileIds:[file],idempotencyKey:'foreign'},b.cookie)).status,404);
+ assert.equal((await f.request('/jobs',{type:'agent',text:'整理材料',fileIds:[file,file],idempotencyKey:'duplicate'},a.cookie)).status,400);
+ const submitted=await f.request('/jobs',{type:'agent',text:'整理材料',fileIds:[file],idempotencyKey:'allowed'},a.cookie);const done=await f.waitJob(submitted.value.id,a.cookie);assert.equal(done.status,'completed');assert.equal(received.materials[0].text,'只有授权用户可以读取的测试正文');
+ const result=(await f.request('/results/'+done.result_id,undefined,a.cookie)).value.item;assert.equal(result.body.engine,'codex_sdk');assert.equal((await f.request('/results/'+done.result_id,undefined,b.cookie)).status,404);assert.equal((await f.request('/usage',undefined,a.cookie)).value.items[0].provider,'codex_sdk');
+});
+test('agent task cancellation interrupts runner and leaves no result or usage',async t=>{
+ const f=await fixture(t,{agentEnabled:true,aiURL:'https://example.invalid/v1/chat/completions',aiKey:'test-secret',aiModel:'test-model',agentRunner:async({signal})=>new Promise((resolve,reject)=>{if(signal.aborted)reject(new Error('cancelled'));else signal.addEventListener('abort',()=>reject(new Error('cancelled')),{once:true});})}),a=await f.register();
+ const job=(await f.request('/jobs',{type:'agent',text:'测试取消',fileIds:[],idempotencyKey:'cancel-agent'},a.cookie)).value;
+ for(let i=0;i<30;i++){if(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id).status==='running')break;await new Promise(r=>setTimeout(r,20));}
+ assert.equal((await f.request(`/jobs/${job.id}/cancel`,{},a.cookie)).status,200);assert.equal((await f.waitJob(job.id,a.cookie)).status,'cancelled');assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM usage').get().n,0);
+});

@@ -6,7 +6,7 @@ export function loadLocalEnvironment(){
   if(existsSync(file))process.loadEnvFile(file);
 }
 export function environmentConfig(env=process.env){
-  return {aiURL:env.PK_AI_URL,aiKey:env.PK_AI_KEY,aiModel:env.PK_AI_MODEL,secure:env.PK_SECURE_COOKIE==='1',
+  return {agentEnabled:env.PK_AGENT_ENABLED==='1',aiURL:env.PK_AI_URL,aiKey:env.PK_AI_KEY,aiModel:env.PK_AI_MODEL,secure:env.PK_SECURE_COOKIE==='1',
     ossBucket:env.PK_OSS_BUCKET,ossEndpoint:env.PK_OSS_ENDPOINT,ossRegion:env.PK_OSS_REGION,
     ossPrefix:env.PK_OSS_PREFIX||'paperknow/',ossAccessKeyId:env.PK_OSS_ACCESS_KEY_ID,ossAccessKeySecret:env.PK_OSS_ACCESS_KEY_SECRET};
 }
