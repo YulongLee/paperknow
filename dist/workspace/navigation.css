@@ -1,0 +1,23 @@
+/* Workspace sidebar: readable navigation, persistent width and full collapse. */
+#app{--navigation-width:256px}
+#app .hub-sidebar{width:var(--navigation-width);padding:22px 12px 12px}
+#app .hub-workspace{margin-left:var(--navigation-width)}
+#app .hub-sidebar-brand{display:flex;align-items:center;gap:6px;margin-bottom:21px;min-height:44px}
+#app .hub-sidebar-brand .brand{flex:1;min-width:0;padding:0 7px;margin:0;gap:9px;font-size:21px}
+#app .navigation-collapse{width:32px;height:32px;flex-shrink:0;border-radius:7px;color:#7b8da7;background:#f5f7fb}
+#app .navigation-collapse:hover{color:#286bed;background:#eaf2ff}
+#app .hub-sidebar .nav-link{font-size:16px;line-height:1.4;padding:11px 13px;gap:12px;min-height:44px;margin:3px 0}
+#app .hub-sidebar .nav-link svg{width:20px;height:20px}
+#app .hub-sidebar .nav-link span{white-space:nowrap}
+#app .hub-sidebar .nav-caption{font-size:12px;letter-spacing:.5px;margin:19px 0 8px;color:#7689a4}
+#app .hub-sidebar .nav-caption:first-child{margin-top:0}
+#app .hub-profile-trigger b{font-size:14px}#app .hub-profile-trigger small{font-size:12px}
+#app .hub-workspace .sidebar-toggle{display:inline-flex!important;align-items:center;justify-content:center;width:36px;height:36px;background:#f5f7fb;border-radius:8px;color:#5d7392}
+#app .hub-workspace .sidebar-toggle:hover{color:#286bed;background:#eaf2ff}
+.navigation-resize{position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;touch-action:none;z-index:2}
+.navigation-resize:after{content:'';position:absolute;top:0;bottom:0;left:4px;width:2px;background:transparent;transition:background .15s}
+.navigation-resize:hover:after,.navigation-resize:focus-visible:after,.navigation-resizing .navigation-resize:after{background:#5895fc}
+.navigation-resize:focus-visible{outline:2px solid #87b0ff;outline-offset:0}
+.navigation-resizing,.navigation-resizing *{cursor:col-resize!important;user-select:none!important}
+@media(min-width:761px){#app.navigation-hidden .hub-sidebar{transform:translateX(-100%);visibility:hidden}#app.navigation-hidden .hub-workspace{margin-left:0}}
+@media(max-width:760px){#app .hub-sidebar{width:min(290px,calc(100vw - 48px));padding-top:18px}#app .hub-workspace{margin-left:0}#app .navigation-resize{display:none}#app .hub-sidebar .nav-link{min-height:44px;font-size:16px}}
