@@ -13,3 +13,5 @@ CREATE INDEX IF NOT EXISTS jobs_queue ON jobs(status,created_at);
 CREATE INDEX IF NOT EXISTS projects_owner ON projects(user_id,updated_at);
 CREATE INDEX IF NOT EXISTS results_owner ON results(user_id,created_at);
 CREATE TABLE IF NOT EXISTS result_revisions(id TEXT PRIMARY KEY,result_id TEXT NOT NULL REFERENCES results(id),user_id TEXT NOT NULL REFERENCES users(id),body TEXT NOT NULL,created_at TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS service_settings(name TEXT PRIMARY KEY,value TEXT NOT NULL,updated_by TEXT NOT NULL REFERENCES users(id),updated_at TEXT NOT NULL);
