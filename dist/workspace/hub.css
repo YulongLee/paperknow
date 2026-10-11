@@ -294,3 +294,36 @@
 .help-wechat-row button{border:1px solid #cdddf4;border-radius:6px;background:#f7faff;color:#3979ed;font-size:11px;padding:5px 9px;cursor:pointer}
 .help-support-note{display:block;margin-top:10px;font-size:10px;line-height:1.7;color:#91a2b8}
 @media(max-width:960px){.help-support{grid-column:1/-1}}
+
+/* Help center visual polish: align the generated commercial concept with the product shell. */
+.help-search-panel{position:relative;overflow:hidden;min-height:184px;padding:25px 27px;background:linear-gradient(118deg,#e2efff 0%,#edf5ff 62%,#e8f1ff 100%);box-shadow:0 8px 24px rgba(54,111,199,.06)}
+.help-search-panel:after{content:'';position:absolute;width:220px;height:220px;right:-72px;top:-84px;border:1px solid rgba(73,137,239,.15);border-radius:50%;box-shadow:0 0 0 28px rgba(73,137,239,.045),0 0 0 56px rgba(73,137,239,.03);pointer-events:none}
+.help-search-panel>*{position:relative;z-index:1}
+.help-eyebrow{display:block;color:#4a79bd;font-size:10px;letter-spacing:.12em;font-weight:700;margin-bottom:10px}
+.help-search-panel h2{font-size:25px;letter-spacing:-.02em;margin-bottom:8px}
+.help-search-lead{max-width:600px!important;display:block!important;margin:0 0 16px!important;color:#6783a9!important;font-size:12px!important;line-height:1.7!important}
+.help-search-hot{margin-top:12px!important}
+.help-guides header,.help-section-header{align-items:flex-end!important}
+.help-section-note{margin:6px 0 0;color:#94a5bd;font-size:11px}
+.help-section-header{display:flex;justify-content:space-between;gap:12px}
+.help-view-all{font-size:11px;color:#3979eb;white-space:nowrap}
+.help-category-grid{gap:12px}
+.help-category{min-height:92px;padding:16px 14px;border-radius:10px;box-shadow:0 5px 16px rgba(44,82,136,.035)}
+.help-category b{font-size:12px}
+.help-category small{font-size:10px}
+.help-faq{box-shadow:0 5px 18px rgba(44,82,136,.035)}
+.help-feedback,.help-support,.help-service{box-shadow:0 5px 18px rgba(44,82,136,.04)}
+.help-support{background:linear-gradient(145deg,#fffdf7 0%,#fff9eb 100%);border-color:#f3d58f}
+.help-support:before{content:'✦';display:inline-flex;align-items:center;justify-content:center;float:left;width:34px;height:34px;margin:0 10px 8px 0;border-radius:10px;background:#fff0c9;color:#d69519;font-size:18px}
+.help-support header{min-height:36px}
+.help-support h2{font-size:18px;color:#5e471d}
+.help-support header p{color:#8a744d}
+.help-support .help-contact-row{border-color:#f1dfb6}
+.help-support .help-contact-row>svg:first-child{color:#d5941c}
+.help-support .help-contact-row b{color:#5f471f}
+.help-support .help-wechat-row button{border-color:#e6c778;background:#fff;color:#ad7618}
+.help-pill-mint{background:#e8f8ef;color:#1a9b72}
+.help-service-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.help-service-header h2{margin:0}
+@media(min-width:1201px){.help-layout{grid-template-columns:minmax(0,1.9fr) minmax(315px,1fr);gap:20px}}
+@media(max-width:960px){.help-search-panel{min-height:0}.help-search-panel:after{display:none}}
