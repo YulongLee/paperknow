@@ -226,3 +226,38 @@
 /* Settings preview theme controls */
 .settings-choices.theme-choices{grid-template-columns:repeat(3,minmax(0,1fr))}.settings-choices.theme-choices .settings-choice{padding:14px 10px}.settings-choices.theme-choices .settings-choice small{font-size:10px}.hub-theme-dark{background:#101827;color:#dbe7fb}.hub-theme-dark .hub-workspace,.hub-theme-dark .topbar{background:#101827}.hub-theme-dark .card,.hub-theme-dark .settings-side-nav,.hub-theme-dark .hub-upgrade-card{background:#172235;border-color:#2b3d58;color:#dbe7fb}.hub-theme-dark .settings-main h2,.hub-theme-dark .settings-main h3,.hub-theme-dark .settings-side-nav b,.hub-theme-dark .settings-info-card h3{color:#e3edff}.hub-theme-dark .settings-description,.hub-theme-dark .settings-info-card p,.hub-theme-dark .settings-side-nav>a{color:#9eb1ce}.hub-theme-dark #settings-example{background:#1d2b41;border-color:#344a6a}.hub-theme-dark .settings-choice{border-color:#304764}.hub-theme-dark .settings-choice:has(input:checked){background:#203c68;border-color:#4c8dff}.hub-theme-dark .settings-actions{border-color:#2d405e}
 @media(max-width:900px){.settings-choices.theme-choices{grid-template-columns:1fr}}
+
+/* Settings navigation refinement */
+.settings-side-nav{padding:14px 10px;gap:0;border-radius:14px;box-shadow:0 8px 24px rgba(35,72,132,.06)}
+.settings-nav-header{padding:3px 10px 14px;border-bottom:1px solid #edf2fa;margin-bottom:8px}
+.settings-nav-header b{display:block;color:#243e66;font-size:13px;letter-spacing:.01em}
+.settings-nav-header small{display:block;color:#9aaac1;font-size:10px;margin-top:5px}
+.settings-nav-group{padding:4px 0 7px}
+.settings-nav-group+.settings-nav-group{border-top:1px solid #edf2fa;padding-top:9px}
+.settings-nav-label{display:block;padding:4px 10px 5px;color:#a0afc3;font-size:10px;font-weight:600;letter-spacing:.04em}
+.settings-side-nav>a{margin:2px 0;padding:10px;border-radius:9px;font-size:12px}
+.settings-side-nav>a>svg:first-child{color:#8195b3;transition:color .16s}
+.settings-side-nav>a:hover>svg:first-child,.settings-side-nav>a[aria-current]>svg:first-child{color:#286ff0}
+.settings-side-nav>a[aria-current]{box-shadow:inset 3px 0 #3478ef,0 3px 10px rgba(50,111,235,.08)}
+.settings-side-nav>a>svg:last-child{opacity:0;transform:translateX(-3px);transition:.16s}
+.settings-side-nav>a:hover>svg:last-child,.settings-side-nav>a[aria-current]>svg:last-child{opacity:1;transform:none}
+.hub-theme-dark .settings-nav-header{border-color:#2b3d58}.hub-theme-dark .settings-nav-header b{color:#e3edff}.hub-theme-dark .settings-nav-header small,.hub-theme-dark .settings-nav-label{color:#8ea4c2}.hub-theme-dark .settings-nav-group+.settings-nav-group{border-color:#2b3d58}
+@media(max-width:760px){.settings-side-nav{padding:7px}.settings-nav-header,.settings-nav-label,.settings-nav-group+.settings-nav-group{display:none}.settings-nav-group{display:contents}.settings-side-nav>a{margin:0 2px}}
+
+/* Keep the settings rail readable at laptop widths. */
+@media(min-width:901px) and (max-width:1200px){
+  .settings-layout{grid-template-columns:210px minmax(390px,1fr) 220px;gap:14px}
+  .settings-side-nav>a{padding-left:10px;padding-right:10px;font-size:12px;white-space:nowrap}
+  .settings-side-nav>a>span{white-space:nowrap}
+}
+
+/* Nested groups use the same interaction treatment as the original rail. */
+.settings-side-nav .settings-nav-group>a{display:flex;align-items:center;gap:9px;margin:2px 0;padding:10px;border-radius:9px;color:#6c82a3;font-size:12px;transition:.16s;white-space:nowrap}
+.settings-side-nav .settings-nav-group>a:hover{background:#f3f7fe;color:#2c70e8}
+.settings-side-nav .settings-nav-group>a[aria-current]{background:#eaf2ff;color:#226ae1;font-weight:600;box-shadow:inset 3px 0 #3478ef,0 3px 10px rgba(50,111,235,.08)}
+.settings-side-nav .settings-nav-group>a>span{flex:1;white-space:nowrap}
+.settings-side-nav .settings-nav-group>a>svg:first-child{color:#8195b3;transition:color .16s}
+.settings-side-nav .settings-nav-group>a:hover>svg:first-child,.settings-side-nav .settings-nav-group>a[aria-current]>svg:first-child{color:#286ff0}
+.settings-side-nav .settings-nav-group>a>svg:last-child{color:#a9b8ca;opacity:0;transform:translateX(-3px);transition:.16s}
+.settings-side-nav .settings-nav-group>a:hover>svg:last-child,.settings-side-nav .settings-nav-group>a[aria-current]>svg:last-child{opacity:1;transform:none}
+@media(max-width:760px){.settings-side-nav .settings-nav-group>a{flex:0 0 auto;padding:9px 10px}.settings-side-nav .settings-nav-group>a>svg:last-child{display:none}}
