@@ -478,3 +478,11 @@
 .creation-page .writing-process-note{margin-top:16px;padding:11px 12px;border:0;border-radius:8px;background:#f5f8fc;color:#7187a5;font-size:11px}
 @media(max-width:900px){.creation-page .writing-process-guide ol{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:600px){.creation-page .writing-process-guide{padding:17px}.creation-page .writing-process-guide ol{grid-template-columns:1fr 1fr}.creation-page .writing-process-guide li{min-height:74px}.creation-page .writing-process-guide li b{font-size:10px}.creation-page .writing-process-guide li small{font-size:8px}}
+
+/* Workflow context strip */
+.creation-page .writing-process-context{display:flex;align-items:center;gap:10px;margin-top:15px;padding:10px 12px;border-radius:9px;background:#f1f6ff;color:#5d78a0}
+.creation-page .writing-process-context-icon{display:grid;place-items:center;width:20px;height:20px;flex:0 0 20px;border-radius:50%;background:#2c74ef;color:#fff;font-size:12px;font-weight:700;font-style:normal}
+.creation-page .writing-process-context p{flex:1;margin:0;font-size:11px;line-height:1.55}
+.creation-page .writing-process-next{border:0;background:transparent;color:#2168e3;font-size:11px;font-weight:650;white-space:nowrap;cursor:pointer}
+.creation-page .writing-process-next:disabled{color:#8ea2bd;cursor:default}
+@media(max-width:650px){.creation-page .writing-process-context{align-items:flex-start;flex-wrap:wrap}.creation-page .writing-process-next{margin-left:30px}}
