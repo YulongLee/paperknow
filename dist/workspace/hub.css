@@ -277,3 +277,20 @@
 
 /* The local settings rail should size to its menu content, while the main card owns the page rhythm. */
 .settings-side-nav{height:fit-content;min-height:0;align-self:start}
+
+/* Commercial support contact card */
+.help-support{padding:22px;min-width:0}
+.help-support header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:14px}
+.help-support h2{margin:0;font-size:18px}
+.help-support header p{margin:6px 0 0;font-size:11px;line-height:1.7;color:#7c91ae}
+.help-pill-gold{background:#fff3d6;color:#ad7618}
+.help-contact-row{display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid #e7edf7;color:#4b6b94;text-decoration:none}
+.help-contact-row>svg:first-child{color:#3979ed;flex-shrink:0}
+.help-contact-row>span{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+.help-contact-row small{font-size:10px;color:#8b9db6}
+.help-contact-row b{font-size:12px;color:#294b76;font-weight:600;overflow-wrap:anywhere}
+.help-contact-row>svg:last-child{color:#8ca2bf;flex-shrink:0}
+.help-wechat-row{border-top:1px solid #e7edf7}
+.help-wechat-row button{border:1px solid #cdddf4;border-radius:6px;background:#f7faff;color:#3979ed;font-size:11px;padding:5px 9px;cursor:pointer}
+.help-support-note{display:block;margin-top:10px;font-size:10px;line-height:1.7;color:#91a2b8}
+@media(max-width:960px){.help-support{grid-column:1/-1}}
