@@ -222,3 +222,7 @@
 @media(max-width:760px){
   .settings-aside:before{content:'账户与服务';display:block;font-size:13px;font-weight:600;color:#385578;margin:2px 0 0}
 }
+
+/* Settings preview theme controls */
+.settings-choices.theme-choices{grid-template-columns:repeat(3,minmax(0,1fr))}.settings-choices.theme-choices .settings-choice{padding:14px 10px}.settings-choices.theme-choices .settings-choice small{font-size:10px}.hub-theme-dark{background:#101827;color:#dbe7fb}.hub-theme-dark .hub-workspace,.hub-theme-dark .topbar{background:#101827}.hub-theme-dark .card,.hub-theme-dark .settings-side-nav,.hub-theme-dark .hub-upgrade-card{background:#172235;border-color:#2b3d58;color:#dbe7fb}.hub-theme-dark .settings-main h2,.hub-theme-dark .settings-main h3,.hub-theme-dark .settings-side-nav b,.hub-theme-dark .settings-info-card h3{color:#e3edff}.hub-theme-dark .settings-description,.hub-theme-dark .settings-info-card p,.hub-theme-dark .settings-side-nav>a{color:#9eb1ce}.hub-theme-dark #settings-example{background:#1d2b41;border-color:#344a6a}.hub-theme-dark .settings-choice{border-color:#304764}.hub-theme-dark .settings-choice:has(input:checked){background:#203c68;border-color:#4c8dff}.hub-theme-dark .settings-actions{border-color:#2d405e}
+@media(max-width:900px){.settings-choices.theme-choices{grid-template-columns:1fr}}
