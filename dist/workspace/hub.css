@@ -261,3 +261,19 @@
 .settings-side-nav .settings-nav-group>a>svg:last-child{color:#a9b8ca;opacity:0;transform:translateX(-3px);transition:.16s}
 .settings-side-nav .settings-nav-group>a:hover>svg:last-child,.settings-side-nav .settings-nav-group>a[aria-current]>svg:last-child{opacity:1;transform:none}
 @media(max-width:760px){.settings-side-nav .settings-nav-group>a{flex:0 0 auto;padding:9px 10px}.settings-side-nav .settings-nav-group>a>svg:last-child{display:none}}
+
+/* Settings center production grid: keep global navigation and align the local settings rail. */
+.settings-layout{grid-template-columns:220px minmax(420px,1fr) 280px;gap:18px;align-items:stretch}
+.settings-side-nav{height:fit-content;min-height:100%;box-sizing:border-box}
+.settings-main{min-height:660px;box-sizing:border-box;display:flex;flex-direction:column}
+.settings-main .hub-form{display:flex;flex:1;flex-direction:column}
+.settings-main .settings-actions{margin-top:auto}
+.settings-aside{height:100%;align-content:start;grid-auto-rows:minmax(0,auto)}
+.settings-info-card{box-sizing:border-box}
+@media(min-width:1201px){.settings-layout{max-width:1280px}}
+@media(min-width:901px) and (max-width:1200px){.settings-layout{grid-template-columns:210px minmax(390px,1fr) 220px;gap:14px}.settings-main{min-height:620px}}
+@media(max-width:900px) and (min-width:761px){.settings-layout{grid-template-columns:200px minmax(0,1fr);gap:14px}.settings-main{min-height:0}.settings-aside{height:auto}}
+@media(max-width:760px){.settings-layout{grid-template-columns:1fr;gap:12px}.settings-side-nav{min-height:0}.settings-main{min-height:0}.settings-aside{height:auto}}
+
+/* The local settings rail should size to its menu content, while the main card owns the page rhythm. */
+.settings-side-nav{height:fit-content;min-height:0;align-self:start}
