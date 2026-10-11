@@ -509,3 +509,10 @@
 .creation-page .creation-output.is-stage-hidden{display:none}
 .creation-page .task-overview[hidden]{display:none!important}
 @media(max-width:760px){.creation-page .creation-grid:has(.creation-output.is-stage-hidden){grid-template-columns:1fr}}
+
+/* Separate basic profile fields from precision knowledge uploads */
+.creation-page[data-writing-stage="1"] .writing-material-options{display:none}
+.creation-page[data-writing-stage="2"] .writing-material-options{display:block}
+.creation-page[data-writing-stage="1"] .writing-options{display:block}
+.creation-page .writing-options .creation-row{margin-top:4px}
+.creation-page .writing-options .creation-row input,.creation-page .writing-options .creation-row select{min-height:40px}
