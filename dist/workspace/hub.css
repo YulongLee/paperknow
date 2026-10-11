@@ -486,3 +486,20 @@
 .creation-page .writing-process-next{border:0;background:transparent;color:#2168e3;font-size:11px;font-weight:650;white-space:nowrap;cursor:pointer}
 .creation-page .writing-process-next:disabled{color:#8ea2bd;cursor:default}
 @media(max-width:650px){.creation-page .writing-process-context{align-items:flex-start;flex-wrap:wrap}.creation-page .writing-process-next{margin-left:30px}}
+
+/* Step 1: focused basic information form */
+.creation-page .creation-input{display:flex;flex-direction:column}
+.creation-page .creation-input>h2{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.creation-page .creation-input>h2:before{content:'1';display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:#e8f1ff;color:#2c74ef;font-size:12px;font-weight:750}
+.creation-page .creation-input>.section-hint{margin-bottom:18px;color:#7187a5;font-size:12px}
+.creation-page .creation-input>.creation-disclaimer{display:none}
+.creation-page .creation-input>.creation-actions{order:3;margin-top:20px;padding-top:18px;border-top:1px solid #edf2f8}
+.creation-page .creation-input>#writing-form{order:2}
+.creation-page .creation-input .type-field{margin-top:18px}
+.creation-page .creation-input #writing-title{min-height:78px;font-size:14px;line-height:1.7}
+.creation-page .creation-input .writing-options,.creation-page .creation-input .writing-material-options{background:#f8fbff;border:1px solid #e4edf8;border-radius:10px;padding:3px 13px;margin-top:18px}
+.creation-page .creation-input .writing-options summary,.creation-page .creation-input .writing-material-options summary{padding:11px 0;color:#426287;font-size:12px}
+.creation-page .creation-input .writing-options[open],.creation-page .creation-input .writing-material-options[open]{padding-bottom:12px}
+.creation-page .creation-input .writing-options[open] summary,.creation-page .creation-input .writing-material-options[open] summary{border-bottom:1px solid #e8eef7}
+.creation-page .creation-input .creation-actions .primary{min-width:230px}
+@media(max-width:760px){.creation-page .creation-input .creation-actions .primary{min-width:0;flex:1}.creation-page .creation-input #writing-title{min-height:68px}}
