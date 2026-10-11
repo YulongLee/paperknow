@@ -381,3 +381,23 @@
 .writing-recent-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:16px}.writing-recent-heading h2{margin:5px 0 3px;color:#203b63;font-size:20px}.writing-recent-heading p{margin:0;color:#8094ae;font-size:12px}.writing-recent-heading>a{padding-top:8px;color:#286fe5;font-size:11px;text-decoration:none}.writing-recent-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.writing-recent-card{display:flex;align-items:center;gap:11px;min-width:0;padding:13px 14px;border:1px solid #e0e9f5;border-radius:11px;background:#fbfcff;color:#2d4c73;text-decoration:none;transition:.18s}.writing-recent-card:hover{border-color:#a9c7fc;background:#f6faff;transform:translateY(-1px)}.writing-recent-icon{display:grid;place-items:center;width:32px;height:32px;flex:0 0 32px;border-radius:9px;background:#eaf3ff;color:#3179ed;font-size:16px}.writing-recent-card:nth-child(2) .writing-recent-icon{background:#f2ecff;color:#7659df}.writing-recent-card:nth-child(3) .writing-recent-icon{background:#e8f8f4;color:#11a895}.writing-recent-card b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.writing-recent-card small{display:block;margin-top:4px;color:#91a3ba;font-size:9px}.writing-recent-arrow{margin-left:auto;color:#90a7c5;font-size:15px}
 @media(max-width:1100px){.creation-page .writing-hero{min-height:195px;padding:28px}.writing-hero h1{font-size:30px}.writing-recent-list{grid-template-columns:1fr 1fr}.writing-recent-card:last-child{grid-column:1/-1}}
 @media(max-width:760px){.creation-page .writing-hero{min-height:0;padding:22px}.writing-hero-copy{max-width:100%}.writing-hero h1{font-size:26px}.writing-history-link{display:inline-flex;margin-top:14px}.writing-recent{padding:18px}.writing-recent-list{grid-template-columns:1fr}.writing-recent-card:last-child{grid-column:auto}}
+
+/* Responsive scale and generated hero artwork. */
+.dashboard.creation-page{width:100%;max-width:none;box-sizing:border-box;padding-left:clamp(22px,3vw,56px);padding-right:clamp(22px,3vw,56px)}
+.creation-page .writing-hero{background-image:linear-gradient(90deg,rgba(242,248,255,.98) 0%,rgba(233,243,255,.9) 48%,rgba(212,231,255,.42) 100%),url('./assets/ai-writing-hero-bg.png');background-size:cover;background-position:center right}
+.creation-page .writing-hero:before,.creation-page .writing-hero:after{display:none}
+.creation-page .writing-hero h1{font-size:clamp(30px,2.5vw,42px)}
+.creation-page .writing-hero p{font-size:clamp(14px,1.05vw,17px)}
+.creation-page .writing-capabilities{padding:clamp(26px,2.2vw,38px);}
+.creation-page .capabilities-head h2{font-size:clamp(22px,1.7vw,30px)}
+.creation-page .capabilities-head p{font-size:clamp(13px,1vw,16px)}
+.creation-page .capability-card{min-height:clamp(64px,5vw,78px);padding:clamp(12px,1vw,17px);}
+.creation-page .capability-copy strong{font-size:clamp(13px,1vw,16px)}
+.creation-page .capability-copy small{font-size:clamp(10px,.78vw,12px)}
+.creation-page .writing-recent{padding:clamp(22px,2vw,32px)}
+.creation-page .writing-recent-heading h2{font-size:clamp(20px,1.45vw,26px)}
+.creation-page .writing-recent-heading p{font-size:clamp(12px,.9vw,14px)}
+.creation-page .writing-recent-card{padding:clamp(14px,1.1vw,18px)}
+.creation-page .writing-recent-card b{font-size:clamp(11px,.86vw,14px)}
+.creation-page .writing-recent-card small{font-size:clamp(9px,.72vw,11px)}
+@media(max-width:760px){.dashboard.creation-page{padding-left:16px;padding-right:16px}.creation-page .writing-hero{background-position:70% center}.creation-page .writing-hero h1{font-size:27px}.creation-page .writing-hero p{font-size:13px}.creation-page .capability-card{min-height:58px}}
