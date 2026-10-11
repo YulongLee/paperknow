@@ -331,6 +331,7 @@
 /* Keep the main content balanced without stretching collapsed FAQ rows. */
 .help-backup-primary{margin-top:0;box-sizing:border-box}
 @media(min-width:961px){
-  .help-primary{align-content:start}
-  .help-backup-primary{margin-top:0}
+    .help-primary,.help-aside{display:flex;flex-direction:column;gap:20px}
+  .help-backup-primary,.help-service{margin-top:auto}
 }
+@media(max-width:960px){.help-layout{min-height:0}}
