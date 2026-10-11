@@ -503,3 +503,9 @@
 .creation-page .creation-input .writing-options[open] summary,.creation-page .creation-input .writing-material-options[open] summary{border-bottom:1px solid #e8eef7}
 .creation-page .creation-input .creation-actions .primary{min-width:230px}
 @media(max-width:760px){.creation-page .creation-input .creation-actions .primary{min-width:0;flex:1}.creation-page .creation-input #writing-title{min-height:68px}}
+
+/* Keep each writing stage focused on its primary task */
+.creation-page .creation-grid:has(.creation-output.is-stage-hidden){grid-template-columns:minmax(0,1fr)}
+.creation-page .creation-output.is-stage-hidden{display:none}
+.creation-page .task-overview[hidden]{display:none!important}
+@media(max-width:760px){.creation-page .creation-grid:has(.creation-output.is-stage-hidden){grid-template-columns:1fr}}
