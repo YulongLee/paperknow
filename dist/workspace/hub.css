@@ -525,3 +525,6 @@
 .creation-page .creation-input .writing-options{margin-top:16px}
 .creation-page .creation-input .writing-options label{margin-top:11px}
 .creation-page .creation-input .writing-options select,.creation-page .creation-input .writing-options input{width:100%}
+
+/* The workflow page stays focused; task overview is intentionally omitted. */
+.creation-page .task-overview{display:none!important}
