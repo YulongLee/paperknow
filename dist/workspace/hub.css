@@ -327,3 +327,10 @@
 .help-service-header h2{margin:0}
 @media(min-width:1201px){.help-layout{grid-template-columns:minmax(0,1.9fr) minmax(315px,1fr);gap:20px}}
 @media(max-width:960px){.help-search-panel{min-height:0}.help-search-panel:after{display:none}}
+
+/* Keep the main content balanced without stretching collapsed FAQ rows. */
+.help-backup-primary{margin-top:0;box-sizing:border-box}
+@media(min-width:961px){
+  .help-primary{align-content:start}
+  .help-backup-primary{margin-top:0}
+}
