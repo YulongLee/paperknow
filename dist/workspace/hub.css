@@ -656,3 +656,64 @@
 .creation-page[data-writing-stage="2"] .knowledge-material-list{display:grid;gap:7px;margin-top:7px}
 .creation-page[data-writing-stage="2"] .knowledge-material-list .knowledge-material-row{border-radius:9px}
 @media(max-width:760px){.creation-page[data-writing-stage="2"] .knowledge-upload-heading{display:block}.creation-page[data-writing-stage="2"] .knowledge-upload-heading>span{display:block;margin-top:7px;white-space:normal}.creation-page[data-writing-stage="2"] .knowledge-upload-grid{grid-template-columns:1fr}.creation-page[data-writing-stage="2"] .knowledge-ai-actions{align-items:flex-start;flex-direction:column}}
+
+/* Stage 3: reference confirmation workspace */
+.creation-page[data-writing-stage="3"] .creation-output{display:block!important;grid-column:1/-1;padding:28px 32px;border-radius:16px;background:#fff}
+.creation-page[data-writing-stage="3"] #writing-reference-review{display:block;max-width:none;margin:0}
+.creation-page[data-writing-stage="3"] .reference-review-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:18px;border-bottom:1px solid #e6edf7}
+.creation-page[data-writing-stage="3"] .reference-review-heading h2{margin:5px 0 7px;color:#173b6a;font-size:24px;letter-spacing:-.02em}
+.creation-page[data-writing-stage="3"] .reference-review-heading p{margin:0;color:#6d83a2;font-size:12px;line-height:1.7}
+.creation-page[data-writing-stage="3"] .reference-selection-count{padding:7px 11px;border-radius:999px;background:#edf5ff;color:#2872df;font-size:11px;font-weight:700;white-space:nowrap}
+.creation-page[data-writing-stage="3"] .reference-source-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:22px 0 16px}
+.creation-page[data-writing-stage="3"] .reference-source-card{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;min-height:92px;padding:16px 18px;border:1px solid #dce7f5;border-radius:14px;background:linear-gradient(135deg,#fff 0%,#f8fbff 100%);color:#294e7e;text-align:left;cursor:pointer;transition:border-color .18s,box-shadow .18s,transform .18s}
+.creation-page[data-writing-stage="3"] .reference-source-card:hover,.creation-page[data-writing-stage="3"] .reference-source-card.is-active{border-color:#2f75ef;box-shadow:0 8px 22px rgba(43,111,223,.12);transform:translateY(-1px)}
+.creation-page[data-writing-stage="3"] .reference-source-card.is-active{background:linear-gradient(135deg,#f0f6ff 0%,#fff 100%)}
+.creation-page[data-writing-stage="3"] .reference-source-card>span:nth-child(2){min-width:0}
+.creation-page[data-writing-stage="3"] .reference-source-card b{display:block;color:#1f426e;font-size:14px;line-height:1.4}
+.creation-page[data-writing-stage="3"] .reference-source-card small{display:block;margin-top:5px;color:#8197b3;font-size:10px;line-height:1.55}
+.creation-page[data-writing-stage="3"] .reference-source-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:#eaf2ff;color:#2f75ef;font-size:19px;font-weight:700}
+.creation-page[data-writing-stage="3"] .reference-source-card:nth-child(2) .reference-source-icon{background:#eaf8f5;color:#159f8c}
+.creation-page[data-writing-stage="3"] .reference-source-card:nth-child(3) .reference-source-icon{background:#f3edff;color:#7046db}
+.creation-page[data-writing-stage="3"] .reference-source-arrow{color:#2774e5;font-size:18px}
+.creation-page[data-writing-stage="3"] .reference-search-panel{padding:15px 16px;border:1px solid #dbe7f5;border-radius:12px;background:#f8fbff}
+.creation-page[data-writing-stage="3"] .reference-search-panel label{display:block;margin-bottom:7px;color:#31557f;font-size:11px;font-weight:700}
+.creation-page[data-writing-stage="3"] .reference-search-input{display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid #cbdcf3;border-radius:9px;background:#fff}
+.creation-page[data-writing-stage="3"] .reference-search-input>span{color:#6f91bd;font-size:18px}
+.creation-page[data-writing-stage="3"] .reference-search-input input{min-width:0;flex:1;padding:10px 0;border:0;outline:0;color:#29476f;font:inherit;font-size:12px}
+.creation-page[data-writing-stage="3"] .reference-search-input .btn{margin:4px 0;padding:7px 11px;font-size:10px}
+.creation-page[data-writing-stage="3"] .reference-search-panel>small{display:block;margin-top:7px;color:#8da2ba;font-size:10px;line-height:1.5}
+.creation-page[data-writing-stage="3"] .reference-status{min-height:18px;margin:12px 0 4px;color:#3978d9;font-size:11px}
+.creation-page[data-writing-stage="3"] .reference-list{min-height:270px;padding:0;border:1px solid #dce7f5;border-radius:12px;background:#fbfdff}
+.creation-page[data-writing-stage="3"] .reference-list-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid #e5edf7;background:#f6faff}
+.creation-page[data-writing-stage="3"] .reference-list-head b{display:block;color:#24466f;font-size:12px}
+.creation-page[data-writing-stage="3"] .reference-list-head small{display:block;margin-top:4px;color:#8499b3;font-size:10px}
+.creation-page[data-writing-stage="3"] .reference-list-head>span{padding:4px 8px;border-radius:999px;background:#e8f1ff;color:#3274db;font-size:10px;white-space:nowrap}
+.creation-page[data-writing-stage="3"] .reference-list-items{display:grid;gap:8px;padding:12px}
+.creation-page[data-writing-stage="3"] .reference-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #e0e9f5;border-radius:10px;background:#fff;transition:border-color .18s,background .18s}
+.creation-page[data-writing-stage="3"] .reference-row.is-selected{border-color:#78aaff;background:#f3f8ff}
+.creation-page[data-writing-stage="3"] .reference-row-toggle{display:flex;align-items:center;gap:11px;min-width:0;flex:1;padding:0;border:0;background:transparent;text-align:left;color:inherit;cursor:pointer}
+.creation-page[data-writing-stage="3"] .reference-check{display:grid;place-items:center;width:22px;height:22px;flex:0 0 22px;border:1px solid #c7d8ef;border-radius:7px;background:#fff;color:#fff;font-size:13px;font-weight:800}
+.creation-page[data-writing-stage="3"] .reference-row.is-selected .reference-check{border-color:#2f75ef;background:#2f75ef}
+.creation-page[data-writing-stage="3"] .reference-row-toggle>span:nth-child(2){min-width:0}
+.creation-page[data-writing-stage="3"] .reference-row b{display:block;overflow:hidden;color:#294c77;font-size:12px;line-height:1.45;text-overflow:ellipsis;white-space:nowrap}
+.creation-page[data-writing-stage="3"] .reference-row small,.creation-page[data-writing-stage="3"] .reference-row em{display:block;margin-top:3px;overflow:hidden;color:#8197b3;font-size:10px;font-style:normal;line-height:1.45;text-overflow:ellipsis;white-space:nowrap}
+.creation-page[data-writing-stage="3"] .reference-row em{color:#9aacc0}
+.creation-page[data-writing-stage="3"] .reference-row-status{padding:4px 7px;border-radius:5px;background:#f0f4f9;color:#7d94af;font-size:10px;white-space:nowrap}
+.creation-page[data-writing-stage="3"] .reference-row.is-selected .reference-row-status{background:#e5f0ff;color:#2e73d9}
+.creation-page[data-writing-stage="3"] .reference-empty{display:flex;align-items:center;justify-content:center;gap:14px;min-height:270px;padding:30px;text-align:left}
+.creation-page[data-writing-stage="3"] .reference-empty-icon{display:grid;place-items:center;width:48px;height:48px;border-radius:15px;background:#eff5ff;color:#4c86e7;font-size:24px}
+.creation-page[data-writing-stage="3"] .reference-empty b{display:block;color:#31557f;font-size:13px}
+.creation-page[data-writing-stage="3"] .reference-empty p{margin:5px 0 0;color:#8a9fb8;font-size:11px;line-height:1.6}
+.creation-page[data-writing-stage="3"] .reference-actions{display:flex;justify-content:space-between;gap:12px;margin-top:18px;padding-top:18px;border-top:1px solid #e8eef6}
+.creation-page[data-writing-stage="3"] .reference-actions .btn{min-height:40px;padding:10px 18px;font-size:11px}
+.creation-page[data-writing-stage="3"] .reference-actions #writing-reference-confirm{min-width:250px}
+.creation-page[data-writing-stage="3"] .reference-footnote{margin:12px 0 0;color:#91a4bb;font-size:10px;line-height:1.6}
+@media(max-width:760px){.creation-page[data-writing-stage="3"] .creation-output{padding:20px 16px}.creation-page[data-writing-stage="3"] .reference-review-heading{display:block}.creation-page[data-writing-stage="3"] .reference-selection-count{display:inline-block;margin-top:10px}.creation-page[data-writing-stage="3"] .reference-source-grid{grid-template-columns:1fr}.creation-page[data-writing-stage="3"] .reference-actions{display:grid}.creation-page[data-writing-stage="3"] .reference-actions #writing-reference-confirm{min-width:0}.creation-page[data-writing-stage="3"] .reference-row{align-items:flex-start}.creation-page[data-writing-stage="3"] .reference-row-status{margin-top:2px}}
+
+/* Keep later writing steps focused on one workspace at a time. */
+.creation-page[data-writing-stage="3"] .creation-input,.creation-page[data-writing-stage="4"] .creation-input,.creation-page[data-writing-stage="5"] .creation-input{display:none!important}
+.creation-page[data-writing-stage="3"] .creation-grid,.creation-page[data-writing-stage="4"] .creation-grid,.creation-page[data-writing-stage="5"] .creation-grid{grid-template-columns:minmax(0,1fr)!important}
+.creation-page[data-writing-stage="4"] .creation-output,.creation-page[data-writing-stage="5"] .creation-output{display:block!important;grid-column:1/-1}
+
+/* The writing workspace keeps contextual overview details out of the authoring flow. */
+.creation-page .task-overview{display:none!important}
