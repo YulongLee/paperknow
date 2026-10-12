@@ -28,7 +28,7 @@ import {repository} from '/precheck/store.mjs';
 import {esc,icon,empty,formatDate,download} from './ui.mjs';
 import {keys,read,list,write,projects,preferences,profile,saveProject} from './state.mjs';
 const $=s=>document.querySelector(s);
-const categories=[['writing','AI 写作','pen',['writing','topic','proposal','summary','course','journal']],['literature','文献与研读','book',['search','reading','summary','translation']],['revision','修改与润色','pen',['review','rewrite','reduce']],['detection','论文检测','shield',['check','aigc']],['ppt','PPT 创作','chart',['ppt']],['research','科研工具','chart',['research']],['format','格式排版','file',['format']],['more','更多工具','grid',['resume','posting','translation']]];
+const categories=[['writing','AI 写作','pen',['writing','topic','idea','proposal','summary','taskbook','article','course','practice','questionnaire','analysis','quick','journal']],['literature','文献与研读','book',['search','reading','translation']],['revision','修改与润色','pen',['review','rewrite','reduce']],['detection','论文检测','shield',['check','aigc']],['ppt','PPT 创作','chart',['ppt']],['research','科研工具','chart',['research']],['format','格式排版','file',['format']],['more','更多工具','grid',['resume','posting','translation']]];
 const legacy={rewrite:'revision',reduce:'revision',check:'detection',aigc:'detection'};
 let reports=[],reportError=false;
 let homeAssetFilter='all',homeResultLimit=5;

@@ -881,3 +881,16 @@
 .creation-page[data-writing-stage="4"] #outline-save-stage4{display:inline-flex!important}
 .creation-page[data-writing-stage="4"] .outline-editing-summary{grid-template-columns:minmax(0,1.6fr) repeat(3,minmax(110px,.6fr))}
 @media(max-width:760px){.creation-page[data-writing-stage="4"] .outline-editing-summary{grid-template-columns:1fr 1fr}.creation-page[data-writing-stage="4"] .outline-editing-summary>div:first-child{grid-column:1/-1}}
+
+/* Structured task field cards */
+.creation-page .article-type-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:8px 0 14px}
+.creation-page .article-type-cards label{position:relative;display:block;margin:0!important;padding:0!important;cursor:pointer}
+.creation-page .article-type-cards input{position:absolute;opacity:0;pointer-events:none}
+.creation-page .article-type-cards label>span{display:block;min-height:62px;padding:12px;border:1px solid #dce7f5;border-radius:9px;background:#fff;transition:border-color .16s,background .16s,box-shadow .16s}
+.creation-page .article-type-cards b{display:block;color:#36547b;font-size:12px}
+.creation-page .article-type-cards small{display:block;margin-top:5px;color:#8a9db7;font-size:10px;line-height:1.45}
+.creation-page .article-type-cards label:has(input:checked)>span{border-color:#3478f1;background:#f1f6ff;box-shadow:0 0 0 2px #dceaff;color:#286ce0}
+.creation-page .article-type-cards label:has(input:checked) b{color:#286ce0}
+.creation-page .article-basic-fields>label[for="article-research-type"]{margin-top:10px}
+@media(min-width:901px){.creation-page[data-writing-stage="2"] .knowledge-upload-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.creation-page .article-type-cards{grid-template-columns:1fr}.creation-page .article-type-cards label>span{min-height:0}}
