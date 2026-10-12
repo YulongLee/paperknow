@@ -717,3 +717,30 @@
 
 /* The writing workspace keeps contextual overview details out of the authoring flow. */
 .creation-page .task-overview{display:none!important}
+
+/* Stage 4: outline creation and confirmation */
+.creation-page[data-writing-stage="4"] #writing-outline-area{display:block;max-width:none}
+.creation-page[data-writing-stage="4"] .outline-builder{margin:0 0 18px;padding:20px 22px;border:1px solid #dce7f5;border-radius:14px;background:linear-gradient(135deg,#f7fbff 0%,#fff 74%)}
+.creation-page[data-writing-stage="4"] .outline-builder-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding-bottom:16px;border-bottom:1px solid #e7eef8}
+.creation-page[data-writing-stage="4"] .outline-builder-heading h3{margin:5px 0 6px;color:#173b6a;font-size:18px;letter-spacing:-.01em}
+.creation-page[data-writing-stage="4"] .outline-builder-heading p{margin:0;color:#7087a5;font-size:11px;line-height:1.7}
+.creation-page[data-writing-stage="4"] .outline-builder-badge{padding:6px 10px;border-radius:999px;background:#edf5ff;color:#2d73da;font-size:10px;font-weight:700;white-space:nowrap}
+.creation-page[data-writing-stage="4"] .outline-source-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:17px 0 16px}
+.creation-page[data-writing-stage="4"] .outline-source-card{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:11px;min-height:76px;padding:13px 15px;border:1px solid #d9e6f5;border-radius:11px;background:#fff;color:#294c77;text-align:left;cursor:pointer;transition:border-color .18s,box-shadow .18s,transform .18s}
+.creation-page[data-writing-stage="4"] .outline-source-card:hover{border-color:#77a9fb;box-shadow:0 7px 18px rgba(43,111,223,.10);transform:translateY(-1px)}
+.creation-page[data-writing-stage="4"] .outline-source-card:first-child{border-color:#2f75ef;background:linear-gradient(135deg,#eff6ff 0%,#fff 80%)}
+.creation-page[data-writing-stage="4"] .outline-source-card b{display:block;color:#23466f;font-size:12px;line-height:1.4}
+.creation-page[data-writing-stage="4"] .outline-source-card small{display:block;margin-top:4px;color:#8398b3;font-size:10px;line-height:1.5}
+.creation-page[data-writing-stage="4"] .outline-source-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#e6f0ff;color:#2f75ef;font-size:18px;font-weight:700}
+.creation-page[data-writing-stage="4"] .outline-source-card:nth-child(2) .outline-source-icon{background:#eaf8f3;color:#159b82}
+.creation-page[data-writing-stage="4"] .outline-source-arrow{color:#2e75e5;font-size:17px}
+.creation-page[data-writing-stage="4"] .outline-paste{padding:14px 15px;border:1px dashed #cbdcf3;border-radius:11px;background:#fff}
+.creation-page[data-writing-stage="4"] .outline-paste label{display:block;margin-bottom:7px;color:#31557f;font-size:11px;font-weight:700}
+.creation-page[data-writing-stage="4"] .outline-paste label small{color:#8ba0ba;font-weight:400}
+.creation-page[data-writing-stage="4"] #outline-source-input{display:block;width:100%;min-height:110px;padding:11px 12px;border:1px solid #cbdcf3;border-radius:8px;background:#fbfdff;color:#29476f;font:inherit;font-size:11px;line-height:1.7;resize:vertical}
+.creation-page[data-writing-stage="4"] #outline-source-input:focus{outline:2px solid rgba(47,117,239,.18);border-color:#2f75ef;background:#fff}
+.creation-page[data-writing-stage="4"] .outline-paste-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:9px}
+.creation-page[data-writing-stage="4"] #outline-builder-status{min-height:16px;color:#7289a7;font-size:10px;line-height:1.5}
+.creation-page[data-writing-stage="4"] #outline-paste-apply{padding:8px 13px;font-size:10px;white-space:nowrap}
+.creation-page[data-writing-stage="4"] #outline-paper{margin-top:18px}
+@media(max-width:760px){.creation-page[data-writing-stage="4"] .outline-builder{padding:17px 15px}.creation-page[data-writing-stage="4"] .outline-builder-heading{display:block}.creation-page[data-writing-stage="4"] .outline-builder-badge{display:inline-block;margin-top:9px}.creation-page[data-writing-stage="4"] .outline-source-actions{grid-template-columns:1fr}.creation-page[data-writing-stage="4"] .outline-paste-actions{align-items:flex-start;flex-direction:column}.creation-page[data-writing-stage="4"] #outline-paste-apply{width:100%}}
