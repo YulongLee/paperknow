@@ -633,3 +633,26 @@
 .creation-page[data-writing-stage="2"] .knowledge-footnote{margin:12px 0 0;color:#91a4bb!important;font-size:10px!important;line-height:1.6!important}
 @media(max-width:1100px){.creation-page[data-writing-stage="2"] .knowledge-source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.creation-page[data-writing-stage="2"] .knowledge-ai-card{grid-row:span 2}}
 @media(max-width:650px){.creation-page[data-writing-stage="2"] .creation-output{padding:20px 16px}.creation-page[data-writing-stage="2"] .knowledge-review-heading{display:block}.creation-page[data-writing-stage="2"] .knowledge-optional{display:inline-block;margin-top:10px}.creation-page[data-writing-stage="2"] .knowledge-source-grid{grid-template-columns:1fr}.creation-page[data-writing-stage="2"] .knowledge-ai-card{grid-row:auto}.creation-page[data-writing-stage="2"] .knowledge-actions{display:grid;grid-template-columns:1fr}.creation-page[data-writing-stage="2"] .knowledge-actions #writing-save-stage2{margin:0}.creation-page[data-writing-stage="2"] .knowledge-actions #writing-material-confirm{min-width:0}}
+
+/* Stage 2: AI context first, then separate research uploads */
+.creation-page[data-writing-stage="2"] #knowledge-ai.knowledge-ai-card{display:block;min-height:0;margin:22px 0 24px;padding:20px 22px;border-color:#2e75ef;background:linear-gradient(135deg,#f3f8ff 0%,#fff 72%);box-shadow:0 8px 22px rgba(43,111,223,.10)}
+.creation-page[data-writing-stage="2"] #knowledge-ai .knowledge-card-head{display:flex;align-items:flex-start;gap:11px;min-height:0}
+.creation-page[data-writing-stage="2"] #knowledge-ai .knowledge-card-head>div{min-width:0;flex:1}
+.creation-page[data-writing-stage="2"] #knowledge-ai .knowledge-card-head small{max-width:720px}
+.creation-page[data-writing-stage="2"] .knowledge-ai-label{display:block;margin:18px 0 7px;color:#3f5f85;font-size:11px;font-weight:650}
+.creation-page[data-writing-stage="2"] #knowledge-ai-input{display:block;width:100%;min-height:92px;margin:0;padding:12px 13px;border:1px solid #cbdcf3;border-radius:10px;background:#fff;color:#29476f;font:inherit;font-size:12px;line-height:1.7;resize:vertical}
+.creation-page[data-writing-stage="2"] #knowledge-ai-input:focus{outline:2px solid rgba(47,117,239,.18);border-color:#2f75ef}
+.creation-page[data-writing-stage="2"] .knowledge-ai-actions{display:flex;align-items:center;gap:12px;margin-top:12px}
+.creation-page[data-writing-stage="2"] .knowledge-ai-actions .btn{min-width:134px;padding:10px 16px;font-size:11px}
+.creation-page[data-writing-stage="2"] .knowledge-ai-actions .knowledge-usage{margin:0!important}
+.creation-page[data-writing-stage="2"] .knowledge-upload-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:0 0 12px;padding-bottom:9px;border-bottom:1px solid #e8eef6}
+.creation-page[data-writing-stage="2"] .knowledge-upload-heading h3{margin:0;color:#24466f;font-size:14px}
+.creation-page[data-writing-stage="2"] .knowledge-upload-heading p{margin:4px 0 0;color:#8499b3;font-size:10px;line-height:1.6}
+.creation-page[data-writing-stage="2"] .knowledge-upload-heading>span{color:#92a5bb;font-size:10px;white-space:nowrap}
+.creation-page[data-writing-stage="2"] .knowledge-upload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:18px}
+.creation-page[data-writing-stage="2"] .knowledge-upload-card{display:flex;flex-direction:column;align-items:stretch;min-height:188px;padding:17px 18px;border:1px solid #dce7f5;border-radius:13px;background:#fff;box-shadow:0 4px 14px rgba(39,91,167,.03)}
+.creation-page[data-writing-stage="2"] .knowledge-upload-card:hover{border-color:#85b3ff;box-shadow:0 8px 20px rgba(43,111,223,.09)}
+.creation-page[data-writing-stage="2"] .knowledge-upload-card .knowledge-dropzone{flex:1;margin-top:14px}
+.creation-page[data-writing-stage="2"] .knowledge-material-list{display:grid;gap:7px;margin-top:7px}
+.creation-page[data-writing-stage="2"] .knowledge-material-list .knowledge-material-row{border-radius:9px}
+@media(max-width:760px){.creation-page[data-writing-stage="2"] .knowledge-upload-heading{display:block}.creation-page[data-writing-stage="2"] .knowledge-upload-heading>span{display:block;margin-top:7px;white-space:normal}.creation-page[data-writing-stage="2"] .knowledge-upload-grid{grid-template-columns:1fr}.creation-page[data-writing-stage="2"] .knowledge-ai-actions{align-items:flex-start;flex-direction:column}}
