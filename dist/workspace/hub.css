@@ -544,3 +544,12 @@
 .creation-page .knowledge-source-icon{display:grid;place-items:center;width:30px;height:30px;flex:0 0 30px;border-radius:8px;background:#eaf2ff;color:#2b73ed;font-size:15px;font-weight:700}
 .creation-page .knowledge-source-card:nth-child(2) .knowledge-source-icon{background:#e7f8f4;color:#18a486}.creation-page .knowledge-source-card:nth-child(3) .knowledge-source-icon{background:#fff2df;color:#dc8a23}.creation-page .knowledge-source-card:nth-child(4) .knowledge-source-icon{background:#f0ebff;color:#7859d9}
 @media(max-width:650px){.creation-page .knowledge-source-grid{grid-template-columns:1fr}}
+
+/* Step 2 becomes a dedicated knowledge workspace */
+.creation-page[data-writing-stage="2"] .creation-input{display:none!important}
+.creation-page[data-writing-stage="2"] .creation-grid{grid-template-columns:minmax(0,1fr)!important}
+.creation-page[data-writing-stage="2"] .creation-output{display:block!important}
+.creation-page[data-writing-stage="2"] #writing-material-review{max-width:980px;margin:0 auto}
+.creation-page[data-writing-stage="2"] #writing-material-review>h2{font-size:22px;margin-bottom:8px}
+.creation-page[data-writing-stage="2"] #writing-material-review>p{color:#7187a5;font-size:12px;line-height:1.7}
+.creation-page[data-writing-stage="2"] #writing-material-review .writing-material-summary{margin-top:16px}
