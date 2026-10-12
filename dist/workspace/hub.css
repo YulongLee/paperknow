@@ -575,3 +575,8 @@
 .creation-page[data-writing-stage="2"] #writing-material-review>p:last-child{margin-top:10px;color:#8ba0ba;font-size:11px}
 @media(max-width:1100px){.creation-page[data-writing-stage="2"] .knowledge-source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.creation-page[data-writing-stage="2"] .creation-output{padding:20px}.creation-page[data-writing-stage="2"] .knowledge-source-grid{grid-template-columns:1fr}.creation-page[data-writing-stage="2"] #writing-material-confirm{width:100%}}
+
+.creation-page[data-writing-stage="2"] .knowledge-actions{display:flex;gap:12px;justify-content:flex-end;margin-top:8px}
+.creation-page[data-writing-stage="2"] .knowledge-actions #writing-save-stage2{min-width:180px}
+.creation-page[data-writing-stage="2"] .knowledge-actions #writing-material-confirm{width:auto;min-width:360px;margin:0}
+@media(max-width:650px){.creation-page[data-writing-stage="2"] .knowledge-actions{display:grid}.creation-page[data-writing-stage="2"] .knowledge-actions #writing-save-stage2,.creation-page[data-writing-stage="2"] .knowledge-actions #writing-material-confirm{width:100%;min-width:0}}
