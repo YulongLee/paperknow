@@ -528,3 +528,7 @@
 
 /* The workflow page stays focused; task overview is intentionally omitted. */
 .creation-page .task-overview{display:none!important}
+
+/* First step is a single focused form; preview appears only in later steps. */
+.creation-page[data-writing-stage="1"] .creation-output{display:none!important}
+.creation-page[data-writing-stage="1"] .creation-grid{grid-template-columns:minmax(0,1fr)!important}
