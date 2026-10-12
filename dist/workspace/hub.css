@@ -532,3 +532,15 @@
 /* First step is a single focused form; preview appears only in later steps. */
 .creation-page[data-writing-stage="1"] .creation-output{display:none!important}
 .creation-page[data-writing-stage="1"] .creation-grid{grid-template-columns:minmax(0,1fr)!important}
+
+/* Precision knowledge supplement sources */
+.creation-page .knowledge-source-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0 18px}
+.creation-page .knowledge-source-card{display:flex;align-items:center;gap:10px;min-height:70px;padding:12px;border:1px solid #dce8f6;border-radius:10px;background:#fff;color:#39587f;text-align:left;cursor:pointer;text-decoration:none}
+.creation-page .knowledge-source-card:hover{border-color:#4b89f5;background:#f5f9ff;box-shadow:0 5px 14px rgba(43,111,223,.08)}
+.creation-page .knowledge-source-card>span:nth-child(2){flex:1;min-width:0}
+.creation-page .knowledge-source-card b{display:block;color:#26476f;font-size:12px}
+.creation-page .knowledge-source-card small{display:block;margin-top:5px;color:#8ba0ba;font-size:10px;line-height:1.5}
+.creation-page .knowledge-source-card>span:last-child{color:#2e76e9;font-size:16px}
+.creation-page .knowledge-source-icon{display:grid;place-items:center;width:30px;height:30px;flex:0 0 30px;border-radius:8px;background:#eaf2ff;color:#2b73ed;font-size:15px;font-weight:700}
+.creation-page .knowledge-source-card:nth-child(2) .knowledge-source-icon{background:#e7f8f4;color:#18a486}.creation-page .knowledge-source-card:nth-child(3) .knowledge-source-icon{background:#fff2df;color:#dc8a23}.creation-page .knowledge-source-card:nth-child(4) .knowledge-source-icon{background:#f0ebff;color:#7859d9}
+@media(max-width:650px){.creation-page .knowledge-source-grid{grid-template-columns:1fr}}
