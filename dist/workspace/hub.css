@@ -553,3 +553,25 @@
 .creation-page[data-writing-stage="2"] #writing-material-review>h2{font-size:22px;margin-bottom:8px}
 .creation-page[data-writing-stage="2"] #writing-material-review>p{color:#7187a5;font-size:12px;line-height:1.7}
 .creation-page[data-writing-stage="2"] #writing-material-review .writing-material-summary{margin-top:16px}
+
+/* Match the approved knowledge supplement composition */
+.creation-page[data-writing-stage="2"] .creation-output{padding:30px 34px;border-radius:16px}
+.creation-page[data-writing-stage="2"] #writing-material-review{max-width:none;margin:0}
+.creation-page[data-writing-stage="2"] .knowledge-source-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:22px 0 20px}
+.creation-page[data-writing-stage="2"] .knowledge-source-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-content:start;min-height:190px;padding:18px 15px;border-radius:12px}
+.creation-page[data-writing-stage="2"] .knowledge-source-card>span:nth-child(2){align-self:start}
+.creation-page[data-writing-stage="2"] .knowledge-source-icon{width:38px;height:38px;border-radius:11px;font-size:18px}
+.creation-page[data-writing-stage="2"] .knowledge-source-card b{font-size:14px}
+.creation-page[data-writing-stage="2"] .knowledge-source-card small{font-size:10px;line-height:1.65}
+.creation-page[data-writing-stage="2"] .knowledge-source-card>span:last-child{align-self:start;margin-top:3px}
+.creation-page[data-writing-stage="2"] #knowledge-ai{display:block;position:relative;padding-top:18px}
+.creation-page[data-writing-stage="2"] #knowledge-ai .knowledge-source-icon{display:inline-grid;margin-bottom:12px}
+.creation-page[data-writing-stage="2"] #knowledge-ai>span:nth-child(2){display:block}
+.creation-page[data-writing-stage="2"] #knowledge-ai>span:last-child{display:none}
+.creation-page[data-writing-stage="2"] #knowledge-ai:after{content:'输入你的研究背景、方法或创新点…';display:block;margin-top:20px;padding:12px;border:1px solid #d5e6f5;border-radius:8px;background:#fff;color:#9aacbf;font-size:10px;line-height:1.5}
+.creation-page[data-writing-stage="2"] #writing-material-summary{min-height:132px;margin:16px 0 20px;padding:18px;border:1px solid #dce8f6;border-radius:11px;background:#fbfdff;color:#7990ae;font-size:12px;text-align:center}
+.creation-page[data-writing-stage="2"] #writing-open-material{display:none}
+.creation-page[data-writing-stage="2"] #writing-material-confirm{display:block;width:360px;margin:0 0 0 auto;padding:13px 18px}
+.creation-page[data-writing-stage="2"] #writing-material-review>p:last-child{margin-top:10px;color:#8ba0ba;font-size:11px}
+@media(max-width:1100px){.creation-page[data-writing-stage="2"] .knowledge-source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.creation-page[data-writing-stage="2"] .creation-output{padding:20px}.creation-page[data-writing-stage="2"] .knowledge-source-grid{grid-template-columns:1fr}.creation-page[data-writing-stage="2"] #writing-material-confirm{width:100%}}
