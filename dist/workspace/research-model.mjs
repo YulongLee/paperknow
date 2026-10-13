@@ -1,5 +1,40 @@
+/**
+ * The three research-tool workspaces shown in the product are intentionally
+ * kept as data rather than being coupled to the page renderer.  This lets the
+ * UI switch between the basic chart builder, the professional chart library,
+ * and formula editing without changing the saved chart format.
+ */
+export const researchModes=Object.freeze([
+  {id:'basic',label:'基础绘图',description:'柱状图、折线图、散点图等常用图表',status:'available'},
+  {id:'professional',label:'专业图表',description:'按学科选择科研图表模板',status:'catalog'},
+  {id:'formula',label:'公式编辑',description:'编辑、预览并导出 LaTeX 公式',status:'available'}
+]);
 export const chartTypes=[['bar','柱状图'],['line','折线图'],['scatter','散点图'],['grouped','分组柱状图']];
-export function exampleChart(){return {title:'实验方案对比（示例）',projectId:'',headers:['类别','方案 A','方案 B'],rows:[['样本一','18','22'],['样本二','25','28'],['样本三','21','26'],['样本四','30','32']],type:'grouped',series:0,xLabel:'样本类别',yLabel:'指标值',unit:'',palette:'blue',fontSize:14,width:1600,height:1000,legend:true,grid:true,example:true};}
+export const professionalChartTypes=Object.freeze([
+  ['render-3d','3D 建模渲染'],['simulation','仿真分析'],['optics','光学成像'],['chemistry','化学物理'],
+  ['geography','地理信息'],['engineering','工程设计'],['architecture','建筑规划'],['machine-learning','机器学习'],
+  ['biomedicine','生物医学'],['circuit','电子电路'],['statistics','统计分析'],['control','自动化控制']
+]);
+export const formulaTemplates=Object.freeze([
+  {id:'quadratic',name:'一元二次方程',latex:'x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}',description:'适用于 ax² + bx + c = 0'},
+  {id:'mean',name:'样本均值',latex:'\\bar{x}=\\frac{1}{n}\\sum_{i=1}^{n}x_i',description:'计算 n 个观测值的平均水平'},
+  {id:'std',name:'样本标准差',latex:'s=\\sqrt{\\frac{1}{n-1}\\sum_{i=1}^{n}(x_i-\\bar{x})^2}',description:'用于描述样本离散程度'},
+  {id:'correlation',name:'Pearson 相关系数',latex:'r=\\frac{\\sum_i(x_i-\\bar{x})(y_i-\\bar{y})}{\\sqrt{\\sum_i(x_i-\\bar{x})^2\\sum_i(y_i-\\bar{y})^2}}',description:'衡量两个变量的线性相关程度'}
+]);
+export function normalizeResearchMode(value){return researchModes.some(mode=>mode.id===value)?value:'basic';}
+/** Validate user-entered LaTeX without attempting to compile or interpret it. */
+export function validateFormula(value,label='公式'){
+  const formula=String(value??'').trim();
+  if(!formula)throw new Error(label+'不能为空。');
+  if(formula.length>2000)throw new Error(label+'最多 2000 字。');
+  if(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(formula))throw new Error(label+'包含不可用的控制字符。');
+  const pairs={')':'(',']':'[','}':'{'};
+  const stack=[];
+  for(const ch of formula){if(ch==='('||ch==='['||ch==='{')stack.push(ch);else if(pairs[ch]){if(stack.pop()!==pairs[ch])throw new Error(label+'的括号不匹配。');}}
+  if(stack.length)throw new Error(label+'的括号不匹配。');
+  return formula;
+}
+export function exampleChart(){return {title:'实验方案对比（示例）',projectId:'',headers:['类别','方案 A','方案 B'],rows:[['样本一','18','22'],['样本二','25','28'],['样本三','21','26'],['样本四','30','32']],type:'grouped',series:0,xLabel:'样本类别',yLabel:'指标值',unit:'',palette:'blue',fontSize:14,width:1600,height:1000,legend:true,grid:true,example:true,mode:'basic'};}
 export function numberCell(v,label){const s=String(v??'').trim();if(!s||!/^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(s)||!Number.isFinite(Number(s))||Math.abs(Number(s))>1e12)throw new Error(label+' 必须是绝对值不超过 10¹² 的有限数值；空值不按 0 处理。');return Number(s);}
 export function validateData(chart){const {headers,rows}=chart;if(!Array.isArray(headers)||headers.length<2||headers.length>6)throw new Error('需要类别或 X 列，加 1–5 个数值系列。');if(headers.some(h=>!String(h).trim()||String(h).length>40)||new Set(headers.map(h=>String(h).trim())).size!==headers.length)throw new Error('列名称不能为空、重复或超过 40 字。');if(!Array.isArray(rows)||!rows.length||rows.length>200)throw new Error('请填写 1–200 行数据。');const points=rows.map((row,i)=>{if(!Array.isArray(row)||row.length!==headers.length)throw new Error(`第 ${i+1} 行列数与表头不一致。`);if(!String(row[0]).trim()||String(row[0]).length>40)throw new Error(`第 ${i+1} 行类别不能为空或超过 40 字。`);return {label:String(row[0]),x:chart.type==='scatter'?numberCell(row[0],`第 ${i+1} 行 X`):i,values:row.slice(1).map((v,j)=>numberCell(v,`第 ${i+1} 行「${headers[j+1]}」`))};});return points;}
 export function parseTable(text){if(typeof text!=='string'||text.length>250000)throw new Error('表格最多 250,000 字符。');text=text.replace(/^\uFEFF/,'');let quote=false,sep=',';for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quote&&text[i+1]==='"')i++;else quote=!quote;}else if(!quote&&c==='\t'){sep='\t';break;}else if(!quote&&(c==='\n'||c==='\r'))break;}let result=[],row=[],cell='',quoted=false,closed=false;for(let i=0;i<text.length;i++){const c=text[i];if(quoted){if(c==='"'){if(text[i+1]==='"'){cell+='"';i++;}else{quoted=false;closed=true;}}else cell+=c;}else if(c==='"'){if(cell||closed)throw new Error('引号位置不正确，请使用标准 CSV。');quoted=true;}else if(c===sep){row.push(cell);cell='';closed=false;}else if(c==='\n'||c==='\r'){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);if(row.length>1||row.some(v=>v!==''))result.push(row);row=[];cell='';closed=false;}else{if(closed)throw new Error('CSV 结束引号后只能是分隔符或换行。');cell+=c;}}if(quoted)throw new Error('CSV 引号未闭合。');row.push(cell);if(row.length>1||row.some(v=>v!==''))result.push(row);if(result.length<2)throw new Error('第一行需要表头，后面至少一行数据。');const chart={headers:result[0].map(v=>v.trim()),rows:result.slice(1),type:'grouped'};validateData(chart);return chart;}
