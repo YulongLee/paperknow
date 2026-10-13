@@ -31,7 +31,7 @@ const $=s=>document.querySelector(s);
 const categories=[['writing','AI 写作','pen',['writing','topic','idea','proposal','summary','taskbook','article','course','practice','questionnaire','analysis','quick','journal']],['reduce','降重复率','pen',['reduce']],['aigc','降AI率','spark',['aigc']],['detection','免费查重','shield',['check']],['ppt','PPT 创作','chart',['ppt']],['format','格式排版','file',['format']],['research','科研工具','chart',['research']]];
 // 保留旧页面的内部路由，左侧只展示 PaperRed 风格的核心能力。
 const allCategories=[...categories,['literature','文献与研读','book',['search','reading','translation']],['revision','修改与润色','pen',['review','rewrite','reduce']],['format','格式排版','file',['format']],['more','更多工具','grid',['resume','posting','translation']]];
-const legacy={rewrite:'revision',check:'detection'};
+const legacy={rewrite:'revision',check:'detection',aigc:'reduce'};
 let reports=[],reportError=false;
 let homeAssetFilter='all',homeResultLimit=5;
 let homeService=null,homeRequest=0;
