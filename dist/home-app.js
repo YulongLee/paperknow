@@ -25,7 +25,7 @@ function renderAccount(){
  button.innerHTML=serviceUser?`<span class="home-account-avatar" aria-hidden="true">${esc(initial)}</span><span class="home-account-name">${esc(displayName)}</span><svg class="home-account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>`:'登录';
  button.title=serviceUser?accountName:'登录 PaperKnow';
  button.setAttribute('aria-label',serviceUser?`打开 ${accountName} 的账户`:'登录 PaperKnow');
- document.querySelectorAll('[data-service-start]').forEach(a=>{a.href=serviceUser?'/workspace.html#home':'/auth.html?mode=register';const label=serviceUser?(a.id==='header-start'?'进入工作台':'继续我的研究'):'注册并开始';if(serviceUser||a.id==='header-start')a.innerHTML=label+' '+svg('arrow');});
+ document.querySelectorAll('[data-service-start]').forEach(a=>{a.href=serviceUser?'/workspace.html#home':'/auth.html?mode=register';const label=serviceUser?(a.id==='header-start'?'进入工作台':'继续我的研究'):'开始使用';if(serviceUser||a.id==='header-start')a.innerHTML=label+' '+svg('arrow');});
  refreshNavigationLine();
 }
 $('#account-button').addEventListener('click',()=>{
