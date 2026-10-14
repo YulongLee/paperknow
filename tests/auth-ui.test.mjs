@@ -7,7 +7,7 @@ import { createAuthPage, safeNext } from '../dist/auth.mjs';
 const html = await readFile(new URL('../dist/auth.html', import.meta.url), 'utf8');
 const available = { password: true, emailCode: true, phoneCode: true, registration: { email: true, phone: true }, codeLength: 6, retryAfter: 60 };
 async function settle(check) { for (let i = 0; i < 60; i++) { if (check()) return; await new Promise(resolve => setTimeout(resolve, 5)); } throw new Error('UI did not settle'); }
-async function page(t, { query = '', options = available, handle, requestTimeoutMs } = {}) {
+async function page(t, { query = '', options = available, handle, requestTimeoutMs, currentUser } = {}) {
   const dom = new JSDOM(html, { url: 'https://paperknow.cn/auth.html' + query });
   const win = dom.window;
   const calls = [], navigations = [];
@@ -16,7 +16,7 @@ async function page(t, { query = '', options = available, handle, requestTimeout
     calls.push({ url, data });
     let body, status = 200;
     if (url.endsWith('/options')) body = options;
-    else if (url.endsWith('/me')) { body = { error: '未登录' }; status = 401; }
+    else if (url.endsWith('/me')) { body = currentUser ? {user: currentUser} : { error: '未登录' }; status = currentUser ? 200 : 401; }
     else {
       const result = await handle?.(url, data, init);
       body = result?.body || (url.endsWith('/code/send') ? { challengeId: 'test-challenge', retryAfter: 60, expiresIn: 300 } : { user: { id: 'test-user', phone: '13800138000' } });
@@ -34,11 +34,11 @@ async function page(t, { query = '', options = available, handle, requestTimeout
   return { win, $, fill, click, submit, calls, navigations };
 }
 
-test('next accepts only explicit same-origin workspace and service paths', () => {
+test('next accepts only explicit same-origin destinations and migrates old service links', () => {
   const origin = 'https://paperknow.cn';
   for (const value of ['https://evil.invalid', '//evil.invalid', '/\\evil.invalid', '/auth.html?next=/service.html', '/api/auth/logout', '/%2f%2fevil.invalid', '/service.html\n', 'workspace.html', null]) assert.equal(safeNext(value, origin), '/workspace.html#home', String(value));
   assert.equal(safeNext('/workspace.html#category/writing', origin), '/workspace.html#category/writing');
-  assert.equal(safeNext('/service.html?auth=register&view=projects', origin), '/service.html?view=projects');
+  assert.equal(safeNext('/service.html?auth=register&view=projects', origin), '/workspace.html#projects?scope=account');
 });
 
 test('phone password login sends normalized identifier and resumes the intended page', async t => {
@@ -49,7 +49,7 @@ test('phone password login sends normalized identifier and resumes the intended 
   ui.submit();
   await settle(() => ui.navigations.length === 1);
   assert.deepEqual(ui.calls.find(call => call.url.endsWith('/login')).data, { identifier: '13800138000', password: 'A-valid-password!' });
-  assert.equal(ui.navigations[0], '/service.html?view=projects');
+  assert.equal(ui.navigations[0], '/workspace.html#projects?scope=account');
   assert.equal(ui.$('#auth-password').value, '');
 });
 
@@ -173,4 +173,18 @@ test('timed out delivery releases loading and can be retried without exposing a 
   assert.equal(ui.$('#auth-submit').disabled, false);
   assert.equal(ui.$('#auth-form').getAttribute('aria-busy'), 'false');
   assert.equal(ui.$('#auth-status').hidden, true);
+});
+
+
+test('admin destination resumes after verified code login, even when an unverified session already exists', async t => {
+  assert.equal(safeNext('/admin.html', 'https://paperknow.cn'), '/admin.html');
+  assert.equal(safeNext('/service.html?view=admin', 'https://paperknow.cn'), '/admin.html');
+  const ui = await page(t, {query:'?method=code&verify=1&next=%2Fadmin.html',currentUser:{id:'unverified-owner',role:'user'}});
+  assert.equal(ui.navigations.length, 0);
+  assert.equal(ui.$('#method-label').textContent, '验证码登录');
+  ui.fill('#auth-address', 'owner@example.com'); ui.click('#send-code');
+  await settle(() => ui.$('#auth-status').textContent.includes('已发送'));
+  ui.fill('#auth-code', '123456'); ui.submit();
+  await settle(() => ui.navigations.length === 1);
+  assert.equal(ui.navigations[0], '/admin.html');
 });

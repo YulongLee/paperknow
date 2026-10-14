@@ -1,11 +1,12 @@
-const allowedDestinations = new Set(['/workspace.html', '/service.html']);
+import { accountDestination } from './account-routes.mjs';
+const allowedDestinations = new Set(['/workspace.html', '/service.html', '/admin.html']);
 
 export function safeNext(value, origin) {
   if (!value || !value.startsWith('/') || value.startsWith('//') || /[\\\u0000-\u001f]/.test(value)) return '/workspace.html#home';
   try {
     const url = new URL(value, origin);
     if (url.origin !== origin || !allowedDestinations.has(url.pathname)) return '/workspace.html#home';
-    if (url.pathname === '/service.html') url.searchParams.delete('auth');
+    if (url.pathname === '/service.html') return accountDestination(url.searchParams.get('view'), url.searchParams.get('result'));
     return url.pathname + url.search + url.hash;
   } catch { return '/workspace.html#home'; }
 }
@@ -18,7 +19,7 @@ export function createAuthPage(doc, { navigate, requestTimeoutMs = 30_000 } = {}
   const next = safeNext(params.get('next'), win.location.origin);
   let mode = ['register', 'reset'].includes(params.get('mode')) ? params.get('mode') : 'login';
   let channel = params.get('channel') === 'phone' ? 'phone' : 'email';
-  let method = 'password';
+  let method = params.get('method') === 'code' ? 'code' : 'password';
   let options = { password: true, emailCode: false, phoneCode: false, registration: { email: false, phone: false } };
   let challenge = null;
   let revision = 0;
@@ -238,7 +239,7 @@ export function createAuthPage(doc, { navigate, requestTimeoutMs = 30_000 } = {}
         if (!result.user?.id) throw new Error('未能确认登录状态，请重试。');
         $('#auth-password').value = '';
         $('#auth-code').value = '';
-        message('status', '登录成功，正在进入工作台…');
+        message('status', next.startsWith('/admin.html') ? '登录成功，正在进入管理后台…' : '登录成功，正在进入工作台…');
         go(next);
       }
     } catch (error) { message('error', error.message); }
@@ -251,7 +252,7 @@ export function createAuthPage(doc, { navigate, requestTimeoutMs = 30_000 } = {}
     if (configuration.status === 'fulfilled') options = configuration.value;
     ready = true;
     render();
-    if (account.status === 'fulfilled' && account.value.user?.id && mode !== 'reset') go(next);
+    if (account.status === 'fulfilled' && account.value.user?.id && mode !== 'reset' && params.get('verify') !== '1') go(next);
   });
   return { ready: initialized, destroy: () => win.clearInterval(ticker) };
 }

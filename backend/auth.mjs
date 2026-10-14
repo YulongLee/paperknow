@@ -1,4 +1,4 @@
-import {randomBytes,scrypt as scryptCallback,timingSafeEqual,createHash} from 'node:crypto';
+import {randomBytes,randomUUID,scrypt as scryptCallback,timingSafeEqual,createHash} from 'node:crypto';
 import {promisify} from 'node:util';
 
 const scrypt=promisify(scryptCallback);
@@ -28,6 +28,31 @@ export function safeUser(db,userOrId){
     emailVerifiedAt:email?.verified_at||null,phoneVerifiedAt:phone?.verified_at||null,hasPassword:Boolean(row.password_hash)};
 }
 
+export function ensureOwnerAdmin(db,userOrId,ownerEmail,at=Date.now()){
+  const userId=typeof userOrId==='string'?userOrId:userOrId?.id;
+  const email=typeof ownerEmail==='string'?ownerEmail.trim().toLowerCase():'';
+  if(!userId)return null;
+  if(!email)return safeUser(db,userId);
+  // Only a persisted, verified identity grants ownership. Neither the legacy
+  // users.email field nor any request-provided role/name can elevate a user.
+  db.exec('SAVEPOINT verified_owner_role;');
+  try{
+    const updated=db.prepare(`UPDATE users SET role='admin' WHERE id=? AND role!='admin'
+      AND EXISTS(SELECT 1 FROM auth_identities i WHERE i.user_id=users.id AND i.channel='email'
+        AND lower(i.address)=? AND i.verified_at IS NOT NULL AND length(trim(i.verified_at))>0)`).run(userId,email);
+    if(updated.changes){
+      db.prepare('INSERT INTO admin_audit(id,actor_id,action,target_type,target_id,detail,created_at) VALUES(?,?,?,?,?,?,?)')
+        .run(randomUUID(),userId,'owner.verified','user',userId,JSON.stringify({method:'verified_email'}),new Date(at).toISOString());
+    }
+    db.exec('RELEASE verified_owner_role;');
+  }catch(cause){
+    db.exec('ROLLBACK TO verified_owner_role; RELEASE verified_owner_role;');
+    throw cause;
+  }
+  return safeUser(db,userId);
+}
+export const ensureOwnerRole=ensureOwnerAdmin;
+
 export function createSession(db,userId,at=Date.now()){
   db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(at);
   const token=randomBytes(32).toString('hex');
@@ -35,11 +60,12 @@ export function createSession(db,userId,at=Date.now()){
   return token;
 }
 
-export function sessionUser(db,req){
+export function sessionUser(db,req,ownerEmail){
   const token=(req.headers.cookie||'').split(';').map(value=>value.trim()).find(value=>value.startsWith('pk_session='))?.slice(11);
   if(!token)return null;
   const row=db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').get(digest(token),Date.now());
-  return safeUser(db,row);
+  if(!row)return null;
+  return ensureOwnerAdmin(db,row.id,ownerEmail);
 }
 
 export function sessionCookie(token,secure=false){

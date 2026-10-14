@@ -169,3 +169,7 @@ The standalone `/auth.html` page supports email and mainland China mobile (+86) 
 - Legacy emails were not verified at registration. Their first successful code login revokes previous sessions and clears the old, unverified password. The verified owner can set a password using the password-reset flow. Password reset revokes every prior session.
 - New registration requires a verified code. Email and phone identities are independent; no automatic account merging or unverified phone/password creation is supported.
 - `npm run test:auth` uses only synthetic recipients and injected delivery transports. Deployment runs these tests without production credentials. SMTP connection verification is not proof of inbox receipt; verify real delivery with the owner through the live UI. Never log codes or provider credentials.
+
+## 指定管理员
+
+在 PaperKnow 独立环境配置中添加 `PK_OWNER_EMAIL`，不要修改其他服务的账户或配置。指定邮箱须经验证码验证才会自动成为管理员，不设置默认密码。通过 `/auth.html?mode=login&method=code&verify=1&next=%2Fadmin.html` 完成验证后进入后台。更新发布脚本时需同步 `/opt/paperknow/bin/release.sh`，确保发布检查包含 `npm run test:admin`。

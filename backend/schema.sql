@@ -42,3 +42,22 @@ CREATE INDEX IF NOT EXISTS auth_challenge_address ON auth_challenges(channel,add
 CREATE INDEX IF NOT EXISTS auth_challenge_expiry ON auth_challenges(expires_at);
 CREATE TABLE IF NOT EXISTS auth_rate_limits(bucket TEXT PRIMARY KEY,count INTEGER NOT NULL,reset_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS auth_rate_expiry ON auth_rate_limits(reset_at);
+
+CREATE TABLE IF NOT EXISTS feedback_management(
+  feedback_id TEXT PRIMARY KEY REFERENCES feedback(id),
+  status TEXT NOT NULL CHECK(status IN ('open','processing','resolved')),
+  note TEXT NOT NULL DEFAULT '',
+  updated_by TEXT NOT NULL REFERENCES users(id),
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS feedback_management_status ON feedback_management(status,updated_at);
+CREATE TABLE IF NOT EXISTS admin_audit(
+  id TEXT PRIMARY KEY,
+  actor_id TEXT NOT NULL REFERENCES users(id),
+  action TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  detail TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS admin_audit_created ON admin_audit(created_at);

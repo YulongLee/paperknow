@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="referrer" content="same-origin">
+  <title>管理后台 · PaperKnow</title>
+  <link rel="icon" href="/brand/paperknow-symbol.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/brand/brand.css">
+  <link rel="stylesheet" href="/admin.css">
+  <script type="module" src="/admin.mjs"></script>
+</head>
+<body>
+  <section id="access-gate" class="access-gate" aria-live="polite">
+    <a class="brand" href="/" aria-label="PaperKnow 首页"><span class="brand-mark"><img src="/brand/paperknow-symbol.svg" width="36" height="36" alt=""></span><span class="brand-wordmark"><span class="brand-paper">Paper</span><span class="brand-know">Know</span></span></a>
+    <div class="gate-symbol" aria-hidden="true">P</div><h1 id="access-title">正在验证管理权限</h1><p id="access-message">请稍候，正在确认你的账户身份。</p><div id="access-actions"></div>
+    <noscript><p>请启用 JavaScript 后访问管理后台。</p></noscript>
+  </section>
+  <div class="admin-app" id="admin-app" hidden>
+    <aside class="admin-sidebar" id="admin-sidebar">
+      <a class="brand admin-brand" href="/" aria-label="PaperKnow 首页"><span class="brand-mark"><img src="/brand/paperknow-symbol.svg" width="32" height="32" alt=""></span><span class="brand-wordmark"><span class="brand-paper">Paper</span><span class="brand-know">Know</span></span></a>
+      <div class="sidebar-caption">运营管理平台 <span>ADMIN</span></div>
+      <nav id="admin-navigation" aria-label="后台导航"></nav>
+      <div class="sidebar-bottom"><span class="access-indicator"></span> 仅管理员可访问<a href="/workspace.html#home">返回研究工作台 <span aria-hidden="true">↗</span></a></div>
+    </aside>
+    <button id="sidebar-backdrop" class="sidebar-backdrop" aria-label="收起导航" hidden></button>
+    <div class="admin-main">
+      <header class="admin-topbar"><div class="topbar-path"><button class="icon-button mobile-nav" id="menu-toggle" aria-label="展开后台导航" aria-controls="admin-sidebar" aria-expanded="false">☰</button><span>管理后台</span><span aria-hidden="true">/</span><strong id="breadcrumb">运营概览</strong></div><div class="topbar-actions"><a class="workspace-link" href="/workspace.html#home">返回工作台 <span aria-hidden="true">↗</span></a><span class="topbar-divider"></span><span class="admin-avatar" id="admin-avatar" aria-hidden="true">P</span><div class="admin-identity"><b id="admin-name"></b><span>管理员</span></div><button id="logout" class="text-button">退出</button></div></header>
+      <main id="admin-content" tabindex="-1"></main>
+      <footer class="admin-footer"><span>PaperKnow 管理平台</span><span>数据来自当前服务账户与任务记录</span></footer>
+    </div>
+  </div>
+  <div id="admin-toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="admin-dialog" aria-labelledby="dialog-title"><div class="dialog-heading"><h2 id="dialog-title"></h2><button type="button" class="icon-button" id="dialog-close" aria-label="关闭窗口">×</button></div><div id="dialog-body"></div></dialog>
+</body>
+</html>

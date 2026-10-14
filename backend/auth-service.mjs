@@ -1,5 +1,5 @@
 import {createHmac,randomInt,randomUUID,timingSafeEqual} from 'node:crypto';
-import {createSession,hashPassword,safeUser,verifyPassword} from './auth.mjs';
+import {createSession,ensureOwnerRole,hashPassword,safeUser,verifyPassword} from './auth.mjs';
 
 const MINUTE=60000;
 const HOUR=60*MINUTE;
@@ -48,7 +48,7 @@ function passwordIdentifier(channel,value){
   return normalizeAddress(channel,value);
 }
 
-export function createAuthService(db,{secret,delivery,clock=Date.now,dailyLimit=100}={}){
+export function createAuthService(db,{secret,delivery,clock=Date.now,dailyLimit=100,ownerEmail}={}){
   const secretReady=typeof secret==='string'&&Buffer.byteLength(secret)>=32;
   const now=()=>Number(clock());
   const stamp=at=>new Date(at).toISOString();
@@ -116,7 +116,10 @@ export function createAuthService(db,{secret,delivery,clock=Date.now,dailyLimit=
     }));
   }
 
-  function signedIn(row,at){return {user:safeUser(db,row.id),token:createSession(db,row.id,at)};}
+  function signedIn(row,at){
+    ensureOwnerRole(db,row.id,ownerEmail,at);
+    return {user:safeUser(db,row.id),token:createSession(db,row.id,at)};
+  }
 
   async function sendCode({channel,address:rawAddress,purpose}={},ip){
     if(!['login','register','reset'].includes(purpose))fail(400,'验证码用途不正确');
@@ -216,6 +219,7 @@ export function createAuthService(db,{secret,delivery,clock=Date.now,dailyLimit=
       if(!row)return {failure:error(401,loginMessage)};
       markVerified(row,challenge,at);
       db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(hash,row.id);
+      ensureOwnerRole(db,row.id,ownerEmail,at);
       db.prepare('DELETE FROM sessions WHERE user_id=?').run(row.id);
       // Previously sent credentials should not create a new session after reset.
       db.prepare("UPDATE auth_challenges SET status='superseded' WHERE status IN ('sent','pending') AND EXISTS (SELECT 1 FROM auth_identities i WHERE i.user_id=? AND i.channel=auth_challenges.channel AND i.address=auth_challenges.address)").run(row.id);
