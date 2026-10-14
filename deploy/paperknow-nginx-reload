@@ -1,0 +1,5 @@
+#!/bin/sh
+# Certbot deploy hook: reload only after renewal of PaperKnow's certificate.
+case " ${RENEWED_DOMAINS:-} " in
+    *" paperknow.cn "*) /usr/sbin/nginx -t && /usr/bin/systemctl reload nginx ;;
+esac

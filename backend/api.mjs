@@ -3,6 +3,7 @@ import {hashPassword,verifyPassword,createSession,sessionUser,sessionCookie,dige
 import {aiReady,publicModelSettings} from './config.mjs';
 import {fileBytes} from './storage.mjs';
 import {now} from './database.mjs';
+import {clientAddress} from './client-address.mjs';
 const safeUser=u=>({id:u.id,email:u.email,name:u.name,role:u.role});
 class APIError extends Error{constructor(status,message){super(message);this.status=status;}}
 const fail=(status,message)=>{throw new APIError(status,message);};
@@ -10,7 +11,7 @@ const text=(v,max=200,min=1)=>{if(typeof v!=='string'||v.trim().length<min||v.le
 const url=v=>{if(!v)return '';try{const u=new URL(v);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw 0;return u.href;}catch{fail(400,'来源网址必须是有效的 HTTP/HTTPS 链接');}};
 async function body(req){if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'请提交 JSON 内容');let bytes=0,chunks=[];for await(const chunk of req){bytes+=chunk.length;if(bytes>3*1024*1024)fail(413,'请求超过 3MB 限制');chunks.push(chunk);}try{const v=JSON.parse(Buffer.concat(chunks).toString());if(!v||Array.isArray(v)||typeof v!=='object')throw 0;return v;}catch{fail(400,'请求内容不是有效 JSON');}}
 export function createAPI(db,worker,config={}){
-const attempts=new Map();function rate(req,limit){const key=req.socket.remoteAddress;const t=Date.now();if(attempts.size>10000)for(const [k,v]of attempts)if(v.until<t)attempts.delete(k);const item=attempts.get(key)||{count:0,until:t+600000};if(item.until<t){item.count=0;item.until=t+600000;}item.count++;attempts.set(key,item);if(item.count>limit)fail(429,'请求过于频繁，请稍后重试');}
+const attempts=new Map();function rate(req,limit){const key=clientAddress(req,config);const t=Date.now();if(attempts.size>10000)for(const [k,v]of attempts)if(v.until<t)attempts.delete(k);const item=attempts.get(key)||{count:0,until:t+600000};if(item.until<t){item.count=0;item.until=t+600000;}item.count++;attempts.set(key,item);if(item.count>limit)fail(429,'请求过于频繁，请稍后重试');}
 function own(table,id,user){const row=db.prepare(`SELECT * FROM ${table} WHERE id=? AND user_id=?`).get(id,user.id);if(!row)fail(404,'记录不存在');return row;}
 function project(id,user){if(id)own('projects',id,user);return id||null;}
 return async(req,res)=>{const send=(status,value,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers});res.end(JSON.stringify(value));};try{

@@ -1,0 +1,35 @@
+[Unit]
+Description=PaperKnow application
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=paperknow
+Group=paperknow
+WorkingDirectory=/opt/paperknow/current
+Environment=NODE_ENV=production
+Environment=PATH=/opt/paperknow/runtime/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/var/lib/paperknow
+EnvironmentFile=/etc/paperknow/paperknow.env
+ExecStart=/opt/paperknow/runtime/bin/node /opt/paperknow/current/server.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+UMask=0077
+StateDirectory=paperknow
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/paperknow
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=paperknow
+
+[Install]
+WantedBy=multi-user.target
