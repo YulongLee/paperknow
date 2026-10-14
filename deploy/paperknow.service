@@ -14,7 +14,9 @@ Environment=NODE_ENV=production
 Environment=PATH=/opt/paperknow/runtime/bin:/usr/local/bin:/usr/bin:/bin
 Environment=HOME=/var/lib/paperknow
 EnvironmentFile=/etc/paperknow/paperknow.env
-ExecStart=/opt/paperknow/runtime/bin/node /opt/paperknow/current/server.mjs
+# Resolve the entrypoint from WorkingDirectory so the release symlink does not
+# break the server's direct-execution check.
+ExecStart=/opt/paperknow/runtime/bin/node server.mjs
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
