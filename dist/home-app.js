@@ -26,6 +26,7 @@ function renderAccount(){
  button.title=serviceUser?accountName:'登录 PaperKnow';
  button.setAttribute('aria-label',serviceUser?`打开 ${accountName} 的账户`:'登录 PaperKnow');
  document.querySelectorAll('[data-service-start]').forEach(a=>{a.href=serviceUser?'/workspace.html#home':'/auth.html?mode=register';const label=serviceUser?(a.id==='header-start'?'进入工作台':'继续我的研究'):'注册并开始';if(serviceUser||a.id==='header-start')a.innerHTML=label+' '+svg('arrow');});
+ refreshNavigationLine();
 }
 $('#account-button').addEventListener('click',()=>{
  if(!serviceUser){location.href='/auth.html?mode=login';return;}
@@ -35,6 +36,29 @@ $('#account-button').addEventListener('click',()=>{
 async function loadServiceState(){
  try{const [account,capabilities]=await Promise.all([fetch('/api/auth/me'),fetch('/api/capabilities')]);if(account.ok)serviceUser=(await account.json()).user;if(capabilities.ok)serviceCapabilities=await capabilities.json();renderAccount();}catch{renderAccount();}
 }
+const mainNav=$('#main-nav');
+let navigationTarget=null;
+function currentNavigationLink(){return mainNav.querySelector('a[aria-current="page"],a.nav-active')||mainNav.querySelector('a');}
+function positionNavigationLine(link){
+ navigationTarget=link;
+ if(!link)return;
+ const target=link.querySelector('.nav-link-label')||link;
+ const targetRect=target.getBoundingClientRect(),navRect=mainNav.getBoundingClientRect();
+ mainNav.style.setProperty('--nav-line-x',`${targetRect.left-navRect.left+mainNav.scrollLeft}px`);
+ mainNav.style.setProperty('--nav-line-width',`${targetRect.width}px`);
+}
+function refreshNavigationLine(){positionNavigationLine(navigationTarget||currentNavigationLink());}
+function restoreNavigationLine(){positionNavigationLine(currentNavigationLink());}
+mainNav.addEventListener('pointerover',e=>{const link=e.target.closest('a');if(link&&mainNav.contains(link))positionNavigationLine(link);});
+mainNav.addEventListener('focusin',e=>{const link=e.target.closest('a');if(link&&mainNav.contains(link))positionNavigationLine(link);});
+mainNav.addEventListener('pointerleave',restoreNavigationLine);
+mainNav.addEventListener('focusout',e=>{if(!e.relatedTarget||!mainNav.contains(e.relatedTarget))restoreNavigationLine();});
+window.addEventListener('resize',refreshNavigationLine);
+document.fonts?.ready?.then(refreshNavigationLine);
+const productHeader=$('.product-header');
+function syncHeaderScroll(){productHeader.classList.toggle('is-scrolled',window.scrollY>8);}
+window.addEventListener('scroll',syncHeaderScroll,{passive:true});
+restoreNavigationLine();syncHeaderScroll();
 function closeMenus(restoreFocus=false){
  const open=$('#main-nav').classList.contains('mobile-open');
  $('#main-nav').classList.remove('mobile-open');
