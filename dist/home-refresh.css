@@ -33,3 +33,10 @@
 .download-card{position:relative;min-height:156px;padding:20px 21px;border-radius:14px;box-shadow:0 7px 22px rgba(33,75,130,.055);overflow:hidden}.download-card:before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:#4a8df3}.download-card:nth-child(2):before{background:#32b19a}.download-card:nth-child(3):before{background:#8b72e8}.download-card-head{align-items:center}.download-card-head .platform-mark{width:30px;height:30px;border-radius:9px;font-size:17px;flex:0 0 30px}.download-card-head h3{font-size:15px}.download-card-head p{font-size:10px}.download-status{font-size:8px}.download-card .button{font-size:10px;border-radius:8px}.download-card-web{background:linear-gradient(135deg,#f5f9ff,#fff)}
 @media(max-width:900px){.home-hero .hero-platform-links{max-width:100%}}
 @media(max-width:760px){.home-hero .hero-platform-links{grid-template-columns:1fr;padding:10px}.home-hero .hero-platform-label{grid-column:auto}.home-hero .platform-link{width:100%;justify-content:flex-start}.download-section{padding-top:34px}.download-section:before{inset:8px 0 12px}.download-card{min-height:0}}
+
+/* Keep the public registration link centered on its own footer row. */
+.commerce-footer{flex-wrap:wrap}
+.commerce-footer>.commerce-footer-registration{flex:0 0 100%;justify-content:center;margin:0;padding-top:16px;border-top:1px solid #e5edf5;text-align:center}
+.commerce-footer-registration a{display:inline-block;padding:4px 8px;color:#596b83;font-size:13px;line-height:1.6;white-space:nowrap;text-decoration:none}
+.commerce-footer-registration a:hover{color:#286dff;text-decoration:underline;text-underline-offset:3px}
+.commerce-footer-registration a:focus-visible{outline:2px solid #286dff;outline-offset:3px;border-radius:3px}
