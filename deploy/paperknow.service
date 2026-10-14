@@ -29,6 +29,12 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/paperknow
+# Keep PaperKnow within one CPU core and 1 GiB on the shared 2-core host.
+CPUQuota=100%
+MemoryHigh=768M
+MemoryMax=1G
+TasksMax=128
+OOMScoreAdjust=500
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=paperknow

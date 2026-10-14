@@ -6,6 +6,11 @@
 | --- | --- |
 | 当前应用 | `/opt/paperknow/current`（指向一个版本目录的软链接） |
 | 版本目录 | `/opt/paperknow/releases/<release>` |
+| 独立 Git 仓库 | `/opt/paperknow/repository`（bare，只有构建用户可写） |
+| 临时构建 | `/opt/paperknow/builds`（与在线版本分开） |
+| 构建缓存 | `/opt/paperknow/build-home/npm-cache`（不复用其他服务的依赖） |
+| 发布管理脚本 | `/opt/paperknow/bin`（root 持有） |
+| 发布前快照 | `/opt/paperknow/backups`（root，0700） |
 | 独立 Node | `/opt/paperknow/runtime/bin/node`，版本须满足 `package.json` 的 `>=25.2.0` |
 | SQLite 与上传文件 | `/var/lib/paperknow` |
 | 环境配置 | `/etc/paperknow/paperknow.env` |
@@ -74,8 +79,78 @@ sudo certbot renew --cert-name paperknow.cn --dry-run
 
 状态和日志：`sudo systemctl status paperknow`、`sudo journalctl -u paperknow -n 100 --no-pager`，站点日志为 `/var/log/nginx/paperknow.*.log`。
 
-更新时先准备新的只读版本目录，检查通过后切换 `current` 软链接并重启 PaperKnow；回滚可指回上一版本再重启。变更数据库结构前备份，旧代码是否兼容新库需单独核对。服务重启会把进行中的任务标记为失败，用户可手动重试。
-
-备份时停止 PaperKnow 后复制整个 `/var/lib/paperknow`，再启动服务；SQLite 使用 WAL，运行时不要只复制主数据库文件。环境文件另行加密备份；启用 OSS 后还需独立保留对象存储数据。备份不得放在公开网站目录。
+使用下面的 Git 发布脚本管理更新与回滚。服务重启会把进行中的任务标记为失败，用户可手动重试。
 
 Nginx 的请求体上限为 3 MiB，与 API 的 JSON 上限一致，可容纳最多 2 MiB 的原始文件及 base64 编码。头部超时 15 秒、请求体与代理读写超时 120 秒；Nginx 超时按相邻读写的空闲时间计，Node 另有 120 秒接收完整请求的限制。耗时计算通过任务队列异步执行，不需要长时间保持 HTTP 请求。
+
+## Git 发布与独立文件管理
+
+这组脚本只管理 PaperKnow：不安装系统软件，不修改系统 Node、Nginx、证书、环境配置或其他服务，不添加定时任务。Git 和 npm 使用单独的 `paperknow-build` 用户、主目录和缓存；应用仍由 `paperknow` 用户运行。npm 构建放进独立的临时 systemd 服务，限制为 1 个 CPU、1 GiB 内存（768 MiB 开始回收）和 128 个任务，降低 CPU / I/O 优先级，只允许本次构建目录和构建缓存目录写入；代码通过检查后才切换在线版本。在线服务也使用相同的 CPU / 内存限制，保护同机其他业务。发布前检查系统盘、应用盘、数据盘至少保留 2 GiB 可用空间；空间不足直接停止。所有路径固定，不接受任意服务名或目录参数。
+
+### 一次性准备
+
+先确认下面的用户与目录没有被其他业务使用。已有目录不要重建或覆盖。Git、Python 3、curl、flock、runuser、nice、ionice 应已安装。运行以下操作的管理员需要 sudo；构建用户不需要 sudo 权限，也不保存 GitHub 私钥。
+
+```sh
+sudo useradd --system --user-group --home-dir /opt/paperknow/build-home --no-create-home --shell /usr/sbin/nologin paperknow-build
+sudo install -d -o paperknow-build -g paperknow-build -m 0700 /opt/paperknow/build-home /opt/paperknow/builds
+sudo install -d -o paperknow-build -g paperknow-build -m 0750 /opt/paperknow/repository
+sudo install -d -o root -g root -m 0700 /opt/paperknow/backups
+sudo install -d -o root -g root -m 0755 /opt/paperknow/bin /opt/paperknow/releases
+sudo -u paperknow-build env HOME=/opt/paperknow/build-home GIT_TERMINAL_PROMPT=0 git clone --bare https://github.com/YulongLee/paperknow.git /opt/paperknow/repository
+sudo install -o root -g root -m 0755 deploy/release.sh deploy/rollback.sh /opt/paperknow/bin/
+sudo install -o root -g root -m 0644 deploy/deploy-common.sh deploy/backup.py /opt/paperknow/bin/
+```
+
+仓库通过公开 HTTPS 拉取，不复用服务器其他服务的 Git 身份。`current` 必须已指向 `releases/<Git提交号>`，支持首次部署已有的 7 位提交号。`PK_DATA_DIR` 必须为 `/var/lib/paperknow`；脚本检查真实数据路径后才备份。
+
+### 从 GitHub 更新
+
+```sh
+sudo /opt/paperknow/bin/release.sh
+```
+
+脚本拉取 `origin/main`，要求新提交是当前版本的后代。**如果 GitHub 分支比线上代码旧，脚本会拒绝发布，避免把功能退回旧版本。** 相同提交只做健康检查，不重建、不重启。
+
+每次发布在独立临时目录执行 `npm ci`、构建、语法检查、后端与代理限流测试，再移除开发依赖。只复用 npm 下载缓存，不复用 `node_modules`，不改变已运行版本。完成后写入 `/opt/paperknow/releases/<完整SHA>`，由 root 持有；原子切换 `current` 并只重启 `paperknow.service`。成功需要服务主进程确实运行于目标版本，且本机能力接口返回正常。
+
+### GitHub 尚未包含本地最新提交时
+
+先修复 GitHub 推送权限并推送是长期做法。若需要立即发布已审阅的本地提交，可用 Git bundle 携带 Git 历史，在服务器专属仓库中导入 `workspace-release` 分支，再按完整 SHA 发布。**这会真实保留 Git 历史，但不等于已推送 GitHub。** 不导入私钥、`.env`、本地数据库或 `node_modules`。
+
+在开发机创建 bundle（需先提交所有待发布改动）：
+
+```sh
+git bundle create paperknow-release.bundle HEAD
+git rev-parse HEAD
+```
+
+将 bundle 上传至服务器专属目录后，管理员把文件交给 `paperknow-build` 用户读取，例如 `/opt/paperknow/build-home/paperknow-release.bundle`。在服务器执行：
+
+```sh
+sudo -u paperknow-build env HOME=/opt/paperknow/build-home git --git-dir=/opt/paperknow/repository bundle verify /opt/paperknow/build-home/paperknow-release.bundle
+sudo -u paperknow-build env HOME=/opt/paperknow/build-home git --git-dir=/opt/paperknow/repository fetch /opt/paperknow/build-home/paperknow-release.bundle HEAD:refs/heads/workspace-release
+sudo /opt/paperknow/bin/release.sh --ref <完整40位提交SHA>
+```
+
+`--ref` 仅接受仓库中已存在、可从 `origin/main` 或 `workspace-release` 到达的完整提交 SHA；仍检查必须是当前版本的后代。它不会联网拉取或接受悬空对象。只导入自己审阅过的 bundle，默认不强制覆盖分支历史。
+
+### 快照与回滚
+
+发布和回滚切换前都会在线备份 SQLite（包含本地上传文件）及环境配置。SQLite 使用 backup API 获取包含 WAL 已提交事务的一致快照，并执行完整性检查；备份失败不会切换版本。快照目录为 0700、数据库和环境副本为 0600，路径会在发布输出中显示，不打印配置内容。启用 OSS 后仍需另行备份远端对象；快照目录应再做加密异地备份，不会自动清理现有版本或备份。
+
+单独创建快照：
+
+```sh
+sudo /usr/bin/python3 -I /opt/paperknow/bin/backup.py
+```
+
+回滚至服务器上已经构建过的版本（参数是实际版本目录名，含旧的 7 位目录也可）：
+
+```sh
+sudo /opt/paperknow/bin/rollback.sh --release <已有版本目录名>
+```
+
+发布或回滚健康检查失败会尝试恢复之前的代码链接并重新检查服务。**自动恢复和手动回滚都只回滚代码，不恢复数据库或环境配置。** 数据库迁移不一定向后兼容；执行回滚前必须核对，脚本不会用旧快照覆盖新业务数据。需要恢复数据库时，应单独停用 PaperKnow、保留当前数据后由管理员处理，避免丢失发布后的记录。并发发布/回滚由同一把锁排除。
+
+脚本自身的更新需要审阅后重新安装到 `/opt/paperknow/bin`；发布过程不会用新仓库脚本替换正在执行的管理工具。
