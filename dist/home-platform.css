@@ -39,3 +39,7 @@
  .home-platform main .hero .writing-hero-title .hero-title-line,.home-platform main .hero .hero-description,.home-platform main .hero .hero-actions{animation:none!important;opacity:1;transform:none}
  .home-platform main .hero .writing-hero-title .hero-title-accent em{animation:none!important;background:none;color:var(--blue);-webkit-text-fill-color:currentColor}
 }
+
+/* Product maker credit beside the copyright and registration details. */
+.home-platform .footer-bottom .footer-maker{margin-left:18px;color:#637389;font-size:12px;font-weight:500;white-space:nowrap}
+@media(max-width:680px){.home-platform .footer-bottom .footer-maker{margin-left:0}}
