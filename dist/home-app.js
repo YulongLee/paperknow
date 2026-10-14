@@ -36,6 +36,35 @@ $('#account-button').addEventListener('click',()=>{
 async function loadServiceState(){
  try{const [account,capabilities]=await Promise.all([fetch('/api/auth/me'),fetch('/api/capabilities')]);if(account.ok)serviceUser=(await account.json()).user;if(capabilities.ok)serviceCapabilities=await capabilities.json();renderAccount();}catch{renderAccount();}
 }
+// Keep all capabilities visible, with one focused preview and direct workspace links.
+const featureTabs=Array.from(document.querySelectorAll('[data-feature-tab]'));
+const featurePanels=Array.from(document.querySelectorAll('[data-feature-panel]'));
+function selectFeature(key,moveFocus=false){
+ const selected=featureTabs.find(tab=>tab.dataset.featureTab===key);
+ if(!selected||!featurePanels.some(panel=>panel.dataset.featurePanel===key))return;
+ featureTabs.forEach(tab=>{
+  const active=tab===selected;
+  tab.setAttribute('aria-selected',String(active));
+  tab.tabIndex=active?0:-1;
+  tab.classList.toggle('is-active',active);
+ });
+ featurePanels.forEach(panel=>{panel.hidden=panel.dataset.featurePanel!==key;});
+ if(moveFocus)selected.focus();
+}
+featureTabs.forEach((tab,index)=>{
+ tab.addEventListener('click',()=>selectFeature(tab.dataset.featureTab));
+ tab.addEventListener('keydown',event=>{
+  let next;
+  if(event.key==='ArrowRight')next=(index+1)%featureTabs.length;
+  else if(event.key==='ArrowLeft')next=(index-1+featureTabs.length)%featureTabs.length;
+  else if(event.key==='Home')next=0;
+  else if(event.key==='End')next=featureTabs.length-1;
+  else return;
+  event.preventDefault();
+  selectFeature(featureTabs[next].dataset.featureTab,true);
+ });
+});
+selectFeature(featureTabs.find(tab=>tab.getAttribute('aria-selected')==='true')?.dataset.featureTab||featureTabs[0]?.dataset.featureTab);
 const mainNav=$('#main-nav');
 let navigationTarget=null;
 function currentNavigationLink(){return mainNav.querySelector('a[aria-current="page"],a.nav-active')||mainNav.querySelector('a');}

@@ -77,3 +77,46 @@ test('scroll styling changes at the header threshold without measuring layout an
  assert.equal(nav.classList.contains('mobile-open'),false);
  assert.equal(d.activeElement,menu);
 });
+
+test('homepage previews expose all eight workspace capabilities and switch without changing direct destinations',async t=>{
+ const d=await page(t,null);
+ const tabs=Array.from(d.querySelectorAll('[data-feature-tab]'));
+ const keys=['writing','literature','reduce','aigc','detection','ppt','format','research'];
+ assert.deepEqual(tabs.map(tab=>tab.dataset.featureTab),keys);
+ const panels=Array.from(d.querySelectorAll('[data-feature-panel]'));
+ const destinations=panels.map(panel=>panel.querySelector('a[href^="/workspace.html#category/"]')?.getAttribute('href'));
+ assert.deepEqual(destinations,keys.map(key=>`/workspace.html#category/${key}`));
+ const assertActive=key=>{
+  assert.deepEqual(tabs.filter(tab=>tab.getAttribute('aria-selected')==='true').map(tab=>tab.dataset.featureTab),[key]);
+  assert.deepEqual(tabs.filter(tab=>tab.tabIndex===0).map(tab=>tab.dataset.featureTab),[key]);
+  assert.deepEqual(panels.filter(panel=>!panel.hidden).map(panel=>panel.dataset.featurePanel),[key]);
+  const selected=tabs.find(tab=>tab.dataset.featureTab===key);
+  assert.equal(selected.getAttribute('aria-controls'),panels.find(panel=>panel.dataset.featurePanel===key).id);
+ };
+ assertActive('writing');
+ for(const tab of tabs){tab.click();assertActive(tab.dataset.featureTab);}
+ assert.deepEqual(panels.map(panel=>panel.querySelector('a[href^="/workspace.html#category/"]')?.getAttribute('href')),destinations);
+ tabs[0].focus();
+ const key=key=>d.activeElement.dispatchEvent(new d.defaultView.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));
+ key('ArrowLeft');assertActive('research');assert.equal(d.activeElement,tabs[7]);
+ key('ArrowRight');assertActive('writing');assert.equal(d.activeElement,tabs[0]);
+ key('End');assertActive('research');
+ key('Home');assertActive('writing');
+});
+
+test('homepage keeps sample results and unavailable desktop downloads clearly identified',async t=>{
+ const d=await page(t,null);
+ d.querySelector('[data-example="report"]').click();
+ assert.match(d.querySelector('#home-dialog-body').textContent,/不是一次实际检测结果/);
+ assert.match(d.querySelector('#home-dialog-body').textContent,/未接入全网检索/);
+ d.querySelector('#dialog-close').click();
+ for(const platform of ['mac','windows']){
+  d.querySelector(`[data-download-platform="${platform}"]`).click();
+  assert.match(d.querySelector('#home-dialog-body').textContent,/客户端即将上线/);
+  assert.equal(d.querySelector('#home-dialog-body a').getAttribute('href'),'/workspace.html#home');
+  d.querySelector('#dialog-close').click();
+ }
+ d.querySelector('#status-button').click();
+ assert.match(d.querySelector('#home-dialog-body').textContent,/尚未配置模型/);
+ assert.match(d.querySelector('#home-dialog-body').textContent,/尚未接入在线数据库或检测服务/);
+});
