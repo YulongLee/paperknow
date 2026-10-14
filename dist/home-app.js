@@ -17,9 +17,15 @@ $('#status-button').addEventListener('click',()=>{openDialog('PaperKnow 功能�
 $('#about-button').addEventListener('click',()=>openDialog('关于 PaperKnow','<p>PaperKnow 面向专科、本科、硕士、博士及科研人员，帮助整理从选题、开题到写作、修改和成果输出的工作流程。</p><p>支持邮箱与手机号登录，账户可保存在线项目、文件和任务成果。本地体验数据单独保存在浏览器中；支付与全网学术检索尚未开放。</p><div class="home-dialog-actions"><a class="button outline" href="/workspace.html#help">查看使用帮助</a><a class="button" href="/workspace.html">开始体验</a></div>'));
 let serviceUser=null,serviceCapabilities=null;
 function renderAccount(){
- const button=$('#account-button');button.textContent=serviceUser?(serviceUser.name||serviceUser.email||serviceUser.phone||'我的账户').slice(0,16):'登录';
- button.setAttribute('aria-label',serviceUser?'打开账户菜单':'登录 PaperKnow');
- document.querySelectorAll('[data-service-start]').forEach(a=>{a.href=serviceUser?'/workspace.html#home':'/auth.html?mode=register';const label=a.id==='header-start'?'进入工作台':'继续我的研究';if(serviceUser)a.innerHTML=label+' '+svg('arrow');});
+ const button=$('#account-button');
+ const accountName=String(serviceUser?.name||serviceUser?.email||serviceUser?.phone||'我的账户');
+ const displayName=Array.from(accountName).slice(0,16).join('');
+ const initial=Array.from(accountName.trim())[0]?.toLocaleUpperCase()||'P';
+ button.classList.toggle('is-signed-in',Boolean(serviceUser));
+ button.innerHTML=serviceUser?`<span class="home-account-avatar" aria-hidden="true">${esc(initial)}</span><span class="home-account-name">${esc(displayName)}</span><svg class="home-account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>`:'登录';
+ button.title=serviceUser?accountName:'登录 PaperKnow';
+ button.setAttribute('aria-label',serviceUser?`打开 ${accountName} 的账户`:'登录 PaperKnow');
+ document.querySelectorAll('[data-service-start]').forEach(a=>{a.href=serviceUser?'/workspace.html#home':'/auth.html?mode=register';const label=serviceUser?(a.id==='header-start'?'进入工作台':'继续我的研究'):'注册并开始';if(serviceUser||a.id==='header-start')a.innerHTML=label+' '+svg('arrow');});
 }
 $('#account-button').addEventListener('click',()=>{
  if(!serviceUser){location.href='/auth.html?mode=login';return;}
@@ -37,7 +43,7 @@ function closeMenus(restoreFocus=false){
  if(open&&restoreFocus)$('#mobile-menu').focus();
 }
 $('#mobile-menu').addEventListener('click',()=>{const open=$('#main-nav').classList.toggle('mobile-open');$('#mobile-menu').setAttribute('aria-expanded',String(open));$('#mobile-menu').setAttribute('aria-label',open?'收起菜单':'打开菜单');});
-document.addEventListener('click',e=>{if(e.target.closest('#main-nav a'))closeMenus();else if(!e.target.closest('.product-header'))closeMenus();});
+document.addEventListener('click',e=>{if(e.target.closest('.product-header a'))closeMenus();else if(!e.target.closest('.product-header'))closeMenus();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenus(true);});
 // Preserve old saved-draft and tool URLs while routing them to the unified workspace.
 const params=new URLSearchParams(location.search);const legacy=params.get('tool'),draft=params.get('draft');const ids=['writing','topic','proposal','summary','course','review','rewrite','reduce','aigc','reading','search','translation','ppt','format','journal','resume','research'];if(draft&&/^\d+$/.test(draft))location.replace('/workspace.html#draft/'+encodeURIComponent(draft));else if(legacy==='check')location.replace('/workspace.html#category/detection');else if(ids.includes(legacy))location.replace('/workspace.html#tool/'+legacy);
