@@ -40,3 +40,36 @@
 .commerce-footer-registration a{display:inline-block;padding:4px 8px;color:#596b83;font-size:13px;line-height:1.6;white-space:nowrap;text-decoration:none}
 .commerce-footer-registration a:hover{color:#286dff;text-decoration:underline;text-underline-offset:3px}
 .commerce-footer-registration a:focus-visible{outline:2px solid #286dff;outline-offset:3px;border-radius:3px}
+
+/* The homepage exposes every capability in the research workspace. */
+.product-header{height:auto;min-height:78px}
+.product-header .nav-wrap{max-width:1600px;min-height:78px;height:auto;padding:0 28px;gap:24px}
+.product-header #main-nav{display:flex;position:static;height:auto;min-height:78px;flex:1;align-items:stretch;gap:clamp(12px,1.1vw,20px);padding:0;white-space:nowrap}
+.product-header #main-nav>a{display:flex!important;align-items:center;flex:none;padding:0;font-size:13px;line-height:1.4;color:#52617a}
+.product-header #main-nav>a:hover,.product-header #main-nav>a:focus-visible,.product-header #main-nav>.nav-active{color:#2467ef}
+.product-header #main-nav>a:focus-visible{outline:2px solid #81a7fc;outline-offset:4px;border-radius:3px}
+.product-header #main-nav>.nav-utility{color:#7c899f}
+.product-header .nav-actions{flex:none;gap:8px;margin-left:auto}
+.product-header #account-button{max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.product-header .nav-actions .button{white-space:nowrap;font-size:12px;padding:9px 12px}
+.product-header .brand{flex:none}
+.product-header .mobile-menu{display:none}
+@media(min-width:761px) and (max-width:1279px){
+ .product-header .nav-wrap{flex-wrap:wrap;gap:0 24px;padding:0 24px}
+ .product-header .brand,.product-header .nav-actions{min-height:64px}
+ .product-header #main-nav{order:3;flex:0 0 100%;min-height:48px;border-top:1px solid #edf1f7;justify-content:space-between;gap:10px;box-shadow:none;flex-wrap:wrap}
+ .product-header #main-nav>a{min-height:48px;font-size:12px}
+}
+@media(max-width:760px){
+ .product-header{min-height:64px}
+ .product-header .nav-wrap{min-height:64px;padding:0 16px;gap:12px}
+ .product-header .nav-actions .button{font-size:11px;padding:7px 9px;min-height:36px}
+ .product-header .mobile-menu{display:flex;width:32px;height:36px;justify-content:center;align-items:center}
+ .product-header #main-nav{display:none;position:absolute;top:100%;left:0;right:0;min-height:0;padding:12px 16px 18px;background:#fff;border-top:1px solid #edf1f7;box-shadow:0 14px 28px #1c36551a;white-space:normal;max-height:calc(100dvh - 64px);overflow:auto;gap:4px 10px}
+ .product-header #main-nav.mobile-open{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+ .product-header #main-nav>a:first-child{grid-column:1/-1}
+ .product-header #main-nav>a{padding:12px 14px;min-height:44px;font-size:14px;border-radius:7px}
+ .product-header #main-nav>a:hover,.product-header #main-nav>.nav-active{background:#f0f5ff}
+ .product-header #main-nav>.nav-active:after{display:none}
+ .product-header #main-nav>.nav-utility{border-top:1px solid #edf1f7;margin-top:5px;padding-top:15px;border-radius:0}
+}

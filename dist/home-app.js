@@ -29,10 +29,16 @@ $('#account-button').addEventListener('click',()=>{
 async function loadServiceState(){
  try{const [account,capabilities]=await Promise.all([fetch('/api/auth/me'),fetch('/api/capabilities')]);if(account.ok)serviceUser=(await account.json()).user;if(capabilities.ok)serviceCapabilities=await capabilities.json();renderAccount();}catch{renderAccount();}
 }
-function closeMenus(){ $('#more-menu').hidden=true;$('#more-button').setAttribute('aria-expanded','false');$('#main-nav').classList.remove('mobile-open');$('#mobile-menu').setAttribute('aria-expanded','false');}
-$('#more-button').addEventListener('click',()=>{const hidden=!$('#more-menu').hidden;$('#more-menu').hidden=hidden;$('#more-button').setAttribute('aria-expanded',String(!hidden));});
-$('#mobile-menu').addEventListener('click',()=>{const open=$('#main-nav').classList.toggle('mobile-open');$('#mobile-menu').setAttribute('aria-expanded',String(open));});
-document.addEventListener('click',e=>{if(!e.target.closest('.more-wrap')){$('#more-menu').hidden=true;$('#more-button').setAttribute('aria-expanded','false');}if(e.target.closest('#main-nav a'))closeMenus();});document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenus();});
+function closeMenus(restoreFocus=false){
+ const open=$('#main-nav').classList.contains('mobile-open');
+ $('#main-nav').classList.remove('mobile-open');
+ $('#mobile-menu').setAttribute('aria-expanded','false');
+ $('#mobile-menu').setAttribute('aria-label','打开菜单');
+ if(open&&restoreFocus)$('#mobile-menu').focus();
+}
+$('#mobile-menu').addEventListener('click',()=>{const open=$('#main-nav').classList.toggle('mobile-open');$('#mobile-menu').setAttribute('aria-expanded',String(open));$('#mobile-menu').setAttribute('aria-label',open?'收起菜单':'打开菜单');});
+document.addEventListener('click',e=>{if(e.target.closest('#main-nav a'))closeMenus();else if(!e.target.closest('.product-header'))closeMenus();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenus(true);});
 // Preserve old saved-draft and tool URLs while routing them to the unified workspace.
 const params=new URLSearchParams(location.search);const legacy=params.get('tool'),draft=params.get('draft');const ids=['writing','topic','proposal','summary','course','review','rewrite','reduce','aigc','reading','search','translation','ppt','format','journal','resume','research'];if(draft&&/^\d+$/.test(draft))location.replace('/workspace.html#draft/'+encodeURIComponent(draft));else if(legacy==='check')location.replace('/workspace.html#category/detection');else if(ids.includes(legacy))location.replace('/workspace.html#tool/'+legacy);
 if(location.hash==='#writing')location.replace('/workspace.html#category/writing');

@@ -4,9 +4,13 @@ import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {JSDOM} from 'jsdom';
 import {esc,icon} from '../dist/workspace/ui.mjs';
+import {workspaceLinks} from '../dist/workspace/interface.mjs';
+import * as revisionModel from '../dist/workspace/revision-model.mjs';
 
 const source=(await readFile(new URL('../dist/workspace/app.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
+const homeSource=await readFile(new URL('../dist/index.html',import.meta.url),'utf8');
 const onlineSource=(await readFile(new URL('../dist/workspace/online-workspace.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
+const revisionSource=(await readFile(new URL('../dist/workspace/revision.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const keys={profile:'paperknow-local-profile',preferences:'paperknow-preferences',drafts:'paperknow-drafts',projects:'paperknow-projects',tasks:'paperknow-local-tasks'};
 const response=(status,user)=>({status,ok:status>=200&&status<300,json:async()=>({user})});
 const signedIn={id:'researcher-1',name:'服务账户',email:null,phone:'+8613800000000',phoneVerifiedAt:'2026-10-15T00:00:00Z',hasPassword:false};
@@ -23,9 +27,69 @@ async function fixture(fetcher){
   clearEditor:()=>{},clearHelpWork:()=>{},clearSettingsWork:()=>{},clearMoreWork:()=>{},trackDialogForm:()=>()=>{},retainWritingCatalog:()=>{},isCurrentRouteChange:()=>false,
  });
  vm.runInContext('(function(){'+onlineSource+'\nObject.assign(globalThis,{mountOnlineWorkspace,disposeOnlineWorkspace,onlineWorkspaceRouteGuard,onlineWorkspaceHasWork,onlineWorkspaceSessionChanged,onlineWorkspaceConfirmLeave,onlineWorkspaceHref});})()',dom.getInternalVMContext());
- await vm.runInContext('(async()=>{'+source+'\nglobalThis.workspaceAuthTest={loadWorkspaceSession,workspaceServiceFetch,signOutWorkspace,renderAccount,authHref};})()',dom.getInternalVMContext());
+ await vm.runInContext('(async()=>{'+source+'\nglobalThis.workspaceAuthTest={loadWorkspaceSession,workspaceServiceFetch,signOutWorkspace,renderAccount,authHref,render};})()',dom.getInternalVMContext());
  return {dom,document:dom.window.document,storage,api:dom.window.workspaceAuthTest,close(){timers.forEach(clearTimeout);dom.window.close();}};
 }
+
+test('homepage research navigation matches the rendered workspace and report sidebar without missing capabilities',async()=>{
+ const f=await fixture(async()=>response(401));
+ const home=new JSDOM(homeSource,{url:'https://paperknow.cn/'});
+ try{
+  const expected=[['writing','AI 写作'],['literature','AI 研读'],['reduce','降重复率'],['aigc','降AI率'],['detection','免费查重'],['ppt','PPT 创作'],['format','格式排版'],['research','科研工具']]
+   .map(([key,label])=>({key,label,path:`/workspace.html#category/${key}`}));
+  const homepage=[...home.window.document.querySelectorAll('#main-nav [data-research-category]')]
+   .map(link=>({key:link.dataset.researchCategory,label:link.textContent.trim(),path:link.pathname+link.hash}));
+  const sidebar=[...f.document.querySelectorAll('.sidebar nav .nav-link[href^="#category/"]')]
+   .map(link=>({key:link.hash.slice('#category/'.length),label:link.textContent.trim(),path:link.pathname+link.hash}));
+  const reportSidebar=workspaceLinks.find(([group])=>group==='论文与科研')[1]
+   .map(([path,label])=>({key:path.slice('category/'.length),label,path:`/workspace.html#${path}`}));
+  assert.deepEqual(homepage,expected,'all eight capabilities must remain directly linked in the homepage navigation');
+  assert.deepEqual(sidebar,expected,'homepage labels, order and links must match the actual workspace sidebar');
+  assert.deepEqual(reportSidebar,expected,'opening a detection report must not restore the old sidebar');
+ }finally{home.window.close();f.close();}
+});
+
+test('direct AI-rate navigation mounts the AI reduction service and updates the active sidebar link',async()=>{
+ const f=await fixture(async()=>response(401));
+ const calls=[];
+ try{
+  f.dom.window.mountDetection=options=>calls.push({module:'detection',tab:options.tab,projectId:options.projectId});
+  f.dom.window.mountRevision=options=>calls.push({module:'revision',mode:options.mode});
+  const navigate=hash=>{f.dom.window.history.replaceState(null,'','/workspace.html'+hash);f.api.render();};
+  navigate('#category/detection');
+  assert.equal(f.document.querySelector('.sidebar .nav-link[aria-current="page"]')?.hash,'#category/detection');
+  navigate('#category/aigc?project=project-123');
+  assert.deepEqual(calls,[{module:'detection',tab:'check',projectId:null},{module:'revision',mode:'reduce'}]);
+  assert.equal(f.document.querySelector('.breadcrumb strong').textContent,'降AI率');
+  const active=[...f.document.querySelectorAll('.sidebar .nav-link.active')];
+  assert.equal(active.length,1);
+  assert.equal(active[0].hash,'#category/aigc');
+  assert.equal(active[0].getAttribute('aria-current'),'page');
+  assert.equal(f.document.querySelector('.sidebar .nav-link[href="#category/detection"]').hasAttribute('aria-current'),false);
+ }finally{f.close();}
+});
+
+test('real AI reduction page keeps its own heading and package when binding shared revision controls',()=>{
+ const dom=new JSDOM('<div class="breadcrumb"><strong></strong></div><main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#category/aigc',runScripts:'outside-only'});
+ Object.assign(dom.window,{...revisionModel,keys,esc,icon,list:()=>[],projects:()=>[],formatDate:()=>''});
+ try{
+  vm.runInContext('(function(){'+revisionSource+'\nglobalThis.mountActualRevision=mountRevision;})()',dom.getInternalVMContext());
+  const mount=hash=>{dom.window.history.replaceState(null,'',hash);dom.window.mountActualRevision({mode:'reduce',modal:()=>{},notify:()=>{}});};
+  const assertAIPage=()=>{
+   assert.ok(dom.window.document.querySelector('#revision-service.aigc-commerce'));
+   assert.equal(dom.window.document.querySelector('.hub-heading h1').textContent,'降 AI 率');
+   assert.equal(dom.window.document.querySelector('.aigc-bundle h2').textContent,'超值降 AI 套餐');
+  };
+  mount('#category/aigc');assertAIPage();
+  mount('#category/reduce');
+  assert.equal(dom.window.document.querySelector('.aigc-commerce'),null);
+  assert.equal(dom.window.document.querySelector('.hub-heading h1').textContent,'降重复率');
+  assert.equal(dom.window.document.querySelector('.revision-bundle-card h2').textContent,'降重精修');
+  dom.window.document.querySelectorAll('.revision-plan-card')[1].click();
+  assert.equal(dom.window.document.querySelector('.hub-heading h1').textContent,'AIGC + 重复率双降');
+  mount('#category/aigc');assertAIPage();
+ }finally{dom.window.close();}
+});
 
 test('phone account identity stays separate from browser preferences and password actions return to the current route',async()=>{
  const seen=[];const f=await fixture(async(path,options)=>{seen.push(path);assert.equal(options.credentials,'same-origin');return response(200,signedIn);});
