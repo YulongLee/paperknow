@@ -23,3 +23,19 @@
 @media(max-width:400px){.home-platform main .hero h1{font-size:30px;letter-spacing:-.7px}.home-platform main .space-card-head p{font-size:10px}}
 @media(max-width:760px){html:has(.home-platform){scroll-padding-top:116px}}
 @media(prefers-reduced-motion:reduce){html:has(.home-platform){scroll-behavior:auto}}
+
+/* A brief writing-led entrance, with a slow blue highlight across the headline. */
+.home-platform main .hero .writing-hero-title .hero-title-line{display:block;color:var(--ink);animation:writing-title-arrive .48s cubic-bezier(.2,.7,.25,1) both}
+.home-platform main .hero .writing-hero-title .hero-title-accent{animation-delay:.09s}
+.home-platform main .hero .writing-hero-title .hero-title-accent em{color:var(--blue);background:linear-gradient(105deg,#2467ef 15%,#5686ef 42%,#2467ef 68%);background-size:240% 100%;background-position:0 50%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:writing-title-sheen 6.5s ease-in-out infinite}
+.home-platform main .hero .hero-description-line{display:block}
+.home-platform main .hero .hero-description-line:first-child{color:#526881;font-weight:500}
+.home-platform main .hero .hero-description{animation:writing-copy-arrive .44s ease-out .16s both}
+.home-platform main .hero .hero-actions{animation:writing-copy-arrive .42s ease-out .23s both}
+@keyframes writing-title-arrive{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes writing-copy-arrive{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+@keyframes writing-title-sheen{0%,100%{background-position:0 50%}50%{background-position:100% 50%}}
+@media(prefers-reduced-motion:reduce){
+ .home-platform main .hero .writing-hero-title .hero-title-line,.home-platform main .hero .hero-description,.home-platform main .hero .hero-actions{animation:none!important;opacity:1;transform:none}
+ .home-platform main .hero .writing-hero-title .hero-title-accent em{animation:none!important;background:none;color:var(--blue);-webkit-text-fill-color:currentColor}
+}
