@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="same-origin">
+  <title>登录 · PaperKnow</title>
+  <link rel="icon" type="image/svg+xml" href="/brand/paperknow-symbol.svg">
+  <link rel="stylesheet" href="/brand/brand.css">
+  <link rel="stylesheet" href="/auth.css">
+  <script type="module" src="/auth.mjs"></script>
+</head>
+<body>
+  <header class="auth-header">
+    <a class="brand" href="/" aria-label="PaperKnow 首页"><span class="brand-mark"><img src="/brand/paperknow-symbol.svg" width="36" height="36" alt=""></span><span class="brand-wordmark"><span class="brand-paper">Paper</span><span class="brand-know">Know</span></span></a>
+    <a class="home-link" href="/"><span aria-hidden="true">←</span> 返回首页</a>
+  </header>
+  <main class="auth-layout">
+    <section class="auth-story" aria-labelledby="story-title">
+      <span class="story-eyebrow"><span aria-hidden="true">✦</span> 你的论文与科研工作台</span>
+      <h1 id="story-title">让每一个研究想法，<br>都有清晰的下一步。</h1>
+      <p class="story-description">从资料整理到成果输出，<br>在 PaperKnow，继续你的研究。</p>
+      <div class="story-preview" aria-hidden="true">
+        <div class="preview-top"><span class="preview-dot"></span> 我的研究项目 <span class="preview-more">···</span></div>
+        <div class="preview-title">把研究思路，逐步变成成果</div>
+        <div class="preview-row"><span class="preview-icon">01</span><span><b>整理研究材料</b><small>文献、原件与研究思路</small></span><span class="preview-check">✓</span></div>
+        <div class="preview-row"><span class="preview-icon mint">02</span><span><b>推进写作与修改</b><small>记录任务进度，保留修改版本</small></span><span class="preview-check">✓</span></div>
+        <div class="preview-row current"><span class="preview-icon lavender">03</span><span><b>汇集你的成果</b><small>保存、查看与导出</small></span><span class="preview-arrow">→</span></div>
+        <div class="preview-footer"><span></span> 研究的每一步，都有迹可循</div>
+      </div>
+      <p class="story-caption">YOUR IDEAS. YOUR RESEARCH.</p>
+    </section>
+    <section class="auth-panel" aria-labelledby="auth-title">
+      <div class="auth-form-wrap">
+        <div class="auth-heading"><span class="auth-kicker">开始你的研究</span><h2 id="auth-title">欢迎回来</h2><p id="auth-subtitle">登录 PaperKnow，继续未完成的研究。</p></div>
+        <div class="identity-tabs" role="tablist" aria-label="账户类型">
+          <button id="email-tab" type="button" role="tab" aria-selected="true" aria-controls="auth-form" data-channel="email">邮箱</button>
+          <button id="phone-tab" type="button" role="tab" aria-selected="false" aria-controls="auth-form" tabindex="-1" data-channel="phone">手机号</button>
+        </div>
+        <form id="auth-form" novalidate aria-labelledby="email-tab">
+          <div class="method-row" id="method-row"><span id="method-label">密码登录</span><button type="button" class="text-button" id="switch-method">使用验证码登录 <span aria-hidden="true">↔</span></button></div>
+          <div class="field" id="name-field" hidden><label for="auth-name">昵称</label><input id="auth-name" name="name" autocomplete="nickname" maxlength="30" placeholder="怎么称呼你"></div>
+          <div class="field"><label for="auth-address" id="address-label">邮箱地址</label><div class="input-shell" id="address-shell"><span class="phone-prefix" id="phone-prefix" hidden>+86</span><input id="auth-address" name="username" type="email" autocomplete="username" maxlength="254" placeholder="请输入邮箱地址" required></div><p class="field-hint" id="channel-hint" hidden>目前支持中国大陆手机号</p></div>
+          <div class="field" id="code-field" hidden><label for="auth-code">验证码</label><div class="input-shell code-shell"><input id="auth-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="请输入 6 位验证码"><button id="send-code" type="button">获取验证码</button></div><p class="field-hint" id="code-hint">验证码仅用于验证本次账户操作。</p></div>
+          <div class="field" id="password-field"><div class="label-row"><label for="auth-password" id="password-label">密码</label><button class="text-button" id="forgot-password" type="button">忘记密码？</button></div><div class="input-shell"><input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="10" maxlength="128" placeholder="请输入密码"><button id="toggle-password" class="password-toggle" type="button" aria-label="显示密码" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div><p class="field-hint" id="password-hint" hidden>设置 10–128 个字符的密码，建议组合字母、数字与符号。</p></div>
+          <div class="auth-message error" id="auth-error" role="alert" hidden></div>
+          <div class="auth-message success" id="auth-status" role="status" hidden></div>
+          <button class="submit-button" id="auth-submit" type="submit"><span id="submit-label">登录</span><span class="submit-arrow" aria-hidden="true">→</span></button>
+          <p class="availability-note" id="availability-note" role="status" hidden></p>
+        </form>
+        <div class="account-switch"><span id="switch-copy">还没有账户？</span> <button class="text-button" id="switch-mode" type="button">创建账户</button></div>
+        <div class="auth-divider"><span>安心开始，专注研究</span></div>
+        <p class="account-note">账户用于保存在线项目与成果。<br>浏览器中的本地草稿仍保存在当前设备。</p>
+        <a class="guest-link" href="/workspace.html#home">先体验本地工具 <span aria-hidden="true">↗</span></a>
+        <noscript><p class="auth-message error">请启用浏览器 JavaScript 后登录。</p></noscript>
+      </div>
+    </section>
+  </main>
+  <footer class="auth-footer"><span>© 2026 PaperKnow</span><a href="/#availability">数据如何处理</a><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">浙ICP备2026052190号-5</a></footer>
+</body>
+</html>

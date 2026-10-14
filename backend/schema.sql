@@ -1,5 +1,5 @@
 PRAGMA foreign_keys=ON;
-CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,name TEXT NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'user',created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE,name TEXT NOT NULL,password_hash TEXT,role TEXT NOT NULL DEFAULT 'user',created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),title TEXT NOT NULL,degree TEXT NOT NULL,major TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),project_id TEXT REFERENCES projects(id),name TEXT NOT NULL,kind TEXT NOT NULL,bytes INTEGER NOT NULL,sha256 TEXT NOT NULL,body BLOB NOT NULL,created_at TEXT NOT NULL);
@@ -15,3 +15,30 @@ CREATE INDEX IF NOT EXISTS results_owner ON results(user_id,created_at);
 CREATE TABLE IF NOT EXISTS result_revisions(id TEXT PRIMARY KEY,result_id TEXT NOT NULL REFERENCES results(id),user_id TEXT NOT NULL REFERENCES users(id),body TEXT NOT NULL,created_at TEXT NOT NULL);
 
 CREATE TABLE IF NOT EXISTS service_settings(name TEXT PRIMARY KEY,value TEXT NOT NULL,updated_by TEXT NOT NULL REFERENCES users(id),updated_at TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS auth_identities(
+  channel TEXT NOT NULL CHECK(channel IN ('email','phone')),
+  address TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  verified_at TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(channel,address),
+  UNIQUE(user_id,channel)
+);
+CREATE TABLE IF NOT EXISTS auth_challenges(
+  id TEXT PRIMARY KEY,
+  channel TEXT NOT NULL CHECK(channel IN ('email','phone')),
+  address TEXT NOT NULL,
+  purpose TEXT NOT NULL CHECK(purpose IN ('login','register','reset')),
+  code_hash TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('pending','sent','failed','superseded','consumed','locked')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  delivered_at INTEGER,
+  consumed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS auth_challenge_address ON auth_challenges(channel,address,created_at);
+CREATE INDEX IF NOT EXISTS auth_challenge_expiry ON auth_challenges(expires_at);
+CREATE TABLE IF NOT EXISTS auth_rate_limits(bucket TEXT PRIMARY KEY,count INTEGER NOT NULL,reset_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS auth_rate_expiry ON auth_rate_limits(reset_at);

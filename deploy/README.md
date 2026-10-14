@@ -154,3 +154,18 @@ sudo /opt/paperknow/bin/rollback.sh --release <已有版本目录名>
 发布或回滚健康检查失败会尝试恢复之前的代码链接并重新检查服务。**自动恢复和手动回滚都只回滚代码，不恢复数据库或环境配置。** 数据库迁移不一定向后兼容；执行回滚前必须核对，脚本不会用旧快照覆盖新业务数据。需要恢复数据库时，应单独停用 PaperKnow、保留当前数据后由管理员处理，避免丢失发布后的记录。并发发布/回滚由同一把锁排除。
 
 脚本自身的更新需要审阅后重新安装到 `/opt/paperknow/bin`；发布过程不会用新仓库脚本替换正在执行的管理工具。
+
+
+## Email and mobile authentication
+
+The standalone `/auth.html` page supports email and mainland China mobile (+86) password/code login, verified registration, and password reset. Configure only the dedicated `PK_AUTH_*`, `PK_EMAIL_*`, and `PK_SMS_*` variables in `/etc/paperknow/paperknow.env` (root mode 0600). The non-secret field list is in `paperknow.env.example`.
+
+- `PK_AUTH_CODE_SECRET`: unique random secret of at least 32 bytes. Keep it stable between releases. Do not copy another app's auth signing/encryption secret.
+- Mail uses Aliyun DirectMail SMTP with TLS and a verified sending account. Sender display name and message text are PaperKnow. SMS uses an approved Aliyun sign/template; `PK_SMS_CODE_PARAM` defaults to `code`.
+- The same delivery credentials can be reused when authorized, but accounts, sessions, challenges, and limits stay in the PaperKnow database. Never read or modify another app's user tables.
+- `/api/auth/options` is public and reports availability only, never credentials. Unconfigured services cannot create a challenge or pretend delivery succeeded.
+- Codes expire in five minutes, allow five wrong attempts, and can be consumed once. Resends invalidate prior codes. The 60-second recipient cooldown applies across login/registration/reset. Persistent address/IP/global limits count send attempts including failures; the default global cap is 100 per rolling 24 hours, configured via `PK_AUTH_DAILY_SEND_LIMIT`.
+- Existing email/password logins and user IDs are preserved. The migration creates a `*.before-auth-*.sqlite` backup and checks foreign keys before commit. The release snapshot also retains the database and environment. Do not restore a database snapshot over newer user activity without review.
+- Legacy emails were not verified at registration. Their first successful code login revokes previous sessions and clears the old, unverified password. The verified owner can set a password using the password-reset flow. Password reset revokes every prior session.
+- New registration requires a verified code. Email and phone identities are independent; no automatic account merging or unverified phone/password creation is supported.
+- `npm run test:auth` uses only synthetic recipients and injected delivery transports. Deployment runs these tests without production credentials. SMTP connection verification is not proof of inbox receipt; verify real delivery with the owner through the live UI. Never log codes or provider credentials.

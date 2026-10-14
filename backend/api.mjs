@@ -1,16 +1,18 @@
 import {randomUUID} from 'node:crypto';
-import {hashPassword,verifyPassword,createSession,sessionUser,sessionCookie,digest} from './auth.mjs';
+import {sessionUser,sessionCookie,digest} from './auth.mjs';
+import {createAuthService} from './auth-service.mjs';
+import {createAuthDelivery} from './auth-delivery.mjs';
 import {aiReady,publicModelSettings} from './config.mjs';
 import {fileBytes} from './storage.mjs';
 import {now} from './database.mjs';
 import {clientAddress} from './client-address.mjs';
-const safeUser=u=>({id:u.id,email:u.email,name:u.name,role:u.role});
 class APIError extends Error{constructor(status,message){super(message);this.status=status;}}
 const fail=(status,message)=>{throw new APIError(status,message);};
 const text=(v,max=200,min=1)=>{if(typeof v!=='string'||v.trim().length<min||v.length>max)fail(400,`请输入 ${min}～${max} 字符的有效内容`);return v.trim();};
 const url=v=>{if(!v)return '';try{const u=new URL(v);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw 0;return u.href;}catch{fail(400,'来源网址必须是有效的 HTTP/HTTPS 链接');}};
 async function body(req){if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'请提交 JSON 内容');let bytes=0,chunks=[];for await(const chunk of req){bytes+=chunk.length;if(bytes>3*1024*1024)fail(413,'请求超过 3MB 限制');chunks.push(chunk);}try{const v=JSON.parse(Buffer.concat(chunks).toString());if(!v||Array.isArray(v)||typeof v!=='object')throw 0;return v;}catch{fail(400,'请求内容不是有效 JSON');}}
 export function createAPI(db,worker,config={}){
+const auth=createAuthService(db,{secret:config.authCodeSecret,dailyLimit:config.authDailyLimit,delivery:config.authDelivery||createAuthDelivery(config)});
 const attempts=new Map();function rate(req,limit){const key=clientAddress(req,config);const t=Date.now();if(attempts.size>10000)for(const [k,v]of attempts)if(v.until<t)attempts.delete(k);const item=attempts.get(key)||{count:0,until:t+600000};if(item.until<t){item.count=0;item.until=t+600000;}item.count++;attempts.set(key,item);if(item.count>limit)fail(429,'请求过于频繁，请稍后重试');}
 function own(table,id,user){const row=db.prepare(`SELECT * FROM ${table} WHERE id=? AND user_id=?`).get(id,user.id);if(!row)fail(404,'记录不存在');return row;}
 function project(id,user){if(id)own('projects',id,user);return id||null;}
@@ -18,12 +20,21 @@ return async(req,res)=>{const send=(status,value,headers={})=>{res.writeHead(sta
 const path=new URL(req.url,'http://localhost').pathname;const method=req.method;
 if(!['GET','POST'].includes(method))fail(405,'不支持的请求方式');
 if(method==='POST'){const origin=req.headers.origin;if(!origin||origin!==`${config.secure?'https':'http'}://${req.headers.host}`)fail(403,'请求来源不匹配');}
-if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:false,ai:aiReady(config.getAI()),aiProvider:publicModelSettings(config.getAI()).provider,agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),agentEngine:config.agentEnabled?'codex_sdk':null,payment:false,academicSearch:false,maxFileBytes:2*1024*1024});return;}
-if(['/api/auth/register','/api/auth/login'].includes(path)&&method==='POST'){
-rate(req,30);const b=await body(req);const email=text(b.email,254).toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'邮箱格式不正确');text(b.password,128,10);const password=b.password;let user;
-if(path.endsWith('register')){const name=text(b.name,30);if(db.prepare('SELECT id FROM users WHERE email=?').get(email))fail(409,'该邮箱已注册');user={id:randomUUID(),email,name,role:'user'};const hash=await hashPassword(password);try{db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run(user.id,email,name,hash,'user',now());}catch(e){if(e.code?.includes('SQLITE'))fail(409,'该邮箱已注册');throw e;}}
-else{const row=db.prepare('SELECT * FROM users WHERE email=?').get(email);if(!row){await hashPassword(password);fail(401,'邮箱或密码不正确');}if(!await verifyPassword(password,row.password_hash))fail(401,'邮箱或密码不正确');user=safeUser(row);}
-send(200,{user},{'Set-Cookie':sessionCookie(createSession(db,user.id),config.secure)});return;}
+if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),aiProvider:publicModelSettings(config.getAI()).provider,agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),agentEngine:config.agentEnabled?'codex_sdk':null,payment:false,academicSearch:false,maxFileBytes:2*1024*1024});return;}
+if(path==='/api/auth/options'&&method==='GET'){send(200,auth.options());return;}
+const authRoutes={
+  '/api/auth/login':(b,ip)=>auth.passwordLogin(b,ip),
+  '/api/auth/code/send':(b,ip)=>auth.sendCode(b,ip),
+  '/api/auth/code/login':b=>auth.codeLogin(b),
+  '/api/auth/register':b=>auth.register(b),
+  '/api/auth/password/reset':b=>auth.resetPassword(b),
+};
+if(method==='POST'&&Object.hasOwn(authRoutes,path)){
+  rate(req,30);const result=await authRoutes[path](await body(req),clientAddress(req,config));
+  if(result.token){send(200,{user:result.user},{'Set-Cookie':sessionCookie(result.token,config.secure)});}
+  else send(200,result,path==='/api/auth/password/reset'?{'Set-Cookie':sessionCookie('',config.secure)}:{});
+  return;
+}
 const user=sessionUser(db,req);if(!user)fail(401,'请先登录服务账户');
 if(path==='/api/auth/me'&&method==='GET'){send(200,{user});return;}
 if(path==='/api/auth/logout'&&method==='POST'){const token=(req.headers.cookie||'').split(';').map(v=>v.trim()).find(v=>v.startsWith('pk_session='))?.slice(11);if(token)db.prepare('DELETE FROM sessions WHERE token_hash=?').run(digest(token));send(200,{ok:true},{'Set-Cookie':sessionCookie('',config.secure)});return;}
@@ -52,7 +63,7 @@ if(path==='/api/admin/model'){
 if(user.role!=='admin')fail(403,'需要管理员权限');
 if(method==='POST'){const b=await body(req);const model=text(b.model,100);if(!/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$/.test(model)||typeof b.enabled!=='boolean')fail(400,'模型名称或启停状态无效');config.settings.save(model,b.enabled,user.id);}
 send(200,{ai:publicModelSettings(config.getAI()),storage:{provider:config.storage?.provider||'local_server_sqlite',bucket:config.storage?.bucket||null,prefix:config.storage?.prefix||null}});return;}
-if(path==='/api/admin'&&method==='GET'){if(user.role!=='admin')fail(403,'需要管理员权限');send(200,{users:db.prepare('SELECT id,email,name,role,created_at FROM users').all(),jobs:db.prepare('SELECT id,user_id,type,status,error,created_at FROM jobs ORDER BY created_at DESC LIMIT 100').all(),feedback:db.prepare('SELECT * FROM feedback ORDER BY created_at DESC LIMIT 100').all(),orders:db.prepare('SELECT * FROM orders ORDER BY created_at DESC LIMIT 100').all()});return;}
+if(path==='/api/admin'&&method==='GET'){if(user.role!=='admin')fail(403,'需要管理员权限');send(200,{users:db.prepare("SELECT u.id,u.email,u.name,u.role,u.created_at,(SELECT address FROM auth_identities i WHERE i.user_id=u.id AND i.channel='phone') AS phone FROM users u").all(),jobs:db.prepare('SELECT id,user_id,type,status,error,created_at FROM jobs ORDER BY created_at DESC LIMIT 100').all(),feedback:db.prepare('SELECT * FROM feedback ORDER BY created_at DESC LIMIT 100').all(),orders:db.prepare('SELECT * FROM orders ORDER BY created_at DESC LIMIT 100').all()});return;}
 fail(404,'接口不存在');
 }catch(e){send(e.status||500,{error:e.status?e.message:'服务暂时无法完成请求'});}};
 }

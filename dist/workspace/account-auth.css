@@ -1,0 +1,52 @@
+/* Account identity is separate from this browser's research preferences. */
+.workspace-account-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(300px,.85fr);gap:22px;align-items:start;max-width:1160px}
+.workspace-account-layout .hub-card{margin:0;padding:28px}
+.workspace-account-session{grid-column:1/-1;background:linear-gradient(115deg,#fff 55%,#f0f6ff)!important;border-color:#dce8fa!important}
+.workspace-account-kicker{font-size:10px;letter-spacing:1.6px;font-weight:700;color:#6b83a6;margin-bottom:23px}
+.workspace-account-session .hub-account-summary{margin-bottom:14px;gap:16px}
+.workspace-account-session .hub-account-summary>.hub-avatar,.workspace-account-symbol{width:56px;height:56px;border-radius:16px;background:#eaf2ff;color:#2e6de4;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px}
+.workspace-account-session .hub-account-summary h2,.workspace-account-guest h2{font-size:23px;letter-spacing:-.4px;line-height:1.4;color:#223a61;margin:0}
+.workspace-account-session .hub-account-summary p,.workspace-account-guest p{font-size:13px;line-height:1.7;color:#7184a2;margin:7px 0 0;overflow-wrap:anywhere}
+.workspace-account-guest{display:flex;align-items:center;gap:18px}
+.workspace-account-description{font-size:13px;color:#7184a2;line-height:1.9;margin:18px 0}
+.workspace-account-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:24px 0 20px}
+.workspace-account-actions .btn,.workspace-account-security .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:42px;font-size:13px;padding:11px 20px}
+.workspace-account-actions button:disabled{opacity:.55;cursor:wait}
+.workspace-account-note{font-size:12px;color:#7b8ca5;line-height:1.85;margin:0}
+.workspace-account-session>.workspace-account-note{border-top:1px solid #e7edf7;padding-top:17px}
+.workspace-section-title{display:flex;gap:12px;align-items:center;margin-bottom:22px}
+.workspace-section-title .hub-row-icon{width:42px;height:42px}
+.workspace-section-title h2{font-size:17px!important;margin:0}
+.workspace-section-title p{font-size:12px;color:#8392a9;margin:5px 0 0;line-height:1.6}
+.workspace-account-preferences .hub-form label{font-size:13px;margin-top:20px}
+.workspace-account-preferences .hub-form input,.workspace-account-preferences .hub-form textarea,.workspace-account-preferences .hub-form select{font-size:14px;padding:12px 13px}
+.workspace-account-preferences .hub-form input:focus,.workspace-account-preferences .hub-form textarea:focus,.workspace-account-preferences .hub-form select:focus{outline:2px solid #bdd3ff;outline-offset:1px;border-color:#7faaff}
+.workspace-field-hint{font-size:11px;color:#8b99af;line-height:1.7;margin:7px 0 0}
+.workspace-save-status{font-size:12px;color:#28866d;display:inline-block;margin:14px 0 0 12px}
+.workspace-security-list{margin:0 0 18px;padding:0}
+.workspace-security-list>div{padding:18px 0;border-bottom:1px solid #edf1f7}
+.workspace-security-list dt{font-size:12px;color:#8a99ae;margin-bottom:9px}
+.workspace-security-list dd{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:14px;color:#355073;margin:0;overflow-wrap:anywhere}
+.workspace-security-list dd a{font-size:12px;color:#2e6de4;display:inline-flex;gap:5px;align-items:center}
+.workspace-account-storage{grid-column:2;display:flex;gap:12px;background:#edf4ff;color:#54749d;border-radius:12px;padding:21px 24px;margin-top:-2px}
+.workspace-account-storage>svg{flex-shrink:0;margin-top:2px;color:#628dd0}
+.workspace-account-storage b{font-size:13px;font-weight:600}
+.workspace-account-storage p{font-size:12px;line-height:1.8;color:#7a91af;margin:8px 0 12px}
+.workspace-account-storage a{font-size:12px;color:#3976cc;display:inline-flex;align-items:center;gap:5px}
+.workspace-account-preferences{grid-row:2/4}
+.workspace-account-security{grid-column:2}
+.workspace-menu-identity{padding:12px 12px 15px;border-bottom:1px solid #edf1f7;margin-bottom:5px;max-width:240px}
+.workspace-menu-identity b{display:block;font-size:13px;color:#2a4369;overflow-wrap:anywhere}
+.workspace-menu-identity small{display:block;font-size:11px;color:#8a9bb3;margin-top:6px;overflow-wrap:anywhere;line-height:1.5}
+.hub-account-menu .workspace-menu-login{color:#276cff;font-weight:600}
+.hub-account-menu [data-session-logout]{display:block;width:100%;text-align:left;font-size:13px;color:#737f94;background:none;padding:12px;border-top:1px solid #edf1f7;margin-top:4px;border-radius:0 0 6px 6px}
+.hub-account-menu [data-session-logout]:hover{background:#fff3f3;color:#b25454}
+.hub-account-menu [data-session-logout]:disabled{opacity:.6;cursor:wait}
+.hub-profile-trigger>span:nth-child(2){min-width:0;flex:1}
+.hub-profile-trigger .hub-profile-name,.hub-profile-caption{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.hub-theme-dark .workspace-account-session{background:linear-gradient(115deg,#1a2d45,#203957)!important;border-color:#334d6b!important}
+.hub-theme-dark .workspace-account-session h2,.hub-theme-dark .workspace-section-title h2,.hub-theme-dark .workspace-security-list dd{color:#d9e6f7}
+.hub-theme-dark .workspace-account-storage{background:#203957;color:#a4bfdf}
+.hub-theme-dark .workspace-account-preferences input,.hub-theme-dark .workspace-account-preferences select,.hub-theme-dark .workspace-account-preferences textarea{background:#13253a;color:#d9e6f7;border-color:#3a526f}
+@media(max-width:1050px){.workspace-account-layout{grid-template-columns:minmax(0,1fr)}.workspace-account-preferences,.workspace-account-security,.workspace-account-storage{grid-column:1;grid-row:auto}.workspace-account-storage{margin:0}.workspace-account-layout .hub-card{padding:24px}}
+@media(max-width:600px){.workspace-account-layout{gap:16px}.workspace-account-layout .hub-card{padding:21px}.workspace-account-guest{align-items:flex-start;gap:13px}.workspace-account-session .hub-account-summary h2,.workspace-account-guest h2{font-size:20px}.workspace-account-symbol{width:45px;height:45px;border-radius:13px}.workspace-account-actions .btn{flex:1;white-space:nowrap}.workspace-account-preferences .hub-form-row{grid-template-columns:1fr;gap:0}.workspace-save-status{display:block;margin-left:0}.workspace-account-storage{padding:20px}.workspace-account-session .hub-account-summary>.hub-badge{margin-left:0}}

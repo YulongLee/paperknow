@@ -7,6 +7,11 @@ export function loadLocalEnvironment(){
 }
 export function environmentConfig(env=process.env){
   return {agentEnabled:env.PK_AGENT_ENABLED==='1',aiURL:env.PK_AI_URL,aiKey:env.PK_AI_KEY,aiModel:env.PK_AI_MODEL,secure:env.PK_SECURE_COOKIE==='1',trustProxy:env.PK_TRUST_PROXY==='1',
+    authCodeSecret:env.PK_AUTH_CODE_SECRET,authDailyLimit:/^[1-9]\d{0,3}$/.test(env.PK_AUTH_DAILY_SEND_LIMIT||'')?Number(env.PK_AUTH_DAILY_SEND_LIMIT):100,
+    emailSMTPHost:env.PK_EMAIL_SMTP_HOST,emailSMTPPort:Number(env.PK_EMAIL_SMTP_PORT||465),emailSMTPSecure:env.PK_EMAIL_SMTP_SECURE!=='0',
+    emailSMTPUser:env.PK_EMAIL_SMTP_USER,emailSMTPPassword:env.PK_EMAIL_SMTP_PASSWORD,emailFrom:env.PK_EMAIL_FROM,
+    smsAccessKeyId:env.PK_SMS_ACCESS_KEY_ID,smsAccessKeySecret:env.PK_SMS_ACCESS_KEY_SECRET,smsSignName:env.PK_SMS_SIGN_NAME,
+    smsTemplateCode:env.PK_SMS_TEMPLATE_CODE,smsCodeParam:env.PK_SMS_CODE_PARAM||'code',
     ossBucket:env.PK_OSS_BUCKET,ossEndpoint:env.PK_OSS_ENDPOINT,ossRegion:env.PK_OSS_REGION,
     ossPrefix:env.PK_OSS_PREFIX||'paperknow/',ossAccessKeyId:env.PK_OSS_ACCESS_KEY_ID,ossAccessKeySecret:env.PK_OSS_ACCESS_KEY_SECRET};
 }
