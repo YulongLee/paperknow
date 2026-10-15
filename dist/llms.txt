@@ -4,16 +4,16 @@
 
 ## 产品与使用
 - [论文与科研功能介绍](https://paperknow.cn/features/): 查看 PaperKnow AI 写作、AI 研读、降重、材料比对、PPT、格式排版与科研工具的实际使用范围和流程。
-- [AI 写作工作台与论文大纲编辑](https://paperknow.cn/features/ai-writing/): 整理毕业论文、开题报告与文献综述的大纲、资料和章节内容。了解 PaperKnow 写作流程、草稿保存与成果导出条件；在线 AI 生成尚未开放。
-- [AI 研读与文献管理｜我的文献、研读与翻译](https://paperknow.cn/features/ai-reading/): 在 PaperKnow 整理我的文献、检索入口、研读笔记与人工译文。了解正文、摘要与题录的区别；在线学术检索、AI 研读和自动翻译尚未开放。
-- [论文降重复率与引用核对工作台](https://paperknow.cn/features/reduce-similarity/): 整理待修改的论文片段，核对引用和实际来源，逐段保留原稿、修改稿与历史版本。PaperKnow 在线自动降重尚未开放，不承诺固定重复率。
-- [降 AI 率功能说明与论文表达整理](https://paperknow.cn/features/reduce-ai/): 了解 PaperKnow 降 AI 率入口的当前范围，保留原稿并人工核对术语、事实和引用。在线 AI 改写及 AI 率检测尚未开放，不承诺检测数值。
-- [免费查重功能说明与本地材料比对](https://paperknow.cn/features/similarity-check/): 将论文与自行导入的参考正文进行本地材料比对，查看相似片段和对照来源。PaperKnow 当前不查询全网学术数据库，不能替代学校指定检测。
-- [PPT 创作、开题 PPT 与毕业答辩 PPT](https://paperknow.cn/features/ppt/): 了解 PaperKnow AI PPT、开题 PPT 与毕业 PPT 的不同流程。使用本地结构模板，人工编辑页面与备注，导出可编辑 PPTX；在线 AI 提炼尚未开放。
-- [论文格式检测、智能排版与格式精修](https://paperknow.cn/features/format/): 了解 PaperKnow 格式检测、智能排版和格式精修的不同流程。本地检查 DOCX、应用通用规则并导出副本；高校模板库与人工精修尚未开放。
-- [科研绘图、基础图表与公式编辑工具](https://paperknow.cn/features/research-tools/): 使用 PaperKnow 导入实际数据，制作柱状图、折线图、散点图和分组柱状图，导出图形与数据。提供描述统计和公式文本编辑，专业生成尚未开放。
+- [AI 论文写作工具｜大纲、章节与草稿管理](https://paperknow.cn/features/ai-writing/): 了解 PaperKnow AI 论文写作工具的当前范围：使用本地结构模板整理论文大纲，人工编辑章节、保存草稿并核对导出条件。在线 AI 生成尚未开放。
+- [文献管理工具｜本地研读笔记与译文整理](https://paperknow.cn/features/ai-reading/): 使用 PaperKnow 文献管理工具归档资料、搜索本地文献、记录研读笔记并整理人工译文。区分正文、摘要与题录；在线学术检索、AI 研读和自动翻译尚未开放。
+- [论文降重流程｜人工修改、引用核对与版本保存](https://paperknow.cn/features/reduce-similarity/): 了解 PaperKnow 论文降重入口的人工修改流程：导入正文、核对来源与引用，对照原稿逐段编辑并保存版本。在线自动降重尚未开放，不承诺重复率或检测结果。
+- [降 AI 率功能说明｜论文表达核对与原稿管理](https://paperknow.cn/features/reduce-ai/): 查看 PaperKnow 降 AI 率入口的能力说明：在线 AI 改写和 AI 率检测尚未开放。当前可通过本地流程保留原稿、人工核对术语与引用并保存修改，不承诺检测数值。
+- [论文文本比对工具｜本地材料与相似片段核对](https://paperknow.cn/features/similarity-check/): 使用 PaperKnow 论文文本比对工具，将论文与自行导入的参考正文对照，查看相似片段和来源。当前免费查重入口仅提供本地材料比对，不查询全网数据库，也不替代学校正式检测。
+- [答辩 PPT 制作｜开题、毕业与可编辑 PPTX](https://paperknow.cn/features/ppt/): 使用 PaperKnow 答辩 PPT 制作工具，为开题计划与毕业成果组织汇报。选择本地结构模板，人工编辑大纲、页面和演讲备注，导出可编辑 PPTX。AI PPT、开题 PPT 与毕业 PPT 各有流程，在线 AI 提炼尚未开放。
+- [论文格式排版工具｜DOCX 检测与样式整理](https://paperknow.cn/features/format/): 使用 PaperKnow 论文格式排版工具，在本地检查 DOCX 的字体、字号、行距和页边距，应用可处理的样式并导出副本。了解格式检测、智能排版与格式精修的范围；高校模板库与人工精修尚未开放。
+- [科研绘图工具｜基础图表、数据导出与公式编辑](https://paperknow.cn/features/research-tools/): 使用 PaperKnow 科研绘图工具导入实际数据，制作柱状图、分组柱状图、折线图和散点图，导出 SVG、PNG 与 CSV。另有描述统计和公式文本编辑；专业图表自动生成尚未开放。
 - [论文与科研工具使用指南](https://paperknow.cn/guides/): 阅读 PaperKnow 论文大纲、材料比对、DOCX 格式、开题与毕业 PPT、科研图表的操作指南。
-- [论文大纲怎么整理｜从研究问题到章节编辑](https://paperknow.cn/guides/paper-outline/): 按 PaperKnow 当前写作流程填写基础信息、补充资料、确认文献、编辑提纲并保存草稿。包含人工结构示例和导出范围说明，不将模板当作完整论文。
+- [论文大纲生成与编辑指南｜本地模板与章节规划](https://paperknow.cn/guides/paper-outline/): 了解 PaperKnow 论文大纲生成与编辑步骤：用本地结构模板建立框架，补充资料、确认文献，再人工调整章节和字数。包含结构示例、草稿保存与导出范围说明，在线 AI 生成尚未开放。
 - [本地材料比对怎么用｜正文、来源与报告核对](https://paperknow.cn/guides/material-comparison/): 按步骤导入论文和自备对照正文，确认章节，运行 PaperKnow 本地材料比对并查看来源。解释结果适用范围，以及为何不能替代学校正式查重。
 - [DOCX 论文格式排版步骤｜检查、应用与副本复核](https://paperknow.cn/guides/docx-format/): 使用 PaperKnow 对照通用或自定义规则检查 DOCX，调整标题与正文范围，导出排版副本，再核对目录、分页和复杂对象。高校模板库及人工精修尚未开放。
 - [开题与毕业 PPT 制作步骤｜结构、页面与 PPTX 导出](https://paperknow.cn/guides/research-ppt/): 根据开题或毕业汇报目标选择 PaperKnow PPT 流程，准备材料、人工确认结构并逐页编辑，导出可编辑 PPTX。当前不自动提炼论文内容。

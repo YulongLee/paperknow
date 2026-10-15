@@ -10,49 +10,49 @@
       "slug": "/features/ai-writing/",
       "file": "features/ai-writing/index.html",
       "modifiedAt": "2026-10-15",
-      "title": "AI 写作工作台与论文大纲编辑"
+      "title": "AI 论文写作工具｜大纲、章节与草稿管理"
     },
     {
       "slug": "/features/ai-reading/",
       "file": "features/ai-reading/index.html",
       "modifiedAt": "2026-10-15",
-      "title": "AI 研读与文献管理｜我的文献、研读与翻译"
+      "title": "文献管理工具｜本地研读笔记与译文整理"
     },
     {
       "slug": "/features/reduce-similarity/",
       "file": "features/reduce-similarity/index.html",
       "modifiedAt": "2026-10-15",
-      "title": "论文降重复率与引用核对工作台"
+      "title": "论文降重流程｜人工修改、引用核对与版本保存"
     },
     {
       "slug": "/features/reduce-ai/",
       "file": "features/reduce-ai/index.html",
       "modifiedAt": "2026-10-15",
-      "title": "降 AI 率功能说明与论文表达整理"
+      "title": "降 AI 率功能说明｜论文表达核对与原稿管理"
     },
     {
       "slug": "/features/similarity-check/",
       "file": "features/similarity-check/index.html",
       "modifiedAt": "2026-10-15",
-      "title": "免费查重功能说明与本地材料比对"
+      "title": "论文文本比对工具｜本地材料与相似片段核对"
     },
     {
       "slug": "/features/ppt/",
       "file": "features/ppt/index.html",
       "modifiedAt": "2026-10-15",
-      "title": "PPT 创作、开题 PPT 与毕业答辩 PPT"
+      "title": "答辩 PPT 制作｜开题、毕业与可编辑 PPTX"
     },
     {
       "slug": "/features/format/",
       "file": "features/format/index.html",
       "modifiedAt": "2026-10-15",
-      "title": "论文格式检测、智能排版与格式精修"
+      "title": "论文格式排版工具｜DOCX 检测与样式整理"
     },
     {
       "slug": "/features/research-tools/",
       "file": "features/research-tools/index.html",
       "modifiedAt": "2026-10-15",
-      "title": "科研绘图、基础图表与公式编辑工具"
+      "title": "科研绘图工具｜基础图表、数据导出与公式编辑"
     },
     {
       "slug": "/guides/",
@@ -64,7 +64,7 @@
       "slug": "/guides/paper-outline/",
       "file": "guides/paper-outline/index.html",
       "modifiedAt": "2026-10-15",
-      "title": "论文大纲怎么整理｜从研究问题到章节编辑"
+      "title": "论文大纲生成与编辑指南｜本地模板与章节规划"
     },
     {
       "slug": "/guides/material-comparison/",

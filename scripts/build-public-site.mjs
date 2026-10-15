@@ -14,8 +14,8 @@ const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&
 const json=value=>JSON.stringify(value).replace(/</g,'\\u003c');
 const categoryNames={writing:'AI 写作',literature:'AI 研读',reduce:'降重复率',aigc:'降AI率',detection:'免费查重',ppt:'PPT 创作',format:'格式排版',research:'科研工具'};
 const titleFor=page=>page.title.includes('PaperKnow')?page.title:`${page.title}｜PaperKnow`;
-const homeTitle='PaperKnow｜论文写作、文献研读与科研辅助工作台';
-const homeDescription='PaperKnow 提供论文大纲与章节编辑、文献管理与研读、材料比对、格式整理、PPT 创作和科研绘图。了解各项能力的使用步骤、支持格式与开放状态，进入你的专属科研工作台。';
+const homeTitle='PaperKnow｜论文写作工具与科研辅助工作台';
+const homeDescription='PaperKnow 论文写作工具，帮助学生与科研工作者整理论文大纲、章节、文献笔记与修改记录。支持本地材料比对、论文格式排版、答辩 PPT 制作和科研绘图；在线 AI 与检索能力以实际开放状态为准。';
 
 function graphFor(page){
  const url=siteURL+page.slug;
