@@ -1,6 +1,6 @@
 # PaperKnow SEO 与 GEO 实施状态
 
-日期：2026-10-15。实施前基线见 [审核报告](FULL-AUDIT-REPORT.md)，完整设计及维护规则见 [设计方案](docs/seo/SEO-GEO-DESIGN.md)。本文件记录代码与本地验收状态；线上发布结果以发布验收记录为准。
+日期：2026-10-15。实施前基线见 [审核报告](FULL-AUDIT-REPORT.md)，完整设计及维护规则见 [设计方案](docs/seo/SEO-GEO-DESIGN.md)。本次代码已上线并通过正式域名验收，发布版本 `5d251df8a63412a3f9dd4206a3473cd2c84b37c5`。验收记录见 [线上发布检查](docs/seo/LAUNCH-VERIFICATION.md)。
 
 ## 已实现
 
