@@ -41,8 +41,8 @@ async function fixture(t,{config:overrides={},adapters={}}={}){
  return {base,db,config,request,channel,publish,ready,create,notify,paidResult,orderEntry,created,queried,verified,remote,user,other,admin,count};
 }
 
-test('closed payment channels and unpublished products return 503 without creating an order',async t=>{
- const f=await fixture(t);assert.equal((await f.request('/api/payments/options',{cookie:''})).value.enabled,false);assert.equal((await f.create()).status,503);assert.equal(f.count('orders'),0);assert.equal((await f.channel()).status,200);assert.equal((await f.create()).status,503);assert.equal(f.count('orders'),0);assert.equal((await f.publish()).status,200);assert.equal((await f.channel('wechat',{enabled:false})).status,200);assert.equal((await f.create()).status,503);assert.equal(f.count('orders'),0);assert.equal(f.created.length,0);
+test('closed payment channels and unpublished membership products reject creation without creating an order',async t=>{
+ const f=await fixture(t);assert.equal((await f.request('/api/payments/options',{cookie:''})).value.enabled,false);assert.equal((await f.create()).status,503);assert.equal(f.count('orders'),0);assert.equal((await f.channel()).status,200);assert.equal((await f.create()).status,409);assert.equal(f.count('orders'),0);assert.equal((await f.publish()).status,200);assert.equal((await f.channel('wechat',{enabled:false})).status,200);assert.equal((await f.create()).status,503);assert.equal(f.count('orders'),0);assert.equal(f.created.length,0);
 });
 
 test('admin payment configuration requires persisted administrator role and same-origin POST',async t=>{
@@ -62,8 +62,8 @@ test('explicit clearing disables a channel until the missing secret is supplied 
  const f=await fixture(t);await f.ready();const cleared=await f.request('/api/admin/payments/wechat',{cookie:f.admin.cookie,data:{enabled:false,clearSecrets:['apiV3Key']}});assert.equal(cleared.status,200);assert.equal(cleared.value.secretFields.apiV3Key,false);assert.equal(cleared.value.ready,false);assert.equal((await f.request('/api/admin/payments/wechat',{cookie:f.admin.cookie,data:{enabled:true}})).status,400);assert.equal((await f.create()).status,503);assert.equal(f.count('orders'),0);assert.equal((await f.channel()).value.ready,true);
 });
 
-test('public catalogue contains only published, fully priced membership products',async t=>{
- const f=await fixture(t);await f.channel();const initial=await f.request('/api/payments/options',{cookie:''});assert.equal(initial.value.products.length,0);assert.equal(initial.value.enabled,false);for(const fields of [{priceCents:3.21},{priceCents:'321'},{priceCents:0},{priceCents:-1},{durationDays:0},{description:''}])assert.equal((await f.publish('basic',fields)).status,400);assert.equal(f.count('orders'),0);assert.equal((await f.publish()).status,200);const options=(await f.request('/api/payments/options',{cookie:''})).value;assert.equal(options.enabled,true);assert.equal(options.products.length,1);assert.equal(options.products[0].priceCents,321);assert.equal(options.products[0].entitlement.durationDays,7);assert.equal(JSON.stringify(options).includes(wechat.apiV3Key),false);assert.equal((await f.publish('no-such-product')).status,404);
+test('public catalogue contains approved credit tiers and only fully priced published memberships',async t=>{
+ const f=await fixture(t);await f.channel();const initial=await f.request('/api/payments/options',{cookie:''});assert.equal(initial.value.products.length,3);assert.ok(initial.value.products.every(item=>item.entitlementType==='credits'));assert.equal(initial.value.enabled,true);for(const fields of [{priceCents:3.21},{priceCents:'321'},{priceCents:0},{priceCents:-1},{durationDays:0},{description:''}])assert.equal((await f.publish('basic',fields)).status,400);assert.equal(f.count('orders'),0);assert.equal((await f.publish()).status,200);const options=(await f.request('/api/payments/options',{cookie:''})).value;assert.equal(options.enabled,true);assert.equal(options.products.length,4);const membership=options.products.find(item=>item.id==='basic');assert.equal(membership.priceCents,321);assert.equal(membership.entitlement.durationDays,7);assert.equal(JSON.stringify(options).includes(wechat.apiV3Key),false);assert.equal((await f.publish('no-such-product')).status,404);
 });
 
 test('server fixes the exact cents and rejects client price, currency, quantity or entitlement overrides',async t=>{
@@ -165,4 +165,15 @@ test('five-column historical orders remain readable without inventing price, QR 
 
 test('notification content types and body limits are enforced before channel processing',async t=>{
  const f=await fixture(t);await f.ready();await f.channel('alipay');const item=(await f.create()).value.item;assert.equal((await f.notify(item,{contentType:'text/plain'})).status,415);const tooLarge=await fetch(f.base+'/api/payments/notify/wechat',{method:'POST',headers:{'Content-Type':'application/json'},body:'x'.repeat(262145)});assert.equal(tooLarge.status,413);const wrongAli=await fetch(f.base+'/api/payments/notify/alipay',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});assert.equal(wrongAli.status,415);assert.equal(f.verified.length,0);assert.equal(f.count('payment_entitlements'),0);
+});
+
+test('administrator credit edits persist explicit units and auditable quantity without creating a charge',async t=>{
+ const f=await fixture(t);
+ const saved=await f.request('/api/admin/payments/products/credits-200',{cookie:f.admin.cookie,data:{title:'250 科研积分',description:'250 积分充值；消费待开放。',priceCents:2500,durationDays:null,entitlementType:'credits',creditAmount:250,status:'active'}});
+ assert.equal(saved.status,200);assert.equal(saved.value.item.entitlementType,'credits');assert.equal(saved.value.item.creditAmount,250);assert.equal(saved.value.item.durationDays,null);
+ const catalogue=(await f.request('/api/payments/options',{cookie:''})).value;
+ assert.equal(catalogue.products.find(p=>p.id==='credits-200').priceCents,2500);
+ const row=f.db.prepare("SELECT detail FROM admin_audit WHERE action='payment.product.update' AND target_id='credits-200'").get();
+ const detail=JSON.parse(row.detail);assert.equal(detail.entitlementType,'credits');assert.equal(detail.creditAmount,250);assert.equal(detail.priceCents,2500);
+ assert.equal(f.count('orders'),0);assert.equal(f.count('payment_credit_ledger'),0);
 });

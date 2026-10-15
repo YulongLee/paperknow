@@ -10,6 +10,7 @@ const channels = [
   { provider: 'alipay', enabled: false, configured: false, ready: false, fields: {}, secretFields: {}, notifyUrl: 'https://paperknow.cn/api/payments/notify/alipay', validation: ['请配置应用 AppID'] }
 ];
 const catalog = [{ id: 'basic', title: '基础会员', description: '', status: 'preview', priceCents: null, durationDays: null, entitlementType: 'membership' }];
+const creditCatalog = [200, 500, 1000].map(creditAmount => ({ id: `credits-${creditAmount}`, title: `${creditAmount} 积分`, description: `到账 ${creditAmount} 积分。`, status: 'preview', priceCents: creditAmount * 10, durationDays: null, entitlementType: 'credits', creditAmount }));
 async function settle(check) { for (let i = 0; i < 100; i++) { if (check()) return; await new Promise(resolve => setTimeout(resolve, 5)); } throw new Error('UI did not settle'); }
 async function page(t, { role = 'admin', data, handle, hash = '#payments' } = {}) {
   const dom = new JSDOM(html, { url: 'https://paperknow.cn/admin.html' + hash, pretendToBeVisual: true });
@@ -140,7 +141,48 @@ test('product prices are parsed exactly to integer cents and products remain unp
   ui.fill('#product-basic-price', '0.29'); ui.fill('#product-basic-days', '30'); ui.fill('#product-basic-description', '已开放的会员权益。'); ui.submit('[data-payment-product="basic"]');
   await settle(() => saved && !ui.$('[data-payment-product="basic"] [type="submit"]').disabled);
   assert.equal(saved.priceCents, 29); assert.equal(saved.durationDays, 30); assert.equal(saved.status, 'preview');
+  assert.deepEqual(saved, { title: '基础会员', description: '已开放的会员权益。', status: 'preview', priceCents: 29, durationDays: 30 });
   assert.equal(ui.$('#product-basic-price').value, '0.29'); assert.match(ui.$('#admin-toast').textContent, /当前未上架/);
+});
+
+test('membership and credit products are grouped with distinct delivery fields and the confirmed credit amounts', async t => {
+  const ui = await page(t, { data: { channels, catalog: [...catalog, ...creditCatalog], encryptionReady: true } });
+  assert.equal(ui.win.document.querySelectorAll('[data-product-group="membership"] form').length, 1);
+  assert.equal(ui.win.document.querySelectorAll('[data-product-group="credits"] form').length, 3);
+  for (const amount of [200, 500, 1000]) {
+    assert.equal(ui.$(`#product-credits-${amount}-credits`).value, String(amount));
+    assert.equal(ui.$(`#product-credits-${amount}-price`).value, `${amount / 10}.00`);
+    assert.equal(ui.$(`#product-credits-${amount}-days`), null);
+  }
+  assert.equal(ui.$('#product-basic-credits'), null);
+  assert.match(ui.$('.payment-bundle-note').textContent, /当前未配置可售套餐/);
+  assert.doesNotMatch(ui.$('.payment-bundle-note').textContent, /立即购买|已上架/);
+});
+
+test('credit saves submit credit entitlement without membership days and preserve a separate unsaved membership edit', async t => {
+  let saved;
+  const ui = await page(t, { data: { channels, catalog: [...catalog, ...creditCatalog], encryptionReady: true }, handle: (url, payload) => url === '/api/admin/payments/products/credits-500' ? (saved = payload, { body: { item: { ...creditCatalog[1], ...payload } } }) : undefined });
+  ui.fill('#product-basic-title', '会员未保存名称');
+  ui.fill('#product-credits-500-status', 'active');
+  const extra = ui.win.document.createElement('input'); extra.name = 'durationDays'; extra.value = '365'; ui.$('[data-payment-product="credits-500"]').append(extra);
+  ui.submit('[data-payment-product="credits-500"]');
+  await settle(() => saved && !ui.$('[data-payment-product="credits-500"] [type="submit"]').disabled);
+  assert.deepEqual(saved, { title: '500 积分', description: '到账 500 积分。', status: 'active', priceCents: 5000, durationDays: null, entitlementType: 'credits', creditAmount: 500 });
+  assert.equal(ui.$('#product-basic-title').value, '会员未保存名称');
+  assert.equal(ui.$('[data-payment-product="basic"] .payment-dirty').hidden, false);
+  assert.equal(ui.$('#product-credits-500-days'), null);
+  assert.equal(ui.$('#product-credits-500-credits').value, '500');
+});
+
+test('credit publishing rejects missing, fractional, negative and excessive quantities without sending requests', async t => {
+  const ui = await page(t, { data: { channels, catalog: creditCatalog, encryptionReady: true } });
+  ui.fill('#product-credits-200-status', 'active');
+  for (const value of ['', '0', '-1', '200.5', '1000001', '2e2']) {
+    ui.fill('#product-credits-200-credits', value); ui.submit('[data-payment-product="credits-200"]');
+    assert.match(ui.$('[data-payment-product="credits-200"] .form-error').textContent, value ? /积分数量需为/ : /上架前请填写售价、积分数量/);
+  }
+  assert.equal(ui.calls.filter(call => call.method === 'POST').length, 0);
+  assert.equal(ui.$('[data-payment-product="credits-200"] [type="submit"]').disabled, false);
 });
 
 test('publishing requires a real price, positive membership duration and delivery description', async t => {

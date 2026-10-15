@@ -11,7 +11,7 @@ const channels=[{provider:'wechat',label:'微信支付',ready:true},{provider:'a
 const qr='data:image/png;base64,dGVzdA==';
 const response=(value,status=200)=>({ok:status<400,status,json:async()=>JSON.parse(JSON.stringify(value))});
 async function settle(check){for(let i=0;i<100;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}throw new Error('Payment UI did not settle');}
-async function fixture(t,{guest=false,catalogue={enabled:true,channels,products},items=[],order:orderOverride={},onRequest,orderId,renderQRCode}={}){
+async function fixture(t,{guest=false,catalogue={enabled:true,channels,products},items=[],order:orderOverride={},onRequest,orderId,renderQRCode,initialProductId='credits-100',preferredProvider}={}){
  const dom=new JSDOM('<aside id="preserved">原有导航</aside><main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#membership/pay',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window;
  const timers=new Map();let nextTimer=1,clockOffset=0;
  w.setTimeout=(fn,delay)=>{const id=nextTimer++;timers.set(id,{fn,delay});return id;};w.clearTimeout=id=>timers.delete(id);
@@ -21,7 +21,7 @@ async function fixture(t,{guest=false,catalogue={enabled:true,channels,products}
  w.esc=esc;w.icon=icon;w.toolBanner=toolBanner;
  w.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({path,options,body});const custom=onRequest&&await onRequest(path,options,body);if(custom)return custom;if(path==='/api/auth/me')return guest?response({error:'请登录'},401):response({user:{id:'u1'}});if(path==='/api/payments/options')return response(catalogue);if(path==='/api/orders'&&!body)return response({items});if(path==='/api/orders'&&body){const item={...order,provider:body.provider};created.push(item);return response({item});}if(path==='/api/orders/o1')return response({item:order});if(path==='/api/orders/o1/query')return response({item:order});throw new Error('Unexpected API '+path);};
  w.eval(source+'\nwindow.paymentTest={renderPaymentCheckout,renderPaymentOrders};');
- const args={productId:'credits-100',orderId,container:w.document.querySelector('.dashboard'),navigate:href=>navigations.push(href),renderQRCode:async value=>{qrInputs.push(value);return renderQRCode?renderQRCode(value):qr;}};
+ const args={productId:initialProductId,orderId,provider:preferredProvider,container:w.document.querySelector('.dashboard'),navigate:href=>navigations.push(href),renderQRCode:async value=>{qrInputs.push(value);return renderQRCode?renderQRCode(value):qr;}};
  const cleanup=await w.paymentTest.renderPaymentCheckout(args);cleanups.push(cleanup);
  t.after(()=>{cleanups.forEach(clean=>clean());w.close();});
  return {w,doc:w.document,calls,qrInputs,navigations,created,order,timers,cleanup,args,async orders(){const clean=await w.paymentTest.renderPaymentOrders(args);cleanups.push(clean);return clean;},async remount(){const clean=await w.paymentTest.renderPaymentCheckout(args);cleanups.push(clean);return clean;},advance(ms){clockOffset+=ms;},async runTimer(delay){const entry=[...timers].find(([,timer])=>timer.delay===delay);if(!entry)return false;timers.delete(entry[0]);await entry[1].fn();await new Promise(resolve=>setTimeout(resolve,3));return true;}};
@@ -38,6 +38,23 @@ test('empty published catalogue stays closed even when payment channels are read
 
 test('unconfigured channels never enable checkout and no arbitrary price is accepted',async t=>{
  const f=await fixture(t,{catalogue:{enabled:false,channels:channels.map(channel=>({...channel,ready:false})),products}});assert.equal(f.doc.querySelector('[data-payment-create]').disabled,true);assert.equal(f.doc.querySelectorAll('[data-payment-provider]:disabled').length,2);assert.match(f.doc.body.textContent,/暂未开放收款/);assert.equal(f.calls.some(call=>call.body),false);
+});
+
+test('checkout preserves selected Alipay and displays server credit quantity and price',async t=>{
+ const credit={id:'credits-200',title:'200 科研积分',priceCents:2000,currency:'CNY',description:'科研积分充值',entitlementType:'credits',creditAmount:200,entitlement:{type:'credits',creditAmount:200}};
+ const f=await fixture(t,{initialProductId:'credits-200',preferredProvider:'alipay',catalogue:{enabled:true,channels,products:[credit]}});
+ assert.equal(f.doc.querySelector('[data-payment-provider="alipay"]').getAttribute('aria-pressed'),'true');
+ assert.match(f.doc.querySelector('.payment-summary').textContent,/200 科研积分/);
+ assert.match(f.doc.querySelector('.payment-total').textContent,/¥20.00/);
+ assert.equal(f.calls.some(call=>call.body),false);
+});
+
+test('withdrawn requested product never silently switches to a different service',async t=>{
+ const f=await fixture(t,{initialProductId:'withdrawn-product'});
+ assert.equal(f.doc.querySelector('[data-payment-create]').disabled,true);
+ assert.match(f.doc.querySelector('[data-payment-notice]').textContent,/所选商品暂不可购买/);
+ assert.equal(f.doc.querySelector('[data-payment-product][aria-pressed="true"]'),null);
+ assert.equal(f.calls.some(call=>call.body),false);
 });
 
 test('order creation sends only product, provider and idempotency key; server amount drives QR view',async t=>{

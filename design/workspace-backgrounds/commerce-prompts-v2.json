@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-16",
+  "generator": "Built-in image_gen (imagegen skill)",
+  "transparent_background": true,
+  "assets": [
+    {
+      "key": "member",
+      "prompt": "Use case: stylized-concept. Asset type: premium academic SaaS commerce feature illustration for PaperKnow purchase center, original high-end 3D product render, clean professional commercial art with rich materials and elegant depth, no text, no letters, no numbers, no logos, no watermark, no human. Wide 2:1 landscape transparent canvas. Place cohesive floating objects in the RIGHT 60 percent; left part transparent to reserve live HTML headline. Main objects large, visually compelling at card size, soft realistic studio shadows and reflective highlights; detailed yet uncluttered. True transparent background, no opaque rectangle. Subject: sculpted champagne gold glass membership credential with a luminous faceted diamond embedded in it, ivory scholarly books supporting the card and a delicate gold laurel arc, deep navy translucent accent panel. Rich metallic gold edges, brushed satin textures, warm rim lighting, polished sophisticated premium membership appeal. No printed card information.",
+      "asset": "dist/workspace/assets/commerce-member-v2.webp"
+    },
+    {
+      "key": "credits",
+      "prompt": "Use case: stylized-concept. Asset type: premium academic SaaS commerce feature illustration for PaperKnow purchase center, original high-end 3D product render, clean professional commercial art with rich materials and elegant depth, no text, no letters, no numbers, no logos, no watermark, no human. Wide 2:1 landscape transparent canvas. Place cohesive floating objects in the RIGHT 60 percent; left part transparent to reserve live HTML headline. Main objects large, visually compelling at card size, soft realistic studio shadows and reflective highlights; detailed yet uncluttered. True transparent background, no opaque rectangle. Subject: substantial stack of cobalt blue and icy silver translucent tokens with geometric diamond embossing, a small open glass wallet/credit tray and a tasteful energetic cyan ribbon weaving around the stack. Crisp luminous cobalt/cyan, silver edge detail, precise premium fintech styling, optimistic studio lighting. Tokens are generic research credits, not any real currency or crypto logo. No monetary symbols.",
+      "asset": "dist/workspace/assets/commerce-credits-v2.webp"
+    },
+    {
+      "key": "bundles",
+      "prompt": "Use case: stylized-concept. Asset type: premium academic SaaS commerce feature illustration for PaperKnow purchase center, original high-end 3D product render, clean professional commercial art with rich materials and elegant depth, no text, no letters, no numbers, no logos, no watermark, no human. Wide 2:1 landscape transparent canvas. Place cohesive floating objects in the RIGHT 60 percent; left part transparent to reserve live HTML headline. Main objects large, visually compelling at card size, soft realistic studio shadows and reflective highlights; detailed yet uncluttered. True transparent background, no opaque rectangle. Subject: a collection of three beautifully arranged violet and pearl research service boxes, one partially open revealing stacked paper sheets and a miniature slide/chart card, connected with a flowing satin lavender ribbon, tiny cyan glass accents. Premium curated productivity bundle, dimensional product packaging with no printed labels. Refined lavender/violet colors, soft luminous glow, sophisticated commercial product photography style.",
+      "asset": "dist/workspace/assets/commerce-bundles-v2.webp"
+    }
+  ]
+}

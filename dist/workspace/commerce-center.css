@@ -1,182 +1,261 @@
-/* Membership, credits and bundles share one purchase centre. Prices remain previews. */
-#app .dashboard {
-  --commerce-surface: #fff;
-  --commerce-soft: #f6f8fc;
-  --commerce-text: #213754;
-  --commerce-muted: #687d99;
-  --commerce-border: #dfe7f2;
-  --commerce-blue: #2b67ec;
-  --commerce-blue-soft: #edf3ff;
-  --commerce-gold: #89612e;
-  --commerce-gold-soft: #fbf5e9;
+/* One purchase centre: illustrated routes, comparison cards and fixed credit packs. */
+#app .dashboard{--commerce-surface:#fff;--commerce-soft:#f6f8fd;--commerce-text:#213754;--commerce-muted:#687d99;--commerce-border:#dfe7f2;--commerce-blue:#2864ef;--commerce-blue-soft:#edf3ff;--commerce-gold:#89612e;--commerce-gold-soft:#fbf5e9}
+#app .dashboard .commerce-center-navigation{margin:0 0 23px;min-width:0}
+#app .dashboard .commerce-center-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding:0;margin:0;background:none;border:0;box-shadow:none;overflow:visible}
+#app .dashboard .commerce-center-tab{--tab-ink:#fff;--tab-muted:#d7e7ff;--tab-accent:#c6dcff;position:relative;isolation:isolate;display:flex;align-items:center;min-width:0;min-height:187px;margin:0;padding:23px 24px;text-align:left;overflow:hidden;border:1px solid transparent;border-radius:18px;color:var(--tab-ink);text-decoration:none;background:linear-gradient(125deg,#135de4,#3d8bf7);box-shadow:0 7px 23px #294e9c14;transition:transform .24s,box-shadow .24s,outline-color .24s;outline:2px solid transparent;outline-offset:3px}
+#app .dashboard .commerce-center-tab-plans{--tab-muted:#d6dbed;--tab-accent:#e6c58c;background:radial-gradient(ellipse at 95% 25%,#6b6885 0,transparent 56%),linear-gradient(125deg,#1b2e52,#344667 75%,#6b655e)}
+#app .dashboard .commerce-center-tab-bundles{--tab-muted:#ebe2ff;--tab-accent:#e3d3ff;background:radial-gradient(ellipse at 85% 20%,#c0a4ff 0,transparent 60%),linear-gradient(125deg,#6642c7,#9370e3)}
+#app .dashboard .commerce-center-tab::before{content:'';position:absolute;z-index:-1;inset:-90px -60px auto auto;width:280px;height:280px;border:1px solid #ffffff25;border-radius:50%;box-shadow:0 0 0 42px #ffffff0a,0 0 0 82px #ffffff06;pointer-events:none}
+#app .dashboard .commerce-center-tab:hover{transform:translateY(-3px);box-shadow:0 12px 25px #294e9c26}
+#app .dashboard .commerce-center-tab[aria-current]{outline-color:#7399f6;border-color:#ffffff80;color:var(--tab-ink)}
+#app .dashboard .commerce-center-tab-plans[aria-current]{outline-color:#c9a869}
+#app .dashboard .commerce-center-tab-bundles[aria-current]{outline-color:#a58ae6}
+#app .dashboard .commerce-center-tab-art{position:absolute;z-index:-1;inset:12px -20px 1px 40%;display:block;transform:rotate(-4deg);pointer-events:none;transition:transform .35s;opacity:.93}
+#app .dashboard .commerce-center-tab-art img{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 13px 11px #0a1a4d29)}
+#app .dashboard .commerce-center-tab:hover .commerce-center-tab-art{transform:rotate(0deg) translateY(-3px)}
+#app .dashboard .commerce-center-tab-copy{display:grid;gap:7px;position:relative;max-width:72%;min-width:0}
+#app .dashboard .commerce-center-tab-label{display:inline-flex;align-items:center;gap:6px;color:var(--tab-accent);font-size:10px;font-weight:600;letter-spacing:.7px}
+#app .dashboard .commerce-center-tab-copy strong{font-size:23px;letter-spacing:.3px;line-height:1.5;font-weight:700;color:var(--tab-ink)}
+#app .dashboard .commerce-center-tab-copy>span:not(.commerce-center-tab-label){color:var(--tab-muted);font-size:11px;line-height:1.7;font-weight:400}
+#app .dashboard .commerce-center-tab-copy>small{margin-top:2px;color:var(--tab-accent);font-size:10px;line-height:1.7;font-weight:500}
+#app .dashboard .commerce-center-tab-state{position:absolute;right:14px;bottom:13px;display:inline-flex;align-items:center;gap:4px;padding:4px 7px;background:#ffffff18;border:1px solid #ffffff20;border-radius:6px;font-size:10px;line-height:1.5;color:#fff;white-space:nowrap}
+#app .dashboard .commerce-center-subnav{display:flex;justify-content:space-between;align-items:center;gap:14px;margin:17px 2px 0;color:var(--commerce-muted);font-size:12px;line-height:1.7}
+#app .dashboard .commerce-center-subnav a{display:inline-flex;align-items:center;gap:6px;color:var(--commerce-blue);text-decoration:none;flex-shrink:0}
+#app .dashboard .commerce-center-subnav a:hover{text-decoration:underline}
+#app .dashboard .commerce-center-availability{display:flex;align-items:center;gap:14px;padding:12px 16px;margin:0 0 26px;background:var(--commerce-gold-soft);border:1px solid #eadfc9;border-radius:10px}
+#app .dashboard .commerce-center-availability>span{display:inline-flex;align-items:center;gap:7px;flex-shrink:0;color:var(--commerce-gold);font-size:11px;font-weight:600}
+#app .dashboard .commerce-center-availability p{margin:0;color:var(--commerce-muted);font-size:11px;line-height:1.8}
+#app .dashboard .commerce-center-availability-credits{background:var(--commerce-blue-soft);border-color:var(--commerce-border)}
+#app .dashboard .commerce-center-availability-credits>span{color:var(--commerce-blue)}
+#app .dashboard .commerce-center-section{min-width:0;margin:0 0 28px}
+#app .dashboard .commerce-center-section-title{margin:0 0 22px}
+#app .dashboard .commerce-center-section-title h2{font-size:22px;line-height:1.5;color:var(--commerce-text);margin:0;font-weight:700;letter-spacing:-.3px}
+#app .dashboard .commerce-center-section-title p{color:var(--commerce-muted);font-size:12px;line-height:1.8;margin:7px 0 0}
+#app .dashboard .commerce-center-eyebrow{display:block;color:var(--commerce-gold);font-size:10px;letter-spacing:1.5px;font-weight:650;line-height:1.6;margin:0 0 7px}
+#app .dashboard .commerce-center-unit-note{font-size:11px;line-height:1.7;color:var(--commerce-muted)}
+#app .dashboard .commerce-center-plan-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+#app .dashboard .commerce-center-plan-grid.commerce-member-plans,#app .dashboard .commerce-center-plan-grid.commerce-writing-plans{grid-template-columns:repeat(4,minmax(0,1fr))}
+#app .dashboard .commerce-center-plan{--plan-top:#e9f0ff;--plan-end:#f4f7ff;--plan-ink:#263f69;--plan-muted:#687d9f;--plan-edge:#cbdafa;display:flex;flex-direction:column;padding:0;border:1px solid var(--commerce-border);border-radius:17px;background:var(--commerce-surface);min-width:0;overflow:hidden;box-shadow:0 7px 20px #243e6410;transition:transform .23s,box-shadow .23s}
+#app .dashboard .commerce-center-plan:hover{transform:translateY(-3px);box-shadow:0 14px 26px #243e641b}
+#app .dashboard .commerce-center-plan.featured{padding:0;border:1px solid #aaa2df;background:var(--commerce-surface);box-shadow:0 10px 27px #6454b51c}
+#app .dashboard .commerce-center-plan-standard{--plan-top:#bed6fc;--plan-end:#e6efff;--plan-ink:#203e70;--plan-muted:#53729d}
+#app .dashboard .commerce-center-plan-advanced{--plan-top:#202f50;--plan-end:#465375;--plan-ink:#fff1d5;--plan-muted:#d4daeb;--plan-edge:#ffffff26}
+#app .dashboard .commerce-center-plan-pro{--plan-top:#e1c18a;--plan-end:#f8ebd5;--plan-ink:#644826;--plan-muted:#846944;--plan-edge:#d7bd95}
+#app .dashboard .commerce-center-plan-bundle{--plan-top:#e1d6fb;--plan-end:#f4efff;--plan-ink:#4d3483;--plan-muted:#7b699d;--plan-edge:#cab6ed}
+#app .dashboard .commerce-center-plan-bundle.featured{--plan-top:#5f45b3;--plan-end:#8d72d6;--plan-ink:#fff;--plan-muted:#e1d6fb;--plan-edge:#ffffff30}
+#app .dashboard .commerce-center-plan-dual,#app .dashboard .commerce-center-plan-master{--plan-top:#d3e3ff;--plan-end:#edf3ff;--plan-ink:#324e8c;--plan-muted:#677ea9;--plan-edge:#b5c9ec}
+#app .dashboard .commerce-center-plan-doctor{--plan-top:#e6d7bb;--plan-end:#fbf4e5;--plan-ink:#75562a;--plan-muted:#8f7854;--plan-edge:#d7c6a8}
+#app .dashboard .commerce-center-plan-cover{position:relative;isolation:isolate;overflow:hidden;padding:24px 22px 22px;background:radial-gradient(ellipse at 100% 0%,#ffffff3d,transparent 60%),linear-gradient(135deg,var(--plan-top),var(--plan-end));min-height:236px}
+#app .dashboard .commerce-center-plan-cover::before{content:'';position:absolute;z-index:-1;inset:0 -26px 0 5%;background:url('/workspace/assets/commerce-member-v2.webp') right center/contain no-repeat;opacity:.17;pointer-events:none;transform:rotate(-7deg)}
+#app .dashboard .commerce-center-plan-bundle .commerce-center-plan-cover::before{background-image:url('/workspace/assets/commerce-bundles-v2.webp');opacity:.22}
+#app .dashboard .commerce-center-plan.featured .commerce-center-plan-cover::before{opacity:.28}
+#app .dashboard .commerce-center-plan-free .commerce-center-plan-cover::before{opacity:.08}
+#app .dashboard .commerce-center-plan-decoration{position:absolute;z-index:-1;right:-17px;bottom:35px;color:var(--plan-ink);opacity:.08;transform:rotate(-18deg)}
+#app .dashboard .commerce-center-plan-cover::after{content:'';position:absolute;z-index:-1;right:-45px;top:-65px;width:170px;height:170px;border:1px solid var(--plan-edge);border-radius:50%;box-shadow:0 0 0 28px #ffffff0a;pointer-events:none}
+#app .dashboard .commerce-center-plan .purchase-plan-icon{width:37px;height:37px;border-radius:10px;border:1px solid var(--plan-edge);background:#ffffff2e;color:var(--plan-ink)}
+#app .dashboard .commerce-center-plan .purchase-status{font-size:10px;color:var(--plan-ink);background:#ffffff3d;border:1px solid var(--plan-edge);padding:5px 8px;font-weight:500}
+#app .dashboard .commerce-center-plan h3{font-size:19px;font-weight:700;line-height:1.5;color:var(--plan-ink);margin:17px 0 0}
+#app .dashboard .commerce-center-plan .commerce-center-audience{margin:6px 0 0;min-height:35px;color:var(--plan-muted);font-size:11px;line-height:1.7}
+#app .dashboard .commerce-center-plan .purchase-price{display:block;margin:14px 0 0;min-height:61px}
+#app .dashboard .commerce-center-plan .purchase-price b{font-size:38px;letter-spacing:-1px;line-height:1.2;font-weight:750;color:var(--plan-ink)}
+#app .dashboard .commerce-center-plan .purchase-price b small{font-size:19px;font-weight:500;letter-spacing:0;margin-right:3px;color:inherit}
+#app .dashboard .commerce-center-plan .purchase-price span{display:block;font-size:10px;line-height:1.7;margin:7px 0 0;color:var(--plan-muted)}
+#app .dashboard .commerce-center-plan-free .purchase-price b{font-size:30px;line-height:1.52}
+#app .dashboard .commerce-center-plan-body{display:flex;flex-direction:column;flex:1;padding:22px}
+#app .dashboard .commerce-center-feature-label{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--commerce-text);font-size:11px;font-weight:650}
+#app .dashboard .commerce-center-feature-label>span{font-size:10px;font-weight:500;padding:3px 6px;border-radius:5px;background:var(--commerce-soft);color:var(--commerce-muted)}
+#app .dashboard .commerce-center-plan ul{padding:0;margin:11px 0 23px;min-height:122px;flex:1}
+#app .dashboard .commerce-center-plan li{color:var(--commerce-muted);font-size:12px;line-height:1.8;margin:9px 0;gap:8px}
+#app .dashboard .commerce-center-plan li>span{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex:0 0 18px;margin-top:2px;border-radius:50%;background:var(--commerce-blue-soft);color:var(--commerce-blue)}
+#app .dashboard .commerce-center-plan .btn{justify-content:center;min-height:43px;font-size:12px}
+#app .dashboard .commerce-center-plan .btn.secondary{background:var(--commerce-soft);border-color:var(--commerce-border);color:var(--commerce-text)}
+#app .dashboard .commerce-center-plan-member.featured .btn.primary{background:linear-gradient(120deg,#243b65,#4b5b7f);border-color:#3d5077;color:#fff0d1;box-shadow:0 4px 11px #273b641b}
+#app .dashboard .commerce-center-plan-bundle.featured .btn.primary{background:linear-gradient(120deg,#6846c4,#9270df);border-color:#805acf;box-shadow:0 4px 11px #6b50a91b}
+#app .dashboard .commerce-center-plan-footnote{margin:11px 0 0;text-align:center;line-height:1.7;font-size:10px;color:var(--commerce-muted)}
+#app .dashboard .commerce-center-plan-live h3{overflow-wrap:anywhere}
+#app .dashboard .commerce-member-description{flex:1;min-height:122px;margin:13px 0 23px;font-size:12px;line-height:1.9;color:var(--commerce-muted);white-space:pre-line;overflow-wrap:anywhere}
+#app .dashboard .commerce-center-kind-tabs{display:inline-flex;gap:4px;margin:0;padding:5px;background:var(--commerce-surface);border:1px solid var(--commerce-border);border-radius:11px;flex-shrink:0}
+#app .dashboard .commerce-center-kind-tabs a{padding:10px 20px;background:none;border:0;border-radius:7px;color:var(--commerce-muted);font-size:12px;white-space:nowrap;text-decoration:none}
+#app .dashboard .commerce-center-kind-tabs a[aria-current]{color:#fff;background:linear-gradient(115deg,#6846c4,#9675df);box-shadow:0 3px 8px #7851ba25}
+#app .dashboard .commerce-center-bundle-caption{display:flex;align-items:baseline;flex-wrap:wrap;gap:12px;margin-bottom:15px}
+#app .dashboard .commerce-center-bundle-caption h3{font-size:14px;color:var(--commerce-text);margin:0}
+#app .dashboard .commerce-center-bundle-caption p,#app .dashboard .commerce-center-fineprint{font-size:12px;color:var(--commerce-muted);line-height:1.8;margin:0}
+#app .dashboard .commerce-center-fineprint{margin:15px 1px 0}
+#app .dashboard .commerce-center-methods{padding:26px;border-radius:15px;background:var(--commerce-surface);border:1px solid var(--commerce-border);margin:28px 0}
+#app .dashboard .commerce-center-methods h2{font-size:17px}
+#app .dashboard .commerce-center-method-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
+#app .dashboard .commerce-center-method-grid article{display:flex;gap:11px;align-items:flex-start;min-width:0}
+#app .dashboard .commerce-center-method-grid article>span{display:inline-flex;padding:8px;border-radius:9px;color:var(--commerce-blue);background:var(--commerce-blue-soft)}
+#app .dashboard .commerce-center-method-grid h3{font-size:13px;margin:1px 0 6px;color:var(--commerce-text);font-weight:600}
+#app .dashboard .commerce-center-method-grid p,#app .dashboard .commerce-center-method-grid small{font-size:11px;color:var(--commerce-muted);line-height:1.8;margin:0 0 6px}
+#app .dashboard .commerce-center-faq{padding:25px 27px 15px;margin:28px 0 0;border:1px solid var(--commerce-border);border-radius:15px;background:var(--commerce-surface)}
+#app .dashboard .commerce-center-faq h2{font-size:17px;line-height:1.6;color:var(--commerce-text);margin:0 0 9px}
+#app .dashboard .commerce-center-faq details{padding:16px 0;border-bottom:1px solid var(--commerce-border)}
+#app .dashboard .commerce-center-faq details:last-child{border:0}
+#app .dashboard .commerce-center-faq summary{font-size:13px;color:var(--commerce-text);cursor:pointer;line-height:1.8}
+#app .dashboard .commerce-center-faq p{color:var(--commerce-muted);font-size:12px;line-height:1.9;margin:10px 0 0;max-width:980px}
+#app .dashboard .commerce-center-form{max-width:none;margin:0;padding:28px!important;border:1px solid var(--commerce-border);border-radius:17px;background:var(--commerce-surface);box-shadow:0 8px 24px #294d8210}
+#app .dashboard .commerce-center-form .commerce-surface-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:0 0 24px;margin:0 0 24px;border-bottom:1px solid var(--commerce-border)}
+#app .dashboard .commerce-center-form h2{font-size:22px;margin:0;line-height:1.6;color:var(--commerce-text)}
+#app .dashboard .commerce-center-form .commerce-surface-heading p{margin:6px 0 0;font-size:12px;color:var(--commerce-muted)}
+#app .dashboard .commerce-center-form .commerce-form-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.51fr);gap:34px;align-items:start;padding:0}
+#app .dashboard .commerce-center-form .commerce-form-body>div{min-width:0}
+#app .dashboard .commerce-center-form h3{font-size:14px;line-height:1.7;color:var(--commerce-text);margin:0 0 6px}
+#app .dashboard .commerce-center-form .commerce-help{font-size:11px;color:var(--commerce-muted);margin:0;line-height:1.8}
+#app .dashboard .commerce-center-form label{font-size:12px;color:var(--commerce-text);margin:0 0 9px}
+#app .dashboard .commerce-center-form input{width:100%;color:var(--commerce-text);background:var(--commerce-surface);border-color:var(--commerce-border);border-radius:8px;min-height:43px}
+#app .dashboard .commerce-center-form :is(#credit-summary,#code-message){font-size:11px;color:var(--commerce-muted);min-height:23px;line-height:1.8;margin:13px 0 0}
+#app .dashboard .commerce-center-form #code-check{margin:14px 0 0}
+#app .dashboard .commerce-center-credit-guide{padding:23px;border:1px solid var(--commerce-border);border-radius:13px;background:var(--commerce-soft);margin:0;min-width:0}
+#app .dashboard .commerce-center-guide-icon{display:inline-flex;background:var(--commerce-gold-soft);color:var(--commerce-gold);border-radius:10px;padding:9px;margin-bottom:16px}
+#app .dashboard .commerce-center-credit-guide>p{color:var(--commerce-muted);font-size:12px;line-height:1.9;margin:0 0 17px}
+#app .dashboard .commerce-center-form>.btn:disabled{margin-top:25px;min-width:188px;background:#dfe7f3;border-color:#dfe7f3;color:#71839d;cursor:not-allowed;box-shadow:none}
+#app .dashboard .commerce-center-rules{color:var(--commerce-muted);background:var(--commerce-blue-soft)}
+#app .dashboard .commerce-credit-rate{display:inline-flex;align-items:center;gap:8px;flex-shrink:0;padding:10px 13px;color:var(--commerce-blue);background:var(--commerce-blue-soft);border:1px solid var(--commerce-border);border-radius:9px;font-size:12px;font-weight:650}
+#app .dashboard .commerce-credit-rate>span{color:var(--commerce-muted);font-weight:400}
+#app .dashboard .commerce-step-heading{display:flex;align-items:center;gap:9px}
+#app .dashboard .commerce-step-heading>span{display:grid;place-items:center;width:25px;height:25px;border-radius:7px;background:var(--commerce-blue-soft);color:var(--commerce-blue);font-size:10px;font-weight:650}
+#app .dashboard .commerce-step-heading h3{margin:0;font-weight:650}
+#app .dashboard .commerce-center-form .commerce-amounts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0 27px}
+#app .dashboard .commerce-center-form .commerce-credit-pack{position:relative;isolation:isolate;overflow:hidden;display:flex;flex-direction:column;align-items:flex-start;gap:0;min-width:0;padding:18px 17px 20px;border:1px solid #c9d9f9;border-radius:13px;background:radial-gradient(ellipse at 115% -5%,#b4d7ff99,transparent 70%),linear-gradient(135deg,#f2f7ff,#fff 72%);text-align:left;color:#254577;cursor:pointer;transition:border-color .2s,transform .2s,box-shadow .2s}
+#app .dashboard .commerce-center-form .commerce-credit-pack:hover{transform:translateY(-2px);box-shadow:0 7px 19px #2961b31a}
+#app .dashboard .commerce-center-form .commerce-credit-pack[aria-pressed=true]{border-color:#3b78f1;box-shadow:0 0 0 1px #3b78f1,0 8px 20px #3169d325;background:radial-gradient(ellipse at 100% 0%,#347eff,transparent 70%),linear-gradient(135deg,#2158d9,#448bf1);color:#fff}
+#app .dashboard .commerce-credit-pack-label{font-size:10px;font-weight:600;letter-spacing:.3px;color:#5277ab;padding:4px 7px;border-radius:5px;background:#ffffff8c}
+#app .dashboard .commerce-credit-pack[aria-pressed=true] .commerce-credit-pack-label{color:#e7f0ff;background:#ffffff20}
+#app .dashboard .commerce-credit-coin{position:absolute;top:22px;right:14px;z-index:-1;display:grid;place-items:center;width:41px;height:41px;border:1px solid #fff9;border-radius:50%;color:#82b2f2;background:linear-gradient(130deg,#fff9,#bfdcff66);transform:rotate(-20deg);box-shadow:4px 4px 0 #b7cef94d}
+#app .dashboard .commerce-credit-pack[aria-pressed=true] .commerce-credit-coin{color:#d4e7ff;background:linear-gradient(130deg,#ffffff40,#ffffff10);box-shadow:4px 4px 0 #ffffff12}
+#app .dashboard .commerce-center-form .commerce-credit-pack>b{font-size:35px;line-height:1.3;font-weight:750;letter-spacing:-.6px;margin-top:20px;color:inherit}
+#app .dashboard .commerce-center-form .commerce-credit-pack>b small{display:block;font-size:10px;line-height:1.8;font-weight:450;letter-spacing:.5px;color:#6e89b0;margin-top:2px}
+#app .dashboard .commerce-center-form .commerce-credit-pack[aria-pressed=true]>b small{color:#cfdefc}
+#app .dashboard .commerce-credit-pack-price{display:flex;align-items:baseline;gap:3px;font-size:22px;font-weight:700;margin:15px 0 0;padding-top:12px;width:100%;border-top:1px solid #c9d9f990;color:inherit}
+#app .dashboard .commerce-center-form .commerce-credit-pack-price small{font-size:11px;font-weight:450;color:inherit}
+#app .dashboard .commerce-center-form .commerce-credit-pack-price small:last-child{font-size:9px;color:#6e89b0;margin-left:auto}
+#app .dashboard .commerce-credit-pack[aria-pressed=true] .commerce-credit-pack-price{border-color:#ffffff30}
+#app .dashboard .commerce-center-form .commerce-credit-pack[aria-pressed=true] .commerce-credit-pack-price small:last-child{color:#cfdefc}
+#app .dashboard .commerce-credit-pack-description{font-size:9px;line-height:1.8;color:#7190b9;margin-top:5px}
+#app .dashboard .commerce-credit-pack[aria-pressed=true] .commerce-credit-pack-description{color:#d0e1ff}
+#app .dashboard .commerce-credit-pack-check{display:none;position:absolute;right:0;bottom:0;padding:5px 6px;border-radius:10px 0 0 0;color:#fff;background:#2463da}
+#app .dashboard .commerce-credit-pack[aria-pressed=true] .commerce-credit-pack-check{display:flex}
+#app .dashboard .commerce-center-form .commerce-credit-pack:disabled{opacity:.58;cursor:not-allowed;filter:saturate(.35);transform:none;box-shadow:none}
+#app .dashboard .commerce-credit-pack:disabled [data-credit-status]{display:block;color:#975448}
+#app .dashboard .commerce-credit-providers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:17px}
+#app .dashboard .commerce-credit-providers>button{display:flex;align-items:center;gap:10px;padding:15px 13px;background:var(--commerce-surface);border:1px solid var(--commerce-border);border-radius:10px;text-align:left;cursor:pointer;min-width:0}
+#app .dashboard .commerce-credit-providers>button[aria-pressed=true]{border-color:#3d79ef;box-shadow:inset 0 0 0 1px #3d79ef;background:var(--commerce-blue-soft)}
+#app .dashboard .commerce-provider-mark{display:grid;place-items:center;flex:0 0 33px;width:33px;height:33px;border-radius:9px;font-size:18px;font-weight:700;color:#fff}
+#app .dashboard .commerce-provider-wechat{background:#17b167}
+#app .dashboard .commerce-provider-alipay{background:#1687ef}
+#app .dashboard .commerce-credit-providers>button>span:nth-child(2){display:grid;gap:5px;min-width:0}
+#app .dashboard .commerce-credit-providers b{font-size:12px;font-weight:650;color:var(--commerce-text)}
+#app .dashboard .commerce-credit-providers small{font-size:9px;color:var(--commerce-muted);line-height:1.6}
+#app .dashboard .commerce-credit-providers i{display:flex;color:var(--commerce-blue);margin-left:auto;opacity:0}
+#app .dashboard .commerce-credit-providers [aria-pressed=true] i{opacity:1}
+#app .dashboard .commerce-center-form .commerce-credit-channel-note{margin:12px 0 0!important}
+#app .dashboard .commerce-credit-order{background:radial-gradient(ellipse at 100% 0%,#dceaff,transparent 65%),linear-gradient(140deg,#f3f7ff,#fff);border-color:#c9d9f6;padding:25px;box-shadow:0 6px 16px #3a68aa0c}
+#app .dashboard .commerce-credit-order-label{display:block;font-size:11px;color:#6685b0;letter-spacing:.3px}
+#app .dashboard .commerce-credit-order h3{font-size:40px;line-height:1.3;font-weight:750;letter-spacing:-.5px;margin:14px 0 19px;color:var(--commerce-text)}
+#app .dashboard .commerce-credit-order #credit-selected-amount{color:inherit}
+#app .dashboard .commerce-credit-order h3 small{font-size:11px;color:var(--commerce-muted);font-weight:450;margin-left:8px}
+#app .dashboard .commerce-credit-order dl{margin:0;padding:0 0 15px;border-bottom:1px solid var(--commerce-border)}
+#app .dashboard .commerce-credit-order dl>div{display:flex;justify-content:space-between;gap:12px;font-size:11px;margin:13px 0 0}
+#app .dashboard .commerce-credit-order dt{color:var(--commerce-muted)}
+#app .dashboard .commerce-credit-order dd{margin:0;color:var(--commerce-text)}
+#app .dashboard .commerce-credit-order-total{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:18px 0 20px;padding:0;border:0}
+#app .dashboard .commerce-credit-order-total>span{font-size:12px;color:var(--commerce-text)}
+#app .dashboard .commerce-credit-order-total>b{font-size:34px;line-height:1.4;letter-spacing:-.5px;font-weight:750;color:var(--commerce-blue);white-space:nowrap}
+#app .dashboard .commerce-credit-order-total>b>span{color:inherit}
+#app .dashboard .commerce-credit-order-total small{font-size:18px;font-weight:500;color:inherit}
+#app .dashboard #credit-checkout{display:flex;justify-content:center;min-height:44px;background:linear-gradient(115deg,#225add,#4487f4);border-color:#326ce5;color:#fff;box-shadow:0 6px 13px #2967d22b;font-size:12px}
+#app .dashboard #credit-checkout[aria-disabled=true]{background:#dfe7f3;border-color:#dfe7f3;color:#6f819e;cursor:not-allowed;box-shadow:none}
+#app .dashboard .commerce-credit-order #credit-summary{font-size:10px;color:var(--commerce-muted);margin:11px 0 0}
+#app .dashboard .commerce-credit-use-note{display:flex;align-items:flex-start;gap:7px;padding-top:15px;margin:15px 0 0!important;border-top:1px solid var(--commerce-border);font-size:10px!important;line-height:1.9;color:var(--commerce-muted)}
+#app .dashboard .commerce-credit-use-note svg{flex:0 0 16px;margin-top:2px}
+#app .dashboard .commerce-credit-use-note span{color:var(--commerce-muted)}
+#app .dashboard .commerce-credit-balance-link{display:inline-flex;align-items:center;gap:6px;margin-top:15px;font-size:10px;color:var(--commerce-blue);text-decoration:none}
+#app .dashboard .commerce-credit-balance-link:hover{text-decoration:underline}
+.hub-theme-dark #app .dashboard{--commerce-surface:#172438;--commerce-soft:#122034;--commerce-text:#e3ebf7;--commerce-muted:#a6b5cb;--commerce-border:#2d405a;--commerce-blue:#9dbdff;--commerce-blue-soft:#203653;--commerce-gold:#e7c68e;--commerce-gold-soft:#352f26}
+.hub-theme-dark #app .dashboard .commerce-center-availability{border-color:#5b4b34}
+.hub-theme-dark #app .dashboard .commerce-center-availability-credits{border-color:#34517d}
+.hub-theme-dark #app .dashboard .commerce-center-plan{--plan-top:#273b5b;--plan-end:#22334c;--plan-ink:#e0eafa;--plan-muted:#b1c1dc;--plan-edge:#ffffff26}
+.hub-theme-dark #app .dashboard .commerce-center-plan-advanced{--plan-top:#263251;--plan-end:#495471;--plan-ink:#fff0d2}
+.hub-theme-dark #app .dashboard .commerce-center-plan-pro,.hub-theme-dark #app .dashboard .commerce-center-plan-doctor{--plan-top:#655238;--plan-end:#443a2e;--plan-ink:#ffdeb2;--plan-muted:#d8c3a2}
+.hub-theme-dark #app .dashboard .commerce-center-plan-bundle{--plan-top:#43345f;--plan-end:#302a48;--plan-ink:#ece1ff;--plan-muted:#c6b7e1}
+.hub-theme-dark #app .dashboard .commerce-center-plan-bundle.featured{--plan-top:#5c4496;--plan-end:#4e3c7c;--plan-ink:#fff;--plan-muted:#ded1f6}
+.hub-theme-dark #app .dashboard .commerce-center-plan.featured{border-color:#665d95}
+.hub-theme-dark #app .dashboard .commerce-center-form>.btn:disabled{background:#2e3c51;border-color:#2e3c51;color:#9caac1}
+.hub-theme-dark #app .dashboard .commerce-center-form .commerce-credit-pack{border-color:#3b537b;color:#e1ecff;background:radial-gradient(ellipse at 100% 0%,#2d4e7b,transparent 70%),linear-gradient(135deg,#253c5e,#1b2b43)}
+.hub-theme-dark #app .dashboard .commerce-center-form .commerce-credit-pack[aria-pressed=true]{border-color:#81adff;background:radial-gradient(ellipse at 100% 0%,#3a76c5,transparent 70%),linear-gradient(135deg,#254c93,#3c6cb4);color:#fff}
+.hub-theme-dark #app .dashboard .commerce-credit-pack-label{color:#d7e4ff;background:#ffffff12}
+.hub-theme-dark #app .dashboard .commerce-center-form .commerce-credit-pack>b small,.hub-theme-dark #app .dashboard .commerce-credit-pack-description,.hub-theme-dark #app .dashboard .commerce-center-form .commerce-credit-pack-price small:last-child{color:#b1c4e2}
+.hub-theme-dark #app .dashboard .commerce-credit-order{background:radial-gradient(ellipse at 100% 0%,#30476e,transparent 65%),linear-gradient(140deg,#243650,#19273a);border-color:#3a5379}
+.hub-theme-dark #app .dashboard #credit-checkout[aria-disabled=true]{background:#34465f;border-color:#34465f;color:#bccbe2}
+@container workspace (max-width:1180px){
+ #app .dashboard .commerce-center-tabs{gap:12px}
+ #app .dashboard .commerce-center-tab{min-height:181px;padding:20px 18px}
+ #app .dashboard .commerce-center-tab-copy{max-width:85%}
+ #app .dashboard .commerce-center-tab-copy strong{font-size:21px}
+ #app .dashboard .commerce-center-tab-art{inset:38px -42px 8px 38%;opacity:.65}
+ #app .dashboard .commerce-center-plan-grid.commerce-member-plans,#app .dashboard .commerce-center-plan-grid.commerce-writing-plans{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #app .dashboard .commerce-center-form .commerce-form-body{gap:24px;grid-template-columns:minmax(0,1fr) minmax(235px,.55fr)}
+ #app .dashboard .commerce-credit-rate{display:none}
 }
-#app .dashboard .commerce-center-availability {
-  display: flex; align-items: center; gap: 14px; padding: 13px 17px;
-  margin: -3px 0 20px; background: var(--commerce-gold-soft);
-  border: 1px solid #eaddc5; border-radius: 10px;
+@container workspace (max-width:960px){
+ #app .dashboard .commerce-center-plan-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #app .dashboard .commerce-center-form .commerce-form-body{grid-template-columns:minmax(0,1fr);gap:26px}
+ #app .dashboard .commerce-center-method-grid{grid-template-columns:minmax(0,1fr);gap:20px}
+ #app .dashboard .commerce-credit-order{max-width:none;display:block}
 }
-#app .dashboard .commerce-center-availability > span {
-  display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
-  color: var(--commerce-gold); font-size: 12px; font-weight: 600;
+@container workspace (max-width:650px){
+ #app .dashboard .commerce-center-tabs{gap:8px}
+ #app .dashboard .commerce-center-tab{min-height:182px;align-items:flex-start;padding:15px 11px;border-radius:12px}
+ #app .dashboard .commerce-center-tab-copy{max-width:100%;gap:5px}
+ #app .dashboard .commerce-center-tab-copy strong{font-size:16px;letter-spacing:0}
+ #app .dashboard .commerce-center-tab-label{font-size:9px;gap:4px}
+ #app .dashboard .commerce-center-tab-label svg{width:12px;height:12px}
+ #app .dashboard .commerce-center-tab-copy>span:not(.commerce-center-tab-label),#app .dashboard .commerce-center-tab-copy>small{display:none}
+ #app .dashboard .commerce-center-tab-art{inset:68px -14px 8px -5px;opacity:1;transform:rotate(-4deg)}
+ #app .dashboard .commerce-center-tab-state{right:7px;bottom:7px;font-size:8px;padding:3px 5px;gap:3px}
+ #app .dashboard .commerce-center-tab-state svg{width:11px;height:11px}
+ #app .dashboard .commerce-center-subnav{align-items:flex-start;font-size:10px}
+ #app .dashboard .commerce-center-subnav>span{max-width:48%}
+ #app .dashboard .commerce-center-subnav a{font-size:10px;gap:3px}
+ #app .dashboard .commerce-center-availability{align-items:flex-start;flex-direction:column;gap:6px;padding:13px;margin-bottom:23px}
+ #app .dashboard .commerce-center-section-title{flex-direction:column;align-items:flex-start;gap:12px}
+ #app .dashboard .commerce-center-section-title h2,#app .dashboard .commerce-center-form h2{font-size:19px}
+ #app .dashboard .commerce-center-plan-grid,#app .dashboard .commerce-center-plan-grid.commerce-member-plans,#app .dashboard .commerce-center-plan-grid.commerce-writing-plans{grid-template-columns:minmax(0,1fr)}
+ #app .dashboard .commerce-center-plan-cover{min-height:0;padding:24px}
+ #app .dashboard .commerce-center-plan .commerce-center-audience{min-height:0}
+ #app .dashboard .commerce-center-plan ul{min-height:0}
+ #app .dashboard .commerce-member-description{min-height:0}
+ #app .dashboard .commerce-center-plan-body{padding:23px}
+ #app .dashboard .commerce-center-methods{padding:22px}
+ #app .dashboard .commerce-center-form{padding:21px!important}
+ #app .dashboard .commerce-center-faq{padding:21px 21px 10px}
+ #app .dashboard .commerce-center-form .commerce-amounts{gap:8px}
+ #app .dashboard .commerce-center-form .commerce-credit-pack{padding:13px 10px 16px}
+ #app .dashboard .commerce-credit-pack-label{padding:3px 5px;font-size:9px}
+ #app .dashboard .commerce-center-form .commerce-credit-pack>b{font-size:28px;margin-top:23px}
+ #app .dashboard .commerce-credit-coin{right:-4px;top:42px;width:32px;height:32px;opacity:.6}
+ #app .dashboard .commerce-credit-pack-price{font-size:20px;flex-wrap:wrap;column-gap:2px;row-gap:4px}
+ #app .dashboard .commerce-center-form .commerce-credit-pack-price small:last-child{display:none}
+ #app .dashboard .commerce-credit-pack-description{display:none}
+ #app .dashboard .commerce-credit-providers{gap:9px}
+ #app .dashboard .commerce-credit-providers>button{gap:8px;padding:13px 10px;flex-wrap:wrap}
+ #app .dashboard .commerce-provider-mark{width:29px;height:29px;flex-basis:29px;border-radius:8px;font-size:16px}
+ #app .dashboard .commerce-credit-providers small{display:block;font-size:8px}
+ #app .dashboard .commerce-credit-providers i{width:13px}
+ #app .dashboard .commerce-credit-order{display:block;padding:23px}
+ #app .dashboard .commerce-center-form>.btn:disabled{width:100%;min-width:0}
 }
-#app .dashboard .commerce-center-availability p { margin: 0; color: var(--commerce-muted); font-size: 12px; line-height: 1.8; }
-#app .dashboard .commerce-center-navigation { margin: 0 0 28px; min-width: 0; }
-#app .dashboard .commerce-center-tabs {
-  display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px;
-  padding: 0; margin: 0; background: none; border: 0; box-shadow: none;
+@container workspace (max-width:340px){
+ #app .dashboard .commerce-center-tab{padding:13px 8px;min-height:168px}
+ #app .dashboard .commerce-center-tab-copy strong{font-size:14px}
+ #app .dashboard .commerce-center-tab-label{font-size:8px;letter-spacing:0}
+ #app .dashboard .commerce-center-tab-art{top:62px}
+ #app .dashboard .commerce-center-form{padding:17px!important}
+ #app .dashboard .commerce-center-form .commerce-credit-pack>b{font-size:23px}
+ #app .dashboard .commerce-credit-pack-label{padding:3px 4px;font-size:8px}
+ #app .dashboard .commerce-credit-providers>button{gap:6px;padding:12px 8px}
+ #app .dashboard .commerce-credit-providers b{font-size:11px}
+ #app .dashboard .commerce-credit-providers i{display:none}
 }
-#app .dashboard .commerce-center-tab {
-  display: flex; align-items: center; gap: 13px; padding: 21px 18px;
-  background: var(--commerce-surface); border: 1px solid var(--commerce-border);
-  border-radius: 13px; min-width: 0; color: var(--commerce-text);
-  text-decoration: none; transition: border-color .18s,box-shadow .18s,background .18s;
-}
-#app .dashboard .commerce-center-tab:hover { border-color: #b5c9ed; box-shadow: 0 5px 18px #223c6610; }
-#app .dashboard .commerce-center-tab[aria-current] {
-  background: linear-gradient(110deg,var(--commerce-blue-soft),var(--commerce-surface));
-  border-color: #9dbaf4; box-shadow: inset 0 0 0 1px #2b67ec16,0 5px 18px #2b67ec08;
-}
-#app .dashboard .commerce-center-tab-icon {
-  display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px;
-  background: var(--commerce-blue-soft); color: var(--commerce-blue); border-radius: 12px;
-}
-#app .dashboard .commerce-center-tab:first-child .commerce-center-tab-icon { color: var(--commerce-gold); background: var(--commerce-gold-soft); }
-#app .dashboard .commerce-center-tab-copy { display: grid; gap: 6px; min-width: 0; }
-#app .dashboard .commerce-center-tab-copy strong { font-size: 16px; font-weight: 650; line-height: 1.5; color: var(--commerce-text); }
-#app .dashboard .commerce-center-tab-copy > span { font-size: 11px; font-weight: 400; line-height: 1.6; color: var(--commerce-muted); }
-#app .dashboard .commerce-center-tab-state { display: inline-flex; margin-left: auto; align-self: flex-start; flex-shrink: 0; font-size: 10px; line-height: 1.8; color: var(--commerce-blue); white-space: nowrap; }
-#app .dashboard .commerce-center-subnav { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin: 13px 2px 0; color: var(--commerce-muted); font-size: 12px; line-height: 1.7; }
-#app .dashboard .commerce-center-subnav a { display: inline-flex; align-items: center; gap: 6px; color: var(--commerce-blue); text-decoration: none; flex-shrink: 0; }
-#app .dashboard .commerce-center-subnav a:hover { text-decoration: underline; }
-#app .dashboard .commerce-center-section { min-width: 0; margin: 0 0 28px; }
-#app .dashboard .commerce-center-section-title { margin: 0 0 22px; }
-#app .dashboard .commerce-center-section-title h2 { font-size: 21px; line-height: 1.5; color: var(--commerce-text); margin: 0; font-weight: 650; letter-spacing: -.3px; }
-#app .dashboard .commerce-center-section-title p { color: var(--commerce-muted); font-size: 12px; line-height: 1.8; margin: 7px 0 0; }
-#app .dashboard .commerce-center-eyebrow { display: block; color: var(--commerce-gold); font-size: 10px; letter-spacing: 1.4px; font-weight: 650; line-height: 1.6; margin: 0 0 7px; }
-#app .dashboard .commerce-center-unit-note { font-size: 11px; line-height: 1.7; color: var(--commerce-muted); }
-#app .dashboard .commerce-center-plan-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
-#app .dashboard .commerce-center-plan-grid.commerce-member-plans,
-#app .dashboard .commerce-center-plan-grid.commerce-writing-plans { grid-template-columns: repeat(4,minmax(0,1fr)); }
-#app .dashboard .commerce-center-plan {
-  display: flex; flex-direction: column; padding: 25px 22px 22px;
-  border: 1px solid var(--commerce-border); border-radius: 14px;
-  background: var(--commerce-surface); min-width: 0;
-}
-#app .dashboard .commerce-center-plan.featured {
-  padding: 25px 22px 22px; border: 1px solid #9cb8ee;
-  background: linear-gradient(180deg,var(--commerce-blue-soft),var(--commerce-surface) 45%);
-  box-shadow: 0 8px 24px #244b8110;
-}
-#app .dashboard .commerce-center-plan .purchase-plan-icon { width: 41px; height: 41px; background: var(--commerce-blue-soft); color: var(--commerce-blue); }
-#app .dashboard .commerce-center-plan .purchase-status { font-size: 10px; color: var(--commerce-muted); background: var(--commerce-soft); padding: 5px 8px; font-weight: 500; }
-#app .dashboard .commerce-center-plan.featured .purchase-status { background: #efe1c7; color: #755225; }
-#app .dashboard .commerce-center-plan h3 { font-size: 19px; font-weight: 650; line-height: 1.5; color: var(--commerce-text); margin: 19px 0 0; }
-#app .dashboard .commerce-center-plan .commerce-center-audience { margin: 7px 0 0; min-height: 37px; color: var(--commerce-muted); font-size: 12px; line-height: 1.7; }
-#app .dashboard .commerce-center-plan .purchase-price { display: block; margin: 17px 0 22px; min-height: 65px; }
-#app .dashboard .commerce-center-plan .purchase-price b { font-size: 34px; letter-spacing: -.8px; line-height: 1.35; font-weight: 650; color: var(--commerce-text); }
-#app .dashboard .commerce-center-plan .purchase-price span { font-size: 11px; line-height: 1.7; margin: 7px 0 0; color: var(--commerce-muted); }
-#app .dashboard .commerce-center-plan-free .purchase-price b { font-size: 29px; line-height: 1.58; }
-#app .dashboard .commerce-center-feature-label { padding-top: 17px; border-top: 1px solid var(--commerce-border); color: var(--commerce-text); font-size: 11px; font-weight: 600; }
-#app .dashboard .commerce-center-plan ul { padding: 0; margin: 11px 0 22px; min-height: 122px; flex: 1; }
-#app .dashboard .commerce-center-plan li { color: var(--commerce-muted); font-size: 12px; line-height: 1.8; margin: 8px 0; gap: 8px; }
-#app .dashboard .commerce-center-plan li span { color: var(--commerce-blue); }
-#app .dashboard .commerce-center-plan .btn { justify-content: center; min-height: 41px; font-size: 12px; }
-#app .dashboard .commerce-center-plan .btn.secondary { background: var(--commerce-surface); border-color: var(--commerce-border); color: var(--commerce-text); }
-#app .dashboard .commerce-center-kind-tabs { display: inline-flex; gap: 3px; margin: 0; padding: 4px; background: var(--commerce-surface); border: 1px solid var(--commerce-border); border-radius: 9px; flex-shrink: 0; }
-#app .dashboard .commerce-center-kind-tabs a { padding: 8px 17px; background: none; border: 0; border-radius: 6px; color: var(--commerce-muted); font-size: 12px; white-space: nowrap; }
-#app .dashboard .commerce-center-kind-tabs a[aria-current] { color: var(--commerce-blue); background: var(--commerce-blue-soft); box-shadow: none; }
-#app .dashboard .commerce-center-bundle-caption { display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px; margin-bottom: 15px; }
-#app .dashboard .commerce-center-bundle-caption h3 { font-size: 14px; color: var(--commerce-text); margin: 0; }
-#app .dashboard .commerce-center-bundle-caption p,
-#app .dashboard .commerce-center-fineprint { font-size: 12px; color: var(--commerce-muted); line-height: 1.8; margin: 0; }
-#app .dashboard .commerce-center-fineprint { margin: 15px 1px 0; }
-#app .dashboard .commerce-center-methods { padding: 26px; border-radius: 14px; background: var(--commerce-surface); border: 1px solid var(--commerce-border); margin: 28px 0; }
-#app .dashboard .commerce-center-methods h2 { font-size: 17px; }
-#app .dashboard .commerce-center-method-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 22px; }
-#app .dashboard .commerce-center-method-grid article { display: flex; gap: 11px; align-items: flex-start; min-width: 0; }
-#app .dashboard .commerce-center-method-grid article > span { display: inline-flex; padding: 8px; border-radius: 9px; color: var(--commerce-blue); background: var(--commerce-blue-soft); }
-#app .dashboard .commerce-center-method-grid h3 { font-size: 13px; margin: 1px 0 6px; color: var(--commerce-text); font-weight: 600; }
-#app .dashboard .commerce-center-method-grid p { font-size: 12px; color: var(--commerce-muted); line-height: 1.7; margin: 0 0 6px; }
-#app .dashboard .commerce-center-method-grid small { font-size: 11px; color: var(--commerce-muted); line-height: 1.7; }
-#app .dashboard .commerce-center-faq { padding: 25px 27px 15px; margin: 28px 0 0; border: 1px solid var(--commerce-border); border-radius: 14px; background: var(--commerce-surface); }
-#app .dashboard .commerce-center-faq h2 { font-size: 17px; line-height: 1.6; color: var(--commerce-text); margin: 0 0 9px; }
-#app .dashboard .commerce-center-faq details { padding: 16px 0; border-bottom: 1px solid var(--commerce-border); }
-#app .dashboard .commerce-center-faq details:last-child { border: 0; }
-#app .dashboard .commerce-center-faq summary { font-size: 13px; color: var(--commerce-text); cursor: pointer; line-height: 1.8; }
-#app .dashboard .commerce-center-faq p { color: var(--commerce-muted); font-size: 12px; line-height: 1.9; margin: 10px 0 0; max-width: 980px; }
-#app .dashboard .commerce-center-form { max-width: none; margin: 0; padding: 27px; border: 1px solid var(--commerce-border); border-radius: 14px; background: var(--commerce-surface); }
-#app .dashboard .commerce-center-form .commerce-surface-heading { display: block; padding: 0 0 22px; margin: 0 0 23px; border-bottom: 1px solid var(--commerce-border); }
-#app .dashboard .commerce-center-form h2 { font-size: 21px; margin: 0; line-height: 1.6; color: var(--commerce-text); }
-#app .dashboard .commerce-center-form .commerce-surface-heading p { margin: 6px 0 0; font-size: 12px; color: var(--commerce-muted); }
-#app .dashboard .commerce-center-form .commerce-form-body { display: grid; grid-template-columns: minmax(0,1fr) minmax(210px,.55fr); gap: 42px; align-items: start; padding: 0; }
-#app .dashboard .commerce-center-form .commerce-form-body > div { min-width: 0; }
-#app .dashboard .commerce-center-form h3 { font-size: 14px; line-height: 1.7; color: var(--commerce-text); margin: 0 0 6px; }
-#app .dashboard .commerce-center-form .commerce-help { font-size: 12px; color: var(--commerce-muted); margin: 0; }
-#app .dashboard .commerce-center-form .commerce-amounts { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin: 18px 0 23px; }
-#app .dashboard .commerce-center-form .commerce-amounts button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 19px 10px; min-width: 0; border: 1px solid var(--commerce-border); border-radius: 10px; background: var(--commerce-surface); color: var(--commerce-text); }
-#app .dashboard .commerce-center-form .commerce-amounts b { font-size: 25px; font-weight: 650; line-height: 1.2; }
-#app .dashboard .commerce-center-form .commerce-amounts small { color: var(--commerce-muted); font-size: 11px; font-weight: 400; }
-#app .dashboard .commerce-center-form .commerce-amounts button[aria-pressed=true] { background: var(--commerce-blue-soft); border-color: var(--commerce-blue); color: var(--commerce-blue); box-shadow: inset 0 0 0 1px var(--commerce-blue); }
-#app .dashboard .commerce-center-form label { font-size: 12px; color: var(--commerce-text); margin: 0 0 9px; }
-#app .dashboard .commerce-center-form input { width: 100%; color: var(--commerce-text); background: var(--commerce-surface); border-color: var(--commerce-border); border-radius: 8px; min-height: 43px; }
-#app .dashboard .commerce-center-form :is(#credit-summary,#code-message) { font-size: 12px; color: var(--commerce-muted); min-height: 23px; line-height: 1.8; margin: 13px 0 0; }
-#app .dashboard .commerce-center-form #code-check { margin: 14px 0 0; }
-#app .dashboard .commerce-center-credit-guide { padding: 23px; border: 1px solid var(--commerce-border); border-radius: 12px; background: var(--commerce-soft); margin: 0; min-width: 0; }
-#app .dashboard .commerce-center-guide-icon { display: inline-flex; background: var(--commerce-gold-soft); color: var(--commerce-gold); border-radius: 10px; padding: 9px; margin-bottom: 16px; }
-#app .dashboard .commerce-center-credit-guide > p { color: var(--commerce-muted); font-size: 12px; line-height: 1.9; margin: 0 0 17px; }
-#app .dashboard .commerce-center-credit-guide > div { display: flex; justify-content: space-between; gap: 12px; margin: 13px 0 0; padding: 0; background: none; font-size: 11px; }
-#app .dashboard .commerce-center-credit-guide > div span { color: var(--commerce-muted); }
-#app .dashboard .commerce-center-credit-guide > div b { color: var(--commerce-text); font-weight: 500; }
-#app .dashboard .commerce-center-form > .btn:disabled { margin-top: 25px; min-width: 188px; background: #dfe7f3; border-color: #dfe7f3; color: #71839d; cursor: not-allowed; box-shadow: none; }
-#app .dashboard .commerce-center-form > .member-caption { color: var(--commerce-muted); font-size: 11px; margin: 10px 0 0; }
-#app .dashboard .commerce-center-rules { color: var(--commerce-muted); background: var(--commerce-blue-soft); }
-.hub-theme-dark #app .dashboard {
-  --commerce-surface: #172438; --commerce-soft: #122034; --commerce-text: #e3ebf7;
-  --commerce-muted: #a6b5cb; --commerce-border: #2d405a; --commerce-blue: #9dbdff;
-  --commerce-blue-soft: #203653; --commerce-gold: #e7c68e; --commerce-gold-soft: #352f26;
-}
-.hub-theme-dark #app .dashboard .commerce-center-availability { border-color: #5b4b34; }
-.hub-theme-dark #app .dashboard .commerce-center-tab[aria-current],
-.hub-theme-dark #app .dashboard .commerce-center-plan.featured { border-color: #5774a6; }
-.hub-theme-dark #app .dashboard .commerce-center-plan.featured .purchase-status { color: #eed5a9; background: #504431; }
-.hub-theme-dark #app .dashboard .commerce-center-form > .btn:disabled { background: #2e3c51; border-color: #2e3c51; color: #9caac1; }
-@container workspace (max-width:1180px) {
-  #app .dashboard .commerce-center-tab { gap: 10px; padding: 18px 14px; }
-  #app .dashboard .commerce-center-tab-state { display: none; }
-  #app .dashboard .commerce-center-plan-grid.commerce-member-plans,
-  #app .dashboard .commerce-center-plan-grid.commerce-writing-plans { grid-template-columns: repeat(2,minmax(0,1fr)); }
-}
-@container workspace (max-width:860px) {
-  #app .dashboard .commerce-center-plan-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  #app .dashboard .commerce-center-method-grid { grid-template-columns: minmax(0,1fr); gap: 20px; }
-  #app .dashboard .commerce-center-form .commerce-form-body { grid-template-columns: minmax(0,1fr); gap: 23px; }
-  #app .dashboard .commerce-center-credit-guide { padding: 20px; }
-}
-@container workspace (max-width:650px) {
-  #app .dashboard .commerce-center-availability { align-items: flex-start; flex-direction: column; gap: 6px; padding: 14px; }
-  #app .dashboard .commerce-center-tabs { gap: 8px; }
-  #app .dashboard .commerce-center-tab { flex-direction: column; padding: 15px 5px; gap: 9px; text-align: center; }
-  #app .dashboard .commerce-center-tab-icon { flex-basis: auto; width: 36px; height: 36px; border-radius: 10px; }
-  #app .dashboard .commerce-center-tab-icon svg { width: 20px; height: 20px; }
-  #app .dashboard .commerce-center-tab-copy strong { font-size: 13px; }
-  #app .dashboard .commerce-center-tab-copy > span { display: none; }
-  #app .dashboard .commerce-center-subnav { align-items: flex-start; }
-  #app .dashboard .commerce-center-subnav > span { max-width: 54%; font-size: 11px; }
-  #app .dashboard .commerce-center-subnav a { font-size: 11px; }
-  #app .dashboard .commerce-center-section-title { flex-direction: column; align-items: flex-start; gap: 12px; }
-  #app .dashboard .commerce-center-section-title h2 { font-size: 19px; }
-  #app .dashboard .commerce-center-plan-grid,
-  #app .dashboard .commerce-center-plan-grid.commerce-member-plans,
-  #app .dashboard .commerce-center-plan-grid.commerce-writing-plans { grid-template-columns: minmax(0,1fr); }
-  #app .dashboard .commerce-center-plan,
-  #app .dashboard .commerce-center-plan.featured { padding: 23px; }
-  #app .dashboard .commerce-center-plan .commerce-center-audience { min-height: 0; }
-  #app .dashboard .commerce-center-plan ul { min-height: 0; }
-  #app .dashboard .commerce-center-methods,
-  #app .dashboard .commerce-center-form { padding: 21px; }
-  #app .dashboard .commerce-center-faq { padding: 21px 21px 10px; }
-  #app .dashboard .commerce-center-form .commerce-amounts { gap: 8px; }
-  #app .dashboard .commerce-center-form .commerce-amounts button { padding: 18px 5px; }
-  #app .dashboard .commerce-center-form > .btn:disabled { width: 100%; min-width: 0; }
-}
-@media(prefers-reduced-motion:reduce) { #app .dashboard .commerce-center-tab { transition: none; } }
+@media(prefers-reduced-motion:reduce){#app .dashboard .commerce-center-tab,#app .dashboard .commerce-center-tab-art,#app .dashboard .commerce-center-plan,#app .dashboard .commerce-center-form .commerce-credit-pack{transition:none}#app .dashboard .commerce-center-tab:hover,#app .dashboard .commerce-center-tab:hover .commerce-center-tab-art,#app .dashboard .commerce-center-plan:hover,#app .dashboard .commerce-center-form .commerce-credit-pack:hover{transform:none}}

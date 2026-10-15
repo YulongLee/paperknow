@@ -13,12 +13,33 @@ function setup(api,hash='#help?scope=account'){
 }
 test('usage separates account cumulative totals, recent unknown tokens and storage from billing',async()=>{
  const env=setup(async path=>path==='/usage'?{items:[{model:'real-model',input_tokens:5,output_tokens:null,created_at:'2026-10-15'}]}:{usage:{records:120,inputTokens:2000,outputTokens:1000},storage:{fileBytes:1048576,draftBytes:0,maxAccountFileBytes:52428800,maxAccountDraftBytes:52428800}});
- try{assert.equal(await renderOnlinePersonal('usage',env.ctx),true);const text=env.ctx.target.textContent;assert.match(text,/120/);assert.match(text,/2,000/);assert.match(text,/未知/);assert.match(text,/50.00 MB/);assert.match(text,/当前未启用扣费/);assert.equal(env.ctx.target.querySelector('a[href*="membership/pay"]'),null);assert.deepEqual(onlineUsageSummary([{input_tokens:3,output_tokens:2},{input_tokens:null,output_tokens:4}]),{records:2,inputTokens:3,outputTokens:6,unknownRecords:1});}finally{env.dom.window.close();}
+ try{assert.equal(await renderOnlinePersonal('usage',env.ctx),true);const text=env.ctx.target.textContent;assert.match(text,/120/);assert.match(text,/2,000/);assert.match(text,/未知/);assert.match(text,/50.00 MB/);assert.match(text,/当前未启用积分扣减/);assert.equal(env.ctx.target.querySelector('a[href*="membership/pay"]'),null);assert.deepEqual(onlineUsageSummary([{input_tokens:3,output_tokens:2},{input_tokens:null,output_tokens:4}]),{records:2,inputTokens:3,outputTokens:6,unknownRecords:1});}finally{env.dom.window.close();}
 });
 test('account membership uses actual service state and existing entitlements without starting purchase',async()=>{
  const calls=[],env=setup(async(path,data)=>{calls.push([path,data]);return path==='/capabilities'?{ai:true,agent:false,payment:true}:path==='/payments/entitlements'?{items:[{title:'真实已有权益',description:'<img src=x>',starts_at:'2020-01-01',expires_at:'2099-01-01'}]}:{counts:{projects:2,drafts:3,results:4,files:5}};},'#membership?scope=account');
- try{await renderOnlinePersonal('membership',env.ctx);assert.match(env.ctx.target.textContent,/真实已有权益/);assert.match(env.ctx.target.textContent,/在线 AI 修改已开放/);assert.match(env.ctx.target.textContent,/科研智能助手未配置/);assert.equal(env.ctx.target.querySelector('img'),null);assert.equal(env.ctx.target.querySelector('a[href*="membership/pay"]'),null);assert.equal(calls.every(([,data])=>data===undefined),true);assert.match(env.ctx.target.textContent,/本地草稿不会自动上传/);}finally{env.dom.window.close();}
+ try{await renderOnlinePersonal('membership',env.ctx);assert.match(env.ctx.target.textContent,/真实已有权益/);assert.match(env.ctx.target.textContent,/在线 AI 修改已开放/);assert.match(env.ctx.target.textContent,/科研智能助手未配置/);assert.equal(env.ctx.target.querySelector('img[src="x"]'),null);assert.equal(env.ctx.target.querySelector('a[href*="membership/pay"]'),null);assert.equal(calls.every(([,data])=>data===undefined),true);assert.match(env.ctx.target.textContent,/本地草稿不会自动上传/);}finally{env.dom.window.close();}
 });
+test('account credits and ledger come from server records and escape titles without changing local content',async()=>{
+ const env=setup(async path=>path==='/payments/entitlements'?{items:[],credits:{balance:700,ledger:[{orderId:'order/one',title:'<img src=x>',amount:500,createdAt:'2026-10-16'}]}}:path==='/capabilities'?{payment:false,ai:false}:{counts:{projects:99}},'#membership?scope=account');
+ try{
+  localStorage.setItem('paperknow-drafts','[{"title":"private local draft"}]');
+  await renderOnlinePersonal('membership',env.ctx);
+  const credit=document.querySelector('.member-purchase-credits');
+  assert.equal(credit.querySelector('h2').textContent,'700');
+  assert.equal(document.querySelector('.member-credit-increase').textContent,'+500');
+  assert.match(document.querySelector('.member-credit-ledger').textContent,/<img src=x>/);
+  assert.equal(document.querySelector('img[src="x"]'),null);
+  assert.ok(document.querySelector('a[href="#membership/pay?order=order%2Fone"]'));
+  assert.match(localStorage.getItem('paperknow-drafts'),/private local draft/);
+  assert.match(env.ctx.target.textContent,/当前积分消耗服务尚未开放/);
+ }finally{env.dom.window.close();}
+});
+
+test('missing credit data stays unknown rather than fabricated zero balance',async()=>{
+ const env=setup(async path=>path==='/payments/entitlements'?{items:[]}:path==='/capabilities'?{}:{counts:{}},'#membership?scope=account');
+ try{await renderOnlinePersonal('membership',env.ctx);assert.equal(document.querySelector('.member-purchase-credits h2').textContent,'—');assert.match(document.querySelector('.member-credit-ledger').textContent,/积分记录暂不可用/);}finally{env.dom.window.close();}
+});
+
 test('feedback shows only public status, escapes research text and refresh preserves unsubmitted input',async()=>{
  let reads=0;const env=setup(async()=>({items:[{id:'f-1',category:'功能问题',body:'<script>研究问题</script>',status:++reads===1?'processing':'resolved',created_at:'2026-10-15',updated_at:'2026-10-16',note:'不应公开的后台备注'}]}));
  try{await renderOnlinePersonal('help',env.ctx);assert.match(env.ctx.target.textContent,/处理中/);assert.doesNotMatch(env.ctx.target.textContent,/不应公开/);assert.equal(env.ctx.target.querySelector('script'),null);document.querySelector('#feedback').value='尚未提交的输入';await env.click('#feedback-refresh');assert.equal(document.querySelector('#feedback').value,'尚未提交的输入');assert.match(document.querySelector('#feedback-records').textContent,/已处理/);assert.equal(publicFeedbackStatus('invalid'),'待处理');}finally{env.dom.window.close();}

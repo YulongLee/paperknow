@@ -13,7 +13,7 @@ export function createPaymentService(db,config={}){
  const get=id=>db.prepare(orderSelect+' WHERE o.id=?').get(id);
  const own=(id,user)=>{const order=get(id);if(!order||order.user_id!==user.id)fail(404,'订单不存在');return order;};
  const expire=userId=>db.prepare("UPDATE orders SET status='expired' WHERE user_id=? AND status='pending' AND id IN (SELECT order_id FROM payment_orders WHERE expires_at<=?)").run(userId,at());
- function publicOrder(order){return {id:order.id,productId:order.product_id,outTradeNo:order.out_trade_no||order.id,status:order.status,amountCents:order.amount_cents??null,currency:order.currency||'CNY',title:order.title,provider:order.provider||null,qrContent:order.status==='pending'?order.qr_content||null:null,expiresAt:order.expires_at||null,createdAt:order.created_at,paidAt:order.paid_at||null};}
+ function publicOrder(order){let snapshot;try{snapshot=JSON.parse(order.entitlement);}catch{}return {id:order.id,productId:order.product_id,outTradeNo:order.out_trade_no||order.id,status:order.status,amountCents:order.amount_cents??null,currency:order.currency||'CNY',title:order.title,provider:order.provider||null,entitlementType:snapshot?.type||null,creditAmount:snapshot?.type==='credits'?snapshot.creditAmount:null,qrContent:order.status==='pending'?order.qr_content||null:null,expiresAt:order.expires_at||null,createdAt:order.created_at,paidAt:order.paid_at||null};}
  function options(){const channels=['wechat','alipay'].map(provider=>({provider,label:provider==='wechat'?'微信支付':'支付宝',ready:settings.summary(provider).ready})),products=paymentCatalog(db);return {enabled:channels.some(c=>c.ready)&&products.length>0,channels,products};}
  function identity(order,result,channel){
  const merchant=order.provider==='wechat'?channel.merchantId:channel.sellerId;
@@ -31,14 +31,22 @@ export function createPaymentService(db,config={}){
   if(fresh.status==='paid')return fresh;
   if(!['pending','expired'].includes(fresh.status))fail(409,'当前订单状态不能确认支付，请联系客服核对');
   let entitlement;try{entitlement=JSON.parse(fresh.entitlement);}catch{fail(500,'订单权益信息异常，请联系客服');}
-  if(entitlement.type!=='membership'||!Number.isSafeInteger(entitlement.durationDays)||entitlement.durationDays<1||entitlement.durationDays>366)fail(500,'订单权益信息异常，请联系客服');
+  const validMembership=entitlement?.type==='membership'&&Number.isSafeInteger(entitlement.durationDays)&&entitlement.durationDays>=1&&entitlement.durationDays<=366;
+  const validCredits=entitlement?.type==='credits'&&Number.isSafeInteger(entitlement.creditAmount)&&entitlement.creditAmount>=1&&entitlement.creditAmount<=1000000;
+  if(!validMembership&&!validCredits)fail(500,'订单权益信息异常，请联系客服');
   const now=at(),paidAt=result.paidAt?new Date(result.paidAt).toISOString():now;
   // The immutable order snapshot, never the current product price, drives fulfilment.
-  const previous=db.prepare('SELECT max(expires_at) AS until FROM payment_entitlements WHERE user_id=? AND product_id=?').get(fresh.user_id,fresh.product_id).until;
-  const startsAt=previous&&previous>now?previous:now,expiresAt=new Date(Date.parse(startsAt)+entitlement.durationDays*86400000).toISOString();
+  if(validCredits){
+   const balance=db.prepare('SELECT COALESCE(sum(amount),0) AS balance FROM payment_credit_ledger WHERE user_id=?').get(fresh.user_id).balance;
+   if(!Number.isSafeInteger(balance+entitlement.creditAmount))fail(500,'积分余额异常，请联系客服');
+   db.prepare('INSERT INTO payment_credit_ledger(order_id,user_id,product_id,amount,kind,created_at) VALUES(?,?,?,?,?,?)').run(fresh.id,fresh.user_id,fresh.product_id,entitlement.creditAmount,'purchase',now);
+  }else{
+   const previous=db.prepare('SELECT max(expires_at) AS until FROM payment_entitlements WHERE user_id=? AND product_id=?').get(fresh.user_id,fresh.product_id).until;
+   const startsAt=previous&&previous>now?previous:now,expiresAt=new Date(Date.parse(startsAt)+entitlement.durationDays*86400000).toISOString();
+   db.prepare('INSERT INTO payment_entitlements(order_id,user_id,product_id,type,starts_at,expires_at,granted_at) VALUES(?,?,?,?,?,?,?)').run(fresh.id,fresh.user_id,fresh.product_id,'membership',startsAt,expiresAt,now);
+  }
   db.prepare('UPDATE payment_orders SET provider_trade_no=?,paid_at=?,updated_at=?,error_code=NULL WHERE order_id=?').run(result.providerTradeNo,paidAt,now,fresh.id);
   db.prepare("UPDATE orders SET status='paid' WHERE id=?").run(fresh.id);
-  db.prepare('INSERT INTO payment_entitlements(order_id,user_id,product_id,type,starts_at,expires_at,granted_at) VALUES(?,?,?,?,?,?,?)').run(fresh.id,fresh.user_id,fresh.product_id,'membership',startsAt,expiresAt,now);
  }else if(['closed','failed'].includes(result.state)&&fresh.status==='pending'){
   db.prepare('UPDATE orders SET status=? WHERE id=?').run(result.state,fresh.id);
   db.prepare('UPDATE payment_orders SET updated_at=? WHERE order_id=?').run(at(),fresh.id);
@@ -59,7 +67,7 @@ export function createPaymentService(db,config={}){
  const id=randomUUID(),created=at(),expiresAt=new Date(Date.now()+15*60000).toISOString(),outTradeNo='PK'+Date.now().toString()+randomBytes(7).toString('hex');
  transaction(()=>{
  db.prepare('INSERT INTO orders(id,user_id,product_id,status,created_at) VALUES(?,?,?,?,?)').run(id,user.id,product.id,'pending',created);
- db.prepare('INSERT INTO payment_orders(order_id,provider,out_trade_no,config_id,amount_cents,currency,title,entitlement,idempotency_key,input_hash,user_id,expires_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,input.provider,outTradeNo,channel.id,product.priceCents,'CNY',product.title,JSON.stringify({type:'membership',durationDays:product.durationDays,description:product.description}),input.idempotencyKey,inputHash,user.id,expiresAt,created);
+ db.prepare('INSERT INTO payment_orders(order_id,provider,out_trade_no,config_id,amount_cents,currency,title,entitlement,idempotency_key,input_hash,user_id,expires_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,input.provider,outTradeNo,channel.id,product.priceCents,'CNY',product.title,JSON.stringify({...product.entitlement,description:product.description}),input.idempotencyKey,inputHash,user.id,expiresAt,created);
  });
  const order=get(id);
  try{
@@ -113,7 +121,9 @@ export function createPaymentService(db,config={}){
   let snapshot;try{snapshot=JSON.parse(entitlement);}catch{snapshot=null;}
   return {...item,description:typeof snapshot?.description==='string'?snapshot.description:''};
  });
- return {items};
+ const balance=db.prepare('SELECT COALESCE(sum(amount),0) AS balance FROM payment_credit_ledger WHERE user_id=?').get(user.id).balance;
+ const ledger=db.prepare('SELECT e.order_id AS orderId,e.product_id AS productId,d.title,e.amount,e.kind,e.created_at AS createdAt FROM payment_credit_ledger e JOIN payment_orders d ON d.order_id=e.order_id WHERE e.user_id=? ORDER BY e.created_at DESC,e.order_id DESC LIMIT 100').all(user.id);
+ return {items,credits:{balance,ledger}};
  }
  return {settings,options,create,query,notify,getOrder,list,entitlements};
 }

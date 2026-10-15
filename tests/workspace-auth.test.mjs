@@ -75,7 +75,7 @@ test('sidebar exposes three purchase modes without inferring membership or creat
   const card=f.document.querySelector('.hub-commerce-card');
   assert.ok(card);
   assert.deepEqual([...card.querySelectorAll('a')].map(a=>a.hash),['#membership/plans','#membership/recharge','#membership/bundles']);
-  assert.match(card.textContent,/暂未开放购买/);
+  assert.match(card.textContent,/查看权益与最新方案/);
   assert.doesNotMatch(card.textContent,/已开通|余额|剩余.*积分/);
   assert.ok(f.document.querySelector('.hub-sidebar-profile'));
   assert.ok(seen.every(path=>path==='/api/auth/me'));

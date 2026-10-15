@@ -52,6 +52,20 @@ export function database(path){
     for(const [id,title] of [['basic','基础会员'],['advanced','进阶会员'],['premium','尊享会员']]){
       db.prepare('INSERT OR IGNORE INTO products VALUES(?,?,?,?)').run(id,title,'preview',JSON.stringify({unit:null,quota:null,duration:null,paymentEnabled:false}));
     }
+    // The owner approved these recharge tiers. Existing edits are never reset on startup.
+    for(const amount of [200,500,1000]){
+      db.prepare('INSERT OR IGNORE INTO products(id,title,status,rules) VALUES(?,?,?,?)').run(`credits-${amount}`,`${amount} 科研积分`,'active',JSON.stringify({priceCents:amount*10,durationDays:null,creditAmount:amount,description:`支付成功后向当前账户充值 ${amount} 科研积分。积分消费服务尚未开放，当前不会自动扣除积分。`,entitlementType:'credits',paymentEnabled:true}));
+    }
+    db.exec(`CREATE TABLE IF NOT EXISTS payment_credit_ledger(
+      order_id TEXT PRIMARY KEY REFERENCES orders(id),user_id TEXT NOT NULL REFERENCES users(id),
+      product_id TEXT NOT NULL REFERENCES products(id),amount INTEGER NOT NULL CHECK(amount>0 AND amount<=1000000),
+      kind TEXT NOT NULL CHECK(kind='purchase'),created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS payment_credit_ledger_owner ON payment_credit_ledger(user_id,created_at);
+    CREATE TRIGGER IF NOT EXISTS payment_credit_ledger_no_update BEFORE UPDATE ON payment_credit_ledger
+      BEGIN SELECT RAISE(ABORT,'积分记录不可修改'); END;
+    CREATE TRIGGER IF NOT EXISTS payment_credit_ledger_no_delete BEFORE DELETE ON payment_credit_ledger
+      BEGIN SELECT RAISE(ABORT,'积分记录不可删除'); END;`);
     return db;
   }catch(error){
     db.close();

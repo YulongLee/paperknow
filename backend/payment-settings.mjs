@@ -51,12 +51,37 @@ export function createPaymentSettings(db,config={}){
  return {encryptionReady:Boolean(key),current,version,summary,save,versions};
 }
 export function paymentCatalog(db,{all=false}={}){
- return db.prepare('SELECT * FROM products ORDER BY id').all().flatMap(p=>{let rules;try{rules=JSON.parse(p.rules);}catch{rules={};}const priceCents=Number.isSafeInteger(rules.priceCents)&&rules.priceCents>0?rules.priceCents:null,durationDays=Number.isSafeInteger(rules.durationDays)?rules.durationDays:null;const active=p.status==='active'&&priceCents!==null&&durationDays>=1&&durationDays<=366&&rules.entitlementType==='membership';if(!all&&!active)return [];return [{id:p.id,title:p.title,status:active?'active':'preview',priceCents,currency:'CNY',description:typeof rules.description==='string'?rules.description:'',durationDays,entitlementType:'membership',entitlement:{type:'membership',durationDays}}];});
+ return db.prepare('SELECT * FROM products ORDER BY id').all().flatMap(p=>{
+  let rules;try{rules=JSON.parse(p.rules);}catch{}if(!rules||typeof rules!=='object'||Array.isArray(rules))rules={};
+  const priceCents=Number.isSafeInteger(rules.priceCents)&&rules.priceCents>0&&rules.priceCents<=10000000?rules.priceCents:null;
+  const entitlementType=rules.entitlementType||'membership',durationDays=entitlementType==='membership'&&Number.isSafeInteger(rules.durationDays)?rules.durationDays:null;
+  const creditAmount=entitlementType==='credits'&&Number.isSafeInteger(rules.creditAmount)&&rules.creditAmount>0&&rules.creditAmount<=1000000?rules.creditAmount:null;
+  const validEntitlement=entitlementType==='membership'?durationDays>=1&&durationDays<=366:entitlementType==='credits'&&creditAmount!==null;
+  const description=typeof rules.description==='string'?rules.description:'';
+  const active=p.status==='active'&&priceCents!==null&&validEntitlement&&Boolean(description.trim());
+  if(!all&&!active)return [];
+  return [{id:p.id,title:p.title,status:active?'active':'preview',priceCents,currency:'CNY',description,durationDays,creditAmount,entitlementType,entitlement:entitlementType==='credits'?{type:'credits',creditAmount}:{type:'membership',durationDays}}];
+ }).sort((a,b)=>{
+  const group={membership:0,credits:1};
+  if(a.entitlementType!==b.entitlementType)return (group[a.entitlementType]??2)-(group[b.entitlementType]??2);
+  return a.entitlementType==='credits'?(a.creditAmount??Infinity)-(b.creditAmount??Infinity)||a.id.localeCompare(b.id):a.id.localeCompare(b.id);
+ });
 }
 export function savePaymentProduct(db,id,input){
- if(!db.prepare('SELECT id FROM products WHERE id=?').get(id))fail(404,'商品不存在');
- const allowed=['title','description','priceCents','durationDays','status'];if(!input||Object.keys(input).some(k=>!allowed.includes(k))||typeof input.title!=='string'||!input.title.trim()||input.title.length>80||typeof input.description!=='string'||input.description.length>1000||!['preview','active'].includes(input.status))fail(400,'商品信息不正确');
- const price=input.priceCents,days=input.durationDays;if(price!==null&&(!Number.isSafeInteger(price)||price<1||price>10000000))fail(400,'请输入有效的商品价格，单位为分');if(days!==null&&(!Number.isSafeInteger(days)||days<1||days>366))fail(400,'会员有效期应为 1～366 天');if(input.status==='active'&&(!price||!days||!input.description.trim()))fail(400,'上架前请明确价格、有效期和可交付权益');
- db.prepare('UPDATE products SET title=?,status=?,rules=? WHERE id=?').run(input.title.trim(),input.status,JSON.stringify({priceCents:price,durationDays:days,description:input.description.trim(),entitlementType:'membership',paymentEnabled:input.status==='active'}),id);
+ const current=db.prepare('SELECT rules FROM products WHERE id=?').get(id);if(!current)fail(404,'商品不存在');
+ const allowed=['title','description','priceCents','durationDays','status','entitlementType','creditAmount'];if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!allowed.includes(k))||typeof input.title!=='string'||!input.title.trim()||input.title.length>80||typeof input.description!=='string'||input.description.length>1000||!['preview','active'].includes(input.status))fail(400,'商品信息不正确');
+ let previous;try{previous=JSON.parse(current.rules);}catch{}const previousType=previous?.entitlementType||'membership',type=input.entitlementType??previousType;
+ if(!['membership','credits'].includes(type)||type!==previousType)fail(400,'商品权益类型不能变更');
+ const price=input.priceCents,days=input.durationDays,creditAmount=type==='credits'?input.creditAmount:null;
+ if(price!==null&&(!Number.isSafeInteger(price)||price<1||price>10000000))fail(400,'请输入有效的商品价格，单位为分');
+ if(type==='membership'){
+  if(days!==null&&(!Number.isSafeInteger(days)||days<1||days>366))fail(400,'会员有效期应为 1～366 天');
+  if(input.creditAmount!==undefined&&input.creditAmount!==null)fail(400,'会员商品不能配置充值积分');
+ }else{
+  if(days!==null)fail(400,'积分商品不配置会员有效期');
+  if(creditAmount!==null&&(!Number.isSafeInteger(creditAmount)||creditAmount<1||creditAmount>1000000))fail(400,'充值积分应为 1～1000000 的整数');
+ }
+ if(input.status==='active'&&(!price||!(type==='credits'?creditAmount:days)||!input.description.trim()))fail(400,'上架前请明确价格、可交付权益及数量或有效期');
+ db.prepare('UPDATE products SET title=?,status=?,rules=? WHERE id=?').run(input.title.trim(),input.status,JSON.stringify({priceCents:price,durationDays:type==='membership'?days:null,...(type==='credits'?{creditAmount}:{}),description:input.description.trim(),entitlementType:type,paymentEnabled:input.status==='active'}),id);
  return paymentCatalog(db,{all:true}).find(p=>p.id===id);
 }
