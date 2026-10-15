@@ -35,6 +35,21 @@
 @keyframes writing-title-arrive{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes writing-copy-arrive{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
 @keyframes writing-title-sheen{0%,100%{background-position:0 50%}50%{background-position:100% 50%}}
+/* Keep previews aligned while rotating, with quiet playback controls. */
+.home-platform main .feature-tabs button.is-active,.home-platform main .feature-tabs button.is-active:hover{color:#fff;background:var(--blue);border-color:var(--blue)}
+.home-platform main .feature-panels{display:grid;min-width:0}
+.home-platform main .feature-panels>.feature-stage{grid-area:1/1;min-width:0;width:100%}
+.home-platform main .feature-panels>.feature-stage[hidden]{display:grid!important;visibility:hidden;pointer-events:none;animation:none}
+.home-platform main .feature-carousel-controls{display:flex;align-items:center;gap:14px;margin:14px 2px 0}
+.home-platform main .feature-carousel-controls[hidden]{display:none}
+.home-platform main .feature-carousel-progress{height:3px;border-radius:3px;background:#e7edf7;overflow:hidden;flex:1}
+.home-platform main .feature-carousel-progress span{display:block;height:100%;background:#7ca5f3;transform:scaleX(0);transform-origin:left}
+.home-platform main .feature-carousel-count{font-size:11px;font-variant-numeric:tabular-nums;color:#8b99ad;white-space:nowrap}
+.home-platform main #feature-carousel-current{color:#3e6298;font-weight:600}
+.home-platform main .feature-carousel-toggle{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:34px;padding:4px 7px;border-radius:6px;color:#657b98;font-size:11px;white-space:nowrap;transition:background .2s,color .2s}
+.home-platform main .feature-carousel-toggle:hover{background:#edf4ff;color:var(--blue)}
+.home-platform main .feature-carousel-toggle svg{width:14px;height:14px;stroke-width:1.7}
+@media(max-width:680px){.home-platform main .feature-carousel-controls{gap:10px;margin-top:10px}.home-platform main .feature-carousel-toggle{min-height:40px;padding:4px 8px}}
 @media(prefers-reduced-motion:reduce){
  .home-platform main .hero .writing-hero-title .hero-title-line,.home-platform main .hero .hero-description,.home-platform main .hero .hero-actions{animation:none!important;opacity:1;transform:none}
  .home-platform main .hero .writing-hero-title .hero-title-accent em{animation:none!important;background:none;color:var(--blue);-webkit-text-fill-color:currentColor}

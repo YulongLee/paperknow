@@ -4,7 +4,31 @@ import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
 const html=await readFile(new URL('../dist/index.html',import.meta.url),'utf8');
 const code=await readFile(new URL('../dist/home-app.js',import.meta.url),'utf8');
-async function page(t,user,prepare){const dom=new JSDOM(html,{url:'http://localhost/',runScripts:'outside-only'});t.after(()=>dom.window.close());const w=dom.window;w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};w.localStorage.setItem('paperknow-local-profile',JSON.stringify({name:'过期本地昵称'}));w.fetch=async path=>{if(user==='offline')throw new Error('offline');return {ok:path!='/api/auth/me'||!!user,status:user?200:401,json:async()=>path==='/api/auth/me'?{user}:{ai:false}};};prepare?.(w);w.eval(code);for(let i=0;i<10;i++)await new Promise(r=>setTimeout(r,1));return w.document;}
+async function page(t,user,prepare){const dom=new JSDOM(html,{url:'http://localhost/',runScripts:'outside-only'});t.after(()=>dom.window.close());const w=dom.window;w.matchMedia=query=>({media:query,matches:false,addEventListener(){},removeEventListener(){}});w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};w.localStorage.setItem('paperknow-local-profile',JSON.stringify({name:'过期本地昵称'}));w.fetch=async path=>{if(user==='offline')throw new Error('offline');return {ok:path!='/api/auth/me'||!!user,status:user?200:401,json:async()=>path==='/api/auth/me'?{user}:{ai:false}};};prepare?.(w);w.eval(code);for(let i=0;i<10;i++)await new Promise(r=>setTimeout(r,1));return w.document;}
+
+function carouselEnvironment({reducedMotion=false}={}){
+ const timers=new Map();
+ let observer,observed,hidden=false,nextId=0;
+ return {
+  prepare(w){
+   w.matchMedia=query=>({media:query,matches:reducedMotion,addEventListener(){},removeEventListener(){}});
+   Object.defineProperty(w.document,'hidden',{get:()=>hidden,configurable:true});
+   const originalSetTimeout=w.setTimeout.bind(w),originalClearTimeout=w.clearTimeout.bind(w);
+   w.setTimeout=(callback,delay,...args)=>{if(delay!==6000)return originalSetTimeout(callback,delay,...args);const id={carouselTimer:++nextId};timers.set(id,()=>callback(...args));return id;};
+   w.clearTimeout=id=>{if(!timers.delete(id))originalClearTimeout(id);};
+   w.IntersectionObserver=class{
+    constructor(callback){observer=callback;}
+    observe(element){observed=element;}
+    disconnect(){}
+   };
+  },
+  enter(ratio=1){assert.ok(observed,'the carousel observes its viewport');observer([{target:observed,isIntersecting:ratio>0,intersectionRatio:ratio}]);},
+  hide(d,value){hidden=value;d.dispatchEvent(new d.defaultView.Event('visibilitychange'));},
+  get pending(){return timers.size;},
+  get timer(){return [...timers.keys()][0];},
+  advance(){assert.equal(timers.size,1,'one rotation is scheduled');const [id,callback]=timers.entries().next().value;timers.delete(id);callback();}
+ };
+}
 test('guest homepage ignores local nickname and offers real registration plus local tools',async t=>{const d=await page(t,null);assert.equal(d.querySelector('#account-button').textContent,'登录');assert.equal(d.querySelector('#account-button').classList.contains('is-signed-in'),false);assert.equal(d.querySelector('#header-start').getAttribute('href'),'/auth.html?mode=register');assert.equal(d.querySelector('#header-start').textContent.trim(),'开始使用');const initial=new JSDOM(html);t.after(()=>initial.window.close());const originalLabels=Array.from(initial.window.document.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim());assert.deepEqual(Array.from(d.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim()),originalLabels,'guest CTA copy outside the header keeps its own context');assert.ok(d.querySelector('a[href="/workspace.html#category/writing"]'));assert.equal(d.querySelectorAll('#status-button').length,1);});
 test('authenticated homepage safely renders actual account name and shows admin entry only for administrator',async t=>{const name='管理员<script>';const d=await page(t,{name,email:'a@example.invalid',role:'admin'});const account=d.querySelector('#account-button');assert.equal(account.classList.contains('is-signed-in'),true);assert.equal(account.querySelector('.home-account-name').textContent,name);assert.equal(account.querySelector('.home-account-avatar').textContent,'管');assert.equal(account.title,name);assert.equal(account.getAttribute('aria-label'),`打开 ${name} 的账户`);assert.equal(account.querySelector('script'),null);assert.equal(d.querySelector('#header-start').getAttribute('href'),'/workspace.html#home');assert.equal(d.querySelector('#header-start').textContent.trim(),'进入工作台');account.click();assert.ok(d.querySelector('a[href="/admin.html"]'));assert.equal(d.querySelector('#home-dialog-body script'),null);assert.ok(d.querySelector('#home-dialog-body').textContent.includes(name));});
 test('account display truncates text while preserving full identity and email or phone fallback',async t=>{const name='Researcher<img src=x onerror=alert(1)>';const d=await page(t,{name,email:'u@example.invalid',role:'user'});const account=d.querySelector('#account-button');assert.equal(account.querySelector('.home-account-name').textContent,Array.from(name).slice(0,16).join(''));assert.equal(account.title,name);assert.equal(account.querySelector('img'),null);const email=await page(t,{email:'person@example.invalid',role:'user'});assert.equal(email.querySelector('.home-account-avatar').textContent,'P');assert.equal(email.querySelector('.home-account-name').textContent,'person@example.i');const phone=await page(t,{phone:'13800138000',role:'user'});assert.equal(phone.querySelector('.home-account-name').textContent,'13800138000');});
@@ -119,4 +143,62 @@ test('homepage keeps sample results and unavailable desktop downloads clearly id
  d.querySelector('#status-button').click();
  assert.match(d.querySelector('#home-dialog-body').textContent,/尚未配置模型/);
  assert.match(d.querySelector('#home-dialog-body').textContent,/尚未接入在线数据库或检测服务/);
+});
+
+test('capability carousel advances in view, wraps after the last capability, and leaves keyboard focus alone',async t=>{
+ const clock=carouselEnvironment(),d=await page(t,null,clock.prepare);
+ const selected=()=>d.querySelector('[data-feature-tab][aria-selected="true"]').dataset.featureTab;
+ assert.equal(clock.pending,0,'offscreen previews do not rotate');
+ clock.enter(.1);assert.equal(clock.pending,0,'a small visible sliver is insufficient to start');
+ clock.enter(.5);assert.equal(clock.pending,1);
+ const focus=d.activeElement;
+ clock.advance();assert.equal(selected(),'literature');assert.equal(d.activeElement,focus);
+ const previousTimer=clock.timer;
+ d.querySelector('[data-feature-tab="research"]').click();
+ assert.notEqual(clock.timer,previousTimer,'manual selection starts a fresh reading interval');
+ clock.advance();assert.equal(selected(),'writing');assert.equal(d.activeElement,focus);
+ assert.equal(d.querySelector('#feature-carousel-current').textContent,'01');
+ for(const panel of d.querySelectorAll('[data-feature-panel]')){
+  const active=panel.dataset.featurePanel==='writing';
+  assert.equal(panel.hidden,!active);
+  assert.equal(panel.getAttribute('aria-hidden'),String(!active));
+  assert.equal(panel.inert,!active,'inactive cards cannot retain interactive focus targets');
+ }
+});
+
+test('capability carousel pauses while reading or away, and resumes with a fresh interval',async t=>{
+ const clock=carouselEnvironment(),d=await page(t,null,clock.prepare),w=d.defaultView;
+ const section=d.querySelector('#capabilities');
+ clock.enter();
+ let previousTimer=clock.timer;
+ const assertPaused=()=>assert.equal(clock.pending,0,'rotation stops during the interruption');
+ const assertRestarted=()=>{assert.equal(clock.pending,1);assert.notEqual(clock.timer,previousTimer,'resuming grants another full reading interval');previousTimer=clock.timer;};
+ const hover=new w.Event('pointerenter');Object.defineProperty(hover,'pointerType',{value:'mouse'});
+ section.dispatchEvent(hover);assertPaused();
+ section.dispatchEvent(new w.Event('pointerleave'));assertRestarted();
+ d.querySelector('[data-feature-tab="writing"]').focus();assertPaused();
+ d.querySelector('#account-button').focus();await Promise.resolve();assertRestarted();
+ d.querySelector('#about-button').click();await Promise.resolve();assertPaused();
+ d.querySelector('#dialog-close').click();await Promise.resolve();assertRestarted();
+ clock.hide(d,true);assertPaused();
+ clock.hide(d,false);assertRestarted();
+ clock.enter(0);assertPaused();
+ clock.enter(.5);assertRestarted();
+ assert.equal(d.querySelector('[data-feature-tab][aria-selected="true"]').dataset.featureTab,'writing','interruptions never advance a card');
+});
+
+test('capability carousel respects explicit pause and defaults to manual cards for reduced motion',async t=>{
+ const clock=carouselEnvironment(),d=await page(t,null,clock.prepare);
+ clock.enter();assert.equal(clock.pending,1);
+ const toggle=d.querySelector('#feature-carousel-toggle');
+ toggle.click();assert.equal(clock.pending,0);assert.match(toggle.getAttribute('aria-label'),/开始/);
+ clock.enter(0);clock.enter();clock.hide(d,true);clock.hide(d,false);
+ assert.equal(clock.pending,0,'visibility changes do not override a user pause');
+ toggle.click();assert.equal(clock.pending,1);assert.match(toggle.getAttribute('aria-label'),/暂停/);
+ const reducedClock=carouselEnvironment({reducedMotion:true});
+ const reduced=await page(t,null,reducedClock.prepare);reducedClock.enter();
+ assert.equal(reducedClock.pending,0,'reduced motion prevents automatic cycling by default');
+ reduced.querySelector('[data-feature-tab="ppt"]').click();
+ assert.equal(reduced.querySelector('[data-feature-tab][aria-selected="true"]').dataset.featureTab,'ppt');
+ assert.equal(reducedClock.pending,0,'manual preview selection remains available without autoplay');
 });

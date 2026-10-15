@@ -39,6 +39,14 @@ async function loadServiceState(){
 // Keep all capabilities visible, with one focused preview and direct workspace links.
 const featureTabs=Array.from(document.querySelectorAll('[data-feature-tab]'));
 const featurePanels=Array.from(document.querySelectorAll('[data-feature-panel]'));
+const featureSection=$('#capabilities');
+const featureControls=$('.feature-carousel-controls');
+const featureRotationButton=$('#feature-carousel-toggle');
+const featureProgress=$('.feature-carousel-progress span');
+const featureMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
+let featureAutoplay=!featureMotion.matches,featureInView=false,featureHovered=false;
+let featureTimer=null,featureProgressAnimation=null;
+const featureDelay=6000;
 function selectFeature(key,moveFocus=false){
  const selected=featureTabs.find(tab=>tab.dataset.featureTab===key);
  if(!selected||!featurePanels.some(panel=>panel.dataset.featurePanel===key))return;
@@ -48,8 +56,32 @@ function selectFeature(key,moveFocus=false){
   tab.tabIndex=active?0:-1;
   tab.classList.toggle('is-active',active);
  });
- featurePanels.forEach(panel=>{panel.hidden=panel.dataset.featurePanel!==key;});
+ featurePanels.forEach(panel=>{
+  const active=panel.dataset.featurePanel===key;
+  panel.hidden=!active;
+  panel.inert=!active;
+  panel.setAttribute('aria-hidden',String(!active));
+ });
+ const index=featureTabs.indexOf(selected);
+ $('#feature-carousel-current').textContent=String(index+1).padStart(2,'0');
+ $('.feature-carousel-count').setAttribute('aria-label',`当前第 ${index+1} 项，共 ${featureTabs.length} 项`);
  if(moveFocus)selected.focus();
+ syncFeatureRotation();
+}
+function syncFeatureRotation(){
+ clearTimeout(featureTimer);featureTimer=null;
+ featureProgressAnimation?.cancel();featureProgressAnimation=null;
+ const focused=featureSection.contains(document.activeElement)&&!featureRotationButton.contains(document.activeElement);
+ const rotating=featureAutoplay&&featureInView&&!featureHovered&&!focused&&!document.hidden&&!dialog.open;
+ featureSection.dataset.rotation=rotating?'running':'paused';
+ featureRotationButton.setAttribute('aria-label',featureAutoplay?'暂停自动轮播':'开始自动轮播');
+ featureRotationButton.innerHTML=featureAutoplay?'<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 5v10M13 5v10"/></svg><span>暂停轮播</span>':'<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 9 6-9 6z"/></svg><span>自动轮播</span>';
+ if(!rotating)return;
+ if(!featureMotion.matches)featureProgressAnimation=featureProgress.animate?.([{transform:'scaleX(0)'},{transform:'scaleX(1)'}],{duration:featureDelay,fill:'forwards'});
+ featureTimer=setTimeout(()=>{
+  const index=featureTabs.findIndex(tab=>tab.getAttribute('aria-selected')==='true');
+  selectFeature(featureTabs[(index+1)%featureTabs.length].dataset.featureTab);
+ },featureDelay);
 }
 featureTabs.forEach((tab,index)=>{
  tab.addEventListener('click',()=>selectFeature(tab.dataset.featureTab));
@@ -65,6 +97,19 @@ featureTabs.forEach((tab,index)=>{
  });
 });
 selectFeature(featureTabs.find(tab=>tab.getAttribute('aria-selected')==='true')?.dataset.featureTab||featureTabs[0]?.dataset.featureTab);
+featureControls.hidden=false;
+featureRotationButton.addEventListener('click',()=>{featureAutoplay=!featureAutoplay;syncFeatureRotation();});
+featureSection.addEventListener('pointerenter',event=>{if(event.pointerType==='mouse'||event.pointerType==='pen'){featureHovered=true;syncFeatureRotation();}});
+featureSection.addEventListener('pointerleave',()=>{featureHovered=false;syncFeatureRotation();});
+featureSection.addEventListener('focusin',syncFeatureRotation);
+featureSection.addEventListener('focusout',()=>queueMicrotask(syncFeatureRotation));
+document.addEventListener('visibilitychange',syncFeatureRotation);
+new MutationObserver(syncFeatureRotation).observe(dialog,{attributes:true,attributeFilter:['open']});
+featureMotion.addEventListener('change',()=>{featureAutoplay=!featureMotion.matches;syncFeatureRotation();});
+// Observe the card area rather than the full section, which is tall on mobile.
+if('IntersectionObserver' in window){
+ new IntersectionObserver(entries=>{featureInView=entries[0].isIntersecting&&entries[0].intersectionRatio>=.25;syncFeatureRotation();},{threshold:.25}).observe($('#feature-panels'));
+}else{featureInView=true;syncFeatureRotation();}
 const mainNav=$('#main-nav');
 let navigationTarget=null;
 function currentNavigationLink(){return mainNav.querySelector('a[aria-current="page"],a.nav-active')||mainNav.querySelector('a');}
