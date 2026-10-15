@@ -1,0 +1,187 @@
+/* Original bitmap accents are confined to the overview's introductory surfaces.
+   Working records, document text and the workspace canvas remain clean. */
+#app .home-refresh .home-welcome {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(110deg, #fff 12%, #f4f8ff 60%, #e7f0ff 100%);
+  border-color: #dce6f5;
+  box-shadow: 0 8px 28px #315e9b08;
+}
+
+/* Shift the illustration into the space before the steps, so the useful
+   writing-path card does not conceal the book and glass forms. */
+#app .home-refresh .home-welcome::before {
+  content: "";
+  position: absolute;
+  inset: 0 18% 0 0;
+  z-index: 0;
+  background-image:
+    linear-gradient(90deg, #fff 0%, #ffffffed 25%, #ffffff35 60%, #f1f6ff08 100%),
+    url("/workspace/assets/studio-writing-atmosphere-v1.webp");
+  background-position: center, right center;
+  background-size: 100% 100%, cover;
+  background-repeat: no-repeat;
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 80%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 80%, transparent 100%);
+  pointer-events: none;
+}
+
+/* Remove the earlier decorative rings instead of layering them over the image. */
+#app .home-refresh .home-welcome::after {
+  content: none;
+}
+
+#app .home-refresh .home-welcome-copy,
+#app .home-refresh .studio-writing-path {
+  position: relative;
+  z-index: 1;
+}
+
+#app .home-refresh .studio-writing-path {
+  background: #ffffffde;
+  border-color: #ffffffed;
+  box-shadow: 0 8px 28px #2c57850a;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+/* Each row uses a small family of quiet tints. A stronger wash behind the
+   title fades into the bitmap at the card's right edge. */
+#app .home-refresh .studio-tool {
+  --studio-tool-wash: 244 248 255;
+  --studio-tool-image: url("/workspace/assets/studio-paper-texture-v1.webp");
+  background-color: rgb(var(--studio-tool-wash));
+  background-image:
+    linear-gradient(90deg,
+      rgb(var(--studio-tool-wash) / .99) 0%,
+      rgb(var(--studio-tool-wash) / .94) 35%,
+      rgb(var(--studio-tool-wash) / .65) 65%,
+      rgb(var(--studio-tool-wash) / .08) 100%),
+    var(--studio-tool-image);
+  background-position: center, right center;
+  background-size: 100% 100%, auto 165%;
+  background-repeat: no-repeat;
+  border-color: #dce6f5;
+}
+
+#app .home-refresh .studio-tool:nth-child(4n + 2) {
+  --studio-tool-wash: 240 249 246;
+  border-color: #dbece7;
+}
+
+#app .home-refresh .studio-tool:nth-child(4n + 3) {
+  --studio-tool-wash: 246 244 253;
+  --studio-tool-image: url("/workspace/assets/studio-research-texture-v1.webp");
+  border-color: #e5e0f2;
+}
+
+#app .home-refresh .studio-tool:nth-child(4n) {
+  --studio-tool-wash: 253 249 243;
+  --studio-tool-image: url("/workspace/assets/studio-research-texture-v1.webp");
+  border-color: #ede6db;
+}
+
+#app .home-refresh .studio-tool:hover {
+  border-color: #a8c4ed;
+  box-shadow: 0 5px 18px #315e9b0c;
+}
+
+/* One restrained echo below the tools keeps the empty state related to the
+   writing entry without applying imagery to every metric or record. */
+#app .home-refresh .hub-continue:has(.hub-first-task) {
+  background-image:
+    linear-gradient(90deg, var(--pk-surface) 0%, #fffffff7 50%, #ffffffbb 100%),
+    url("/workspace/assets/studio-paper-texture-v1.webp");
+  background-size: 100% 100%, auto 100%;
+  background-position: center, right bottom;
+  background-repeat: no-repeat;
+}
+
+.hub-theme-dark #app .home-refresh .home-welcome {
+  background: linear-gradient(110deg, #182234 12%, #1d304c 65%, #233c60 100%);
+  border-color: #354b69;
+  box-shadow: none;
+}
+
+.hub-theme-dark #app .home-refresh .home-welcome::before {
+  background-image:
+    linear-gradient(90deg, #182234 0%, #182234f5 25%, #18223470 62%, #18223428 100%),
+    url("/workspace/assets/studio-writing-atmosphere-v1.webp");
+  opacity: .52;
+}
+
+.hub-theme-dark #app .home-refresh .studio-writing-path {
+  background: #18273de8;
+  border-color: #415776;
+  box-shadow: none;
+}
+
+.hub-theme-dark #app .home-refresh .studio-tool {
+  --studio-tool-wash: 28 43 65;
+  border-color: #354960;
+  background-image:
+    linear-gradient(90deg,
+      rgb(var(--studio-tool-wash)) 0%,
+      rgb(var(--studio-tool-wash) / .98) 35%,
+      rgb(var(--studio-tool-wash) / .91) 65%,
+      rgb(var(--studio-tool-wash) / .78) 100%),
+    var(--studio-tool-image);
+}
+
+.hub-theme-dark #app .home-refresh .studio-tool:nth-child(4n + 2) {
+  --studio-tool-wash: 27 48 48;
+  border-color: #354f51;
+}
+
+.hub-theme-dark #app .home-refresh .studio-tool:nth-child(4n + 3) {
+  --studio-tool-wash: 40 37 59;
+  border-color: #49415e;
+}
+
+.hub-theme-dark #app .home-refresh .studio-tool:nth-child(4n) {
+  --studio-tool-wash: 48 43 38;
+  border-color: #514b44;
+}
+
+.hub-theme-dark #app .home-refresh .studio-tool:hover {
+  border-color: #688cb9;
+  box-shadow: none;
+}
+
+.hub-theme-dark #app .home-refresh .hub-continue:has(.hub-first-task) {
+  background-image:
+    linear-gradient(90deg, var(--pk-surface) 0%, #182234fb 50%, #182234eb 100%),
+    url("/workspace/assets/studio-paper-texture-v1.webp");
+}
+
+@media (max-width: 980px) {
+  #app .home-refresh .home-welcome::before {
+    inset-inline-end: 0;
+    background-image:
+      linear-gradient(90deg, #fff 0%, #ffffffed 25%, #ffffffb8 60%, #ffffff4d 100%),
+      url("/workspace/assets/studio-writing-atmosphere-v1.webp");
+  }
+
+  .hub-theme-dark #app .home-refresh .home-welcome::before {
+    background-image:
+      linear-gradient(90deg, #182234 0%, #182234f5 30%, #182234c7 65%, #18223480 100%),
+      url("/workspace/assets/studio-writing-atmosphere-v1.webp");
+  }
+}
+
+@media (max-width: 760px) {
+  #app .home-refresh .home-welcome::before {
+    background-size: 100% 100%, auto 100%;
+  }
+
+  #app .home-refresh .studio-tool {
+    background-size: 100% 100%, auto 130%;
+  }
+}
+
+/* These accents are static. Existing reduced-motion behavior is preserved. */
+@media (prefers-reduced-motion: reduce) {
+  #app .home-refresh .studio-tool {
+    transition: none;
+  }
+}

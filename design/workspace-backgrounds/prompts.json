@@ -1,0 +1,21 @@
+{
+  "tool": "Built-in image_gen",
+  "date": "2026-10-16",
+  "assets": [
+    {
+      "key": "pk_studio_hero_v1",
+      "prompt": "Use case: stylized-concept. Asset type: production website background image for PaperKnow, an academic paper writing and research workspace. Create a refined very wide panoramic abstract still life, approximately 3:1 landscape composition, not a webpage mockup. Cool porcelain white and pale sky blue dominant, with a restrained touch of periwinkle and soft mint glass. On the RIGHT HALF, overlapping sculptural paper sheets and an elegantly curved open book form, a slim blue glass pen stroke, a few translucent rounded glass planes and delicate flowing research connection arcs, softly out of focus at the edges, physically plausible satin paper and frosted glass, premium editorial 3D still life. Camera from a high oblique angle, generous breathing room, soft daylight, beautiful subtle shadows, luminous airy depth. LEFT 55 PERCENT must stay almost pure ivory white with only extremely faint blue haze, uninterrupted calm negative space for dark Chinese interface text. The right artwork should remain visible and have graceful dimensional form without becoming a busy illustration. Far left and outer edges softly fade into near white. Very subtle fine paper grain. Commercial academic SaaS aesthetic, polished and sophisticated, warm intellectual atmosphere. Absolutely NO typography, NO numbers, NO letters, NO logos, NO UI, NO interface frames, NO watermark, NO people, NO literal laboratory equipment. This is a decorative background only.",
+      "file": "dist/workspace/assets/studio-writing-atmosphere-v1.webp"
+    },
+    {
+      "key": "pk_studio_paper_v1",
+      "prompt": "Use case: stylized-concept. Asset type: production decorative background for small academic software tool cards. A very wide landscape, approximately 3:1 composition, quiet refined 3D paper art still life in porcelain white, ice blue, and the slightest lavender. A layered fan of gently curving translucent paper sheets and a softly lit open book edge positioned entirely in the RIGHT THIRD and right lower corner. Fine paper texture, softly blurred architectural folds, frosted blue acrylic accent, graceful curves, studio daylight, subtle realistic contact shadows, premium restrained editorial design. LEFT TWO THIRDS almost pure white fading seamlessly into the scene, reserved completely for dark Chinese text and existing interface icons. Low overall contrast but the paper form should be visible on the right; not a blank gradient. High quality, sparse, elegant. Edges fade to white. NO text, NO letters or numbers, NO logos, NO UI, NO watermarks, NO people, NO icons. This is a reusable subtle raster background, not an entire card mockup.",
+      "file": "dist/workspace/assets/studio-paper-texture-v1.webp"
+    },
+    {
+      "key": "pk_studio_research_v1",
+      "prompt": "Use case: stylized-concept. Asset type: production decorative background for small research software tool cards. A very wide landscape, approximately 3:1 composition, pale porcelain-white background with a refined abstract research visualization positioned entirely in the RIGHT THIRD: a small network of frosted translucent blue glass nodes joined by a few delicate elegant arcs, a softly curved glass data ribbon, tiny mint and muted periwinkle highlights. It should feel like research ideas connected with clarity; no literal chart axes, no readable graphs. Luminous soft studio daylight, slight depth of field, physically plausible frosted glass, smooth satin materials, elegant commercial academic SaaS aesthetic. LEFT TWO THIRDS almost pure white with very faint sky blue haze and no objects, clean space for dark Chinese interface labels. Low overall contrast but recognizable dimensional glass details on the right. Outer edges fade to white. No clutter or sparkling neon. Absolutely NO typography, letters, numbers, logos, UI, interface frames, icons, watermark, people, or lab apparatus. Background asset only, not a webpage mockup.",
+      "file": "dist/workspace/assets/studio-research-texture-v1.webp"
+    }
+  ]
+}
