@@ -68,6 +68,21 @@ test('leaving a payment or order route disposes the previous payment lifecycle b
  }finally{f.close();}
 });
 
+test('sidebar exposes three purchase modes without inferring membership or creating a purchase',async()=>{
+ const seen=[];const f=await fixture(async path=>{seen.push(path);return response(401);});
+ try{
+  await f.api.loadWorkspaceSession();
+  const card=f.document.querySelector('.hub-commerce-card');
+  assert.ok(card);
+  assert.deepEqual([...card.querySelectorAll('a')].map(a=>a.hash),['#membership/plans','#membership/recharge','#membership/bundles']);
+  assert.match(card.textContent,/暂未开放购买/);
+  assert.doesNotMatch(card.textContent,/已开通|余额|剩余.*积分/);
+  assert.ok(f.document.querySelector('.hub-sidebar-profile'));
+  assert.ok(seen.every(path=>path==='/api/auth/me'));
+  assert.equal(JSON.parse(f.storage.getItem(keys.drafts))[0].title,'未上传的研究草稿');
+ }finally{f.close();}
+});
+
 test('homepage research navigation matches the rendered workspace and report sidebar without missing capabilities',async()=>{
  const f=await fixture(async()=>response(401));
  const home=new JSDOM(homeSource,{url:'https://paperknow.cn/'});

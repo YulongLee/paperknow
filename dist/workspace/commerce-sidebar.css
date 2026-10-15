@@ -1,0 +1,19 @@
+/* A persistent, honest entry to the three purchase modes. */
+#app .hub-upgrade-card.hub-commerce-card{display:block;position:relative;isolation:isolate;flex-shrink:0;padding:16px 14px 12px;margin-top:12px;border:1px solid #334b78;border-radius:14px;background:radial-gradient(ellipse at 100% 0%,#5074ac66,transparent 64%),linear-gradient(135deg,#1a3056,#122443);color:#fff;overflow:hidden;box-shadow:0 6px 18px #172b4d12}
+#app .hub-commerce-art{position:absolute;z-index:-1;top:-11px;right:-72px;width:240px;height:120px;background:url('/workspace/assets/page-membership-v1.webp') center/contain no-repeat;opacity:.28;pointer-events:none;transform:rotate(-8deg)}
+#app .hub-commerce-eyebrow{display:flex;align-items:center;gap:6px;font-size:9px;line-height:1.4;font-weight:650;letter-spacing:1.1px;color:#ead3a9}
+#app .hub-commerce-card h2{position:relative;margin:10px 0 5px;color:#fff;font-size:17px;font-weight:600;line-height:1.45;letter-spacing:-.02em}
+#app .hub-commerce-card p{position:relative;max-width:none;font-size:11px;line-height:1.6;color:#c6d4ed;margin:0 0 12px;white-space:nowrap}
+#app .hub-commerce-primary{display:flex;width:100%;margin-left:0;align-items:center;justify-content:center;gap:14px;padding:9px 10px;border-radius:8px;background:linear-gradient(100deg,#f5e3c4,#e7c48e);color:#48371e;font-size:13px;font-weight:650;line-height:1.5;text-decoration:none;transition:filter .18s,box-shadow .18s}
+#app .hub-commerce-primary:hover{filter:brightness(1.05);box-shadow:0 3px 12px #ebce9c20}
+#app .hub-commerce-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;margin-top:7px}
+#app .hub-commerce-links a{display:flex;margin-left:0;align-items:center;justify-content:center;gap:5px;min-height:32px;padding:5px 2px;border-radius:6px;color:#dce6f7;background:transparent;font-size:12px;line-height:1.5;text-decoration:none;white-space:nowrap}
+#app .hub-commerce-links a:hover{background:#ffffff12;color:#fff}
+#app .hub-commerce-links a+ a{border-left:1px solid #a1b7df26;border-radius:0 6px 6px 0}
+#app .hub-commerce-note{display:block;text-align:center;color:#acbdd8;font-size:10px;line-height:1.5;margin-top:4px}
+#app .hub-commerce-card a:focus-visible{outline:3px solid #95bbff;outline-offset:2px}
+#app .hub-sidebar-profile{flex-shrink:0}
+@media(max-height:800px){#app .hub-upgrade-card.hub-commerce-card{padding:12px 12px 9px;margin-top:8px}#app .hub-commerce-card h2{font-size:15px;margin:7px 0 4px}#app .hub-commerce-card p{margin-bottom:9px}#app .hub-commerce-eyebrow{font-size:8px}#app .hub-commerce-primary{padding:7px 9px}#app .hub-commerce-note{font-size:9px;margin-top:1px}#app .hub-sidebar-profile{margin-top:8px;padding-top:8px}}
+@media(max-width:760px){#app .hub-commerce-primary{min-height:40px}#app .hub-commerce-links a{min-height:36px}}
+@media(max-height:540px){#app .hub-commerce-card p,#app .hub-commerce-eyebrow,#app .hub-commerce-note{display:none}#app .hub-upgrade-card.hub-commerce-card{padding:9px 11px}#app .hub-commerce-card h2{font-size:14px;margin:0 0 7px}#app .hub-commerce-links{margin-top:3px}}
+@media(prefers-reduced-motion:reduce){#app .hub-commerce-primary{transition:none}}
