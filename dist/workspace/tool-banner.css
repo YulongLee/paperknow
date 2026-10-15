@@ -16,15 +16,18 @@
   gap: 0;
   width: 100%;
   min-width: 0;
-  min-height: 216px;
+  min-height: 232px;
   margin: 0 0 24px;
-  padding: 28px 32px;
+  padding: 30px 32px;
   overflow: hidden;
-  border: 1px solid rgb(var(--banner-accent) / .15);
-  border-radius: 16px;
-  background: linear-gradient(105deg, var(--pk-surface) 0%, rgb(var(--banner-wash) / .8) 56%, rgb(var(--banner-wash)) 100%);
+  border: 1px solid rgb(var(--banner-accent) / .2);
+  border-radius: 18px;
+  background:
+    radial-gradient(ellipse at 88% 8%, rgb(var(--banner-accent) / .22), transparent 48%),
+    radial-gradient(ellipse at 58% 118%, rgb(var(--banner-accent) / .11), transparent 44%),
+    linear-gradient(110deg, var(--pk-surface) 8%, rgb(var(--banner-wash) / .7) 48%, rgb(var(--banner-wash)) 100%);
   color: var(--pk-text);
-  box-shadow: 0 5px 20px rgb(var(--banner-accent) / .025);
+  box-shadow: 0 10px 28px rgb(var(--banner-accent) / .055), inset 0 1px 0 #ffffffb3;
   text-align: left;
 }
 
@@ -77,13 +80,15 @@
   content: "";
   display: block;
   position: absolute;
-  z-index: -1;
+  z-index: 0;
   inset: 0 0 0 auto;
-  width: min(52%, 680px);
+  width: min(64%, 860px);
   height: auto;
   border: 0;
   border-radius: 0;
-  background: radial-gradient(ellipse at 80% 55%, rgb(var(--banner-accent) / .09), transparent 65%);
+  background: radial-gradient(rgb(var(--banner-accent) / .2) .75px, transparent .85px) 0 0 / 18px 18px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 45%);
+  mask-image: linear-gradient(90deg, transparent, #000 45%);
   box-shadow: none;
   opacity: 1;
   transform: none;
@@ -93,19 +98,19 @@
   content: "";
   display: block;
   position: absolute;
-  z-index: -1;
-  top: 10px;
-  right: 24px;
-  bottom: 10px;
+  z-index: 0;
+  top: 50%;
+  right: 34px;
+  bottom: auto;
   left: auto;
-  width: min(52%, 560px);
-  height: auto;
+  width: min(56%, 620px);
+  height: 264px;
   border: 0;
   border-radius: 0;
   background: var(--banner-image) right center / auto 100% no-repeat;
   box-shadow: none;
   opacity: 1;
-  transform: none;
+  transform: translateY(-50%);
   pointer-events: none;
 }
 
@@ -115,7 +120,7 @@
   display: block;
   flex: none;
   align-self: auto;
-  width: calc(100% - 232px);
+  width: calc(100% - 320px);
   max-width: 950px;
   min-width: 0;
   margin: 0;
@@ -124,17 +129,18 @@
 #app .dashboard header.tool-banner[data-tool-category] .tool-banner-label {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   max-width: 100%;
-  min-height: 26px;
+  min-height: 34px;
   margin: 0;
-  padding: 4px 9px;
-  border: 1px solid rgb(var(--banner-accent) / .12);
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--pk-surface) 75%, transparent);
+  padding: 3px 10px 3px 3px;
+  border: 1px solid rgb(var(--banner-accent) / .18);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--pk-surface) 86%, transparent);
+  box-shadow: 0 3px 9px rgb(var(--banner-accent) / .06), inset 0 1px 0 #fff9;
   color: color-mix(in srgb, rgb(var(--banner-accent)) 78%, #1d2b43);
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 600;
   line-height: 1.5;
   letter-spacing: .015em;
   white-space: normal;
@@ -146,10 +152,10 @@
 }
 #app .dashboard header.tool-banner[data-tool-category] h1 {
   max-width: none;
-  margin: 10px 0 6px;
+  margin: 12px 0 7px;
   padding: 0;
   color: var(--pk-text);
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 650;
   line-height: 1.35;
   letter-spacing: -.025em;
@@ -195,6 +201,76 @@
   box-shadow: none;
 }
 
+
+/* A small visual stage gives each original AI illustration depth and scale. */
+#app .dashboard header.tool-banner[data-tool-category] .tool-banner-scene {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  right: 48px;
+  width: 292px;
+  height: 232px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+#app .dashboard header.tool-banner[data-tool-category] .tool-banner-orbit {
+  position: absolute;
+  inset: 10px 14px;
+  border: 1px solid #ffffffb3;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffffff6b, rgb(var(--banner-accent) / .07));
+  box-shadow: 0 0 0 18px rgb(var(--banner-accent) / .035), 0 0 0 44px rgb(var(--banner-accent) / .025), inset 0 1px 20px #ffffff52;
+  transform: rotate(-18deg);
+}
+#app .dashboard header.tool-banner[data-tool-category] .tool-banner-glass {
+  position: absolute;
+  top: 46px;
+  right: 4px;
+  width: 208px;
+  height: 142px;
+  border: 1px solid #ffffff8c;
+  border-radius: 24px;
+  background: linear-gradient(130deg, #ffffff45, #ffffff08);
+  box-shadow: 0 14px 32px rgb(var(--banner-accent) / .06);
+  transform: rotate(-15deg);
+}
+#app .dashboard header.tool-banner[data-tool-category] :is(.tool-banner-token, .tool-banner-spark) {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  color: rgb(var(--banner-accent));
+  border: 1px solid #ffffffbf;
+  background: linear-gradient(135deg, #fffffff2, #ffffff82);
+  box-shadow: 0 7px 18px rgb(var(--banner-accent) / .12), inset 0 1px 0 #fff;
+}
+#app .dashboard header.tool-banner[data-tool-category] .tool-banner-token {
+  top: 37px;
+  left: 8px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  transform: rotate(-9deg);
+}
+#app .dashboard header.tool-banner[data-tool-category] .tool-banner-spark {
+  right: 6px;
+  bottom: 25px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  transform: rotate(12deg);
+}
+#app .dashboard header.tool-banner[data-tool-category] .tool-banner-label-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  color: #fff;
+  background: linear-gradient(140deg, color-mix(in srgb, rgb(var(--banner-accent)) 76%, #fff), rgb(var(--banner-accent)));
+  box-shadow: 0 2px 5px rgb(var(--banner-accent) / .22);
+}
+
 /* Specialized research modes used explicit grid rows before the shared header. */
 #app .dashboard .research-space > header.tool-banner[data-tool-category] {
   grid-column: 1 / -1;
@@ -206,6 +282,7 @@
   grid-row: 2;
   order: 0;
 }
+#app .dashboard .research-space:has(> header.tool-banner) > .research-tools > button.active { box-shadow: none; }
 #app .dashboard .research-commerce > header.tool-banner[data-tool-category] { margin-bottom: 0; }
 #app .dashboard .research-commerce:has(> header.tool-banner) > .research-commerce-main { grid-row: 3; }
 #app .dashboard .research-commerce:has(> header.tool-banner) > .research-commerce-side { grid-row: 4; }
@@ -216,11 +293,16 @@
 
 .hub-theme-dark #app .dashboard header.tool-banner[data-tool-category] {
   --banner-wash: var(--banner-night);
-  background: linear-gradient(105deg, var(--pk-surface) 0%, rgb(var(--banner-night) / .8) 56%, rgb(var(--banner-night)) 100%);
+  background:
+    radial-gradient(ellipse at 88% 8%, rgb(var(--banner-accent) / .22), transparent 48%),
+    linear-gradient(110deg, var(--pk-surface) 8%, rgb(var(--banner-night) / .9) 48%, rgb(var(--banner-night)) 100%);
   border-color: rgb(var(--banner-accent) / .3);
   box-shadow: none;
 }
-.hub-theme-dark #app .dashboard header.tool-banner[data-tool-category]::after { opacity: .84; }
+.hub-theme-dark #app .dashboard header.tool-banner[data-tool-category]::after { opacity: .93; }
+.hub-theme-dark #app .dashboard header.tool-banner[data-tool-category] :is(.tool-banner-orbit, .tool-banner-glass) { border-color: #ffffff20; background: linear-gradient(135deg, #ffffff0f, #ffffff03); box-shadow: 0 0 0 18px #ffffff03, 0 0 0 44px #ffffff02; }
+.hub-theme-dark #app .dashboard header.tool-banner[data-tool-category] :is(.tool-banner-token, .tool-banner-spark) { color: color-mix(in srgb, rgb(var(--banner-accent)) 50%, #fff); background: linear-gradient(135deg, #ffffff1a, #ffffff08); border-color: #ffffff24; box-shadow: 0 7px 18px #00000018; }
+.hub-theme-dark #app .dashboard header.tool-banner[data-tool-category] .tool-banner-label { box-shadow: none; }
 .hub-theme-dark #app .dashboard header.tool-banner[data-tool-category] .tool-banner-label {
   color: color-mix(in srgb, rgb(var(--banner-accent)) 42%, #e5ecf7);
   border-color: rgb(var(--banner-accent) / .3);
@@ -228,7 +310,14 @@
 
 @container workspace (min-width: 1800px) {
   #app .dashboard header.tool-banner[data-tool-category] { padding-inline: 36px; }
-  #app .dashboard header.tool-banner[data-tool-category]::after { right: 54px; }
+  #app .dashboard header.tool-banner[data-tool-category]::after { right: 72px; }
+  #app .dashboard header.tool-banner[data-tool-category] .tool-banner-scene { right: 86px; }
+}
+
+@container workspace (min-width: 741px) and (max-width: 1040px) {
+  #app .dashboard header.tool-banner[data-tool-category] > .tool-banner-copy { width: calc(100% - 260px); }
+  #app .dashboard header.tool-banner[data-tool-category]::after { right: 16px; }
+  #app .dashboard header.tool-banner[data-tool-category] .tool-banner-scene { right: 24px; width: 260px; }
 }
 
 /* Compact workspaces give the artwork its own row below the text, preserving
@@ -236,26 +325,34 @@
 @container workspace (max-width: 740px) {
   #app .dashboard header.tool-banner[data-tool-category] {
     min-height: 0;
-    padding: 24px 24px 124px;
+    padding: 24px 24px 132px;
     margin-bottom: 20px;
     border-radius: 14px;
   }
   #app .dashboard header.tool-banner[data-tool-category] > .tool-banner-copy { width: 100%; max-width: none; }
   #app .dashboard header.tool-banner[data-tool-category]::before { inset: auto 0 0; width: 100%; height: 150px; }
-  #app .dashboard header.tool-banner[data-tool-category]::after { inset: auto 16px 4px auto; width: 236px; height: 118px; background-size: contain; }
+  #app .dashboard header.tool-banner[data-tool-category]::after { inset: auto 20px -4px auto; width: 288px; height: 144px; background-size: contain; transform: none; }
+  #app .dashboard header.tool-banner[data-tool-category] .tool-banner-scene { top: auto; right: 22px; bottom: -22px; width: 202px; height: 154px; transform: none; }
+  #app .dashboard header.tool-banner[data-tool-category] .tool-banner-glass { width: 146px; height: 98px; top: 27px; border-radius: 18px; }
+  #app .dashboard header.tool-banner[data-tool-category] .tool-banner-token { width: 30px; height: 30px; top: 21px; left: 5px; border-radius: 9px; }
+  #app .dashboard header.tool-banner[data-tool-category] .tool-banner-spark { display: none; }
   #app .dashboard header.tool-banner[data-tool-category] h1 { font-size: 25px; }
   #app .dashboard header.tool-banner[data-tool-category] p { font-size: 13px; }
 }
 @media (max-width: 760px) {
   #app .dashboard header.tool-banner[data-tool-category] {
     min-height: 0;
-    padding: 22px 20px 120px;
+    padding: 22px 20px 128px;
     margin-bottom: 20px;
     border-radius: 14px;
   }
   #app .dashboard header.tool-banner[data-tool-category] > .tool-banner-copy { width: 100%; max-width: none; }
   #app .dashboard header.tool-banner[data-tool-category]::before { inset: auto 0 0; width: 100%; height: 150px; }
-  #app .dashboard header.tool-banner[data-tool-category]::after { inset: auto 12px 4px auto; width: 228px; height: 114px; background-size: contain; }
+  #app .dashboard header.tool-banner[data-tool-category]::after { inset: auto 16px -4px auto; width: 280px; height: 140px; background-size: contain; transform: none; }
+  #app .dashboard header.tool-banner[data-tool-category] .tool-banner-scene { top: auto; right: 18px; bottom: -22px; width: 198px; height: 150px; transform: none; }
+  #app .dashboard header.tool-banner[data-tool-category] .tool-banner-glass { width: 146px; height: 98px; top: 27px; border-radius: 18px; }
+  #app .dashboard header.tool-banner[data-tool-category] .tool-banner-token { width: 30px; height: 30px; top: 21px; left: 5px; border-radius: 9px; }
+  #app .dashboard header.tool-banner[data-tool-category] .tool-banner-spark { display: none; }
   #app .dashboard header.tool-banner[data-tool-category] h1 { font-size: 25px; }
   #app .dashboard header.tool-banner[data-tool-category] p { font-size: 13px; }
   #app .dashboard header.tool-banner[data-tool-category] .tool-banner-actions { gap: 8px; margin-top: 16px; }
