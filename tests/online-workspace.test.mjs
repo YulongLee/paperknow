@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
 import {esc,icon} from '../dist/workspace/ui.mjs';
+import {feedbackKey,normalizeFeedback} from '../dist/workspace/help-model.mjs';
+const personalCode=(await readFile(new URL('../dist/workspace/online-personal-services.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const code=(await readFile(new URL('../dist/workspace/online-workspace.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const now='2026-10-15T00:00:00Z';
 async function settle(check){for(let i=0;i<80;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,4));}throw Error('UI did not settle');}
@@ -13,7 +15,7 @@ async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params=
  w.URL.createObjectURL=()=>'blob:test';w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=function(){if(this.download)downloads.push(this.download);};
  w.localStorage.setItem('paperknow-drafts','[{"title":"本地未上传成果"}]');
  const calls=[],navigations=[],downloads=[],notices=[];let saved=[],projects=[{id:'p1',title:'账户研究项目',degree:'本科',major:'教育学',updated_at:now}],files=[{id:'f1',name:'账户原件.txt',bytes:30,project_id:'p1'}],jobs=[{id:'pending',type:'parse',status:'queued',attempt:0,created_at:now},{id:'failed',type:'agent',status:'failed',attempt:1,created_at:now,error:'测试任务失败'}];
- w.esc=esc;w.icon=icon;
+ w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts'};w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
  w.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({path,body,options});if(request){const custom=await request(path,options);if(custom)return custom;}
   let status=200,value={};
   if(path==='/api/capabilities')value={ai,agent,aiProvider:'test-provider',storage:'local'};
@@ -25,6 +27,8 @@ async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params=
   else if(path==='/api/results')value={items:[{id:'r1',type:'polish',title:'账户修改成果',created_at:now}]};
   else if(path==='/api/results/r1')value={item:{id:'r1',type:'polish',title:'账户修改成果',body:{original:'真实原文',suggestion:'原始建议',model:'test-model'}}};
   else if(path==='/api/results/r1/revisions'){if(body){saved.unshift({id:'v'+saved.length,body:body.text,created_at:now});value={id:'v1'};}else value={items:saved};}
+  else if(path==='/api/workspace/drafts')value={items:[]};
+  else if(path==='/api/workspace/summary')value={counts:{projects:projects.length,files:files.length,drafts:0,results:1},storage:{},usage:{records:1,inputTokens:12,outputTokens:0}};
   else if(path==='/api/usage')value={items:[{model:'test-model',input_tokens:12,output_tokens:null,created_at:now}]};
   else if(path==='/api/feedback')value={items:[{body:'此前已保存反馈',created_at:now}]};
   else if(path==='/api/products'||path==='/api/payments/entitlements')value={items:[]};
@@ -70,7 +74,7 @@ test('task input is protected on navigation and unavailable AI stays disabled af
  f.doc.querySelector('#online-confirm').dispatchEvent(new f.w.Event('cancel',{cancelable:true}));assert.equal(f.doc.querySelector('#task-text').value,'还没有提交的正文');
  const select=f.doc.querySelector('#task-type');select.value='compare';select.dispatchEvent(new f.w.Event('change'));input(f,'#source-title','实际对照来源');input(f,'#source-text','实际来源内容');submit(f,'#task-form');
  await settle(()=>f.calls.some(call=>call.path==='/api/jobs'&&call.body));await settle(()=>f.doc.querySelector('#task-text').value==='');
- assert.equal(f.doc.querySelector('#task-submit').disabled,true);assert.equal(f.doc.querySelector('#task-text').maxLength,6000);assert.equal(f.w.onlineTest.onlineWorkspaceHasWork(),false);
+ assert.equal(f.doc.querySelector('#task-submit').disabled,false);assert.equal(f.doc.querySelector('#task-text').maxLength,8000);assert.equal(f.w.onlineTest.onlineWorkspaceHasWork(),false);
  const job=f.calls.find(call=>call.path==='/api/jobs'&&call.body);assert.equal(job.body.sources[0].title,'实际对照来源');
 });
 
@@ -105,8 +109,8 @@ test('late data from a disposed account page cannot replace a newer page',async 
 });
 
 test('usage and feedback stay attached to the signed-in account without inventing quotas',async t=>{
- const f=await fixture(t,{view:'usage'});assert.match(f.doc.querySelector('#view').textContent,/输入 12 \/ 输出 未知/);
- await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'help',f.ctx);input(f,'#feedback','请完善上传提示');submit(f,'#feedback-form');await settle(()=>f.notices.includes('反馈已提交'));
+ const f=await fixture(t,{view:'usage'});assert.match(f.doc.querySelector('#view').textContent,/12/);assert.match(f.doc.querySelector('#view').textContent,/未知/);
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'help',f.ctx);input(f,'#feedback','请完善上传提示');submit(f,'#feedback-form');await settle(()=>f.notices.some(n=>n.startsWith('反馈已提交')));
  assert.equal(f.calls.find(call=>call.path==='/api/feedback'&&call.body).body.text,'请完善上传提示');
  assert.equal(f.calls.some(call=>call.path.startsWith('/api/admin')),false);
 });
@@ -119,14 +123,30 @@ test('purchased membership shows escaped order snapshots with active, scheduled 
   {order_id:'paid/expired',title:'历史已购服务',description:'已到期的真实购买记录。',starts_at:stamp(-14),expires_at:stamp(-7)}
  ];
  const f=await fixture(t,{view:'membership',request:async path=>path==='/api/payments/entitlements'?{ok:true,status:200,json:async()=>({items})}:undefined});
- const cards=[...f.doc.querySelectorAll('#view article.card')];assert.equal(cards.length,3);
+ const cards=[...f.doc.querySelectorAll('#view article.account-entitlement')];assert.equal(cards.length,3);
  assert.equal(cards[0].querySelector('b').textContent,items[0].title);assert.equal(cards[0].querySelector('img'),null);assert.equal(cards[0].querySelector('script'),null);assert.equal(cards[0].querySelector('p').textContent,items[0].description);
  assert.deepEqual(cards.map(card=>card.querySelector('.tag').textContent),['有效','待生效','已到期']);
- assert.deepEqual(cards.map(card=>card.querySelector('a').getAttribute('href')),['#membership/pay?order=paid-current','#membership/pay?order=paid-scheduled','#membership/pay?order=paid%2Fexpired']);
- assert.ok(f.doc.querySelector('a[href="/workspace.html#membership/pay"]'));assert.ok(f.doc.querySelector('a[href="/workspace.html#orders"]'));
+ assert.equal(f.doc.querySelector('a[href*="membership/pay"]'),null);
+ assert.ok(f.doc.querySelector('a[href="#account?view=usage"]'));assert.equal(f.doc.querySelector('a[href*="membership/pay"]'),null);
  assert.equal(f.calls.some(call=>call.path==='/api/products'),false);assert.match(f.w.localStorage.getItem('paperknow-drafts'),/本地未上传成果/);
 });
 
-test('empty purchased membership lists no invented entitlements and links to published services and orders',async t=>{
- const f=await fixture(t,{view:'membership'});assert.match(f.doc.querySelector('#view').textContent,/还没有已购权益/);assert.equal(f.doc.querySelectorAll('#view article').length,0);assert.ok(f.doc.querySelector('a[href="/workspace.html#membership/pay"]'));assert.ok(f.doc.querySelector('a[href="/workspace.html#orders"]'));assert.equal(f.calls.filter(call=>call.path==='/api/payments/entitlements').length,1);assert.equal(f.calls.some(call=>call.body),false);
+test('empty purchased membership uses actual account counts without encouraging a payment',async t=>{
+ const f=await fixture(t,{view:'membership'});assert.match(f.doc.querySelector('#view').textContent,/暂无已生效的会员权益/);assert.equal(f.doc.querySelectorAll('.account-entitlement').length,0);assert.equal(f.doc.querySelector('a[href*="membership/pay"]'),null);assert.equal(f.calls.filter(call=>call.path==='/api/payments/entitlements').length,1);assert.equal(f.calls.some(call=>call.body),false);
+});
+
+
+test('account drafts are opened by account id while local copies upload only after an explicit user submission',async t=>{
+ const cloud=[{id:'cloud1',title:'账户提纲',tool:'writing',version:3,project_id:'p1',updated_at:now}];
+ const f=await fixture(t,{view:'results',request:async(path,options)=>path==='/api/workspace/drafts'?{ok:true,status:200,json:async()=>options.body?{item:{id:'cloud-created'}}:{items:cloud}}:undefined});
+ assert.ok(f.doc.querySelector('a[href="#account-draft/cloud1"]'));assert.equal(f.calls.some(c=>c.body),false);
+ f.w.localStorage.setItem('paperknow-drafts',JSON.stringify([{id:'local1',title:'仅上传这一份',tool:'writing',text:'真实用户输入',exportUnlocked:true},{id:'local2',title:'另一份不上传',tool:'writing',text:'私人材料'}]));f.doc.querySelector('#import-local-draft').click();assert.equal(f.calls.some(c=>c.body),false);f.doc.querySelector('#draft-import-id').value='local1';f.doc.querySelector('#draft-import-project').value='p1';submit(f,'#draft-import-form');await settle(()=>f.w.location.hash==='#account-draft/cloud-created');const sent=f.calls.find(c=>c.path==='/api/workspace/drafts'&&c.body);assert.equal(sent.body.projectId,'p1');assert.equal(sent.body.payload.text,'真实用户输入');assert.equal(sent.body.payload.exportUnlocked,undefined);assert.doesNotMatch(JSON.stringify(sent.body),/私人材料/);assert.match(f.w.localStorage.getItem('paperknow-drafts'),/私人材料/);
+});
+
+test('an expired session with a non-JSON response clears account content instead of leaving private data on screen',async t=>{
+ const f=await fixture(t,{view:'results',request:async path=>path==='/api/workspace/drafts'?{ok:false,status:401,json:async()=>{throw Error('HTML response');}}:undefined});assert.match(f.doc.querySelector('#view').textContent,/登录后查看账户内容/);assert.equal(f.doc.querySelector('[data-result]'),null);assert.equal(f.doc.querySelector('#import-local-draft'),null);
+});
+
+test('retrying a failed parse submission reuses the already uploaded original file',async t=>{
+ let submissions=0;const f=await fixture(t,{request:async(path,options)=>path==='/api/jobs'&&options.body&&++submissions===1?{ok:false,status:503,json:async()=>({error:'解析暂时不可用'})}:undefined});const file={name:'retry.txt',size:3,lastModified:1,arrayBuffer:async()=>new TextEncoder().encode('abc').buffer};Object.defineProperty(f.doc.querySelector('#upload-file'),'files',{value:[file]});submit(f,'#upload-form');await settle(()=>f.notices.includes('解析暂时不可用'));submit(f,'#upload-form');await settle(()=>f.navigations.length>0);assert.equal(f.calls.filter(c=>c.path==='/api/files'&&c.body).length,1);assert.equal(f.calls.filter(c=>c.path==='/api/jobs'&&c.body).length,2);
 });

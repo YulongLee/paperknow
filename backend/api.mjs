@@ -4,6 +4,7 @@ import {createAuthService} from './auth-service.mjs';
 import {createAuthDelivery} from './auth-delivery.mjs';
 import {createAdminAPI} from './admin-api.mjs';
 import {createPaymentService} from './payment-service.mjs';
+import {createWorkspaceService} from './workspace-service.mjs';
 import {aiReady,publicModelSettings} from './config.mjs';
 import {fileBytes} from './storage.mjs';
 import {now} from './database.mjs';
@@ -16,6 +17,7 @@ async function body(req){if(!req.headers['content-type']?.startsWith('applicatio
 export function createAPI(db,worker,config={}){
 const auth=createAuthService(db,{secret:config.authCodeSecret,dailyLimit:config.authDailyLimit,ownerEmail:config.ownerEmail,delivery:config.authDelivery||createAuthDelivery(config)});
 const payments=createPaymentService(db,config);
+const workspace=createWorkspaceService(db);
 const admin=createAdminAPI(db,worker,{...config,payments},auth);
 const attempts=new Map();function rate(req,limit){const key=clientAddress(req,config);const t=Date.now();if(attempts.size>10000)for(const [k,v]of attempts)if(v.until<t)attempts.delete(k);const item=attempts.get(key)||{count:0,until:t+600000};if(item.until<t){item.count=0;item.until=t+600000;}item.count++;attempts.set(key,item);if(item.count>limit)fail(429,'请求过于频繁，请稍后重试');}
 function own(table,id,user){const row=db.prepare(`SELECT * FROM ${table} WHERE id=? AND user_id=?`).get(id,user.id);if(!row)fail(404,'记录不存在');return row;}
@@ -59,9 +61,7 @@ const user=adminUser||sessionUser(db,req,config.ownerEmail);if(!user)fail(401,'�
 if(adminRequest){send(200,await admin({path,method,query:requestURL.searchParams,readBody:()=>body(req),user}));return;}
 if(path==='/api/auth/me'&&method==='GET'){send(200,{user});return;}
 if(path==='/api/auth/logout'&&method==='POST'){const token=(req.headers.cookie||'').split(';').map(v=>v.trim()).find(v=>v.startsWith('pk_session='))?.slice(11);if(token)db.prepare('DELETE FROM sessions WHERE token_hash=?').run(digest(token));send(200,{ok:true},{'Set-Cookie':sessionCookie('',config.secure)});return;}
-if(path==='/api/projects'){
-if(method==='GET'){send(200,{items:db.prepare('SELECT * FROM projects WHERE user_id=? ORDER BY updated_at DESC').all(user.id)});return;}
-const b=await body(req);if(db.prepare('SELECT count(*) n FROM projects WHERE user_id=?').get(user.id).n>=1000)fail(409,'项目数量达到本地限制');const id=randomUUID();const t=now();db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(id,user.id,text(b.title),text(b.degree||'本科',20),text(b.major||'',100,0),t,t);send(201,{item:own('projects',id,user)});return;}
+const workspaceResponse=await workspace({path,method,user,readBody:()=>body(req)});if(workspaceResponse){send(workspaceResponse.status,workspaceResponse.value);return;}
 if(path==='/api/files'){
 if(method==='GET'){send(200,{items:db.prepare('SELECT id,project_id,name,kind,bytes,sha256,created_at FROM files WHERE user_id=? ORDER BY created_at DESC').all(user.id)});return;}
 const b=await body(req),name=text(b.name,200),kind=name.split('.').at(-1).toLowerCase();if(!['txt','docx','pdf'].includes(kind))fail(400,'支持 TXT、DOCX 和文本 PDF');if(typeof b.data!=='string'||!b.data.length||!/^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(b.data))fail(400,'文件编码无效');const buffer=Buffer.from(b.data,'base64');if(!buffer.length||buffer.length>2*1024*1024)fail(413,'文件最大 2MB');const total=db.prepare('SELECT coalesce(sum(bytes),0) n FROM files WHERE user_id=?').get(user.id).n;if(total+buffer.length>50*1024*1024)fail(409,'当前账户文件总量最多 50MB');if(kind==='pdf'&&!buffer.subarray(0,5).equals(Buffer.from('%PDF-')))fail(400,'PDF 文件格式无效');if(kind==='docx'&&!buffer.subarray(0,2).equals(Buffer.from('PK')))fail(400,'DOCX 文件格式无效');const id=randomUUID();const projectId=project(b.projectId,user);let storageKey=null;if(config.storage)storageKey=await config.storage.put(id,user.id,kind,buffer);db.prepare('INSERT INTO files(id,user_id,project_id,name,kind,bytes,sha256,body,created_at,storage_provider,storage_key,storage_bucket) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(id,user.id,projectId,name,kind,buffer.length,digest(buffer),storageKey?Buffer.alloc(0):buffer,now(),config.storage?.provider||'local_server_sqlite',storageKey,config.storage?.bucket||null);send(201,{id});return;}
@@ -81,7 +81,6 @@ if(path==='/api/products'&&method==='GET'){send(200,{items:payments.options().pr
 if(path==='/api/payments/entitlements'&&method==='GET'){send(200,payments.entitlements(user));return;}
 if(path==='/api/orders'){if(method==='POST'){rate(req,60);send(201,await payments.create(user,await body(req)));}else send(200,payments.list(user));return;}
 const paymentOrder=path.match(/^\/api\/orders\/([^/]+)(\/query)?$/);if(paymentOrder){if(paymentOrder[2]&&method==='POST')send(200,await payments.query(user,paymentOrder[1]));else if(!paymentOrder[2]&&method==='GET')send(200,payments.getOrder(user,paymentOrder[1]));else fail(405,'不支持的订单操作');return;}
-if(path==='/api/feedback'){if(method==='GET'){send(200,{items:db.prepare('SELECT * FROM feedback WHERE user_id=? ORDER BY created_at DESC LIMIT 100').all(user.id)});return;}const b=await body(req);if(db.prepare('SELECT count(*) n FROM feedback WHERE user_id=?').get(user.id).n>=100)fail(409,'反馈数量达到限制');const id=randomUUID();db.prepare('INSERT INTO feedback VALUES(?,?,?,?,?)').run(id,user.id,text(b.category||'产品建议',30),text(b.text,3000),now());send(201,{id});return;}
 fail(404,'接口不存在');
 }catch(e){send(e.status||500,{error:e.status?e.message:'服务暂时无法完成请求'});}};
 }

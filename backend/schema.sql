@@ -12,6 +12,20 @@ CREATE TABLE IF NOT EXISTS feedback(id TEXT PRIMARY KEY,user_id TEXT NOT NULL RE
 CREATE INDEX IF NOT EXISTS jobs_queue ON jobs(status,created_at);
 CREATE INDEX IF NOT EXISTS projects_owner ON projects(user_id,updated_at);
 CREATE INDEX IF NOT EXISTS results_owner ON results(user_id,created_at);
+CREATE TABLE IF NOT EXISTS workspace_project_details(
+  project_id TEXT PRIMARY KEY REFERENCES projects(id),
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','archived')),
+  stage TEXT NOT NULL DEFAULT '准备中',description TEXT NOT NULL DEFAULT '',
+  version INTEGER NOT NULL DEFAULT 0 CHECK(version>=0)
+);
+CREATE TABLE IF NOT EXISTS workspace_drafts(
+  id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),project_id TEXT REFERENCES projects(id),
+  title TEXT NOT NULL,tool TEXT NOT NULL,payload TEXT NOT NULL,bytes INTEGER NOT NULL CHECK(bytes>=0),
+  version INTEGER NOT NULL CHECK(version>=1),client_key TEXT,input_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(user_id,client_key)
+);
+CREATE INDEX IF NOT EXISTS workspace_drafts_owner ON workspace_drafts(user_id,updated_at);
+CREATE INDEX IF NOT EXISTS workspace_drafts_project ON workspace_drafts(project_id);
 CREATE TABLE IF NOT EXISTS result_revisions(id TEXT PRIMARY KEY,result_id TEXT NOT NULL REFERENCES results(id),user_id TEXT NOT NULL REFERENCES users(id),body TEXT NOT NULL,created_at TEXT NOT NULL);
 
 CREATE TABLE IF NOT EXISTS service_settings(name TEXT PRIMARY KEY,value TEXT NOT NULL,updated_by TEXT NOT NULL REFERENCES users(id),updated_at TEXT NOT NULL);
