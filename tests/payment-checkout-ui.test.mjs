@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
 import {esc,icon} from '../dist/workspace/ui.mjs';
+import {toolBanner} from '../dist/workspace/tool-banner.mjs';
 
 const source=(await readFile(new URL('../dist/workspace/payment.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const products=[{id:'credits-100',title:'100 研究币',priceCents:1000,currency:'CNY',description:'用于已开放的账户服务。',entitlement:{type:'credits',quantity:100}},{id:'credits-300',title:'300 研究币',priceCents:2500,currency:'CNY',description:'以正式商品说明为准。',entitlement:{type:'credits',quantity:300}}];
@@ -17,7 +18,7 @@ async function fixture(t,{guest=false,catalogue={enabled:true,channels,products}
  const realNow=w.Date.now;w.Date.now=()=>realNow()+clockOffset;
  const calls=[],qrInputs=[],navigations=[],created=[];let cleanups=[];
  const order={id:'o1',outTradeNo:'PK20261015001',title:'100 研究币',amountCents:1000,currency:'CNY',provider:'wechat',status:'pending',qrContent:'weixin://wxpay/bizpayurl?pr=actual-provider-qr',createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+15*60*1000).toISOString(),...orderOverride};
- w.esc=esc;w.icon=icon;
+ w.esc=esc;w.icon=icon;w.toolBanner=toolBanner;
  w.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({path,options,body});const custom=onRequest&&await onRequest(path,options,body);if(custom)return custom;if(path==='/api/auth/me')return guest?response({error:'请登录'},401):response({user:{id:'u1'}});if(path==='/api/payments/options')return response(catalogue);if(path==='/api/orders'&&!body)return response({items});if(path==='/api/orders'&&body){const item={...order,provider:body.provider};created.push(item);return response({item});}if(path==='/api/orders/o1')return response({item:order});if(path==='/api/orders/o1/query')return response({item:order});throw new Error('Unexpected API '+path);};
  w.eval(source+'\nwindow.paymentTest={renderPaymentCheckout,renderPaymentOrders};');
  const args={productId:'credits-100',orderId,container:w.document.querySelector('.dashboard'),navigate:href=>navigations.push(href),renderQRCode:async value=>{qrInputs.push(value);return renderQRCode?renderQRCode(value):qr;}};

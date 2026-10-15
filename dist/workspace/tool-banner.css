@@ -10,13 +10,13 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-start;
   grid-template-columns: none;
   grid-column: 1 / -1;
   gap: 0;
   width: 100%;
   min-width: 0;
-  min-height: 232px;
+  min-height: 240px;
   margin: 0 0 24px;
   padding: 30px 32px;
   overflow: hidden;
@@ -72,6 +72,40 @@
   --banner-night: 24 46 51;
   --banner-accent: 37 133 147;
   --banner-image: url("/workspace/assets/tool-research-v2.webp");
+}
+
+/* Workspace and service pages share the same composition with distinct art. */
+#app .dashboard header.tool-banner[data-tool-category="home"] {
+  --banner-wash: 237 245 255; --banner-night: 26 43 67; --banner-accent: 45 103 224;
+  --banner-image: url("/workspace/assets/page-home-v1.webp");
+}
+#app .dashboard header.tool-banner[data-tool-category="projects"] {
+  --banner-wash: 241 242 255; --banner-night: 37 39 66; --banner-accent: 104 111 199;
+  --banner-image: url("/workspace/assets/page-projects-v1.webp");
+}
+#app .dashboard header.tool-banner[data-tool-category="assets"] {
+  --banner-wash: 235 249 247; --banner-night: 25 48 49; --banner-accent: 36 137 145;
+  --banner-image: url("/workspace/assets/page-assets-v1.webp");
+}
+#app .dashboard header.tool-banner[data-tool-category="tasks"] {
+  --banner-wash: 244 241 255; --banner-night: 39 35 63; --banner-accent: 126 104 190;
+  --banner-image: url("/workspace/assets/page-tasks-v1.webp");
+}
+#app .dashboard header.tool-banner:is([data-tool-category="membership"], [data-tool-category="usage"], [data-tool-category="orders"]) {
+  --banner-wash: 255 248 234; --banner-night: 52 44 31; --banner-accent: 174 129 50;
+  --banner-image: url("/workspace/assets/page-membership-v1.webp");
+}
+#app .dashboard header.tool-banner[data-tool-category="settings"] {
+  --banner-wash: 240 244 252; --banner-night: 31 40 59; --banner-accent: 99 120 166;
+  --banner-image: url("/workspace/assets/page-settings-v1.webp");
+}
+#app .dashboard header.tool-banner[data-tool-category="help"] {
+  --banner-wash: 255 243 237; --banner-night: 55 39 37; --banner-accent: 205 113 89;
+  --banner-image: url("/workspace/assets/page-help-v1.webp");
+}
+#app .dashboard header.tool-banner[data-tool-category="account"] {
+  --banner-wash: 236 246 251; --banner-night: 25 44 58; --banner-accent: 62 128 165;
+  --banner-image: url("/workspace/assets/page-account-v1.webp");
 }
 
 /* The supplied transparent compositions place their objects on the right half.

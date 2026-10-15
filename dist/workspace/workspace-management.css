@@ -546,3 +546,8 @@
   .account-project-card > .actions > a:not(.button) { min-height: 42px; }
   .account-workspace .account-project-card .actions > a.button { flex-basis: 100%; }
 }
+/* Measure the actual workspace when the sidebar leaves a narrow tablet pane. */
+@container workspace (max-width: 740px) {
+  #app .dashboard .asset-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #app .dashboard .asset-library .asset-tabs { max-width: 100%; min-width: 0; flex-wrap: wrap; }
+}

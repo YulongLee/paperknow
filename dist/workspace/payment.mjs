@@ -1,3 +1,4 @@
+import {toolBanner} from './tool-banner.mjs';
 import {esc,icon} from './ui.mjs';
 
 const mounts=new WeakMap();
@@ -11,7 +12,7 @@ const checkoutHref=({productId,orderId}={})=>'#membership/pay'+(orderId?'?order=
 const loginHref=()=>'/auth.html?mode=login&next='+encodeURIComponent(location.pathname+location.search+location.hash);
 
 function stylesheet(){if(!document.getElementById('paperknow-payment-styles')){const link=document.createElement('link');link.id='paperknow-payment-styles';link.rel='stylesheet';link.href='/workspace/payment.css';document.head.append(link);}}
-function heading(title,description,orders=false){return `<header class="payment-heading"><div><span class="payment-eyebrow">PAPERKNOW · ${orders?'ORDERS':'CHECKOUT'}</span><h1>${title}</h1><p>${description}</p></div><a class="btn secondary" href="${orders?checkoutHref():'#orders'}">${icon(orders?'diamond':'file',16)}${orders?'查看可购服务':'我的订单'}</a></header>`;}
+function heading(title,description,orders=false){if(orders)return toolBanner('orders',{title,description,extraClass:'payment-heading',actions:`<a class="btn secondary" href="${checkoutHref()}">${icon('diamond',16)}查看可购服务</a>`});return `<header class="payment-heading"><div><span class="payment-eyebrow">PAPERKNOW · CHECKOUT</span><h1>${title}</h1><p>${description}</p></div><a class="btn secondary" href="#orders">${icon('file',16)}我的订单</a></header>`;}
 function login(){return `<section class="payment-card payment-empty">${icon('user',32)}<h2>登录后查看账户与支付订单</h2><p>订单和购买记录保存到你的 PaperKnow 账户，不会写入本地草稿。</p><a class="btn primary" href="${esc(loginHref())}">登录账户 ${icon('arrow',16)}</a></section>`;}
 function retry(message){return `<section class="payment-card payment-empty">${icon('clock',32)}<h2>暂时无法读取支付信息</h2><p>${esc(message)}</p><button class="btn secondary" data-payment-retry>重新读取</button></section>`;}
 function entitlementText(value){if(!value||typeof value!=='object')return '';const parts=[];if(Number.isSafeInteger(value.quantity)&&value.quantity>0)parts.push(`${value.quantity} ${value.type==='credits'?'研究币':value.type==='storage'?'存储额度':'份权益'}`);if(Number.isSafeInteger(value.durationDays)&&value.durationDays>0)parts.push(`有效期 ${value.durationDays} 天`);return parts.join(' · ');}

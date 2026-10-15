@@ -1,3 +1,4 @@
+import {toolBanner} from './tool-banner.mjs';
 import {icon} from './ui.mjs';
 const $=s=>document.querySelector(s);
 // Screenshot benchmark values are preview data, not a live billing catalogue.
@@ -24,7 +25,7 @@ export function purchaseSelection(plan,quantity=1,kind='member'){
  const n=Number(quantity);return {plan:selected,quantity:Number.isInteger(n)&&n>=1&&n<=365?n:1,kind:kind==='bundle'?'bundle':'member',price:null,referencePrice:selected.price,paymentEnabled:false};
 }
 function navigation(tab){return `<div class="actions" style="margin-bottom:16px"><a class="btn secondary" href="#membership?scope=account">账户服务与用量</a></div><nav class="commerce-tabs" aria-label="购买中心">${[['recharge','充值研究币'],['bundles','购买套餐'],['plans','购买会员'],['redeem','兑换码']].map(([id,title])=>`<a href="#membership/${id}" ${tab===id?'aria-current="page"':''}>${title}</a>`).join('')}</nav>`;}
-function heading(tab){return `<div class="hub-heading"><div><h1>会员方案预览</h1><p>历史方案仅供参考；本次不办理购买、充值或兑换。</p></div><a class="btn secondary" href="#membership">会员与用量 ${icon('arrow',16)}</a></div><section class="purchase-hero"><div><span>PAPERKNOW MEMBERSHIP</span><h2>为你的论文与研究，选择合适的支持</h2><p>按研究阶段了解方案；实际可购商品与权益请以账户服务页面为准。</p></div><div class="purchase-hero-icon">${icon('diamond',60)}</div></section>${navigation(tab)}`;}
+function heading(tab){return `${toolBanner('membership',{title:'会员方案预览',description:'历史方案仅供参考；本次不办理购买、充值或兑换。',actions:`<a class="btn secondary" href="#membership">会员与用量 ${icon('arrow',16)}</a>`})}${navigation(tab)}`;}
 function rules(){return `<div class="purchase-notice">${icon('shield',18)}<p>当前为 PaperKnow 定价方案预览。会员计价单位、有效期及详细额度待确认；套餐字数上限、有效期和写作套餐定价待确认。当前不会创建订单、扣款或开通会员，不承诺检测通过或分数下降。</p></div>`;}
 function card(plan,kind){return `<article class="purchase-plan ${plan.featured||plan.id==='advanced'?'featured':''}"><div class="purchase-plan-top"><span class="purchase-plan-icon">${icon(plan.available?'user':'diamond',25)}</span><span class="purchase-status">${plan.featured?'推荐方案':plan.available?'当前可用':'定价预览'}</span></div><h3>${plan.name}</h3><div class="purchase-price"><b>${plan.available?'免费':'¥'+plan.price}</b>${plan.originalPrice?`<del>¥${plan.originalPrice}</del>`:''}<span>${plan.available?'本地体验':kind==='bundle'?'参考价 / 套':'参考价 · 计价单位待确认'}</span></div><ul>${plan.features.map(f=>`<li><span aria-hidden="true">✓</span>${f}</li>`).join('')}</ul>${plan.available?'<a class="btn secondary full" href="#home">继续免费体验</a>':`<a class="btn ${plan.id==='advanced'||plan.id==='reduce'?'primary':'secondary'} full" href="#membership/checkout?kind=${kind}&plan=${plan.id}&quantity=1">查看购买方案 ${icon('arrow',16)}</a>`}<small>${plan.available?'当前无需付费':'服务尚未接入，暂不收款'}</small></article>`;}
 export function mountMemberPlans(){
