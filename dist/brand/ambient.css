@@ -69,6 +69,7 @@
 .public-site .public-footer{background:radial-gradient(ellipse at 95% 0,#ede9ff70,transparent 45%),#f7faff}
 
 @keyframes ambient-light-drift{from{transform:translate(0,0)}to{transform:translate(-24px,18px)}}
+@media(max-width:980px){.home-platform main .capabilities:before{left:0;right:0}}
 @media(max-width:680px){
  .home-platform main .hero:before{width:360px;height:420px;top:50px;right:-140px;filter:blur(24px);opacity:.62;animation:none}
  .home-platform main .hero:after{width:280px;height:250px;left:-70px;bottom:-100px;filter:blur(20px)}
