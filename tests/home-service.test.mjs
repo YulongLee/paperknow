@@ -157,7 +157,6 @@ test('capability carousel advances in view, wraps after the last capability, and
  d.querySelector('[data-feature-tab="research"]').click();
  assert.notEqual(clock.timer,previousTimer,'manual selection starts a fresh reading interval');
  clock.advance();assert.equal(selected(),'writing');assert.equal(d.activeElement,focus);
- assert.equal(d.querySelector('#feature-carousel-current').textContent,'01');
  for(const panel of d.querySelectorAll('[data-feature-panel]')){
   const active=panel.dataset.featurePanel==='writing';
   assert.equal(panel.hidden,!active);
@@ -187,14 +186,7 @@ test('capability carousel pauses while reading or away, and resumes with a fresh
  assert.equal(d.querySelector('[data-feature-tab][aria-selected="true"]').dataset.featureTab,'writing','interruptions never advance a card');
 });
 
-test('capability carousel respects explicit pause and defaults to manual cards for reduced motion',async t=>{
- const clock=carouselEnvironment(),d=await page(t,null,clock.prepare);
- clock.enter();assert.equal(clock.pending,1);
- const toggle=d.querySelector('#feature-carousel-toggle');
- toggle.click();assert.equal(clock.pending,0);assert.match(toggle.getAttribute('aria-label'),/开始/);
- clock.enter(0);clock.enter();clock.hide(d,true);clock.hide(d,false);
- assert.equal(clock.pending,0,'visibility changes do not override a user pause');
- toggle.click();assert.equal(clock.pending,1);assert.match(toggle.getAttribute('aria-label'),/暂停/);
+test('capability carousel defaults to manual cards for reduced motion',async t=>{
  const reducedClock=carouselEnvironment({reducedMotion:true});
  const reduced=await page(t,null,reducedClock.prepare);reducedClock.enter();
  assert.equal(reducedClock.pending,0,'reduced motion prevents automatic cycling by default');

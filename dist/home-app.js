@@ -40,12 +40,9 @@ async function loadServiceState(){
 const featureTabs=Array.from(document.querySelectorAll('[data-feature-tab]'));
 const featurePanels=Array.from(document.querySelectorAll('[data-feature-panel]'));
 const featureSection=$('#capabilities');
-const featureControls=$('.feature-carousel-controls');
-const featureRotationButton=$('#feature-carousel-toggle');
-const featureProgress=$('.feature-carousel-progress span');
 const featureMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
 let featureAutoplay=!featureMotion.matches,featureInView=false,featureHovered=false;
-let featureTimer=null,featureProgressAnimation=null;
+let featureTimer=null;
 const featureDelay=6000;
 function selectFeature(key,moveFocus=false){
  const selected=featureTabs.find(tab=>tab.dataset.featureTab===key);
@@ -62,22 +59,15 @@ function selectFeature(key,moveFocus=false){
   panel.inert=!active;
   panel.setAttribute('aria-hidden',String(!active));
  });
- const index=featureTabs.indexOf(selected);
- $('#feature-carousel-current').textContent=String(index+1).padStart(2,'0');
- $('.feature-carousel-count').setAttribute('aria-label',`当前第 ${index+1} 项，共 ${featureTabs.length} 项`);
  if(moveFocus)selected.focus();
  syncFeatureRotation();
 }
 function syncFeatureRotation(){
  clearTimeout(featureTimer);featureTimer=null;
- featureProgressAnimation?.cancel();featureProgressAnimation=null;
- const focused=featureSection.contains(document.activeElement)&&!featureRotationButton.contains(document.activeElement);
+ const focused=featureSection.contains(document.activeElement);
  const rotating=featureAutoplay&&featureInView&&!featureHovered&&!focused&&!document.hidden&&!dialog.open;
  featureSection.dataset.rotation=rotating?'running':'paused';
- featureRotationButton.setAttribute('aria-label',featureAutoplay?'暂停自动轮播':'开始自动轮播');
- featureRotationButton.innerHTML=featureAutoplay?'<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 5v10M13 5v10"/></svg><span>暂停轮播</span>':'<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 9 6-9 6z"/></svg><span>自动轮播</span>';
  if(!rotating)return;
- if(!featureMotion.matches)featureProgressAnimation=featureProgress.animate?.([{transform:'scaleX(0)'},{transform:'scaleX(1)'}],{duration:featureDelay,fill:'forwards'});
  featureTimer=setTimeout(()=>{
   const index=featureTabs.findIndex(tab=>tab.getAttribute('aria-selected')==='true');
   selectFeature(featureTabs[(index+1)%featureTabs.length].dataset.featureTab);
@@ -97,8 +87,6 @@ featureTabs.forEach((tab,index)=>{
  });
 });
 selectFeature(featureTabs.find(tab=>tab.getAttribute('aria-selected')==='true')?.dataset.featureTab||featureTabs[0]?.dataset.featureTab);
-featureControls.hidden=false;
-featureRotationButton.addEventListener('click',()=>{featureAutoplay=!featureAutoplay;syncFeatureRotation();});
 featureSection.addEventListener('pointerenter',event=>{if(event.pointerType==='mouse'||event.pointerType==='pen'){featureHovered=true;syncFeatureRotation();}});
 featureSection.addEventListener('pointerleave',()=>{featureHovered=false;syncFeatureRotation();});
 featureSection.addEventListener('focusin',syncFeatureRotation);
