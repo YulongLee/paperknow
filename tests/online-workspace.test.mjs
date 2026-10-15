@@ -27,7 +27,7 @@ async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params=
   else if(path==='/api/results/r1/revisions'){if(body){saved.unshift({id:'v'+saved.length,body:body.text,created_at:now});value={id:'v1'};}else value={items:saved};}
   else if(path==='/api/usage')value={items:[{model:'test-model',input_tokens:12,output_tokens:null,created_at:now}]};
   else if(path==='/api/feedback')value={items:[{body:'此前已保存反馈',created_at:now}]};
-  else if(path==='/api/products')value={items:[]};
+  else if(path==='/api/products'||path==='/api/payments/entitlements')value={items:[]};
   else throw Error('Unexpected API '+path);
   return {ok:status<400,status,json:async()=>JSON.parse(JSON.stringify(value))};
  };
@@ -109,4 +109,24 @@ test('usage and feedback stay attached to the signed-in account without inventin
  await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'help',f.ctx);input(f,'#feedback','请完善上传提示');submit(f,'#feedback-form');await settle(()=>f.notices.includes('反馈已提交'));
  assert.equal(f.calls.find(call=>call.path==='/api/feedback'&&call.body).body.text,'请完善上传提示');
  assert.equal(f.calls.some(call=>call.path.startsWith('/api/admin')),false);
+});
+
+test('purchased membership shows escaped order snapshots with active, scheduled and expired states',async t=>{
+ const today=Date.now(),stamp=offset=>new Date(today+offset*86400000).toISOString();
+ const items=[
+  {order_id:'paid-current',title:'已购标题 <img src=x onerror=alert(1)>',description:'购买时的说明 <script>alert(1)</script>',starts_at:stamp(-1),expires_at:stamp(3)},
+  {order_id:'paid-scheduled',title:'排队中的已购服务',description:'当前权益结束后生效。',starts_at:stamp(4),expires_at:stamp(11)},
+  {order_id:'paid/expired',title:'历史已购服务',description:'已到期的真实购买记录。',starts_at:stamp(-14),expires_at:stamp(-7)}
+ ];
+ const f=await fixture(t,{view:'membership',request:async path=>path==='/api/payments/entitlements'?{ok:true,status:200,json:async()=>({items})}:undefined});
+ const cards=[...f.doc.querySelectorAll('#view article.card')];assert.equal(cards.length,3);
+ assert.equal(cards[0].querySelector('b').textContent,items[0].title);assert.equal(cards[0].querySelector('img'),null);assert.equal(cards[0].querySelector('script'),null);assert.equal(cards[0].querySelector('p').textContent,items[0].description);
+ assert.deepEqual(cards.map(card=>card.querySelector('.tag').textContent),['有效','待生效','已到期']);
+ assert.deepEqual(cards.map(card=>card.querySelector('a').getAttribute('href')),['#membership/pay?order=paid-current','#membership/pay?order=paid-scheduled','#membership/pay?order=paid%2Fexpired']);
+ assert.ok(f.doc.querySelector('a[href="/workspace.html#membership/pay"]'));assert.ok(f.doc.querySelector('a[href="/workspace.html#orders"]'));
+ assert.equal(f.calls.some(call=>call.path==='/api/products'),false);assert.match(f.w.localStorage.getItem('paperknow-drafts'),/本地未上传成果/);
+});
+
+test('empty purchased membership lists no invented entitlements and links to published services and orders',async t=>{
+ const f=await fixture(t,{view:'membership'});assert.match(f.doc.querySelector('#view').textContent,/还没有已购权益/);assert.equal(f.doc.querySelectorAll('#view article').length,0);assert.ok(f.doc.querySelector('a[href="/workspace.html#membership/pay"]'));assert.ok(f.doc.querySelector('a[href="/workspace.html#orders"]'));assert.equal(f.calls.filter(call=>call.path==='/api/payments/entitlements').length,1);assert.equal(f.calls.some(call=>call.body),false);
 });

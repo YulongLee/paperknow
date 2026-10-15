@@ -7,7 +7,7 @@ export function loadLocalEnvironment(){
 }
 export function environmentConfig(env=process.env){
   return {agentEnabled:env.PK_AGENT_ENABLED==='1',aiURL:env.PK_AI_URL,aiKey:env.PK_AI_KEY,aiModel:env.PK_AI_MODEL,secure:env.PK_SECURE_COOKIE==='1',trustProxy:env.PK_TRUST_PROXY==='1',
-    ownerEmail:String(env.PK_OWNER_EMAIL||'').trim().toLowerCase(),
+    ownerEmail:String(env.PK_OWNER_EMAIL||'').trim().toLowerCase(),paymentConfigKey:env.PK_PAYMENT_CONFIG_KEY,
     authCodeSecret:env.PK_AUTH_CODE_SECRET,authDailyLimit:/^[1-9]\d{0,3}$/.test(env.PK_AUTH_DAILY_SEND_LIMIT||'')?Number(env.PK_AUTH_DAILY_SEND_LIMIT):100,
     emailSMTPHost:env.PK_EMAIL_SMTP_HOST,emailSMTPPort:Number(env.PK_EMAIL_SMTP_PORT||465),emailSMTPSecure:env.PK_EMAIL_SMTP_SECURE!=='0',
     emailSMTPUser:env.PK_EMAIL_SMTP_USER,emailSMTPPassword:env.PK_EMAIL_SMTP_PASSWORD,emailFrom:env.PK_EMAIL_FROM,

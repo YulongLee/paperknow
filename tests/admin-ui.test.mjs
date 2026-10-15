@@ -71,7 +71,7 @@ test('administrator sees real metrics and service states only after role verific
   assert.deepEqual([...ui.win.document.querySelectorAll('.metric-number')].map(el => el.textContent), ['8', '20', '15', '3']);
   assert.match(ui.$('#admin-content').textContent, /2 KB/);
   assert.match(ui.$('[role="img"]').getAttribute('aria-label'), /2026-10-14：新增用户 2，任务 7/);
-  assert.equal(ui.win.document.querySelectorAll('.admin-nav-link').length, 9);
+  assert.equal(ui.win.document.querySelectorAll('.admin-nav-link').length, 10);
 });
 
 test('lists support search, status filtering, pagination and reset while preserving phone-only identity', async t => {
@@ -197,7 +197,7 @@ test('user-controlled strings are escaped in tables and feedback forms', async t
 
 test('orders and usage show unavailable commercial information honestly', async t => {
   const ui = await page(t, { hash: '#orders', handle: url => url.startsWith('/api/admin/usage?') ? { body: list([{ id: 'usage-1', user_name: '手机用户', user_phone: '13800138000', model: 'test-model', input_tokens: null, output_tokens: 42, billable: 0 }]) } : undefined });
-  assert.match(ui.$('#admin-content').textContent, /支付尚未开放/);
+  assert.match(ui.$('#admin-content').textContent, /未支付订单不计入收入/);
   assert.doesNotMatch(ui.$('#admin-content').textContent, /¥0|￥0/);
   ui.click('[data-view="usage"]'); await settle(() => ui.$('tbody'));
   assert.match(ui.$('tbody').textContent, /— \/ 42/);

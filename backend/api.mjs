@@ -3,6 +3,7 @@ import {sessionUser,sessionCookie,digest} from './auth.mjs';
 import {createAuthService} from './auth-service.mjs';
 import {createAuthDelivery} from './auth-delivery.mjs';
 import {createAdminAPI} from './admin-api.mjs';
+import {createPaymentService} from './payment-service.mjs';
 import {aiReady,publicModelSettings} from './config.mjs';
 import {fileBytes} from './storage.mjs';
 import {now} from './database.mjs';
@@ -14,7 +15,8 @@ const url=v=>{if(!v)return '';try{const u=new URL(v);if(!['http:','https:'].incl
 async function body(req){if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'请提交 JSON 内容');let bytes=0,chunks=[];for await(const chunk of req){bytes+=chunk.length;if(bytes>3*1024*1024)fail(413,'请求超过 3MB 限制');chunks.push(chunk);}try{const v=JSON.parse(Buffer.concat(chunks).toString());if(!v||Array.isArray(v)||typeof v!=='object')throw 0;return v;}catch{fail(400,'请求内容不是有效 JSON');}}
 export function createAPI(db,worker,config={}){
 const auth=createAuthService(db,{secret:config.authCodeSecret,dailyLimit:config.authDailyLimit,ownerEmail:config.ownerEmail,delivery:config.authDelivery||createAuthDelivery(config)});
-const admin=createAdminAPI(db,worker,config,auth);
+const payments=createPaymentService(db,config);
+const admin=createAdminAPI(db,worker,{...config,payments},auth);
 const attempts=new Map();function rate(req,limit){const key=clientAddress(req,config);const t=Date.now();if(attempts.size>10000)for(const [k,v]of attempts)if(v.until<t)attempts.delete(k);const item=attempts.get(key)||{count:0,until:t+600000};if(item.until<t){item.count=0;item.until=t+600000;}item.count++;attempts.set(key,item);if(item.count>limit)fail(429,'请求过于频繁，请稍后重试');}
 function own(table,id,user){const row=db.prepare(`SELECT * FROM ${table} WHERE id=? AND user_id=?`).get(id,user.id);if(!row)fail(404,'记录不存在');return row;}
 function project(id,user){if(id)own('projects',id,user);return id||null;}
@@ -24,8 +26,21 @@ const adminRequest=path==='/api/admin'||path.startsWith('/api/admin/');
 let adminUser;
 if(adminRequest){adminUser=sessionUser(db,req,config.ownerEmail);if(!adminUser)fail(401,'请先登录');if(adminUser.role!=='admin')fail(403,'需要管理员权限');}
 if(!['GET','POST'].includes(method))fail(405,'不支持的请求方式');
+const notification=path.match(/^\/api\/payments\/notify\/(wechat|alipay)$/);
+if(notification&&method==='POST'){
+ const provider=notification[1];
+ try{
+  const contentType=req.headers['content-type']||'';
+  if(!(provider==='wechat'?contentType.startsWith('application/json'):contentType.startsWith('application/x-www-form-urlencoded')))fail(415,'支付回调格式不正确');
+  const chunks=[];let length=0;for await(const chunk of req){length+=chunk.length;if(length>262144)fail(413,'支付回调内容过大');chunks.push(chunk);}
+  await payments.notify(provider,{headers:req.headers,rawBody:Buffer.concat(chunks)});
+  res.writeHead(provider==='wechat'?204:200,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}).end(provider==='wechat'?undefined:'success');
+ }catch(error){const status=error.status>=400&&error.status<=599?error.status:400;res.writeHead(status,{'Content-Type':provider==='wechat'?'application/json; charset=utf-8':'text/plain; charset=utf-8','Cache-Control':'no-store'}).end(provider==='wechat'?JSON.stringify({code:'FAIL',message:'支付通知尚未确认'}):'failure');}
+ return;
+}
 if(method==='POST'){const origin=req.headers.origin;if(!origin||origin!==`${config.secure?'https':'http'}://${req.headers.host}`)fail(403,'请求来源不匹配');}
-if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),aiProvider:publicModelSettings(config.getAI()).provider,agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),agentEngine:config.agentEnabled?'codex_sdk':null,payment:false,academicSearch:false,maxFileBytes:2*1024*1024});return;}
+if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),aiProvider:publicModelSettings(config.getAI()).provider,agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),agentEngine:config.agentEnabled?'codex_sdk':null,payment:payments.options().enabled,academicSearch:false,maxFileBytes:2*1024*1024});return;}
+if(path==='/api/payments/options'&&method==='GET'){send(200,payments.options());return;}
 if(path==='/api/auth/options'&&method==='GET'){send(200,auth.options());return;}
 const authRoutes={
   '/api/auth/login':(b,ip)=>auth.passwordLogin(b,ip),
@@ -62,8 +77,10 @@ if(path==='/api/results'&&method==='GET'){send(200,{items:db.prepare('SELECT id,
 const revision=path.match(/^\/api\/results\/([^/]+)\/revisions$/);if(revision){const result=own('results',revision[1],user);if(method==='GET'){send(200,{items:db.prepare('SELECT id,body,created_at FROM result_revisions WHERE result_id=? AND user_id=? ORDER BY created_at DESC').all(result.id,user.id)});return;}const b=await body(req);const id=randomUUID();db.prepare('INSERT INTO result_revisions VALUES(?,?,?,?,?)').run(id,result.id,user.id,(text(b.text,100000),b.text),now());send(201,{id});return;}
 const result=path.match(/^\/api\/results\/([^/]+)$/);if(result&&method==='GET'){const row=own('results',result[1],user);send(200,{item:{...row,body:JSON.parse(row.body)}});return;}
 if(path==='/api/usage'&&method==='GET'){send(200,{items:db.prepare('SELECT * FROM usage WHERE user_id=? ORDER BY created_at DESC LIMIT 100').all(user.id),billingEnabled:false});return;}
-if(path==='/api/products'&&method==='GET'){send(200,{items:db.prepare('SELECT * FROM products').all().map(p=>({...p,rules:JSON.parse(p.rules)})),paymentEnabled:false});return;}
-if(path==='/api/orders'){if(method==='POST')fail(503,'价格规则和支付未启用，不能创建购买订单');send(200,{items:db.prepare('SELECT * FROM orders WHERE user_id=?').all(user.id)});return;}
+if(path==='/api/products'&&method==='GET'){send(200,{items:payments.options().products,paymentEnabled:payments.options().enabled});return;}
+if(path==='/api/payments/entitlements'&&method==='GET'){send(200,payments.entitlements(user));return;}
+if(path==='/api/orders'){if(method==='POST'){rate(req,60);send(201,await payments.create(user,await body(req)));}else send(200,payments.list(user));return;}
+const paymentOrder=path.match(/^\/api\/orders\/([^/]+)(\/query)?$/);if(paymentOrder){if(paymentOrder[2]&&method==='POST')send(200,await payments.query(user,paymentOrder[1]));else if(!paymentOrder[2]&&method==='GET')send(200,payments.getOrder(user,paymentOrder[1]));else fail(405,'不支持的订单操作');return;}
 if(path==='/api/feedback'){if(method==='GET'){send(200,{items:db.prepare('SELECT * FROM feedback WHERE user_id=? ORDER BY created_at DESC LIMIT 100').all(user.id)});return;}const b=await body(req);if(db.prepare('SELECT count(*) n FROM feedback WHERE user_id=?').get(user.id).n>=100)fail(409,'反馈数量达到限制');const id=randomUUID();db.prepare('INSERT INTO feedback VALUES(?,?,?,?,?)').run(id,user.id,text(b.category||'产品建议',30),text(b.text,3000),now());send(201,{id});return;}
 fail(404,'接口不存在');
 }catch(e){send(e.status||500,{error:e.status?e.message:'服务暂时无法完成请求'});}};

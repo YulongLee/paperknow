@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {aiReady,publicModelSettings} from './config.mjs';
+import {paymentCatalog,savePaymentProduct} from './payment-settings.mjs';
 
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const identityJoins=`LEFT JOIN auth_identities ue ON ue.user_id=u.id AND ue.channel='email'
@@ -25,8 +26,8 @@ const definitions={
     fields:`t.id,t.user_id,t.category,t.body,t.created_at,COALESCE(m.status,'open') AS status,COALESCE(m.note,'') AS note,m.updated_at,m.updated_by,${ownerFields}`,
     search:['t.id','t.category','t.body',...sharedSearch],status:"COALESCE(m.status,'open')",statuses:['open','processing','resolved'],order:'t.created_at DESC,t.id DESC'},
   orders:{from:`orders t JOIN users u ON u.id=t.user_id ${identityJoins} JOIN products p ON p.id=t.product_id`,
-    fields:`t.id,t.user_id,t.product_id,t.status,t.created_at,p.title AS product_title,${ownerFields}`,
-    search:['t.id','p.title',...sharedSearch],status:'t.status',statuses:['pending','paid','cancelled','refunded','failed'],order:'t.created_at DESC,t.id DESC'},
+    fields:`t.id,t.user_id,t.product_id,t.status,t.created_at,COALESCE((SELECT title FROM payment_orders WHERE order_id=t.id),p.title) AS product_title,(SELECT out_trade_no FROM payment_orders WHERE order_id=t.id) AS out_trade_no,(SELECT paid_at FROM payment_orders WHERE order_id=t.id) AS paid_at,(SELECT amount_cents FROM payment_orders WHERE order_id=t.id) AS amount_cents,(SELECT provider FROM payment_orders WHERE order_id=t.id) AS provider,(SELECT provider_trade_no FROM payment_orders WHERE order_id=t.id) AS provider_trade_no,${ownerFields}`,
+    search:['t.id','p.title','(SELECT out_trade_no FROM payment_orders WHERE order_id=t.id)','(SELECT provider_trade_no FROM payment_orders WHERE order_id=t.id)',...sharedSearch],status:'t.status',statuses:['pending','paid','cancelled','refunded','failed','closed','expired'],order:'t.created_at DESC,t.id DESC'},
   usage:{from:`usage t JOIN users u ON u.id=t.user_id ${identityJoins}`,
     fields:`t.id,t.user_id,t.job_id,t.provider,t.model,t.input_tokens,t.output_tokens,t.billable,t.created_at,${ownerFields}`,
     search:['t.id','t.job_id','t.provider','t.model',...sharedSearch],status:'t.billable',statuses:['billable','unbilled'],statusValue:value=>value==='billable'?1:0,order:'t.created_at DESC,t.id DESC'},
@@ -46,7 +47,7 @@ function positiveInteger(raw,fallback){
 
 export function createAdminAPI(db,worker,config,auth){
   const modelConfig=()=>config.getAI?config.getAI():config;
-  const secrets=[config.aiKey,config.authCodeSecret,config.emailSMTPPassword,config.smsAccessKeySecret,config.ossAccessKeySecret].filter(value=>typeof value==='string'&&value.length>=4);
+  const secrets=[config.aiKey,config.authCodeSecret,config.emailSMTPPassword,config.smsAccessKeySecret,config.ossAccessKeySecret,config.paymentConfigKey].filter(value=>typeof value==='string'&&value.length>=4);
   const redact=value=>{
     if(typeof value!=='string')return value;
     let result=value;
@@ -90,7 +91,7 @@ export function createAdminAPI(db,worker,config,auth){
 
   function settings(){
     const available=auth.options();
-    return {ai:publicModelSettings(modelConfig()),auth:{emailCode:available.emailCode,phoneCode:available.phoneCode},storage:{provider:config.storage?.provider||'local_server_sqlite'},payment:false};
+    return {ai:publicModelSettings(modelConfig()),auth:{emailCode:available.emailCode,phoneCode:available.phoneCode},storage:{provider:config.storage?.provider||'local_server_sqlite'},payment:config.payments?.options().enabled||false};
   }
 
   function overview(query){
@@ -113,7 +114,7 @@ export function createAdminAPI(db,worker,config,auth){
     }
     const available=auth.options();
     return {metrics,recentJobs:list('jobs',new URLSearchParams('pageSize=10')).items,daily,
-      services:{ai:aiReady(modelConfig()),email:available.emailCode,sms:available.phoneCode,payment:false,storage:config.storage?.provider||'local_server_sqlite'}};
+      services:{ai:aiReady(modelConfig()),email:available.emailCode,sms:available.phoneCode,payment:config.payments?.options().enabled||false,storage:config.storage?.provider||'local_server_sqlite'}};
   }
 
   return async({path,method,query=new URLSearchParams(),readBody,user})=>{
@@ -123,6 +124,16 @@ export function createAdminAPI(db,worker,config,auth){
     const actor=db.prepare('SELECT id,role FROM users WHERE id=?').get(user.id);
     if(!actor)fail(401,'请先登录');
     if(actor.role!=='admin')fail(403,'需要管理员权限');
+    const paymentConfig=()=>({channels:['wechat','alipay'].map(p=>config.payments.settings.summary(p)),catalog:paymentCatalog(db,{all:true}),encryptionReady:config.payments.settings.encryptionReady});
+    if(path==='/api/admin/payments'&&method==='GET'){parameters(query,[]);return paymentConfig();}
+    const paymentProduct=path.match(/^\/api\/admin\/payments\/products\/([a-zA-Z0-9_-]+)$/);
+    if(paymentProduct&&method==='POST'){parameters(query,[]);const input=await readBody();const item=transaction(()=>{const saved=savePaymentProduct(db,paymentProduct[1],input);audit(actor,'payment.product.update','product',saved.id,{status:saved.status,priceCents:saved.priceCents,durationDays:saved.durationDays});return saved;});return {item};}
+    const paymentChannel=path.match(/^\/api\/admin\/payments\/(wechat|alipay)(\/check)?$/);
+    if(paymentChannel&&method==='POST'){
+      parameters(query,[]);const provider=paymentChannel[1];
+      if(paymentChannel[2]){const summary=config.payments.settings.summary(provider);return {ok:summary.configured,configured:summary.configured,ready:summary.ready,validation:summary.validation};}
+      const input=await readBody();return transaction(()=>{const saved=config.payments.settings.save(provider,input,actor.id);audit(actor,'payment.channel.update','payment',provider,{enabled:saved.enabled,configured:saved.configured,changedFields:Object.keys(input).filter(k=>k!=='clearSecrets'),clearedFields:input.clearSecrets||[]});return saved;});
+    }
     if(path==='/api/admin/overview'&&method==='GET')return overview(query);
     const listMatch=path.match(/^\/api\/admin\/(users|jobs|results|feedback|orders|usage|audit)$/);
     if(listMatch&&method==='GET')return list(listMatch[1],query);

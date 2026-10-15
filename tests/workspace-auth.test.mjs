@@ -17,6 +17,7 @@ const signedIn={id:'researcher-1',name:'服务账户',email:null,phone:'+8613800
 
 async function fixture(fetcher){
  const dom=new JSDOM('<div id="app"></div>',{url:'https://paperknow.cn/workspace.html#account',runScripts:'outside-only'});
+ const paymentCalls=[];
  const timers=new Set();const setTimer=(callback,delay)=>{const timer=setTimeout(()=>{timers.delete(timer);callback();},delay);timers.add(timer);return timer;};
  const storage=dom.window.localStorage;
  storage.setItem(keys.profile,JSON.stringify({name:'本地昵称',degree:'硕士',major:'教育学'}));
@@ -24,12 +25,46 @@ async function fixture(fetcher){
  const read=(key,fallback)=>JSON.parse(storage.getItem(key)||'null')??fallback;
  Object.assign(dom.window,{fetch:fetcher,AbortController,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,
   preferences:()=>({degree:'本科',...read(keys.preferences,{})}),profile:()=>({name:'研究者',...read(keys.profile,{})}),read,list:key=>read(key,[]),write:(key,value)=>storage.setItem(key,JSON.stringify(value)),projects:()=>read(keys.projects,[]),repository:{all:async()=>[]},formatDate:()=>'',mountNavigation:()=>({close(){}}),
-  clearEditor:()=>{},clearHelpWork:()=>{},clearSettingsWork:()=>{},clearMoreWork:()=>{},trackDialogForm:()=>()=>{},retainWritingCatalog:()=>{},isCurrentRouteChange:()=>false,
+  disposePayment:()=>{paymentCalls.push({type:'dispose'});},renderPaymentOrders:async()=>{paymentCalls.push({type:'orders'});},renderPaymentCheckout:async options=>{paymentCalls.push({type:'checkout',productId:options.productId,orderId:options.orderId});},clearEditor:()=>{},clearHelpWork:()=>{},clearSettingsWork:()=>{},clearMoreWork:()=>{},trackDialogForm:()=>()=>{},retainWritingCatalog:()=>{},isCurrentRouteChange:()=>false,
  });
  vm.runInContext('(function(){'+onlineSource+'\nObject.assign(globalThis,{mountOnlineWorkspace,disposeOnlineWorkspace,onlineWorkspaceRouteGuard,onlineWorkspaceHasWork,onlineWorkspaceSessionChanged,onlineWorkspaceConfirmLeave,onlineWorkspaceHref});})()',dom.getInternalVMContext());
  await vm.runInContext('(async()=>{'+source+'\nglobalThis.workspaceAuthTest={loadWorkspaceSession,workspaceServiceFetch,signOutWorkspace,renderAccount,authHref,render};})()',dom.getInternalVMContext());
- return {dom,document:dom.window.document,storage,api:dom.window.workspaceAuthTest,close(){timers.forEach(clearTimeout);dom.window.close();}};
+ return {dom,document:dom.window.document,storage,paymentCalls,api:dom.window.workspaceAuthTest,close(){timers.forEach(clearTimeout);dom.window.close();}};
 }
+
+test('workspace payment and order routes mount the account payment modules with parsed server identifiers',async()=>{
+ const f=await fixture(async()=>response(401));
+ try{
+  f.paymentCalls.length=0;
+  const localBefore=f.storage.getItem(keys.drafts);
+  f.dom.window.history.replaceState(null,'','/workspace.html#membership/pay?product=published-member');f.api.render();
+  assert.deepEqual(f.paymentCalls,[{type:'dispose'},{type:'checkout',productId:'published-member',orderId:null}]);
+  assert.equal(f.document.querySelector('.breadcrumb strong').textContent,'安全支付');
+  f.dom.window.history.replaceState(null,'','/workspace.html#membership/pay?order=existing%2Faccount-order');f.api.render();
+  assert.deepEqual(f.paymentCalls.slice(-2),[{type:'dispose'},{type:'checkout',productId:null,orderId:'existing/account-order'}]);
+  f.dom.window.history.replaceState(null,'','/workspace.html#orders');f.api.render();
+  assert.deepEqual(f.paymentCalls.slice(-2),[{type:'dispose'},{type:'orders'}]);
+  assert.equal(f.document.querySelector('.breadcrumb strong').textContent,'订单记录');
+  assert.equal(f.storage.getItem(keys.drafts),localBefore);
+ }finally{f.close();}
+});
+
+test('leaving a payment or order route disposes the previous payment lifecycle before rendering another page',async()=>{
+ const f=await fixture(async()=>response(401));
+ try{
+  f.paymentCalls.length=0;
+  f.dom.window.history.replaceState(null,'','/workspace.html#membership/pay?product=basic');f.api.render();
+  assert.equal(f.paymentCalls.at(-1).type,'checkout');
+  f.dom.window.history.replaceState(null,'','/workspace.html#account');f.api.render();
+  assert.deepEqual(f.paymentCalls.slice(-2),[{type:'checkout',productId:'basic',orderId:null},{type:'dispose'}]);
+  assert.ok(f.document.querySelector('#profile-form'));
+  f.dom.window.history.replaceState(null,'','/workspace.html#orders');f.api.render();
+  assert.equal(f.paymentCalls.at(-1).type,'orders');
+  f.dom.window.history.replaceState(null,'','/workspace.html#account');f.api.render();
+  assert.deepEqual(f.paymentCalls.slice(-2),[{type:'orders'},{type:'dispose'}]);
+  assert.equal(f.document.querySelector('.breadcrumb strong').textContent,'账户中心');
+ }finally{f.close();}
+});
 
 test('homepage research navigation matches the rendered workspace and report sidebar without missing capabilities',async()=>{
  const f=await fixture(async()=>response(401));

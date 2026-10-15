@@ -61,3 +61,29 @@ CREATE TABLE IF NOT EXISTS admin_audit(
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS admin_audit_created ON admin_audit(created_at);
+
+CREATE TABLE IF NOT EXISTS payment_config_versions(
+  id TEXT PRIMARY KEY,provider TEXT NOT NULL CHECK(provider IN ('wechat','alipay')),
+  sealed_settings TEXT NOT NULL,identity_hash TEXT NOT NULL,verification_id TEXT,created_by TEXT NOT NULL REFERENCES users(id),created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS payment_channels(
+  provider TEXT PRIMARY KEY CHECK(provider IN ('wechat','alipay')),
+  version_id TEXT NOT NULL REFERENCES payment_config_versions(id),enabled INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS payment_orders(
+  order_id TEXT PRIMARY KEY REFERENCES orders(id),provider TEXT NOT NULL CHECK(provider IN ('wechat','alipay')),
+  out_trade_no TEXT NOT NULL UNIQUE,config_id TEXT NOT NULL REFERENCES payment_config_versions(id),
+  amount_cents INTEGER NOT NULL CHECK(amount_cents>0),currency TEXT NOT NULL DEFAULT 'CNY',
+  title TEXT NOT NULL,entitlement TEXT NOT NULL,idempotency_key TEXT NOT NULL,input_hash TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id),qr_content TEXT,provider_trade_no TEXT,
+  expires_at TEXT NOT NULL,paid_at TEXT,updated_at TEXT NOT NULL,last_queried_at INTEGER NOT NULL DEFAULT 0,
+  error_code TEXT,UNIQUE(user_id,idempotency_key),UNIQUE(provider,provider_trade_no)
+);
+CREATE INDEX IF NOT EXISTS payment_orders_owner ON payment_orders(user_id,updated_at);
+CREATE TABLE IF NOT EXISTS payment_entitlements(
+  order_id TEXT PRIMARY KEY REFERENCES orders(id),user_id TEXT NOT NULL REFERENCES users(id),
+  product_id TEXT NOT NULL REFERENCES products(id),type TEXT NOT NULL,
+  starts_at TEXT NOT NULL,expires_at TEXT NOT NULL,granted_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS payment_entitlements_owner ON payment_entitlements(user_id,expires_at);
