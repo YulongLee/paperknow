@@ -127,7 +127,7 @@ export function createAdminAPI(db,worker,config,auth){
     const paymentConfig=()=>({channels:['wechat','alipay'].map(p=>config.payments.settings.summary(p)),catalog:paymentCatalog(db,{all:true}),encryptionReady:config.payments.settings.encryptionReady});
     if(path==='/api/admin/payments'&&method==='GET'){parameters(query,[]);return paymentConfig();}
     const paymentProduct=path.match(/^\/api\/admin\/payments\/products\/([a-zA-Z0-9_-]+)$/);
-    if(paymentProduct&&method==='POST'){parameters(query,[]);const input=await readBody();const item=transaction(()=>{const saved=savePaymentProduct(db,paymentProduct[1],input);audit(actor,'payment.product.update','product',saved.id,{status:saved.status,priceCents:saved.priceCents,durationDays:saved.durationDays,entitlementType:saved.entitlementType,creditAmount:saved.creditAmount});return saved;});return {item};}
+    if(paymentProduct&&method==='POST'){parameters(query,[]);const input=await readBody();const item=transaction(()=>{const saved=savePaymentProduct(db,paymentProduct[1],input);audit(actor,'payment.product.update','product',saved.id,{status:saved.status,priceCents:saved.priceCents,durationDays:saved.durationDays,entitlementType:saved.entitlementType,creditAmount:saved.creditAmount,...(saved.entitlementType==='bundle'?{bundleItems:saved.bundleItems}:{})});return saved;});return {item};}
     const paymentChannel=path.match(/^\/api\/admin\/payments\/(wechat|alipay)(\/check)?$/);
     if(paymentChannel&&method==='POST'){
       parameters(query,[]);const provider=paymentChannel[1];

@@ -50,38 +50,52 @@ export function createPaymentSettings(db,config={}){
  }
  return {encryptionReady:Boolean(key),current,version,summary,save,versions};
 }
+export function paymentBundleItems(value,{allowEmpty=false}={}){
+ if(!Array.isArray(value)||value.length>(20)||!allowEmpty&&!value.length)return null;
+ const keys=new Set(),items=[];
+ for(const item of value){
+  if(!item||typeof item!=='object'||Array.isArray(item)||Object.keys(item).some(key=>!['key','title','quantity'].includes(key))||typeof item.key!=='string'||!/^[a-z][a-z0-9-]{0,63}$/.test(item.key)||keys.has(item.key)||typeof item.title!=='string'||!item.title.trim()||item.title.length>80||!Number.isSafeInteger(item.quantity)||item.quantity<1||item.quantity>100000)return null;
+  keys.add(item.key);items.push({key:item.key,title:item.title.trim(),quantity:item.quantity});
+ }
+ return items;
+}
 export function paymentCatalog(db,{all=false}={}){
  return db.prepare('SELECT * FROM products ORDER BY id').all().flatMap(p=>{
   let rules;try{rules=JSON.parse(p.rules);}catch{}if(!rules||typeof rules!=='object'||Array.isArray(rules))rules={};
   const priceCents=Number.isSafeInteger(rules.priceCents)&&rules.priceCents>0&&rules.priceCents<=10000000?rules.priceCents:null;
-  const entitlementType=rules.entitlementType||'membership',durationDays=entitlementType==='membership'&&Number.isSafeInteger(rules.durationDays)?rules.durationDays:null;
+  const entitlementType=rules.entitlementType||'membership',durationDays=['membership','bundle'].includes(entitlementType)&&Number.isSafeInteger(rules.durationDays)?rules.durationDays:null;
   const creditAmount=entitlementType==='credits'&&Number.isSafeInteger(rules.creditAmount)&&rules.creditAmount>0&&rules.creditAmount<=1000000?rules.creditAmount:null;
-  const validEntitlement=entitlementType==='membership'?durationDays>=1&&durationDays<=366:entitlementType==='credits'&&creditAmount!==null;
+  const bundleItems=entitlementType==='bundle'?paymentBundleItems(rules.bundleItems,{allowEmpty:true}):[];
+  const validDuration=durationDays>=1&&durationDays<=366,validEntitlement=entitlementType==='membership'?validDuration:entitlementType==='credits'?creditAmount!==null:entitlementType==='bundle'&&validDuration&&Boolean(bundleItems?.length);
   const description=typeof rules.description==='string'?rules.description:'';
   const active=p.status==='active'&&priceCents!==null&&validEntitlement&&Boolean(description.trim());
   if(!all&&!active)return [];
-  return [{id:p.id,title:p.title,status:active?'active':'preview',priceCents,currency:'CNY',description,durationDays,creditAmount,entitlementType,entitlement:entitlementType==='credits'?{type:'credits',creditAmount}:{type:'membership',durationDays}}];
+  const entitlement=entitlementType==='credits'?{type:'credits',creditAmount}:entitlementType==='bundle'?{type:'bundle',durationDays,bundleItems:bundleItems||[]}:{type:'membership',durationDays};
+  return [{id:p.id,title:p.title,status:active?'active':'preview',priceCents,currency:'CNY',description,durationDays,creditAmount,bundleItems:bundleItems||[],entitlementType,entitlement}];
  }).sort((a,b)=>{
-  const group={membership:0,credits:1};
-  if(a.entitlementType!==b.entitlementType)return (group[a.entitlementType]??2)-(group[b.entitlementType]??2);
+  const group={membership:0,credits:1,bundle:2};
+  if(a.entitlementType!==b.entitlementType)return (group[a.entitlementType]??3)-(group[b.entitlementType]??3);
   return a.entitlementType==='credits'?(a.creditAmount??Infinity)-(b.creditAmount??Infinity)||a.id.localeCompare(b.id):a.id.localeCompare(b.id);
  });
 }
 export function savePaymentProduct(db,id,input){
  const current=db.prepare('SELECT rules FROM products WHERE id=?').get(id);if(!current)fail(404,'商品不存在');
- const allowed=['title','description','priceCents','durationDays','status','entitlementType','creditAmount'];if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!allowed.includes(k))||typeof input.title!=='string'||!input.title.trim()||input.title.length>80||typeof input.description!=='string'||input.description.length>1000||!['preview','active'].includes(input.status))fail(400,'商品信息不正确');
+ const allowed=['title','description','priceCents','durationDays','status','entitlementType','creditAmount','bundleItems'];if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!allowed.includes(k))||typeof input.title!=='string'||!input.title.trim()||input.title.length>80||typeof input.description!=='string'||input.description.length>1000||!['preview','active'].includes(input.status))fail(400,'商品信息不正确');
  let previous;try{previous=JSON.parse(current.rules);}catch{}const previousType=previous?.entitlementType||'membership',type=input.entitlementType??previousType;
- if(!['membership','credits'].includes(type)||type!==previousType)fail(400,'商品权益类型不能变更');
+ if(!['membership','credits','bundle'].includes(type)||type!==previousType)fail(400,'商品权益类型不能变更');
  const price=input.priceCents,days=input.durationDays,creditAmount=type==='credits'?input.creditAmount:null;
+ const bundleItems=type==='bundle'?paymentBundleItems(input.bundleItems,{allowEmpty:input.status==='preview'}):[];
  if(price!==null&&(!Number.isSafeInteger(price)||price<1||price>10000000))fail(400,'请输入有效的商品价格，单位为分');
- if(type==='membership'){
-  if(days!==null&&(!Number.isSafeInteger(days)||days<1||days>366))fail(400,'会员有效期应为 1～366 天');
-  if(input.creditAmount!==undefined&&input.creditAmount!==null)fail(400,'会员商品不能配置充值积分');
+ if(type!=='bundle'&&input.bundleItems!==undefined&&(!Array.isArray(input.bundleItems)||input.bundleItems.length))fail(400,'只有套餐商品可以配置服务清单');
+ if(type==='membership'||type==='bundle'){
+  if(days!==null&&(!Number.isSafeInteger(days)||days<1||days>366))fail(400,type==='bundle'?'套餐有效期应为 1～366 天':'会员有效期应为 1～366 天');
+  if(input.creditAmount!==undefined&&input.creditAmount!==null)fail(400,'会员和套餐商品不能配置充值积分');
+  if(type==='bundle'&&!bundleItems)fail(400,'套餐需配置 1～20 项服务，服务标识唯一，数量为 1～100000 的整数');
  }else{
   if(days!==null)fail(400,'积分商品不配置会员有效期');
   if(creditAmount!==null&&(!Number.isSafeInteger(creditAmount)||creditAmount<1||creditAmount>1000000))fail(400,'充值积分应为 1～1000000 的整数');
  }
  if(input.status==='active'&&(!price||!(type==='credits'?creditAmount:days)||!input.description.trim()))fail(400,'上架前请明确价格、可交付权益及数量或有效期');
- db.prepare('UPDATE products SET title=?,status=?,rules=? WHERE id=?').run(input.title.trim(),input.status,JSON.stringify({priceCents:price,durationDays:type==='membership'?days:null,...(type==='credits'?{creditAmount}:{}),description:input.description.trim(),entitlementType:type,paymentEnabled:input.status==='active'}),id);
+ db.prepare('UPDATE products SET title=?,status=?,rules=? WHERE id=?').run(input.title.trim(),input.status,JSON.stringify({priceCents:price,durationDays:type==='credits'?null:days,...(type==='credits'?{creditAmount}:type==='bundle'?{bundleItems}:{}),description:input.description.trim(),entitlementType:type,paymentEnabled:input.status==='active'}),id);
  return paymentCatalog(db,{all:true}).find(p=>p.id===id);
 }

@@ -11,6 +11,7 @@ const channels = [
 ];
 const catalog = [{ id: 'basic', title: '基础会员', description: '', status: 'preview', priceCents: null, durationDays: null, entitlementType: 'membership' }];
 const creditCatalog = [200, 500, 1000].map(creditAmount => ({ id: `credits-${creditAmount}`, title: `${creditAmount} 积分`, description: `到账 ${creditAmount} 积分。`, status: 'preview', priceCents: creditAmount * 10, durationDays: null, entitlementType: 'credits', creditAmount }));
+const bundleCatalog = [{ id: 'bundle-rewrite', title: '论文修改套餐', description: '提供已列出的论文修改服务项。', status: 'preview', priceCents: 9900, durationDays: null, entitlementType: 'bundle', bundleItems: [{ key: 'rewrite', title: '论文修改', quantity: 2 }] }];
 async function settle(check) { for (let i = 0; i < 100; i++) { if (check()) return; await new Promise(resolve => setTimeout(resolve, 5)); } throw new Error('UI did not settle'); }
 async function page(t, { role = 'admin', data, handle, hash = '#payments' } = {}) {
   const dom = new JSDOM(html, { url: 'https://paperknow.cn/admin.html' + hash, pretendToBeVisual: true });
@@ -23,7 +24,7 @@ async function page(t, { role = 'admin', data, handle, hash = '#payments' } = {}
     let result = await handle?.(url, payload, init);
     if (!result) {
       if (url === '/api/auth/me') result = { body: { user: { id: 'admin-demo', name: '运营管理员', role } } };
-      else if (url === '/api/admin/payments') result = { body: data ?? { channels: structuredClone(channels), catalog: structuredClone(catalog), encryptionReady: true } };
+      else if (url === '/api/admin/payments') result = { body: structuredClone(data ?? { channels, catalog, encryptionReady: true }) };
       else if (url === '/api/admin/settings') result = { body: {} };
       else result = { body: {} };
     }
@@ -145,8 +146,8 @@ test('product prices are parsed exactly to integer cents and products remain unp
   assert.equal(ui.$('#product-basic-price').value, '0.29'); assert.match(ui.$('#admin-toast').textContent, /当前未上架/);
 });
 
-test('membership and credit products are grouped with distinct delivery fields and the confirmed credit amounts', async t => {
-  const ui = await page(t, { data: { channels, catalog: [...catalog, ...creditCatalog], encryptionReady: true } });
+test('membership, credit and bundle products are grouped with distinct fields and the confirmed credit amounts', async t => {
+  const ui = await page(t, { data: { channels, catalog: [...catalog, ...creditCatalog, ...bundleCatalog], encryptionReady: true } });
   assert.equal(ui.win.document.querySelectorAll('[data-product-group="membership"] form').length, 1);
   assert.equal(ui.win.document.querySelectorAll('[data-product-group="credits"] form').length, 3);
   for (const amount of [200, 500, 1000]) {
@@ -155,8 +156,12 @@ test('membership and credit products are grouped with distinct delivery fields a
     assert.equal(ui.$(`#product-credits-${amount}-days`), null);
   }
   assert.equal(ui.$('#product-basic-credits'), null);
-  assert.match(ui.$('.payment-bundle-note').textContent, /当前未配置可售套餐/);
-  assert.doesNotMatch(ui.$('.payment-bundle-note').textContent, /立即购买|已上架/);
+  assert.equal(ui.win.document.querySelectorAll('[data-product-group="bundle"] form').length, 1);
+  assert.equal(ui.$('#product-bundle-rewrite-days').value, '');
+  assert.equal(ui.$('#product-bundle-rewrite-credits'), null);
+  assert.match(ui.$('label[for="product-bundle-rewrite-days"]').textContent, /套餐有效期/);
+  for (const type of ['membership', 'credits', 'bundle']) assert.match(ui.$(`[data-product-group="${type}"] .payment-product-channels`).textContent, /微信支付 · 支付宝/);
+  assert.match(ui.$('[data-payment-product="bundle-rewrite"] .payment-product-delivery').textContent, /不代表已开放自动消费、兑换或次数扣减/);
 });
 
 test('credit saves submit credit entitlement without membership days and preserve a separate unsaved membership edit', async t => {
@@ -183,6 +188,71 @@ test('credit publishing rejects missing, fractional, negative and excessive quan
   }
   assert.equal(ui.calls.filter(call => call.method === 'POST').length, 0);
   assert.equal(ui.$('[data-payment-product="credits-200"] [type="submit"]').disabled, false);
+});
+
+test('bundle product saves snapshot service items and their own duration without membership or credit conversion', async t => {
+  let saved;
+  const ui = await page(t, { data: { channels, catalog: [...catalog, ...bundleCatalog], encryptionReady: true }, handle: (url, payload) => url === '/api/admin/payments/products/bundle-rewrite' ? (saved = payload, { body: { item: { ...bundleCatalog[0], ...payload } } }) : undefined });
+  ui.fill('#product-basic-title', '仍未保存的会员修改');
+  ui.click('[data-payment-product="bundle-rewrite"] [data-bundle-add]');
+  ui.fill('#product-bundle-rewrite-bundle-1-key', 'format'); ui.fill('#product-bundle-rewrite-bundle-1-title', '格式排版'); ui.fill('#product-bundle-rewrite-bundle-1-quantity', '1');
+  ui.fill('#product-bundle-rewrite-days', '30'); ui.fill('#product-bundle-rewrite-status', 'active'); ui.submit('[data-payment-product="bundle-rewrite"]');
+  await settle(() => saved && !ui.$('[data-payment-product="bundle-rewrite"] [type="submit"]').disabled);
+  assert.deepEqual(saved, { title: '论文修改套餐', description: '提供已列出的论文修改服务项。', status: 'active', priceCents: 9900, durationDays: 30, entitlementType: 'bundle', bundleItems: [{ key: 'rewrite', title: '论文修改', quantity: 2 }, { key: 'format', title: '格式排版', quantity: 1 }] });
+  assert.equal(Object.hasOwn(saved, 'creditAmount'), false);
+  assert.equal(ui.$('#product-basic-title').value, '仍未保存的会员修改');
+  assert.equal(ui.$('[data-payment-product="basic"] .payment-dirty').hidden, false);
+});
+
+test('bundle drafts can save empty entitlements but publishing requires duration and service items', async t => {
+  let saved;
+  const ui = await page(t, { data: { channels, catalog: bundleCatalog, encryptionReady: true }, handle: (url, payload) => url === '/api/admin/payments/products/bundle-rewrite' ? (saved = payload, { body: { item: { ...bundleCatalog[0], ...payload } } }) : undefined });
+  ui.click('[data-bundle-remove]'); ui.submit('[data-payment-product="bundle-rewrite"]');
+  await settle(() => saved && !ui.$('[data-payment-product="bundle-rewrite"] [type="submit"]').disabled);
+  assert.equal(saved.durationDays, null); assert.deepEqual(saved.bundleItems, []); assert.equal(saved.status, 'preview');
+  ui.fill('#product-bundle-rewrite-status', 'active'); ui.submit('[data-payment-product="bundle-rewrite"]');
+  assert.match(ui.$('[data-payment-product="bundle-rewrite"] .form-error').textContent, /套餐有效期/);
+  ui.fill('#product-bundle-rewrite-days', '30'); ui.submit('[data-payment-product="bundle-rewrite"]');
+  assert.match(ui.$('[data-payment-product="bundle-rewrite"] .form-error').textContent, /至少配置一个/);
+  assert.equal(ui.calls.filter(call => call.method === 'POST').length, 1);
+});
+
+test('bundle service keys, names and quantities are strictly validated before any save', async t => {
+  const ui = await page(t, { data: { channels, catalog: bundleCatalog, encryptionReady: true } });
+  const prefix = '#product-bundle-rewrite-bundle-0-';
+  for (const [field, value, message] of [['key', 'Rewrite', /小写字母/], ['key', 'a'.repeat(65), /最多 64/], ['title', '', /1–80/], ['title', '文'.repeat(81), /1–80/], ['quantity', '0', /1–100000/], ['quantity', '1.5', /1–100000/], ['quantity', '100001', /1–100000/]]) {
+    ui.fill(prefix + 'key', 'rewrite'); ui.fill(prefix + 'title', '论文修改'); ui.fill(prefix + 'quantity', '2'); ui.fill(prefix + field, value);
+    ui.submit('[data-payment-product="bundle-rewrite"]'); assert.match(ui.$('[data-payment-product="bundle-rewrite"] .form-error').textContent, message);
+  }
+  ui.fill(prefix + 'quantity', '2'); ui.click('[data-bundle-add]');
+  ui.fill('#product-bundle-rewrite-bundle-1-key', 'rewrite'); ui.fill('#product-bundle-rewrite-bundle-1-title', '重复服务标识'); ui.fill('#product-bundle-rewrite-bundle-1-quantity', '1');
+  ui.submit('[data-payment-product="bundle-rewrite"]'); assert.match(ui.$('[data-payment-product="bundle-rewrite"] .form-error').textContent, /不能重复/);
+  assert.equal(ui.calls.filter(call => call.method === 'POST').length, 0);
+});
+
+test('bundle row additions and removals participate in dirty guards and enforce the maximum row count', async t => {
+  const ui = await page(t, { data: { channels, catalog: bundleCatalog, encryptionReady: true } });
+  ui.click('[data-bundle-add]'); assert.equal(ui.$('.payment-dirty').hidden, true);
+  assert.equal(ui.$('[data-payment-product="bundle-rewrite"] .payment-dirty').hidden, false);
+  const unload = new ui.win.Event('beforeunload', { cancelable: true }); ui.win.dispatchEvent(unload); assert.equal(unload.defaultPrevented, true);
+  ui.click('[data-view="settings"]'); assert.equal(ui.$('#admin-dialog').open, true); ui.click('[data-dialog-close]');
+  ui.click('[data-bundle-row="1"] [data-bundle-remove]'); assert.equal(ui.$('[data-payment-product="bundle-rewrite"] .payment-dirty').hidden, true);
+  for (let i = 1; i < 21; i++) ui.click('[data-bundle-add]');
+  assert.equal(ui.win.document.querySelectorAll('[data-bundle-row]').length, 20); assert.equal(ui.$('[data-bundle-add]').disabled, true);
+  ui.click('[data-bundle-row="19"] [data-bundle-remove]'); assert.equal(ui.$('[data-bundle-add]').disabled, false);
+});
+
+test('bundle saves protect pending changes from navigation and do not expose unescaped service content', async t => {
+  let finish;
+  const injected = '<img src=x onerror="window.pwned=true">';
+  const data = { channels, catalog: [{ ...bundleCatalog[0], bundleItems: [{ key: 'rewrite', title: injected, quantity: 1 }] }], encryptionReady: true };
+  const ui = await page(t, { data, handle: url => url === '/api/admin/payments/products/bundle-rewrite' ? new Promise(resolve => { finish = resolve; }) : undefined });
+  assert.equal(ui.$('#admin-content img'), null); assert.equal(ui.$('#product-bundle-rewrite-bundle-0-title').value, injected);
+  ui.fill('#product-bundle-rewrite-bundle-0-title', '论文修改'); ui.submit('[data-payment-product="bundle-rewrite"]'); await settle(() => finish);
+  assert.equal(ui.$('[data-bundle-add]').disabled, true); assert.equal(ui.$('[data-bundle-remove]').disabled, true);
+  ui.click('[data-view="settings"]'); assert.equal(ui.win.location.hash, '#payments'); assert.equal(ui.$('#admin-dialog').open, false); assert.match(ui.$('#admin-toast').textContent, /请等待/);
+  finish({ body: { item: bundleCatalog[0] } }); await settle(() => !ui.$('[data-bundle-add]').disabled);
+  assert.equal(ui.win.pwned, undefined);
 });
 
 test('publishing requires a real price, positive membership duration and delivery description', async t => {

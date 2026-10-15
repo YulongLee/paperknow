@@ -8,6 +8,9 @@ import {toolBanner} from '../dist/workspace/tool-banner.mjs';
 const source=(await readFile(new URL('../dist/workspace/payment.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const products=[{id:'credits-100',title:'100 研究币',priceCents:1000,currency:'CNY',description:'用于已开放的账户服务。',entitlement:{type:'credits',quantity:100}},{id:'credits-300',title:'300 研究币',priceCents:2500,currency:'CNY',description:'以正式商品说明为准。',entitlement:{type:'credits',quantity:300}}];
 const channels=[{provider:'wechat',label:'微信支付',ready:true},{provider:'alipay',label:'支付宝',ready:true}];
+const bundleServices=[{key:'detection',title:'论文检测',quantity:2},{key:'revision',title:'文本修改',quantity:3}];
+const bundleProduct={id:'bundle-research',title:'研究服务套餐',priceCents:9900,currency:'CNY',description:'已发布的套餐说明',entitlementType:'bundle',durationDays:30,bundleItems:bundleServices,entitlement:{type:'bundle',durationDays:30,bundleItems:bundleServices}};
+const memberProduct={id:'membership-basic',title:'研究会员',priceCents:2900,currency:'CNY',description:'已发布的会员说明',entitlementType:'membership',durationDays:45,entitlement:{type:'membership',durationDays:45}};
 const qr='data:image/png;base64,dGVzdA==';
 const response=(value,status=200)=>({ok:status<400,status,json:async()=>JSON.parse(JSON.stringify(value))});
 async function settle(check){for(let i=0;i<100;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}throw new Error('Payment UI did not settle');}
@@ -49,6 +52,34 @@ test('checkout preserves selected Alipay and displays server credit quantity and
  assert.equal(f.calls.some(call=>call.body),false);
 });
 
+test('membership and bundle checkout retain real validity and service counts on both payment providers',async t=>{
+ for(const product of [memberProduct,bundleProduct])for(const provider of ['wechat','alipay']){
+  const f=await fixture(t,{initialProductId:product.id,preferredProvider:provider,catalogue:{enabled:true,channels,products:[product]},order:{title:product.title,amountCents:product.priceCents,entitlementType:product.entitlementType,durationDays:product.durationDays,bundleItems:product.bundleItems}});
+  const summary=f.doc.querySelector('.payment-summary');assert.match(summary.textContent,new RegExp(`${product.durationDays} 天`));assert.match(summary.textContent,new RegExp(product.entitlementType==='bundle'?'套餐有效期':'会员有效期'));
+  if(product.entitlementType==='bundle'){assert.match(summary.textContent,/论文检测× 2/);assert.match(summary.textContent,/文本修改× 3/);assert.match(summary.textContent,/消费扣减尚未接入/);}
+  click(f,'[data-payment-create]');await settle(()=>f.doc.querySelector('[data-payment-qr] img'));const request=f.calls.find(call=>call.body?.productId);assert.equal(request.body.productId,product.id);assert.equal(request.body.provider,provider);assert.deepEqual(Object.keys(request.body).sort(),['idempotencyKey','productId','provider']);assert.match(f.doc.querySelector('.payment-order-summary').textContent,new RegExp(`${product.durationDays} 天`));assert.equal(f.w.localStorage.length,0);
+ }
+});
+
+test('unconfigured channels block membership and bundle order creation even through the handler',async t=>{
+ for(const product of [memberProduct,bundleProduct]){const f=await fixture(t,{initialProductId:product.id,catalogue:{enabled:false,channels:channels.map(c=>({...c,ready:false})),products:[product]}});const create=f.doc.querySelector('[data-payment-create]');assert.equal(create.disabled,true);await create.onclick();assert.equal(f.calls.some(call=>call.body),false);assert.equal(f.doc.querySelectorAll('[data-payment-provider]:disabled').length,2);}
+});
+
+test('requested membership and bundle checkout show only that SKU while the generic directory retains all choices',async t=>{
+ const catalogue={enabled:true,channels,products:[...products,memberProduct,bundleProduct]};
+ for(const [product,back] of [[memberProduct,'#membership/plans'],[bundleProduct,'#membership/bundles']]){const f=await fixture(t,{initialProductId:product.id,catalogue});assert.equal(f.doc.querySelectorAll('[data-payment-product]').length,1);assert.equal(f.doc.querySelector('[data-payment-product]').dataset.paymentProduct,product.id);assert.equal(f.doc.querySelector('[data-payment-reselect]').getAttribute('href'),back);assert.equal(f.doc.querySelectorAll('[data-payment-provider]').length,2);assert.equal(f.doc.querySelector('[data-payment-create]').disabled,false);assert.equal(f.calls.some(call=>call.body),false);}
+ const directory=await fixture(t,{initialProductId:null,catalogue});assert.equal(directory.doc.querySelectorAll('[data-payment-product]').length,catalogue.products.length);assert.equal(directory.doc.querySelector('[data-payment-reselect]'),null);assert.equal(directory.calls.some(call=>call.body),false);
+});
+
+test('paid bundle snapshots show bought counts and lead to account packages without confusing QR expiry',async t=>{
+ const f=await fixture(t,{initialProductId:bundleProduct.id,orderId:'o1',catalogue:{enabled:true,channels,products:[bundleProduct]},order:{status:'paid',title:'购买时套餐名称',entitlementType:'bundle',durationDays:30,bundleItems:[{key:'unsafe',title:'项目 <img src=x onerror=alert(1)>',quantity:4}],amountCents:9900}});
+ const details=f.doc.querySelector('.payment-order-summary');assert.match(details.textContent,/服务套餐/);assert.match(details.textContent,/套餐有效期30 天/);assert.match(details.textContent,/项目 <img src=x onerror=alert\(1\)>× 4/);assert.equal(details.querySelector('img'),null);assert.doesNotMatch(details.textContent,/二维码有效至/);assert.equal(details.querySelector('a[href="#membership?scope=account"]').textContent,'查看账户已购套餐');assert.equal(f.calls.some(call=>call.body?.productId),false);assert.equal(f.w.localStorage.length,0);
+});
+
+test('payment order history labels membership, credits and bundles from server order types',async t=>{
+ const items=['membership','credits','bundle'].map((type,i)=>({id:'type-'+i,title:'真实订单',status:'paid',entitlementType:type,amountCents:2000,provider:i%2?'alipay':'wechat',createdAt:new Date().toISOString()}));const f=await fixture(t,{items});await f.orders();assert.deepEqual([...f.doc.querySelectorAll('.payment-history-main p')].map(p=>p.textContent.split(' · ')[0]),['会员订阅','科研积分','服务套餐']);assert.equal(f.calls.some(call=>call.body),false);
+});
+
 test('withdrawn requested product never silently switches to a different service',async t=>{
  const f=await fixture(t,{initialProductId:'withdrawn-product'});
  assert.equal(f.doc.querySelector('[data-payment-create]').disabled,true);
@@ -62,7 +93,7 @@ test('order creation sends only product, provider and idempotency key; server am
 });
 
 test('provider and product switches are reflected in the selected server identifiers',async t=>{
- const f=await fixture(t);click(f,'[data-payment-provider="alipay"]');click(f,'[data-payment-product="credits-300"]');assert.equal(f.doc.querySelector('[data-payment-provider="alipay"]').getAttribute('aria-pressed'),'true');click(f,'[data-payment-create]');await settle(()=>f.doc.querySelector('[data-payment-qr] img'));const request=f.calls.find(call=>call.body?.productId);assert.equal(request.body.provider,'alipay');assert.equal(request.body.productId,'credits-300');assert.match(f.doc.querySelector('.payment-scan-instruction').textContent,/支付宝/);
+ const f=await fixture(t,{initialProductId:null});click(f,'[data-payment-provider="alipay"]');click(f,'[data-payment-product="credits-300"]');assert.equal(f.doc.querySelector('[data-payment-provider="alipay"]').getAttribute('aria-pressed'),'true');click(f,'[data-payment-create]');await settle(()=>f.doc.querySelector('[data-payment-qr] img'));const request=f.calls.find(call=>call.body?.productId);assert.equal(request.body.provider,'alipay');assert.equal(request.body.productId,'credits-300');assert.match(f.doc.querySelector('.payment-scan-instruction').textContent,/支付宝/);
 });
 
 test('network retry reuses the same idempotency key and ignores double clicks',async t=>{

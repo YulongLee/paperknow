@@ -119,9 +119,9 @@ test('usage and feedback stay attached to the signed-in account without inventin
 test('purchased membership shows escaped order snapshots with active, scheduled and expired states',async t=>{
  const today=Date.now(),stamp=offset=>new Date(today+offset*86400000).toISOString();
  const items=[
-  {order_id:'paid-current',title:'已购标题 <img src=x onerror=alert(1)>',description:'购买时的说明 <script>alert(1)</script>',starts_at:stamp(-1),expires_at:stamp(3)},
-  {order_id:'paid-scheduled',title:'排队中的已购服务',description:'当前权益结束后生效。',starts_at:stamp(4),expires_at:stamp(11)},
-  {order_id:'paid/expired',title:'历史已购服务',description:'已到期的真实购买记录。',starts_at:stamp(-14),expires_at:stamp(-7)}
+  {type:'membership',order_id:'paid-current',title:'已购标题 <img src=x onerror=alert(1)>',description:'购买时的说明 <script>alert(1)</script>',starts_at:stamp(-1),expires_at:stamp(3)},
+  {type:'membership',order_id:'paid-scheduled',title:'排队中的已购服务',description:'当前权益结束后生效。',starts_at:stamp(4),expires_at:stamp(11)},
+  {type:'membership',order_id:'paid/expired',title:'历史已购服务',description:'已到期的真实购买记录。',starts_at:stamp(-14),expires_at:stamp(-7)}
  ];
  const f=await fixture(t,{view:'membership',request:async path=>path==='/api/payments/entitlements'?{ok:true,status:200,json:async()=>({items})}:undefined});
  const cards=[...f.doc.querySelectorAll('#view article.account-entitlement')];assert.equal(cards.length,3);
@@ -134,6 +134,13 @@ test('purchased membership shows escaped order snapshots with active, scheduled 
 
 test('empty purchased membership uses actual account counts without encouraging a payment',async t=>{
  const f=await fixture(t,{view:'membership'});assert.match(f.doc.querySelector('#view').textContent,/暂无已生效的会员权益/);assert.equal(f.doc.querySelectorAll('.account-entitlement').length,0);assert.equal(f.doc.querySelector('a[href*="membership/pay"]'),null);assert.equal(f.calls.filter(call=>call.path==='/api/payments/entitlements').length,1);assert.equal(f.calls.some(call=>call.body),false);
+});
+
+test('account workspace displays paid bundle snapshots separately with active, scheduled and expired periods',async t=>{
+ const today=Date.now(),stamp=offset=>new Date(today+offset*86400000).toISOString();
+ const bundles=[{orderId:'bundle/current',productId:'bundle-one',title:'真实套餐 <img src=x>',description:'套餐快照 <script>x</script>',startsAt:stamp(-1),expiresAt:stamp(3),items:[{key:'detection',title:'已购检测',quantity:2}]},{orderId:'bundle-future',productId:'bundle-two',title:'待生效套餐',description:'后续服务',startsAt:stamp(4),expiresAt:stamp(10),items:[{key:'ppt',title:'答辩 PPT',quantity:1}]},{orderId:'bundle-old',productId:'bundle-one',title:'到期记录',description:'历史购买',startsAt:stamp(-14),expiresAt:stamp(-7),items:[{key:'detection',title:'已购检测',quantity:2}]}];
+ const f=await fixture(t,{view:'membership',request:async path=>path==='/api/payments/entitlements'?{ok:true,status:200,json:async()=>({items:[{type:'bundle',title:'不能成为会员',starts_at:stamp(-1),expires_at:stamp(999)}],bundles})}:undefined});
+ const cards=[...f.doc.querySelectorAll('.member-bundle-record')];assert.equal(cards.length,3);assert.deepEqual(cards.map(card=>card.querySelector('.tag').textContent),['有效','待生效','已到期']);assert.equal(cards[0].querySelector('h3').textContent,bundles[0].title);assert.equal(cards[0].querySelector('.member-bundle-description').textContent,bundles[0].description);assert.match(cards[0].textContent,/已购检测2 次/);assert.equal(cards[0].querySelector('img'),null);assert.equal(cards[0].querySelector('script'),null);assert.ok(cards[0].querySelector('a[href="#membership/pay?order=bundle%2Fcurrent"]'));assert.equal(f.doc.querySelector('.member-purchase-member h2').textContent,'免费使用');assert.equal(f.doc.querySelector('.member-purchase-bundles h2').textContent,'3 份已购套餐');assert.equal(f.doc.querySelectorAll('.account-entitlement').length,0);assert.match(f.doc.querySelector('.member-bundle-records').textContent,/消费扣减尚未接入/);assert.equal(f.calls.some(call=>call.body),false);assert.match(f.w.localStorage.getItem('paperknow-drafts'),/本地未上传成果/);
 });
 
 

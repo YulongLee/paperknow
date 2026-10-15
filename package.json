@@ -13,7 +13,7 @@
     "test:auth": "node --test tests/auth.test.mjs tests/auth-delivery.test.mjs tests/auth-api.test.mjs tests/auth-ui.test.mjs tests/workspace-auth.test.mjs tests/service-ui.test.mjs tests/backend.test.mjs tests/proxy-rate-limit.test.mjs",
     "test:admin": "node --test tests/admin-api.test.mjs tests/admin-ui.test.mjs tests/admin-routing.test.mjs tests/online-workspace.test.mjs tests/home-service.test.mjs",
     "test:seo": "node --test tests/public-seo.test.mjs",
-    "test:payments": "node --test tests/payment-providers.test.mjs tests/payment-api.test.mjs tests/payment-admin-ui.test.mjs tests/payment-checkout-ui.test.mjs tests/payment-credits.test.mjs",
+    "test:payments": "node --test tests/payment-providers.test.mjs tests/payment-api.test.mjs tests/payment-admin-ui.test.mjs tests/payment-checkout-ui.test.mjs tests/payment-credits.test.mjs tests/payment-bundles.test.mjs",
     "test:workspace": "node --test tests/workspace-api.test.mjs tests/online-workspace.test.mjs tests/workspace-auth.test.mjs tests/settings-backup.test.mjs tests/membership.test.mjs tests/membership-purchase.test.mjs tests/help-workspace.test.mjs tests/settings-workspace.test.mjs tests/personal-services.test.mjs tests/account-draft-editor.test.mjs tests/workspace-editor-lifecycle.test.mjs"
   },
   "dependencies": {

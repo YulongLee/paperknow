@@ -39,7 +39,7 @@ test('approved tiers have exact integral prices and no channel is enabled by see
  assert.equal(options.enabled,false);assert.deepEqual(options.channels.map(c=>[c.provider,c.ready]),[['wechat',false],['alipay',false]]);
  assert.deepEqual(options.products.map(p=>[p.id,p.priceCents,p.creditAmount]).sort((a,b)=>a[2]-b[2]),[['credits-200',2000,200],['credits-500',5000,500],['credits-1000',10000,1000]]);
  assert.ok(options.products.every(p=>p.entitlementType==='credits'&&p.durationDays===null&&p.entitlement.type==='credits'));
- assert.deepEqual(f.service.entitlements(f.user),{items:[],credits:{balance:0,ledger:[]}});
+ assert.deepEqual(f.service.entitlements(f.user),{items:[],credits:{balance:0,ledger:[]},bundles:[]});
  await assert.rejects(f.create(),{status:503});assert.equal(f.created.length,0);
 });
 
@@ -52,7 +52,7 @@ test('each exact credit tier settles through both WeChat and Alipay and isolates
   await f.notify(item);assert.equal(f.service.getOrder(f.user,item.id).item.status,'paid');
  }
  const entitlements=f.service.entitlements(f.user);assert.equal(entitlements.credits.balance,3400);assert.equal(entitlements.credits.ledger.length,6);assert.equal(entitlements.items.length,0);
- assert.deepEqual(f.service.entitlements(f.other),{items:[],credits:{balance:0,ledger:[]}});
+ assert.deepEqual(f.service.entitlements(f.other),{items:[],credits:{balance:0,ledger:[]},bundles:[]});
  const item=f.service.list(f.user).items[0];assert.throws(()=>f.service.getOrder(f.other,item.id),{status:404});
  assert.ok(entitlements.credits.ledger.every(item=>item.kind==='purchase'&&item.title&&item.productId&&item.createdAt));
  assert.equal(JSON.stringify(entitlements).includes('privateKey'),false);
@@ -129,7 +129,7 @@ test('repeated database startup preserves edited prices and never reissues exist
  const f=fixture(t,{path:join(directory,'account.sqlite')});f.channel('wechat');const item=await f.create();await f.notify(item);
  savePaymentProduct(f.db,'credits-200',productInput(250,{priceCents:2500,title:'已调整商品'}));
  for(let i=0;i<3;i++){f.restart();const product=paymentCatalog(f.db).find(p=>p.id==='credits-200');assert.equal(product.priceCents,2500);assert.equal(product.creditAmount,250);assert.equal(product.title,'已调整商品');await f.notify(item);assert.equal(f.service.entitlements(f.user).credits.balance,200);}
- assert.equal(f.db.prepare('SELECT count(*) AS n FROM payment_credit_ledger').get().n,1);assert.equal(f.db.prepare('SELECT count(*) AS n FROM products').get().n,6);
+ assert.equal(f.db.prepare('SELECT count(*) AS n FROM payment_credit_ledger').get().n,1);assert.equal(f.db.prepare('SELECT count(*) AS n FROM products').get().n,13);
 });
 
 test('balance sums the full credit ledger even when only the most recent 100 records are returned',async t=>{

@@ -1,5 +1,5 @@
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
-import {createPaymentSettings,paymentCatalog,paymentNotifyURL} from './payment-settings.mjs';
+import {createPaymentSettings,paymentBundleItems,paymentCatalog,paymentNotifyURL} from './payment-settings.mjs';
 import {createProviderPayment,queryProviderPayment,parseProviderNotification,validateProvider} from './payment-providers.mjs';
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const at=()=>new Date().toISOString();
@@ -13,7 +13,7 @@ export function createPaymentService(db,config={}){
  const get=id=>db.prepare(orderSelect+' WHERE o.id=?').get(id);
  const own=(id,user)=>{const order=get(id);if(!order||order.user_id!==user.id)fail(404,'订单不存在');return order;};
  const expire=userId=>db.prepare("UPDATE orders SET status='expired' WHERE user_id=? AND status='pending' AND id IN (SELECT order_id FROM payment_orders WHERE expires_at<=?)").run(userId,at());
- function publicOrder(order){let snapshot;try{snapshot=JSON.parse(order.entitlement);}catch{}return {id:order.id,productId:order.product_id,outTradeNo:order.out_trade_no||order.id,status:order.status,amountCents:order.amount_cents??null,currency:order.currency||'CNY',title:order.title,provider:order.provider||null,entitlementType:snapshot?.type||null,creditAmount:snapshot?.type==='credits'?snapshot.creditAmount:null,qrContent:order.status==='pending'?order.qr_content||null:null,expiresAt:order.expires_at||null,createdAt:order.created_at,paidAt:order.paid_at||null};}
+ function publicOrder(order){let snapshot;try{snapshot=JSON.parse(order.entitlement);}catch{}return {id:order.id,productId:order.product_id,outTradeNo:order.out_trade_no||order.id,status:order.status,amountCents:order.amount_cents??null,currency:order.currency||'CNY',title:order.title,provider:order.provider||null,entitlementType:snapshot?.type||null,creditAmount:snapshot?.type==='credits'?snapshot.creditAmount:null,durationDays:['membership','bundle'].includes(snapshot?.type)?snapshot.durationDays:null,bundleItems:snapshot?.type==='bundle'?paymentBundleItems(snapshot.bundleItems)||[]:[],qrContent:order.status==='pending'?order.qr_content||null:null,expiresAt:order.expires_at||null,createdAt:order.created_at,paidAt:order.paid_at||null};}
  function options(){const channels=['wechat','alipay'].map(provider=>({provider,label:provider==='wechat'?'微信支付':'支付宝',ready:settings.summary(provider).ready})),products=paymentCatalog(db);return {enabled:channels.some(c=>c.ready)&&products.length>0,channels,products};}
  function identity(order,result,channel){
  const merchant=order.provider==='wechat'?channel.merchantId:channel.sellerId;
@@ -33,13 +33,18 @@ export function createPaymentService(db,config={}){
   let entitlement;try{entitlement=JSON.parse(fresh.entitlement);}catch{fail(500,'订单权益信息异常，请联系客服');}
   const validMembership=entitlement?.type==='membership'&&Number.isSafeInteger(entitlement.durationDays)&&entitlement.durationDays>=1&&entitlement.durationDays<=366;
   const validCredits=entitlement?.type==='credits'&&Number.isSafeInteger(entitlement.creditAmount)&&entitlement.creditAmount>=1&&entitlement.creditAmount<=1000000;
-  if(!validMembership&&!validCredits)fail(500,'订单权益信息异常，请联系客服');
+  const bundleItems=entitlement?.type==='bundle'?paymentBundleItems(entitlement.bundleItems):null;
+  const validBundle=entitlement?.type==='bundle'&&Number.isSafeInteger(entitlement.durationDays)&&entitlement.durationDays>=1&&entitlement.durationDays<=366&&Boolean(bundleItems);
+  if(!validMembership&&!validCredits&&!validBundle)fail(500,'订单权益信息异常，请联系客服');
   const now=at(),paidAt=result.paidAt?new Date(result.paidAt).toISOString():now;
   // The immutable order snapshot, never the current product price, drives fulfilment.
   if(validCredits){
    const balance=db.prepare('SELECT COALESCE(sum(amount),0) AS balance FROM payment_credit_ledger WHERE user_id=?').get(fresh.user_id).balance;
    if(!Number.isSafeInteger(balance+entitlement.creditAmount))fail(500,'积分余额异常，请联系客服');
    db.prepare('INSERT INTO payment_credit_ledger(order_id,user_id,product_id,amount,kind,created_at) VALUES(?,?,?,?,?,?)').run(fresh.id,fresh.user_id,fresh.product_id,entitlement.creditAmount,'purchase',now);
+  }else if(validBundle){
+   const expiresAt=new Date(Date.parse(now)+entitlement.durationDays*86400000).toISOString();
+   db.prepare('INSERT INTO payment_bundle_entitlements(order_id,user_id,product_id,starts_at,expires_at,granted_at,items) VALUES(?,?,?,?,?,?,?)').run(fresh.id,fresh.user_id,fresh.product_id,now,expiresAt,now,JSON.stringify(bundleItems));
   }else{
    const previous=db.prepare('SELECT max(expires_at) AS until FROM payment_entitlements WHERE user_id=? AND product_id=?').get(fresh.user_id,fresh.product_id).until;
    const startsAt=previous&&previous>now?previous:now,expiresAt=new Date(Date.parse(startsAt)+entitlement.durationDays*86400000).toISOString();
@@ -123,7 +128,11 @@ export function createPaymentService(db,config={}){
  });
  const balance=db.prepare('SELECT COALESCE(sum(amount),0) AS balance FROM payment_credit_ledger WHERE user_id=?').get(user.id).balance;
  const ledger=db.prepare('SELECT e.order_id AS orderId,e.product_id AS productId,d.title,e.amount,e.kind,e.created_at AS createdAt FROM payment_credit_ledger e JOIN payment_orders d ON d.order_id=e.order_id WHERE e.user_id=? ORDER BY e.created_at DESC,e.order_id DESC LIMIT 100').all(user.id);
- return {items,credits:{balance,ledger}};
+ const bundles=db.prepare('SELECT e.order_id AS orderId,e.product_id AS productId,d.title,d.entitlement,e.starts_at AS startsAt,e.expires_at AS expiresAt,e.items FROM payment_bundle_entitlements e JOIN payment_orders d ON d.order_id=e.order_id WHERE e.user_id=? ORDER BY e.granted_at DESC,e.order_id DESC LIMIT 100').all(user.id).map(({entitlement,items,...item})=>{
+  let snapshot,parsed;try{snapshot=JSON.parse(entitlement);}catch{}try{parsed=paymentBundleItems(JSON.parse(items));}catch{}
+  return {...item,description:typeof snapshot?.description==='string'?snapshot.description:'',items:parsed||[]};
+ });
+ return {items,credits:{balance,ledger},bundles};
  }
  return {settings,options,create,query,notify,getOrder,list,entitlements};
 }

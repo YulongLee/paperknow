@@ -259,3 +259,12 @@
  #app .dashboard .commerce-credit-providers i{display:none}
 }
 @media(prefers-reduced-motion:reduce){#app .dashboard .commerce-center-tab,#app .dashboard .commerce-center-tab-art,#app .dashboard .commerce-center-plan,#app .dashboard .commerce-center-form .commerce-credit-pack{transition:none}#app .dashboard .commerce-center-tab:hover,#app .dashboard .commerce-center-tab:hover .commerce-center-tab-art,#app .dashboard .commerce-center-plan:hover,#app .dashboard .commerce-center-form .commerce-credit-pack:hover{transform:none}}
+
+/* The same two payment methods apply to memberships, credits, and bundles. */
+.commerce-supported-payments{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0;align-items:center}
+.commerce-supported-payment{display:inline-flex;gap:6px;align-items:center;padding:7px 9px;border:1px solid var(--commerce-border,#dce5f2);border-radius:8px;background:var(--commerce-surface,#fff);color:var(--commerce-text,#172b49);font-size:12px;line-height:1.25;text-decoration:none}
+a.commerce-supported-payment:hover{border-color:var(--primary,#2868ff);box-shadow:0 2px 8px #2868ff18}
+.commerce-supported-payment i{display:grid;place-items:center;width:19px;height:19px;border-radius:5px;color:#fff;background:#08a763;font-size:11px;font-style:normal}
+.commerce-supported-payment.alipay i{background:#118be6}
+.commerce-supported-payment:focus-visible{outline:2px solid #3477ff;outline-offset:3px}
+@media(max-width:600px){.commerce-supported-payment{padding:6px 7px;font-size:11px}.commerce-supported-payments{gap:6px}}

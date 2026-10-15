@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {renderOnlinePersonal,onlineUsageSummary,publicFeedbackStatus} from '../dist/workspace/online-personal-services.mjs';
 import {feedbackKey} from '../dist/workspace/help-model.mjs';
+import {membershipPurchaseTiles} from '../dist/workspace/membership-summary.mjs';
 const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 function setup(api,hash='#help?scope=account'){
  const dom=new JSDOM('<main id="view"></main>',{url:'http://localhost/workspace.html'+hash});
@@ -16,7 +17,7 @@ test('usage separates account cumulative totals, recent unknown tokens and stora
  try{assert.equal(await renderOnlinePersonal('usage',env.ctx),true);const text=env.ctx.target.textContent;assert.match(text,/120/);assert.match(text,/2,000/);assert.match(text,/未知/);assert.match(text,/50.00 MB/);assert.match(text,/当前未启用积分扣减/);assert.equal(env.ctx.target.querySelector('a[href*="membership/pay"]'),null);assert.deepEqual(onlineUsageSummary([{input_tokens:3,output_tokens:2},{input_tokens:null,output_tokens:4}]),{records:2,inputTokens:3,outputTokens:6,unknownRecords:1});}finally{env.dom.window.close();}
 });
 test('account membership uses actual service state and existing entitlements without starting purchase',async()=>{
- const calls=[],env=setup(async(path,data)=>{calls.push([path,data]);return path==='/capabilities'?{ai:true,agent:false,payment:true}:path==='/payments/entitlements'?{items:[{title:'真实已有权益',description:'<img src=x>',starts_at:'2020-01-01',expires_at:'2099-01-01'}]}:{counts:{projects:2,drafts:3,results:4,files:5}};},'#membership?scope=account');
+ const calls=[],env=setup(async(path,data)=>{calls.push([path,data]);return path==='/capabilities'?{ai:true,agent:false,payment:true}:path==='/payments/entitlements'?{items:[{type:'membership',title:'真实已有权益',description:'<img src=x>',starts_at:'2020-01-01',expires_at:'2099-01-01'}]}:{counts:{projects:2,drafts:3,results:4,files:5}};},'#membership?scope=account');
  try{await renderOnlinePersonal('membership',env.ctx);assert.match(env.ctx.target.textContent,/真实已有权益/);assert.match(env.ctx.target.textContent,/在线 AI 修改已开放/);assert.match(env.ctx.target.textContent,/科研智能助手未配置/);assert.equal(env.ctx.target.querySelector('img[src="x"]'),null);assert.equal(env.ctx.target.querySelector('a[href*="membership/pay"]'),null);assert.equal(calls.every(([,data])=>data===undefined),true);assert.match(env.ctx.target.textContent,/本地草稿不会自动上传/);}finally{env.dom.window.close();}
 });
 test('account credits and ledger come from server records and escape titles without changing local content',async()=>{
@@ -38,6 +39,20 @@ test('account credits and ledger come from server records and escape titles with
 test('missing credit data stays unknown rather than fabricated zero balance',async()=>{
  const env=setup(async path=>path==='/payments/entitlements'?{items:[]}:path==='/capabilities'?{}:{counts:{}},'#membership?scope=account');
  try{await renderOnlinePersonal('membership',env.ctx);assert.equal(document.querySelector('.member-purchase-credits h2').textContent,'—');assert.match(document.querySelector('.member-credit-ledger').textContent,/积分记录暂不可用/);}finally{env.dom.window.close();}
+});
+
+test('account packages are independent paid records with escaped titles, bought quantities and no consumption claims',async()=>{
+ const calls=[],bundles=[{orderId:'paid/package-1',productId:'bundle-real',title:'已购套餐 <img src=x>',description:'购买时说明 <script>private</script>',startsAt:'2020-01-01',expiresAt:'2099-01-01',items:[{key:'review',title:'文献研读 <img src=x>',quantity:3},{key:'invalid',title:'待核对项目',quantity:-1}]}];
+ const env=setup(async(path,data)=>{calls.push([path,data]);return path==='/payments/entitlements'?{items:[{type:'bundle',title:'不能当作会员',starts_at:'2020-01-01',expires_at:'2099-01-01'}],bundles,credits:{balance:200,ledger:[]}}:path==='/capabilities'?{}:{counts:{}};},'#membership?scope=account');
+ try{localStorage.setItem('paperknow-drafts','[{"title":"私人草稿不变"}]');await renderOnlinePersonal('membership',env.ctx);const section=document.querySelector('.member-bundle-records'),record=section.querySelector('.member-bundle-record');assert.equal(record.querySelector('h3').textContent,bundles[0].title);assert.equal(record.querySelector('.member-bundle-description').textContent,bundles[0].description);assert.match(record.textContent,/生效时间2020-01-01/);assert.match(record.textContent,/到期时间2099-01-01/);assert.match(record.textContent,/文献研读 <img src=x>3 次/);assert.match(record.textContent,/待核对项目次数待核对/);assert.match(section.textContent,/消费扣减尚未接入/);assert.doesNotMatch(section.textContent,/剩余|remaining/);assert.equal(document.querySelector('img[src="x"]'),null);assert.equal(document.querySelector('script'),null);assert.equal(document.querySelectorAll('.account-entitlement').length,0);assert.equal(document.querySelector('.member-purchase-member h2').textContent,'免费使用');assert.equal(document.querySelector('.member-purchase-bundles h2').textContent,'1 份已购套餐');assert.ok(record.querySelector('a[href="#membership/pay?order=paid%2Fpackage-1"]'));assert.ok(calls.every(([,data])=>data===undefined));assert.match(localStorage.getItem('paperknow-drafts'),/私人草稿不变/);}finally{env.dom.window.close();}
+});
+
+test('membership tile ignores bundle and credit entitlement rows even when they expire later',()=>{
+ const env=setup(async()=>({}));try{env.ctx.target.innerHTML=membershipPurchaseTiles({account:true,items:[{type:'bundle',title:'套餐不是会员',starts_at:'2020-01-01',expires_at:'2199-01-01'},{type:'credits',title:'积分不是会员',starts_at:'2020-01-01',expires_at:'2199-01-01'},{type:'membership',title:'真实会员 <b>标题</b>',starts_at:'2020-01-01',expires_at:'2099-01-01'}],bundles:[{orderId:'real-order'}]});assert.equal(document.querySelector('.member-purchase-member h2').textContent,'真实会员 <b>标题</b>');assert.equal(document.querySelector('.member-purchase-member h2 b'),null);assert.equal(document.querySelector('.member-purchase-bundles h2').textContent,'1 份已购套餐');}finally{env.dom.window.close();}
+});
+
+test('empty account packages show no invented services or purchased counts',async()=>{
+ const env=setup(async path=>path==='/payments/entitlements'?{items:[],bundles:[]}:path==='/capabilities'?{}:{counts:{}},'#membership?scope=account');try{await renderOnlinePersonal('membership',env.ctx);assert.match(document.querySelector('.member-bundle-records').textContent,/暂无已购套餐/);assert.equal(document.querySelectorAll('.member-bundle-record').length,0);assert.equal(document.querySelector('.member-purchase-bundles h2').textContent,'0 份已购套餐');assert.equal(document.querySelector('.member-bundle-records a[href*="membership/pay"]'),null);assert.equal(localStorage.length,0);}finally{env.dom.window.close();}
 });
 
 test('feedback shows only public status, escapes research text and refresh preserves unsubmitted input',async()=>{
