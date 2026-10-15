@@ -45,45 +45,119 @@
   backdrop-filter: blur(12px);
 }
 
-/* Each row uses a small family of quiet tints. A stronger wash behind the
-   title fades into the bitmap at the card's right edge. */
+/* Every capability has its own illustration, palette and semantic asset.
+   Bind the art to the route so reordering cards never changes its meaning. */
 #app .home-refresh .studio-tool {
-  --studio-tool-wash: 244 248 255;
-  --studio-tool-image: url("/workspace/assets/studio-paper-texture-v1.webp");
+  --studio-tool-wash: 241 246 255;
+  --studio-tool-night: 27 42 66;
+  --studio-tool-accent: 45 103 224;
+  --studio-tool-image: none;
+  position: relative;
+  grid-template-columns: 38px minmax(0, 1fr);
+  padding: 18px 92px 18px 16px;
+  min-height: 102px;
   background-color: rgb(var(--studio-tool-wash));
   background-image:
     linear-gradient(90deg,
-      rgb(var(--studio-tool-wash) / .99) 0%,
-      rgb(var(--studio-tool-wash) / .94) 35%,
-      rgb(var(--studio-tool-wash) / .65) 65%,
-      rgb(var(--studio-tool-wash) / .08) 100%),
+      rgb(var(--studio-tool-wash)) 0%,
+      rgb(var(--studio-tool-wash) / .99) 30%,
+      rgb(var(--studio-tool-wash) / .8) 48%,
+      rgb(var(--studio-tool-wash) / .16) 73%,
+      rgb(var(--studio-tool-wash) / 0) 100%),
     var(--studio-tool-image);
   background-position: center, right center;
-  background-size: 100% 100%, auto 165%;
+  background-size: 100% 100%, auto 100%;
   background-repeat: no-repeat;
-  border-color: #dce6f5;
+  border-color: rgb(var(--studio-tool-accent) / .14);
 }
 
-#app .home-refresh .studio-tool:nth-child(4n + 2) {
-  --studio-tool-wash: 240 249 246;
-  border-color: #dbece7;
+#app .home-refresh .studio-tool[href="#category/writing"] {
+  --studio-tool-wash: 240 246 255;
+  --studio-tool-night: 25 43 69;
+  --studio-tool-accent: 45 103 224;
+  --studio-tool-image: url("/workspace/assets/tool-writing-v2.webp");
 }
 
-#app .home-refresh .studio-tool:nth-child(4n + 3) {
-  --studio-tool-wash: 246 244 253;
-  --studio-tool-image: url("/workspace/assets/studio-research-texture-v1.webp");
-  border-color: #e5e0f2;
+#app .home-refresh .studio-tool[href="#category/literature"] {
+  --studio-tool-wash: 237 249 249;
+  --studio-tool-night: 24 48 54;
+  --studio-tool-accent: 30 137 151;
+  --studio-tool-image: url("/workspace/assets/tool-literature-v2.webp");
 }
 
-#app .home-refresh .studio-tool:nth-child(4n) {
-  --studio-tool-wash: 253 249 243;
-  --studio-tool-image: url("/workspace/assets/studio-research-texture-v1.webp");
-  border-color: #ede6db;
+#app .home-refresh .studio-tool[href="#category/reduce"] {
+  --studio-tool-wash: 247 242 255;
+  --studio-tool-night: 44 36 66;
+  --studio-tool-accent: 129 91 197;
+  --studio-tool-image: url("/workspace/assets/tool-reduce-v2.webp");
+}
+
+#app .home-refresh .studio-tool[href="#category/aigc"] {
+  --studio-tool-wash: 240 243 255;
+  --studio-tool-night: 34 38 69;
+  --studio-tool-accent: 96 111 203;
+  --studio-tool-image: url("/workspace/assets/tool-aigc-v2.webp");
+}
+
+#app .home-refresh .studio-tool[href="#category/detection"] {
+  --studio-tool-wash: 237 249 242;
+  --studio-tool-night: 25 48 42;
+  --studio-tool-accent: 42 140 102;
+  --studio-tool-image: url("/workspace/assets/tool-detection-v2.webp");
+}
+
+#app .home-refresh .studio-tool[href="#category/ppt"] {
+  --studio-tool-wash: 255 244 240;
+  --studio-tool-night: 55 39 39;
+  --studio-tool-accent: 209 111 91;
+  --studio-tool-image: url("/workspace/assets/tool-ppt-v2.webp");
+}
+
+#app .home-refresh .studio-tool[href="#category/format"] {
+  --studio-tool-wash: 255 248 235;
+  --studio-tool-night: 52 45 31;
+  --studio-tool-accent: 175 129 46;
+  --studio-tool-image: url("/workspace/assets/tool-format-v2.webp");
+}
+
+#app .home-refresh .studio-tool[href="#category/research"] {
+  --studio-tool-wash: 237 248 249;
+  --studio-tool-night: 24 46 51;
+  --studio-tool-accent: 37 133 147;
+  --studio-tool-image: url("/workspace/assets/tool-research-v2.webp");
+}
+
+#app .home-refresh .studio-tool > .hub-row-icon {
+  background: rgb(var(--studio-tool-accent) / .09);
+  color: rgb(var(--studio-tool-accent));
+}
+
+#app .home-refresh .studio-tool > div,
+#app .home-refresh .studio-tool > .hub-row-icon,
+#app .home-refresh .studio-tool > svg {
+  position: relative;
+  z-index: 1;
+}
+
+#app .home-refresh .studio-tool > div { min-width: 0; }
+#app .home-refresh .studio-tool p {
+  white-space: normal;
+  text-wrap: balance;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+#app .home-refresh .studio-tool > svg {
+  position: absolute;
+  right: 11px;
+  top: 11px;
+  opacity: .55;
 }
 
 #app .home-refresh .studio-tool:hover {
-  border-color: #a8c4ed;
-  box-shadow: 0 5px 18px #315e9b0c;
+  border-color: rgb(var(--studio-tool-accent) / .45);
+  box-shadow: 0 5px 18px rgb(var(--studio-tool-accent) / .08);
 }
 
 /* One restrained echo below the tools keeps the empty state related to the
@@ -117,34 +191,25 @@
 }
 
 .hub-theme-dark #app .home-refresh .studio-tool {
-  --studio-tool-wash: 28 43 65;
-  border-color: #354960;
+  --studio-tool-wash: var(--studio-tool-night);
+  border-color: rgb(var(--studio-tool-accent) / .3);
   background-image:
     linear-gradient(90deg,
       rgb(var(--studio-tool-wash)) 0%,
-      rgb(var(--studio-tool-wash) / .98) 35%,
-      rgb(var(--studio-tool-wash) / .91) 65%,
-      rgb(var(--studio-tool-wash) / .78) 100%),
+      rgb(var(--studio-tool-wash) / .99) 30%,
+      rgb(var(--studio-tool-wash) / .88) 48%,
+      rgb(var(--studio-tool-wash) / .4) 73%,
+      rgb(var(--studio-tool-wash) / .24) 100%),
     var(--studio-tool-image);
 }
 
-.hub-theme-dark #app .home-refresh .studio-tool:nth-child(4n + 2) {
-  --studio-tool-wash: 27 48 48;
-  border-color: #354f51;
-}
-
-.hub-theme-dark #app .home-refresh .studio-tool:nth-child(4n + 3) {
-  --studio-tool-wash: 40 37 59;
-  border-color: #49415e;
-}
-
-.hub-theme-dark #app .home-refresh .studio-tool:nth-child(4n) {
-  --studio-tool-wash: 48 43 38;
-  border-color: #514b44;
+.hub-theme-dark #app .home-refresh .studio-tool > .hub-row-icon {
+  background: rgb(var(--studio-tool-accent) / .2);
+  color: color-mix(in srgb, rgb(var(--studio-tool-accent)), white 40%);
 }
 
 .hub-theme-dark #app .home-refresh .studio-tool:hover {
-  border-color: #688cb9;
+  border-color: rgb(var(--studio-tool-accent) / .65);
   box-shadow: none;
 }
 
@@ -175,7 +240,35 @@
   }
 
   #app .home-refresh .studio-tool {
-    background-size: 100% 100%, auto 130%;
+    grid-template-columns: 32px minmax(0, 1fr);
+    padding: 15px 12px;
+    align-items: start;
+    min-height: 126px;
+    background-position: center, right bottom;
+    background-size: 100% 100%, auto 70%;
+    background-image:
+      linear-gradient(90deg,
+        rgb(var(--studio-tool-wash)) 0%,
+        rgb(var(--studio-tool-wash) / .98) 32%,
+        rgb(var(--studio-tool-wash) / .8) 56%,
+        rgb(var(--studio-tool-wash) / .28) 100%),
+      var(--studio-tool-image);
+  }
+
+  #app .home-refresh .studio-tool p {
+    max-width: 76px;
+    margin-top: 10px;
+    margin-left: -41px;
+  }
+
+  .hub-theme-dark #app .home-refresh .studio-tool {
+    background-image:
+      linear-gradient(90deg,
+        rgb(var(--studio-tool-wash)) 0%,
+        rgb(var(--studio-tool-wash) / .98) 32%,
+        rgb(var(--studio-tool-wash) / .9) 56%,
+        rgb(var(--studio-tool-wash) / .5) 100%),
+      var(--studio-tool-image);
   }
 }
 
