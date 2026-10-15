@@ -1,0 +1,271 @@
+/* A single visual heading for every paper and research capability. The bitmap
+   illustrations are the original, independently generated tool artworks. */
+#app .dashboard header.tool-banner[data-tool-category] {
+  --banner-wash: 240 246 255;
+  --banner-night: 25 43 69;
+  --banner-accent: 45 103 224;
+  --banner-image: url("/workspace/assets/tool-writing-v2.webp");
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  grid-template-columns: none;
+  grid-column: 1 / -1;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 216px;
+  margin: 0 0 24px;
+  padding: 28px 32px;
+  overflow: hidden;
+  border: 1px solid rgb(var(--banner-accent) / .15);
+  border-radius: 16px;
+  background: linear-gradient(105deg, var(--pk-surface) 0%, rgb(var(--banner-wash) / .8) 56%, rgb(var(--banner-wash)) 100%);
+  color: var(--pk-text);
+  box-shadow: 0 5px 20px rgb(var(--banner-accent) / .025);
+  text-align: left;
+}
+
+#app .dashboard header.tool-banner[data-tool-category="literature"] {
+  --banner-wash: 237 249 249;
+  --banner-night: 24 48 54;
+  --banner-accent: 30 137 151;
+  --banner-image: url("/workspace/assets/tool-literature-v2.webp");
+}
+#app .dashboard header.tool-banner[data-tool-category="reduce"] {
+  --banner-wash: 247 242 255;
+  --banner-night: 44 36 66;
+  --banner-accent: 129 91 197;
+  --banner-image: url("/workspace/assets/tool-reduce-v2.webp");
+}
+#app .dashboard header.tool-banner[data-tool-category="aigc"] {
+  --banner-wash: 240 243 255;
+  --banner-night: 34 38 69;
+  --banner-accent: 96 111 203;
+  --banner-image: url("/workspace/assets/tool-aigc-v2.webp");
+}
+#app .dashboard header.tool-banner[data-tool-category="detection"] {
+  --banner-wash: 237 249 242;
+  --banner-night: 25 48 42;
+  --banner-accent: 42 140 102;
+  --banner-image: url("/workspace/assets/tool-detection-v2.webp");
+}
+#app .dashboard header.tool-banner[data-tool-category="ppt"] {
+  --banner-wash: 255 244 240;
+  --banner-night: 55 39 39;
+  --banner-accent: 209 111 91;
+  --banner-image: url("/workspace/assets/tool-ppt-v2.webp");
+}
+#app .dashboard header.tool-banner[data-tool-category="format"] {
+  --banner-wash: 255 248 235;
+  --banner-night: 52 45 31;
+  --banner-accent: 175 129 46;
+  --banner-image: url("/workspace/assets/tool-format-v2.webp");
+}
+#app .dashboard header.tool-banner[data-tool-category="research"] {
+  --banner-wash: 237 248 249;
+  --banner-night: 24 46 51;
+  --banner-accent: 37 133 147;
+  --banner-image: url("/workspace/assets/tool-research-v2.webp");
+}
+
+/* The supplied transparent compositions place their objects on the right half.
+   Keep the complete canvas in view rather than cropping away the silhouettes. */
+#app .dashboard header.tool-banner[data-tool-category]::before {
+  content: "";
+  display: block;
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 0 auto;
+  width: min(52%, 680px);
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: radial-gradient(ellipse at 80% 55%, rgb(var(--banner-accent) / .09), transparent 65%);
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
+  pointer-events: none;
+}
+#app .dashboard header.tool-banner[data-tool-category]::after {
+  content: "";
+  display: block;
+  position: absolute;
+  z-index: -1;
+  top: 10px;
+  right: 24px;
+  bottom: 10px;
+  left: auto;
+  width: min(52%, 560px);
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: var(--banner-image) right center / auto 100% no-repeat;
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
+  pointer-events: none;
+}
+
+#app .dashboard header.tool-banner[data-tool-category] > .tool-banner-copy {
+  position: relative;
+  z-index: 1;
+  display: block;
+  flex: none;
+  align-self: auto;
+  width: calc(100% - 232px);
+  max-width: 950px;
+  min-width: 0;
+  margin: 0;
+  text-align: left;
+}
+#app .dashboard header.tool-banner[data-tool-category] .tool-banner-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  min-height: 26px;
+  margin: 0;
+  padding: 4px 9px;
+  border: 1px solid rgb(var(--banner-accent) / .12);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--pk-surface) 75%, transparent);
+  color: color-mix(in srgb, rgb(var(--banner-accent)) 78%, #1d2b43);
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1.5;
+  letter-spacing: .015em;
+  white-space: normal;
+}
+#app .dashboard header.tool-banner[data-tool-category] .tool-banner-label svg {
+  flex: 0 0 15px;
+  width: 15px;
+  height: 15px;
+}
+#app .dashboard header.tool-banner[data-tool-category] h1 {
+  max-width: none;
+  margin: 10px 0 6px;
+  padding: 0;
+  color: var(--pk-text);
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: -.025em;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+#app .dashboard header.tool-banner[data-tool-category] p {
+  max-width: 76ch;
+  margin: 0;
+  padding: 0;
+  color: var(--pk-muted);
+  font-size: 14px;
+  line-height: 1.7;
+  font-weight: 400;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+#app .dashboard header.tool-banner[data-tool-category] .tool-banner-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  margin: 18px 0 0;
+}
+#app .dashboard header.tool-banner[data-tool-category] .tool-banner-actions > :is(a, button, label) {
+  flex: 0 1 auto;
+  align-self: auto;
+  justify-self: auto;
+  min-height: 40px;
+  max-width: 100%;
+  margin: 0;
+  padding: 9px 14px;
+  border-radius: 9px;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  box-shadow: none;
+}
+
+/* Specialized research modes used explicit grid rows before the shared header. */
+#app .dashboard .research-space > header.tool-banner[data-tool-category] {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  order: -1;
+}
+#app .dashboard .research-space:has(> header.tool-banner) > .research-tools {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  order: 0;
+}
+#app .dashboard .research-commerce > header.tool-banner[data-tool-category] { margin-bottom: 0; }
+#app .dashboard .research-commerce:has(> header.tool-banner) > .research-commerce-main { grid-row: 3; }
+#app .dashboard .research-commerce:has(> header.tool-banner) > .research-commerce-side { grid-row: 4; }
+#app .dashboard .research-basic:has(> header.tool-banner) { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+#app .dashboard .research-basic > header.tool-banner[data-tool-category] { margin-bottom: 0; }
+#app .dashboard .research-basic:has(> header.tool-banner) > :not(.tool-banner):not(.research-tools) { grid-column: 1 / -1; }
+#app .dashboard .research-basic:has(> header.tool-banner) > .research-tools { margin-bottom: 0; }
+
+.hub-theme-dark #app .dashboard header.tool-banner[data-tool-category] {
+  --banner-wash: var(--banner-night);
+  background: linear-gradient(105deg, var(--pk-surface) 0%, rgb(var(--banner-night) / .8) 56%, rgb(var(--banner-night)) 100%);
+  border-color: rgb(var(--banner-accent) / .3);
+  box-shadow: none;
+}
+.hub-theme-dark #app .dashboard header.tool-banner[data-tool-category]::after { opacity: .84; }
+.hub-theme-dark #app .dashboard header.tool-banner[data-tool-category] .tool-banner-label {
+  color: color-mix(in srgb, rgb(var(--banner-accent)) 42%, #e5ecf7);
+  border-color: rgb(var(--banner-accent) / .3);
+}
+
+@container workspace (min-width: 1800px) {
+  #app .dashboard header.tool-banner[data-tool-category] { padding-inline: 36px; }
+  #app .dashboard header.tool-banner[data-tool-category]::after { right: 54px; }
+}
+
+/* Compact workspaces give the artwork its own row below the text, preserving
+   complete labels, full-size controls and the whole illustration at 320px. */
+@container workspace (max-width: 740px) {
+  #app .dashboard header.tool-banner[data-tool-category] {
+    min-height: 0;
+    padding: 24px 24px 124px;
+    margin-bottom: 20px;
+    border-radius: 14px;
+  }
+  #app .dashboard header.tool-banner[data-tool-category] > .tool-banner-copy { width: 100%; max-width: none; }
+  #app .dashboard header.tool-banner[data-tool-category]::before { inset: auto 0 0; width: 100%; height: 150px; }
+  #app .dashboard header.tool-banner[data-tool-category]::after { inset: auto 16px 4px auto; width: 236px; height: 118px; background-size: contain; }
+  #app .dashboard header.tool-banner[data-tool-category] h1 { font-size: 25px; }
+  #app .dashboard header.tool-banner[data-tool-category] p { font-size: 13px; }
+}
+@media (max-width: 760px) {
+  #app .dashboard header.tool-banner[data-tool-category] {
+    min-height: 0;
+    padding: 22px 20px 120px;
+    margin-bottom: 20px;
+    border-radius: 14px;
+  }
+  #app .dashboard header.tool-banner[data-tool-category] > .tool-banner-copy { width: 100%; max-width: none; }
+  #app .dashboard header.tool-banner[data-tool-category]::before { inset: auto 0 0; width: 100%; height: 150px; }
+  #app .dashboard header.tool-banner[data-tool-category]::after { inset: auto 12px 4px auto; width: 228px; height: 114px; background-size: contain; }
+  #app .dashboard header.tool-banner[data-tool-category] h1 { font-size: 25px; }
+  #app .dashboard header.tool-banner[data-tool-category] p { font-size: 13px; }
+  #app .dashboard header.tool-banner[data-tool-category] .tool-banner-actions { gap: 8px; margin-top: 16px; }
+  #app .dashboard header.tool-banner[data-tool-category] .tool-banner-actions > :is(a, button, label) { min-height: 42px; font-size: 13px; }
+}
+@media (max-width: 420px) {
+  #app .dashboard header.tool-banner[data-tool-category] .tool-banner-actions > :is(a, button, label) { justify-content: center; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #app .dashboard header.tool-banner[data-tool-category],
+  #app .dashboard header.tool-banner[data-tool-category]::before,
+  #app .dashboard header.tool-banner[data-tool-category]::after { animation: none; transition: none; }
+}
