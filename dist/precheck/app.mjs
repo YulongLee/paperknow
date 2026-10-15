@@ -1,5 +1,5 @@
 import {mountNavigation,workspaceLinks,trackDialogForm} from '/workspace/interface.mjs';
-import {profile} from '/workspace/state.mjs';
+import {profile,preferences} from '/workspace/state.mjs';
 import {icon as workspaceIcon,formatDate} from '/workspace/ui.mjs';
 let reportNavigation,requestReportClose=()=>closeModal();
 import {reportHtml as exportReportHtml} from './export.mjs';
@@ -18,6 +18,7 @@ function modal(title,body,wide=false){const el=$('#modal');el.className=wide?'wi
 function closeModal(){$('#modal').close();}
 const currentRoute=()=>location.hash.slice(2)||'upload';function go(route){if(currentRoute()===route)renderRoute();else location.hash='/'+route;}
 function shell(route){
+ const appearance=preferences();document.body.classList.toggle('hub-theme-dark',appearance.theme==='dark'||appearance.theme==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);
  reportNavigation?.dispose();
  const titles={upload:'论文查重',preview:'确认论文内容',progress:'正在进行本地比对',history:'检测记录',sources:'检测数据源',help:'使用帮助'};
  const title=route.startsWith('report')?'查重报告':titles[route]||titles.upload,name=profile().name||'研究者',initial=Array.from(name)[0];

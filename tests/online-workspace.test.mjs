@@ -150,3 +150,28 @@ test('an expired session with a non-JSON response clears account content instead
 test('retrying a failed parse submission reuses the already uploaded original file',async t=>{
  let submissions=0;const f=await fixture(t,{request:async(path,options)=>path==='/api/jobs'&&options.body&&++submissions===1?{ok:false,status:503,json:async()=>({error:'解析暂时不可用'})}:undefined});const file={name:'retry.txt',size:3,lastModified:1,arrayBuffer:async()=>new TextEncoder().encode('abc').buffer};Object.defineProperty(f.doc.querySelector('#upload-file'),'files',{value:[file]});submit(f,'#upload-form');await settle(()=>f.notices.includes('解析暂时不可用'));submit(f,'#upload-form');await settle(()=>f.navigations.length>0);assert.equal(f.calls.filter(c=>c.path==='/api/files'&&c.body).length,1);assert.equal(f.calls.filter(c=>c.path==='/api/jobs'&&c.body).length,2);
 });
+
+test('account project search and status filters combine without changing saved projects or unsaved form input',async t=>{
+ const projects=[{id:'p1',title:'人工智能课堂反馈',description:'教育学研究',status:'active',version:1,updated_at:now},{id:'p2',title:'已归档的课堂观察',description:'历史材料',status:'archived',version:2,updated_at:now}];
+ const f=await fixture(t,{request:async(path,options)=>path==='/api/projects'&&!options.body?{ok:true,status:200,json:async()=>({items:projects})}:undefined});
+ const visible=()=>[...f.doc.querySelectorAll('.account-project-card')].filter(card=>!card.hidden).map(card=>card.querySelector('h2').textContent);
+ input(f,'#project-title','尚未提交的项目');
+ input(f,'#account-project-query','课堂');assert.deepEqual(visible(),projects.map(project=>project.title));
+ const status=f.doc.querySelector('#account-project-status');status.value='archived';status.dispatchEvent(new f.w.Event('change'));assert.deepEqual(visible(),['已归档的课堂观察']);
+ input(f,'#account-project-query','教育学');assert.deepEqual(visible(),[]);assert.equal(f.doc.querySelector('#account-project-detail>.management-search-empty').hidden,false);
+ status.value='active';status.dispatchEvent(new f.w.Event('change'));assert.deepEqual(visible(),['人工智能课堂反馈']);
+ assert.equal(f.doc.querySelector('#project-title').value,'尚未提交的项目');assert.equal(f.calls.some(call=>call.body),false);
+ assert.ok(f.doc.querySelector('#project-create-reset'));assert.ok(f.doc.querySelector('[data-account-project-edit="p1"]'));
+});
+
+test('account task status filtering preserves current form input and keeps retry confirmation attached to its real task',async t=>{
+ const f=await fixture(t,{view:'tasks',ai:false});input(f,'#task-text','尚未提交的论文正文');
+ f.doc.querySelector('[data-account-job-filter="failed"]').click();
+ assert.equal(f.doc.querySelector('[data-account-job-filter="failed"]').getAttribute('aria-pressed'),'true');
+ assert.equal(f.doc.querySelectorAll('.account-job-row').length,1);assert.equal(f.doc.querySelector('[data-job="pending"]'),null);assert.ok(f.doc.querySelector('[data-job="failed"]'));
+ f.doc.querySelector('[data-job="failed"]').click();assert.equal(f.doc.querySelector('#online-confirm').open,true);f.doc.querySelector('#online-confirm-no').click();
+ await new Promise(resolve=>setTimeout(resolve,5));assert.equal(f.calls.some(call=>call.path==='/api/jobs/failed/retry'),false);
+ f.doc.querySelector('[data-account-job-filter="completed"]').click();assert.equal(f.doc.querySelectorAll('.account-job-row').length,0);assert.match(f.doc.querySelector('#job-list').textContent,/当前筛选下没有任务/);
+ f.doc.querySelector('[data-account-job-filter="all"]').click();assert.equal(f.doc.querySelectorAll('.account-job-row').length,2);
+ assert.equal(f.doc.querySelector('#task-text').value,'尚未提交的论文正文');assert.equal(f.calls.some(call=>call.body),false);
+});

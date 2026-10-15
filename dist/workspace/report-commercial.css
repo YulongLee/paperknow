@@ -1,0 +1,434 @@
+/* Screen-only companion to the research workspace. Export / print styles remain independent. */
+@media screen {
+ body:has(.report-shared-sidebar){--report-bg:var(--pk-bg,#f6f8fc);--report-surface:var(--pk-surface,#fff);--report-soft:var(--pk-surface-soft,#f8fafd);--report-text:var(--pk-text,#1d2b43);--report-muted:var(--pk-muted,#64748b);--report-line:var(--pk-border,#e5ebf3);--report-blue:var(--pk-blue,#246bfd);--report-tint:var(--pk-blue-soft,#edf3ff);background:var(--report-bg);color:var(--report-text);font-size:14px;line-height:1.65}
+ #app .report-shared-sidebar{width:224px;padding:22px 14px 12px;background:var(--report-surface);border-right:1px solid var(--report-line);box-shadow:none;scrollbar-width:thin}
+ #app .report-shared-sidebar .brand{font-size:21px;padding:0 8px;margin-bottom:24px;gap:9px;letter-spacing:-.6px}
+ #app .report-shared-sidebar .brand-symbol{width:34px;height:34px;box-shadow:none;background:transparent}
+ #app .report-shared-sidebar .brand-symbol img{width:34px;height:34px}
+ #app .report-shared-sidebar .brand small{font-size:10px;letter-spacing:1px;color:var(--report-muted);margin-top:3px}
+ #app .report-shared-sidebar nav{min-height:0;flex:1;overflow-y:auto;padding-bottom:8px;scrollbar-width:thin}
+ #app .report-shared-sidebar .nav-caption{font-size:11px;font-weight:500;color:#8490a3;letter-spacing:.5px;margin:20px 0 7px;padding:0 13px}
+ #app .report-shared-sidebar .nav-caption:first-child{margin-top:0}
+ #app .report-shared-sidebar .nav-link{min-height:40px;padding:9px 13px;font-size:14px;line-height:1.4;color:var(--report-muted);border-radius:9px;gap:11px;margin:2px 0;font-weight:400}
+ #app .report-shared-sidebar .nav-link svg{width:18px;height:18px;stroke-width:1.65}
+ #app .report-shared-sidebar .nav-link:hover{background:var(--report-soft);color:var(--report-text)}
+ #app .report-shared-sidebar .nav-link.active{background:var(--report-tint);color:var(--report-blue);font-weight:600}
+ #app .report-shared-profile{border-top:1px solid var(--report-line);padding:16px 6px 0;margin-top:16px}
+ #app .report-shared-profile a{font-size:13px;color:var(--report-text);gap:10px}
+ #app .report-shared-profile small{font-size:11px;color:var(--report-muted)}
+ #app :is(.report-shared-profile .avatar,.report-account-link .top-avatar){width:32px;height:32px;background:var(--report-tint);color:var(--report-blue);font-size:13px}
+ #app .report-shared-sidebar~.workspace{margin-left:224px;background:var(--report-bg);min-width:0}
+ #app .report-shared-sidebar~.workspace .topbar{height:66px;min-height:66px;padding:0 36px;background:var(--report-surface);border-bottom:1px solid var(--report-line);gap:16px;position:sticky;top:0;z-index:20}
+ #app .report-shared-sidebar~.workspace .breadcrumb{font-size:13px;color:var(--report-muted);gap:12px;min-width:0}
+ #app .report-shared-sidebar~.workspace .breadcrumb strong{font-size:13px;color:var(--report-muted);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ #app .report-shared-sidebar~.workspace .top-actions{gap:16px;font-size:12px;color:var(--report-muted);flex-shrink:0}
+ #app .report-account-link{font-size:12px;color:var(--report-text);gap:8px}
+ #app .report-shared-sidebar~.workspace .preview-pill{font-size:11px;padding:5px 9px;border:1px solid var(--report-line);background:var(--report-soft);color:var(--report-muted);border-radius:7px}
+ #app .report-shared-sidebar~.workspace .page{max-width:1480px;width:100%;padding:30px 36px 44px;margin:0 auto;min-width:0}
+ #app .report-shared-sidebar~.workspace :is(.page-heading,.report-heading){gap:20px;align-items:center;margin-bottom:24px;min-width:0}
+ #app .report-shared-sidebar~.workspace :is(.page-heading,.report-heading)>div:first-child{min-width:0}
+ #app .report-shared-sidebar~.workspace :is(.page-heading,.report-heading) h1{font-size:26px;font-weight:600;line-height:1.45;letter-spacing:-.025em;color:var(--report-text);overflow-wrap:anywhere;margin:5px 0 8px}
+ #app .report-shared-sidebar~.workspace :is(.page-heading,.report-heading) p{font-size:14px;line-height:1.75;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .overline{font-size:12px;font-weight:550;letter-spacing:.07em;color:var(--report-muted);margin-bottom:8px}
+ #app .report-shared-sidebar~.workspace :is(h2,h3,h4){color:var(--report-text);font-weight:600;letter-spacing:-.015em}
+ #app .report-shared-sidebar~.workspace h2{font-size:18px;line-height:1.5}
+ #app .report-shared-sidebar~.workspace h3{font-size:15px;line-height:1.65}
+ #app .report-shared-sidebar~.workspace p{font-size:13px;line-height:1.8;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace small{font-size:12px;line-height:1.65;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .card{border:1px solid var(--report-line);border-radius:16px;box-shadow:none;background:var(--report-surface);min-width:0}
+ #app .report-shared-sidebar~.workspace :is(.upload-card,.process-card,.expect-card,.section-picker,.parsed-preview,.history-card,.local-sources,.providers-card,.help-layout>.card){padding:24px;background:var(--report-surface)}
+ #app .report-shared-sidebar~.workspace .card-heading{gap:14px;margin-bottom:20px;min-width:0;flex-wrap:wrap}
+ #app .report-shared-sidebar~.workspace :is(.btn,.button){font-size:14px;min-height:42px;border-radius:10px;padding:10px 16px;font-weight:500;box-shadow:none;line-height:1.4;transform:none}
+ #app .report-shared-sidebar~.workspace .btn.primary{background:var(--report-blue);color:#fff;border:1px solid transparent}
+ #app .report-shared-sidebar~.workspace .btn.secondary{background:var(--report-surface);color:var(--report-text);border:1px solid var(--report-line)}
+ #app .report-shared-sidebar~.workspace .btn:hover{transform:none;box-shadow:none}
+ #app .report-shared-sidebar~.workspace .text-btn{font-size:13px;min-height:32px;line-height:1.5;color:var(--report-blue)}
+ #app .report-shared-sidebar~.workspace .heading-actions{flex-wrap:wrap;gap:10px;min-width:0}
+ #app .report-shared-sidebar~.workspace .icon-btn{min-height:34px;min-width:34px;color:var(--report-muted);border-radius:8px}
+ #app .report-shared-sidebar~.workspace .icon-btn:hover{background:var(--report-tint);color:var(--report-blue)}
+ #app .report-shared-sidebar~.workspace :is(input,textarea,select){font-size:14px;color:var(--report-text);background:var(--report-surface);border-color:var(--report-line);border-radius:9px;min-width:0;max-width:100%;box-shadow:none}
+ #app .report-shared-sidebar~.workspace :is(input:not([type=checkbox]):not([type=file]),select){min-height:42px;padding:10px 12px}
+ #app .report-shared-sidebar~.workspace textarea{padding:14px;line-height:1.85}
+ #app .report-shared-sidebar~.workspace :is(input,textarea,select):focus-visible{outline:3px solid var(--report-tint);outline-offset:1px;border-color:var(--report-blue)}
+ #app .report-shared-sidebar~.workspace .field-label{font-size:14px;color:var(--report-text);font-weight:500;margin-bottom:8px}
+ #app .report-shared-sidebar~.workspace :is(.field-note,.muted,.loading-text,.error-text){font-size:12px;line-height:1.75}
+ #app .report-shared-sidebar~.workspace :is(.field-note,.muted){color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .badge{font-size:12px;line-height:1.4;border-radius:6px;padding:4px 8px}
+ #app .report-shared-sidebar~.workspace .report-context-nav{gap:8px;margin:0 0 20px;flex-wrap:wrap}
+ #app .report-shared-sidebar~.workspace .report-context-nav a{font-size:13px;line-height:1.5;min-height:36px;padding:8px 12px;border:1px solid var(--report-line);border-radius:8px;background:var(--report-surface);color:var(--report-muted)}
+ /* Upload / preview: visible scope, clear inputs, quiet support cards. */
+ #app .report-shared-sidebar~.workspace .intro-strip{padding:18px 22px;gap:14px;border:1px solid var(--report-line);border-radius:12px;background:var(--report-surface);margin-bottom:22px}
+ #app .report-shared-sidebar~.workspace .intro-strip b{font-size:15px;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .intro-strip div>span{font-size:13px;line-height:1.75;color:var(--report-muted);margin-top:3px}
+ #app .report-shared-sidebar~.workspace .strip-tag{font-size:12px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .strip-icon{background:var(--report-tint);color:var(--report-blue);border-radius:10px;width:40px;height:40px}
+ #app .report-shared-sidebar~.workspace .upload-layout{grid-template-columns:minmax(0,1.65fr) minmax(280px,.85fr);gap:20px;align-items:start;min-width:0}
+ #app .report-shared-sidebar~.workspace .upload-aside{gap:20px;min-width:0}
+ #app .report-shared-sidebar~.workspace .step-heading{gap:10px}
+ #app .report-shared-sidebar~.workspace .step-heading>span{font-size:12px;padding:5px 7px;border-radius:6px;background:var(--report-tint);color:var(--report-blue)}
+ #app .report-shared-sidebar~.workspace .upload-tabs{display:flex;padding:4px;gap:4px;border:1px solid var(--report-line);background:var(--report-soft);border-radius:10px;margin:18px 0}
+ #app .report-shared-sidebar~.workspace .upload-tabs button{min-height:38px;padding:9px 14px;flex:1;justify-content:center;font-size:14px;border:0;border-radius:7px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .upload-tabs button.active{background:var(--report-surface);color:var(--report-blue);box-shadow:0 1px 3px #162b4b0a}
+ #app .report-shared-sidebar~.workspace .drop-zone{min-height:236px;padding:28px 20px;border:1px dashed color-mix(in srgb,var(--report-muted) 40%,var(--report-line));border-radius:12px;background:var(--report-soft);box-shadow:none}
+ #app .report-shared-sidebar~.workspace .drop-icon{width:52px;height:52px;background:var(--report-surface);color:var(--report-blue);border-radius:12px;box-shadow:none;margin-bottom:18px}
+ #app .report-shared-sidebar~.workspace .drop-zone strong{font-size:15px;color:var(--report-text);line-height:1.7;overflow-wrap:anywhere}
+ #app .report-shared-sidebar~.workspace .drop-zone p{font-size:13px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .drop-zone small{font-size:12px;color:var(--report-muted);line-height:1.8}
+ #app .report-shared-sidebar~.workspace .file-types{gap:6px}
+ #app .report-shared-sidebar~.workspace .file-types b{font-size:12px;background:var(--report-surface);color:var(--report-muted);border:1px solid var(--report-line);border-radius:5px;padding:3px 7px}
+ #app .report-shared-sidebar~.workspace .or-divider{font-size:12px;color:var(--report-muted);margin:20px 0}
+ #app .report-shared-sidebar~.workspace .or-divider:before{background:var(--report-line)}
+ #app .report-shared-sidebar~.workspace .or-divider span{background:var(--report-surface)}
+ #app .report-shared-sidebar~.workspace .sample-loader{padding:15px;border:1px solid var(--report-line);border-radius:10px;background:var(--report-surface);gap:12px}
+ #app .report-shared-sidebar~.workspace .sample-loader strong{font-size:14px;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .sample-loader div>span{font-size:12px;line-height:1.7;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .sample-icon{background:var(--report-tint);color:var(--report-blue);border-radius:8px}
+ #app .report-shared-sidebar~.workspace .form-grid{grid-template-columns:minmax(0,1.8fr) minmax(0,1fr);gap:16px;margin:22px 0}
+ #app .report-shared-sidebar~.workspace .scope-brief{padding:16px 18px;background:var(--report-soft);border:1px solid var(--report-line);border-radius:10px;margin:22px 0}
+ #app .report-shared-sidebar~.workspace .scope-brief>div{color:var(--report-blue);gap:8px;flex-wrap:wrap}
+ #app .report-shared-sidebar~.workspace .scope-brief strong{font-size:14px;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .scope-brief p{font-size:13px;color:var(--report-muted);margin:10px 0}
+ #app .report-shared-sidebar~.workspace .upload-footer{padding-top:2px;gap:14px;flex-wrap:wrap}
+ #app .report-shared-sidebar~.workspace .upload-footer>span{font-size:12px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .process-list{margin-top:24px}
+ #app .report-shared-sidebar~.workspace .process-list>div{gap:12px;padding-bottom:24px}
+ #app .report-shared-sidebar~.workspace .process-list>div>span{background:var(--report-tint);color:var(--report-blue);padding:9px;border-radius:9px}
+ #app .report-shared-sidebar~.workspace .process-list b{font-size:14px;color:var(--report-text);font-weight:500}
+ #app .report-shared-sidebar~.workspace .process-list p{font-size:12px;line-height:1.7;color:var(--report-muted);margin-top:4px}
+ #app .report-shared-sidebar~.workspace .process-list small{font-size:12px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .expect-metrics{gap:16px;border-color:var(--report-line);padding-bottom:18px}
+ #app .report-shared-sidebar~.workspace .expect-metrics span{font-size:12px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .expect-metrics strong{font-size:14px;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace :is(.expect-card>p,.gentle-note p){font-size:12px;line-height:1.8;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .file-summary{gap:14px;padding:20px 22px;border-color:var(--report-line);margin-bottom:22px;min-width:0}
+ #app .report-shared-sidebar~.workspace .file-summary>div{min-width:0}
+ #app .report-shared-sidebar~.workspace .file-summary h3{font-size:15px;overflow-wrap:anywhere}
+ #app .report-shared-sidebar~.workspace .file-summary p{font-size:12px;color:var(--report-muted);overflow-wrap:anywhere}
+ #app .report-shared-sidebar~.workspace .confirm-grid{grid-template-columns:280px minmax(0,1fr);gap:20px}
+ #app .report-shared-sidebar~.workspace .section-checks{min-width:0}
+ #app .report-shared-sidebar~.workspace .section-check{padding:15px 0;gap:10px;border-color:var(--report-line)}
+ #app .report-shared-sidebar~.workspace .section-check>span{min-width:0}
+ #app .report-shared-sidebar~.workspace .section-check b{font-size:13px;line-height:1.65;overflow-wrap:anywhere;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .section-check small,.report-shared-sidebar~.workspace .section-check em{font-size:12px;line-height:1.6}
+ #app .report-shared-sidebar~.workspace .included-count>span{font-size:13px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .included-count strong{font-size:30px;color:var(--report-blue);font-variant-numeric:tabular-nums}
+ #app .report-shared-sidebar~.workspace .included-count small{font-size:12px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .parsed-scroll{max-height:660px;scrollbar-width:thin;padding-right:12px}
+ #app .report-shared-sidebar~.workspace .parsed-section h3{font-size:16px;line-height:1.6;padding-bottom:12px;margin-bottom:16px;border-color:var(--report-line)}
+ #app .report-shared-sidebar~.workspace .parsed-section h3 span{font-size:12px}
+ #app .report-shared-sidebar~.workspace .parsed-section p{font-size:15px;line-height:1.95;color:var(--report-text);margin-bottom:18px;overflow-wrap:anywhere}
+ #app .report-shared-sidebar~.workspace .confirm-actions{padding:22px 0;gap:18px;flex-wrap:wrap}
+ #app .report-shared-sidebar~.workspace .confirm-actions>div{font-size:13px;color:var(--report-muted);gap:10px}
+ #app .report-shared-sidebar~.workspace .confirm-actions small{font-size:12px;color:var(--report-muted);line-height:1.75}
+ #app .report-shared-sidebar~.workspace .progress-page{padding:36px 48px 26px;max-width:760px}
+ #app .report-shared-sidebar~.workspace .progress-page h2{font-size:22px}
+ #app .report-shared-sidebar~.workspace .progress-page>.muted{font-size:14px}
+ #app .report-shared-sidebar~.workspace .run-progress>div:first-child{font-size:12px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .run-stages b{font-size:14px;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .run-stages small{font-size:12px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .run-stages em{font-size:12px}
+ #app .report-shared-sidebar~.workspace .progress-footer>span{font-size:12px;color:var(--report-muted)}
+ /* Reading a report: familiar chrome, larger neutral text; match / quote markers stay unchanged. */
+ #app .report-shared-sidebar~.workspace .report-breadcrumb{font-size:12px;color:var(--report-muted);gap:9px;margin-bottom:12px;flex-wrap:wrap}
+ #app .report-shared-sidebar~.workspace .report-notice{padding:14px 18px;gap:10px;border:1px solid var(--report-line);border-radius:12px;background:var(--report-tint);color:var(--report-blue);align-items:flex-start;margin-bottom:20px}
+ #app .report-shared-sidebar~.workspace .report-notice>svg{margin-top:4px}
+ #app .report-shared-sidebar~.workspace .report-notice p{font-size:13px;line-height:1.75;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .report-notice .text-btn{flex-shrink:0}
+ #app .report-shared-sidebar~.workspace .metrics-grid{grid-template-columns:1.15fr 1.15fr 1fr 1fr 1fr;gap:12px;margin-bottom:22px}
+ #app .report-shared-sidebar~.workspace .metric-card{padding:20px;border:1px solid var(--report-line);border-radius:14px;background:var(--report-surface);min-width:0;box-shadow:none}
+ #app .report-shared-sidebar~.workspace .metric-card>span:first-child{font-size:12px;color:var(--report-muted);line-height:1.65}
+ #app .report-shared-sidebar~.workspace .metric-card strong{font-size:30px;line-height:1.2;font-weight:600;color:var(--report-text);letter-spacing:-.035em;margin:16px 0 10px;overflow-wrap:anywhere}
+ #app .report-shared-sidebar~.workspace .metric-card strong small{font-size:13px;color:inherit}
+ #app .report-shared-sidebar~.workspace .metric-card p{font-size:12px;color:var(--report-muted);line-height:1.7}
+ #app .report-shared-sidebar~.workspace .hero-metric{background:var(--report-blue);border-color:var(--report-blue)}
+ #app .report-shared-sidebar~.workspace .hero-metric :is(strong,p,small),#app .report-shared-sidebar~.workspace .hero-metric>span:first-child{color:#fff}
+ #app .report-shared-sidebar~.workspace .hero-metric .inline-icon{color:#fff}
+ #app .report-shared-sidebar~.workspace .report-surface{border-radius:16px;overflow:hidden;min-width:0}
+ #app .report-shared-sidebar~.workspace .report-toolbar{padding:10px 20px;gap:16px;border-color:var(--report-line);min-width:0;flex-wrap:wrap}
+ #app .report-shared-sidebar~.workspace .toolbar-tabs{gap:6px;min-width:0;overflow-x:auto;scrollbar-width:thin}
+ #app .report-shared-sidebar~.workspace .toolbar-tabs button{min-height:40px;padding:10px 13px;font-size:13px;line-height:1.5;border:0;border-radius:8px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .toolbar-tabs button.active{background:var(--report-tint);color:var(--report-blue);border:0}
+ #app .report-shared-sidebar~.workspace .report-search{background:var(--report-soft);border:1px solid var(--report-line);border-radius:9px;width:228px;min-width:0;padding:0 10px;min-height:40px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .report-search input{font-size:13px!important;min-height:36px;padding:5px 0!important;min-width:0;line-height:1.5}
+ #app .report-shared-sidebar~.workspace .report-grid{grid-template-columns:190px minmax(320px,1fr) 320px;min-height:670px;min-width:0}
+ #app .report-shared-sidebar~.workspace .chapter-nav{background:var(--report-soft);padding:20px 14px;border-color:var(--report-line);min-width:0}
+ #app .report-shared-sidebar~.workspace .pane-title{gap:8px;margin-bottom:18px;min-width:0;flex-wrap:wrap}
+ #app .report-shared-sidebar~.workspace .pane-title h3{font-size:14px;color:var(--report-text);font-weight:550}
+ #app .report-shared-sidebar~.workspace .pane-title>span{font-size:12px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .chapter-item{font-size:13px;line-height:1.6;padding:12px 10px 19px;margin-bottom:5px;border-radius:8px;gap:8px;color:var(--report-muted);min-width:0}
+ #app .report-shared-sidebar~.workspace .chapter-item>div{min-width:0;overflow-wrap:anywhere}
+ #app .report-shared-sidebar~.workspace .chapter-item b{font-size:12px;flex-shrink:0}
+ #app .report-shared-sidebar~.workspace .chapter-item small{font-size:12px;line-height:1.5}
+ #app .report-shared-sidebar~.workspace .chapter-item.active{background:var(--report-tint);color:var(--report-blue)}
+ #app .report-shared-sidebar~.workspace .sources-title{border-color:var(--report-line)}
+ #app .report-shared-sidebar~.workspace .top-source{padding:11px 7px;gap:9px;border-radius:8px;min-width:0}
+ #app .report-shared-sidebar~.workspace .top-source em{font-size:12px;width:22px;height:22px;background:var(--report-tint);color:var(--report-blue)}
+ #app .report-shared-sidebar~.workspace .top-source b{font-size:12px;line-height:1.75;color:var(--report-text);overflow-wrap:anywhere}
+ #app .report-shared-sidebar~.workspace .top-source div>span{font-size:12px;line-height:1.65;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace :is(.top-source-note,.pane-empty){font-size:12px;line-height:1.8;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .document-pane{padding:22px 20px 0;min-width:0;background:var(--report-surface)}
+ #app .report-shared-sidebar~.workspace .legend{font-size:12px!important;line-height:1.5;gap:5px;white-space:normal}
+ #app .report-shared-sidebar~.workspace .paragraph-scroll{height:640px;padding:0 6px;margin:0 -6px;scrollbar-width:thin;min-width:0}
+ #app .report-shared-sidebar~.workspace .section-title{padding:16px 2px 12px;gap:10px;flex-wrap:wrap}
+ #app .report-shared-sidebar~.workspace .section-title h3{font-size:16px;color:var(--report-text);line-height:1.7}
+ #app .report-shared-sidebar~.workspace .section-title>span{font-size:12px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .report-paragraph{border-radius:10px;margin-bottom:12px}
+ #app .report-shared-sidebar~.workspace .report-paragraph:hover{background:var(--report-soft)}
+ #app .report-shared-sidebar~.workspace .report-paragraph.selected{background:var(--report-soft);border-color:color-mix(in srgb,var(--report-blue) 35%,var(--report-line))}
+ #app .report-shared-sidebar~.workspace .paragraph-button{padding:16px 14px;color:var(--report-text);min-width:0}
+ #app .report-shared-sidebar~.workspace .paragraph-meta{font-size:12px;line-height:1.6;margin-bottom:12px;gap:10px;flex-wrap:wrap}
+ #app .report-shared-sidebar~.workspace .paragraph-meta b{font-size:12px}
+ #app .report-shared-sidebar~.workspace .paragraph-text{font-size:15px;line-height:1.95;overflow-wrap:anywhere;text-align:left}
+ #app .report-shared-sidebar~.workspace .document-status{font-size:12px;color:var(--report-muted);padding:16px 0;gap:12px;flex-wrap:wrap;border-color:var(--report-line)}
+ #app .report-shared-sidebar~.workspace .evidence-pane{background:var(--report-surface);border-color:var(--report-line);min-width:0}
+ #app .report-shared-sidebar~.workspace .evidence-tabs{padding:8px 14px;gap:5px;border-color:var(--report-line);overflow-x:auto;min-width:0}
+ #app .report-shared-sidebar~.workspace .evidence-tabs button{font-size:13px;padding:10px 11px;border:0;border-radius:8px;min-height:40px;line-height:1.5;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .evidence-tabs button.active{background:var(--report-tint);color:var(--report-blue);border:0}
+ #app .report-shared-sidebar~.workspace .evidence-scroll{padding:22px 18px;max-height:720px;scrollbar-width:thin;min-width:0}
+ #app .report-shared-sidebar~.workspace .evidence-heading{margin-bottom:20px}
+ #app .report-shared-sidebar~.workspace .evidence-heading h3{font-size:17px;line-height:1.65;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .evidence-heading p{font-size:12px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .source-evidence{padding-bottom:22px;margin-bottom:22px;border-color:var(--report-line);min-width:0}
+ #app .report-shared-sidebar~.workspace .source-header{gap:10px}
+ #app .report-shared-sidebar~.workspace .source-number{font-size:12px;width:26px;height:26px;border-radius:6px;background:var(--report-tint);color:var(--report-blue)}
+ #app .report-shared-sidebar~.workspace .source-header>div{min-width:0}
+ #app .report-shared-sidebar~.workspace .source-header h4{font-size:14px;line-height:1.7;color:var(--report-text);overflow-wrap:anywhere}
+ #app .report-shared-sidebar~.workspace .source-header p{font-size:12px;line-height:1.7;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .source-tags{flex-wrap:wrap;gap:6px;margin:14px 0}
+ #app .report-shared-sidebar~.workspace .match-scores{padding:14px;background:var(--report-soft);border-radius:10px;gap:12px}
+ #app .report-shared-sidebar~.workspace .match-scores span{font-size:12px;line-height:1.6;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .match-scores b{font-size:19px;line-height:1.5}
+ #app .report-shared-sidebar~.workspace .match-scores b.unavailable{font-size:14px}
+ #app .report-shared-sidebar~.workspace .score-explanation{font-size:12px;line-height:1.8;color:var(--report-muted);margin:10px 0 16px}
+ #app .report-shared-sidebar~.workspace .quote-box{padding:16px;border-radius:10px;margin:14px 0}
+ #app .report-shared-sidebar~.workspace .quote-box>b{font-size:12px;line-height:1.6;color:var(--report-muted);margin-bottom:10px}
+ #app .report-shared-sidebar~.workspace .quote-box p{font-size:14px;line-height:1.9;color:var(--report-text);overflow-wrap:anywhere}
+ #app .report-shared-sidebar~.workspace .source-metadata{font-size:12px;margin:16px 0;line-height:1.8}
+ #app .report-shared-sidebar~.workspace .source-metadata dt{color:var(--report-muted);min-width:50px}
+ #app .report-shared-sidebar~.workspace .source-metadata dd{color:var(--report-text);overflow-wrap:anywhere}
+ #app .report-shared-sidebar~.workspace .source-metadata>div{gap:10px;align-items:flex-start}
+ #app .report-shared-sidebar~.workspace .method-list b{font-size:14px;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .method-list p{font-size:13px;line-height:1.85;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .method-list>div{padding:16px 0;border-color:var(--report-line)}
+ #app .report-shared-sidebar~.workspace .revision-callout{padding:15px;border-radius:10px;gap:10px}
+ #app .report-shared-sidebar~.workspace .revision-callout p{font-size:13px;line-height:1.75}
+ #app .report-shared-sidebar~.workspace .suggestion-list{font-size:13px;padding-left:18px;margin:20px 0}
+ #app .report-shared-sidebar~.workspace .suggestion-list b{font-size:14px;line-height:1.65;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .suggestion-list p{font-size:13px;line-height:1.85;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .empty-evidence p{font-size:14px;line-height:1.8;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .empty-evidence small{font-size:12px;line-height:1.8;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .report-footnotes{padding:18px 0;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--report-muted)}
+ /* Records / source management use the same comfortable row and card rhythm. */
+ #app .report-shared-sidebar~.workspace .history-table-wrap{border:1px solid var(--report-line);border-radius:10px;overflow:auto}
+ #app .report-shared-sidebar~.workspace .history-table{font-size:13px;min-width:720px}
+ #app .report-shared-sidebar~.workspace .history-table th{font-size:12px;color:var(--report-muted);background:var(--report-soft);padding:14px 16px}
+ #app .report-shared-sidebar~.workspace .history-table td{font-size:13px;color:var(--report-muted);padding:18px 16px;border-color:var(--report-line)}
+ #app .report-shared-sidebar~.workspace .history-table td:first-child b{font-size:14px;line-height:1.75;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .history-table small{font-size:12px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .table-actions{gap:14px}
+ #app .report-shared-sidebar~.workspace .empty-state{padding:48px 22px;gap:14px}
+ #app .report-shared-sidebar~.workspace .empty-state h3{font-size:18px;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .empty-state p{font-size:14px;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .empty-state.compact{padding:24px 10px}
+ #app .report-shared-sidebar~.workspace .source-card-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+ #app .report-shared-sidebar~.workspace .material-card{padding:20px;border:1px solid var(--report-line);border-radius:12px;background:var(--report-surface);min-width:0}
+ #app .report-shared-sidebar~.workspace .material-card h3{font-size:14px;color:var(--report-text);line-height:1.75;overflow-wrap:anywhere}
+ #app .report-shared-sidebar~.workspace .material-card p,.report-shared-sidebar~.workspace .material-card small{font-size:12px;line-height:1.8;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .material-actions{border-color:var(--report-line);padding-top:14px;gap:10px;flex-wrap:wrap}
+ #app .report-shared-sidebar~.workspace .provider-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px}
+ #app .report-shared-sidebar~.workspace .provider-card{padding:20px 0;gap:12px;min-width:0;border-color:var(--report-line)}
+ #app .report-shared-sidebar~.workspace .provider-card>div{min-width:0}
+ #app .report-shared-sidebar~.workspace .provider-card h3{font-size:14px;line-height:1.6;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .provider-card p,.report-shared-sidebar~.workspace .provider-card small{font-size:12px;line-height:1.75;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .provider-state{font-size:12px;padding:5px 7px;line-height:1.6;color:var(--report-muted);border-color:var(--report-line);border-radius:6px}
+ #app .report-shared-sidebar~.workspace .data-note{padding:22px;gap:16px;background:var(--report-surface);border-color:var(--report-line)}
+ #app .report-shared-sidebar~.workspace .data-note h3{font-size:15px;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .data-note p{font-size:13px;line-height:1.85;color:var(--report-muted)}
+ #app .report-shared-sidebar~.workspace .help-layout{gap:20px}
+ #app .report-shared-sidebar~.workspace .help-steps b{font-size:14px;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .help-steps p{font-size:13px;color:var(--report-muted);line-height:1.85}
+ #app .report-shared-sidebar~.workspace .help-faq summary{font-size:14px;line-height:1.7;color:var(--report-text)}
+ #app .report-shared-sidebar~.workspace .help-faq p{font-size:13px;color:var(--report-muted);line-height:1.85}
+ #app .report-shared-sidebar~.workspace .help-faq details{border-color:var(--report-line)}
+ #app .report-shared-sidebar~.workspace .workspace-footer{padding:20px 36px;border-color:var(--report-line);font-size:12px;color:var(--report-muted);line-height:1.75;gap:16px}
+ /* The report dialog sits outside #app. It inherits the same system without affecting exported documents. */
+ body:has(.report-shared-sidebar) #modal{font-family:inherit;color:var(--report-text);background:var(--report-surface);border:1px solid var(--report-line);border-radius:16px;max-width:calc(100vw - 32px);box-shadow:0 18px 70px #162b4b24}
+ body:has(.report-shared-sidebar) #modal .modal-head{padding:22px 24px;border-color:var(--report-line);gap:16px}
+ body:has(.report-shared-sidebar) #modal .micro{font-size:11px;color:var(--report-muted);letter-spacing:.07em}
+ body:has(.report-shared-sidebar) #modal .modal-head h2{font-size:20px;font-weight:600;color:var(--report-text)}
+ body:has(.report-shared-sidebar) #modal .modal-body{padding:22px 24px}
+ body:has(.report-shared-sidebar) #modal :is(p,.modal-note,.source-detail>p){font-size:13px;color:var(--report-muted);line-height:1.85}
+ body:has(.report-shared-sidebar) #modal :is(label,.field-label){font-size:14px;color:var(--report-text)}
+ body:has(.report-shared-sidebar) #modal :is(input,select,textarea){background:var(--report-surface);color:var(--report-text);border:1px solid var(--report-line);font-size:14px;border-radius:9px;padding:12px;line-height:1.75;min-width:0}
+ body:has(.report-shared-sidebar) #modal .btn{font-size:14px;min-height:42px;border-radius:10px;padding:10px 16px;line-height:1.4;box-shadow:none}
+ body:has(.report-shared-sidebar) #modal .btn.primary{background:var(--report-blue);color:#fff}
+ body:has(.report-shared-sidebar) #modal .btn.secondary{background:var(--report-surface);color:var(--report-text);border-color:var(--report-line)}
+ body:has(.report-shared-sidebar) #modal .text-btn{font-size:13px;min-height:32px}
+ body:has(.report-shared-sidebar) #modal .consent{font-size:12px;line-height:1.75;color:var(--report-muted);align-items:flex-start}
+ body:has(.report-shared-sidebar) #modal .consent input{margin-top:4px}
+ body:has(.report-shared-sidebar) #modal .source-detail dl{font-size:13px;line-height:1.8;gap:12px}
+ body:has(.report-shared-sidebar) #modal .source-detail dt{color:var(--report-muted)}
+ body:has(.report-shared-sidebar) #modal .source-detail dd{color:var(--report-text)}
+ body:has(.report-shared-sidebar) #modal .source-body{font-size:14px;line-height:1.95;background:var(--report-soft);border-color:var(--report-line);color:var(--report-text);padding:16px;border-radius:10px}
+ body:has(.report-shared-sidebar) #modal .export-options>button{padding:18px;border:1px solid var(--report-line);border-radius:10px;background:var(--report-surface);gap:14px}
+ body:has(.report-shared-sidebar) #modal .export-options b{font-size:14px;color:var(--report-text)}
+ body:has(.report-shared-sidebar) #modal .export-options div>span{font-size:12px;line-height:1.75;color:var(--report-muted)}
+}
+@media screen and (max-width:1280px){
+ #app .report-shared-sidebar~.workspace .page{padding:28px 28px 40px}
+ #app .report-shared-sidebar~.workspace .topbar{padding:0 28px}
+ #app .report-shared-sidebar~.workspace .report-grid{grid-template-columns:180px minmax(0,1fr)}
+ #app .report-shared-sidebar~.workspace .evidence-pane{grid-column:1/-1;border-left:0;border-top:1px solid var(--report-line)}
+ #app .report-shared-sidebar~.workspace .evidence-scroll{max-height:580px;padding:24px}
+ #app .report-shared-sidebar~.workspace .source-evidence{max-width:860px}
+ #app .report-shared-sidebar~.workspace .metrics-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ #app .report-shared-sidebar~.workspace .metric-card{padding:18px}
+ #app .report-shared-sidebar~.workspace .upload-layout{grid-template-columns:minmax(0,1fr)}
+ #app .report-shared-sidebar~.workspace .upload-aside{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+ #app .report-shared-sidebar~.workspace .gentle-note{grid-column:1/-1}
+ #app .report-shared-sidebar~.workspace .source-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #app .report-shared-sidebar~.workspace .confirm-grid{grid-template-columns:240px minmax(0,1fr)}
+ #app .report-shared-sidebar~.workspace .confirm-grid>.card{padding:20px}
+}
+@media screen and (max-width:980px){
+ #app .report-shared-sidebar~.workspace .page{padding:26px 22px 38px}
+ #app .report-shared-sidebar~.workspace .topbar{padding:0 22px}
+ #app .report-shared-sidebar~.workspace :is(.page-heading,.report-heading){align-items:flex-start;flex-direction:column;gap:16px}
+ #app .report-shared-sidebar~.workspace .heading-actions{width:100%}
+ #app .report-shared-sidebar~.workspace .confirm-grid{grid-template-columns:minmax(0,1fr)}
+ #app .report-shared-sidebar~.workspace .section-checks{max-height:300px;overflow-y:auto}
+ #app .report-shared-sidebar~.workspace .provider-grid{grid-template-columns:1fr}
+ #app .report-shared-sidebar~.workspace .report-toolbar{padding:12px 18px}
+ #app .report-shared-sidebar~.workspace .report-search{width:100%;margin:0}
+ #app .report-shared-sidebar~.workspace .toolbar-tabs{width:100%;gap:4px}
+ #app .report-shared-sidebar~.workspace .toolbar-tabs button{flex:1;padding:10px;white-space:nowrap}
+ #app .report-shared-sidebar~.workspace .report-notice{flex-wrap:wrap;gap:10px}
+ #app .report-shared-sidebar~.workspace .report-notice p{flex:1;min-width:180px}
+ #app .report-shared-sidebar~.workspace .report-notice .text-btn{margin-left:27px}
+ #app .report-shared-sidebar~.workspace .help-layout{grid-template-columns:minmax(0,1fr)}
+}
+@media screen and (max-width:760px){
+ #app .report-shared-sidebar{width:224px;box-shadow:10px 0 40px #162b4b1a}
+ #app .report-shared-sidebar~.workspace{margin-left:0}
+ #app .report-shared-sidebar~.workspace .topbar{height:62px;min-height:62px;padding:0 16px;gap:10px}
+ #app .report-shared-sidebar~.workspace .breadcrumb{gap:8px;min-width:0;flex:1}
+ #app .report-shared-sidebar~.workspace .breadcrumb>a{display:none}
+ #app .report-shared-sidebar~.workspace .breadcrumb>svg{display:none}
+ #app .report-shared-sidebar~.workspace .breadcrumb strong{font-size:13px}
+ #app .report-shared-sidebar~.workspace .top-actions{gap:8px}
+ #app .report-shared-sidebar~.workspace .top-actions>.preview-pill{display:none}
+ #app .report-shared-sidebar~.workspace .top-actions>.icon-btn{display:none}
+ #app .report-account-link>span:last-child{display:none}
+ #app .report-shared-sidebar~.workspace .page{padding:24px 16px 32px}
+ #app .report-shared-sidebar~.workspace :is(.page-heading,.report-heading) h1{font-size:24px;line-height:1.5}
+ #app .report-shared-sidebar~.workspace :is(.page-heading,.report-heading) p{font-size:14px;line-height:1.75}
+ #app .report-shared-sidebar~.workspace .overline{font-size:11px;letter-spacing:.06em}
+ #app .report-shared-sidebar~.workspace :is(.btn,.button){min-height:44px;font-size:14px;padding:11px 14px}
+ #app .report-shared-sidebar~.workspace :is(input,select,textarea){font-size:16px}
+ #app .report-shared-sidebar~.workspace .text-btn{min-height:40px;font-size:13px}
+ #app .report-shared-sidebar~.workspace :is(.upload-card,.process-card,.expect-card,.section-picker,.parsed-preview,.history-card,.local-sources,.providers-card,.help-layout>.card){padding:18px;border-radius:14px}
+ #app .report-shared-sidebar~.workspace .card-heading{gap:12px}
+ #app .report-shared-sidebar~.workspace .intro-strip{padding:16px;gap:12px;margin-bottom:20px}
+ #app .report-shared-sidebar~.workspace .intro-strip div>span{font-size:12px}
+ #app .report-shared-sidebar~.workspace .upload-aside{grid-template-columns:minmax(0,1fr)}
+ #app .report-shared-sidebar~.workspace .gentle-note{grid-column:auto;padding:0}
+ #app .report-shared-sidebar~.workspace .drop-zone{min-height:225px;padding:24px 14px}
+ #app .report-shared-sidebar~.workspace .drop-zone strong{font-size:15px}
+ #app .report-shared-sidebar~.workspace .drop-zone small{font-size:12px;line-height:1.8}
+ #app .report-shared-sidebar~.workspace .sample-loader{padding:14px;gap:10px}
+ #app .report-shared-sidebar~.workspace .sample-loader>div{min-width:0}
+ #app .report-shared-sidebar~.workspace .sample-loader strong{font-size:13px}
+ #app .report-shared-sidebar~.workspace .sample-loader div>span{font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+ #app .report-shared-sidebar~.workspace .sample-loader>.sample-icon{padding:7px}
+ #app .report-shared-sidebar~.workspace .sample-loader>svg{display:none}
+ #app .report-shared-sidebar~.workspace .form-grid{grid-template-columns:minmax(0,1fr);gap:16px;margin:20px 0}
+ #app .report-shared-sidebar~.workspace .scope-brief{padding:15px;margin:20px 0}
+ #app .report-shared-sidebar~.workspace .scope-brief .badge{margin-left:0}
+ #app .report-shared-sidebar~.workspace .upload-footer .btn{width:100%}
+ #app .report-shared-sidebar~.workspace .file-summary{padding:18px;gap:12px;flex-wrap:wrap;border-radius:14px}
+ #app .report-shared-sidebar~.workspace .file-summary>div{flex:1;min-width:160px}
+ #app .report-shared-sidebar~.workspace .file-summary .badge{margin-left:0}
+ #app .report-shared-sidebar~.workspace .confirm-grid>.card{padding:18px}
+ #app .report-shared-sidebar~.workspace .parsed-scroll{max-height:60svh;padding-right:8px}
+ #app .report-shared-sidebar~.workspace .parsed-section p{font-size:15px;line-height:1.95}
+ #app .report-shared-sidebar~.workspace .confirm-actions{padding:20px 0;gap:16px;align-items:stretch}
+ #app .report-shared-sidebar~.workspace .confirm-actions>div{align-items:flex-start;font-size:13px}
+ #app .report-shared-sidebar~.workspace .confirm-actions small{font-size:12px}
+ #app .report-shared-sidebar~.workspace .confirm-actions>.btn{width:100%}
+ #app .report-shared-sidebar~.workspace .progress-page{padding:26px 20px 22px;border-radius:14px}
+ #app .report-shared-sidebar~.workspace .run-stages li{gap:10px;align-items:flex-start}
+ #app .report-shared-sidebar~.workspace .run-stages li>span{flex-shrink:0}
+ #app .report-shared-sidebar~.workspace .run-stages li>div{min-width:0}
+ #app .report-shared-sidebar~.workspace .run-stages b{font-size:13px}
+ #app .report-shared-sidebar~.workspace .run-stages small{font-size:12px;line-height:1.7}
+ #app .report-shared-sidebar~.workspace .run-stages em{font-size:12px;flex-shrink:0;padding-top:4px}
+ #app .report-shared-sidebar~.workspace .progress-footer{flex-wrap:wrap;gap:14px}
+ #app .report-shared-sidebar~.workspace .progress-footer>.btn{width:100%}
+ #app .report-shared-sidebar~.workspace .metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ #app .report-shared-sidebar~.workspace .metric-card{padding:16px;border-radius:12px}
+ #app .report-shared-sidebar~.workspace .hero-metric{grid-column:1/-1}
+ #app .report-shared-sidebar~.workspace .metric-card strong{font-size:28px;margin:14px 0 8px}
+ #app .report-shared-sidebar~.workspace .hero-metric strong{font-size:36px}
+ #app .report-shared-sidebar~.workspace .metric-card>span:first-child{font-size:12px}
+ #app .report-shared-sidebar~.workspace .metric-card p{font-size:12px;line-height:1.7}
+ #app .report-shared-sidebar~.workspace .report-notice{padding:14px;gap:8px;line-height:1.7}
+ #app .report-shared-sidebar~.workspace .report-notice p{font-size:12px;min-width:0;flex:1}
+ #app .report-shared-sidebar~.workspace .report-notice .text-btn{flex-basis:100%;justify-content:flex-start;margin-left:25px}
+ #app .report-shared-sidebar~.workspace .report-toolbar{padding:12px;gap:12px}
+ #app .report-shared-sidebar~.workspace .toolbar-tabs{gap:4px;max-width:100%;overflow-x:auto}
+ #app .report-shared-sidebar~.workspace .toolbar-tabs button{font-size:12px;padding:10px 11px;flex:0 0 auto}
+ #app .report-shared-sidebar~.workspace .report-search{width:100%;min-height:42px;padding:0 10px}
+ #app .report-shared-sidebar~.workspace .report-search input{font-size:14px!important;min-height:38px}
+ #app .report-shared-sidebar~.workspace .report-grid{grid-template-columns:minmax(0,1fr);min-height:0}
+ #app .report-shared-sidebar~.workspace .chapter-nav{grid-column:1;border-right:0;border-bottom:1px solid var(--report-line);padding:12px;display:flex;gap:8px;overflow-x:auto}
+ #app .report-shared-sidebar~.workspace .chapter-item{min-width:148px;max-width:200px;flex:0 0 auto;margin:0;padding:12px 10px 19px;font-size:13px}
+ #app .report-shared-sidebar~.workspace .chapter-item small{font-size:12px}
+ #app .report-shared-sidebar~.workspace .document-pane{padding:20px 14px 0;grid-column:1}
+ #app .report-shared-sidebar~.workspace .paragraph-scroll{height:480px;max-height:64svh;padding:0 4px;margin:0 -4px}
+ #app .report-shared-sidebar~.workspace .paragraph-button{padding:14px 10px}
+ #app .report-shared-sidebar~.workspace .paragraph-text{font-size:15px;line-height:1.95}
+ #app .report-shared-sidebar~.workspace .paragraph-meta{gap:8px;font-size:12px;margin-bottom:10px}
+ #app .report-shared-sidebar~.workspace .section-title{padding:14px 2px 10px;gap:6px}
+ #app .report-shared-sidebar~.workspace .section-title h3{font-size:15px;line-height:1.7}
+ #app .report-shared-sidebar~.workspace .section-title>span{font-size:12px}
+ #app .report-shared-sidebar~.workspace .pane-title{gap:10px;margin-bottom:14px}
+ #app .report-shared-sidebar~.workspace .pane-title h3{font-size:14px}
+ #app .report-shared-sidebar~.workspace .legend{font-size:12px!important;line-height:1.6;gap:4px}
+ #app .report-shared-sidebar~.workspace .document-status{font-size:12px;gap:10px;padding:14px 0}
+ #app .report-shared-sidebar~.workspace .evidence-pane{grid-column:1;border-left:0;border-top:1px solid var(--report-line)}
+ #app .report-shared-sidebar~.workspace .evidence-tabs{padding:10px;gap:4px;overflow-x:auto}
+ #app .report-shared-sidebar~.workspace .evidence-tabs button{font-size:12px;padding:10px;flex:1;white-space:nowrap}
+ #app .report-shared-sidebar~.workspace .evidence-scroll{padding:20px 16px;max-height:none;overflow:visible}
+ #app .report-shared-sidebar~.workspace .source-header h4{font-size:14px;line-height:1.75}
+ #app .report-shared-sidebar~.workspace .quote-box{padding:14px}
+ #app .report-shared-sidebar~.workspace .quote-box p{font-size:14px;line-height:1.95}
+ #app .report-shared-sidebar~.workspace .match-scores{gap:12px;padding:14px}
+ #app .report-shared-sidebar~.workspace .source-metadata>div{gap:8px}
+ #app .report-shared-sidebar~.workspace .source-metadata dt{min-width:48px}
+ #app .report-shared-sidebar~.workspace .report-footnotes{gap:10px;font-size:12px;padding:16px 0}
+ #app .report-shared-sidebar~.workspace .report-footnotes>span{align-items:flex-start}
+ #app .report-shared-sidebar~.workspace .report-footnotes .text-btn{margin-left:0}
+ #app .report-shared-sidebar~.workspace .source-card-grid{grid-template-columns:minmax(0,1fr);gap:12px}
+ #app .report-shared-sidebar~.workspace .material-card{padding:18px}
+ #app .report-shared-sidebar~.workspace .provider-card{gap:10px;flex-wrap:wrap}
+ #app .report-shared-sidebar~.workspace .provider-card>.provider-monogram{flex-shrink:0}
+ #app .report-shared-sidebar~.workspace .provider-card>div{flex:1;min-width:160px}
+ #app .report-shared-sidebar~.workspace .provider-state{margin-left:46px}
+ #app .report-shared-sidebar~.workspace .data-note{padding:18px;gap:12px;align-items:flex-start}
+ #app .report-shared-sidebar~.workspace .history-table{min-width:680px}
+ #app .report-shared-sidebar~.workspace .history-table td,#app .report-shared-sidebar~.workspace .history-table th{padding:14px}
+ #app .report-shared-sidebar~.workspace .workspace-footer{padding:18px 16px;gap:6px;flex-direction:column;font-size:12px}
+ body:has(.report-shared-sidebar) #modal{max-width:calc(100vw - 24px);max-height:calc(100svh - 24px);border-radius:14px}
+ body:has(.report-shared-sidebar) #modal .modal-head,body:has(.report-shared-sidebar) #modal .modal-body{padding:18px}
+ body:has(.report-shared-sidebar) #modal .modal-head h2{font-size:19px}
+ body:has(.report-shared-sidebar) #modal :is(input,select,textarea){font-size:16px}
+ body:has(.report-shared-sidebar) #modal .btn{min-height:44px;font-size:14px}
+ body:has(.report-shared-sidebar) #modal .modal-actions{flex-wrap:wrap;gap:8px}
+ body:has(.report-shared-sidebar) #modal .modal-actions>.btn{flex:1}
+ body:has(.report-shared-sidebar) #modal .source-detail dl{grid-template-columns:55px minmax(0,1fr);font-size:12px;gap:10px}
+ body:has(.report-shared-sidebar) #modal .source-body{padding:14px;font-size:14px}
+ body:has(.report-shared-sidebar) #modal .export-options>button{padding:14px;gap:10px}
+ body:has(.report-shared-sidebar) #modal .export-options div{min-width:0}
+ body:has(.report-shared-sidebar) #modal .export-options b{font-size:14px}
+ body:has(.report-shared-sidebar) #modal .export-options div>span{font-size:12px}
+}

@@ -114,7 +114,7 @@ test('real AI reduction page keeps its own heading and package when binding shar
   const assertAIPage=()=>{
    assert.ok(dom.window.document.querySelector('#revision-service.aigc-commerce'));
    assert.equal(dom.window.document.querySelector('.hub-heading h1').textContent,'降 AI 率');
-   assert.equal(dom.window.document.querySelector('.aigc-bundle h2').textContent,'超值降 AI 套餐');
+   assert.equal(dom.window.document.querySelector('.aigc-bundle h2').textContent,'有记录的表达修改');
   };
   mount('#category/aigc');assertAIPage();
   mount('#category/reduce');
