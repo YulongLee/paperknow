@@ -1,0 +1,69 @@
+/* Use the available workspace, including when its navigation is resized.
+   Reading lines and small forms keep their own limits; the shell is fluid. */
+#app .hub-workspace{container:workspace / inline-size}
+#app .dashboard,#app .dashboard.home-refresh{max-width:none}
+#app .dashboard.creation-page{max-width:none!important}
+#app .dashboard.creation-page .capability-groups{display:grid;align-items:start}
+#app .dashboard.creation-page .capability-group{display:block;min-width:0}
+#app .dashboard.creation-page .capability-list{width:100%}
+#app .dashboard.creation-page .capability-copy{min-width:0;flex:1}
+#app .dashboard.creation-page .capability-copy strong{width:auto;white-space:normal}
+
+@container workspace (min-width:1480px){
+  #app .dashboard,#app .dashboard.home-refresh{padding-inline:clamp(36px,2.2cqi,56px)}
+  #app .home-welcome{grid-template-columns:minmax(0,1fr) minmax(360px,480px)}
+  #app .home-refresh .hub-overview-grid{grid-template-columns:minmax(0,1fr) minmax(320px,420px)}
+  #app .dashboard.creation-page .writing-hero{grid-template-columns:minmax(0,1fr) minmax(360px,460px)}
+  #app .dashboard.creation-page .writing-hero-copy{max-width:none}
+  #app .dashboard.creation-page .capability-copy{min-width:0;flex:1}
+  #app .dashboard.creation-page .capability-copy strong{width:auto;white-space:normal}
+  #app .dashboard .lit-reading-layout{grid-template-columns:minmax(0,1fr) minmax(340px,420px)}
+  #app .dashboard .lit-read-text{max-width:90ch;margin-inline:auto}
+  #app .dashboard.creation-page .creation-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  #app .dashboard.creation-page :is(.outline-content,.writing-final-body){max-width:90ch;margin-inline:auto}
+  #app .dashboard .research-grid{grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr)}
+  #app .project-overview-top,#app .project-overview-top.single-project{grid-template-columns:minmax(0,1fr) 340px}
+  #app .project-overview .project-grid:not(.project-list){grid-template-columns:repeat(auto-fill,minmax(min(100%,350px),1fr))}
+  #app .management-project-rows{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,350px),1fr));gap:16px}
+  #app .management-project-rows>.account-project-card:not([hidden]){display:flex;flex-direction:column;gap:14px;margin:0;padding:20px;border:1px solid var(--pk-border);border-radius:12px;background:var(--pk-surface)}
+  #app .management-project-rows .account-project-card>.row{align-items:flex-start;gap:12px;flex-wrap:wrap}
+  #app .management-project-rows .management-project-icon{flex:0 0 38px;width:38px;height:38px}
+  #app .management-project-rows .account-project-card>.row>div{flex:1;min-width:140px}
+  #app .management-project-rows .account-project-card>.row>.tag{flex:none;margin:0}
+  #app .management-project-rows .account-project-card h2{font-size:16px;line-height:1.55;min-height:3.1em;margin:0 0 6px}
+  #app .management-project-rows .account-project-card>.management-project-facts{padding:0;margin:0;font-size:12px}
+  #app .management-project-rows .account-project-card>.actions{margin-top:auto;gap:8px}
+  #app .management-project-rows .account-project-card>.actions>:is(a,button){font-size:12px;min-height:36px;padding:8px 10px}
+  #app .management-project-rows .account-project-card>a:last-child{font-size:12px;align-self:flex-start}
+  /* Settings are short forms rather than a blank full-width sheet. */
+  #app .dashboard .settings-layout{grid-template-columns:220px minmax(0,1080px)}
+  #app .dashboard .settings-main .hub-form{max-width:none}
+}
+
+/* A complementary rail brings saved work into view on wide displays.
+   The original DOM and tab order remain unchanged on every screen. */
+@container workspace (min-width:1800px){
+  #app .dashboard.creation-page:has(>.writing-hero){display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:24px;align-items:start;align-content:start}
+  #app .dashboard.creation-page>.writing-hero{grid-column:1/-1;margin:0}
+  #app .dashboard.creation-page>.writing-capabilities{grid-column:1;grid-row:2/4;margin:0;align-self:start}
+  #app .dashboard.creation-page>.writing-recent{grid-column:2;grid-row:2;margin:0}
+  #app .dashboard.creation-page>.writing-benefits{grid-column:2;grid-row:3;margin:0}
+  #app .dashboard.creation-page :is(.writing-recent-heading,.writing-benefits-heading){align-items:flex-start;flex-direction:column;gap:10px}
+  #app .dashboard.creation-page :is(.writing-recent-list,.writing-benefits-grid){grid-template-columns:1fr}
+  #app .dashboard.creation-page .writing-recent-empty{align-items:flex-start;flex-direction:column;gap:12px;padding:18px}
+  #app .dashboard.creation-page .writing-recent-actions{margin:0;flex-wrap:wrap}
+  #app .dashboard.creation-page .writing-benefits-grid{gap:10px}
+  #app .dashboard.creation-page .writing-benefits-grid>article{padding:14px}
+  #app .dashboard.creation-page :is(.writing-recent-heading,.writing-benefits-heading) h2{font-size:18px}
+  #app .dashboard.creation-page :is(.writing-recent-heading,.writing-benefits-heading) p{font-size:13px}
+  #app .dashboard.creation-page .capability-groups{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
+  #app .dashboard.creation-page .capability-group:first-child .capability-list{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+
+@container workspace (min-width:2240px){
+  #app .studio-tools{grid-template-columns:repeat(8,minmax(0,1fr))}
+  #app .studio-tool{grid-template-columns:36px minmax(0,1fr);gap:10px;padding:18px 14px}
+  #app .studio-tool>svg{display:none}
+  #app .studio-tool p{white-space:normal}
+  #app .dashboard .ppt-mode-template-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+}
