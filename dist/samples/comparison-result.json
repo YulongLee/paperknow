@@ -1,0 +1,157 @@
+{
+  "id": "paperknow-public-selfmade-sample",
+  "title": "自制材料比对示例",
+  "createdAt": "2026-10-15T00:00:00.000Z",
+  "algorithm": "local-exact-1.0.0",
+  "mode": "user_materials",
+  "fileName": "",
+  "degree": "本科",
+  "sections": [
+    {
+      "id": "section-0",
+      "title": "正文概述",
+      "excluded": false,
+      "paragraphs": [
+        {
+          "id": "p-1",
+          "text": "自制演示论文片段",
+          "sectionId": "section-0",
+          "matches": [],
+          "totalChars": 8,
+          "ranges": [],
+          "uncitedRanges": [],
+          "similarChars": 0,
+          "uncitedChars": 0,
+          "ratio": 0
+        }
+      ],
+      "included": true,
+      "totalChars": 8,
+      "similarChars": 0,
+      "uncitedChars": 0,
+      "ratio": 0
+    },
+    {
+      "id": "section-2",
+      "title": "第一章 研究背景",
+      "excluded": false,
+      "paragraphs": [
+        {
+          "id": "p-2",
+          "text": "本材料由 PaperKnow 为演示文本比对而编写，不来自真实用户论文，不代表真实研究结论。",
+          "sectionId": "section-2",
+          "matches": [],
+          "totalChars": 41,
+          "ranges": [],
+          "uncitedRanges": [],
+          "similarChars": 0,
+          "uncitedChars": 0,
+          "ratio": 0
+        }
+      ],
+      "included": true,
+      "totalChars": 41,
+      "similarChars": 0,
+      "uncitedChars": 0,
+      "ratio": 0
+    },
+    {
+      "id": "section-3",
+      "title": "第二章 材料中的相似表达",
+      "excluded": false,
+      "paragraphs": [
+        {
+          "id": "p-3",
+          "text": "学习反馈应当结合具体任务、学习者已有知识和学习目标，帮助学习者理解当前表现与目标之间的差距。反馈内容需要提供可以执行的改进方向，并在后续任务中检查改进情况。",
+          "sectionId": "section-3",
+          "matches": [
+            {
+              "id": "p-3-selfmade-reference-0-28",
+              "paragraphId": "p-3",
+              "sourceId": "selfmade-reference",
+              "range": [
+                0,
+                77
+              ],
+              "sourceRange": [
+                34,
+                111
+              ],
+              "citationStatus": "uncited",
+              "excludedRanges": [],
+              "textScore": 1,
+              "semanticScore": null
+            }
+          ],
+          "totalChars": 73,
+          "ranges": [
+            [
+              0,
+              77
+            ]
+          ],
+          "uncitedRanges": [
+            [
+              0,
+              77
+            ]
+          ],
+          "similarChars": 73,
+          "uncitedChars": 73,
+          "ratio": 1
+        }
+      ],
+      "included": true,
+      "totalChars": 73,
+      "similarChars": 73,
+      "uncitedChars": 73,
+      "ratio": 1
+    },
+    {
+      "id": "section-4",
+      "title": "第三章 人工核对",
+      "excluded": false,
+      "paragraphs": [
+        {
+          "id": "p-4",
+          "text": "比对后需要回到对照材料，确认这段表达的来源和引用方式。本示例只演示两份给定文本之间的匹配，不代表全网查重结果。",
+          "sectionId": "section-4",
+          "matches": [],
+          "totalChars": 51,
+          "ranges": [],
+          "uncitedRanges": [],
+          "similarChars": 0,
+          "uncitedChars": 0,
+          "ratio": 0
+        }
+      ],
+      "included": true,
+      "totalChars": 51,
+      "similarChars": 0,
+      "uncitedChars": 0,
+      "ratio": 0
+    }
+  ],
+  "sources": [
+    {
+      "id": "selfmade-reference",
+      "title": "自制对照材料",
+      "text": "自制对照材料\n\n本材料仅供 PaperKnow 本地文本匹配演示。\n学习反馈应当结合具体任务、学习者已有知识和学习目标，帮助学习者理解当前表现与目标之间的差距。反馈内容需要提供可以执行的改进方向，并在后续任务中检查改进情况。\n这里的文字与另一份自制样本共享一个完整段落，用于观察匹配位置。\n",
+      "provider": "user_provided",
+      "refNo": "1",
+      "overlapChars": 73
+    }
+  ],
+  "totalChars": 173,
+  "similarChars": 73,
+  "uncitedChars": 73,
+  "ratio": 0.42196531791907516,
+  "uncitedRatio": 0.42196531791907516,
+  "sourceCount": 1,
+  "semanticStatus": "not_connected",
+  "citationPolicy": "仅识别与演示文献一致的中文引号 + 编号引用；其他引用需人工核对",
+  "complete": true,
+  "parentId": null,
+  "scope": "仅与本次提供的自制对照材料比对，不是全网正式检测，也不代表任何真实用户论文。",
+  "sample": true
+}

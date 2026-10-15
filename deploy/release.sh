@@ -50,7 +50,7 @@ else
     --property="ReadWritePaths=$BUILD_DIR $BUILD_HOME" \
     /usr/bin/env -i HOME="$BUILD_HOME" PATH="$RUNTIME:/usr/bin:/bin" \
     npm_config_cache="$BUILD_HOME/npm-cache" NODE_ENV=development \
-    /bin/bash -c 'npm ci --no-audit --no-fund && npm run build && npm run check && npm run test:auth && npm run test:admin && npm prune --omit=dev --no-audit --no-fund'
+    /bin/bash -c 'npm ci --no-audit --no-fund && npm run build && npm run check && npm run test:auth && npm run test:admin && npm run test:seo && npm prune --omit=dev --no-audit --no-fund'
   BUILD_UNIT=
   [[ ! -e "$BUILD_DIR/.env" && ! -L "$BUILD_DIR/.env" && ! -e "$BUILD_DIR/.data" ]] || die 'Build unexpectedly created local configuration or data.'
   INCOMING=$(mktemp -d "$RELEASES/.incoming.XXXXXXXX")

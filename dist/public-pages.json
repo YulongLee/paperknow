@@ -1,0 +1,130 @@
+{
+  "pages": [
+    {
+      "slug": "/features/",
+      "file": "features/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "论文与科研功能介绍"
+    },
+    {
+      "slug": "/features/ai-writing/",
+      "file": "features/ai-writing/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "AI 写作工作台与论文大纲编辑"
+    },
+    {
+      "slug": "/features/ai-reading/",
+      "file": "features/ai-reading/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "AI 研读与文献管理｜我的文献、研读与翻译"
+    },
+    {
+      "slug": "/features/reduce-similarity/",
+      "file": "features/reduce-similarity/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "论文降重复率与引用核对工作台"
+    },
+    {
+      "slug": "/features/reduce-ai/",
+      "file": "features/reduce-ai/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "降 AI 率功能说明与论文表达整理"
+    },
+    {
+      "slug": "/features/similarity-check/",
+      "file": "features/similarity-check/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "免费查重功能说明与本地材料比对"
+    },
+    {
+      "slug": "/features/ppt/",
+      "file": "features/ppt/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "PPT 创作、开题 PPT 与毕业答辩 PPT"
+    },
+    {
+      "slug": "/features/format/",
+      "file": "features/format/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "论文格式检测、智能排版与格式精修"
+    },
+    {
+      "slug": "/features/research-tools/",
+      "file": "features/research-tools/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "科研绘图、基础图表与公式编辑工具"
+    },
+    {
+      "slug": "/guides/",
+      "file": "guides/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "论文与科研工具使用指南"
+    },
+    {
+      "slug": "/guides/paper-outline/",
+      "file": "guides/paper-outline/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "论文大纲怎么整理｜从研究问题到章节编辑"
+    },
+    {
+      "slug": "/guides/material-comparison/",
+      "file": "guides/material-comparison/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "本地材料比对怎么用｜正文、来源与报告核对"
+    },
+    {
+      "slug": "/guides/docx-format/",
+      "file": "guides/docx-format/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "DOCX 论文格式排版步骤｜检查、应用与副本复核"
+    },
+    {
+      "slug": "/guides/research-ppt/",
+      "file": "guides/research-ppt/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "开题与毕业 PPT 制作步骤｜结构、页面与 PPTX 导出"
+    },
+    {
+      "slug": "/guides/research-charts/",
+      "file": "guides/research-charts/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "科研基础图表制作步骤｜CSV 输入与 SVG、PNG 导出"
+    },
+    {
+      "slug": "/about/",
+      "file": "about/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "关于 PaperKnow｜论文写作与科研辅助工作台"
+    },
+    {
+      "slug": "/help/",
+      "file": "help/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "PaperKnow 使用帮助｜登录、保存、上传与成果导出"
+    },
+    {
+      "slug": "/privacy/",
+      "file": "privacy/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "PaperKnow 数据与隐私说明｜本地资料、账户文件与处理范围"
+    },
+    {
+      "slug": "/terms/",
+      "file": "terms/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "PaperKnow 服务规则｜使用范围、成果核对与费用状态"
+    },
+    {
+      "slug": "/contact/",
+      "file": "contact/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "联系 PaperKnow｜产品支持与资料处理问题"
+    },
+    {
+      "slug": "/status/",
+      "file": "status/index.html",
+      "modifiedAt": "2026-10-15",
+      "title": "PaperKnow 功能开放状态｜账户、AI、检索与导出范围"
+    }
+  ]
+}

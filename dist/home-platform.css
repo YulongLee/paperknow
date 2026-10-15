@@ -36,6 +36,20 @@
 @keyframes writing-copy-arrive{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
 @keyframes writing-title-sheen{0%,100%{background-position:0 50%}50%{background-position:100% 50%}}
 /* Keep previews aligned while rotating. */
+.home-platform main .feature-panel-actions{flex-wrap:wrap}
+.home-platform main .feature-details-link{color:#3766ab;font-size:12px;white-space:nowrap}
+.home-platform main .feature-details-link:hover{text-decoration:underline}
+.home-platform main .home-guides{padding:52px 0;background:#fff}
+.home-platform main .home-guide-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.home-platform main .home-guide-card{display:flex;flex-direction:column;align-items:flex-start;padding:24px;border:1px solid #e1e9f4;border-radius:12px;background:#fbfcff;transition:border-color .2s,background .2s}
+.home-platform main .home-guide-card:hover{border-color:#9bb8e8;background:#f6f9ff}
+.home-platform main .home-guide-label{font-size:11px;color:#456caa}
+.home-platform main .home-guide-card h3{font-size:17px;line-height:1.7;margin-top:10px}
+.home-platform main .home-guide-card p{font-size:13px;color:#5b6e87;line-height:1.9;margin:10px 0 20px}
+.home-platform main .home-guide-more{font-size:12px;color:#2467ef;margin-top:auto}
+.home-platform main .home-guides-all{display:block;text-align:center;color:#3766ab;font-size:13px;margin-top:24px}
+.home-platform main .faq-list p a{color:#2b65bf;text-decoration:underline}
+@media(max-width:680px){.home-platform main .home-guide-grid{grid-template-columns:1fr;gap:13px}.home-platform main .home-guides{padding:38px 0}.home-platform main .home-guide-card{padding:21px}.home-platform main .feature-panel-actions{gap:15px}}
 .home-platform main .feature-tabs button.is-active,.home-platform main .feature-tabs button.is-active:hover{color:#fff;background:var(--blue);border-color:var(--blue)}
 .home-platform main .feature-panels{display:grid;min-width:0}
 .home-platform main .feature-panels>.feature-stage{grid-area:1/1;min-width:0;width:100%}

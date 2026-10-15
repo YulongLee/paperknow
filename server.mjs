@@ -1,5 +1,7 @@
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {resolve,extname,sep} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {database} from './backend/database.mjs';
@@ -12,15 +14,23 @@ import {accountDestination} from './dist/account-routes.mjs';
 export function createServer({dbPath=resolve(process.env.PK_DATA_DIR||'.data','paperknow.sqlite'),config=environmentConfig()}={}){
 if(config.aiURL){const u=new URL(config.aiURL);if(u.protocol!=='https:'&&!(u.protocol==='http:'&&['127.0.0.1','localhost'].includes(u.hostname)))throw new Error('模型接口必须使用 HTTPS 或本地地址');}
 const storage=createStorage(config,config.ossClient),db=database(dbPath),settings=modelSettings(db,config);config={...config,storage,settings,getAI:()=>settings.get()};const worker=startWorker(db,config),api=createAPI(db,worker,config),root=resolve('dist');
-const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2'};
+const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2','.txt':'text/plain; charset=utf-8','.xml':'application/xml; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.csv':'text/csv; charset=utf-8'};
+const publicPages=new Map();
+try{for(const page of JSON.parse(readFileSync(resolve(root,'public-pages.json'),'utf8')).pages||[]){if(/^\/(?:[a-z0-9-]+\/)+$/.test(page.slug)&&page.file===page.slug.slice(1)+'index.html')publicPages.set(page.slug,page.file);}}catch{/* A fresh checkout can still serve the workspace before the first build. */}
+const privateHTML=new Set(['/workspace.html','/auth.html','/admin.html','/service.html','/brand-preview.html','/precheck','/precheck/','/precheck/index.html']);
 const server=http.createServer(async(req,res)=>{
-  if(req.url?.startsWith('/api/')){await api(req,res);return;}
+  if(req.url?.startsWith('/api/')){res.setHeader('X-Robots-Tag','noindex');await api(req,res);return;}
   try{
     if(req.method!=='GET'&&req.method!=='HEAD'){res.writeHead(405).end();return;}
     const url=new URL(req.url,'http://localhost'),path=decodeURIComponent(url.pathname);
-    const file=resolve(root,'.'+(path==='/'?'/index.html':path==='/precheck'||path==='/precheck/'?'/precheck/index.html':path));
-    if(!file.startsWith(root+sep)){res.writeHead(403).end();return;}
     const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin'};
+    if(privateHTML.has(path)||path==='/public-pages.json')headers['X-Robots-Tag']='noindex';
+    if(path==='/index.html'){res.writeHead(308,{...headers,Location:'/'+url.search}).end();return;}
+    const candidate=path.toLowerCase().replace(/\/index\.html$/,'/');
+    const publicPath=publicPages.has(candidate)?candidate:publicPages.has(candidate+'/')?candidate+'/':null;
+    if(publicPath&&path!==publicPath){res.writeHead(308,{...headers,Location:publicPath+url.search}).end();return;}
+    const file=resolve(root,'.'+(path==='/'?'/index.html':publicPath?'/'+publicPages.get(publicPath):path==='/precheck'||path==='/precheck/'?'/precheck/index.html':path));
+    if(!file.startsWith(root+sep)){res.writeHead(403).end();return;}
     if(file===resolve(root,'service.html')){
       let destination=accountDestination(url.searchParams.get('view'),url.searchParams.get('result'));
       if(url.searchParams.get('auth')==='register')destination='/auth.html?mode=register&next='+encodeURIComponent(destination);
@@ -35,6 +45,13 @@ const server=http.createServer(async(req,res)=>{
       }
     }
     const body=await readFile(file);
+    if(path==='/'||publicPath||['/robots.txt','/sitemap.xml','/llms.txt'].includes(path)||['.css','.js','.mjs','.svg','.woff2','.png','.jpg','.jpeg','.webp'].includes(extname(file))){
+      headers['Cache-Control']='public, max-age=0, must-revalidate';
+      headers.Vary='Accept-Encoding';
+      headers.ETag='W/"'+createHash('sha256').update(body).digest('hex').slice(0,32)+'"';
+      if(req.headers['if-none-match']?.split(',').some(value=>value.trim()===headers.ETag||value.trim()==='*')){res.writeHead(304,headers).end();return;}
+    }
+    headers['Content-Length']=body.length;
     res.writeHead(200,{...headers,'Content-Type':types[extname(file)]||'application/octet-stream'});
     res.end(req.method==='HEAD'?undefined:body);
   }catch{res.writeHead(404,{'Content-Type':'text/plain; charset=utf-8'}).end('页面不存在');}
