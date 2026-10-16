@@ -47,6 +47,47 @@ test('closed payment channels and unpublished membership products reject creatio
  const f=await fixture(t);assert.equal((await f.request('/api/payments/options',{cookie:''})).value.enabled,false);assert.equal((await f.create()).status,503);assert.equal(f.count('orders'),0);assert.equal((await f.channel()).status,200);assert.equal((await f.create()).status,409);assert.equal(f.count('orders'),0);assert.equal((await f.publish()).status,200);assert.equal((await f.channel('wechat',{enabled:false})).status,200);assert.equal((await f.create()).status,503);assert.equal(f.count('orders'),0);assert.equal(f.created.length,0);
 });
 
+test('a configured channel with only free services reports missing credit pricing and never creates a payment',async t=>{
+ const f=await fixture(t);await f.channel();
+ const state=(await f.request('/api/admin/payments',{cookie:f.admin.cookie})).value;
+ assert.equal((await f.request('/api/admin/billing',{cookie:f.admin.cookie,data:{version:state.billing.version,services:billingServiceTypes.map(({key})=>({key,mode:'free',creditCost:null}))}})).status,200);
+ const options=(await f.request('/api/payments/options',{cookie:''})).value;
+ assert.equal(options.channels.find(channel=>channel.provider==='wechat').ready,true);assert.equal(options.enabled,false);
+ assert.equal(options.products.length,3);assert.ok(options.products.every(product=>product.purchasable===false&&product.unavailableCode==='credit_pricing_missing'));
+ const result=await f.create({productId:'credits-200'});assert.equal(result.status,409);assert.match(result.value.error,/尚未配置按积分计费/);
+ assert.equal((await f.create({productId:'credits-200',priceCents:1})).status,400);
+ const disabled=await f.create({productId:'credits-200',provider:'alipay'});assert.equal(disabled.status,503);assert.equal(disabled.value.error,'所选支付渠道尚未开通');
+ assert.equal((await f.create({productId:'not-a-published-product'})).status,409);
+ await f.channel('wechat',{enabled:false});assert.equal((await f.create({productId:'credits-200'})).status,503);
+ assert.equal(f.count('orders'),0);assert.equal(f.count('payment_orders'),0);assert.equal(f.created.length,0);
+});
+
+test('priced services that lose their model connection block credit sales distinctly and recover without changing prices',async t=>{
+ let online=false;
+ const f=await fixture(t,{config:{getAI:()=>online?{aiURL:'https://model.example.invalid/v1/chat',aiKey:'test-only',aiModel:'test-model'}:{}}});
+ await f.channel();
+ const blocked=(await f.request('/api/payments/options',{cookie:''})).value;
+ assert.equal(blocked.enabled,false);assert.ok(blocked.products.every(product=>product.purchasable===false&&product.unavailableCode==='credit_services_unavailable'));
+ const denied=await f.create({productId:'credits-500'});assert.equal(denied.status,409);assert.match(denied.value.error,/已配置的积分消费服务当前不可用/);assert.equal(f.count('orders'),0);assert.equal(f.created.length,0);
+ online=true;
+ const restored=(await f.request('/api/payments/options',{cookie:''})).value;assert.equal(restored.enabled,true);assert.ok(restored.products.every(product=>product.purchasable===true&&!Object.hasOwn(product,'unavailableCode')));
+ assert.deepEqual(restored.products.map(({id,priceCents,creditAmount})=>({id,priceCents,creditAmount})),blocked.products.map(({id,priceCents,creditAmount})=>({id,priceCents,creditAmount})));
+ const order=await f.create({productId:'credits-500'});assert.equal(order.status,201);assert.equal(order.value.item.amountCents,5000);assert.equal(order.value.item.creditAmount,500);assert.equal(f.created.length,1);
+});
+
+test('delivery shutdown rejects new sales but preserves the exact existing idempotent order and its verified settlement',async t=>{
+ const f=await fixture(t);await f.ready();
+ const key='credit-order-before-free-policy',first=await f.create({productId:'credits-200',idempotencyKey:key});assert.equal(first.status,201);
+ const state=(await f.request('/api/admin/payments',{cookie:f.admin.cookie})).value;
+ await f.request('/api/admin/billing',{cookie:f.admin.cookie,data:{version:state.billing.version,services:billingServiceTypes.map(({key})=>({key,mode:'free',creditCost:null}))}});
+ assert.equal((await f.create({productId:'credits-200'})).status,409);
+ const retry=await f.create({productId:'credits-200',idempotencyKey:key});assert.equal(retry.status,201);assert.equal(retry.value.item.id,first.value.item.id);
+ assert.equal((await f.create({productId:'credits-500',idempotencyKey:key})).status,409);assert.equal(f.created.length,1);assert.equal(f.count('orders'),1);
+ const member=(await f.request('/api/admin/payments',{cookie:f.admin.cookie})).value.catalog.find(product=>product.id==='basic');assert.equal(member.purchasable,false);assert.equal(member.unavailableCode,'entitlement_services_unavailable');
+ assert.equal((await f.notify(first.value.item)).status,204);
+ const account=(await f.request('/api/payments/entitlements')).value;assert.equal(account.credits.balance,200);assert.equal(account.credits.ledger.length,1);
+});
+
 test('admin payment configuration requires persisted administrator role and same-origin POST',async t=>{
  const f=await fixture(t);for(const path of ['/api/admin/payments','/api/admin/payments/wechat/check']){assert.equal((await f.request(path,{cookie:''})).status,401);assert.equal((await f.request(path,{cookie:f.user.cookie})).status,403);}const data={enabled:false};for(const origin of ['', 'https://attacker.example.invalid'])assert.equal((await f.request('/api/admin/payments/wechat',{cookie:f.admin.cookie,origin,data})).status,403);assert.equal((await f.request('/api/admin/payments/products/basic',{cookie:f.admin.cookie,data:product,origin:''})).status,403);assert.equal(f.count('payment_config_versions'),0);assert.equal(f.count('admin_audit'),0);assert.equal((await f.request('/api/admin/payments',{cookie:f.admin.cookie})).status,200);
 });
@@ -183,9 +224,9 @@ test('administrator credit edits persist explicit units and auditable quantity w
 test('free service policy pauses selling credits and membership rather than collecting payment without a consumable service',async t=>{
  const f=await fixture(t);await f.channel();const current=(await f.request('/api/billing/rules')).value;
  assert.equal((await f.request('/api/admin/billing',{cookie:f.admin.cookie,data:{version:current.version,services:billingServiceTypes.map(({key})=>({key,mode:'free',creditCost:null}))}})).status,200);
- assert.equal((await f.publish()).status,409);const options=(await f.request('/api/payments/options',{cookie:''})).value;assert.ok(options.products.every(item=>item.purchasable===false));assert.equal((await f.create({productId:'credits-200'})).status,503);assert.equal(f.count('orders'),0);assert.equal(f.created.length,0);
+ assert.equal((await f.publish()).status,409);const options=(await f.request('/api/payments/options',{cookie:''})).value;assert.ok(options.products.every(item=>item.purchasable===false));assert.equal((await f.create({productId:'credits-200'})).status,409);assert.equal(f.count('orders'),0);assert.equal(f.created.length,0);
 });
 
 test('unconfigured AI rejects new membership publication and credit payments even when merchant settings are valid',async t=>{
- const f=await fixture(t,{config:{getAI:()=>({aiEnabled:false})}});assert.equal((await f.channel()).status,200);assert.equal((await f.publish()).status,409);assert.equal((await f.create({productId:'credits-200'})).status,503);assert.ok((await f.request('/api/payments/options',{cookie:''})).value.products.every(item=>item.purchasable===false));assert.equal(f.count('orders'),0);assert.equal(f.created.length,0);
+ const f=await fixture(t,{config:{getAI:()=>({aiEnabled:false})}});assert.equal((await f.channel()).status,200);assert.equal((await f.publish()).status,409);assert.equal((await f.create({productId:'credits-200'})).status,409);assert.ok((await f.request('/api/payments/options',{cookie:''})).value.products.every(item=>item.purchasable===false));assert.equal(f.count('orders'),0);assert.equal(f.created.length,0);
 });

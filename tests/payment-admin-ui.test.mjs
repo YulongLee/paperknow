@@ -461,6 +461,26 @@ test('pricing saves exact integer charges and version while free and paused serv
   assert.equal(ui.$('[data-payment-product="basic"] .payment-dirty').hidden, false);
 });
 
+test('pricing updates sale diagnostics and product availability without discarding unsaved merchant or product edits', async t => {
+  const free = { version: 1, services: billing.services.map(item => ({ ...item, mode: 'free', creditCost: null })) };
+  const blocked = creditCatalog.map(item => ({ ...item, status: 'active', purchasable: false, unavailableReason: '尚未配置积分消费价格，当前暂停充值。' }));
+  const data = { channels: [{ ...channels[0], enabled: true, ready: true }, channels[1]], billing: free, catalog: [...catalog, ...blocked], encryptionReady: true };
+  const ui = await page(t, { data, handle: (url, payload) => url === '/api/admin/billing' ? { body: { billing: { version: 2, services: payload.services.map(item => ({ ...item, available: true })) }, catalog: [...catalog, ...blocked.map(item => ({ ...item, purchasable: true, unavailableReason: undefined }))] } } : undefined });
+  assert.match(ui.$('#payment-sale-status').textContent, /服务均为免费或暂停/);
+  assert.match(ui.$('[data-payment-product="credits-200"] .badge').textContent, /暂不可售/);
+  ui.fill('#alipay-privateKey', 'unsaved-test-secret'); ui.fill('#product-credits-200-title', '未保存的商品名称');
+  ui.fill('#billing-polish-mode', 'paid'); ui.$('#billing-polish-mode').dispatchEvent(new ui.win.Event('change', { bubbles: true })); ui.fill('#billing-polish-cost', '10');
+  ui.submit('#billing-form'); await settle(() => !ui.$('#billing-form [type="submit"]').disabled);
+  assert.match(ui.$('#payment-sale-status').textContent, /已满足新订单创建条件/);
+  assert.match(ui.$('[data-payment-product="credits-200"] .badge').textContent, /已上架/);
+  assert.equal(ui.$('[data-payment-product="credits-200"] .payment-product-blocked'), null);
+  assert.equal(ui.$('#product-credits-200-title').value, '未保存的商品名称');
+  assert.equal(ui.$('#alipay-privateKey').value, 'unsaved-test-secret');
+  assert.equal(ui.$('[data-payment-product="credits-200"] .payment-dirty').hidden, false);
+  assert.equal(ui.$('#payment-alipay .payment-dirty').hidden, false);
+  assert.equal(ui.$('#billing-form .payment-dirty').hidden, true);
+});
+
 test('invalid service charges do not submit and a pricing conflict preserves edits for review', async t => {
   const ui = await page(t, { handle: url => url === '/api/admin/billing' ? { status: 409, body: { error: '服务计价已被其他管理员修改，请刷新后重试。' } } : undefined });
   for (const value of ['', '0', '-1', '1.2', '1e2', '100001']) {

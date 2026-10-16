@@ -186,9 +186,43 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
       return items.length ? `<div class="payment-catalog-group" data-product-group="${type}"><div class="payment-catalog-group-heading"><h3>${title}</h3><p>${description}</p><span class="payment-product-channels">微信支付 · 支付宝 · 以已启用渠道为准</span></div><div class="payment-products">${items.map(paymentProduct).join('')}</div></div>` : '';
     }).join('');
   }
+  function paymentSalesStatus(data = {}) {
+    const channels = (data.channels || []).filter(item => item.ready === true);
+    const paid = (data.billing?.services || []).filter(item => item.mode === 'paid');
+    const products = (data.catalog || []).filter(item => item.status === 'active' && item.purchasable !== false);
+    const ready = channels.length > 0 && products.length > 0;
+    const title = !channels.length ? '收款渠道尚未启用' : !paid.some(item => item.available) ? '积分充值尚未开放' : !products.length ? '尚无可售商品' : '已满足新订单创建条件';
+    const detail = !channels.length ? '请完善并启用至少一个支付渠道。渠道开关、服务计价和商品上架分别控制收款条件。' : !paid.length ? '支付渠道已启用，但服务均为免费或暂停。请在下方为已接通的服务设置按权益计费及每次积分，保存后积分商品会重新核对可售状态；无需重复填写商户密钥。' : !paid.some(item => item.available) ? '已设置收费的服务尚未接通或已暂停，当前不能交付。请先恢复服务，再开放对应商品。' : !products.length ? '服务计价已准备好，请在下方配置实际可交付权益并上架商品。' : `${channels.length} 个支付渠道、${products.length} 个商品满足创建条件。商户真实收款、支付通知和权益到账仍需通过实际交易验证。`;
+    return `<section id="payment-sale-status" class="panel payment-sales-status" aria-live="polite"><div><span class="badge ${ready ? 'green' : 'amber'}">${ready ? '可创建订单' : '暂不收款'}</span><h2>${title}</h2></div><p>${detail}</p></section>`;
+  }
+  function syncPaymentAvailability(catalog) {
+    if (Array.isArray(catalog)) {
+      currentData.catalog = catalog;
+      for (const item of catalog) {
+        const form = paymentForms().find(node => node.dataset.paymentProduct === item.id);
+        if (!form) continue;
+        const badge = form.querySelector('.payment-product-heading .badge');
+        badge.textContent = item.status === 'active' ? item.purchasable === false ? '暂不可售' : '已上架' : '未上架';
+        badge.className = 'badge ' + (item.status === 'active' && item.purchasable !== false ? 'green' : '');
+        form.querySelector('.payment-product-blocked')?.remove();
+        if (item.purchasable === false && item.unavailableReason) {
+          const note = doc.createElement('p'); note.className = 'payment-product-blocked'; note.textContent = item.unavailableReason;
+          form.querySelector('.payment-product-heading').after(note);
+        }
+        for (const option of form.querySelectorAll('select[name="membershipKey"] option, select[name="bundleKey"] option')) {
+          const service = billableServices.find(entry => entry.key === option.value);
+          if (!service) continue;
+          const rule = currentData.billing?.services?.find(entry => entry.key === service.key);
+          option.textContent = service.title + (rule?.mode === 'paid' && rule.available ? '' : ' · 暂未开放计费');
+        }
+      }
+    }
+    const status = $('#payment-sale-status');
+    if (status) status.outerHTML = paymentSalesStatus(currentData);
+  }
   function paymentsPage(data = {}) {
     const channels = Array.isArray(data.channels) ? data.channels : [], catalog = Array.isArray(data.catalog) ? data.catalog : [];
-    return `<div class="payment-intro"><div>${icon('shield')}<span><strong>支付参数仅供管理员管理</strong><br>配置完整与真实收款是两个状态。检查仅验证本地配置，不会创建支付、扣款或证明渠道已通过商户审核。</span></div><a class="text-button" href="#orders" data-view="orders">查看订单记录 →</a></div>${billingPage(data.billing)}${data.encryptionReady === true ? '' : '<div class="page-notice payment-encryption-warning" role="status">服务端尚未准备好支付配置加密，暂不能保存渠道参数。请先完成服务端加密配置。</div>'}${paymentChannelControls({ ...data, channels })}<div class="payment-channels">${Object.keys(paymentProviders).map(provider => paymentChannel(provider, channels.find(channel => channel.provider === provider), data.encryptionReady === true)).join('')}</div><section class="panel payment-catalog"><div class="panel-heading"><div><h2>可售商品</h2><p>只有确认可交付权益并上架商品后，用户才能购买。未上架商品不接受支付。</p></div><span class="badge">会员 · 积分 · 套餐</span></div><p class="payment-catalog-note">会员、积分和套餐均为单次购买，不自动扣费。上架前须确认服务已接通且开启按权益计费；会员与套餐按本次有效期发放总次数。付款成功按订单快照发放，商品修改不影响已创建订单。</p>${paymentCatalog(catalog)}</section><section class="payment-help"><h2>配置与上线说明</h2><ol><li>在微信支付、支付宝的商户平台申请并开通对应的网站支付能力。</li><li>填写当前应用的签名与验签参数，保存后检查配置，再启用渠道。</li><li>确认售价、会员或套餐有效期、积分数量或套餐服务项及可交付权益后，再上架商品。</li><li>正式开放前完成一笔受控真实交易，核对支付平台记录、通知结果及网站订单状态。</li></ol><p>密钥仅提交到本站服务端。不要放入反馈、截图或聊天记录中。</p><div class="payment-help-links"><a href="https://pay.weixin.qq.com/" target="_blank" rel="noopener noreferrer">微信支付商户平台 ↗</a><a href="https://open.alipay.com/" target="_blank" rel="noopener noreferrer">支付宝开放平台 ↗</a></div></section>`;
+    return `<div class="payment-intro"><div>${icon('shield')}<span><strong>支付参数仅供管理员管理</strong><br>配置完整与真实收款是两个状态。检查仅验证本地配置，不会创建支付、扣款或证明渠道已通过商户审核。</span></div><a class="text-button" href="#orders" data-view="orders">查看订单记录 →</a></div>${paymentSalesStatus(data)}${billingPage(data.billing)}${data.encryptionReady === true ? '' : '<div class="page-notice payment-encryption-warning" role="status">服务端尚未准备好支付配置加密，暂不能保存渠道参数。请先完成服务端加密配置。</div>'}${paymentChannelControls({ ...data, channels })}<div class="payment-channels">${Object.keys(paymentProviders).map(provider => paymentChannel(provider, channels.find(channel => channel.provider === provider), data.encryptionReady === true)).join('')}</div><section class="panel payment-catalog"><div class="panel-heading"><div><h2>可售商品</h2><p>只有确认可交付权益并上架商品后，用户才能购买。未上架商品不接受支付。</p></div><span class="badge">会员 · 积分 · 套餐</span></div><p class="payment-catalog-note">会员、积分和套餐均为单次购买，不自动扣费。上架前须确认服务已接通且开启按权益计费；会员与套餐按本次有效期发放总次数。付款成功按订单快照发放，商品修改不影响已创建订单。</p>${paymentCatalog(catalog)}</section><section class="payment-help"><h2>配置与上线说明</h2><ol><li>在微信支付、支付宝的商户平台申请并开通对应的网站支付能力。</li><li>填写当前应用的签名与验签参数，保存后检查配置，再启用渠道。</li><li>确认售价、会员或套餐有效期、积分数量或套餐服务项及可交付权益后，再上架商品。</li><li>正式开放前完成一笔受控真实交易，核对支付平台记录、通知结果及网站订单状态。</li></ol><p>密钥仅提交到本站服务端。不要放入反馈、截图或聊天记录中。</p><div class="payment-help-links"><a href="https://pay.weixin.qq.com/" target="_blank" rel="noopener noreferrer">微信支付商户平台 ↗</a><a href="https://open.alipay.com/" target="_blank" rel="noopener noreferrer">支付宝开放平台 ↗</a></div></section>`;
   }
   const paymentForms = () => [...doc.querySelectorAll('#admin-content form[data-payment-provider], #admin-content form[data-payment-product], #admin-content form[data-billing-form]')];
   const paymentFormKey = form => form.hasAttribute('data-billing-form') ? 'billing' : form.dataset.paymentProvider || 'product:' + form.dataset.paymentProduct;
@@ -300,6 +334,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     if (control) control.outerHTML = paymentChannelControl(provider, channel, currentData.encryptionReady === true);
     const form = $(`#payment-${provider}`);
     paymentBaselines.set(provider, paymentFingerprint(form));
+    syncPaymentAvailability();
   }
   function syncPaymentChannelControl(provider) {
     const input = $(`#${provider}-enabled`), channel = currentData?.channels?.find(item => item.provider === provider) || {};
@@ -388,7 +423,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
       const item = result.item;
       if (!item || item.id !== id) throw new Error('商品返回数据不完整，请刷新后核对保存结果。');
       const index = currentData.catalog.findIndex(product => product.id === id); if (index >= 0) currentData.catalog[index] = item;
-      const holder = doc.createElement('div'); holder.innerHTML = paymentProduct(item); const replacement = holder.firstElementChild; form.replaceWith(replacement); paymentBaselines.set(key, paymentFingerprint(replacement)); toast(item.status === 'active' ? '商品已保存并上架，请核对交付权益。' : '商品已保存，当前未上架。');
+      const holder = doc.createElement('div'); holder.innerHTML = paymentProduct(item); const replacement = holder.firstElementChild; form.replaceWith(replacement); paymentBaselines.set(key, paymentFingerprint(replacement)); syncPaymentAvailability(); toast(item.status === 'active' ? '商品已保存并上架，请核对交付权益。' : '商品已保存，当前未上架。');
     } catch (error) { if (authorized && ticket === generation) { errorNode.textContent = error.message; errorNode.hidden = false; } }
     finally { pendingPayments.delete(key); if (authorized && ticket === generation) { for (const field of form.elements) field.disabled = false; const add = form.querySelector('[data-bundle-add], [data-membership-add]'); if (add) add.disabled = form.querySelectorAll('[data-bundle-row], [data-membership-row]').length >= 20; button.textContent = '保存商品'; } }
   }
@@ -427,6 +462,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
       if (!authorized || ticket !== generation || currentView !== 'payments') return;
       if (result?.billing?.version === undefined || !billableServices.every(service => result.billing.services?.some(item => item.key === service.key && Object.hasOwn(billingModes, item.mode)))) throw new Error('服务计价返回信息不完整，请刷新后核对保存结果。');
       currentData.billing = result.billing;
+      syncPaymentAvailability(result.catalog);
       const holder = doc.createElement('div'); holder.innerHTML = billingPage(result.billing); const replacement = holder.firstElementChild; form.closest('.billing-panel').replaceWith(replacement);
       paymentBaselines.set('billing', paymentFingerprint(replacement.querySelector('form'))); toast('服务计价已保存，仅对后续新任务生效。请核对相关商品的上架条件。');
     } catch (error) { if (authorized && ticket === generation && currentView === 'payments') { errorNode.textContent = error.message; errorNode.hidden = false; } }

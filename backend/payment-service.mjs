@@ -66,10 +66,10 @@ export function createPaymentService(db,config={}){
  const inputHash=hash(JSON.stringify({productId:input.productId,provider:input.provider}));
  const existing=db.prepare(orderSelect+' WHERE d.user_id=? AND d.idempotency_key=?').get(user.id,input.idempotencyKey);
  if(existing){if(existing.input_hash!==inputHash)fail(409,'重复请求标识已经用于其他商品或支付渠道');return {item:publicOrder(existing)};}
- if(!options().enabled)fail(503,'支付渠道或可售商品尚未开通，暂不能创建付款订单');
- const product=paymentCatalog(db).find(p=>p.id===input.productId);if(!product)fail(409,'商品尚未上架或已停止销售');
- const delivery=productDelivery(product,config.billing);if(!delivery.purchasable)fail(409,delivery.unavailableReason);
+ const availability=options();if(!availability.channels.some(channel=>channel.ready))fail(503,'支付渠道或可售商品尚未开通，暂不能创建付款订单');
+ const product=availability.products.find(p=>p.id===input.productId);if(!product)fail(409,'商品尚未上架或已停止销售');
  const channel=settings.current(input.provider);if(!channel.enabled||validateProvider(input.provider,channel.settings).length)fail(503,'所选支付渠道尚未开通');
+ if(product.purchasable===false)fail(409,product.unavailableReason);
  expire(user.id);if(db.prepare("SELECT count(*) AS n FROM orders o JOIN payment_orders d ON d.order_id=o.id WHERE o.user_id=? AND o.status='pending'").get(user.id).n>=5)fail(429,'待支付订单较多，请先查看已有订单或等待过期');
  const id=randomUUID(),created=at(),expiresAt=new Date(Date.now()+15*60000).toISOString(),outTradeNo='PK'+Date.now().toString()+randomBytes(7).toString('hex');
  transaction(()=>{

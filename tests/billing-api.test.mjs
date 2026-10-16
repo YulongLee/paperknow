@@ -92,3 +92,17 @@ test('free service success does not consume a previously bought membership allow
  const f=await fixture(t);await f.paid(20);const product={title:'本地测试会员',description:'一项已接通能力，测试专用。',priceCents:1000,durationDays:30,entitlementType:'membership',status:'active',membershipItems:[{key:'polish',title:'学术润色',quantity:2}]};assert.equal((await f.request('/admin/payments/products/basic',{cookie:f.admin.cookie,data:product})).status,200);await f.request('/admin/payments/wechat',{cookie:f.admin.cookie,data:{enabled:true,...channel}});const order=(await f.request('/orders',{data:{provider:'wechat',productId:'basic',idempotencyKey:randomUUID()}})).value.item;await f.request('/orders/'+order.id+'/query',{data:{}});
  const rule=await f.rules();assert.equal((await f.request('/admin/billing',{cookie:f.admin.cookie,data:{version:rule.version,services:rule.services.map(({key})=>({key,mode:'free',creditCost:null}))}})).status,200);f.respond('success');const q=(await f.quote()).value;assert.equal(q.source,'free');const id=(await f.submit(q)).value.id;assert.equal((await f.waitStatus(id)).status,'completed');const owned=await f.entitlements();assert.deepEqual(owned.billing.membershipUsage[order.id][0],{key:'polish',title:'学术润色',quantity:2,held:0,used:0,remaining:2});assert.equal(f.db.prepare('SELECT billable FROM usage').get().billable,0);assert.deepEqual(owned.credits.ledger,[]);
 });
+
+test('saving service pricing returns product availability from the same committed policy',async t=>{
+ const f=await fixture(t);
+ const before=(await f.request('/admin/payments',{cookie:f.admin.cookie})).value;
+ assert.equal(before.catalog.find(item=>item.id==='credits-200').purchasable,false);
+ const save=await f.request('/admin/billing',{cookie:f.admin.cookie,data:{version:before.billing.version,services:before.billing.services.map(({key})=>({key,mode:'paid',creditCost:10}))}});
+ assert.equal(save.status,200);
+ assert.equal(save.value.billing.services.find(item=>item.key==='polish').creditCost,10);
+ assert.equal(save.value.catalog.find(item=>item.id==='credits-200').purchasable,true);
+ const paused=await f.request('/admin/billing',{cookie:f.admin.cookie,data:{version:save.value.billing.version,services:save.value.billing.services.map(({key})=>({key,mode:'free',creditCost:null}))}});
+ assert.equal(paused.status,200);
+ assert.equal(paused.value.catalog.find(item=>item.id==='credits-200').purchasable,false);
+ assert.equal(paused.value.catalog.find(item=>item.id==='credits-200').unavailableCode,'credit_pricing_missing');
+});
