@@ -4,8 +4,8 @@
 
 ## 产品与使用
 - [论文与科研功能介绍](https://paperknow.cn/features/): 查看 PaperKnow AI 写作、AI 研读、降重、材料比对、PPT、格式排版与科研工具的实际使用范围和流程。
-- [AI 论文写作工具｜大纲、章节与草稿管理](https://paperknow.cn/features/ai-writing/): 了解 PaperKnow AI 论文写作工具的当前范围：使用本地结构模板整理论文大纲，人工编辑章节、保存草稿并核对导出条件。在线 AI 生成尚未开放。
-- [文献管理工具｜本地研读笔记与译文整理](https://paperknow.cn/features/ai-reading/): 使用 PaperKnow 文献管理工具归档资料、搜索本地文献、记录研读笔记并整理人工译文。区分正文、摘要与题录；在线学术检索、AI 研读和自动翻译尚未开放。
+- [AI 论文写作工具｜毕业论文五步确认与分章生成](https://paperknow.cn/features/ai-writing/): 了解 PaperKnow 毕业论文五步流程：填写研究信息、补充真实资料、确认参考文献与提纲，再保存到账户，确认报价和资料用途后逐章生成、编辑与导出。可用性以工具当前状态为准。
+- [文献检索与管理工具｜Crossref、Europe PMC 与研读笔记](https://paperknow.cn/features/ai-reading/): 使用 PaperKnow 检索 Crossref、Europe PMC 的真实文献题录，按年份筛选、核对 DOI 与来源，并管理本地文献和研读笔记。结果不是全文；AI 理解和自动翻译尚未开放。
 - [论文降重流程｜人工修改、引用核对与版本保存](https://paperknow.cn/features/reduce-similarity/): 了解 PaperKnow 论文降重入口的人工修改流程：导入正文、核对来源与引用，对照原稿逐段编辑并保存版本。在线自动降重尚未开放，不承诺重复率或检测结果。
 - [降 AI 率功能说明｜论文表达核对与原稿管理](https://paperknow.cn/features/reduce-ai/): 查看 PaperKnow 降 AI 率入口的能力说明：在线 AI 改写和 AI 率检测尚未开放。当前可通过本地流程保留原稿、人工核对术语与引用并保存修改，不承诺检测数值。
 - [论文文本比对工具｜本地材料与相似片段核对](https://paperknow.cn/features/similarity-check/): 使用 PaperKnow 论文文本比对工具，将论文与自行导入的参考正文对照，查看相似片段和来源。当前免费查重入口仅提供本地材料比对，不查询全网数据库，也不替代学校正式检测。
@@ -20,10 +20,10 @@
 - [科研基础图表制作步骤｜CSV 输入与 SVG、PNG 导出](https://paperknow.cn/guides/research-charts/): 按 PaperKnow 当前绘图流程整理表头、类别与数值系列，选择基础图表，核对坐标、单位和图例，再导出 SVG、PNG 与 CSV。区分描述统计和显著性检验。
 - [关于 PaperKnow｜论文写作与科研辅助工作台](https://paperknow.cn/about/): 了解 PaperKnow 的产品定位、八项论文与科研工具、当前服务范围，以及本地体验与在线账户的区别。运营名称：oneshowailab-paperknow。
 - [PaperKnow 使用帮助｜登录、保存、上传与成果导出](https://paperknow.cn/help/): 查看 PaperKnow 邮箱手机号登录、本地体验与账户项目、文件上传、备份恢复及成果导出的常见问题和处理步骤。
-- [PaperKnow 数据与隐私说明｜本地资料、账户文件与处理范围](https://paperknow.cn/privacy/): 了解 PaperKnow 本地体验、账户信息、上传原件、会话 Cookie、验证码服务、模型调用及资料备份和删除请求的实际处理范围。
+- [PaperKnow 数据与隐私说明｜本地资料、账户文件与处理范围](https://paperknow.cn/privacy/): 了解 PaperKnow 本地资料、账户文件、登录信息与在线任务的处理范围，以及主动检索时向 Crossref、Europe PMC 发送的关键词和筛选条件、短期内存缓存及资料备份方式。
 - [PaperKnow 服务规则｜使用范围、成果核对与费用状态](https://paperknow.cn/terms/): 了解 PaperKnow 工具当前开放范围、材料使用要求、研究成果核对、导出条件与账户购买规则。
 - [联系 PaperKnow｜产品支持与资料处理问题](https://paperknow.cn/contact/): 通过 contact@oneshowailab.com 联系 PaperKnow，反馈登录、上传、保存和导出问题，或咨询资料处理范围。运营名称：oneshowailab-paperknow。
-- [PaperKnow 功能开放状态｜账户、AI、检索与导出范围](https://paperknow.cn/status/): 查看 2026 年 10 月 15 日确认的 PaperKnow 账户、本地工具、在线 AI、学术检索、付费购买和客户端下载状态，区分已开放与待接入功能。
+- [PaperKnow 功能开放状态｜账户、AI、检索与导出范围](https://paperknow.cn/status/): 查看 PaperKnow 账户、本地工具、在线模型、付费购买和客户端下载的开放范围。2026 年 10 月 17 日新增确认：Crossref 与 Europe PMC 在线文献题录检索已接入。
 
 ## 数据与范围
 - 本地体验与在线账户分别保存，不会自动迁移浏览器草稿。

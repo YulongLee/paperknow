@@ -9,14 +9,14 @@
     {
       "slug": "/features/ai-writing/",
       "file": "features/ai-writing/index.html",
-      "modifiedAt": "2026-10-15",
-      "title": "AI 论文写作工具｜大纲、章节与草稿管理"
+      "modifiedAt": "2026-10-17",
+      "title": "AI 论文写作工具｜毕业论文五步确认与分章生成"
     },
     {
       "slug": "/features/ai-reading/",
       "file": "features/ai-reading/index.html",
-      "modifiedAt": "2026-10-15",
-      "title": "文献管理工具｜本地研读笔记与译文整理"
+      "modifiedAt": "2026-10-17",
+      "title": "文献检索与管理工具｜Crossref、Europe PMC 与研读笔记"
     },
     {
       "slug": "/features/reduce-similarity/",
@@ -93,7 +93,7 @@
     {
       "slug": "/about/",
       "file": "about/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-17",
       "title": "关于 PaperKnow｜论文写作与科研辅助工作台"
     },
     {
@@ -105,7 +105,7 @@
     {
       "slug": "/privacy/",
       "file": "privacy/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-17",
       "title": "PaperKnow 数据与隐私说明｜本地资料、账户文件与处理范围"
     },
     {
@@ -123,7 +123,7 @@
     {
       "slug": "/status/",
       "file": "status/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-17",
       "title": "PaperKnow 功能开放状态｜账户、AI、检索与导出范围"
     }
   ]

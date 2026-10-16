@@ -10,6 +10,7 @@ import {createModelBudget} from './model-budget.mjs';
 import {createThesisService} from './thesis-service.mjs';
 import {aiReady,publicModelSettings} from './config.mjs';
 import {createFileService} from './file-service.mjs';
+import {createLiteratureSearch} from './literature-search.mjs';
 import {now} from './database.mjs';
 import {clientAddress} from './client-address.mjs';
 class APIError extends Error{constructor(status,message){super(message);this.status=status;}}
@@ -25,6 +26,7 @@ const theses=createThesisService(db,{...config,billing,modelBudget,worker,cancel
 const payments=createPaymentService(db,{...config,billing});
 const workspace=createWorkspaceService(db,{billing});
 const files=createFileService(db,config);
+const literatureSearch=createLiteratureSearch({fetchImpl:config.literatureFetch});
 const admin=createAdminAPI(db,worker,{...config,payments,billing},auth);
 const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}};
 const archiveAttempts=new Map();
@@ -50,7 +52,12 @@ if(notification&&method==='POST'){
  return;
 }
 if(method==='POST'){const origin=req.headers.origin;if(!origin||origin!==`${config.secure?'https':'http'}://${req.headers.host}`)fail(403,'请求来源不匹配');}
-if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),aiProvider:publicModelSettings(config.getAI()).provider,agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),agentEngine:config.agentEnabled?'codex_sdk':null,billing:billing.rules(),payment:payments.options().enabled,academicSearch:false,thesis:await theses.capabilities(),maxFileBytes:2*1024*1024});return;}
+if(path==='/api/literature/search'&&method==='GET'){
+ try{send(200,await literatureSearch.search(requestURL.searchParams,{clientKey:clientAddress(req,config)}));}
+ catch(error){send(error.status||503,{error:error.message,...error.response},error.retryAfter?{'Retry-After':String(error.retryAfter)}:{});}
+ return;
+}
+if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),aiProvider:publicModelSettings(config.getAI()).provider,agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),agentEngine:config.agentEnabled?'codex_sdk':null,billing:billing.rules(),payment:payments.options().enabled,academicSearch:true,academicSearchSources:['crossref','europepmc'],thesis:await theses.capabilities(),maxFileBytes:2*1024*1024});return;}
 if(path==='/api/payments/options'&&method==='GET'){send(200,payments.options());return;}
 if(path==='/api/auth/options'&&method==='GET'){send(200,auth.options());return;}
 const authRoutes={

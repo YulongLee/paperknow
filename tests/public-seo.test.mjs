@@ -8,6 +8,8 @@ import {buildPublicSite} from '../scripts/build-public-site.mjs';
 import {createServer} from '../server.mjs';
 
 const origin='https://paperknow.cn';
+const changedLiteraturePages=new Set(['/features/ai-writing/','/features/ai-reading/','/about/','/privacy/','/status/']);
+const expectedModifiedAt=slug=>changedLiteraturePages.has(slug)?'2026-10-17':'2026-10-15';
 const features={
   'ai-writing':'writing','ai-reading':'literature','reduce-similarity':'reduce',
   'reduce-ai':'aigc','similarity-check':'detection','ppt':'ppt',
@@ -54,7 +56,7 @@ test('public build publishes the complete finite route manifest with real output
   assert.deepEqual(manifest.pages.map(page=>page.slug).sort(),expectedSlugs.toSorted());
   assert.equal(new Set(manifest.pages.map(page=>page.file)).size,manifest.pages.length);
   for(const page of manifest.pages){
-    assert.equal(page.modifiedAt,'2026-10-15',page.slug);
+    assert.equal(page.modifiedAt,expectedModifiedAt(page.slug),page.slug);
     const file=resolve(output,page.file);
     assert.ok(file.startsWith(resolve(output)+sep),`manifest file must stay in output: ${page.file}`);
     assert.equal((await stat(file)).isFile(),true,page.file);
@@ -139,7 +141,7 @@ test('sitemap lists only real canonical public pages and records actual publicat
     const url=new URL(entry.querySelector('loc').textContent);
     assert.equal(url.search,'');assert.equal(url.hash,'');
     assert.doesNotMatch(url.pathname,/workspace|auth|admin|service\.html|precheck|private|preview/);
-    assert.equal(entry.querySelector('lastmod')?.textContent,'2026-10-15');
+    assert.equal(entry.querySelector('lastmod')?.textContent,expectedModifiedAt(url.pathname));
   }
 });
 

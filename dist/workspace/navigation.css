@@ -21,3 +21,10 @@
 .navigation-resizing,.navigation-resizing *{cursor:col-resize!important;user-select:none!important}
 @media(min-width:761px){#app.navigation-hidden .hub-sidebar{transform:translateX(-100%);visibility:hidden}#app.navigation-hidden .hub-workspace{margin-left:0}}
 @media(max-width:760px){#app .hub-sidebar{width:min(290px,calc(100vw - 48px));padding-top:18px}#app .hub-workspace{margin-left:0}#app .navigation-resize{display:none}#app .hub-sidebar .nav-link{min-height:44px;font-size:16px}}
+
+/* One menu control: in the toolbar normally, inside the drawer while open. */
+#app .hub-workspace .breadcrumb>strong[hidden]{display:none!important}
+#app .hub-sidebar-brand>.sidebar-toggle{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:0 0 36px;border-radius:9px;background:var(--pk-surface-soft,#f5f7fb);color:var(--pk-muted,#5d7392)}
+#app .hub-sidebar-brand>.sidebar-toggle[aria-expanded=true] svg{display:none}
+#app .hub-sidebar-brand>.sidebar-toggle[aria-expanded=true]::before{content:'×';font-size:25px;line-height:1;font-weight:400}
+#app .hub-workspace .breadcrumb{min-width:36px;flex:0 0 auto}

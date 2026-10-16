@@ -1,25 +1,28 @@
 // Shared interaction primitives for workspace and report pages.
-export function mountNavigation({sidebar,toggle,backdrop,main,media=window.matchMedia('(max-width:760px)'),desktop}){
+export function mountNavigation({sidebar,toggle,backdrop,main,media=window.matchMedia('(max-width:760px)'),desktop,mobileToggleHost}){
  let open=false,collapsed=false,width=256,drag=null;
  const root=desktop?.root,handle=desktop?.handle,collapse=desktop?.collapse,keyName='paperknow.navigation';
  const limit=value=>Math.max(240,Math.min(360,Number.isFinite(value)?value:256));
  if(desktop)try{const saved=JSON.parse(window.localStorage.getItem(keyName)||'{}');width=limit(saved.width);collapsed=saved.collapsed===true;}catch{}
+ const toggleHome=toggle.parentElement,toggleNext=toggle.nextSibling;
+ const returnToggle=()=>{if(toggleHome&&toggle.parentElement!==toggleHome)toggleHome.insertBefore(toggle,toggleNext?.parentElement===toggleHome?toggleNext:null);};
  const save=()=>{if(desktop)try{window.localStorage.setItem(keyName,JSON.stringify({width,collapsed}));}catch{}};
  sidebar.id ||= 'workspace-navigation';toggle.setAttribute('aria-controls',sidebar.id);
  const apply=()=>{
   const hidden=media.matches?!open:!!desktop&&collapsed;
+  if(media.matches&&open&&mobileToggleHost)mobileToggleHost.append(toggle);else returnToggle();
   sidebar.classList.toggle('mobile-open',open&&media.matches);sidebar.inert=hidden;main.inert=media.matches&&open;
   toggle.setAttribute('aria-expanded',String(desktop?!hidden:media.matches&&open));
   if(backdrop)backdrop.hidden=!(media.matches&&open);
   if(desktop){
    root.classList.toggle('navigation-hidden',collapsed);root.style.setProperty('--navigation-width',Math.min(width,Math.max(240,window.innerWidth-480))+'px');
-   toggle.setAttribute('aria-label',hidden?'展开菜单':'收起菜单');toggle.title=hidden?'展开菜单':'收起菜单';
+   const label=media.matches&&open?'关闭菜单':hidden?'展开菜单':'收起菜单';toggle.setAttribute('aria-label',label);toggle.title=label;
    if(collapse){collapse.setAttribute('aria-label',media.matches?'关闭菜单':'收起菜单');collapse.title=media.matches?'关闭菜单':'收起菜单';}
    if(handle){handle.setAttribute('aria-valuenow',String(width));handle.setAttribute('aria-valuetext',width+' 像素');handle.tabIndex=media.matches||collapsed?-1:0;}
   }
  };
  const close=()=>{const inside=sidebar.contains(document.activeElement);open=false;apply();if(inside&&media.matches)toggle.focus();};
- const toggleOpen=()=>{if(!media.matches&&desktop){collapsed=!collapsed;save();apply();if(collapsed)toggle.focus();return;}open=!open;apply();if(open&&media.matches)sidebar.querySelector('a,button')?.focus();};
+ const toggleOpen=()=>{if(!media.matches&&desktop){collapsed=!collapsed;save();apply();if(collapsed)toggle.focus();return;}if(media.matches&&open){close();return;}open=!open;apply();if(open&&media.matches)sidebar.querySelector('a,button')?.focus();};
  const collapseMenu=()=>{if(media.matches){close();return;}collapsed=true;save();apply();toggle.focus();};
  const key=e=>{if(!media.matches)return;if(e.key==='Escape'&&open){e.preventDefault();close();}if(e.key==='Tab'&&open){const items=[...sidebar.querySelectorAll('a[href],button:not(:disabled)')].filter(el=>!el.hidden);if(!items.length)return;const first=items[0],last=items.at(-1);if(e.shiftKey&&(document.activeElement===first||!sidebar.contains(document.activeElement))){e.preventDefault();last.focus();}else if(!e.shiftKey&&(document.activeElement===last||!sidebar.contains(document.activeElement))){e.preventDefault();first.focus();}}};
  const finish=e=>{if(!drag||e&&e.pointerId!==drag.id)return;const id=drag.id;drag=null;root?.classList.remove('navigation-resizing');if(handle?.hasPointerCapture?.(id))handle.releasePointerCapture(id);save();};
@@ -31,7 +34,7 @@ export function mountNavigation({sidebar,toggle,backdrop,main,media=window.match
  const windowResize=()=>{if(desktop)apply();};
  toggle.addEventListener('click',toggleOpen);collapse?.addEventListener('click',collapseMenu);backdrop?.addEventListener('click',close);document.addEventListener('keydown',key);media.addEventListener('change',resize);window.addEventListener('resize',windowResize);
  handle?.addEventListener('pointerdown',start);handle?.addEventListener('pointermove',move);handle?.addEventListener('pointerup',finish);handle?.addEventListener('pointercancel',finish);handle?.addEventListener('lostpointercapture',finish);handle?.addEventListener('keydown',resizeKey);handle?.addEventListener('dblclick',resetWidth);apply();
- return {close,dispose(){finish();toggle.removeEventListener('click',toggleOpen);collapse?.removeEventListener('click',collapseMenu);backdrop?.removeEventListener('click',close);document.removeEventListener('keydown',key);media.removeEventListener('change',resize);window.removeEventListener('resize',windowResize);for(const [event,fn] of [['pointerdown',start],['pointermove',move],['pointerup',finish],['pointercancel',finish],['lostpointercapture',finish],['keydown',resizeKey],['dblclick',resetWidth]])handle?.removeEventListener(event,fn);main.inert=false;}};
+ return {close,dispose(){finish();returnToggle();toggle.removeEventListener('click',toggleOpen);collapse?.removeEventListener('click',collapseMenu);backdrop?.removeEventListener('click',close);document.removeEventListener('keydown',key);media.removeEventListener('change',resize);window.removeEventListener('resize',windowResize);for(const [event,fn] of [['pointerdown',start],['pointermove',move],['pointerup',finish],['pointercancel',finish],['lostpointercapture',finish],['keydown',resizeKey],['dblclick',resetWidth]])handle?.removeEventListener(event,fn);main.inert=false;}};
 }
 function formValue(form){return JSON.stringify([...form.elements].filter(e=>e.name||e.id).map(e=>[e.name||e.id,e.type==='checkbox'||e.type==='radio'?e.checked:e.type==='file'?[...e.files].map(f=>[f.name,f.size,f.lastModified]):e.value]));}
 export function trackDialogForm(dialog){

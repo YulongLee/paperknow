@@ -45,6 +45,7 @@ test('main workspace thesis routes open real account records and prevent navigat
  const f=await fixture(async path=>{seen.push(path);if(path==='/api/auth/me')return response(200,signedIn);if(path==='/api/theses')return json({items:[item]});if(path==='/api/theses/cloud-thesis')return json({item});if(path==='/api/capabilities')return json({thesis:{ready:false,reason:'未配置模型'}});return json({items:[]});});
  const settle=async()=>{for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));};
  try{
+  assert.equal(f.document.querySelectorAll('#menu-toggle').length,1);assert.equal(f.document.querySelector('#navigation-collapse'),null);assert.equal(f.document.querySelector('.breadcrumb strong').hidden,true);
   await f.api.loadWorkspaceSession();f.dom.window.history.replaceState(null,'','/workspace.html#theses');f.api.render();await settle();
   assert.equal(f.document.querySelector('.thesis-library a').getAttribute('href'),'#thesis/cloud-thesis');assert.equal(f.document.querySelector('.breadcrumb strong').textContent,'账户论文');
   f.dom.window.history.replaceState(null,'','/workspace.html#thesis/cloud-thesis');f.api.render();await settle();

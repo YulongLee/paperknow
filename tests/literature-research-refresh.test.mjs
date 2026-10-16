@@ -22,7 +22,7 @@ test('AI reading keeps exactly four task entries, local search, reader notes and
  try{
   localStorage.setItem(literatureKey,JSON.stringify([paper]));mountLiterature(ctx);
   assert.deepEqual([...document.querySelectorAll('.lit-feature-copy b')].map(node=>node.textContent),['我的文献','文献检索','文献研读','文献翻译']);assert.equal(document.querySelectorAll('.lit-feature-card').length,4);assert.ok($('.lit-table-scroll'));assert.equal(document.querySelector('script'),null);
-  $('[data-lit-entry="search"]').click();input('#lit-search-query','用户作者');$('#lit-search-form').dispatchEvent(new window.Event('submit',{cancelable:true}));assert.match($('#lit-search-results').textContent,/真实文献/);
+  $('[data-lit-entry="search"]').click();assert.ok($('.writing-reference-search'));$('[data-ref-local]').click();input('#lit-search-query','用户作者');$('#lit-search-form').dispatchEvent(new window.Event('submit',{cancelable:true}));assert.match($('#lit-search-results').textContent,/真实文献/);
   $('[data-lit-import]').click();assert.ok($('#lit-upload'));assert.ok($('#lit-form'));
   mountLiteratureReader(paper.id,ctx);input('#note-text','根据原文记录自己的研究问题');$('#lit-note-form').dispatchEvent(new window.Event('submit',{cancelable:true}));const saved=JSON.parse(localStorage.getItem(literatureKey))[0];assert.equal(saved.notes[0].text,'根据原文记录自己的研究问题');assert.equal(saved.text,paper.text);assert.equal(document.querySelector('script'),null);assert.match($('#note-status').textContent,/已保存/);
  }finally{clearEditor();dom.window.close();}
