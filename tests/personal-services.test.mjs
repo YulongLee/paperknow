@@ -59,6 +59,35 @@ test('feedback shows only public status, escapes research text and refresh prese
  let reads=0;const env=setup(async()=>({items:[{id:'f-1',category:'功能问题',body:'<script>研究问题</script>',status:++reads===1?'processing':'resolved',created_at:'2026-10-15',updated_at:'2026-10-16',note:'不应公开的后台备注'}]}));
  try{await renderOnlinePersonal('help',env.ctx);assert.match(env.ctx.target.textContent,/处理中/);assert.doesNotMatch(env.ctx.target.textContent,/不应公开/);assert.equal(env.ctx.target.querySelector('script'),null);document.querySelector('#feedback').value='尚未提交的输入';await env.click('#feedback-refresh');assert.equal(document.querySelector('#feedback').value,'尚未提交的输入');assert.match(document.querySelector('#feedback-records').textContent,/已处理/);assert.equal(publicFeedbackStatus('invalid'),'待处理');}finally{env.dom.window.close();}
 });
+test('account support copies the configured WeChat without sending feedback or changing unsent input',async()=>{
+ const calls=[],copied=[],env=setup(async(path,data)=>{calls.push([path,data]);return {items:[]};});
+ try{
+  Object.defineProperty(env.dom.window.navigator,'clipboard',{configurable:true,value:{writeText:async text=>{copied.push(text);}}});
+  await renderOnlinePersonal('help',env.ctx);
+  document.querySelector('#feedback').value='这段问题仍未提交';
+  document.querySelector('#feedback-category').value='体验建议';
+  const support=document.querySelector('.personal-feedback-support'),button=support.querySelector('[data-copy-support-wechat]');
+  assert.equal(support.querySelector('a').getAttribute('href'),'mailto:contact@oneshowailab.com');
+  assert.equal(button.type,'button');assert.equal(button.closest('form'),null);
+  assert.match(support.textContent,/OneShowAILab/);assert.match(support.textContent,/在微信中搜索并添加/);
+  assert.equal(support.querySelector('a[href^="weixin:"]'),null);
+  await button.onclick();
+  assert.deepEqual(copied,['OneShowAILab']);assert.match(support.querySelector('[role="status"]').textContent,/微信号已复制/);
+  assert.equal(document.querySelector('#feedback').value,'这段问题仍未提交');assert.equal(document.querySelector('#feedback-category').value,'体验建议');
+  assert.equal(calls.length,1);assert.equal(calls[0][1],undefined);assert.equal(env.remembered(),0);assert.equal(localStorage.length,0);
+ }finally{env.dom.window.close();}
+});
+test('account support reports clipboard denial and absence accurately with a manual WeChat fallback',async()=>{
+ const env=setup(async()=>({items:[]}));
+ try{
+  await renderOnlinePersonal('help',env.ctx);document.querySelector('#feedback').value='复制失败也保留输入';
+  const button=document.querySelector('[data-copy-support-wechat]'),status=document.querySelector('[data-support-copy-status]');
+  Object.defineProperty(env.dom.window.navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw Error('denied');}}});
+  await button.onclick();assert.match(status.textContent,/复制未成功，请手动复制微信号：OneShowAILab/);assert.doesNotMatch(status.textContent,/已复制/);assert.equal(button.disabled,false);
+  Object.defineProperty(env.dom.window.navigator,'clipboard',{configurable:true,value:undefined});
+  await button.onclick();assert.match(status.textContent,/手动复制微信号：OneShowAILab/);assert.equal(document.querySelector('#feedback').value,'复制失败也保留输入');assert.equal(env.remembered(),0);
+ }finally{env.dom.window.close();}
+});
 test('successful feedback remains confirmed when status refresh fails and never resubmits automatically',async()=>{
  const calls=[],item={id:'f-real',category:'功能问题',body:'保存不成功，需要检查',status:'open',created_at:'2026-10-15'};
  const env=setup(async(path,data)=>{calls.push([path,data]);if(data)return {id:item.id,item};if(calls.length>1)throw Error('offline');return {items:[]};});
