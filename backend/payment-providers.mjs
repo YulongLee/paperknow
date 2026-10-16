@@ -8,6 +8,7 @@ import { createPrivateKey, createPublicKey, createDecipheriv, randomBytes, sign,
 // https://github.com/alipay/alipay-sdk-nodejs-all
 const WECHAT_HOST = 'https://api.mch.weixin.qq.com';
 const ALIPAY_GATEWAY = 'https://openapi.alipay.com/gateway.do';
+const ALIPAY_NOTIFY_URL = 'https://paperknow.cn/api/payments/notify/alipay';
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_TIMEOUT_MS = 20_000;
 const messages = {
@@ -17,6 +18,7 @@ const messages = {
   payment_signature_invalid: '支付渠道签名验证失败，请稍后重试',
   payment_response_invalid: '支付渠道返回的数据不完整，请稍后重试',
   payment_provider_unavailable: '支付渠道暂时不可用，请稍后重试',
+  payment_trade_not_exist: '支付渠道尚未查询到这笔交易，请稍后查询',
   payment_timeout: '支付渠道响应超时，请查询订单后重试',
 };
 
@@ -142,6 +144,66 @@ async function wechatRequest(settings, method, path, payload, options) {
 
 function sortedParams(parameters, excluded = ['sign']) { return Object.keys(parameters).filter(key => !excluded.includes(key) && parameters[key] !== '').sort().map(key => `${key}=${parameters[key]}`).join('&'); }
 function chinaTime(ms) { return new Date(ms + 8 * 3_600_000).toISOString().slice(0, 19).replace('T', ' '); }
+function validChinaTime(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) return false;
+  const parsed = Date.parse(value.replace(' ', 'T') + '+08:00');
+  return Number.isFinite(parsed) && chinaTime(parsed) === value;
+}
+function validAlipayReturnURL(value) {
+  return typeof value === 'string' && /^https:\/\/paperknow\.cn\/api\/payments\/return\/alipay\?order=[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/.test(value);
+}
+function flatStringObject(source) {
+  if (typeof source !== 'string') return null;
+  let offset = 0;
+  const skip = () => { while (/\s/.test(source[offset] || '') && offset < source.length) offset++; };
+  const string = () => { const match = /^"(?:[^"\\]|\\.)*"/.exec(source.slice(offset)); if (!match) throw new Error('invalid field'); offset += match[0].length; return JSON.parse(match[0]); };
+  skip(); if (source[offset++] !== '{') return null;
+  const result = Object.create(null);
+  skip(); if (source[offset] === '}') { offset++; skip(); return offset === source.length ? result : null; }
+  while (offset < source.length) {
+    skip(); const key = string(); skip(); if (source[offset++] !== ':' || Object.hasOwn(result, key)) return null;
+    skip(); result[key] = string(); skip();
+    if (source[offset] === '}') { offset++; skip(); return offset === source.length ? result : null; }
+    if (source[offset++] !== ',') return null;
+  }
+  return null;
+}
+
+// This checks the local handoff contract, not whether the merchant has an active
+// payment product. Only a verified query/notification can confirm payment.
+export function validateAlipayPaymentURL(value, order = {}) {
+  try {
+    if (typeof value !== 'string' || value.length > 8192 || !order || typeof order !== 'object' || Array.isArray(order)) return false;
+    const url = new URL(value);
+    if (url.origin !== 'https://openapi.alipay.com' || url.pathname !== '/gateway.do' || url.username || url.password || url.hash) return false;
+    const required = ['app_id', 'method', 'format', 'charset', 'sign_type', 'timestamp', 'version', 'biz_content', 'notify_url', 'return_url', 'sign'];
+    const fields = Object.create(null);
+    for (const [key, entry] of url.searchParams) {
+      if (!required.includes(key) || Object.hasOwn(fields, key)) return false;
+      fields[key] = entry;
+    }
+    if (required.some(key => !fields[key]) || !/^\d{12,32}$/.test(fields.app_id) || fields.method !== 'alipay.trade.page.pay' || fields.format !== 'JSON'
+      || fields.charset !== 'utf-8' || fields.sign_type !== 'RSA2' || fields.version !== '1.0' || !validChinaTime(fields.timestamp)
+      || fields.notify_url !== ALIPAY_NOTIFY_URL || !validAlipayReturnURL(fields.return_url)
+      || !/^[A-Za-z0-9+/]+={0,2}$/.test(fields.sign) || fields.sign.length > 2048 || Buffer.from(fields.sign, 'base64').length < 256 || Buffer.from(fields.sign, 'base64').toString('base64') !== fields.sign) return false;
+    const biz = flatStringObject(fields.biz_content);
+    const bizKeys = ['out_trade_no', 'product_code', 'total_amount', 'subject', 'seller_id', 'time_expire'];
+    if (!biz || typeof biz !== 'object' || Array.isArray(biz) || Object.keys(biz).length !== bizKeys.length || Object.keys(biz).some(key => !bizKeys.includes(key))
+      || typeof biz.out_trade_no !== 'string' || !/^[A-Za-z0-9_]{1,64}$/.test(biz.out_trade_no) || biz.product_code !== 'FAST_INSTANT_TRADE_PAY'
+      || typeof biz.subject !== 'string' || !biz.subject.trim() || Buffer.byteLength(biz.subject) > 127 || /[\u0000-\u001f]/.test(biz.subject)
+      || typeof biz.seller_id !== 'string' || !/^\d{10,32}$/.test(biz.seller_id) || !validChinaTime(biz.time_expire)
+      || biz.time_expire <= fields.timestamp || typeof biz.total_amount !== 'string' || !/^(0|[1-9]\d*)\.\d{2}$/.test(biz.total_amount)) return false;
+    const amount = cents(biz.total_amount);
+    if (amount <= 0 || amount > 100_000_000) return false;
+    const expected = { appId: fields.app_id, sellerId: biz.seller_id, outTradeNo: biz.out_trade_no, amountCents: amount, title: biz.subject, notifyUrl: fields.notify_url, returnUrl: fields.return_url };
+    for (const [key, actual] of Object.entries(expected)) if (Object.hasOwn(order, key) && order[key] !== actual) return false;
+    if (Object.hasOwn(order, 'expiresAt')) {
+      const expiry = Date.parse(order.expiresAt);
+      if (!Number.isFinite(expiry) || chinaTime(expiry) !== biz.time_expire) return false;
+    }
+    return true;
+  } catch { return false; }
+}
 function valueEnd(source, start) {
   let depth = 0; let quoted = false; let escaped = false;
   for (let i = start; i < source.length; i++) {
@@ -180,6 +242,7 @@ async function alipayRequest(settings, method, bizContent, notifyUrl, options) {
   if (!response.ok) fail('payment_provider_unavailable');
   const parsed = responseSlice(body, `${method.replaceAll('.', '_')}_response`);
   verifyRSA(parsed.signed, parsed.signature, settings.alipayPublicKey);
+  if (parsed.data.code === '40004' && parsed.data.sub_code === 'ACQ.TRADE_NOT_EXIST') fail('payment_trade_not_exist');
   if (parsed.data.code !== '10000') fail('payment_provider_unavailable');
   return parsed.data;
 }
@@ -227,9 +290,15 @@ export async function createProviderPayment(provider, settings, order, options =
       if (typeof data.code_url !== 'string' || !/^weixin:\/\/wxpay\/bizpayurl\?[^\s]{1,1900}$/.test(data.code_url)) fail('payment_response_invalid');
       return { qrContent: data.code_url, expiresAt };
     }
-    const data = await alipayRequest(settings, 'alipay.trade.precreate', { out_trade_no: order.outTradeNo, total_amount: yuan(order.amountCents), subject: order.title, seller_id: text(settings.sellerId), timeout_express: `${Math.ceil((expires - current) / 60_000)}m` }, order.notifyUrl, options);
-    if (data.out_trade_no !== order.outTradeNo || typeof data.qr_code !== 'string' || !/^https:\/\/qr\.alipay\.com\/[^\s]{1,1900}$/.test(data.qr_code)) fail('payment_response_invalid');
-    return { qrContent: data.qr_code, expiresAt };
+    if (!validAlipayReturnURL(order.returnUrl) || order.notifyUrl !== ALIPAY_NOTIFY_URL || !/^[A-Za-z0-9_]{1,64}$/.test(order.outTradeNo) || /[\u0000-\u001f]/.test(order.title)) fail('payment_order_invalid');
+    // Page payment is a signed browser handoff. Do not fetch or proxy gateway
+    // HTML into the PaperKnow origin, and never mistake generation for payment.
+    const parameters = { app_id: text(settings.appId), method: 'alipay.trade.page.pay', format: 'JSON', charset: 'utf-8', sign_type: 'RSA2', timestamp: chinaTime(current), version: '1.0', notify_url: order.notifyUrl, return_url: order.returnUrl,
+      biz_content: JSON.stringify({ out_trade_no: order.outTradeNo, product_code: 'FAST_INSTANT_TRADE_PAY', total_amount: yuan(order.amountCents), subject: order.title, seller_id: text(settings.sellerId), time_expire: chinaTime(expires) }) };
+    parameters.sign = signRSA(sortedParams(parameters), settings.privateKey);
+    const paymentUrl = ALIPAY_GATEWAY + '?' + new URLSearchParams(parameters).toString();
+    if (!validateAlipayPaymentURL(paymentUrl, { ...order, appId: text(settings.appId), sellerId: text(settings.sellerId) })) fail('payment_order_invalid');
+    return { paymentUrl, expiresAt };
   } catch (error) { safeError(error); }
 }
 

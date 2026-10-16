@@ -45,7 +45,7 @@ const billableServices = [{ key: 'polish', title: '学术润色' }, { key: 'revi
 const billingModes = { free: '免费', paid: '按权益计费', disabled: '暂停' };
 const paymentProviders = {
   wechat: { title: '微信支付', short: '微', note: '微信 API v3 Native 扫码支付；需商户开通对应产品。', fields: [['appId', '应用 AppID', '微信商户绑定的应用 ID'], ['merchantId', '商户号', '微信支付商户号'], ['merchantSerial', '商户 API 证书序列号', '用于签名请求的证书序列号'], ['platformPublicKeyId', '微信支付公钥 ID', 'PUB_KEY_ID_…']], secrets: [['privateKey', '商户 API 私钥', 'PEM 格式私钥'], ['apiV3Key', 'API v3 密钥', '32 位 API v3 密钥'], ['platformPublicKey', '微信支付公钥', 'PEM 格式公钥']] },
-  alipay: { title: '支付宝', short: '支', note: '支付宝当面付扫码支付，使用应用对应的 RSA2 签名配置。', fields: [['appId', '应用 AppID', '支付宝开放平台应用 ID'], ['sellerId', '收款卖家 PID', '支付宝商家收款账户 PID']], secrets: [['privateKey', '应用私钥', 'PEM 格式 RSA 私钥'], ['alipayPublicKey', '支付宝公钥', '支付宝提供的验签公钥']] }
+  alipay: { title: '支付宝', short: '支', note: '支付宝电脑网站支付，跳转官方收银台；需当前应用开通对应产品，使用 RSA2 签名配置。', fields: [['appId', '应用 AppID', '支付宝开放平台应用 ID'], ['sellerId', '收款卖家 PID', '支付宝商家收款账户 PID']], secrets: [['privateKey', '应用私钥', 'PEM 格式 RSA 私钥'], ['alipayPublicKey', '支付宝公钥', '支付宝提供的验签公钥']] }
 };
 const priceText = cents => Number.isSafeInteger(cents) && cents > 0 ? `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}` : '';
 const priceCents = value => { const match = /^(0|[1-9]\d{0,6})(?:\.(\d{1,2}))?$/.exec(value); if (!match) return null; const amount = Number(match[1]) * 100 + Number((match[2] || '').padEnd(2, '0')); return Number.isSafeInteger(amount) && amount > 0 ? amount : null; };

@@ -19,6 +19,15 @@ const publicPages=new Map();
 try{for(const page of JSON.parse(readFileSync(resolve(root,'public-pages.json'),'utf8')).pages||[]){if(/^\/(?:[a-z0-9-]+\/)+$/.test(page.slug)&&page.file===page.slug.slice(1)+'index.html')publicPages.set(page.slug,page.file);}}catch{/* A fresh checkout can still serve the workspace before the first build. */}
 const privateHTML=new Set(['/workspace.html','/auth.html','/admin.html','/service.html','/brand-preview.html','/precheck','/precheck/','/precheck/index.html']);
 const server=http.createServer(async(req,res)=>{
+  if(req.url?.split('?')[0]==='/api/payments/return/alipay'){
+    const headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','X-Robots-Tag':'noindex','Content-Type':'text/plain; charset=utf-8'};
+    if(req.method!=='GET'){res.writeHead(405,{...headers,Allow:'GET'}).end('不支持的请求方式');return;}
+    const values=new URL(req.url,'http://localhost').searchParams.getAll('order'),order=values[0];
+    if(values.length!==1||typeof order!=='string'||!(/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/).test(order)){res.writeHead(400,headers).end('订单标识无效，请返回工作台查看订单');return;}
+    // Browser return parameters are untrusted navigation hints. The account-owned
+    // order endpoint and verified provider query/notification determine payment.
+    res.writeHead(303,{...headers,Location:'/workspace.html#membership/pay?order='+encodeURIComponent(order)}).end();return;
+  }
   if(req.url?.startsWith('/api/')){res.setHeader('X-Robots-Tag','noindex');await api(req,res);return;}
   try{
     if(req.method!=='GET'&&req.method!=='HEAD'){res.writeHead(405).end();return;}

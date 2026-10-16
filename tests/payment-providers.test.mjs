@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign, verify, createCipheriv } from 'node:crypto';
-import { validateProvider, createProviderPayment, queryProviderPayment, parseProviderNotification } from '../backend/payment-providers.mjs';
+import { validateProvider, validateAlipayPaymentURL, createProviderPayment, queryProviderPayment, parseProviderNotification } from '../backend/payment-providers.mjs';
 
 const merchant = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
 const platform = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
@@ -12,6 +12,7 @@ const settings = {
   alipay: { appId: '2021001234567890', privateKey: merchant.privateKey, alipayPublicKey: platform.publicKey, sellerId: '2088123456789012' },
 };
 const order = { outTradeNo: 'PK20261015_test01', amountCents: 970, title: 'PaperKnow 月度会员', notifyUrl: 'https://paperknow.cn/api/payments/notify/wechat', expiresAt: '2026-10-15T04:30:00.000Z' };
+const alipayOrder = { ...order, notifyUrl: 'https://paperknow.cn/api/payments/notify/alipay', returnUrl: 'https://paperknow.cn/api/payments/return/alipay?order=10d38a6d-174b-4eaa-898c-24db817c7f76' };
 const signature = (data, key = platform.privateKey) => sign('RSA-SHA256', Buffer.from(data), key).toString('base64');
 const options = fetchImpl => ({ now, fetchImpl });
 const safeError = code => error => { assert.equal(error.code, code); assert.ok(!error.message.includes('PRIVATE KEY')); assert.ok(!error.message.includes('secret-vendor-data')); return true; };
@@ -110,18 +111,50 @@ test('WeChat callback rejects other events, algorithms and non-CNY amounts even 
   await assert.rejects(parseProviderNotification('wechat', settings.wechat, encryptedNotification(wechatPaid({ amount: { total: 970, currency: 'USD' } })), { now }), safeError('payment_response_invalid'));
 });
 
-test('Alipay precreate uses fixed production gateway, exact cents and RSA2 sorted request fields', async () => {
-  const result = await createProviderPayment('alipay', { ...settings.alipay, gateway: 'https://evil.example' }, order, options(async (url, init) => {
-    assert.equal(url, 'https://openapi.alipay.com/gateway.do');
-    const form = Object.fromEntries(new URLSearchParams(init.body)); const sig = form.sign; delete form.sign;
-    assert.equal(form.sign_type, 'RSA2'); assert.equal(form.method, 'alipay.trade.precreate');
-    assert.equal(form.timestamp, '2026-10-15 12:00:00');
-    const content = Object.keys(form).sort().map(k => `${k}=${form[k]}`).join('&');
-    assert.ok(verify('RSA-SHA256', Buffer.from(content), merchant.publicKey, Buffer.from(sig, 'base64')));
-    const biz = JSON.parse(form.biz_content); assert.equal(biz.total_amount, '9.70'); assert.equal(biz.seller_id, settings.alipay.sellerId); assert.equal(biz.timeout_express, '30m');
-    return alipayResponse(form.method, JSON.stringify({ code: '10000', out_trade_no: order.outTradeNo, qr_code: 'https://qr.alipay.com/bax12345' }));
-  }));
-  assert.equal(result.qrContent, 'https://qr.alipay.com/bax12345');
+test('Alipay page payment locally signs the exact amount, identities, expiry and return URL without a network request', async () => {
+  let calls = 0;
+  const result = await createProviderPayment('alipay', { ...settings.alipay, gateway: 'https://evil.example' }, alipayOrder, options(async () => { calls++; throw new Error('unexpected network request'); }));
+  assert.equal(calls, 0); assert.equal(result.expiresAt, alipayOrder.expiresAt); assert.equal(result.qrContent, undefined);
+  const url = new URL(result.paymentUrl); assert.equal(url.origin + url.pathname, 'https://openapi.alipay.com/gateway.do');
+  const form = Object.fromEntries(url.searchParams); const sig = form.sign; delete form.sign;
+  assert.equal(form.sign_type, 'RSA2'); assert.equal(form.method, 'alipay.trade.page.pay'); assert.equal(form.timestamp, '2026-10-15 12:00:00');
+  assert.equal(form.return_url, alipayOrder.returnUrl); assert.equal(form.notify_url, alipayOrder.notifyUrl); assert.equal(form.app_id, settings.alipay.appId);
+  const content = Object.keys(form).sort().map(k => `${k}=${form[k]}`).join('&');
+  assert.ok(verify('RSA-SHA256', Buffer.from(content), merchant.publicKey, Buffer.from(sig, 'base64')));
+  assert.deepEqual(JSON.parse(form.biz_content), { out_trade_no: alipayOrder.outTradeNo, product_code: 'FAST_INSTANT_TRADE_PAY', total_amount: '9.70', subject: alipayOrder.title, seller_id: settings.alipay.sellerId, time_expire: '2026-10-15 12:30:00' });
+  assert.equal(validateAlipayPaymentURL(result.paymentUrl, { ...alipayOrder, appId: settings.alipay.appId, sellerId: settings.alipay.sellerId }), true);
+  assert.ok(!result.paymentUrl.includes('PRIVATE KEY')); assert.ok(!result.paymentUrl.includes(settings.alipay.privateKey));
+});
+
+test('Alipay page generation rejects foreign, duplicate, malformed or injected return and notification locations', async () => {
+  let calls = 0; const opts = options(async () => { calls++; throw new Error('unexpected network request'); });
+  for (const returnUrl of [undefined, '', 'javascript:alert(1)', 'http://paperknow.cn/api/payments/return/alipay?order=10d38a6d-174b-4eaa-898c-24db817c7f76', alipayOrder.returnUrl.replace('paperknow.cn', 'paperknow.cn.evil.example'), alipayOrder.returnUrl.replace('paperknow.cn', 'user@paperknow.cn'), alipayOrder.returnUrl + '&next=https://evil.example', alipayOrder.returnUrl + '&order=another-order', alipayOrder.returnUrl + '#fragment', alipayOrder.returnUrl.replace('10d38a6d-174b-4eaa-898c-24db817c7f76', 'not-a-uuid')]) {
+    await assert.rejects(createProviderPayment('alipay', settings.alipay, { ...alipayOrder, returnUrl }, opts), safeError('payment_order_invalid'));
+  }
+  for (const invalid of [{ notifyUrl: 'https://evil.example/notify' }, { notifyUrl: order.notifyUrl }, { title: 'bad\nheader' }, { outTradeNo: 'order-with-dashes' }, { amountCents: 9.7 }]) await assert.rejects(createProviderPayment('alipay', settings.alipay, { ...alipayOrder, ...invalid }, opts), safeError('payment_order_invalid'));
+  assert.equal(calls, 0);
+});
+
+test('Alipay handoff validation refuses URL injection, duplicate parameters and disagreement with the immutable order', async () => {
+  const { paymentUrl } = await createProviderPayment('alipay', settings.alipay, alipayOrder, { now });
+  const expected = { ...alipayOrder, appId: settings.alipay.appId, sellerId: settings.alipay.sellerId };
+  assert.equal(validateAlipayPaymentURL(paymentUrl), true);
+  for (const invalid of ['javascript:alert(1)', paymentUrl.replace('https://', 'http://'), paymentUrl.replace('openapi.alipay.com', 'openapi.alipay.com.evil.example'), paymentUrl.replace('openapi.alipay.com', 'user@openapi.alipay.com'), paymentUrl.replace('/gateway.do', '/other'), paymentUrl + '#fragment', paymentUrl + '&method=alipay.trade.pay', paymentUrl + '&return_url=https://evil.example', paymentUrl + '&extra=unapproved']) assert.equal(validateAlipayPaymentURL(invalid, expected), false);
+  for (const [name, value] of [['method', 'alipay.trade.precreate'], ['app_id', '2021999999999999'], ['sign', 'invalid'], ['return_url', 'https://evil.example'], ['notify_url', 'https://evil.example/notify'], ['timestamp', '2026-02-30 12:00:00']]) {
+    const modified = new URL(paymentUrl); modified.searchParams.set(name, value); assert.equal(validateAlipayPaymentURL(modified.href, expected), false);
+  }
+  for (const override of [{ amountCents: 1 }, { outTradeNo: 'another-order' }, { title: 'another title' }, { appId: '2021999999999999' }, { sellerId: '2088999999999999' }, { expiresAt: '2026-10-15T04:31:00.000Z' }]) assert.equal(validateAlipayPaymentURL(paymentUrl, { ...expected, ...override }), false);
+  for (const override of [{ total_amount: '0.01' }, { product_code: 'QUICK_WAP_WAY' }, { seller_id: '2088999999999999' }, { time_expire: '2026-10-15 12:00:00' }, { time_expire: '2026-02-30 12:00:00' }, { total_amount: '9.7e0' }, { extra: 'not allowed' }]) {
+    const modified = new URL(paymentUrl), biz = JSON.parse(modified.searchParams.get('biz_content')); modified.searchParams.set('biz_content', JSON.stringify({ ...biz, ...override })); assert.equal(validateAlipayPaymentURL(modified.href, expected), false);
+  }
+  const duplicate = new URL(paymentUrl), biz = duplicate.searchParams.get('biz_content'); duplicate.searchParams.set('biz_content', biz.slice(0, -1) + ',"total_amount":"9.70"}'); assert.equal(validateAlipayPaymentURL(duplicate.href, expected), false);
+});
+
+test('Alipay page titles remain encoded data, including quotes, ampersands and HTML-like input', async () => {
+  const title = '<img src=x onerror="alert(1)"> & 论文 + "a"';
+  const { paymentUrl } = await createProviderPayment('alipay', settings.alipay, { ...alipayOrder, title }, { now });
+  assert.ok(!paymentUrl.includes('<img')); assert.equal(JSON.parse(new URL(paymentUrl).searchParams.get('biz_content')).subject, title);
+  assert.equal(validateAlipayPaymentURL(paymentUrl, { ...alipayOrder, title }), true);
 });
 
 test('Alipay query verifies the original JSON slice, preserving escaped strings, order and whitespace', async () => {
@@ -136,6 +169,15 @@ test('Alipay unsigned, altered or duplicate response keys cannot return success'
   await assert.rejects(queryProviderPayment('alipay', settings.alipay, order, options(async () => new Response(JSON.stringify({ alipay_trade_query_response: alipayPaid() })))), safeError('payment_response_invalid'));
   await assert.rejects(queryProviderPayment('alipay', settings.alipay, order, options(async () => alipayResponse('alipay.trade.query', raw.replace('9.70', '8.70'), { sign: signature(raw) }))), safeError('payment_signature_invalid'));
   await assert.rejects(queryProviderPayment('alipay', settings.alipay, order, options(async () => alipayResponse('alipay.trade.query', raw, { extra: ',"sign":"invalid"' }))), safeError('payment_response_invalid'));
+});
+
+test('Alipay reports an absent remote trade distinctly only after verifying the signed response', async () => {
+  const raw = JSON.stringify({ code: '40004', msg: 'Business Failed', sub_code: 'ACQ.TRADE_NOT_EXIST', sub_msg: 'trade does not exist' });
+  await assert.rejects(queryProviderPayment('alipay', settings.alipay, order, options(async () => alipayResponse('alipay.trade.query', raw))), safeError('payment_trade_not_exist'));
+  await assert.rejects(queryProviderPayment('alipay', settings.alipay, order, options(async () => alipayResponse('alipay.trade.query', raw, { sign: signature(raw, merchant.privateKey) }))), safeError('payment_signature_invalid'));
+  await assert.rejects(queryProviderPayment('alipay', settings.alipay, order, options(async () => new Response(JSON.stringify({ alipay_trade_query_response: JSON.parse(raw) })))), safeError('payment_response_invalid'));
+  const otherError = JSON.stringify({ code: '40004', sub_code: 'ACQ.ACCESS_FORBIDDEN' });
+  await assert.rejects(queryProviderPayment('alipay', settings.alipay, order, options(async () => alipayResponse('alipay.trade.query', otherError))), safeError('payment_provider_unavailable'));
 });
 
 test('Alipay notification URL-decodes only once, verifies sorted fields excluding sign_type and returns signed identities', async () => {
@@ -175,5 +217,4 @@ test('provider errors remain safe and timeouts cancel a request that would other
 
 test('only expected provider QR schemes are accepted after verification', async () => {
   await assert.rejects(createProviderPayment('wechat', settings.wechat, order, options(async () => wechatResponse({ code_url: 'https://evil.example/checkout' }))), safeError('payment_response_invalid'));
-  await assert.rejects(createProviderPayment('alipay', settings.alipay, order, options(async () => alipayResponse('alipay.trade.precreate', JSON.stringify({ code: '10000', out_trade_no: order.outTradeNo, qr_code: 'javascript:alert(1)' })))), safeError('payment_response_invalid'));
 });

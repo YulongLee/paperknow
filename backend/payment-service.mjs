@@ -1,11 +1,12 @@
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {createPaymentSettings,paymentBundleItems,paymentCatalog,paymentNotifyURL} from './payment-settings.mjs';
-import {createProviderPayment,queryProviderPayment,parseProviderNotification,validateProvider} from './payment-providers.mjs';
+import {createProviderPayment,queryProviderPayment,parseProviderNotification,validateProvider,validateAlipayPaymentURL} from './payment-providers.mjs';
 import {productDelivery} from './commerce-readiness.mjs';
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const at=()=>new Date().toISOString();
 const hash=value=>createHash('sha256').update(value).digest('hex');
-const orderSelect=`SELECT o.*,d.provider,d.out_trade_no,d.config_id,d.amount_cents,d.currency,COALESCE(d.title,p.title) AS title,d.entitlement,d.idempotency_key,d.input_hash,d.qr_content,d.provider_trade_no,d.expires_at,d.paid_at,d.updated_at,d.last_queried_at FROM orders o JOIN products p ON p.id=o.product_id LEFT JOIN payment_orders d ON d.order_id=o.id`;
+const orderSelect=`SELECT o.*,d.provider,d.out_trade_no,d.config_id,d.amount_cents,d.currency,COALESCE(d.title,p.title) AS title,d.entitlement,d.idempotency_key,d.input_hash,d.qr_content,d.payment_url,d.provider_trade_no,d.expires_at,d.paid_at,d.updated_at,d.last_queried_at FROM orders o JOIN products p ON p.id=o.product_id LEFT JOIN payment_orders d ON d.order_id=o.id`;
+const alipayReturnURL=id=>'https://paperknow.cn/api/payments/return/alipay?order='+encodeURIComponent(id);
 function providerTitle(title){let value='';for(const char of title){if(Buffer.byteLength(value+char)>120)break;value+=char;}return value;}
 export function createPaymentService(db,config={}){
  const settings=createPaymentSettings(db,config),queries=new Map();
@@ -14,7 +15,12 @@ export function createPaymentService(db,config={}){
  const get=id=>db.prepare(orderSelect+' WHERE o.id=?').get(id);
  const own=(id,user)=>{const order=get(id);if(!order||order.user_id!==user.id)fail(404,'订单不存在');return order;};
  const expire=userId=>db.prepare("UPDATE orders SET status='expired' WHERE user_id=? AND status='pending' AND id IN (SELECT order_id FROM payment_orders WHERE expires_at<=?)").run(userId,at());
- function publicOrder(order){let snapshot;try{snapshot=JSON.parse(order.entitlement);}catch{}return {id:order.id,productId:order.product_id,outTradeNo:order.out_trade_no||order.id,status:order.status,amountCents:order.amount_cents??null,currency:order.currency||'CNY',title:order.title,provider:order.provider||null,entitlementType:snapshot?.type||null,creditAmount:snapshot?.type==='credits'?snapshot.creditAmount:null,durationDays:['membership','bundle'].includes(snapshot?.type)?snapshot.durationDays:null,bundleItems:snapshot?.type==='bundle'?paymentBundleItems(snapshot.bundleItems)||[]:[],...(snapshot?.type==='membership'?{membershipItems:paymentBundleItems(snapshot.membershipItems||[],{allowEmpty:true})||[]}:{}),qrContent:order.status==='pending'?order.qr_content||null:null,expiresAt:order.expires_at||null,createdAt:order.created_at,paidAt:order.paid_at||null};}
+ function providerOrder(order,channel){return {outTradeNo:order.out_trade_no,amountCents:order.amount_cents,title:providerTitle(order.title),notifyUrl:paymentNotifyURL(order.provider),expiresAt:order.expires_at,...(order.provider==='alipay'?{appId:channel.appId,sellerId:channel.sellerId,returnUrl:alipayReturnURL(order.id)}:{})};}
+ function paymentURL(order){
+  if(order.provider!=='alipay'||order.status!=='pending'||Date.parse(order.expires_at)<=Date.now())return null;
+  try{const channel=settings.version(order.config_id);return validateAlipayPaymentURL(order.payment_url,providerOrder(order,channel.settings))?order.payment_url:null;}catch{return null;}
+ }
+ function publicOrder(order){let snapshot;try{snapshot=JSON.parse(order.entitlement);}catch{}return {id:order.id,productId:order.product_id,outTradeNo:order.out_trade_no||order.id,status:order.status,amountCents:order.amount_cents??null,currency:order.currency||'CNY',title:order.title,provider:order.provider||null,entitlementType:snapshot?.type||null,creditAmount:snapshot?.type==='credits'?snapshot.creditAmount:null,durationDays:['membership','bundle'].includes(snapshot?.type)?snapshot.durationDays:null,bundleItems:snapshot?.type==='bundle'?paymentBundleItems(snapshot.bundleItems)||[]:[],...(snapshot?.type==='membership'?{membershipItems:paymentBundleItems(snapshot.membershipItems||[],{allowEmpty:true})||[]}:{}),qrContent:order.status==='pending'?order.qr_content||null:null,paymentUrl:paymentURL(order),expiresAt:order.expires_at||null,createdAt:order.created_at,paidAt:order.paid_at||null};}
  function options(){const channels=['wechat','alipay'].map(provider=>({provider,label:provider==='wechat'?'微信支付':'支付宝',ready:settings.summary(provider).ready})),products=paymentCatalog(db).map(product=>({...product,...productDelivery(product,config.billing)}));return {enabled:channels.some(c=>c.ready)&&products.some(product=>product.purchasable!==false),channels,products,...(config.billing?{billing:config.billing.rules()}:{} )};}
  function identity(order,result,channel){
  const merchant=order.provider==='wechat'?channel.merchantId:channel.sellerId;
@@ -64,6 +70,7 @@ export function createPaymentService(db,config={}){
  if(!options().enabled&&(!input?.provider||!input?.idempotencyKey))fail(503,'支付渠道或可售商品尚未开通，暂不能创建付款订单');
  if(!input||Object.keys(input).some(k=>!['productId','provider','idempotencyKey'].includes(k))||typeof input.productId!=='string'||!['wechat','alipay'].includes(input.provider)||typeof input.idempotencyKey!=='string'||!/^[A-Za-z0-9_-]{8,100}$/.test(input.idempotencyKey))fail(400,'请选择有效商品与支付方式');
  const inputHash=hash(JSON.stringify({productId:input.productId,provider:input.provider}));
+ expire(user.id);
  const existing=db.prepare(orderSelect+' WHERE d.user_id=? AND d.idempotency_key=?').get(user.id,input.idempotencyKey);
  if(existing){if(existing.input_hash!==inputHash)fail(409,'重复请求标识已经用于其他商品或支付渠道');return {item:publicOrder(existing)};}
  const availability=options();if(!availability.channels.some(channel=>channel.ready))fail(503,'支付渠道或可售商品尚未开通，暂不能创建付款订单');
@@ -78,9 +85,14 @@ export function createPaymentService(db,config={}){
  });
  const order=get(id);
  try{
-  const result=await adapters.create(input.provider,channel.settings,{outTradeNo,amountCents:order.amount_cents,title:providerTitle(order.title),notifyUrl:paymentNotifyURL(input.provider),expiresAt});
-  if(typeof result.qrContent!=='string'||result.qrContent.length>4096||!(input.provider==='wechat'?/^weixin:\/\/wxpay\/bizpayurl\?\S+$/:/^https:\/\/qr\.alipay\.com\/\S+$/).test(result.qrContent))throw new Error('invalid qr');
-  db.prepare('UPDATE payment_orders SET qr_content=?,updated_at=?,error_code=NULL WHERE order_id=?').run(result.qrContent,at(),id);
+  const expected=providerOrder(order,channel.settings),result=await adapters.create(input.provider,channel.settings,expected);
+  if(input.provider==='alipay'){
+   if(!validateAlipayPaymentURL(result.paymentUrl,expected))throw new Error('invalid payment URL');
+   db.prepare('UPDATE payment_orders SET payment_url=?,updated_at=?,error_code=NULL WHERE order_id=?').run(result.paymentUrl,at(),id);
+  }else{
+   if(typeof result.qrContent!=='string'||result.qrContent.length>4096||!/^weixin:\/\/wxpay\/bizpayurl\?\S+$/.test(result.qrContent))throw new Error('invalid qr');
+   db.prepare('UPDATE payment_orders SET qr_content=?,updated_at=?,error_code=NULL WHERE order_id=?').run(result.qrContent,at(),id);
+  }
  }catch{
   // A timeout may happen after the channel accepted the order. Keep it queryable.
   db.prepare("UPDATE payment_orders SET error_code='provider_request_unconfirmed',updated_at=? WHERE order_id=? AND order_id IN (SELECT id FROM orders WHERE status!='paid')").run(at(),id);
@@ -100,9 +112,14 @@ export function createPaymentService(db,config={}){
   if(seen.has(channel.id)||validateProvider(order.provider,channel.settings).length)return false;
   seen.add(channel.id);return true;
  });
- let result,lastError;for(const channel of candidates){try{result=await adapters.query(order.provider,channel.settings,{outTradeNo:order.out_trade_no,amountCents:order.amount_cents},{timeoutMs:6000});break;}catch(error){lastError=error;}}
+ let result,lastError;for(const channel of candidates){try{result=await adapters.query(order.provider,channel.settings,{outTradeNo:order.out_trade_no,amountCents:order.amount_cents},{timeoutMs:6000});break;}catch(error){if(error.code==='payment_trade_not_exist'&&paymentURL(order))throw error;lastError=error;}}
  if(!result)throw lastError||new Error('query unavailable');return {item:publicOrder(applyResult(order,result,original.settings))};
- }catch(error){if(error.status)throw error;fail(502,'支付渠道暂时无法查询，请稍后重试');}finally{queries.delete(id);}})();queries.set(id,operation);return operation;
+ }catch(error){
+  // A signed page link does not create a gateway trade until the buyer opens it.
+  // An authenticated TRADE_NOT_EXIST is therefore still pending, never paid.
+  if(error.code==='payment_trade_not_exist'&&paymentURL(order))return {item:publicOrder(get(id))};
+  if(error.status)throw error;fail(502,'支付渠道暂时无法查询，请稍后重试');
+ }finally{queries.delete(id);}})();queries.set(id,operation);return operation;
  }
  async function notify(provider,request){
  if(!['wechat','alipay'].includes(provider))fail(404,'支付回调不存在');

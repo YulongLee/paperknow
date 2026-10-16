@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS payment_orders(
   out_trade_no TEXT NOT NULL UNIQUE,config_id TEXT NOT NULL REFERENCES payment_config_versions(id),
   amount_cents INTEGER NOT NULL CHECK(amount_cents>0),currency TEXT NOT NULL DEFAULT 'CNY',
   title TEXT NOT NULL,entitlement TEXT NOT NULL,idempotency_key TEXT NOT NULL,input_hash TEXT NOT NULL,
-  user_id TEXT NOT NULL REFERENCES users(id),qr_content TEXT,provider_trade_no TEXT,
+  user_id TEXT NOT NULL REFERENCES users(id),qr_content TEXT,payment_url TEXT,provider_trade_no TEXT,
   expires_at TEXT NOT NULL,paid_at TEXT,updated_at TEXT NOT NULL,last_queried_at INTEGER NOT NULL DEFAULT 0,
   error_code TEXT,UNIQUE(user_id,idempotency_key),UNIQUE(provider,provider_trade_no)
 );

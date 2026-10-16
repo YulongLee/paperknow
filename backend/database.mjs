@@ -49,6 +49,9 @@ export function database(path){
     for(const [name,type] of [['storage_provider',"TEXT NOT NULL DEFAULT 'local_server_sqlite'"],['storage_key','TEXT'],['storage_bucket','TEXT']]){
       if(!columns.has(name))db.exec(`ALTER TABLE files ADD COLUMN ${name} ${type}`);
     }
+    // Page-pay links are distinct from historical Alipay and WeChat QR content.
+    // Adding a nullable column preserves every existing order and payment snapshot.
+    if(!db.prepare('PRAGMA table_info(payment_orders)').all().some(column=>column.name==='payment_url'))db.exec('ALTER TABLE payment_orders ADD COLUMN payment_url TEXT');
     for(const [id,title] of [['basic','基础会员'],['advanced','进阶会员'],['premium','尊享会员']]){
       db.prepare('INSERT OR IGNORE INTO products VALUES(?,?,?,?)').run(id,title,'preview',JSON.stringify({unit:null,quota:null,duration:null,paymentEnabled:false}));
     }

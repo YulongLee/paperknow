@@ -5,7 +5,7 @@ import {randomBytes,generateKeyPairSync,createHash} from 'node:crypto';
 import {database} from '../backend/database.mjs';
 import {createAPI} from '../backend/api.mjs';
 import {createSession} from '../backend/auth.mjs';
-import {validateProvider} from '../backend/payment-providers.mjs';
+import {validateProvider,createProviderPayment,validateAlipayPaymentURL} from '../backend/payment-providers.mjs';
 import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
 
 const rsa=generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});
@@ -20,7 +20,7 @@ async function fixture(t,{config:overrides={},adapters={}}={}){
  const db=database(':memory:'),created=[],queried=[],verified=[],remote=new Map();
  const config={authCodeSecret:'payment-test-auth-secret-2026-do-not-use-in-production',paymentConfigKey:randomBytes(32).toString('base64'),ownerEmail:'owner-payment@example.invalid',getAI:()=>({aiURL:'https://billing-fixture.example.invalid/v1/chat',aiKey:'payment-fixture-only-no-network',aiModel:'test-model'}),...overrides};
  const paymentAdapters={
-  async create(provider,settings,input){created.push({provider,settings:{...settings},input:{...input}});remote.set(input.outTradeNo,{provider,settings:{...settings},input:{...input},state:'pending'});if(adapters.create)return adapters.create(provider,settings,input);return {qrContent:provider==='wechat'?'weixin://wxpay/bizpayurl?pr=payment-test-order':'https://qr.alipay.com/payment-test-order'};},
+  async create(provider,settings,input){created.push({provider,settings:{...settings},input:{...input}});remote.set(input.outTradeNo,{provider,settings:{...settings},input:{...input},state:'pending'});if(adapters.create)return adapters.create(provider,settings,input);return provider==='alipay'?createProviderPayment(provider,settings,input):{qrContent:'weixin://wxpay/bizpayurl?pr=payment-test-order'};},
   async query(provider,settings,input,options){queried.push({provider,settings:{...settings},input:{...input},options});if(adapters.query)return adapters.query(provider,settings,input,options);const entry=remote.get(input.outTradeNo);return paidResult(entry,{state:entry?.state||'pending'});},
   async notify(provider,settings,request){verified.push({provider,settings:{...settings}});if(adapters.notify)return adapters.notify(provider,settings,request);if(request.headers['x-test-sign']!==signature(provider,settings))throw new Error('test invalid provider signature');const raw=request.rawBody.toString();return JSON.parse(provider==='wechat'?raw:new URLSearchParams(raw).get('payload'));}
  };
@@ -229,4 +229,81 @@ test('free service policy pauses selling credits and membership rather than coll
 
 test('unconfigured AI rejects new membership publication and credit payments even when merchant settings are valid',async t=>{
  const f=await fixture(t,{config:{getAI:()=>({aiEnabled:false})}});assert.equal((await f.channel()).status,200);assert.equal((await f.publish()).status,409);assert.equal((await f.create({productId:'credits-200'})).status,409);assert.ok((await f.request('/api/payments/options',{cookie:''})).value.products.every(item=>item.purchasable===false));assert.equal(f.count('orders'),0);assert.equal(f.created.length,0);
+});
+
+test('Alipay page orders persist one fixed handoff, retain idempotency and keep the signed link private to the owner',async t=>{
+ const f=await fixture(t);await f.ready('alipay');
+ for(const field of ['paymentUrl','returnUrl','notifyUrl','appId','sellerId'])assert.equal((await f.create({provider:'alipay',[field]:'https://evil.example.invalid'})).status,400);
+ const key='alipay-page-stable-idempotency',created=await f.create({provider:'alipay',productId:'credits-200',idempotencyKey:key});assert.equal(created.status,201);
+ const item=created.value.item,entry=f.created[0];assert.equal(item.qrContent,null);assert.equal(item.status,'pending');assert.equal(item.creditAmount,200);assert.equal(item.amountCents,2000);
+ assert.equal(entry.input.returnUrl,'https://paperknow.cn/api/payments/return/alipay?order='+item.id);assert.equal(entry.input.notifyUrl,'https://paperknow.cn/api/payments/notify/alipay');
+ assert.ok(validateAlipayPaymentURL(item.paymentUrl,{...entry.input,appId:alipay.appId,sellerId:alipay.sellerId}));
+ assert.equal(f.db.prepare('SELECT payment_url FROM payment_orders WHERE order_id=?').get(item.id).payment_url,item.paymentUrl);
+ const retried=await f.create({provider:'alipay',productId:'credits-200',idempotencyKey:key});assert.deepEqual(retried.value.item,item);assert.equal(f.created.length,1);assert.equal(f.count('orders'),1);
+ assert.equal((await f.request('/api/orders/'+item.id,{cookie:f.other.cookie})).status,404);assert.equal((await f.request('/api/orders/'+item.id,{cookie:''})).status,401);
+ assert.equal((await f.request('/api/orders/'+item.id+'/query',{cookie:f.other.cookie,data:{}})).status,404);assert.equal((await f.request('/api/orders',{cookie:f.other.cookie})).value.items.length,0);
+ assert.equal(f.count('payment_credit_ledger'),0);
+ await f.channel('alipay',{enabled:false});const disabledRetry=await f.create({provider:'alipay',productId:'credits-200',idempotencyKey:key});assert.equal(disabledRetry.value.item.paymentUrl,item.paymentUrl);assert.equal((await f.create({provider:'alipay',productId:'credits-200'})).status,503);
+ assert.equal((await f.notify(item)).status,200);assert.equal((await f.notify(item)).status,200);
+ const paid=(await f.request('/api/orders/'+item.id)).value.item;assert.equal(paid.status,'paid');assert.equal(paid.paymentUrl,null);assert.equal(paid.qrContent,null);assert.equal((await f.request('/api/payments/entitlements')).value.credits.balance,200);assert.equal(f.count('payment_credit_ledger'),1);
+});
+
+test('unsafe or mismatched Alipay handoffs are never stored, even when the hostname alone looks official',async t=>{
+ const mutations=[
+  value=>'https://evil.example.invalid/?url='+encodeURIComponent(value),
+  value=>value.replace('https://openapi.alipay.com/','https://openapi.alipay.com.evil.example.invalid/'),
+  value=>value.replace('https://openapi.alipay.com/','https://evil.example.invalid@openapi.alipay.com/'),
+  value=>{const url=new URL(value);url.searchParams.set('return_url','https://evil.example.invalid/');return url.href;},
+  value=>{const url=new URL(value);url.searchParams.set('notify_url','https://evil.example.invalid/');return url.href;},
+  value=>{const url=new URL(value),biz=JSON.parse(url.searchParams.get('biz_content'));biz.total_amount='0.01';url.searchParams.set('biz_content',JSON.stringify(biz));return url.href;},
+  value=>{const url=new URL(value),biz=JSON.parse(url.searchParams.get('biz_content'));biz.out_trade_no='different-order';url.searchParams.set('biz_content',JSON.stringify(biz));return url.href;},
+  value=>{const url=new URL(value);url.searchParams.set('app_id','2026999912345678');return url.href;},
+  value=>{const url=new URL(value),biz=JSON.parse(url.searchParams.get('biz_content'));biz.seller_id='2088999912345678';url.searchParams.set('biz_content',JSON.stringify(biz));return url.href;},
+  value=>{const url=new URL(value),biz=JSON.parse(url.searchParams.get('biz_content'));biz.subject='different title';url.searchParams.set('biz_content',JSON.stringify(biz));return url.href;},
+  value=>{const url=new URL(value),biz=JSON.parse(url.searchParams.get('biz_content'));biz.time_expire='2030-01-01 00:00:00';url.searchParams.set('biz_content',JSON.stringify(biz));return url.href;},
+  value=>value+'&method=alipay.trade.page.pay'
+ ];
+ const f=await fixture(t,{adapters:{create:async(provider,settings,input)=>{
+  const result=await createProviderPayment(provider,settings,input);return {...result,paymentUrl:mutations[index](result.paymentUrl)};
+ }}});let index=0;await f.ready('alipay');
+ for(index=0;index<mutations.length;index++){
+  const result=await f.create({provider:'alipay'});assert.equal(result.status,201);assert.equal(result.value.item.status,'pending');assert.equal(result.value.item.paymentUrl,null);assert.equal(result.value.item.qrContent,null);
+  assert.equal(f.db.prepare('SELECT payment_url,error_code FROM payment_orders WHERE order_id=?').get(result.value.item.id).payment_url,null);
+  assert.equal(f.count('payment_entitlements'),0);assert.equal(f.count('payment_credit_ledger'),0);
+  f.db.prepare("UPDATE orders SET status='expired' WHERE id=?").run(result.value.item.id);
+ }
+});
+
+test('Alipay saved handoffs are checked against the frozen identity, amount and expiry whenever read',async t=>{
+ const f=await fixture(t);await f.ready('alipay');const key='alipay-expired-idempotent-order',item=(await f.create({provider:'alipay',idempotencyKey:key})).value.item;
+ await f.channel('alipay',{appId:'2026999912345678',sellerId:'2088999912345678'});
+ assert.equal((await f.request('/api/orders/'+item.id)).value.item.paymentUrl,item.paymentUrl,'switching current merchant must not replace the old merchant identity');
+ for(const mutate of [
+  url=>url.searchParams.set('app_id','2026999912345678'),
+  url=>{const biz=JSON.parse(url.searchParams.get('biz_content'));biz.total_amount='9.99';url.searchParams.set('biz_content',JSON.stringify(biz));},
+  url=>url.searchParams.set('return_url','https://paperknow.cn/api/payments/return/alipay?order=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  url=>{const biz=JSON.parse(url.searchParams.get('biz_content'));biz.time_expire='2030-01-01 00:00:00';url.searchParams.set('biz_content',JSON.stringify(biz));}
+ ]){
+  const url=new URL(item.paymentUrl);mutate(url);f.db.prepare('UPDATE payment_orders SET payment_url=? WHERE order_id=?').run(url.href,item.id);
+  assert.equal((await f.request('/api/orders/'+item.id)).value.item.paymentUrl,null);assert.equal((await f.request('/api/orders')).value.items[0].paymentUrl,null);
+ }
+ f.db.prepare('UPDATE payment_orders SET payment_url=? WHERE order_id=?').run(item.paymentUrl,item.id);
+ f.db.prepare('UPDATE payment_orders SET expires_at=? WHERE order_id=?').run(new Date(Date.now()-1000).toISOString(),item.id);
+ const retry=(await f.create({provider:'alipay',idempotencyKey:key})).value.item;
+ assert.equal(retry.id,item.id);assert.equal(retry.status,'expired');assert.equal(retry.paymentUrl,null);assert.equal(f.created.length,1);assert.equal(f.count('payment_entitlements'),0);
+});
+
+test('a verified missing page-pay trade stays pending until opening the cashier, while legacy QR query failures stay visible',async t=>{
+ let failure=true;
+ const f=await fixture(t,{adapters:{query:async(provider,settings,input)=>{
+  if(failure)throw Object.assign(new Error('verified provider business response'),{code:'payment_trade_not_exist'});
+  return f.paidResult(f.remote.get(input.outTradeNo));
+ }}});await f.ready('alipay');
+ const page=(await f.create({provider:'alipay',productId:'credits-200'})).value.item;
+ const checked=await f.request('/api/orders/'+page.id+'/query',{data:{}});assert.equal(checked.status,200);assert.equal(checked.value.item.status,'pending');assert.equal(checked.value.item.paymentUrl,page.paymentUrl);assert.equal(f.count('payment_credit_ledger'),0);
+ f.db.prepare('UPDATE payment_orders SET payment_url=NULL,qr_content=?,last_queried_at=0 WHERE order_id=?').run('https://qr.alipay.com/historical-order',page.id);
+ const historical=(await f.request('/api/orders/'+page.id)).value.item;assert.equal(historical.paymentUrl,null);assert.equal(historical.qrContent,'https://qr.alipay.com/historical-order');
+ assert.equal((await f.request('/api/orders/'+page.id+'/query',{data:{}})).status,502);assert.equal(f.count('payment_credit_ledger'),0);
+ failure=false;f.db.prepare('UPDATE payment_orders SET last_queried_at=0 WHERE order_id=?').run(page.id);
+ const settled=await f.request('/api/orders/'+page.id+'/query',{data:{}});assert.equal(settled.status,200);assert.equal(settled.value.item.status,'paid');assert.equal(settled.value.item.paymentUrl,null);assert.equal(settled.value.item.qrContent,null);assert.equal((await f.request('/api/payments/entitlements')).value.credits.balance,200);assert.equal(f.count('payment_credit_ledger'),1);
 });

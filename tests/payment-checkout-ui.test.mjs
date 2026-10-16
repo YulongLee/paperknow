@@ -168,3 +168,61 @@ test('undeliverable published SKU cannot create an order even if a payment chann
  f.doc.querySelector('[data-payment-create]').disabled=false;click(f,'[data-payment-create]');await new Promise(resolve=>setImmediate(resolve));
  assert.equal(f.calls.some(call=>call.body?.productId),false);assert.equal(f.created.length,0);
 });
+
+function cashierOrder(overrides={}){
+ const item={id:'o1',outTradeNo:'PK20261015001',title:'100 科研积分',provider:'alipay',status:'pending',amountCents:1000,currency:'CNY',qrContent:null,createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+15*60*1000).toISOString(),...overrides};
+ const url=new URL('https://openapi.alipay.com/gateway.do');
+ const chinaTime=value=>new Date(Date.parse(value)+8*3600000).toISOString().slice(0,19).replace('T',' ');
+ for(const [key,value]of Object.entries({app_id:'2026101600000001',method:'alipay.trade.page.pay',format:'JSON',charset:'utf-8',sign_type:'RSA2',timestamp:chinaTime(item.createdAt),version:'1.0',notify_url:'https://paperknow.cn/api/payments/notify/alipay',return_url:'https://paperknow.cn/api/payments/return/alipay?order='+encodeURIComponent(item.id),biz_content:JSON.stringify({out_trade_no:item.outTradeNo,product_code:'FAST_INSTANT_TRADE_PAY',total_amount:(item.amountCents/100).toFixed(2),subject:item.title,seller_id:'2088000000000000',time_expire:chinaTime(item.expiresAt)}),sign:Buffer.alloc(256,1).toString('base64')}))url.searchParams.set(key,value);
+ return {...item,paymentUrl:url.href};
+}
+
+test('Alipay website checkout creates an order before offering an explicit official new-tab cashier action',async t=>{
+ const item=cashierOrder();const f=await fixture(t,{preferredProvider:'alipay',order:item});let opens=0;f.w.open=()=>{opens++;};
+ assert.match(f.doc.querySelector('[data-payment-create]').textContent,/创建支付宝付款订单/);assert.match(f.doc.querySelector('[data-payment-provider="alipay"]').textContent,/官方收银台/);assert.match(f.doc.querySelector('[data-payment-provider="wechat"]').textContent,/扫码支付/);
+ assert.equal(f.calls.some(call=>call.body),false);click(f,'[data-payment-create]');await settle(()=>f.doc.querySelector('[data-payment-cashier]'));
+ const link=f.doc.querySelector('[data-payment-cashier]');assert.equal(link.href,item.paymentUrl);assert.equal(link.textContent,'前往支付宝收银台');assert.equal(link.target,'_blank');assert.equal(link.rel,'noopener noreferrer');assert.equal(opens,0);assert.equal(f.qrInputs.length,0);assert.equal(f.doc.querySelector('[data-payment-qr] img'),null);assert.match(f.doc.querySelector('[data-payment-query]').textContent,/我已完成付款，查询结果/);assert.match(f.doc.querySelector('.payment-cashier-content').textContent,/打开支付宝收银台后付款/);assert.equal(f.doc.querySelector('.payment-status').textContent,'待支付');assert.ok([...f.timers.values()].some(timer=>timer.delay===5000));
+});
+
+test('official cashier return parameters never grant payment; only the order query can confirm and remove the handoff',async t=>{
+ const item=cashierOrder();let paid=false;const f=await fixture(t,{orderId:'o1',order:item,onRequest:async path=>path==='/api/orders/o1/query'?response({item:{...item,status:paid?'paid':'pending'}}):null});
+ f.w.history.replaceState(null,'','/workspace.html#membership/pay?order=o1&trade_status=TRADE_SUCCESS');
+ assert.equal(f.doc.querySelector('.payment-status').textContent,'待支付');assert.ok(f.doc.querySelector('[data-payment-cashier]'));
+ click(f,'[data-payment-query]');await settle(()=>f.doc.querySelector('[data-payment-notice]').textContent.includes('尚未支付'));assert.ok(f.doc.querySelector('[data-payment-cashier]'));assert.equal(f.doc.querySelector('.is-paid'),null);
+ paid=true;click(f,'[data-payment-query]');await settle(()=>f.doc.querySelector('.is-paid'));assert.equal(f.doc.querySelector('[data-payment-cashier]'),null);assert.equal(f.qrInputs.length,0);assert.match(f.doc.body.textContent,/付款结果已经服务器核验/);assert.equal([...f.timers.values()].some(timer=>timer.delay===5000),false);assert.equal(f.w.localStorage.length,0);
+});
+
+test('unsafe or mismatched Alipay URLs never become navigable and cannot fall back to a QR',async t=>{
+ const item=cashierOrder(),alter=(key,value)=>{const url=new URL(item.paymentUrl);url.searchParams.set(key,value);return url.href;},biz=JSON.parse(new URL(item.paymentUrl).searchParams.get('biz_content'));
+ const attacks={
+  script:'javascript:alert(1)',html:'<form action="https://evil.example">付款</form>',http:item.paymentUrl.replace('https:','http:'),lookalike:item.paymentUrl.replace('openapi.alipay.com','openapi.alipay.com.evil.example'),userinfo:item.paymentUrl.replace('https://','https://evil@'),fragment:item.paymentUrl+'#fake',wrongPath:item.paymentUrl.replace('/gateway.do?','/gateway.do/else?'),duplicateMethod:item.paymentUrl+'&method=alipay.trade.page.pay',unknownParameter:item.paymentUrl+'&redirect=https%3A%2F%2Fevil.example',wrongMethod:alter('method','alipay.trade.precreate'),wrongSignType:alter('sign_type','RSA'),wrongNotify:alter('notify_url','https://evil.example/notify'),wrongReturn:alter('return_url','https://paperknow.cn/api/payments/return/alipay?order=another'),extraReturn:alter('return_url','https://paperknow.cn/api/payments/return/alipay?order=o1&paid=true'),emptySign:alter('sign',''),duplicateAmount:alter('biz_content',JSON.stringify(biz).replace('"total_amount":"10.00"','"total_amount":"0.01","total_amount":"10.00"')),wrongAmount:alter('biz_content',JSON.stringify({...biz,total_amount:'0.01'})),wrongOrder:alter('biz_content',JSON.stringify({...biz,out_trade_no:'OTHER'})),wrongProduct:alter('biz_content',JSON.stringify({...biz,product_code:'FACE_TO_FACE_PAYMENT'})),wrongExpiry:alter('biz_content',JSON.stringify({...biz,time_expire:'2099-01-01 00:00:00'})),nestedPayload:alter('biz_content',JSON.stringify({...biz,subject:{html:'unsafe'}})),nonString:{url:item.paymentUrl}
+ };
+ for(const [name,paymentUrl]of Object.entries(attacks)){
+  const f=await fixture(t,{orderId:'o1',order:{...item,paymentUrl,qrContent:'https://evil.example/should-not-be-a-qr'}});
+  assert.equal(f.doc.querySelector('[data-payment-cashier]'),null,name);assert.equal(f.qrInputs.length,0,name);assert.equal(f.doc.querySelector('form,iframe,script'),null,name);assert.match(f.doc.querySelector('[data-payment-notice]').textContent,/入口校验未通过/,name);assert.equal(f.doc.querySelector('.is-paid'),null,name);assert.ok(f.doc.querySelector('[data-payment-query]'),name);
+ }
+});
+
+test('historical Alipay scan orders retain their original QR without requiring the new cashier URL',async t=>{
+ const f=await fixture(t,{orderId:'o1',order:{provider:'alipay',qrContent:'https://qr.alipay.com/old-confirmed-gateway-order'}});assert.equal(f.doc.querySelector('[data-payment-cashier]'),null);assert.ok(f.doc.querySelector('[data-payment-qr] img'));assert.equal(f.qrInputs[0],'https://qr.alipay.com/old-confirmed-gateway-order');assert.match(f.doc.querySelector('.payment-scan-instruction').textContent,/支付宝扫一扫/);assert.equal(f.calls.some(call=>call.body?.productId),false);
+});
+
+test('Alipay handoffs expire locally and a held link cannot be opened after its validity ends',async t=>{
+ const item=cashierOrder({expiresAt:new Date(Date.now()+4000).toISOString()}),f=await fixture(t,{orderId:'o1',order:item}),link=f.doc.querySelector('[data-payment-cashier]');assert.ok(link);
+ f.advance(5000);const event=new f.w.MouseEvent('click',{cancelable:true,bubbles:true});assert.equal(link.dispatchEvent(event),false);await settle(()=>f.doc.querySelector('.is-expired'));assert.equal(f.doc.querySelector('[data-payment-cashier]'),null);assert.match(f.doc.body.textContent,/付款入口已过期/);assert.ok(f.doc.querySelector('[data-payment-query]'));assert.equal(f.order.status,'pending');assert.equal([...f.timers.values()].some(timer=>timer.delay===5000),false);assert.equal(f.qrInputs.length,0);
+});
+
+test('paid and closed Alipay orders cannot expose saved cashier links',async t=>{
+ for(const status of ['paid','closed','failed','expired','refunded']){const f=await fixture(t,{orderId:'o1',order:{...cashierOrder(),status}});assert.equal(f.doc.querySelector('[data-payment-cashier]'),null,status);assert.equal(f.qrInputs.length,0,status);assert.equal([...f.timers.values()].some(timer=>timer.delay===5000),false,status);}
+});
+
+test('cashier supports valid ten-digit merchant IDs and labels server-expired orders without a QR deadline',async t=>{
+ const item=cashierOrder(),url=new URL(item.paymentUrl),biz=JSON.parse(url.searchParams.get('biz_content'));url.searchParams.set('biz_content',JSON.stringify({...biz,seller_id:'2088000000'}));
+ const valid=await fixture(t,{orderId:'o1',order:{...item,paymentUrl:url.href}});assert.ok(valid.doc.querySelector('[data-payment-cashier]'));
+ const expired=await fixture(t,{orderId:'o1',order:{...item,status:'expired',paymentUrl:null}});assert.equal(expired.doc.querySelector('[data-payment-cashier]'),null);assert.match(expired.doc.body.textContent,/订单已过期/);assert.match(expired.doc.querySelector('.payment-order-summary').textContent,/订单有效至/);assert.doesNotMatch(expired.doc.body.textContent,/二维码有效至/);assert.equal(expired.qrInputs.length,0);
+});
+
+test('cashier navigation cleanup disables saved actions and aborts a late order response',async t=>{
+ const item=cashierOrder(),f=await fixture(t,{orderId:'o1',order:item}),link=f.doc.querySelector('[data-payment-cashier]');assert.ok(link);f.w.dispatchEvent(new f.w.HashChangeEvent('hashchange'));assert.equal(link.hasAttribute('href'),false);assert.equal(f.timers.size,0);
+ let resolveCreate;const delayed=await fixture(t,{preferredProvider:'alipay',order:item,onRequest:async(path,options,body)=>path==='/api/orders'&&body?new Promise(resolve=>resolveCreate=resolve):null});click(delayed,'[data-payment-create]');await settle(()=>resolveCreate);const signal=delayed.calls.find(call=>call.body?.productId).options.signal;click(delayed,'[data-payment-provider="wechat"]');assert.equal(signal.aborted,true);resolveCreate(response({item}));await new Promise(resolve=>setTimeout(resolve,4));assert.equal(delayed.doc.querySelector('[data-payment-cashier]'),null);assert.equal(delayed.doc.querySelector('[data-payment-provider="wechat"]').getAttribute('aria-pressed'),'true');assert.equal(delayed.qrInputs.length,0);assert.equal([...delayed.timers.values()].some(timer=>timer.delay===5000),false);
+});
