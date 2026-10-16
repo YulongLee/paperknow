@@ -19,7 +19,9 @@ export function startThesisWorker(db,config={}){
  function markStopped(runId,status,message){
   const run=db.prepare('SELECT * FROM thesis_runs WHERE id=?').get(runId);if(!run||!active(run.status))return;
   const at=clock();db.prepare('UPDATE thesis_runs SET status=?,stage=?,error=?,updated_at=? WHERE id=?').run(status,status,message,at,runId);
-  db.prepare('UPDATE jobs SET status=?,stage=?,error=?,updated_at=? WHERE id=?').run(status==='interrupted'?'failed':status,status,message,at,runId);
+  // The shared task centre uses its existing terminal states; the thesis run
+  // retains the precise reason (missing evidence, interruption or cancellation).
+  db.prepare('UPDATE jobs SET status=?,stage=?,error=?,updated_at=? WHERE id=?').run(status==='cancelled'?'cancelled':'failed',status,message,at,runId);
   db.prepare('UPDATE theses SET status=?,version=version+1,updated_at=? WHERE id=? AND current_run_id=?').run(status,at,run.thesis_id,runId);
   billing.release(runId);
  }

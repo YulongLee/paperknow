@@ -103,7 +103,7 @@ test('bad or missing generation consent cannot reserve credits and foreign billi
 
 test('missing model usage, truncated output and insufficient evidence cannot become completed/paid work',async t=>{
  for(const failure of ['usage','truncated','evidence']){
-  const f=fixture(t,{agentTaskRunner:async({task})=>failure==='usage'?output(task,{usage:{input:null,output:null}}):failure==='truncated'?output(task,{finishReason:'length'}):output(task,{text:JSON.stringify({text:'',source_ids:[],missing_evidence:['请提供真实实验结果'],complete:false})})});f.pay();const queued=await f.generate(await f.create()),worker=f.start();await worker.tick();const item=f.get(queued.id);assert.equal(item.status,failure==='evidence'?'needs_materials':'failed');assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);assert.equal(item.job.completedSections,0);
+  const f=fixture(t,{agentTaskRunner:async({task})=>failure==='usage'?output(task,{usage:{input:null,output:null}}):failure==='truncated'?output(task,{finishReason:'length'}):output(task,{text:JSON.stringify({text:'',source_ids:[],missing_evidence:['请提供真实实验结果'],complete:false})})});f.pay();const queued=await f.generate(await f.create()),worker=f.start();await worker.tick();const item=f.get(queued.id);assert.equal(item.status,failure==='evidence'?'needs_materials':'failed');assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(item.job.id).status,'failed');assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);assert.equal(item.job.completedSections,0);
  }
 });
 
