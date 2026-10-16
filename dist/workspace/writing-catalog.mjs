@@ -27,5 +27,42 @@ export function guideMarkup(id){const item=catalog.find(t=>t[0]===id)||(id==='to
 export function bindGuide(){const button=document.querySelector('.guide-toggle'),panel=document.querySelector('#writing-guide');if(!button||!panel)return;let open=true;try{open=localStorage.getItem('paperknow-writing-guide')!=='hidden';}catch{}const apply=()=>{panel.hidden=!open;button.setAttribute('aria-expanded',String(open));button.textContent=open?'隐藏操作指南':'操作指南';};apply();button.onclick=()=>{open=!open;apply();try{localStorage.setItem('paperknow-writing-guide',open?'visible':'hidden');}catch{}};}
 
 export const writingHeading=()=>toolBanner('writing',{extraClass:'writing-hero writing-landing-hero',title:'从一个题目，开始你的论文',description:'整理研究资料、搭建论文结构，让每一步写作都有清晰的方向。',actions:'<a class="btn primary" href="#tool/writing">开始毕业论文 <span aria-hidden="true">→</span></a><button class="btn secondary" type="button" data-scroll-to="writing-capabilities">查看其他能力 <span aria-hidden="true">↓</span></button>'});
-export const writingDetailHeading=id=>{const feature=getWritingFeatureIdentity(id);return toolBanner('writing',{extraClass:`writing-task-banner writing-task-${feature.key}`,title:feature.title,label:`AI 写作 · ${feature.title}`,description:feature.description,actions:'<a class="btn secondary writing-back-link" href="#category/writing">← 返回 AI 写作</a>'});};
+export const writingDetailHeading=id=>{const feature=getWritingFeatureIdentity(id),deliverable=`<div class="writing-detail-deliverable writing-detail-deliverable-inline"><span class="writing-detail-deliverable-icon" aria-hidden="true">${capabilityIcon(feature.key,17)}</span><div><small>这次你将整理</small><b>${escape(feature.output)}</b></div><a href="#help">使用指南 <span aria-hidden="true">↗</span></a></div>`;return toolBanner('writing',{extraClass:`writing-task-banner writing-task-${feature.key} writing-detail-hero`,title:feature.title,label:`AI 写作 · ${feature.title}`,description:feature.description,actions:'<a class="btn secondary writing-back-link" href="#category/writing">← 返回 AI 写作</a>'+deliverable});};
+
+// Detail styling is scoped to the current task. The existing controls keep their
+// IDs and their event listeners; grouping changes presentation only.
+export function decorateWritingDetail(root,id){
+ const feature=getWritingFeatureIdentity(id);
+ root.classList.remove('writing-landing');
+ for(const name of [...root.classList])if(name.startsWith('writing-detail-theme-'))root.classList.remove(name);
+ root.classList.add('writing-detail-commercial','writing-detail-page','writing-detail-theme-'+feature.key);
+ for(const [name,value] of Object.entries({'--detail-accent':feature.accent,'--detail-soft':feature.soft,'--detail-ink':feature.ink,'--detail-art':`url("${feature.art}")`}))root.style.setProperty(name,value);
+ const form=root.querySelector('#writing-form');
+ const group=(nodes,{name,description,key})=>{
+  const present=nodes.filter(node=>node?.parentElement===form);if(!present.length)return null;
+  const fieldset=document.createElement('fieldset');fieldset.className='writing-detail-fieldset writing-detail-fieldset-'+key;
+  const legend=document.createElement('legend');legend.textContent=name;fieldset.append(legend);
+  if(description){const hint=document.createElement('p');hint.className='writing-detail-fieldset-hint';hint.textContent=description;fieldset.append(hint);}
+  form.insertBefore(fieldset,present[0]);for(const node of present)fieldset.append(node);return fieldset;
+ };
+ if(form){
+  const title=form.querySelector('label[for="writing-title"]'),topic=group([title,title?.nextElementSibling],{name:'写作主题',description:'用一个清楚的题目，确定这次写作的方向。',key:'topic'});
+  if(topic)form.prepend(topic);
+  const project=form.querySelector('#writing-project'),language=form.querySelector('#writing-language'),degree=form.querySelector('#writing-degree')?.closest('.creation-row');
+  const profileGroup=group([project?.previousElementSibling,project,language?.previousElementSibling,language,degree],{name:'研究信息',description:'选择研究归属与写作语言，补充适合当前任务的基础信息。',key:'profile'});
+  if(profileGroup)for(const control of [project,language]){const label=control?.previousElementSibling;if(!label||label.parentElement!==profileGroup)continue;const field=document.createElement('div');field.className='writing-detail-field';profileGroup.insertBefore(field,label);field.append(label,control);}
+  if(feature.key==='writing'&&profileGroup){const options=form.querySelector(':scope > .writing-options');if(options){options.classList.add('writing-detail-profile-options');profileGroup.append(options);}}
+  const detail=form.querySelector('.thesis-profile-fields');
+  if(detail){detail.classList.add('writing-detail-research-fields');const heading=document.createElement('div');heading.className='writing-detail-group-title';heading.innerHTML='<b>研究问题与方法</b><small>写清楚你要研究什么，以及如何展开论证。</small>';detail.prepend(heading);}
+  const extra=[...form.children].filter(node=>node.matches('.practice-basic-fields,.topic-basic-fields,.questionnaire-basic-fields,.analysis-basic-fields,.quick-basic-fields,.article-basic-fields'));
+  group(extra,{name:feature.title+'要求',description:'围绕真实任务补充要求，让后续结构更有针对性。',key:'requirements'});
+  const input=root.querySelector('.creation-input');input?.classList.add('writing-detail-input');
+  const actions=input?.querySelector(':scope > .creation-actions');
+  if(actions){actions.classList.add('writing-detail-actionbar');const copy=document.createElement('div');copy.className='writing-detail-action-copy';copy.innerHTML='<b>准备好，进入下一步</b><small>先保存草稿，随时继续完善</small>';actions.prepend(copy);}
+  const kicker=document.createElement('span');kicker.className='writing-detail-panel-kicker';kicker.textContent='STEP 01 · YOUR RESEARCH BRIEF';input?.prepend(kicker);
+ }
+ const output=root.querySelector('.creation-output');output?.classList.add('writing-detail-output');
+ root.querySelector('.writing-process-guide')?.classList.add('writing-detail-stepper');
+ root.querySelector('.writing-guide-shell')?.classList.add('writing-detail-guide');
+}
 export function retainWritingCatalog(previous,current,focused=previous?.contains(document.activeElement)?document.activeElement:null){if(!previous||!current)return;const selected=current.querySelector('[aria-current="page"]')?.getAttribute('href');for(const link of previous.querySelectorAll('a')){if(link.classList.contains('capability-card')&&link.getAttribute('href')===selected)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');}current.replaceWith(previous);focused?.focus({preventScroll:true});}

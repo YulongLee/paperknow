@@ -1,0 +1,420 @@
+/* Document tools: a focused input workspace, a distinct review surface, and one
+   primary action in each decision area. All rules stay inside owned tools. */
+#app .doc-tool-detail{
+ --detail-accent:#7860b0;--detail-tint:#f3effa;--detail-line:#e5deef;
+ --detail-surface:var(--tool-surface,#fff);--detail-soft:var(--tool-soft,#f6f8fb);
+ --detail-action:color-mix(in srgb,var(--detail-accent) 88%,#102541);
+ --detail-ink:var(--tool-text,#27364e);--detail-muted:var(--tool-muted,#728097);
+ min-width:0;color:var(--detail-ink)
+}
+#app .doc-tool-detection{--detail-accent:#26836f;--detail-tint:#eaf6f0;--detail-line:#d4e9df}
+#app .doc-tool-revision[data-revision-kind=aigc],#app .revision-refresh[data-revision-theme=aigc] .doc-tool-revision{--detail-accent:#5d6cc4;--detail-tint:#eff1ff;--detail-line:#dce1f5}
+#app .doc-tool-ppt{--detail-accent:#bd6b59;--detail-tint:#fff2ec;--detail-line:#f0dbd2}
+#app .doc-tool-ppt[data-presentation-mode=proposal]{--detail-accent:#8171bc;--detail-tint:#f3effb;--detail-line:#e6ddf3}
+#app .doc-tool-ppt[data-presentation-mode=thesis]{--detail-accent:#5c80ac;--detail-tint:#edf4fc;--detail-line:#d9e5f4}
+#app .doc-tool-format{--detail-accent:#a17b38;--detail-tint:#fbf4e7;--detail-line:#ebddbf}
+#app .doc-tool-format[data-format-mode=check]{--detail-accent:#5b83b2;--detail-tint:#eef4fc;--detail-line:#dbe5f3}
+#app .doc-tool-format[data-format-mode=refine]{--detail-accent:#8d729f;--detail-tint:#f5eff8;--detail-line:#e8dfee}
+#app .doc-tool-detail [hidden]{display:none!important}
+#app .doc-tool-detail :is(input:not([type=file]):not([type=checkbox]):not([type=radio]),textarea,select){box-sizing:border-box;max-width:100%;min-width:0;font:inherit;font-size:13px;color:var(--detail-ink);background:var(--detail-surface);border:1px solid color-mix(in srgb,var(--detail-ink) 14%,transparent);border-radius:9px;line-height:1.75}
+#app .doc-tool-detail :is(input:not([type=file]):not([type=checkbox]):not([type=radio]),select){min-height:43px;padding:9px 12px}
+#app .doc-tool-detail textarea{padding:13px 14px;resize:vertical;line-height:1.9}
+#app .doc-tool-detail :is(input,textarea,select,button,a):focus-visible{outline:3px solid color-mix(in srgb,var(--detail-accent) 25%,transparent);outline-offset:3px}
+#app .doc-tool-detail :is(button,input,select,textarea):disabled{cursor:not-allowed}
+#app .doc-tool-detail :is(.doc-detail-panel,.rev-versions,.det-history){border:1px solid color-mix(in srgb,var(--detail-ink) 9%,transparent);border-radius:18px;background:var(--detail-surface);box-shadow:0 7px 24px #273b5b05}
+#app .doc-tool-detail .doc-detail-panel-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:19px}
+#app .doc-tool-detail .doc-detail-panel-head h2{font-size:19px;line-height:1.6;font-weight:650;letter-spacing:-.025em;margin:4px 0 0;color:var(--detail-ink)}
+#app .doc-tool-detail .doc-detail-panel-head p{font-size:12px;line-height:1.8;margin:6px 0 0;color:var(--detail-muted)}
+#app .doc-tool-detail .doc-detail-eyebrow{display:block;font-size:9px;font-weight:650;letter-spacing:.14em;line-height:1.6;color:var(--detail-accent)}
+#app .doc-tool-detail :is(.revision-entry-submit,.rev-accept,.rev-footer,.det-submit,.format-flow-actions,.format-footer,.ppt-mode-actions,.ppt-actions) .btn{min-height:42px;font-size:12px;border-radius:9px;gap:7px}
+#app .doc-tool-detail :is(.revision-entry-submit,.rev-accept,.rev-footer,.det-submit,.format-flow-actions,.format-footer,.ppt-mode-actions,.ppt-actions) .btn.primary{background:var(--detail-action);border-color:var(--detail-action);color:#fff;box-shadow:0 4px 11px color-mix(in srgb,var(--detail-accent) 15%,transparent)}
+#app .doc-tool-detail :is(.revision-entry-submit,.rev-accept,.rev-footer,.det-submit,.format-flow-actions,.format-footer,.ppt-mode-actions,.ppt-actions) .btn.primary:disabled{background:color-mix(in srgb,var(--detail-ink) 28%,var(--detail-surface));border-color:transparent;box-shadow:none;color:var(--detail-surface);opacity:1}
+#app .doc-tool-detail :is(.revision-entry-meta,.det-meta,.ppt-fields,.ppt-start-settings,.format-rule-grid){min-width:0}
+#app .doc-tool-detail :is(.revision-entry-meta,.det-meta,.ppt-fields,.ppt-start-settings,.format-rule-grid)>*{min-width:0}
+#app .doc-tool-detail :is(.rev-steps,.ppt-steps){display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;list-style:none;padding-left:0}
+#app .doc-tool-detail :is(.rev-steps,.ppt-steps)>li{min-width:0;line-height:1.75}
+
+/* Revision: the document is the working object; accepted changes and unresolved
+   comments come from the real paragraph state, never a simulated score. */
+#app .doc-tool-revision .revision-entry-heading{margin:0 0 19px;align-items:center}
+#app .doc-tool-revision .revision-plan-grid{gap:13px;margin-bottom:24px}
+#app .doc-tool-revision .revision-plan-card{--plan-accent:var(--detail-accent);--plan-soft:var(--detail-tint);padding:22px 19px 31px;min-height:150px;border-color:transparent;background:linear-gradient(125deg,var(--detail-surface),var(--plan-soft));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--plan-accent) 15%,transparent)}
+#app .doc-tool-revision .revision-plan-card[data-revision-plan=dual]{--plan-accent:#5f8a9b;--plan-soft:#edf5f7}
+#app .doc-tool-revision .revision-plan-card[data-revision-plan=english]{--plan-accent:#a98762;--plan-soft:#faf4ed}
+#app .doc-tool-revision .revision-plan-card[data-revision-plan=bundle]{--plan-accent:#ac8c51;--plan-soft:#fcf6e9}
+#app .doc-tool-revision .revision-plan-card.selected{border-color:var(--plan-accent);box-shadow:0 6px 19px color-mix(in srgb,var(--plan-accent) 9%,transparent),inset 0 -3px var(--plan-accent)}
+#app .doc-tool-revision .revision-plan-icon{color:var(--plan-accent);background:var(--detail-surface);border:1px solid color-mix(in srgb,var(--plan-accent) 12%,transparent);border-radius:14px}
+#app .doc-tool-revision .revision-plan-copy h3{font-size:16px;letter-spacing:-.015em}
+#app .doc-tool-revision .revision-plan-check{background:var(--plan-accent)}
+#app .doc-tool-revision .revision-entry-layout{grid-template-columns:minmax(0,1fr) minmax(260px,292px);gap:22px}
+#app .doc-tool-revision .revision-entry-card{padding:27px 28px}
+#app .doc-tool-revision .revision-input-tabs{display:flex;width:max-content;max-width:100%;background:var(--detail-soft);border:0;padding:5px;border-radius:10px}
+#app .doc-tool-revision .revision-input-tabs button{min-height:38px;padding:8px 18px;font-size:12px}
+#app .doc-tool-revision .revision-input-tabs button.active{border-color:transparent;color:var(--detail-accent);box-shadow:0 3px 8px #273b5b0b}
+#app .doc-tool-revision .revision-upload-zone{min-height:232px;border-color:color-mix(in srgb,var(--detail-accent) 34%,transparent);background:radial-gradient(ellipse at 50% 0,var(--detail-tint),transparent 73%),var(--detail-soft)}
+#app .doc-tool-revision .revision-upload-icon{width:62px;height:62px;background:var(--detail-surface);color:var(--detail-accent);box-shadow:0 7px 18px #253b6008;transform:rotate(-5deg)}
+#app .doc-tool-revision .revision-entry-meta{padding:18px 18px 0;background:var(--detail-soft);border-radius:12px 12px 0 0;margin-bottom:0}
+#app .doc-tool-revision .revision-entry-meta+label{margin:0;padding:15px 18px 8px;background:var(--detail-soft)}
+#app .doc-tool-revision #revision-service-requirements{width:calc(100% - 36px);margin:0 18px 20px;box-shadow:0 0 0 18px var(--detail-soft)}
+#app .doc-tool-revision .revision-entry-summary{border:0;background:linear-gradient(145deg,var(--detail-tint),var(--detail-soft))!important;box-shadow:none}
+#app .doc-tool-revision .revision-entry-side>.card:not(.revision-entry-summary){border-color:transparent;box-shadow:none;background:var(--detail-surface)}
+#app .doc-tool-revision .revision-entry-empty{display:grid;justify-items:center;gap:9px;padding:27px 12px;background:var(--detail-soft);border-radius:12px}
+#app .doc-tool-revision .revision-entry-empty>svg{padding:13px;width:27px;height:27px;box-sizing:content-box;border-radius:15px;background:var(--detail-surface);color:var(--detail-accent)}
+#app .doc-tool-revision .rev-modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:19px}
+#app .doc-tool-revision .rev-modes>button{display:flex;align-items:center;gap:12px;min-width:0;padding:17px 18px;background:var(--detail-surface);border:1px solid transparent;border-radius:12px;box-shadow:0 0 0 1px color-mix(in srgb,var(--detail-ink) 9%,transparent);text-align:left;transition:background .2s,border-color .2s}
+#app .doc-tool-revision .rev-modes>button>svg{flex:0 0 23px;color:var(--detail-accent);padding:10px;box-sizing:content-box;background:var(--detail-tint);border-radius:12px}
+#app .doc-tool-revision .rev-modes>button>span{min-width:0;display:grid;gap:5px;background:none}
+#app .doc-tool-revision .rev-modes b{font-size:14px;color:var(--detail-ink)}
+#app .doc-tool-revision .rev-modes small{font-size:11px;line-height:1.7;color:var(--detail-muted)}
+#app .doc-tool-revision .rev-modes>button.selected{background:var(--detail-tint);border-color:var(--detail-accent);box-shadow:none}
+#app .doc-tool-revision .doc-detail-work-state{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:23px 25px;margin-bottom:21px;background:linear-gradient(115deg,var(--detail-surface),var(--detail-tint));border-radius:16px;border:1px solid var(--detail-line)}
+#app .doc-tool-revision .doc-detail-work-title{display:flex;gap:14px;align-items:center;min-width:0}
+#app .doc-tool-revision .doc-detail-work-icon{display:grid;place-items:center;flex:0 0 47px;width:47px;height:55px;background:var(--detail-surface);border-radius:10px;color:var(--detail-accent);box-shadow:0 5px 14px #273b5b08}
+#app .doc-tool-revision .doc-detail-work-title h2{font-size:18px;line-height:1.6;margin:4px 0;overflow-wrap:anywhere}
+#app .doc-tool-revision .doc-detail-work-title p{font-size:11px;color:var(--detail-muted);line-height:1.8;margin:0}
+#app .doc-tool-revision .doc-detail-metrics{display:flex;gap:25px;margin:0;flex:none}
+#app .doc-tool-revision .doc-detail-metrics>div{padding-left:22px;border-left:1px solid color-mix(in srgb,var(--detail-accent) 15%,transparent)}
+#app .doc-tool-revision .doc-detail-metrics dt{font-size:10px;color:var(--detail-muted);line-height:1.8}
+#app .doc-tool-revision .doc-detail-metrics dd{font-size:23px;font-variant-numeric:tabular-nums;line-height:1.5;margin:4px 0 0;color:var(--detail-ink);font-weight:600}
+#app .doc-tool-revision .doc-detail-metrics dd small{font-size:11px;color:var(--detail-muted);font-weight:400}
+#app .doc-tool-revision .rev-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(250px,285px);gap:22px;align-items:start}
+#app .doc-tool-revision .rev-layout>*{min-width:0}
+#app .doc-tool-revision .rev-main{padding:25px}
+#app .doc-tool-revision .rev-main>header h2{font-size:18px;margin:0}
+#app .doc-tool-revision .rev-steps{margin:17px 0 23px;padding:0 0 20px;border-bottom:1px solid color-mix(in srgb,var(--detail-ink) 8%,transparent)}
+#app .doc-tool-revision .rev-document{padding:17px 18px;border:0;background:var(--detail-soft);border-radius:12px;gap:16px}
+#app .doc-tool-revision .rev-document b{font-size:14px;line-height:1.7}
+#app .doc-tool-revision .rev-document small{font-size:10px;line-height:1.7;margin-top:5px;color:var(--detail-muted)}
+#app .doc-tool-revision .rev-requirements{padding:0 5px;font-size:12px;line-height:1.9;color:var(--detail-muted)}
+#app .doc-tool-revision .rev-toolbar{display:flex;align-items:center;gap:12px;padding:17px 0 14px}
+#app .doc-tool-revision .rev-toolbar>label{font-size:12px;white-space:nowrap}
+#app .doc-tool-revision .rev-toolbar>select{flex:1;min-width:0}
+#app .doc-tool-revision .rev-editors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px}
+#app .doc-tool-revision .rev-editors>section{min-width:0;border:1px solid color-mix(in srgb,var(--detail-ink) 10%,transparent);border-radius:12px;overflow:hidden;background:var(--detail-surface)}
+#app .doc-tool-revision .rev-editors h3{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:13px 16px;margin:0;background:var(--detail-soft);font-size:13px;line-height:1.7}
+#app .doc-tool-revision .rev-editors h3>span{font-size:10px;color:var(--detail-muted);font-weight:400}
+#app .doc-tool-revision .rev-editors .doc-detail-revision{border-color:color-mix(in srgb,var(--detail-accent) 36%,transparent)}
+#app .doc-tool-revision .doc-detail-revision h3{background:var(--detail-tint);color:var(--detail-accent)}
+#app .doc-tool-revision .rev-editors :is(pre,textarea){box-sizing:border-box;display:block;width:100%;min-height:260px;margin:0;padding:19px 17px;border:0;border-radius:0;font:inherit;font-size:14px;line-height:2;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--detail-ink);background:var(--detail-surface)}
+#app .doc-tool-revision .rev-comments{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px;margin-top:20px}
+#app .doc-tool-revision .rev-comments label{display:block;font-size:12px;margin-bottom:8px;color:var(--detail-muted)}
+#app .doc-tool-revision .rev-comments textarea{width:100%;min-height:92px;background:var(--detail-soft);border-color:transparent}
+#app .doc-tool-revision .rev-resolved{display:flex;align-items:center;gap:8px;font-size:11px;line-height:1.8;padding:14px 0;color:var(--detail-muted)}
+#app .doc-tool-revision .rev-resolved input{flex:none;accent-color:var(--detail-accent)}
+#app .doc-tool-revision .rev-accept{display:flex;align-items:center;justify-content:flex-end;gap:9px;padding:14px 16px;background:var(--detail-tint);border:0;border-radius:11px;margin:9px 0 20px}
+#app .doc-tool-revision .rev-accept>span{font-size:10px;line-height:1.8;color:var(--detail-muted);margin-right:auto}
+#app .doc-tool-revision .rev-footer{display:flex;align-items:center;gap:10px;padding:20px 0 0;border-top:1px solid color-mix(in srgb,var(--detail-ink) 9%,transparent)}
+#app .doc-tool-revision .rev-footer>span{margin-right:auto;color:var(--detail-muted);font-size:11px}
+#app .doc-tool-revision .rev-side{display:grid;gap:18px}
+#app .doc-tool-revision .rev-side>.card{padding:21px;border:0;border-radius:14px;box-shadow:none;background:var(--detail-surface)}
+#app .doc-tool-revision .rev-side h2{font-size:15px;margin:0 0 15px}
+#app .doc-tool-revision .rev-side p{font-size:11px;line-height:1.9;color:var(--detail-muted)}
+#app .doc-tool-revision .rev-side a{display:grid;gap:5px;padding:13px 0;border-bottom:1px solid color-mix(in srgb,var(--detail-ink) 8%,transparent);text-decoration:none}
+#app .doc-tool-revision .rev-side a b{font-size:12px;font-weight:550;overflow-wrap:anywhere}
+#app .doc-tool-revision .rev-side a :is(small,span){font-size:10px;line-height:1.7;color:var(--detail-muted)}
+#app .doc-tool-revision .rev-side .rev-issue{width:100%;display:grid;gap:5px;padding:13px 14px;margin:8px 0;background:var(--detail-soft);border:0;border-radius:9px;text-align:left;font-size:11px;line-height:1.8;color:var(--detail-muted)}
+#app .doc-tool-revision .rev-versions{margin-top:19px;padding:23px 25px}
+#app .doc-tool-revision .rev-versions h2{font-size:16px}
+#app .doc-tool-revision .rev-version-row{padding:15px 0;gap:13px;border-bottom:1px solid color-mix(in srgb,var(--detail-ink) 8%,transparent);font-size:11px}
+#app .doc-tool-revision .rev-version-row:last-child{border-bottom:0}
+#app .doc-tool-revision .rev-version-row>span{color:var(--detail-muted)}
+
+/* Detection: preparation status and source scope are separate from a result. */
+#app .doc-tool-detection .det-service-strip{margin-bottom:23px}
+#app .doc-tool-detection .det-service-card{border-color:transparent;background:var(--detail-surface);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--detail-ink) 8%,transparent)}
+#app .doc-tool-detection .det-service-card.active{background:linear-gradient(115deg,var(--detail-surface),var(--detail-tint));box-shadow:inset 0 -3px var(--detail-accent),0 4px 15px #277e6c08;border-color:var(--detail-line)}
+#app .doc-tool-detection .det-layout{grid-template-columns:minmax(0,1fr) minmax(260px,292px);gap:23px;align-items:start}
+#app .doc-tool-detection .det-create{padding:27px 28px}
+#app .doc-tool-detection .det-tabs{padding:5px;gap:5px;background:var(--detail-soft);border:0;border-radius:11px;margin:20px 0 16px}
+#app .doc-tool-detection .det-tabs>button{border:1px solid transparent;border-radius:8px;background:transparent;min-height:46px;font-size:13px}
+#app .doc-tool-detection .det-tabs>button.active{background:var(--detail-surface);color:var(--detail-accent);border-color:transparent;box-shadow:0 3px 9px #273b5b09}
+#app .doc-tool-detection .det-tabs>button small{font-size:10px;margin-left:5px;font-weight:400;color:var(--detail-muted)}
+#app .doc-tool-detection .doc-detail-readiness{display:flex;flex-wrap:wrap;gap:8px 17px;padding:0 2px 18px;margin-bottom:2px;border-bottom:1px solid color-mix(in srgb,var(--detail-ink) 8%,transparent)}
+#app .doc-tool-detection .doc-detail-readiness>span{display:flex;align-items:center;gap:6px;font-size:10px;line-height:1.8;color:var(--detail-muted)}
+#app .doc-tool-detection[data-detection-state=unavailable] .doc-detail-readiness{display:none}
+#app .doc-tool-detection .doc-detail-readiness>[data-ready=true]{color:var(--detail-accent)}
+#app .doc-tool-detection .det-meta{background:var(--detail-soft);padding:18px;border:0;border-radius:12px;margin:21px 0}
+#app .doc-tool-detection .det-meta label{font-size:12px;font-weight:500;color:var(--detail-muted);margin-bottom:8px}
+#app .doc-tool-detection .det-upload{position:relative;overflow:hidden;min-height:221px;padding:29px 20px;border-radius:13px;background:radial-gradient(ellipse at 50% 0,var(--detail-tint),transparent 80%),var(--detail-soft);border-color:color-mix(in srgb,var(--detail-accent) 33%,transparent)}
+#app .doc-tool-detection .det-upload-symbol{color:var(--detail-accent);padding:14px;border-radius:17px;background:var(--detail-surface);box-shadow:0 5px 18px #284c4209;transform:rotate(-4deg)}
+#app .doc-tool-detection .det-upload b{font-size:15px;line-height:1.8;overflow-wrap:anywhere;color:var(--detail-ink)}
+#app .doc-tool-detection .det-upload>span:not(.det-upload-symbol){font-size:11px;line-height:1.8;color:var(--detail-muted)}
+#app .doc-tool-detection .det-input-actions{gap:10px;margin:13px 0 18px}
+#app .doc-tool-detection .det-scope{padding:19px;background:var(--detail-tint);border:0;border-left:3px solid color-mix(in srgb,var(--detail-accent) 55%,transparent);border-radius:3px 12px 12px 3px}
+#app .doc-tool-detection .det-scope b{font-size:13px}
+#app .doc-tool-detection .det-scope p{font-size:11px;line-height:1.9;margin:5px 0;color:var(--detail-muted)}
+#app .doc-tool-detection .det-confirm{padding:20px 0 0;border:0;background:none}
+#app .doc-tool-detection .det-confirm h3{font-size:15px;margin:0 0 7px}
+#app .doc-tool-detection .det-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:0;margin-top:17px}
+#app .doc-tool-detection .det-sections>label{display:flex;align-items:flex-start;gap:9px;margin:0;padding:13px;background:var(--detail-soft);border:1px solid transparent;border-radius:9px;min-width:0}
+#app .doc-tool-detection .det-sections>label:has(input:checked){border-color:var(--detail-line);background:var(--detail-tint)}
+#app .doc-tool-detection .det-sections input{accent-color:var(--detail-accent);margin-top:4px;flex:none}
+#app .doc-tool-detection .det-sections b{font-size:12px;line-height:1.8;font-weight:500}
+#app .doc-tool-detection .det-sections small{display:block;font-size:10px;line-height:1.8;margin-top:3px;color:var(--detail-muted)}
+#app .doc-tool-detection .det-settings{border:0;background:var(--detail-soft);border-radius:11px;padding:17px 18px}
+#app .doc-tool-detection .det-submit{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:22px;padding-top:21px;border-top:1px solid color-mix(in srgb,var(--detail-ink) 9%,transparent)}
+#app .doc-tool-detection .det-submit p{font-size:10px;line-height:1.8;color:var(--detail-muted)}
+#app .doc-tool-detection .det-side{display:grid;gap:17px}
+#app .doc-tool-detection .det-side>.card{padding:22px;border:0;background:var(--detail-surface);border-radius:14px;box-shadow:none}
+#app .doc-tool-detection .det-side>.card:first-child{background:linear-gradient(140deg,var(--detail-tint),var(--detail-soft))}
+#app .doc-tool-detection .det-side h2{font-size:15px;line-height:1.7}
+#app .doc-tool-detection .det-side :is(p,small){font-size:11px;line-height:1.9;color:var(--detail-muted)}
+#app .doc-tool-detection .det-capabilities>div{padding:11px 0;border-bottom:1px solid color-mix(in srgb,var(--detail-accent) 10%,transparent)}
+#app .doc-tool-detection .det-capabilities b{font-size:12px;font-weight:500}
+#app .doc-tool-detection .det-report-feature{gap:11px;padding:12px 0}
+#app .doc-tool-detection .det-report-feature>svg{color:var(--detail-accent);background:var(--detail-tint);padding:8px;box-sizing:content-box;border-radius:9px;flex:none}
+#app .doc-tool-detection .det-ai-empty{padding:48px 22px;background:linear-gradient(135deg,var(--detail-soft),var(--detail-tint));border:0;border-radius:13px;min-height:310px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center}
+#app .doc-tool-detection .det-ai-empty>svg{color:var(--detail-accent);padding:17px;box-sizing:content-box;border-radius:20px;background:var(--detail-surface);margin-bottom:3px}
+#app .doc-tool-detection .det-ai-empty p{max-width:380px;font-size:12px;line-height:1.9;color:var(--detail-muted)}
+#app .doc-tool-detection .det-history{margin-top:23px;padding:24px 27px}
+#app .doc-tool-detection .det-history-toolbar{padding:15px;background:var(--detail-soft);border:0;border-radius:10px;margin:17px 0}
+#app .doc-tool-detection .det-table th{padding:13px 15px;font-size:11px;color:var(--detail-muted);background:var(--detail-soft);border:0}
+#app .doc-tool-detection .det-table td{padding:17px 15px;border-bottom:1px solid color-mix(in srgb,var(--detail-ink) 7%,transparent);font-size:12px;line-height:1.8}
+#app .doc-tool-detection .doc-detail-empty{display:grid;justify-items:center;gap:10px;padding:35px 20px;text-align:center;background:var(--detail-soft);border-radius:12px;min-height:177px}
+#app .doc-tool-detection .doc-detail-empty-icon{display:grid;place-items:center;width:59px;height:59px;border-radius:16px;background:var(--detail-surface);color:var(--detail-accent);margin-bottom:2px}
+
+/* Presentation: options form and preview studio have deliberately different
+   surfaces, while the existing artwork and actual slide themes are retained. */
+#app .doc-tool-ppt .ppt-mode-options{gap:13px}
+#app .doc-tool-ppt .ppt-rail-item{min-height:124px;border-color:transparent;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--entry-tone) 16%,transparent)}
+#app .doc-tool-ppt .ppt-rail-item.active{border-color:var(--entry-tone);box-shadow:inset 0 -3px var(--entry-tone),0 5px 17px color-mix(in srgb,var(--entry-tone) 10%,transparent)}
+#app .doc-tool-ppt .ppt-journey{border-color:transparent;box-shadow:none;background:var(--detail-soft);padding:22px 25px}
+#app .doc-tool-ppt .ppt-journey li>span,#app .doc-tool-ppt .ppt-compose-number{color:var(--detail-accent);background:var(--detail-tint)}
+#app .doc-tool-ppt .ppt-mode-card{padding:28px 29px;border-color:color-mix(in srgb,var(--detail-ink) 8%,transparent);border-radius:18px;box-shadow:0 7px 24px #273b5b05}
+#app .doc-tool-ppt .ppt-ai-input{border:1px solid color-mix(in srgb,var(--detail-accent) 18%,transparent);background:linear-gradient(135deg,var(--detail-surface),var(--detail-tint));padding:21px;border-radius:13px}
+#app .doc-tool-ppt .ppt-ai-input>textarea{background:transparent;border:0;padding:0;min-height:156px;font-size:15px;line-height:1.9}
+#app .doc-tool-ppt .ppt-ai-tools{gap:8px;padding-top:16px;margin-top:15px;border-color:color-mix(in srgb,var(--detail-accent) 12%,transparent)}
+#app .doc-tool-ppt .ppt-start-settings{padding:19px;background:var(--detail-soft);border-radius:12px;gap:15px;margin:21px 0}
+#app .doc-tool-ppt .ppt-quick-presets{gap:8px}
+#app .doc-tool-ppt .ppt-quick-presets button{font-size:11px;min-height:32px;padding:6px 11px;border:0;background:var(--detail-soft);color:var(--detail-muted)}
+#app .doc-tool-ppt .ppt-mode-drop{min-height:220px;padding:30px;background:radial-gradient(ellipse at 50% 0,var(--detail-tint),transparent 76%),var(--detail-soft);border-color:color-mix(in srgb,var(--detail-accent) 32%,transparent)}
+#app .doc-tool-ppt .ppt-mode-drop>svg{padding:14px;background:var(--detail-surface);color:var(--detail-accent);box-shadow:0 6px 16px #273b5b08;border-radius:16px;transform:rotate(-4deg)}
+#app .doc-tool-ppt .ppt-mode-drop b{font-size:15px;color:var(--detail-ink)}
+#app .doc-tool-ppt .ppt-mode-template{border-color:transparent;box-shadow:0 0 0 1px color-mix(in srgb,var(--detail-ink) 10%,transparent);padding:6px}
+#app .doc-tool-ppt .ppt-mode-template.selected{background:var(--detail-tint);border-color:var(--detail-accent);box-shadow:0 0 0 1px var(--detail-accent),0 5px 15px #273b5b06}
+#app .doc-tool-ppt .ppt-mode-template.selected>span:last-child>small{color:var(--detail-accent)}
+#app .doc-tool-ppt .ppt-mode-actions{margin-top:23px;padding-top:23px;border-top:1px solid color-mix(in srgb,var(--detail-ink) 9%,transparent)}
+#app .doc-tool-ppt .ppt-plan{border:1px solid color-mix(in srgb,var(--detail-ink) 10%,transparent);border-radius:13px;padding:21px;background:var(--detail-surface)}
+#app .doc-tool-ppt .ppt-plan.active{background:linear-gradient(115deg,var(--detail-surface),var(--detail-tint));border-color:var(--detail-accent);box-shadow:inset 0 -3px var(--detail-accent)}
+#app .doc-tool-ppt .ppt-plan:disabled{background:var(--detail-soft);opacity:.6}
+#app .ppt-editor-workspace.doc-tool-ppt{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(330px,.88fr);gap:22px;align-items:start}
+#app .ppt-editor-workspace.doc-tool-ppt>.ppt-input-card{padding:25px}
+#app .doc-tool-ppt .ppt-tabs,#app .doc-tool-ppt .ppt-source-tabs{display:flex;flex-wrap:wrap;gap:5px;padding:5px;background:var(--detail-soft);border:0;border-radius:10px;margin:17px 0}
+#app .doc-tool-ppt :is(.ppt-tabs,.ppt-source-tabs)>button{flex:1;justify-content:center;min-width:0;min-height:37px;padding:8px 10px;font-size:11px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--detail-muted)}
+#app .doc-tool-ppt :is(.ppt-tabs,.ppt-source-tabs)>button.active{background:var(--detail-surface);color:var(--detail-accent);box-shadow:0 2px 7px #273b5b0a;border-color:transparent}
+#app .doc-tool-ppt .ppt-drop{min-height:197px;padding:26px;background:var(--detail-soft);border-radius:12px;border-color:var(--detail-line)}
+#app .doc-tool-ppt .ppt-label{display:block;font-size:12px;line-height:1.8;color:var(--detail-muted);margin:17px 0 8px}
+#app .doc-tool-ppt .ppt-label>input,#app .doc-tool-ppt .ppt-label>textarea{display:block;width:100%;margin-top:8px}
+#app .doc-tool-ppt .ppt-fields{gap:15px;padding:0;margin-top:17px}
+#app .doc-tool-ppt .ppt-fields label{font-size:11px;line-height:1.8;color:var(--detail-muted)}
+#app .doc-tool-ppt .ppt-fields :is(input,select){display:block;width:100%;margin-top:7px}
+#app .doc-tool-ppt .ppt-fields.four{grid-template-columns:repeat(2,minmax(0,1fr));padding:17px;background:var(--detail-soft);border-radius:12px;gap:14px}
+#app .doc-tool-ppt .ppt-preview-column{min-width:0;display:grid;gap:20px}
+#app .doc-tool-ppt .ppt-preview-card{padding:23px;border:0;background:linear-gradient(145deg,#2e405a,#20314a);color:#e3ebf7;box-shadow:0 10px 25px #1f324f13;border-radius:18px}
+#app .doc-tool-ppt .ppt-preview-card .doc-detail-panel-head h2{color:#eef3fb;font-size:17px}
+#app .doc-tool-ppt .ppt-preview-card .doc-detail-panel-head p{color:#aabbd3;font-size:11px}
+#app .doc-tool-ppt .ppt-preview-card .doc-detail-eyebrow{color:#9fb8da}
+#app .doc-tool-ppt .ppt-preview-card>.ppt-tabs{background:#ffffff0c;border:1px solid #ffffff13}
+#app .doc-tool-ppt .ppt-preview-card>.ppt-tabs button{color:#afc0d8;background:none}
+/* hub.css contains a legacy important blue active-tab color. This preview is
+   intentionally a dark canvas in both themes, so keep the selected text light. */
+#app .doc-tool-ppt .ppt-preview-card>.ppt-tabs button.active{color:#f3f7ff!important;background:#ffffff20;box-shadow:inset 0 0 0 1px #ffffff18}
+#app .doc-tool-ppt .ppt-preview-card .hub-badge{background:#ffffff16;color:#dce8fa;border:1px solid #ffffff1a}
+#app .doc-tool-ppt #ppt-live-preview{overflow:hidden;border-radius:11px;box-shadow:0 8px 23px #0e1d3438;margin-top:18px}
+#app .doc-tool-ppt .ppt-slide{min-width:0;overflow-wrap:anywhere}
+#app .doc-tool-ppt .ppt-preview-card .ppt-thumbnails{gap:9px;margin-top:17px}
+#app .doc-tool-ppt .ppt-preview-card .ppt-thumbnails>button{min-width:0;padding:3px;background:#ffffff12;border:1px solid #ffffff19;border-radius:7px}
+#app .doc-tool-ppt .ppt-preview-card .hub-footnote{color:#a8bad3;font-size:10px;line-height:1.8;margin-top:15px}
+#app .doc-tool-ppt .ppt-outline{display:grid;gap:7px;margin-top:15px}
+#app .doc-tool-ppt .ppt-outline button{width:100%;min-width:0;display:flex;align-items:center;gap:10px;text-align:left;padding:12px 13px;border:0;background:var(--detail-soft);border-radius:8px;font-size:12px;line-height:1.7;color:var(--detail-ink)}
+#app .doc-tool-ppt .ppt-outline button>span{flex:none;font-size:10px;color:var(--detail-accent);background:var(--detail-tint);width:25px;height:25px;display:grid;place-items:center;border-radius:6px}
+#app .doc-tool-ppt .ppt-outline button>svg{flex:none;margin-left:auto;color:var(--detail-accent)}
+#app .ppt-page-editor.doc-tool-ppt{padding:27px;border-radius:18px;border:1px solid color-mix(in srgb,var(--detail-ink) 9%,transparent);background:var(--detail-surface);margin:23px 0}
+#app .doc-tool-ppt .ppt-editor-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:23px;margin-top:18px}
+#app .doc-tool-ppt .ppt-page-fields{padding:0 2px;min-width:0}
+#app .doc-tool-ppt .ppt-page-fields>.ppt-label:first-child{margin-top:0}
+#app .doc-tool-ppt .ppt-page-fields textarea[data-slide=body]{min-height:205px;font-size:14px;line-height:1.95}
+#app .doc-tool-ppt .ppt-source-reference{padding:21px;background:var(--detail-soft);border-radius:12px;min-width:0}
+#app .doc-tool-ppt .ppt-source-reference summary{font-size:12px;line-height:1.8;margin-bottom:13px;color:var(--detail-muted);cursor:pointer}
+#app .doc-tool-ppt .ppt-source-reference textarea{width:100%;min-height:294px;background:var(--detail-surface);border:0;font-size:12px;line-height:1.95}
+#app .ppt-page-editor.doc-tool-ppt>.ppt-actions{padding-top:22px;margin-top:22px;border-top:1px solid color-mix(in srgb,var(--detail-ink) 9%,transparent);display:flex;flex-wrap:wrap;gap:10px}
+
+/* Formatting: the document is a paper on a neutral canvas; rules and issue
+   states remain visually separate from the actual Word preview. */
+#app .doc-tool-format .format-service-card{border-color:transparent;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--entry-tone,#ac8a47) 18%,transparent)}
+#app .doc-tool-format .format-service-card.active{box-shadow:inset 0 -3px var(--entry-tone,var(--detail-accent)),0 6px 18px #3f526c07}
+#app .doc-tool-format .format-steps{padding:16px 20px;background:var(--detail-soft);border:0;border-radius:13px;margin:22px 0}
+#app .doc-tool-format .format-step{padding:8px 12px;gap:9px;border:0;border-radius:8px;background:none;min-width:0}
+#app .doc-tool-format .format-step.active{background:var(--detail-surface);box-shadow:0 2px 7px #273b5b08;border:0}
+#app .doc-tool-format .format-step.active>b{background:var(--detail-action);color:#fff;border-color:transparent}
+#app .doc-tool-format .format-step:after{display:none}
+#app .doc-tool-format .format-mode-panel{padding:25px 27px;border-radius:17px;border-color:color-mix(in srgb,var(--detail-ink) 9%,transparent);background:var(--detail-surface)}
+#app .doc-tool-format .format-template-card{background:var(--detail-soft);border-color:transparent;border-radius:12px}
+#app .doc-tool-format .format-template-card.active{background:var(--detail-tint);border-color:var(--detail-accent);box-shadow:inset 0 -2px var(--detail-accent)}
+#app .doc-tool-format .format-flow-card{padding:24px 26px;border-color:var(--detail-line);border-left:4px solid var(--detail-accent);background:linear-gradient(120deg,var(--detail-surface),var(--detail-tint));gap:20px;border-radius:4px 16px 16px 4px;box-shadow:none}
+#app .doc-tool-format .format-flow-symbol{color:var(--detail-accent);background:var(--detail-surface);border-color:transparent;box-shadow:0 4px 12px #273b5b07;border-radius:13px}
+#app .doc-tool-format .format-flow-copy h2{font-size:21px;line-height:1.6;font-weight:650;margin:5px 0}
+#app .doc-tool-format .format-flow-copy p{font-size:12px;line-height:1.8;color:var(--detail-muted)}
+#app .doc-tool-format .format-flow-kicker{color:var(--detail-accent)}
+#app .doc-tool-format .format-flow-summary{border-left:1px solid color-mix(in srgb,var(--detail-accent) 15%,transparent)}
+#app .doc-tool-format .format-flow-summary p{font-size:11px;line-height:1.85;color:var(--detail-muted)}
+#app .doc-tool-format .format-flow-template select{min-height:43px;background:var(--detail-surface)}
+#app .doc-tool-format .format-grid:not(.format-grid-hidden){display:grid;grid-template-columns:minmax(290px,.85fr) minmax(0,1.65fr);gap:22px;align-items:start}
+#app .doc-tool-format .format-settings{padding:25px 23px;min-width:0}
+#app .doc-tool-format .format-settings h2{font-size:18px}
+#app .doc-tool-format .format-file{padding:16px 15px;border:0;background:var(--detail-soft);border-radius:11px;gap:10px;margin:17px 0 20px}
+#app .doc-tool-format .format-file>svg{flex:none;color:var(--detail-accent);padding:9px;box-sizing:content-box;background:var(--detail-surface);border-radius:10px}
+#app .doc-tool-format .format-file>div{min-width:0;flex:1;background:none}
+#app .doc-tool-format .format-file b{font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+#app .doc-tool-format .format-file small{font-size:10px;line-height:1.8;color:var(--detail-muted);margin-top:4px}
+#app .doc-tool-format .format-settings .research-field{display:block;font-size:12px;font-weight:500;color:var(--detail-muted);margin:15px 0}
+#app .doc-tool-format .format-settings .research-field :is(input,select){display:block;width:100%;margin-top:8px}
+#app .doc-tool-format .research-tabs{padding:4px;background:var(--detail-soft);border:0;border-radius:9px;gap:4px;margin:18px 0}
+#app .doc-tool-format .research-tabs button{font-size:11px;line-height:1.7;border:0;background:none;padding:9px 11px;min-height:35px;border-radius:6px;color:var(--detail-muted)}
+#app .doc-tool-format .research-tabs button.active{background:var(--detail-surface);color:var(--detail-accent);box-shadow:0 2px 6px #273b5b08;border:0}
+#app .doc-tool-format .research-tabs button.active:after{display:none}
+#app .doc-tool-format .format-rule-grid{gap:14px 12px;padding:17px;background:var(--detail-soft);border-radius:12px}
+#app .doc-tool-format .format-rule-grid>label{display:block;min-width:0;font-size:11px;font-weight:500;line-height:1.8;color:var(--detail-muted)}
+#app .doc-tool-format .format-rule-grid :is(input:not([type=checkbox]),select){width:100%;display:block;margin-top:7px;font-size:12px}
+#app .doc-tool-format .format-rule-grid .research-check{display:flex;align-items:center;gap:8px;grid-column:1/-1;font-size:12px;padding:7px 0}
+#app .doc-tool-format .research-check input{accent-color:var(--detail-accent);flex:none}
+#app .doc-tool-format .format-settings>.research-actions{margin-top:20px;display:flex;gap:10px;flex-wrap:wrap}
+#app .doc-tool-format .format-settings>.research-actions>.btn.primary{background:var(--detail-accent);border-color:var(--detail-accent);color:#fff}
+#app .doc-tool-format .format-review-column{display:grid;gap:20px;min-width:0}
+#app .doc-tool-format .format-preview{padding:0;overflow:hidden;border-radius:17px}
+#app .doc-tool-format .format-preview>.hub-card-heading{padding:22px 24px 0;margin-bottom:13px}
+#app .doc-tool-format .format-preview-toolbar{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:0 24px 18px;background:none;border:0}
+#app .doc-tool-format .format-preview-toolbar .research-tabs{margin:0;max-width:100%;flex-wrap:wrap}
+#app .doc-tool-format .format-preview-toolbar>label{font-size:10px;line-height:1.8;max-width:210px;color:var(--detail-muted)}
+#app .doc-tool-format .format-preview-toolbar select{font-size:11px;display:block;max-width:100%;min-height:36px;padding:6px 9px;margin-top:4px}
+#app .doc-tool-format .format-paper-wrap{padding:29px;background:radial-gradient(circle at 1px 1px,#bac3ce29 1px,transparent 0) 0 0/12px 12px,#edf0f4;max-height:720px;overflow:auto;border:0}
+#app .doc-tool-format .format-paper{width:100%;box-sizing:border-box;margin:0 auto;min-height:420px;border:1px solid #dce0e7;box-shadow:0 5px 18px #25365010;background:#fff;color:#222b3a;border-radius:2px;max-width:680px}
+#app .doc-tool-format .format-paragraph{border:1px solid transparent;padding:8px 10px;position:relative;min-width:0}
+#app .doc-tool-format .format-paragraph p{overflow-wrap:anywhere}
+#app .doc-tool-format .format-paragraph.focused{border-color:color-mix(in srgb,var(--detail-accent) 32%,transparent);background:color-mix(in srgb,var(--detail-tint) 45%,#fff);border-radius:5px}
+#app .doc-tool-format .format-role{font-size:9px;line-height:1.7;color:#8b95a4;display:flex;align-items:center;gap:6px;opacity:.45;transition:opacity .18s}
+#app .doc-tool-format .format-paragraph:is(:hover,:focus-within,.focused) .format-role{opacity:1}
+#app .doc-tool-format .format-role select{font-size:10px;color:#607087;background:#f8f9fb;min-height:27px;padding:3px 6px;max-width:125px;border-radius:5px}
+#app .doc-tool-format .format-results{padding:23px 24px}
+#app .doc-tool-format .format-results h2{font-size:17px}
+#app .doc-tool-format .format-issue{display:flex;align-items:center;gap:12px;padding:16px 0;border:0;border-bottom:1px solid color-mix(in srgb,var(--detail-ink) 8%,transparent);background:none;border-radius:0}
+#app .doc-tool-format .format-issue>div{flex:1;min-width:0}
+#app .doc-tool-format .format-issue b{font-size:12px;line-height:1.8;font-weight:550}
+#app .doc-tool-format .format-issue p{font-size:11px;line-height:1.8;color:var(--detail-muted);margin:5px 0 0;overflow-wrap:anywhere}
+#app .doc-tool-format .format-check-empty{padding:33px 20px;border:0;background:var(--detail-soft);border-radius:12px;min-height:185px}
+#app .doc-tool-format .format-check-empty>span{display:grid;place-items:center;flex:none;width:60px;height:60px;border-radius:17px;background:var(--detail-surface);color:var(--detail-accent);margin:0 auto 13px}
+#app .doc-tool-format .format-check-empty h3{font-size:15px}
+#app .doc-tool-format .format-check-empty p{font-size:12px;line-height:1.85;max-width:420px;margin:9px auto;color:var(--detail-muted)}
+#app .doc-tool-format .format-check-empty small{font-size:10px;line-height:1.8;color:var(--detail-muted)}
+#app .doc-tool-format .format-footer{padding:18px 21px;background:var(--detail-surface);border-radius:13px;border:0;margin:0;box-shadow:0 5px 17px #273b5b04}
+#app .doc-tool-format .format-refine-panel{padding:27px;border:1px solid var(--detail-line);background:linear-gradient(135deg,var(--detail-surface),var(--detail-tint));border-radius:17px;box-shadow:none}
+#app .doc-tool-format .format-refine-illustration{color:var(--detail-accent);background:var(--detail-surface);border-color:transparent;border-radius:18px;box-shadow:0 7px 19px #273b5b07;transform:rotate(-4deg)}
+#app .doc-tool-format .format-refine-upload{background:var(--detail-surface);border-color:color-mix(in srgb,var(--detail-accent) 23%,transparent);padding:25px;border-radius:13px}
+#app .doc-tool-format .format-refine-upload.pending{background:var(--detail-soft);border-style:solid;border-color:transparent;opacity:.76}
+
+/* Dark chrome follows the app surfaces; the actual slide and Word paper remain
+   their document colors rather than inheriting light-on-light chrome tokens. */
+.hub-theme-dark #app .doc-tool-detail{--detail-tint:color-mix(in srgb,var(--detail-accent) 13%,var(--detail-surface));--detail-line:color-mix(in srgb,var(--detail-accent) 28%,var(--detail-surface))}
+.hub-theme-dark #app .doc-tool-revision .revision-plan-card{--plan-soft:color-mix(in srgb,var(--plan-accent) 13%,var(--detail-surface))}
+.hub-theme-dark #app .doc-tool-detail :is(.doc-detail-eyebrow,.revision-input-tabs button.active,.det-tabs>button.active,.ppt-tabs>button.active,.ppt-source-tabs>button.active,.research-tabs button.active){color:color-mix(in srgb,var(--detail-accent) 55%,#fff)}
+.hub-theme-dark #app .doc-tool-ppt .ppt-preview-card>.ppt-tabs button.active{color:#f3f7ff!important}
+.hub-theme-dark #app .doc-tool-format .format-paper-wrap{background:radial-gradient(circle at 1px 1px,#5a6b7e38 1px,transparent 0) 0 0/12px 12px,#1e2a3d}
+
+/* Responsive constraints are based on available work area, including a sidebar. */
+@media(min-width:1680px){
+ #app .doc-tool-revision .revision-entry-layout,#app .doc-tool-detection .det-layout{grid-template-columns:minmax(0,1fr) 320px}
+ #app .doc-tool-revision .rev-layout{grid-template-columns:minmax(0,1fr) 310px}
+ #app .doc-tool-revision .rev-editors :is(pre,textarea){min-height:330px}
+ #app .ppt-editor-workspace.doc-tool-ppt{grid-template-columns:minmax(0,1fr) minmax(400px,.8fr)}
+}
+@media(max-width:1180px){
+ #app .doc-tool-revision .revision-entry-layout,#app .doc-tool-detection .det-layout,#app .doc-tool-revision .rev-layout{grid-template-columns:minmax(0,1fr)}
+ #app .doc-tool-revision .revision-entry-side,#app .doc-tool-detection .det-side,#app .doc-tool-revision .rev-side{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #app .doc-tool-revision .revision-entry-side>.card:first-child,#app .doc-tool-detection .det-side>.card:first-child{grid-row:span 2}
+ #app .doc-tool-revision .doc-detail-work-state{flex-wrap:wrap}
+ #app .doc-tool-revision .doc-detail-metrics{gap:25px;flex:1;justify-content:flex-start}
+ #app .doc-tool-revision .doc-detail-metrics>div{padding-left:0;padding-right:25px;border-left:0;border-right:1px solid var(--detail-line)}
+ #app .doc-tool-format .format-flow-summary{border:0;padding-left:0}
+ #app .doc-tool-format .format-grid:not(.format-grid-hidden){grid-template-columns:minmax(260px,.85fr) minmax(0,1.3fr)}
+ #app .doc-tool-format .format-preview-toolbar{flex-wrap:wrap}
+ #app .ppt-editor-workspace.doc-tool-ppt{grid-template-columns:minmax(0,1fr) minmax(285px,.9fr)}
+ #app .doc-tool-ppt .ppt-editor-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:900px){
+ #app .doc-tool-ppt .ppt-start-settings{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #app .doc-tool-ppt .ppt-start-settings>label:first-child{grid-column:1/-1}
+ #app .ppt-editor-workspace.doc-tool-ppt{grid-template-columns:minmax(0,1fr)}
+ #app .doc-tool-ppt .ppt-preview-column{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+ #app .doc-tool-format .format-grid:not(.format-grid-hidden){grid-template-columns:minmax(0,1fr)}
+ #app .doc-tool-format .format-rule-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+ #app .doc-tool-format .format-rule-grid>.hub-footnote{grid-column:1/-1}
+ #app .doc-tool-revision .rev-modes>button{padding:14px 12px;gap:8px}
+ #app .doc-tool-revision .rev-modes>button>svg{padding:7px;width:20px}
+}
+@media(max-width:640px){
+ #app .doc-tool-detail :is(.rev-steps,.ppt-steps){grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+ #app .doc-tool-revision .revision-plan-grid,#app .doc-tool-revision .rev-modes{grid-template-columns:minmax(0,1fr);gap:10px}
+ #app .doc-tool-revision .revision-plan-card{min-height:115px;padding:19px 16px 24px}
+ #app .doc-tool-revision .revision-entry-heading{align-items:flex-start;flex-direction:column;gap:10px}
+ #app .doc-tool-revision .revision-entry-layout,#app .doc-tool-revision .rev-layout,#app .doc-tool-detection .det-layout{gap:17px}
+ #app .doc-tool-revision .revision-entry-side,#app .doc-tool-detection .det-side,#app .doc-tool-revision .rev-side{grid-template-columns:minmax(0,1fr)}
+ #app .doc-tool-revision .revision-entry-side>.card:first-child,#app .doc-tool-detection .det-side>.card:first-child{grid-row:auto}
+ #app .doc-tool-revision .revision-entry-card,#app .doc-tool-revision .rev-main,#app .doc-tool-detection .det-create,#app .doc-tool-format .format-settings,#app .doc-tool-format .format-results{padding:21px 18px}
+ #app .doc-tool-revision .revision-entry-meta{grid-template-columns:minmax(0,1fr);padding:16px 14px 0;gap:14px}
+ #app .doc-tool-revision .revision-entry-meta+label{padding-inline:14px}
+ #app .doc-tool-revision #revision-service-requirements{width:calc(100% - 28px);margin-inline:14px;box-shadow:0 0 0 14px var(--detail-soft)}
+ #app .doc-tool-revision .revision-entry-submit{align-items:stretch;flex-direction:column}
+ #app .doc-tool-revision .revision-entry-submit>.btn{width:100%}
+ #app .doc-tool-revision .doc-detail-work-state{padding:20px 18px;gap:17px}
+ #app .doc-tool-revision .doc-detail-work-title{gap:11px}
+ #app .doc-tool-revision .doc-detail-work-title h2{font-size:16px}
+ #app .doc-tool-revision .doc-detail-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;gap:12px}
+ #app .doc-tool-revision .doc-detail-metrics>div{padding-right:12px}
+ #app .doc-tool-revision .doc-detail-metrics dd{font-size:20px}
+ #app .doc-tool-revision .rev-editors,#app .doc-tool-revision .rev-comments{grid-template-columns:minmax(0,1fr)}
+ #app .doc-tool-revision .rev-editors :is(pre,textarea){min-height:205px}
+ #app .doc-tool-revision .rev-toolbar{flex-wrap:wrap}
+ #app .doc-tool-revision .rev-toolbar>select{flex-basis:calc(100% - 70px)}
+ #app .doc-tool-revision .rev-toolbar>.btn{margin-left:auto}
+ #app .doc-tool-revision .rev-accept,#app .doc-tool-revision .rev-footer{flex-wrap:wrap}
+ #app .doc-tool-revision :is(.rev-accept,.rev-footer)>span{flex-basis:100%;margin:0 0 6px}
+ #app .doc-tool-revision .rev-versions{padding:19px 18px}
+ #app .doc-tool-revision .rev-version-row{display:flex;flex-wrap:wrap;gap:9px}
+ #app .doc-tool-revision .rev-version-row>b{flex-basis:100%}
+ #app .doc-tool-detection .det-meta{grid-template-columns:minmax(0,1fr);gap:15px}
+ #app .doc-tool-detection .det-sections{grid-template-columns:minmax(0,1fr)}
+ #app .doc-tool-detection .det-submit{flex-direction:column;align-items:stretch;gap:12px}
+ #app .doc-tool-detection .det-submit .btn{width:100%}
+ #app .doc-tool-detection .det-scope{flex-wrap:wrap;gap:13px}
+ #app .doc-tool-detection .det-history{padding:21px 18px}
+ #app .doc-tool-detection .det-history-toolbar{display:grid;grid-template-columns:minmax(0,1fr);gap:11px}
+ #app .doc-tool-detection .det-history-toolbar :is(input,select){width:100%}
+ #app .doc-tool-detection .det-tabs>button{font-size:12px;padding:10px 8px}
+ #app .doc-tool-detection .det-tabs>button small{display:block;margin:3px 0 0;font-size:9px}
+ #app .doc-tool-ppt .ppt-mode-card,#app .doc-tool-ppt .ppt-journey,#app .ppt-page-editor.doc-tool-ppt{padding:22px 18px}
+ #app .doc-tool-ppt .ppt-journey ol{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #app .doc-tool-ppt .ppt-preview-column,#app .doc-tool-ppt .ppt-editor-grid{grid-template-columns:minmax(0,1fr)}
+ #app .doc-tool-ppt .ppt-mode-template-grid{grid-template-columns:minmax(0,1fr)}
+ #app .doc-tool-ppt .ppt-mode-template{max-width:100%}
+ #app .doc-tool-ppt .ppt-template-art{aspect-ratio:16/7}
+ #app .doc-tool-ppt .ppt-source-reference{padding:18px}
+ #app .doc-tool-ppt .ppt-source-reference textarea{min-height:220px}
+ #app .doc-tool-ppt .ppt-fields{grid-template-columns:minmax(0,1fr)}
+ #app .doc-tool-ppt .ppt-fields.four{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #app .doc-tool-format .format-rule-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #app .doc-tool-format .format-flow-card{padding:21px 18px;gap:16px}
+ #app .doc-tool-format .format-flow-copy h2{font-size:19px}
+ #app .doc-tool-format .format-mode-panel,#app .doc-tool-format .format-refine-panel{padding:21px 18px}
+ #app .doc-tool-format .format-steps{padding:11px;gap:5px;grid-template-columns:repeat(2,minmax(0,1fr))}
+ #app .doc-tool-format .format-step{padding:8px 7px;gap:7px}
+ #app .doc-tool-format .format-step small{font-size:9px}
+ #app .doc-tool-format .format-preview>.hub-card-heading{padding:20px 18px 0}
+ #app .doc-tool-format .format-preview-toolbar{padding:0 18px 16px;gap:12px}
+ #app .doc-tool-format .format-paper-wrap{padding:17px 12px}
+ #app .doc-tool-format .format-paper{min-width:0}
+ #app .doc-tool-format .format-issue{flex-wrap:wrap;gap:9px}
+ #app .doc-tool-format .format-issue>div{flex-basis:calc(100% - 80px)}
+ #app .doc-tool-format .format-footer{padding:18px;flex-direction:column;align-items:stretch;gap:12px}
+ #app .doc-tool-format .format-footer .research-actions{display:flex;flex-wrap:wrap;gap:9px}
+}
+@media(prefers-reduced-motion:reduce){#app .doc-tool-detail *{scroll-behavior:auto!important;transition:none!important;animation:none!important}}

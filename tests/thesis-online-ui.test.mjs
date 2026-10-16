@@ -45,7 +45,7 @@ test('cloud save does not generate; model generation requires a valid quote and 
  f.$('[data-thesis-create]').click();await settle();assert.equal(f.calls.filter(c=>c.path==='/theses'&&c.data).length,1);assert.equal(f.calls.filter(c=>/generate/.test(c.path)).length,0);
  f.$('[data-thesis-quote]').click();await settle();assert.match(f.$('.thesis-charge').textContent,/10 科研积分/);assert.equal(f.$('[data-thesis-start]').disabled,true);assert.equal(f.calls.filter(c=>/generate/.test(c.path)).length,0);
  const consent=f.$('[data-thesis-consent]');consent.checked=true;consent.dispatchEvent(new window.Event('change'));f.$('[data-thesis-start]').click();await settle();
- const request=f.calls.find(c=>c.path==='/theses/t1/generate');assert.deepEqual(Object.keys(request.data).sort(),['billingToken','clientKey','consent','version']);assert.equal(request.data.billingToken,'quote-token');assert.equal(request.data.consent,true);assert.match(f.$('.thesis-progress').textContent,/排队中/);assert.equal(f.$('[data-thesis-editor]').disabled,true);f.close();
+ const request=f.calls.find(c=>c.path==='/theses/t1/generate');assert.deepEqual(Object.keys(request.data).sort(),['billingToken','clientKey','consent','version']);assert.equal(request.data.billingToken,'quote-token');assert.equal(request.data.consent,true);assert.match(f.$('.thesis-progress').textContent,/排队中/);assert.equal(f.$('[data-thesis-editor]').disabled,false);assert.equal(f.$('[data-thesis-editor]').readOnly,true);f.close();
 });
 test('missing research evidence blocks quoting and saving research materials creates an explicit new snapshot',async()=>{
  const empty=thesis({profile:{...snapshot().profile,method:''},snapshot:{...snapshot(),profile:{...snapshot().profile,method:''},materials:[]}}),f=fixture({item:empty});const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
@@ -99,4 +99,14 @@ test('account library reads real server items and session change clears private 
 });
 test('a delayed response after disposal cannot repaint another route',async()=>{
  let resolve;const f=fixture({handler:path=>path==='/theses/t1'?new Promise(done=>{resolve=done;}):undefined});const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await settle();stop();f.$('.dashboard').innerHTML='<h1>其他页面</h1>';resolve({item:thesis()});await stop.ready;assert.equal(f.$('.dashboard').textContent,'其他页面');f.close();
+});
+
+test('chapter actions and status refresh preserve keyboard focus and open research disclosure',async()=>{
+ const f=fixture(),stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
+ const second=f.$('[data-thesis-chapter="c2"]');second.focus();second.click();
+ assert.equal(document.activeElement.getAttribute('data-thesis-chapter'),'c2');
+ f.$('.thesis-sources').open=true;
+ const refresh=f.$('[data-thesis-refresh]');refresh.focus();refresh.click();await settle();
+ assert.equal(document.activeElement.hasAttribute('data-thesis-refresh'),true);assert.equal(f.$('.thesis-sources').open,true);
+ f.close();
 });

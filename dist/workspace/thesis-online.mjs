@@ -1,4 +1,5 @@
 import {documentExportButtons,bindDocumentExports} from './document-export.mjs';
+import {toolBanner} from './tool-banner.mjs';
 
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const instances=new Set();
@@ -36,7 +37,8 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,onSaved,o
  let alive=true,user=null,item=null,cap=null,busy=false,timer=null,selected=null,quote=null,quoteAction='generate',message='',loadError='',items=[],editorError='',loaded=false,researchEdits=null,historyChapter=null,historyItems=null,historyPreview=null;
  const controllers=new Set(),edits=new Map();
  const saveKey=crypto.randomUUID();
- let commandKey=null;
+ let commandKey=null,pendingFocus=null;
+ const disclosureState=new Map();
  const $=selector=>container.querySelector(selector);
  const dirty=()=>edits.size>0||researchEdits!==null;
  const notice=text=>{if(!alive)return;message=String(text||'');const node=$('[data-thesis-notice]');if(node)node.textContent=message;};
@@ -96,7 +98,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,onSaved,o
  function loginPanel(){const next='/workspace.html'+location.search+location.hash;return `<section class="thesis-login"><span class="thesis-symbol">↥</span><h3>登录后保存到账户，随时继续写作</h3><p>当前浏览器草稿继续保留。登录后可确认资料、逐章生成，并在其他设备找回论文。</p><a class="btn primary" href="/auth.html?mode=login&amp;next=${encodeURIComponent(next)}">登录账户</a></section>`;}
  function snapshotSummary(snapshot){
   const profile=snapshot.profile||{},materials=snapshot.materials||[],refs=snapshot.references||[];
-  return `<div class="thesis-summary"><div><small>论文题目</small><strong>${escape(snapshot.title||'未填写')}</strong><p>${escape(profile.level)} · ${escape(profile.discipline)} · ${escape(profile.language)} · 目标 ${Number(profile.targetWords||0).toLocaleString('zh-CN')} 字</p></div><div class="thesis-summary-counts"><span><b>${snapshot.outline?.length||0}</b>论文章节</span><span><b>${materials.length}</b>研究资料</span><span><b>${refs.length}</b>参考来源</span></div></div><details class="thesis-sources"><summary>核对将保存与使用的研究资料</summary><p>研究问题：${escape(profile.researchQuestion||'未填写')}<br>研究方法：${escape(profile.method||'未填写')}</p>${materials.map(row=>`<div><b>${escape(row.name)}</b><small>${escape(row.purpose||'研究背景')} · ${String(row.text||'').length.toLocaleString('zh-CN')} 字符 · 用户提供</small></div>`).join('')}${refs.map(row=>`<div><b>${escape(row.title)}</b><small>${escape(row.sourceLabel||'用户导入')} · ${row.text?'含正文':'仅元数据，不代表已读取原文'} · 未经系统核验</small></div>`).join('')}${!materials.length&&!refs.length?'<p>尚无研究资料。必须补充并确认至少一份含正文的真实材料，才能开始生成。系统不会凭空补写实验、问卷或统计结果。</p>':''}</details>`;
+  return `<div class="thesis-summary"><div><small>已确认的研究任务</small><strong>${escape(snapshot.title||'未填写')}</strong><p>${escape(profile.level)} · ${escape(profile.discipline)} · ${escape(profile.language)} · 目标 ${Number(profile.targetWords||0).toLocaleString('zh-CN')} 字</p></div><div class="thesis-summary-counts"><span><b>${snapshot.outline?.length||0}</b>论文章节</span><span><b>${materials.length}</b>研究资料</span><span><b>${refs.length}</b>参考来源</span></div></div><details class="thesis-sources"><summary>核对将保存与使用的研究资料</summary><p>研究问题：${escape(profile.researchQuestion||'未填写')}<br>研究方法：${escape(profile.method||'未填写')}</p>${materials.map(row=>`<div><b>${escape(row.name)}</b><small>${escape(row.purpose||'研究背景')} · ${String(row.text||'').length.toLocaleString('zh-CN')} 字符 · 用户提供</small></div>`).join('')}${refs.map(row=>`<div><b>${escape(row.title)}</b><small>${escape(row.sourceLabel||'用户导入')} · ${row.text?'含正文':'仅元数据，不代表已读取原文'} · 未经系统核验</small></div>`).join('')}${!materials.length&&!refs.length?'<p>尚无研究资料。必须补充并确认至少一份含正文的真实材料，才能开始生成。系统不会凭空补写实验、问卷或统计结果。</p>':''}</details>`;
  }
  function costText(value){return value.source==='free'?'本次免费，不扣积分或权益次数。':value.source==='credits'?`本次预占 ${value.creditCost} 科研积分。`:`本次预占${value.source==='membership'?'会员':'套餐'}权益 1 次，不扣科研积分。`;}
  function controls(){
@@ -114,7 +116,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,onSaved,o
  }
  function chapterEditor(){
   const chapters=item.chapters||[],chapter=chapters.find(row=>row.id===selected),edit=edits.get(selected),text=edit?.text??chapter?.text??'';
-  return `<section class="thesis-chapter-workspace"><nav class="thesis-chapter-nav" aria-label="论文章节"><h3>章节目录 <small>${chapters.length} 章</small></h3>${chapters.map((row,index)=>`<button type="button" data-thesis-chapter="${escape(row.id)}" aria-current="${row.id===selected?'true':'false'}"><span>${String(index+1).padStart(2,'0')}</span><div><b>${escape(row.title)}</b><small>${edits.has(row.id)?'有未保存修改':escape(labels[row.status]||'待生成')}${row.text?' · '+String(row.text).length.toLocaleString('zh-CN')+' 字符':''}</small></div></button>`).join('')}</nav><article class="thesis-editor"><header><div><small>CHAPTER WORKSPACE</small><h3>${escape(chapter?.title||'等待章节')}</h3></div><span>账户版本 ${Number(item.version)||1}</span></header>${chapter?.sourceIds?.length?`<p class="thesis-source-note">关联资料：${chapter.sourceIds.map(source=>escape([...(item.snapshot?.materials||[]),...(item.snapshot?.references||[])].find(row=>row.id===source)?.name||[...(item.snapshot?.materials||[]),...(item.snapshot?.references||[])].find(row=>row.id===source)?.title||source)).join('、')}（关联标记，仍需核对原文）</p>`:''}${chapter?.error?`<p class="thesis-error">${escape(typeof chapter.error==='string'?chapter.error:chapter.error.message||'该章暂未完成')}</p>`:''}${completedSectionsPreview(chapter)}<label class="thesis-editor-label" for="thesis-chapter-editor">${running(item)?'已保存章节正文（生成期间只读）':'已保存章节正文（可编辑）'}</label><textarea id="thesis-chapter-editor" data-thesis-editor ${!chapter||running(item)||busy?'disabled':''} placeholder="生成完成后在这里核对与修改；也可以直接手动撰写。">${escape(text)}</textarea><footer><span data-thesis-edit-state>${edit?'未保存的章节修改':chapter?.version?'已保存 · 章节版本 '+Number(chapter.version):'尚无正文'}</span><button type="button" class="btn primary" data-thesis-save-chapter ${!edit||busy||running(item)?'disabled':''}>保存章节新版本</button></footer><p class="thesis-error" role="status">${escape(editorError)}</p>${chapterHistory(chapter)}${edit?'<button type="button" class="thesis-discard-edit" data-thesis-discard>放弃本章未保存修改，使用账户版本</button>':''}</article></section>`;
+  return `<section class="thesis-chapter-workspace"><nav class="thesis-chapter-nav" aria-label="论文章节"><h3>章节目录 <small>${chapters.length} 章</small></h3>${chapters.map((row,index)=>`<button type="button" data-thesis-chapter="${escape(row.id)}" aria-current="${row.id===selected?'true':'false'}"><span>${String(index+1).padStart(2,'0')}</span><div><b>${escape(row.title)}</b><small>${edits.has(row.id)?'有未保存修改':escape(labels[row.status]||'待生成')}${row.text?' · '+String(row.text).length.toLocaleString('zh-CN')+' 字符':''}</small></div></button>`).join('')}</nav><article class="thesis-editor"><header><div><small>CHAPTER WORKSPACE</small><h3>${escape(chapter?.title||'等待章节')}</h3></div><span>账户版本 ${Number(item.version)||1}</span></header>${chapter?.sourceIds?.length?`<p class="thesis-source-note">关联资料：${chapter.sourceIds.map(source=>escape([...(item.snapshot?.materials||[]),...(item.snapshot?.references||[])].find(row=>row.id===source)?.name||[...(item.snapshot?.materials||[]),...(item.snapshot?.references||[])].find(row=>row.id===source)?.title||source)).join('、')}（关联标记，仍需核对原文）</p>`:''}${chapter?.error?`<p class="thesis-error">${escape(typeof chapter.error==='string'?chapter.error:chapter.error.message||'该章暂未完成')}</p>`:''}${completedSectionsPreview(chapter)}<label class="thesis-editor-label" for="thesis-chapter-editor">${running(item)?'已保存章节正文（生成期间只读）':'已保存章节正文（可编辑）'}</label><textarea id="thesis-chapter-editor" data-thesis-editor ${!chapter||busy?'disabled':''} ${running(item)?'readonly aria-readonly="true"':''} placeholder="生成完成后在这里核对与修改；也可以直接手动撰写。">${escape(text)}</textarea><footer><span data-thesis-edit-state>${edit?'未保存的章节修改':chapter?.version?'已保存 · 章节版本 '+Number(chapter.version):'尚无正文'}</span><button type="button" class="btn primary" data-thesis-save-chapter ${!edit||busy||running(item)?'disabled':''}>保存章节新版本</button></footer><p class="thesis-error" role="status">${escape(editorError)}</p>${chapterHistory(chapter)}${edit?'<button type="button" class="thesis-discard-edit" data-thesis-discard>放弃本章未保存修改，使用账户版本</button>':''}</article></section>`;
  }
  function completedSectionsPreview(chapter){
   if(!chapter)return '';
@@ -127,9 +129,30 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,onSaved,o
   const source=value=>({manual:'手动编辑',imported:'导入正文',agent:'模型生成',generated:'模型生成',bibliography:'已使用参考来源',compiled_references:'已使用参考来源编排'}[value]||'账户版本');
   return `<section class="thesis-history"><button type="button" class="btn secondary" data-thesis-history ${busy||!chapter?.version?'disabled':''}>查看章节历史版本</button>${history?`<div class="thesis-history-list"><h4>已保存的章节版本 <small>最多展示最近 50 版</small></h4>${history.map(row=>`<button type="button" data-thesis-history-version="${Number(row.version)}" ${busy?'disabled':''}><b>版本 ${Number(row.version)}</b><span>${source(row.source)} · ${escape(row.createdAt?new Date(row.createdAt).toLocaleString('zh-CN'):'保存时间未知')}</span>${preview?.version===row.version?'<em>查看中</em>':''}</button>`).join('')||'<p>尚无历史版本。</p>'}</div>`:''}${preview?`<div class="thesis-history-preview"><h4>版本 ${Number(preview.version)} · ${source(preview.source)}</h4><p>以下为历史内容，只读预览。载入编辑区后仍需保存为新版本，原有记录继续保留。</p><pre>${escape(preview.text)}</pre><button type="button" class="btn secondary" data-thesis-history-use ${busy||running(item)?'disabled':''}>载入此版本到编辑区</button></div>`:''}</section>`;
  }
+ function captureView(){
+  const active=document.activeElement;
+  if(container.contains(active)){
+   const attr=[...active.attributes].find(row=>/^data-thesis-[a-z-]+$/.test(row.name));
+   const disclosure=active.tagName==='SUMMARY'&&active.parentElement;
+   pendingFocus=active.id?{id:active.id}:attr?{attr:attr.name,value:attr.value}:disclosure?.matches('.thesis-sources,.thesis-research-edit')?{summary:disclosure.className}:null;
+   if(pendingFocus&&typeof active.selectionStart==='number')Object.assign(pendingFocus,{start:active.selectionStart,end:active.selectionEnd,scroll:active.scrollTop});
+  }else if(active&&active!==document.body)pendingFocus=null;
+  for(const selector of ['.thesis-sources','.thesis-research-edit']){const node=$(selector);if(node)disclosureState.set(selector,node.open);}
+ }
+ function restoreView(){
+  for(const [selector,open] of disclosureState){const node=$(selector);if(node)node.open=open;}
+  if(!pendingFocus)return;
+  const focus=pendingFocus,node=focus.id?[...container.querySelectorAll('[id]')].find(row=>row.id===focus.id):focus.attr?[...container.querySelectorAll('['+focus.attr+']')].find(row=>row.getAttribute(focus.attr)===focus.value):[...container.querySelectorAll('.thesis-sources,.thesis-research-edit')].find(row=>row.className===focus.summary)?.querySelector('summary');
+  if(!node){pendingFocus=null;return;}
+  if(node.disabled)return;
+  node.focus({preventScroll:true});
+  if(typeof focus.start==='number'&&typeof node.setSelectionRange==='function'){node.setSelectionRange(focus.start,focus.end);node.scrollTop=focus.scroll;}
+  pendingFocus=null;
+ }
  function render(){
   if(!current())return;
-  const prefix=standalone?`<header class="thesis-page-heading"><div><span>YOUR RESEARCH · ACCOUNT THESES</span><h1>${library?'我的账户论文':escape(item?.title||'论文生成与版本确认')}</h1><p>从确认提纲，到分章写作、核对与导出。</p></div><a class="btn secondary" href="${library?'#tool/writing':'#theses'}">${library?'新建毕业论文':'账户论文'}</a></header>`:'';
+  captureView();
+  const prefix=standalone?toolBanner('writing',{title:library?'我的账户论文':'毕业论文',label:library?'AI 写作 · 账户论文':'AI 写作 · 毕业论文',description:'从确认提纲，到分章写作、核对与导出。让每一步研究，都留下可以继续完善的版本。',extraClass:'writing-task-banner writing-task-writing detail-service-banner thesis-studio-banner',actions:`<a class="btn secondary" href="${library?'#tool/writing':'#theses'}">${library?'新建毕业论文':'账户论文'}</a><a class="btn secondary" href="#category/writing">返回 AI 写作</a>`}):'';
   let body='';
   if(!loaded&&!loadError)body='<div class="thesis-loading" role="status">正在读取账户与服务状态…</div>';
   else if(loadError)body=`<section class="thesis-login"><h3>暂时无法读取</h3><p>${escape(loadError)}</p><button type="button" class="btn secondary" data-thesis-reload>重新读取</button></section>`;
@@ -139,9 +162,9 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,onSaved,o
    let snapshot;try{snapshot=getSnapshot?.();}catch(error){body=`<p class="thesis-error">${escape(error.message)}</p>`;}
    if(snapshot)body=`${snapshotSummary(snapshot)}<section class="thesis-save-account"><div><h3>先保存已确认的信息</h3><p>将以上论文资料保存到当前账户，不会开始生成或扣费。原有本地草稿独立保留。</p></div><button type="button" class="btn primary" data-thesis-create ${busy?'disabled':''}>${busy?'正在保存…':'保存到账户，继续生成'}</button></section>`;
    else if(!body)body='<section class="thesis-login"><h3>请先选择一篇账户论文</h3><p>从账户论文列表打开已有论文，或从毕业论文前四步确认研究信息。</p><a class="btn secondary" href="#theses">查看账户论文</a></section>';
-  }else body=`${snapshotSummary(item.snapshot||{title:item.title,profile:item.profile,outline:item.outline})}${researchForm()}${controls()}${progress()}${chapterEditor()}<section class="thesis-export"><div><h3>核对完成，导出正文</h3><p>下载账户中已保存的正文；如有未保存修改，请先保存。引用来源与研究结果仍需本人核验。</p></div><div class="thesis-action-row"><button type="button" class="btn secondary" data-thesis-txt>下载 TXT</button>${documentExportButtons('thesis-online')}</div><p role="status" data-thesis-export-status></p></section>`;
+  }else body=`<div class="thesis-studio-overview"><section class="thesis-studio-brief" aria-label="已确认的研究信息">${snapshotSummary(item.snapshot||{title:item.title,profile:item.profile,outline:item.outline})}${researchForm()}</section><aside class="thesis-studio-run" aria-label="撰写与任务进度">${controls()}${progress()}</aside></div><div class="thesis-workspace-heading"><div><small>章节工作区</small><h2>逐章写作，逐步完善</h2></div><p>对照研究依据核对正文，保存后再导出。</p></div>${chapterEditor()}<section class="thesis-export"><div><small>文档交付</small><h3>核对完成，导出正文</h3><p>下载账户中已保存的正文；如有未保存修改，请先保存。引用来源与研究结果仍需本人核验。</p></div><div class="thesis-action-row"><button type="button" class="btn secondary" data-thesis-txt>下载 TXT</button>${documentExportButtons('thesis-online')}</div><p role="status" data-thesis-export-status></p></section>`;
   container.innerHTML=`${prefix}<div class="thesis-online-shell"><div data-thesis-notice role="status" aria-live="polite">${escape(message)}</div>${body}${!library?`<div class="thesis-bottom-actions">${onManual?'<button type="button" class="btn secondary" data-thesis-manual>继续本地手动写作</button>':''}<a href="#theses">查看账户论文 →</a></div>`:''}</div>`;
-  bind();schedule();
+  bind();restoreView();schedule();
  }
  function bind(){
   $('[data-thesis-reload]')?.addEventListener('click',()=>void load());
