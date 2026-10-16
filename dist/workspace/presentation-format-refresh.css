@@ -1,0 +1,260 @@
+/* Presentation and formatting keep the workspace banner; their task surfaces share geometry. */
+.dashboard .ppt-commercial,.dashboard .format-commercial{--pf-text:var(--tool-text,#27364e);--pf-muted:var(--tool-muted,#687a94);--pf-border:var(--tool-border,#e3e9f2);--pf-surface:var(--tool-surface,#fff);--pf-soft:var(--tool-soft,#f7f9fc);min-width:0}
+.dashboard .ppt-commercial{--pf-tone:#d77968;--pf-tint:#fff1ec;--pf-line:#f1d9d0}
+.dashboard .format-commercial{--pf-tone:#b78a3f;--pf-tint:#fff7e8;--pf-line:#eadbbc}
+.dashboard .format-commercial[data-format-mode=check]{--pf-tone:#6085c8;--pf-tint:#eef4ff;--pf-line:#d6e2f6}
+.dashboard .format-commercial[data-format-mode=refine]{--pf-tone:#9473ae;--pf-tint:#f6f0fa;--pf-line:#e3d8ec}
+.dashboard :is(.ppt-commercial,.format-commercial) :is(button,a):focus-visible{outline:3px solid color-mix(in srgb,var(--pf-tone) 30%,transparent);outline-offset:3px}
+.dashboard :is(.ppt-commercial,.format-commercial) [hidden]{display:none!important}
+.dashboard .ppt-mode-layout.ppt-commercial{gap:19px}
+.dashboard .ppt-mode-layout.ppt-commercial>.ppt-mode-rail{display:block;padding:0;border:0;background:transparent;border-radius:0}
+.dashboard .ppt-commercial .ppt-mode-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.dashboard .ppt-commercial .ppt-rail-item{--entry-tone:#d77968;--entry-tint:#fff2ed;--entry-line:#f0d8cd;position:relative;display:flex;align-items:center;min-width:0;min-height:126px;gap:15px;padding:22px 20px;overflow:hidden;isolation:isolate;border:1px solid var(--entry-line);border-radius:15px;background:linear-gradient(130deg,var(--pf-surface),var(--entry-tint));text-align:left;box-shadow:0 3px 12px #2a3f6203;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.dashboard .ppt-commercial .ppt-rail-item:after{content:"";position:absolute;z-index:-1;width:98px;height:98px;border:15px solid var(--entry-tint);border-radius:50%;right:-42px;bottom:-56px;pointer-events:none}
+.dashboard .ppt-commercial .ppt-entry-proposal{--entry-tone:#7d7ac5;--entry-tint:#f2f0fc;--entry-line:#e2def3}
+.dashboard .ppt-commercial .ppt-entry-thesis{--entry-tone:#5e89bf;--entry-tint:#eef5fc;--entry-line:#d7e5f4}
+.dashboard .ppt-commercial .ppt-rail-item.active{border-color:var(--entry-tone);box-shadow:inset 0 -3px color-mix(in srgb,var(--entry-tone) 68%,transparent),0 5px 15px #2e4c7906;background:linear-gradient(120deg,var(--pf-surface),var(--entry-tint))}
+.dashboard .ppt-commercial .ppt-rail-item:hover{border-color:var(--entry-tone);transform:translateY(-2px);box-shadow:0 7px 18px #2e4c790b}
+.dashboard .ppt-commercial .ppt-entry-icon{display:grid;place-items:center;flex:0 0 48px;width:48px;height:48px;border-radius:14px;background:var(--entry-tint,#fff1ed);color:var(--entry-tone,#d77968);box-shadow:inset 0 0 0 1px #ffffff70}
+.dashboard .ppt-commercial .ppt-entry-icon svg{color:inherit;display:block;flex-shrink:0}
+.dashboard .ppt-commercial .ppt-entry-copy{display:grid;min-width:0;gap:4px;flex:1}
+.dashboard .ppt-commercial .ppt-entry-copy>small{font-size:9px;color:var(--entry-tone);letter-spacing:.09em;line-height:1.4;font-weight:600}
+.dashboard .ppt-commercial .ppt-entry-copy>strong{font-size:17px;font-weight:600;color:var(--pf-text);line-height:1.5}
+.dashboard .ppt-commercial .ppt-entry-copy>span{font-size:11px;line-height:1.7;color:var(--pf-muted);max-width:220px}
+.dashboard .ppt-commercial .ppt-entry-tag{position:absolute;right:13px;top:13px;color:var(--entry-tone);background:var(--entry-tint);font-size:9px;border-radius:5px;padding:3px 6px;white-space:nowrap}
+.dashboard .ppt-commercial .ppt-rail-bottom{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:13px 2px 0;color:var(--pf-muted);font-size:11px}
+.dashboard .ppt-commercial .ppt-rail-bottom>span{display:flex;align-items:center;gap:6px}
+.dashboard .ppt-commercial .ppt-rail-download{display:flex;align-items:center;gap:7px;min-height:34px;margin:0;padding:0;background:none;border:0;border-radius:0;color:var(--pf-muted);font-size:12px}
+.dashboard .ppt-commercial .ppt-rail-download:hover{color:var(--pf-tone)}
+.dashboard .ppt-commercial .ppt-rail-faq{margin-top:9px;padding:0;border:1px solid var(--pf-border);border-radius:11px;background:var(--pf-surface)}
+.dashboard .ppt-commercial .ppt-rail-faq>summary{padding:11px 15px;font-size:12px;cursor:pointer;color:var(--pf-muted)}
+.dashboard .ppt-commercial .ppt-rail-faq>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;padding:3px 17px 17px}
+.dashboard .ppt-commercial .ppt-journey{display:block;padding:22px 25px;margin-bottom:16px;border:1px solid var(--pf-border);border-radius:15px;background:var(--pf-surface)}
+.dashboard .ppt-commercial .ppt-section-kicker{font-size:9px;letter-spacing:.12em;color:#a0aabc;font-weight:600}
+.dashboard .ppt-commercial .ppt-journey h2{font-size:19px;font-weight:600;line-height:1.5;margin:5px 0 17px;color:var(--pf-text);letter-spacing:-.02em}
+.dashboard .ppt-commercial .ppt-journey ol{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px;list-style:none;margin:0;padding:0}
+.dashboard .ppt-commercial .ppt-journey li{display:flex;align-items:center;gap:8px;min-width:0}
+.dashboard .ppt-commercial .ppt-journey li>span{display:grid;place-items:center;flex:0 0 27px;width:27px;height:27px;background:var(--pf-tint);color:var(--pf-tone);border-radius:7px;font-size:10px;font-weight:600}
+.dashboard .ppt-commercial .ppt-journey li>b{font-size:12px;line-height:1.65;color:#687a94;font-weight:500}
+.dashboard .ppt-commercial[data-presentation-mode=proposal] .ppt-journey{--pf-tone:#7d7ac5;--pf-tint:#f2f0fc}
+.dashboard .ppt-commercial[data-presentation-mode=thesis] .ppt-journey{--pf-tone:#5e89bf;--pf-tint:#eef5fc}
+.dashboard .ppt-commercial .ppt-mode-banner{display:flex;align-items:flex-start;gap:9px;padding:12px 15px;margin-bottom:18px;border:1px solid #f0e5dc;background:#fff9f4;color:#a58b75;border-radius:10px;font-size:11px;line-height:1.85}
+.dashboard .ppt-commercial .ppt-mode-banner>svg{color:#d5aa80;flex-shrink:0}
+.dashboard .ppt-commercial .ppt-mode-card{padding:27px;border-radius:16px;border:1px solid var(--pf-border);background:var(--pf-surface);box-shadow:0 8px 24px #233d6b03}
+.dashboard .ppt-commercial .ppt-compose-heading{display:flex;align-items:flex-start;gap:11px;margin:0 0 20px}
+.dashboard .ppt-commercial .ppt-compose-heading>div{min-width:0;flex:1}
+.dashboard .ppt-commercial .ppt-compose-heading h2{margin:0;font-size:18px;line-height:1.5;color:var(--pf-text);font-weight:600}
+.dashboard .ppt-commercial .ppt-compose-heading p{font-size:12px;line-height:1.75;color:var(--pf-muted);margin:5px 0 0}
+.dashboard .ppt-commercial .ppt-compose-number{display:grid;place-items:center;width:28px;height:28px;flex:0 0 28px;font-size:11px;color:var(--pf-tone);background:var(--pf-tint);border-radius:8px;font-weight:600}
+.dashboard .ppt-commercial .ppt-compose-tag{font-size:10px;color:#8f9bb0;border:1px solid var(--pf-border);background:var(--pf-soft);padding:4px 7px;border-radius:5px;white-space:nowrap}
+.dashboard .ppt-commercial .ppt-ai-input{padding:18px 19px;border:1px solid #e1e7f0;border-radius:12px;background:#fbfcfe}
+.dashboard .ppt-commercial .ppt-ai-field-label{display:block;font-size:12px;font-weight:550;color:#687a94;margin:0 0 10px}
+.dashboard .ppt-commercial .ppt-ai-input>textarea{padding:0;border:0;border-radius:0;min-height:142px;background:transparent;line-height:1.85;font-size:14px;color:var(--pf-text)}
+.dashboard .ppt-commercial .ppt-ai-input>textarea:focus-visible{outline:0}
+.dashboard .ppt-commercial .ppt-ai-input:focus-within{border-color:#c8d8ee;box-shadow:0 0 0 3px #eaf1fa80}
+.dashboard .ppt-commercial .ppt-ai-tools{display:flex;flex-wrap:wrap;gap:7px;padding-top:13px;margin-top:12px;border-top:1px solid #e9edf4}
+.dashboard .ppt-commercial .ppt-ai-tools button{min-height:34px;padding:7px 10px;border:1px solid #e2e8f2;border-radius:7px;font-size:11px;background:#fff;color:#75859e}
+.dashboard .ppt-commercial .ppt-ai-tools button:disabled{opacity:.65;background:#f5f7fa;color:#9aa6b8}
+.dashboard .ppt-commercial .ppt-tool-meta{font-size:10px;display:inline-flex;align-items:center;min-height:32px;padding:0 5px;color:#7c8ca5}
+.dashboard .ppt-commercial .ppt-mode-author{margin:16px 0 0;gap:9px;font-size:12px}
+.dashboard .ppt-commercial .ppt-start-settings{display:grid;grid-template-columns:minmax(0,1.6fr) repeat(2,minmax(100px,1fr));gap:15px;margin:20px 0 18px}
+.dashboard .ppt-commercial .ppt-start-settings label{display:block;min-width:0;font-size:12px;color:#687a94;line-height:1.75;font-weight:500}
+.dashboard .ppt-commercial .ppt-start-settings input{display:block;width:100%;min-height:42px;padding:10px 12px;margin-top:7px;border:1px solid #e1e8f2;border-radius:8px;background:var(--pf-surface);font-size:13px;color:var(--pf-text)}
+.dashboard .ppt-commercial .ppt-quick-presets{display:flex;flex-wrap:wrap;gap:7px;margin:18px 0 25px}
+.dashboard .ppt-commercial .ppt-quick-presets>span{font-size:11px;line-height:30px;color:#9aa7bb}
+.dashboard .ppt-commercial .ppt-quick-presets button{min-height:30px;padding:6px 9px;border:1px solid #e6ebf4;border-radius:6px;background:#fbfcff;color:#71819b;font-size:10px}
+.dashboard .ppt-commercial .ppt-quick-presets button:hover{border-color:#ccdaed;color:#567aaa;background:#f3f7fd}
+.dashboard .ppt-commercial .ppt-section-title,.dashboard .ppt-commercial .ppt-template-label{display:flex;align-items:center;gap:10px;margin:24px 0 15px;font-size:17px;font-weight:600;color:var(--pf-text)}
+.dashboard .ppt-commercial .ppt-filter-groups{padding:0;border:0;background:none;margin:0 0 15px}
+.dashboard .ppt-commercial .ppt-filter-groups p{font-size:11px;line-height:1.8;color:#97a4b9}
+.dashboard .ppt-commercial .ppt-mode-template-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:0}
+.dashboard .ppt-commercial .ppt-mode-template{min-width:0;text-align:left;padding:5px;border:1px solid #e3e9f3;border-radius:12px;background:var(--pf-surface);box-shadow:none;transition:border-color .2s ease,transform .2s ease}
+.dashboard .ppt-commercial .ppt-mode-template.selected{border-color:#c4a39a;background:#fff8f5;box-shadow:0 0 0 1px #c4a39a}
+.dashboard .ppt-commercial .ppt-mode-template:hover{transform:translateY(-2px);border-color:#b9cce7}
+.dashboard .ppt-commercial .ppt-template-art{position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;height:auto;aspect-ratio:16/9;padding:23px;overflow:hidden;border-radius:8px;isolation:isolate;text-align:left}
+.dashboard .ppt-commercial .ppt-template-art.ppt-theme-academic{color:#527aca;background:linear-gradient(115deg,#eff5ff,#dce8fb)}
+.dashboard .ppt-commercial .ppt-template-art.ppt-theme-formal{color:#eaf1ff;background:linear-gradient(120deg,#243e5c,#46627e)}
+.dashboard .ppt-commercial .ppt-template-art.ppt-theme-focus{color:#4e9389;background:linear-gradient(115deg,#f1fbf8,#d8efea)}
+.dashboard .ppt-commercial .ppt-template-art:before{content:"";position:absolute;width:105px;height:105px;border:24px solid currentColor;opacity:.07;right:-25px;bottom:-44px;border-radius:50%;z-index:-1}
+.dashboard .ppt-commercial .ppt-template-art small{position:static;margin:0 0 13px;font-size:8px;line-height:1.5;letter-spacing:.09em;color:inherit;opacity:.66;text-shadow:none}
+.dashboard .ppt-commercial .ppt-template-art b{position:static;font-size:clamp(13px,1.25vw,19px);font-weight:600;line-height:1.6;color:inherit;max-width:82%;padding:0;margin:0;text-shadow:none;letter-spacing:-.02em;text-align:left;white-space:normal;overflow-wrap:anywhere}
+.dashboard .ppt-commercial .ppt-template-art>i{display:block;flex:none;width:29px;height:3px;background:currentColor;opacity:.35;border-radius:3px;margin-top:13px}
+.dashboard .ppt-commercial .ppt-template-art>span{position:absolute;left:23px;bottom:12px;font-size:7px;letter-spacing:.04em;color:inherit;opacity:.45}
+.dashboard .ppt-commercial .ppt-mode-template>span:last-child{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:11px 9px;background:none}
+.dashboard .ppt-commercial .ppt-mode-template>span:last-child>b{font-size:12px;font-weight:500;color:#72839d}
+.dashboard .ppt-commercial .ppt-mode-template>span:last-child>small{font-size:10px;color:#9eacbf}
+.dashboard .ppt-commercial .ppt-mode-template.selected>span:last-child>small{color:#bc8a7b}
+.dashboard .ppt-commercial .ppt-template-boundary{font-size:10px;color:#7c8ca5;margin:11px 2px 0;line-height:1.7}
+.dashboard .ppt-commercial .ppt-mode-drop{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:9px;min-height:192px;padding:27px;border:1px dashed #cbd8eb;border-radius:13px;background:radial-gradient(ellipse at center,#f6f9ff,#fbfcff);color:#7c9bc7;cursor:pointer}
+.dashboard .ppt-commercial .ppt-mode-drop>svg{padding:9px;box-sizing:content-box;border-radius:13px;background:#edf3fc;color:#7a9ac8}
+.dashboard .ppt-commercial .ppt-mode-drop>b{font-size:14px;font-weight:550;color:#6c80a0}
+.dashboard .ppt-commercial .ppt-mode-drop>span{font-size:11px;color:#a1aec3}
+.dashboard .ppt-commercial .ppt-mode-drop>small{font-size:10px;line-height:1.8;color:#a6b1c3}
+.dashboard .ppt-commercial .ppt-mode-drop.has-material{border-style:solid;border-color:#c9dfd6;background:#f6fcf8}
+.dashboard .ppt-commercial .ppt-mode-file-state{margin:13px 0 0;padding:10px 12px;border-radius:7px;background:#f8fafc;font-size:11px;color:#a0aec2;line-height:1.8}
+.dashboard .ppt-commercial .ppt-mode-file-state.has-material{color:#659383;background:#f1f9f5}
+.dashboard .ppt-commercial .ppt-mode-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:21px 0 0;margin:24px 0 0;border-top:1px solid #edf1f6;flex-wrap:wrap}
+.dashboard .ppt-commercial .ppt-mode-actions>.ppt-action-note{display:flex;gap:6px;align-items:center;margin-right:auto;max-width:360px;color:#a0aabc;font-size:10px;line-height:1.7}
+.dashboard .ppt-commercial .ppt-mode-actions>.btn.primary{min-height:43px;min-width:148px;border:1px solid #d68878;border-radius:9px;background:linear-gradient(120deg,#db8b79,#d57768);color:#fff;font-size:12px;box-shadow:0 5px 13px #b877651c}
+.dashboard .ppt-commercial .ppt-mode-actions>.btn.primary+.btn.primary{border:1px solid #e5d0c8;background:#fffaf7;color:#b67f70;box-shadow:none}
+.dashboard .ppt-commercial .ppt-plan-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:19px}
+.dashboard .ppt-commercial .ppt-plan{padding:20px;border:1px solid #e4e9f2;border-radius:12px;background:var(--pf-surface);text-align:left}
+.dashboard .ppt-commercial .ppt-plan.active{border-color:#cddbea;background:linear-gradient(120deg,#f8fbff,#eff5fd);box-shadow:none}
+.dashboard .ppt-commercial .ppt-plan b{font-size:14px;color:#667d9f}
+.dashboard .ppt-commercial .ppt-plan strong{font-size:12px;color:#7591b3;margin:8px 0 6px}
+.dashboard .ppt-commercial .ppt-plan span{font-size:11px;line-height:1.75;color:#99a8bd}
+.dashboard .ppt-commercial .ppt-plan:disabled{opacity:.65;background:#f9fafc;cursor:not-allowed}
+.dashboard .ppt-service-panel.ppt-commercial{padding:24px;border-radius:15px;border:1px solid #e4e9f2;background:var(--pf-surface)}
+.dashboard .ppt-commercial .ppt-service-modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.dashboard .ppt-commercial .ppt-service-modes>button{display:flex;align-items:center;gap:11px;text-align:left;min-height:82px;background:linear-gradient(120deg,var(--pf-surface),var(--entry-tint,#fff5f1));border:1px solid var(--entry-line,#eee0d9);padding:15px;border-radius:11px}
+.dashboard .ppt-commercial .ppt-service-modes>button.active{border-color:var(--entry-tone,#d77968);background:var(--entry-tint,#fff5f1)}
+.dashboard .ppt-commercial .ppt-service-modes>button>span:last-child{flex:1;min-width:0}
+.dashboard .ppt-commercial .ppt-service-modes b{font-size:13px;color:var(--pf-text)}
+.dashboard .ppt-commercial .ppt-service-modes small{font-size:10px;color:var(--pf-muted);display:block;margin-top:5px;line-height:1.7}
+.dashboard .ppt-commercial.ppt-editor-workspace{gap:20px}
+.dashboard .ppt-commercial .ppt-card,.dashboard .ppt-commercial.ppt-editor-workspace>.ppt-card{padding:24px;border-radius:15px;box-shadow:0 5px 18px #253d6403}
+.dashboard .ppt-commercial .ppt-slide{border-radius:11px;box-shadow:0 8px 22px #2c4c7e0a}
+.dashboard .ppt-commercial .ppt-outline button{min-height:43px;font-size:12px;border-radius:9px;background:#fbfcff}
+.dashboard .ppt-commercial .ppt-steps{padding:12px;border:1px solid #e7edf6;border-radius:11px;background:#fafcff}
+
+/* Formatting has three visually distinct service entries and truthful progress. */
+#app .dashboard .format-commercial .format-services{margin:0 0 22px;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+.dashboard .format-commercial .format-services-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:18px}
+.dashboard .format-commercial .format-services-heading h2{font-size:21px;line-height:1.5;color:var(--pf-text);margin:6px 0}
+.dashboard .format-commercial .format-services-heading p{font-size:12px;color:var(--pf-muted);margin:0;line-height:1.8}
+.dashboard .format-commercial .format-flow-kicker{font-size:9px;letter-spacing:.1em;color:#a29b8a;font-weight:600}
+.dashboard .format-commercial .format-service-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.dashboard .format-commercial .format-service-card{--entry-tone:#6289c9;--entry-tint:#eff5ff;--entry-line:#dce7f7;position:relative;display:flex;align-items:flex-start;gap:13px;padding:22px 18px;min-width:0;min-height:166px;border:1px solid var(--entry-line);border-radius:15px;background:linear-gradient(135deg,var(--pf-surface),var(--entry-tint));text-align:left;isolation:isolate;overflow:hidden;box-shadow:0 3px 11px #2a3d5b03;transition:transform .18s ease,border-color .18s ease}
+.dashboard .format-commercial .format-entry-smart{--entry-tone:#b28b4d;--entry-tint:#fff8eb;--entry-line:#ede0c7}
+.dashboard .format-commercial .format-entry-refine{--entry-tone:#9a7bb1;--entry-tint:#f7f1fb;--entry-line:#e7dced}
+.dashboard .format-commercial .format-service-card:after{content:"";position:absolute;z-index:-1;width:100px;height:100px;border:15px solid var(--entry-tint);border-radius:50%;right:-38px;bottom:-55px}
+.dashboard .format-commercial .format-service-card.active{background:linear-gradient(120deg,var(--pf-surface),var(--entry-tint));border-color:var(--entry-tone);box-shadow:inset 0 -3px color-mix(in srgb,var(--entry-tone) 65%,transparent)}
+.dashboard .format-commercial .format-service-card:hover{border-color:var(--entry-tone);transform:translateY(-2px);box-shadow:0 6px 16px #2a3d5b08}
+.dashboard .format-commercial .format-service-icon{display:grid;place-items:center;width:44px;height:44px;flex:0 0 44px;border-radius:12px;background:var(--entry-tint);color:var(--entry-tone);box-shadow:inset 0 0 0 1px #ffffff8c}
+.dashboard .format-commercial .format-service-copy{display:block;min-width:0;flex:1;padding-top:1px}
+.dashboard .format-commercial .format-service-kicker{display:block;font-size:8px;color:var(--entry-tone);letter-spacing:.08em;line-height:1.5;margin-bottom:5px}
+.dashboard .format-commercial .format-service-copy>strong{display:block;font-size:17px;font-weight:600;line-height:1.55;color:var(--pf-text);padding-right:12px}
+.dashboard .format-commercial .format-service-copy>small{display:block;font-size:11px;line-height:1.8;color:#71829c;margin-top:5px}
+.dashboard .format-commercial .format-service-delivery{display:block;font-size:10px;line-height:1.75;color:var(--entry-tone);margin-top:10px}
+.dashboard .format-commercial .format-service-card>.format-service-check,.dashboard .format-commercial .format-service-card>.format-service-pending{position:absolute;right:10px;top:10px;font-size:9px;line-height:1.5;border:0;border-radius:4px;background:var(--entry-tint);color:var(--entry-tone);padding:3px 5px}
+.dashboard .format-commercial .format-service-card>svg{position:absolute;right:13px;bottom:15px;color:var(--entry-tone);opacity:.55}
+.dashboard .format-commercial .format-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:9px;border:1px solid var(--pf-border);border-radius:13px;background:var(--pf-surface);margin-bottom:20px}
+.dashboard .format-commercial .format-step{min-height:77px;display:flex;align-items:center;gap:11px;padding:12px 14px;border:1px solid transparent;border-radius:10px;background:transparent;text-align:left;box-shadow:none}
+.dashboard .format-commercial .format-step>b{display:grid;place-items:center;flex:0 0 28px;width:28px;height:28px;border:1px solid #e9edf4;border-radius:8px;background:#f8fafc;color:#a5b0c0;font-size:12px;font-weight:500}
+.dashboard .format-commercial .format-step>span{min-width:0}
+.dashboard .format-commercial .format-step strong{font-size:13px;line-height:1.6;color:#75859e;font-weight:550}
+.dashboard .format-commercial .format-step small{font-size:10px;line-height:1.7;color:#a7b2c2;white-space:normal;display:block;margin-top:2px}
+#app .dashboard .format-commercial .format-steps .format-step:after{content:none;display:none;background:none}
+.dashboard .format-commercial .format-step.active{background:var(--pf-tint);border-color:var(--pf-line)}
+.dashboard .format-commercial .format-step.active>b{background:var(--pf-tone);border-color:var(--pf-tone);color:#fff}
+.dashboard .format-commercial .format-step.active strong{color:var(--pf-tone)}
+.dashboard .format-commercial .format-step.done>b{background:var(--pf-tint);border-color:var(--pf-line);color:var(--pf-tone)}
+.dashboard .format-commercial .format-step:disabled{opacity:.7;cursor:default}
+.dashboard .format-commercial .format-flow-card{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) minmax(220px,.7fr);align-items:center;gap:19px;padding:24px 26px;margin-bottom:20px;border:1px solid var(--pf-border);border-radius:15px;background:var(--pf-surface);box-shadow:0 5px 18px #2a3d5b03}
+.dashboard .format-commercial .format-flow-symbol{display:grid;place-items:center;width:44px;height:44px;flex:0 0 44px;background:var(--pf-tint);border-radius:12px;color:var(--pf-tone)}
+.dashboard .format-commercial .format-flow-copy h2{font-size:21px;font-weight:600;color:var(--pf-text);line-height:1.5;margin:5px 0}
+.dashboard .format-commercial .format-flow-copy p{font-size:12px;line-height:1.75;color:#71829c;margin:0}
+.dashboard .format-commercial .format-flow-summary{background:var(--pf-soft);padding:13px 15px;border-radius:10px;min-width:0}
+.dashboard .format-commercial .format-flow-summary>.hub-badge{background:var(--pf-tint);color:var(--pf-tone);font-size:10px;border:0;padding:4px 7px}
+.dashboard .format-commercial .format-flow-summary p{font-size:11px;line-height:1.8;color:#7b8ba5;margin:6px 0 0}
+.dashboard .format-commercial .format-flow-template{grid-column:2;display:block;margin:0;padding:12px 14px;border:1px solid #e9edf4;border-radius:9px;background:#fafbfd;font-size:12px;color:#7b8ba5}
+.dashboard .format-commercial .format-flow-template select{display:block;margin-top:7px;min-height:40px;width:100%;font-size:12px}
+.dashboard .format-commercial .format-flow-actions{grid-column:3;display:flex;align-items:center;justify-content:flex-end;gap:10px;min-width:0;flex-wrap:wrap}
+.dashboard .format-commercial .format-flow-actions>.btn.primary{min-height:42px;background:var(--pf-tone);border-color:var(--pf-tone);border-radius:9px;font-size:12px;color:#fff}
+.dashboard .format-commercial .format-flow-actions>.btn.secondary{min-height:42px;border-radius:9px;font-size:12px;color:#8998af}
+.dashboard .format-commercial .format-flow-upload{grid-column:2/4;justify-self:stretch;margin:0;justify-content:center;padding:18px;background:var(--pf-tint);border:1px dashed var(--pf-line);color:var(--pf-tone);min-height:62px;border-radius:9px;font-size:13px}
+.dashboard .format-commercial .format-mode-panel{padding:23px 25px;background:var(--pf-surface);border:1px solid var(--pf-border);border-radius:15px;margin-bottom:20px}
+.dashboard .format-commercial .format-template-heading{display:flex;justify-content:space-between;align-items:center;gap:20px;margin:0 0 20px}
+.dashboard .format-commercial .format-template-heading h2{font-size:17px;font-weight:600;color:var(--pf-text);margin:0 0 6px}
+.dashboard .format-commercial .format-template-heading p{font-size:11px;line-height:1.8;color:#7c8ca5;margin:0}
+.dashboard .format-commercial .format-template-search{display:flex;align-items:center;gap:8px;max-width:250px;min-height:38px;padding:0 11px;border:1px solid #e4eaf3;border-radius:8px;color:#a1adbe;background:#fbfcfe}
+.dashboard .format-commercial .format-template-search input{border:0;background:transparent;padding:8px 0;font-size:11px;min-height:36px;width:100%;min-width:0}
+.dashboard .format-commercial .format-template-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.dashboard .format-commercial .format-template-card{display:flex;align-items:center;gap:15px;min-width:0;padding:19px 17px;text-align:left;background:#fffefd;border:1px solid #ece6d9;border-radius:12px;box-shadow:none;transition:transform .18s ease,border-color .18s ease}
+.dashboard .format-commercial .format-template-card.active{background:#fff9ed;border-color:#cfb782;box-shadow:inset 0 -2px #cfb7824d}
+.dashboard .format-commercial .format-template-card:hover{transform:translateY(-2px);border-color:#d3bd94;box-shadow:0 5px 14px #856d4308}
+.dashboard .format-commercial .format-template-sheet{display:flex;align-items:flex-start;flex-direction:column;gap:5px;flex:0 0 47px;width:47px;height:61px;padding:12px 8px;border:1px solid #e7dfcf;border-radius:5px;background:linear-gradient(145deg,#fff,#faf6ed);box-shadow:0 4px 10px #7660400b;transform:rotate(-3deg)}
+.dashboard .format-commercial .format-template-sheet>i{height:3px;width:100%;background:#e4dccb;border-radius:1px}
+.dashboard .format-commercial .format-template-sheet>i:first-child{width:68%;height:4px;background:#cdbc9b;margin-bottom:3px}
+.dashboard .format-commercial .format-template-sheet>i:last-child{width:60%}
+.dashboard .format-commercial .format-template-copy{display:block;min-width:0;flex:1}
+.dashboard .format-commercial .format-template-copy strong{display:block;font-size:13px;font-weight:550;line-height:1.6;color:#80765e}
+.dashboard .format-commercial .format-template-copy small{display:block;font-size:10px;line-height:1.8;color:#aaa28f;margin:6px 0 10px}
+.dashboard .format-commercial .format-template-copy em{font-size:10px;font-style:normal;color:#b09b6f}
+.dashboard .format-commercial .format-template-empty{font-size:12px;color:#a29682;text-align:center;padding:18px;border:1px dashed #e5dccc;border-radius:9px;margin:16px 0 0}
+.dashboard .format-commercial .format-grid{gap:22px;grid-template-columns:minmax(320px,.85fr) minmax(0,1.3fr);align-items:start}
+.dashboard .format-commercial .format-settings,.dashboard .format-commercial .format-preview,.dashboard .format-commercial .format-results{padding:23px;border-radius:15px;box-shadow:0 5px 18px #253d6403}
+.dashboard .format-commercial .format-file{display:flex;align-items:center;gap:10px;padding:14px;border:1px solid #e8edf4;background:#fafbfd;border-radius:10px;margin-top:16px}
+.dashboard .format-commercial .format-file>svg{flex:0 0 25px;color:#9aaecb}
+.dashboard .format-commercial .format-file>div{flex:1;min-width:0}
+.dashboard .format-commercial .format-file b{font-size:12px;font-weight:500;color:#8092ae}
+.dashboard .format-commercial .format-file small{font-size:10px;color:#a9b3c2}
+.dashboard .format-commercial .format-file button{font-size:10px;color:#a1aebe;white-space:nowrap}
+.dashboard .format-commercial .format-rule-grid label,.dashboard .format-commercial .research-field{font-size:12px;color:#8a98ad}
+.dashboard .format-commercial .research-field input,.dashboard .format-commercial .research-field select{min-height:41px;font-size:12px}
+.dashboard .format-commercial .format-rule-grid input,.dashboard .format-commercial .format-rule-grid select{min-height:40px;font-size:12px}
+.dashboard .format-commercial .format-settings>.hub-card-heading,.dashboard .format-commercial .format-preview>.hub-card-heading,.dashboard .format-commercial .format-results>.hub-card-heading{display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap}
+.dashboard .format-commercial :is(.format-settings,.format-preview,.format-results) h2{font-size:17px;font-weight:600;color:var(--pf-text)}
+.dashboard .format-commercial .format-preview-toolbar{display:flex;align-items:center;gap:13px;justify-content:space-between;padding:14px 0 17px;margin:13px 0 0;flex-wrap:wrap}
+.dashboard .format-commercial .format-preview-toolbar label{font-size:11px;color:#9ca9bc}
+.dashboard .format-commercial .format-paper-wrap{padding:22px;border:1px solid #e5eaf2;border-radius:11px;background:linear-gradient(130deg,#f3f6fb,#f7f9fc);max-height:720px;overflow:auto;overscroll-behavior:contain}
+.dashboard .format-commercial .format-paper{box-shadow:0 6px 20px #3d4e6b0c;border-radius:3px;border:1px solid #ebeff5}
+.dashboard .format-commercial .format-role{background:#f5f8fc;border:1px solid #e6edf6;color:#9aaac1;border-radius:6px;font-size:9px}
+.dashboard .format-commercial .format-role select{font-size:10px;min-height:27px}
+.dashboard .format-commercial .format-check-empty{padding:35px 18px;text-align:center;min-height:220px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;border-radius:11px;background:#fafcff;border:1px dashed #e2eaf5}
+.dashboard .format-commercial .format-check-empty>span{color:#9db4d5;background:#eef4fc;padding:12px;border-radius:15px}
+.dashboard .format-commercial .format-check-empty h3{font-size:14px;color:#71829b;margin:0;font-weight:500}
+.dashboard .format-commercial .format-check-empty p{font-size:11px;color:#7d8da6;line-height:1.8;margin:0}
+.dashboard .format-commercial .format-check-empty small{font-size:10px;color:#adb8c9;line-height:1.7}
+.dashboard .format-commercial .format-issue{padding:16px 0;gap:12px;align-items:center;border-color:#edf1f6}
+.dashboard .format-commercial .format-issue b{font-size:12px;color:#8091ab;font-weight:500}
+.dashboard .format-commercial .format-issue p{font-size:11px;line-height:1.8;color:#7b8ba4;margin:5px 0 0}
+.dashboard .format-commercial .format-footer{padding:17px 0;gap:12px;flex-wrap:wrap;font-size:10px;color:#a0acbe}
+.dashboard .format-commercial .format-footer .btn{min-height:40px;font-size:11px;border-radius:8px}
+.dashboard .format-commercial .format-footer .btn.primary{background:var(--pf-tone);border-color:var(--pf-tone);color:#fff}
+.dashboard .format-commercial .format-refine-panel{padding:30px;background:linear-gradient(135deg,#fff,#faf6fd);border:1px solid #e9e1ef;border-radius:16px;margin:0 0 20px}
+.dashboard .format-commercial .format-refine-intro{display:flex;align-items:center;gap:22px;margin-bottom:28px}
+.dashboard .format-commercial .format-refine-illustration{display:grid;place-items:center;flex:0 0 80px;width:80px;height:80px;border:1px solid #e7dff0;border-radius:22px;background:linear-gradient(140deg,#f4effa,#faf6fe);color:#b49cc6;box-shadow:0 8px 20px #83619e08;transform:rotate(-5deg)}
+.dashboard .format-commercial .format-refine-intro h2{font-size:22px;line-height:1.6;color:#7d6b90;margin:7px 0}
+.dashboard .format-commercial .format-refine-intro p{max-width:720px;font-size:12px;line-height:1.85;color:#8d7c9d;margin:0}
+.dashboard .format-commercial .format-refine-upload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.dashboard .format-commercial .format-refine-upload{display:flex;align-items:center;justify-content:center;flex-direction:column;min-height:188px;gap:10px;padding:25px;border:1px dashed #dcd1e7;background:#fff;border-radius:12px;color:#b19ac3;text-align:center}
+.dashboard .format-commercial .format-refine-upload strong{font-size:14px;color:#856c99;font-weight:550}
+.dashboard .format-commercial .format-refine-upload small{font-size:11px;line-height:1.8;color:#b7a9c3}
+.dashboard .format-commercial .format-refine-upload.pending{background:#faf8fc;opacity:.7}
+.dashboard .format-commercial .format-upload-action{display:flex;align-items:center;gap:6px;font-size:11px;color:#a38bb8;background:#f7f1fc;padding:6px 10px;border-radius:6px;margin-top:5px}
+.dashboard .format-commercial .format-refine-file-note{font-size:11px;color:#ad9eb9;line-height:1.8;margin:15px 0}
+.dashboard .format-commercial .format-refine-foot{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:22px;padding-top:20px;border-top:1px solid #ede5f4}
+.dashboard .format-commercial .format-refine-foot>span{display:flex;align-items:center;gap:7px;flex:1;font-size:11px;line-height:1.8;color:#b0a1bd}
+.dashboard .format-commercial .format-refine-foot>.btn{font-size:12px;color:#b09bc1;background:#ede5f5;border-color:#e6ddef;box-shadow:none;cursor:not-allowed;opacity:1}
+@media(max-width:1100px){.dashboard .ppt-commercial .ppt-rail-item{padding:20px 15px;gap:11px}.dashboard .ppt-commercial .ppt-entry-icon{width:42px;height:42px;flex-basis:42px}.dashboard .ppt-commercial .ppt-entry-copy>strong{font-size:16px}.dashboard .ppt-commercial .ppt-entry-copy>span{font-size:10px}.dashboard .ppt-commercial .ppt-template-art{padding:18px}.dashboard .ppt-commercial .ppt-template-art b{font-size:15px}.dashboard .format-commercial .format-service-card{display:block;padding:19px 16px}.dashboard .format-commercial .format-service-copy{margin-top:12px}.dashboard .format-commercial .format-service-copy>strong{font-size:16px}.dashboard .format-commercial .format-flow-card{grid-template-columns:38px minmax(0,1fr);gap:15px}.dashboard .format-commercial .format-flow-symbol{width:38px;height:38px}.dashboard .format-commercial .format-flow-summary{grid-column:2}.dashboard .format-commercial .format-flow-template{grid-column:2}.dashboard .format-commercial .format-flow-actions{grid-column:2;justify-content:flex-start}.dashboard .format-commercial .format-flow-upload{grid-column:2}.dashboard .format-commercial .format-template-card{padding:16px 13px;gap:10px}.dashboard .format-commercial .format-template-sheet{width:39px;height:54px;flex-basis:39px;padding:10px 7px}.dashboard .format-commercial .format-grid{grid-template-columns:minmax(0,1fr)}.dashboard .format-commercial .format-grid-hidden{display:none}.dashboard .format-commercial .format-template-heading{align-items:flex-start}.dashboard .format-commercial .format-template-search{max-width:210px}}
+@media(max-width:760px){.dashboard .ppt-commercial .ppt-mode-options{gap:9px}.dashboard .ppt-commercial .ppt-rail-item{display:block;padding:16px 13px;min-height:168px}.dashboard .ppt-commercial .ppt-entry-copy{margin-top:10px;gap:4px}.dashboard .ppt-commercial .ppt-entry-copy>strong{font-size:15px}.dashboard .ppt-commercial .ppt-entry-copy>span{font-size:10px}.dashboard .ppt-commercial .ppt-entry-tag{font-size:8px;right:8px;top:8px}.dashboard .ppt-commercial .ppt-rail-bottom{gap:10px;flex-wrap:wrap}.dashboard .ppt-commercial .ppt-rail-faq>div{grid-template-columns:minmax(0,1fr);gap:16px}.dashboard .ppt-commercial .ppt-journey{padding:20px}.dashboard .ppt-commercial .ppt-journey h2{font-size:18px}.dashboard .ppt-commercial .ppt-journey ol{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.dashboard .ppt-commercial .ppt-journey li>b{font-size:11px}.dashboard .ppt-commercial .ppt-mode-card{padding:21px}.dashboard .ppt-commercial .ppt-compose-heading{flex-wrap:wrap;gap:10px}.dashboard .ppt-commercial .ppt-compose-heading h2{font-size:17px}.dashboard .ppt-commercial .ppt-compose-heading p{font-size:11px}.dashboard .ppt-commercial .ppt-compose-tag{font-size:9px}.dashboard .ppt-commercial .ppt-ai-input{padding:16px}.dashboard .ppt-commercial .ppt-ai-input>textarea{min-height:155px;font-size:16px}.dashboard .ppt-commercial .ppt-start-settings{grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.dashboard .ppt-commercial .ppt-start-settings>label:first-child{grid-column:1/-1}.dashboard .ppt-commercial .ppt-start-settings input{font-size:16px}.dashboard .ppt-commercial .ppt-mode-template-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.dashboard .ppt-commercial .ppt-template-art{padding:18px;min-height:130px}.dashboard .ppt-commercial .ppt-template-art b{font-size:15px}.dashboard .ppt-commercial .ppt-template-art small{font-size:7px;margin-bottom:8px}.dashboard .ppt-commercial .ppt-template-art>span{left:18px;bottom:9px}.dashboard .ppt-commercial .ppt-mode-actions{justify-content:stretch}.dashboard .ppt-commercial .ppt-mode-actions>.ppt-action-note{flex-basis:100%;max-width:none;margin-bottom:5px}.dashboard .ppt-commercial .ppt-mode-actions>.btn{flex:1;min-width:0;font-size:12px}.dashboard .ppt-commercial .ppt-plan-row{grid-template-columns:minmax(0,1fr)}.dashboard .ppt-commercial .ppt-plan{padding:17px}.dashboard .ppt-commercial .ppt-service-modes{grid-template-columns:minmax(0,1fr)}.dashboard .ppt-commercial .ppt-mode-drop{min-height:185px;padding:23px 16px}.dashboard .ppt-commercial.ppt-editor-workspace>.ppt-card,.dashboard .ppt-commercial .ppt-card{padding:21px}.dashboard .format-commercial .format-services-heading{align-items:flex-start;flex-wrap:wrap;gap:12px}.dashboard .format-commercial .format-services-heading h2{font-size:20px}.dashboard .format-commercial .format-services-heading p{font-size:11px}.dashboard .format-commercial .format-service-grid{gap:9px}.dashboard .format-commercial .format-service-card{padding:16px 12px;min-height:213px}.dashboard .format-commercial .format-service-copy>strong{font-size:15px}.dashboard .format-commercial .format-service-copy>small{font-size:10px}.dashboard .format-commercial .format-service-delivery{font-size:9px}.dashboard .format-commercial .format-service-kicker{font-size:7px}.dashboard .format-commercial .format-steps{grid-template-columns:repeat(2,minmax(0,1fr));padding:7px;gap:5px}.dashboard .format-commercial .format-step{min-height:76px;padding:10px}.dashboard .format-commercial .format-step strong{font-size:12px}.dashboard .format-commercial .format-step small{font-size:9px}.dashboard .format-commercial .format-flow-card{padding:20px}.dashboard .format-commercial .format-flow-copy h2{font-size:19px}.dashboard .format-commercial .format-flow-copy p{font-size:11px}.dashboard .format-commercial .format-mode-panel{padding:21px}.dashboard .format-commercial .format-template-heading{display:block}.dashboard .format-commercial .format-template-search{margin-top:14px;max-width:none}.dashboard .format-commercial .format-template-search input{font-size:16px}.dashboard .format-commercial .format-template-grid{grid-template-columns:minmax(0,1fr);gap:11px}.dashboard .format-commercial .format-template-card{padding:17px}.dashboard .format-commercial .format-template-copy strong{font-size:14px}.dashboard .format-commercial .format-template-copy small{font-size:11px;margin-bottom:7px}.dashboard .format-commercial .format-template-sheet{width:47px;height:61px;flex-basis:47px;padding:12px 8px}.dashboard .format-commercial .format-settings,.dashboard .format-commercial .format-preview,.dashboard .format-commercial .format-results{padding:21px}.dashboard .format-commercial .format-rule-grid input,.dashboard .format-commercial .format-rule-grid select,.dashboard .format-commercial .research-field input,.dashboard .format-commercial .research-field select{font-size:16px}.dashboard .format-commercial .format-paper-wrap{padding:12px;max-height:600px}.dashboard .format-commercial .format-refine-panel{padding:23px}.dashboard .format-commercial .format-refine-intro{gap:15px;align-items:flex-start}.dashboard .format-commercial .format-refine-illustration{width:58px;height:58px;flex-basis:58px;border-radius:17px}.dashboard .format-commercial .format-refine-illustration>svg{width:37px;height:37px}.dashboard .format-commercial .format-refine-intro h2{font-size:18px}.dashboard .format-commercial .format-refine-intro p{font-size:11px}.dashboard .format-commercial .format-refine-upload-grid{grid-template-columns:minmax(0,1fr);gap:15px}.dashboard .format-commercial .format-refine-upload{min-height:170px}.dashboard .format-commercial .format-refine-foot{display:block}.dashboard .format-commercial .format-refine-foot>.btn{width:100%;margin-top:16px}}
+@media(max-width:480px){.dashboard .ppt-commercial .ppt-mode-options{grid-template-columns:minmax(0,1fr);gap:10px}.dashboard .ppt-commercial .ppt-rail-item{display:flex;min-height:103px;padding:18px}.dashboard .ppt-commercial .ppt-entry-copy{margin-top:0}.dashboard .ppt-commercial .ppt-entry-copy>strong{font-size:16px}.dashboard .ppt-commercial .ppt-entry-copy>span{font-size:11px}.dashboard .ppt-commercial .ppt-entry-tag{top:12px;right:12px}.dashboard .ppt-commercial .ppt-rail-bottom>span{display:none}.dashboard .ppt-commercial .ppt-mode-card{padding:19px}.dashboard .ppt-commercial .ppt-compose-tag{display:none}.dashboard .ppt-commercial .ppt-mode-template-grid{grid-template-columns:minmax(0,1fr)}.dashboard .ppt-commercial .ppt-template-art{aspect-ratio:16/8.7;min-height:0;padding:24px}.dashboard .ppt-commercial .ppt-template-art b{font-size:20px;max-width:70%}.dashboard .ppt-commercial .ppt-template-art small{font-size:9px}.dashboard .ppt-commercial .ppt-template-art>span{left:24px;bottom:15px;font-size:8px}.dashboard .ppt-commercial .ppt-mode-actions>.btn{flex-basis:100%;width:100%}.dashboard .format-commercial .format-service-grid{grid-template-columns:minmax(0,1fr);gap:11px}.dashboard .format-commercial .format-service-card{display:flex;min-height:140px;padding:20px 17px;gap:14px}.dashboard .format-commercial .format-service-copy{margin-top:0}.dashboard .format-commercial .format-service-copy>strong{font-size:16px}.dashboard .format-commercial .format-service-copy>small{font-size:11px}.dashboard .format-commercial .format-service-delivery{font-size:10px}.dashboard .format-commercial .format-service-kicker{font-size:8px}.dashboard .format-commercial .format-flow-card{grid-template-columns:minmax(0,1fr);gap:14px;padding:20px}.dashboard .format-commercial .format-flow-symbol{display:none}.dashboard .format-commercial .format-flow-summary,.dashboard .format-commercial .format-flow-template,.dashboard .format-commercial .format-flow-actions,.dashboard .format-commercial .format-flow-upload{grid-column:1}.dashboard .format-commercial .format-flow-actions{justify-content:stretch}.dashboard .format-commercial .format-flow-actions>.btn{flex:1;min-width:0}.dashboard .format-commercial .format-preview-toolbar>label{width:100%}.dashboard .format-commercial .format-preview-toolbar select{width:100%;font-size:14px}.dashboard .format-commercial .format-file{flex-wrap:wrap}.dashboard .format-commercial .format-file button{margin-left:35px}.dashboard .format-commercial .format-footer{display:block}.dashboard .format-commercial .format-footer>.research-actions{margin-top:13px}.dashboard .format-commercial .format-footer .btn{flex:1}.dashboard .format-commercial .format-refine-intro{display:block}.dashboard .format-commercial .format-refine-illustration{margin-bottom:17px}}
+.hub-theme-dark .dashboard .ppt-commercial,.hub-theme-dark .dashboard .format-commercial{--pf-soft:#1a2d45;--pf-surface:#17273d;--pf-text:#dae5f5;--pf-border:#2d425d;--pf-muted:#94a7c2}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-rail-item,.hub-theme-dark .dashboard .ppt-commercial .ppt-service-modes>button{--entry-tint:#3d3030;--entry-tone:#d2a092;--entry-line:#58403c;background:linear-gradient(135deg,#223047,var(--entry-tint))}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-entry-proposal{--entry-tint:#342f4d;--entry-tone:#b4a5dc;--entry-line:#484160}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-entry-thesis{--entry-tint:#253c56;--entry-tone:#9dbad9;--entry-line:#36506d}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-mode-banner{background:#342f2b;border-color:#4f4235;color:#baa997}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-ai-input,.hub-theme-dark .dashboard .ppt-commercial .ppt-quick-presets button,.hub-theme-dark .dashboard .ppt-commercial .ppt-mode-file-state,.hub-theme-dark .dashboard .ppt-commercial .ppt-plan:disabled{background:#1b2f48;border-color:#30465f}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-mode-template.selected{background:#342d2d;border-color:#8d7069;box-shadow:0 0 0 1px #8d7069}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-mode-drop{background:linear-gradient(135deg,#1e344f,#1b2b43);border-color:#354e6f}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-mode-file-state.has-material{background:#203a36;color:#9fc8ba}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-start-settings input,.hub-theme-dark .dashboard .ppt-commercial .ppt-ai-tools button{background:#17283f;color:#b1c2d9;border-color:#344b68}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-plan.active{background:linear-gradient(130deg,#1f344f,#263b55);border-color:#445f7a}
+.hub-theme-dark .dashboard .format-commercial .format-service-card{--entry-tint:#253a58;--entry-tone:#9cb7df;--entry-line:#395273;background:linear-gradient(135deg,#1b2b42,var(--entry-tint))}
+.hub-theme-dark .dashboard .format-commercial .format-entry-smart{--entry-tint:#3b3427;--entry-tone:#cbb58b;--entry-line:#514835}
+.hub-theme-dark .dashboard .format-commercial .format-entry-refine{--entry-tint:#352c43;--entry-tone:#bda6d1;--entry-line:#4a3e5a}
+.hub-theme-dark .dashboard .format-commercial .format-step,.hub-theme-dark .dashboard .format-commercial .format-flow-template,.hub-theme-dark .dashboard .format-commercial .format-template-search,.hub-theme-dark .dashboard .format-commercial .format-check-empty{background:#1b2d45;border-color:#2e4563}
+.hub-theme-dark #app .dashboard .format-commercial .format-steps .format-step:after{content:none;display:none;background:none}
+.hub-theme-dark .dashboard .format-commercial .format-step.active{background:#363528;border-color:#554f37}
+.hub-theme-dark .dashboard .format-commercial .format-template-card,.hub-theme-dark .dashboard .format-commercial .format-file{background:#202e40;border-color:#414237}
+.hub-theme-dark .dashboard .format-commercial .format-template-card.active{background:#363328;border-color:#706342}
+.hub-theme-dark .dashboard .format-commercial .format-template-copy strong{color:#c4baa4}
+.hub-theme-dark .dashboard .format-commercial .format-paper-wrap{background:linear-gradient(130deg,#20324b,#1b2e46);border-color:#324966}
+.hub-theme-dark .dashboard .format-commercial .format-refine-panel{background:linear-gradient(135deg,#242d43,#30283e);border-color:#443950}
+.hub-theme-dark .dashboard .format-commercial .format-refine-upload{background:#242d41;border-color:#554566}
+.hub-theme-dark .dashboard .format-commercial .format-refine-upload.pending{background:#29283c}
+@media(prefers-reduced-motion:reduce){.dashboard .ppt-commercial :is(.ppt-rail-item,.ppt-mode-template),.dashboard .format-commercial :is(.format-service-card,.format-template-card){transition:none;transform:none}}
+
+.dashboard .format-commercial .format-flow-document-state{display:inline-flex;align-items:center;max-width:100%;font-size:10px;line-height:1.75;color:#9b9a8b;background:#faf9f4;border:1px solid #eeece2;border-radius:5px;padding:4px 7px;margin-top:10px;overflow-wrap:anywhere}
+.hub-theme-dark .dashboard .format-commercial .format-flow-document-state{background:#30332d;border-color:#45483b;color:#b7bba9}

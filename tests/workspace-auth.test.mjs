@@ -121,25 +121,39 @@ test('direct AI-rate navigation mounts the AI reduction service and updates the 
  }finally{f.close();}
 });
 
-test('real AI reduction page keeps its own heading and package when binding shared revision controls',()=>{
+test('real AI reduction entry keeps its own heading, theme and selection across shared revision routes',()=>{
  const dom=new JSDOM('<div class="breadcrumb"><strong></strong></div><main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#category/aigc',runScripts:'outside-only'});
  Object.assign(dom.window,{...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
  try{
   vm.runInContext('(function(){'+revisionSource+'\nglobalThis.mountActualRevision=mountRevision;})()',dom.getInternalVMContext());
+  const query=selector=>dom.window.document.querySelector(selector);
   const mount=hash=>{dom.window.history.replaceState(null,'',hash);dom.window.mountActualRevision({mode:'reduce',modal:()=>{},notify:()=>{}});};
   const assertAIPage=()=>{
-   assert.ok(dom.window.document.querySelector('#revision-service.aigc-commerce'));
-   assert.equal(dom.window.document.querySelector('.hub-heading h1').textContent,'降 AI 率');
-   assert.equal(dom.window.document.querySelector('.aigc-bundle h2').textContent,'有记录的表达修改');
+   assert.ok(query('#revision-service.aigc-commerce'));
+   assert.equal(query('#revision-service').dataset.revisionKind,'aigc');
+   assert.equal(query('.dashboard').dataset.revisionTheme,'aigc');
+   assert.equal(query('.tool-banner h1').textContent,'降 AI 率');
+   assert.equal(query('.revision-entry-summary [data-revision-selection-title]').textContent,'中文表达精修');
+   assert.equal(query('.revision-plan-card[aria-pressed="true"]').dataset.revisionPlan,'strong');
+   assert.match(query('[data-revision-plan-status]').textContent,/不进行 AI 率检测或自动改写/);
+   assert.ok(query('#revision-entry-form'));assert.equal(query('#revision-space'),null);
   };
   mount('#category/aigc');assertAIPage();
   mount('#category/reduce');
-  assert.equal(dom.window.document.querySelector('.aigc-commerce'),null);
-  assert.equal(dom.window.document.querySelector('.hub-heading h1').textContent,'降重复率');
-  assert.equal(dom.window.document.querySelector('.revision-bundle-card h2').textContent,'降重精修');
-  dom.window.document.querySelectorAll('.revision-plan-card')[1].click();
-  assert.equal(dom.window.document.querySelector('.hub-heading h1').textContent,'AIGC + 重复率双降');
+  assert.equal(query('.aigc-commerce'),null);
+  assert.equal(query('#revision-service').dataset.revisionKind,'reduce');
+  assert.equal(query('.dashboard').dataset.revisionTheme,'reduce');
+  assert.equal(query('.tool-banner h1').textContent,'降重复率');
+  assert.equal(query('.revision-entry-summary [data-revision-selection-title]').textContent,'降重精修');
+  query('[data-revision-plan="dual"]').click();
+  assert.equal(query('.tool-banner h1').textContent,'降重复率');
+  assert.equal(query('.revision-plan-card[aria-pressed="true"]').dataset.revisionPlan,'dual');
+  assert.equal(query('.revision-entry-summary [data-revision-selection-title]').textContent,'AIGC + 重复率双降');
+  assert.match(query('[data-revision-plan-status]').textContent,/此在线服务尚未开放/);
+  assert.match(query('[data-revision-plan-status]').textContent,/只能创建本地手动修改稿/);
+  assert.ok(query('#revision-entry-form'));assert.equal(query('#revision-space'),null);
   mount('#category/aigc');assertAIPage();
+  assert.equal(query('[data-revision-plan="dual"]').getAttribute('aria-pressed'),'false');
  }finally{dom.window.close();}
 });
 
