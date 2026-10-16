@@ -6,6 +6,7 @@ import {createAdminAPI} from './admin-api.mjs';
 import {createPaymentService} from './payment-service.mjs';
 import {createWorkspaceService} from './workspace-service.mjs';
 import {createBillingService} from './billing-service.mjs';
+import {createModelBudget} from './model-budget.mjs';
 import {aiReady,publicModelSettings} from './config.mjs';
 import {fileBytes} from './storage.mjs';
 import {now} from './database.mjs';
@@ -18,6 +19,7 @@ async function body(req){if(!req.headers['content-type']?.startsWith('applicatio
 export function createAPI(db,worker,config={}){
 const auth=createAuthService(db,{secret:config.authCodeSecret,dailyLimit:config.authDailyLimit,ownerEmail:config.ownerEmail,delivery:config.authDelivery||createAuthDelivery(config)});
 const billing=createBillingService(db,config);
+const modelBudget=createModelBudget(db,config);
 const payments=createPaymentService(db,{...config,billing});
 const workspace=createWorkspaceService(db,{billing});
 const admin=createAdminAPI(db,worker,{...config,payments,billing},auth);
@@ -76,7 +78,7 @@ if(method==='GET'){send(200,{items:db.prepare('SELECT id,project_id,type,status,
 rate(req,60);const b=await body(req);const type=b.type;if(!['parse','polish','review','compare','agent'].includes(type))fail(400,'不支持的任务');if(['polish','review','agent'].includes(type)&&!aiReady(config.getAI()))fail(503,'AI 服务尚未配置');if(type==='agent'&&!config.agentEnabled)fail(503,'Codex 智能任务未启用');const projectId=project(b.projectId,user);let input;
 if(type==='parse'){const file=own('files',b.fileId||'',user);if(projectId&&file.project_id&&projectId!==file.project_id)fail(400,'文件与任务所属项目不一致');input={fileId:file.id};}
 else{input={text:(text(b.text,type==='compare'?8000:6000),b.text),requirements:text(b.requirements||'',2000,0)};if(type==='agent'){const ids=b.fileIds??[];if(!Array.isArray(ids)||ids.length>5||ids.some(id=>typeof id!=='string')||new Set(ids).size!==ids.length)fail(400,'请最多选择 5 份不同材料');input.fileIds=ids.map(id=>{const file=own('files',id,user);if(projectId&&file.project_id&&file.project_id!==projectId)fail(400,'材料与任务所属项目不一致');return file.id;});}if(type==='compare'){if(!Array.isArray(b.sources)||!b.sources.length||b.sources.length>5)fail(400,'需要 1～5 份实际对照材料');input.title=text(b.title||'论文正文');input.sources=b.sources.map((s,i)=>({id:`source-${i+1}`,title:text(s.title),text:(text(s.text,8000),s.text),authors:Array.isArray(s.authors)?s.authors.slice(0,10).map(a=>text(a,100)):[],year:s.year?text(String(s.year),4):null,doi:text(s.doi||'',200,0),url:url(s.url),provider:'user_provided',sourceStatus:'unverified_user_material'}));}}
-const key=text(b.idempotencyKey,100);const hash=digest(JSON.stringify({type,input,projectId}));const existing=db.prepare('SELECT id,input_hash FROM jobs WHERE user_id=? AND idempotency_key=?').get(user.id,key);if(existing){if(existing.input_hash!==hash)fail(409,'重复请求标识已用于其他内容');send(200,{id:existing.id});return;}if(db.prepare("SELECT count(*) n FROM jobs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=3)fail(409,'最多同时提交 3 个待处理任务');const id=randomUUID(),t=now();transaction(()=>{db.prepare('INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,user.id,projectId,type,'queued','queued',JSON.stringify(input),key,hash,t,t);if(['polish','review','agent'].includes(type))billing.reserve(user,id,1,type,b.billingQuote);});send(201,{id});return;}
+const key=text(b.idempotencyKey,100);const hash=digest(JSON.stringify({type,input,projectId}));const existing=db.prepare('SELECT id,input_hash FROM jobs WHERE user_id=? AND idempotency_key=?').get(user.id,key);if(existing){if(existing.input_hash!==hash)fail(409,'重复请求标识已用于其他内容');send(200,{id:existing.id});return;}if(db.prepare("SELECT count(*) n FROM jobs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=3)fail(409,'最多同时提交 3 个待处理任务');const id=randomUUID(),t=now();transaction(()=>{if(['polish','review','agent'].includes(type))modelBudget.check(user.id);db.prepare('INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,user.id,projectId,type,'queued','queued',JSON.stringify(input),key,hash,t,t);if(['polish','review','agent'].includes(type))billing.reserve(user,id,1,type,b.billingQuote);});send(201,{id});return;}
 const action=path.match(/^\/api\/jobs\/([^/]+)\/(cancel|retry)$/);if(action&&method==='POST'){
  if(action[2]==='retry')rate(req,60);const input=await body(req);const job=own('jobs',action[1],user);
  transaction(()=>{
@@ -86,7 +88,7 @@ const action=path.match(/^\/api\/jobs\/([^/]+)\/(cancel|retry)$/);if(action&&met
   }else{
    if(job.status!=='failed')fail(409,'仅失败任务可重试');
    if(db.prepare("SELECT count(*) n FROM jobs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=3)fail(409,'等待任务已达到上限');
-   if(['polish','review','agent'].includes(job.type))billing.reserve(user,job.id,job.attempt+1,job.type,input.billingQuote);
+   if(['polish','review','agent'].includes(job.type)){modelBudget.check(user.id,{excludeJobId:job.id});billing.reserve(user,job.id,job.attempt+1,job.type,input.billingQuote);}
    db.prepare("UPDATE jobs SET status='queued',stage='queued',error=NULL,updated_at=? WHERE id=?").run(now(),job.id);
   }
  });if(action[2]==='cancel')worker.cancel(job.id);send(200,{ok:true});return;
@@ -94,7 +96,7 @@ const action=path.match(/^\/api\/jobs\/([^/]+)\/(cancel|retry)$/);if(action&&met
 if(path==='/api/results'&&method==='GET'){send(200,{items:db.prepare('SELECT id,project_id,job_id,type,title,created_at FROM results WHERE user_id=? ORDER BY created_at DESC LIMIT 500').all(user.id)});return;}
 const revision=path.match(/^\/api\/results\/([^/]+)\/revisions$/);if(revision){const result=own('results',revision[1],user);if(method==='GET'){send(200,{items:db.prepare('SELECT id,body,created_at FROM result_revisions WHERE result_id=? AND user_id=? ORDER BY created_at DESC').all(result.id,user.id)});return;}const b=await body(req);const id=randomUUID();db.prepare('INSERT INTO result_revisions VALUES(?,?,?,?,?)').run(id,result.id,user.id,(text(b.text,100000),b.text),now());send(201,{id});return;}
 const result=path.match(/^\/api\/results\/([^/]+)$/);if(result&&method==='GET'){const row=own('results',result[1],user);send(200,{item:{...row,body:JSON.parse(row.body)}});return;}
-if(path==='/api/usage'&&method==='GET'){send(200,{items:db.prepare('SELECT * FROM usage WHERE user_id=? ORDER BY created_at DESC LIMIT 100').all(user.id),billingEnabled:billing.rules().services.some(item=>item.mode==='paid'&&item.available),billing:{...billing.balance(user.id),...billing.entitlements(user.id)}});return;}
+if(path==='/api/usage'&&method==='GET'){send(200,{items:db.prepare('SELECT * FROM usage WHERE user_id=? ORDER BY created_at DESC LIMIT 100').all(user.id),billingEnabled:billing.rules().services.some(item=>item.mode==='paid'&&item.available),modelBudget:modelBudget.summary(user.id),billing:{...billing.balance(user.id),...billing.entitlements(user.id)}});return;}
 if(path==='/api/products'&&method==='GET'){send(200,{items:payments.options().products,paymentEnabled:payments.options().enabled});return;}
 if(path==='/api/payments/entitlements'&&method==='GET'){send(200,payments.entitlements(user));return;}
 if(path==='/api/orders'){if(method==='POST'){rate(req,60);send(201,await payments.create(user,await body(req)));}else send(200,payments.list(user));return;}

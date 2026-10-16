@@ -56,3 +56,65 @@ test('agent task cancellation interrupts runner and leaves no result or usage',a
  for(let i=0;i<30;i++){if(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id).status==='running')break;await new Promise(r=>setTimeout(r,20));}
  assert.equal((await f.request(`/jobs/${job.id}/cancel`,{},a.cookie)).status,200);assert.equal((await f.waitJob(job.id,a.cookie)).status,'cancelled');assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM usage').get().n,0);
 });
+
+// All upstream model traffic below stays on loopback and uses fixture credentials.
+async function localModel(t,handler){
+ const server=http.createServer(handler);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ t.after(()=>{server.closeAllConnections();return new Promise(resolve=>server.close(resolve));});
+ return {server,url:`http://127.0.0.1:${server.address().port}/chat`};
+}
+const modelSuccess={choices:[{finish_reason:'stop',message:{content:'测试桩返回完整修改建议。'}}],usage:{prompt_tokens:8,completion_tokens:6}};
+
+test('worker applies configured output and timeout ceilings while disabling streams and reasoning',async t=>{
+ const captured=[];let timedOutConnection=false;
+ const model=await localModel(t,async(req,res)=>{const parts=[];for await(const chunk of req)parts.push(chunk);captured.push(JSON.parse(Buffer.concat(parts)));if(captured.length===1){res.setHeader('Content-Type','application/json');res.end(JSON.stringify(modelSuccess));}else res.on('close',()=>timedOutConnection=true);});
+ const f=await fixture(t,{aiURL:model.url,aiKey:'loopback-request-limit-key',aiModel:'loopback-test-model',aiMaxTokens:64,aiTimeoutMs:5000}),a=await f.register();
+ const first=await f.request('/jobs',{type:'polish',text:'仅用于预算限制验证的测试句子。',idempotencyKey:'request-limit-success'},a.cookie);assert.equal(first.status,201);assert.equal((await f.waitJob(first.value.id,a.cookie)).status,'completed');
+ assert.equal(captured[0].max_tokens,64);assert.equal(captured[0].stream,false);assert.equal(captured[0].enable_thinking,false);
+ const started=Date.now(),second=await f.request('/jobs',{type:'polish',text:'仅用于超时验证的测试句子。',idempotencyKey:'request-limit-timeout'},a.cookie);assert.equal(second.status,201);
+ let done;for(let i=0;i<300;i++){done=f.db.prepare('SELECT status FROM jobs WHERE id=?').get(second.value.id);if(done.status==='failed')break;await new Promise(resolve=>setTimeout(resolve,50));}
+ assert.equal(done.status,'failed');assert.ok(Date.now()-started>=4800);assert.equal(captured.length,2);assert.equal(captured[1].max_tokens,64);
+ for(let i=0;i<20&&!timedOutConnection;i++)await new Promise(resolve=>setTimeout(resolve,10));assert.equal(timedOutConnection,true);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,1);assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(second.value.id).status,'released');
+});
+
+test('failed upstream calls exhaust daily budget and a rejected retry preserves the failed task without another request',async t=>{
+ let calls=0;const model=await localModel(t,async(req,res)=>{for await(const _ of req){}calls++;res.writeHead(503,{'Content-Type':'application/json'});res.end(JSON.stringify({error:{message:'loopback-provider-details-must-not-leak'}}));});
+ const f=await fixture(t,{aiURL:model.url,aiKey:'loopback-budget-key',aiModel:'loopback-test-model',aiUserDailyLimit:1,aiGlobalDailyLimit:2}),a=await f.register();
+ const input={type:'review',text:'本地测试材料，验证失败的模型请求仍计入成本预算。',requirements:'仅用于自动化验证',idempotencyKey:'budget-failed-call'},submitted=await f.request('/jobs',input,a.cookie);assert.equal(submitted.status,201);
+ const failed=await f.waitJob(submitted.value.id,a.cookie);assert.equal(failed.status,'failed');assert.equal(failed.attempt,1);assert.match(failed.error,/HTTP 503/);assert.doesNotMatch(failed.error,/provider-details/);assert.equal(calls,1);
+ const usage=await f.request('/usage',undefined,a.cookie);assert.deepEqual(usage.value.modelBudget,{used:1,queued:0,limit:1,remaining:0});
+ const before={...f.db.prepare('SELECT status,stage,error,attempt,updated_at FROM jobs WHERE id=?').get(failed.id)},retried=await f.request(`/jobs/${failed.id}/retry`,{},a.cookie);assert.equal(retried.status,429);assert.deepEqual({...f.db.prepare('SELECT status,stage,error,attempt,updated_at FROM jobs WHERE id=?').get(failed.id)},before);
+ assert.equal((await f.request('/jobs',{...input,idempotencyKey:'budget-next-call'},a.cookie)).status,429);assert.equal((await f.request('/jobs',input,a.cookie)).status,200);
+ assert.equal(calls,1);assert.equal(f.db.prepare('SELECT count(*) n FROM model_attempts').get().n,1);assert.equal(f.db.prepare('SELECT count(*) n FROM jobs').get().n,1);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,1);assert.equal(f.db.prepare('SELECT status FROM billing_reservations').get().status,'released');
+});
+
+test('HTTP queue admission reserves owner and global model budgets and cancellation releases only unused queue space',async t=>{
+ let calls=0;const model=await localModel(t,(req,res)=>{calls++;res.end(JSON.stringify(modelSuccess));});
+ const f=await fixture(t,{aiURL:model.url,aiKey:'loopback-queue-key',aiModel:'loopback-test-model',aiUserDailyLimit:1,aiGlobalDailyLimit:2});await f.worker.stop();
+ const a=await f.register(),b=await f.register('budget-second@example.com'),c=await f.register('budget-third@example.com');
+ const submit=(cookie,key)=>f.request('/jobs',{type:'polish',text:'只在本地验证排队预算。',idempotencyKey:key},cookie);
+ const one=await submit(a.cookie,'queue-a');assert.equal(one.status,201);assert.equal((await submit(a.cookie,'queue-a-over')).status,429);
+ const two=await submit(b.cookie,'queue-b');assert.equal(two.status,201);const denied=await submit(c.cookie,'queue-c-over');assert.equal(denied.status,429);assert.equal(denied.value.error,'模型服务当前繁忙，请稍后再试');
+ assert.deepEqual((await f.request('/usage',undefined,a.cookie)).value.modelBudget,{used:0,queued:1,limit:1,remaining:0});assert.deepEqual((await f.request('/usage',undefined,c.cookie)).value.modelBudget,{used:0,queued:0,limit:1,remaining:1});
+ assert.equal((await f.request(`/jobs/${one.value.id}/cancel`,{},b.cookie)).status,404);assert.equal((await submit(c.cookie,'queue-c-still-over')).status,429);
+ assert.equal((await f.request(`/jobs/${one.value.id}/cancel`,{},a.cookie)).status,200);assert.equal((await submit(c.cookie,'queue-c-after-cancel')).status,201);
+ assert.equal(f.db.prepare("SELECT count(*) n FROM jobs WHERE status='queued'").get().n,2);assert.equal(f.db.prepare('SELECT count(*) n FROM model_attempts').get().n,0);assert.equal(calls,0);
+});
+
+test('truncated model output fails without results or usage and releases the free task reservation',async t=>{
+ const model=await localModel(t,async(req,res)=>{for await(const _ of req){}res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{finish_reason:'length',message:{content:'不能作为完整成果保存的截断文本'}}],usage:{prompt_tokens:10,completion_tokens:64}}));});
+ const f=await fixture(t,{aiURL:model.url,aiKey:'loopback-truncation-key',aiModel:'loopback-test-model',aiMaxTokens:64}),a=await f.register();
+ const submitted=await f.request('/jobs',{type:'polish',text:'仅用于截断输出验证的测试句子。',idempotencyKey:'truncated-model'},a.cookie);assert.equal(submitted.status,201);const failed=await f.waitJob(submitted.value.id,a.cookie);
+ assert.equal(failed.status,'failed');assert.match(failed.error,/长度限制/);assert.equal(failed.result_id,null);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM usage').get().n,0);
+ const reservation=f.db.prepare('SELECT id,source,status FROM billing_reservations WHERE job_id=?').get(failed.id);assert.equal(reservation.source,'free');assert.equal(reservation.status,'released');assert.deepEqual(f.db.prepare('SELECT kind FROM billing_events WHERE reservation_id=? ORDER BY rowid').all(reservation.id).map(row=>row.kind),['reserve','release']);assert.equal(f.db.prepare('SELECT count(*) n FROM model_attempts WHERE job_id=?').get(failed.id).n,1);
+});
+
+test('model redirects are rejected without sending credentials or content to the redirect target',async t=>{
+ const secret='loopback-redirect-secret-must-never-leak';const received=[];
+ const target=await localModel(t,async(req,res)=>{const parts=[];for await(const chunk of req)parts.push(chunk);received.push({authorization:req.headers.authorization,body:Buffer.concat(parts).toString()});res.end(JSON.stringify(modelSuccess));});
+ let firstCalls=0;const source=await localModel(t,async(req,res)=>{for await(const _ of req){}firstCalls++;res.writeHead(302,{Location:target.url});res.end();});
+ const f=await fixture(t,{aiURL:source.url,aiKey:secret,aiModel:'loopback-test-model'}),a=await f.register();
+ const submitted=await f.request('/jobs',{type:'review',text:'这段测试材料禁止跟随重定向。',idempotencyKey:'redirect-must-fail'},a.cookie);assert.equal(submitted.status,201);const failed=await f.waitJob(submitted.value.id,a.cookie);
+ assert.equal(failed.status,'failed');assert.equal(firstCalls,1);assert.deepEqual(received,[]);assert.doesNotMatch(JSON.stringify(failed),new RegExp(secret));assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM usage').get().n,0);assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(failed.id).status,'released');
+});

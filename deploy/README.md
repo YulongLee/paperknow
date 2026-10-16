@@ -173,3 +173,14 @@ The standalone `/auth.html` page supports email and mainland China mobile (+86) 
 ## 指定管理员
 
 在 PaperKnow 独立环境配置中添加 `PK_OWNER_EMAIL`，不要修改其他服务的账户或配置。指定邮箱须经验证码验证才会自动成为管理员，不设置默认密码。通过 `/auth.html?mode=login&method=code&verify=1&next=%2Fadmin.html` 完成验证后进入后台。更新发布脚本时需同步 `/opt/paperknow/bin/release.sh`，确保发布检查包含 `npm run test:admin`。
+
+
+### 在线模型的独立配置与费用上限
+
+PaperKnow 使用 `PK_AI_URL`（完整 Chat Completions 地址）、`PK_AI_KEY` 和 `PK_AI_MODEL`，不读取其他项目运行时配置。经授权复用其他项目时，只复制所需连接项到 PaperKnow 自己的 root-only 环境文件，保留源项目不变，先验证权限与短请求再启用。模型名称出现在目录中不代表 API Key 已获得其调用权限；不得仅凭 `aiReady` 判断已验收。后台 `service_settings.ai` 的模型与启停值优先于环境文件。
+
+`PK_AI_MAX_TOKENS` 默认 2400（32–4096），`PK_AI_TIMEOUT_MS` 默认 45000（5000–90000）。普通修改使用非流式调用并明确关闭思考输出，不跟随重定向；返回长度截断时标记失败并释放用户权益，不把不完整结果标为已完成。
+
+`PK_AI_USER_DAILY_LIMIT` 默认每账户 30 次（1–500），`PK_AI_GLOBAL_DAILY_LIMIT` 默认全站 300 次（1–10000），按北京时间自然日计算。排队任务预留调用名额，worker 派发前再次核对；失败、取消和重试的实际模型尝试仍计入当日上游费用预算。这与用户付费权益不同：失败取消释放用户权益，不重复消费，但模型服务商可能已经计费。模型尝试记录持久化且不可修改，服务重启不会重置限额。
+
+`PK_AGENT_ENABLED` 保持关闭，直至 Responses API、工具调用与 Codex 运行时另行验收。普通聊天模型接入不会自动接通论文生成、PPT、文献检索或翻译，也不改变商品计价、上架或支付渠道开关。

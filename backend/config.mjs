@@ -7,6 +7,7 @@ export function loadLocalEnvironment(){
 }
 export function environmentConfig(env=process.env){
   return {agentEnabled:env.PK_AGENT_ENABLED==='1',aiURL:env.PK_AI_URL,aiKey:env.PK_AI_KEY,aiModel:env.PK_AI_MODEL,secure:env.PK_SECURE_COOKIE==='1',trustProxy:env.PK_TRUST_PROXY==='1',
+    aiMaxTokens:Number(env.PK_AI_MAX_TOKENS),aiTimeoutMs:Number(env.PK_AI_TIMEOUT_MS),aiUserDailyLimit:Number(env.PK_AI_USER_DAILY_LIMIT),aiGlobalDailyLimit:Number(env.PK_AI_GLOBAL_DAILY_LIMIT),
     ownerEmail:String(env.PK_OWNER_EMAIL||'').trim().toLowerCase(),paymentConfigKey:env.PK_PAYMENT_CONFIG_KEY,
     authCodeSecret:env.PK_AUTH_CODE_SECRET,authDailyLimit:/^[1-9]\d{0,3}$/.test(env.PK_AUTH_DAILY_SEND_LIMIT||'')?Number(env.PK_AUTH_DAILY_SEND_LIMIT):100,
     emailSMTPHost:env.PK_EMAIL_SMTP_HOST,emailSMTPPort:Number(env.PK_EMAIL_SMTP_PORT||465),emailSMTPSecure:env.PK_EMAIL_SMTP_SECURE!=='0',
@@ -15,6 +16,10 @@ export function environmentConfig(env=process.env){
     smsTemplateCode:env.PK_SMS_TEMPLATE_CODE,smsCodeParam:env.PK_SMS_CODE_PARAM||'code',
     ossBucket:env.PK_OSS_BUCKET,ossEndpoint:env.PK_OSS_ENDPOINT,ossRegion:env.PK_OSS_REGION,
     ossPrefix:env.PK_OSS_PREFIX||'paperknow/',ossAccessKeyId:env.PK_OSS_ACCESS_KEY_ID,ossAccessKeySecret:env.PK_OSS_ACCESS_KEY_SECRET};
+}
+export function modelRequestLimits(config={}){
+  const limit=(value,fallback,min,max)=>Number.isSafeInteger(value)&&value>=min&&value<=max?value:fallback;
+  return {maxTokens:limit(config.aiMaxTokens,2400,32,4096),timeoutMs:limit(config.aiTimeoutMs,45000,5000,90000)};
 }
 export function modelSettings(db,config){
   return {get(){
