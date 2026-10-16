@@ -1,3 +1,4 @@
+import {assertThesisAccountQuota} from './thesis-model.mjs';
 import {randomUUID} from 'node:crypto';
 import {safeUser,digest} from './auth.mjs';
 import {now} from './database.mjs';
@@ -29,7 +30,7 @@ export function createWorkspaceService(db,{billing}={}){
  const projectRow=(id,user)=>{const row=db.prepare(projectSelect+' WHERE p.id=? AND p.user_id=?').get(id,user.id);if(!row)error(404,'记录不存在');return row;};
  const draftColumns='id,user_id,project_id,title,tool,version,bytes,created_at,updated_at';
  const draftRow=(id,user,full=true)=>{const row=db.prepare(`SELECT ${draftColumns}${full?',payload':''} FROM workspace_drafts WHERE id=? AND user_id=?`).get(id,user.id);if(!row)error(404,'记录不存在');if(full)row.payload=JSON.parse(row.payload);return row;};
- const draftQuota=(user,bytes,replacing=0)=>{const total=db.prepare('SELECT coalesce(sum(bytes),0) bytes FROM workspace_drafts WHERE user_id=?').get(user.id).bytes;if(total-replacing+bytes>maxAccountBytes)error(409,'账户草稿总量最多 50MB，请先下载备份并整理已有草稿');};
+ const draftQuota=(user,bytes,replacing=0)=>{try{assertThesisAccountQuota(db,user.id,bytes-replacing);}catch(cause){if(cause.code==='storage_limit')error(409,'账户草稿、论文资料与章节历史合计最多 50MB，请先下载备份并整理内容');throw cause;}};
  const feedbackItem=(id,user)=>db.prepare(`SELECT f.id,f.category,f.body,f.created_at,coalesce(m.status,'open') status,coalesce(m.updated_at,f.created_at) updated_at FROM feedback f LEFT JOIN feedback_management m ON m.feedback_id=f.id WHERE f.id=? AND f.user_id=?`).get(id,user.id);
  return async({path,method,user,readBody})=>{
   const result=(value,status=200)=>({value,status});
@@ -37,7 +38,11 @@ export function createWorkspaceService(db,{billing}={}){
    if(method!=='GET')error(405,'账户资料归档仅支持下载');
    const contentBytes=db.prepare('SELECT coalesce(sum(bytes),0) n FROM workspace_drafts WHERE user_id=?').get(user.id).n+
     db.prepare('SELECT coalesce(sum(length(CAST(body AS BLOB))),0) n FROM results WHERE user_id=?').get(user.id).n+
-    db.prepare('SELECT coalesce(sum(length(CAST(body AS BLOB))),0) n FROM result_revisions WHERE user_id=?').get(user.id).n;
+    db.prepare('SELECT coalesce(sum(length(CAST(body AS BLOB))),0) n FROM result_revisions WHERE user_id=?').get(user.id).n+
+    db.prepare('SELECT coalesce(sum(length(CAST(snapshot AS BLOB))),0) n FROM theses WHERE user_id=?').get(user.id).n+
+    db.prepare('SELECT coalesce(sum(length(CAST(snapshot AS BLOB))+length(CAST(plan AS BLOB))),0) n FROM thesis_runs WHERE user_id=?').get(user.id).n+
+    db.prepare('SELECT coalesce(sum(length(CAST(v.text AS BLOB))),0) n FROM thesis_chapter_versions v JOIN theses t ON t.id=v.thesis_id WHERE t.user_id=?').get(user.id).n+
+    db.prepare('SELECT coalesce(sum(length(CAST(c.text AS BLOB))+length(CAST(c.trace AS BLOB))),0) n FROM thesis_checkpoints c JOIN thesis_runs r ON r.id=c.run_id WHERE r.user_id=?').get(user.id).n;
    if(contentBytes>100*1024*1024)error(413,'账户资料超过单次归档大小，请按项目下载原件与成果');
    const profile=safeUser(db,user.id);
    const projects=db.prepare(projectSelect+' WHERE p.user_id=? ORDER BY p.created_at,p.id').all(user.id);
@@ -48,7 +53,11 @@ export function createWorkspaceService(db,{billing}={}){
    const results=db.prepare('SELECT id,project_id,job_id,type,title,body,created_at FROM results WHERE user_id=? ORDER BY created_at,id').all(user.id).map(row=>({...row,body:JSON.parse(row.body),revisions:revisionsByResult.get(row.id)||[]}));
    const jobs=db.prepare('SELECT id,project_id,type,status,stage,error,result_id,attempt,created_at,updated_at FROM jobs WHERE user_id=? ORDER BY created_at,id').all(user.id);
    const feedback=db.prepare("SELECT f.id,f.category,f.body,f.created_at,coalesce(m.status,'open') status,coalesce(m.updated_at,f.created_at) updated_at FROM feedback f LEFT JOIN feedback_management m ON m.feedback_id=f.id WHERE f.user_id=? ORDER BY f.created_at,f.id").all(user.id);
-   const archive={format:'paperknow-account-archive',version:1,exportedAt:now(),scope:'account',account:{id:profile.id,name:profile.name,email:profile.email,phone:profile.phone},projects,drafts,files,results,jobs,feedback,includesOriginalFiles:false,restoreSupported:false};
+   const theses=db.prepare('SELECT id,project_id,title,snapshot,version,status,current_run_id,created_at,updated_at FROM theses WHERE user_id=? ORDER BY created_at,id').all(user.id).map(row=>({...row,snapshot:JSON.parse(row.snapshot)}));
+   const thesisRuns=db.prepare('SELECT id,thesis_id,snapshot,plan,status,stage,error,attempt,result_id,input_tokens,output_tokens,created_at,updated_at FROM thesis_runs WHERE user_id=? ORDER BY created_at,id').all(user.id).map(row=>({...row,snapshot:JSON.parse(row.snapshot),plan:JSON.parse(row.plan)}));
+   const thesisChapters=db.prepare('SELECT v.* FROM thesis_chapter_versions v JOIN theses t ON t.id=v.thesis_id WHERE t.user_id=? ORDER BY v.thesis_id,v.chapter_id,v.version').all(user.id).map(row=>({...row,source_ids:JSON.parse(row.source_ids)}));
+   const thesisSections=db.prepare('SELECT c.* FROM thesis_checkpoints c JOIN thesis_runs r ON r.id=c.run_id WHERE r.user_id=? ORDER BY c.run_id,c.position').all(user.id).map(row=>({...row,source_ids:JSON.parse(row.source_ids),missing_evidence:JSON.parse(row.missing_evidence),trace:JSON.parse(row.trace)}));
+   const archive={format:'paperknow-account-archive',version:1,exportedAt:now(),scope:'account',account:{id:profile.id,name:profile.name,email:profile.email,phone:profile.phone},projects,drafts,files,results,jobs,feedback,theses,thesisRuns,thesisChapters,thesisSections,includesOriginalFiles:false,restoreSupported:false};
    if(Buffer.byteLength(JSON.stringify(archive))>100*1024*1024)error(413,'账户资料超过单次归档大小，请按项目下载原件与成果');
    return result(archive);
   }
@@ -72,7 +81,7 @@ export function createWorkspaceService(db,{billing}={}){
   if(project){const id=project[1],row=projectRow(id,user);
    if(method==='GET'&&!project[2])return result({item:row,files:db.prepare('SELECT id,project_id,name,kind,bytes,created_at FROM files WHERE user_id=? AND project_id=? ORDER BY created_at DESC').all(user.id,id),jobs:db.prepare('SELECT id,project_id,type,status,stage,error,result_id,attempt,created_at,updated_at FROM jobs WHERE user_id=? AND project_id=? ORDER BY created_at DESC LIMIT 100').all(user.id,id),results:db.prepare('SELECT id,project_id,job_id,type,title,created_at FROM results WHERE user_id=? AND project_id=? ORDER BY created_at DESC LIMIT 500').all(user.id,id),drafts:db.prepare(`SELECT ${draftColumns} FROM workspace_drafts WHERE user_id=? AND project_id=? ORDER BY updated_at DESC`).all(user.id,id)});
    if(method!=='POST')error(405,'不支持的项目操作');const input=await readBody();
-   if(project[2]){fields(input,['version']);return result(transaction(()=>{expectedVersion(input,projectRow(id,user).version);for(const table of ['files','jobs','results','workspace_drafts'])if(db.prepare(`SELECT 1 FROM ${table} WHERE project_id=? LIMIT 1`).get(id))error(409,'项目仍有关联内容，请使用归档保留资料');if(db.prepare('SELECT 1 FROM workspace_file_uploads WHERE project_id=? AND expires_at>? LIMIT 1').get(id,now()))error(409,'该项目仍有文件正在上传，请等待上传完成');db.prepare('DELETE FROM workspace_file_uploads WHERE project_id=? AND expires_at<=?').run(id,now());db.prepare('DELETE FROM workspace_project_details WHERE project_id=?').run(id);db.prepare('DELETE FROM projects WHERE id=? AND user_id=?').run(id,user.id);return {ok:true};}));}
+   if(project[2]){fields(input,['version']);return result(transaction(()=>{expectedVersion(input,projectRow(id,user).version);for(const table of ['files','jobs','results','workspace_drafts','theses'])if(db.prepare(`SELECT 1 FROM ${table} WHERE project_id=? LIMIT 1`).get(id))error(409,'项目仍有关联内容，请使用归档保留资料');if(db.prepare('SELECT 1 FROM workspace_file_uploads WHERE project_id=? AND expires_at>? LIMIT 1').get(id,now()))error(409,'该项目仍有文件正在上传，请等待上传完成');db.prepare('DELETE FROM workspace_file_uploads WHERE project_id=? AND expires_at<=?').run(id,now());db.prepare('DELETE FROM workspace_project_details WHERE project_id=?').run(id);db.prepare('DELETE FROM projects WHERE id=? AND user_id=?').run(id,user.id);return {ok:true};}));}
    fields(input,['version','title','degree','major','description','stage','status']);return result(transaction(()=>{const current=projectRow(id,user);expectedVersion(input,current.version);const title=input.title===undefined?current.title:text(input.title,200,1),degree=input.degree===undefined?current.degree:text(input.degree,20,1),major=input.major===undefined?current.major:text(input.major,100),description=input.description===undefined?current.description:text(input.description,5000),stage=input.stage===undefined?current.stage:text(input.stage,50,1),status=input.status??current.status;if(!['active','archived'].includes(status))error(400,'项目状态无效');const at=now();db.prepare('UPDATE projects SET title=?,degree=?,major=?,updated_at=? WHERE id=? AND user_id=?').run(title,degree,major,at,id,user.id);db.prepare('INSERT INTO workspace_project_details(project_id,status,stage,description,version) VALUES(?,?,?,?,?) ON CONFLICT(project_id) DO UPDATE SET status=excluded.status,stage=excluded.stage,description=excluded.description,version=excluded.version').run(id,status,stage,description,current.version+1);return {item:projectRow(id,user)};}));
   }
   if(path==='/api/workspace/drafts'){

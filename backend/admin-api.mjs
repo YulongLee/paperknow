@@ -2,6 +2,8 @@ import {randomUUID} from 'node:crypto';
 import {aiReady,publicModelSettings} from './config.mjs';
 import {paymentCatalog,savePaymentProduct} from './payment-settings.mjs';
 import {productDelivery} from './commerce-readiness.mjs';
+import {createAgentSettings} from './agent-settings.mjs';
+import {testAgentConnection} from './agent-runtime.mjs';
 
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const identityJoins=`LEFT JOIN auth_identities ue ON ue.user_id=u.id AND ue.channel='email'
@@ -70,6 +72,8 @@ export function createAdminAPI(db,worker,config,auth){
     try{const result=work();db.exec('COMMIT;');return result;}
     catch(cause){db.exec('ROLLBACK;');throw cause;}
   };
+  const agentSettings=config.agentSettings||createAgentSettings(db,config,{audit});
+  let agentTestRunning=false,agentTestAt=0;
 
   function list(name,query){
     parameters(query,['page','pageSize','q','status']);
@@ -92,7 +96,7 @@ export function createAdminAPI(db,worker,config,auth){
 
   function settings(){
     const available=auth.options();
-    return {ai:publicModelSettings(modelConfig()),auth:{emailCode:available.emailCode,phoneCode:available.phoneCode},storage:{provider:config.storage?.provider||'local_server_sqlite'},payment:config.payments?.options().enabled||false};
+    return {ai:publicModelSettings(modelConfig()),agent:agentSettings.public(),auth:{emailCode:available.emailCode,phoneCode:available.phoneCode},storage:{provider:config.storage?.provider||'local_server_sqlite'},payment:config.payments?.options().enabled||false};
   }
 
   function overview(query){
@@ -125,6 +129,11 @@ export function createAdminAPI(db,worker,config,auth){
     const actor=db.prepare('SELECT id,role FROM users WHERE id=?').get(user.id);
     if(!actor)fail(401,'请先登录');
     if(actor.role!=='admin')fail(403,'需要管理员权限');
+    if(path==='/api/admin/agent-settings'&&['GET','POST'].includes(method)){parameters(query,[]);if(method==='POST')return {agent:agentSettings.save(actor,await readBody())};return {agent:agentSettings.public()};}
+    if(path==='/api/admin/agent-settings/test'&&method==='POST'){
+      parameters(query,[]);const input=await readBody();if(!input||Object.keys(input).some(name=>name!=='version'))fail(400,'测试仅使用已保存配置');const snapshot=agentSettings.get();if(!snapshot.version||input.version!==snapshot.version)fail(409,'请先保存当前配置后再测试');if(agentTestRunning||Date.now()-agentTestAt<30000)fail(429,'请等待 30 秒后再测试');agentTestRunning=true;agentTestAt=Date.now();
+      try{const result=await (config.agentConnectionTest||testAgentConnection)(snapshot);audit(actor,'agent.connection.test','setting','agent',{version:snapshot.version,ok:true,sdkVerified:false});return result;}catch(error){audit(actor,'agent.connection.test','setting','agent',{version:snapshot.version,ok:false,sdkVerified:false});throw error;}finally{agentTestRunning=false;}
+    }
     const paymentConfig=()=>({channels:['wechat','alipay'].map(p=>config.payments.settings.summary(p)),catalog:paymentCatalog(db,{all:true}).map(product=>({...product,...productDelivery(product,config.billing)})),encryptionReady:config.payments.settings.encryptionReady,billing:config.billing?.rules()});
     if(path==='/api/admin/payments'&&method==='GET'){parameters(query,[]);return paymentConfig();}
     if(path==='/api/admin/billing'&&method==='POST'){parameters(query,[]);const input=await readBody();return transaction(()=>{const billing=config.billing.saveRules(input);audit(actor,'billing.rules.update','setting','billing',{version:billing.version,services:billing.services.map(({key,mode,creditCost})=>({key,mode,creditCost}))});return {billing,catalog:paymentConfig().catalog};});}

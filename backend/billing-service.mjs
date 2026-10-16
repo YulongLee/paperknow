@@ -1,5 +1,6 @@
 import {randomBytes,randomUUID} from 'node:crypto';
 import {aiReady} from './config.mjs';
+import {agentSettingsReady} from './agent-settings.mjs';
 
 export const billingServiceTypes=Object.freeze([
  Object.freeze({key:'polish',title:'学术润色'}),
@@ -54,7 +55,7 @@ export function createBillingService(db,config={}){
  CREATE TRIGGER IF NOT EXISTS billing_events_no_update BEFORE UPDATE ON billing_events BEGIN SELECT RAISE(ABORT,'消费事件不可修改'); END;
  CREATE TRIGGER IF NOT EXISTS billing_events_no_delete BEFORE DELETE ON billing_events BEGIN SELECT RAISE(ABORT,'消费事件不可删除'); END;`);
  db.prepare('INSERT OR IGNORE INTO billing_policy(id,rules,version,updated_at) VALUES(1,?,1,?)').run(JSON.stringify(billingServiceTypes.map(({key})=>({key,mode:'free',creditCost:null}))),clock());
- const available=key=>Boolean(aiReady(config.getAI?.()||config)&&(key!=='agent'||config.agentEnabled));
+ const available=key=>{if(key==='agent'&&config.getAgentSettings){try{if(agentSettingsReady(config.getAgentSettings()))return true;}catch{/* A failed new runtime configuration never enables paid work. */}}return Boolean(aiReady(config.getAI?.()||config)&&(key!=='agent'||config.agentEnabled));};
  function rules(){
   const row=db.prepare('SELECT rules,version FROM billing_policy WHERE id=1').get();let stored;
   try{stored=JSON.parse(row.rules);}catch{fail(503,'服务计费规则暂时无法读取');}
@@ -123,7 +124,7 @@ export function createBillingService(db,config={}){
  function event(id,kind,now){db.prepare('INSERT INTO billing_events(id,reservation_id,kind,created_at) VALUES(?,?,?,?)').run(randomUUID(),id,kind,now);}
  function reserve(user,jobId,attempt,type,token){
   if(!Number.isSafeInteger(attempt)||attempt<1||typeof jobId!=='string')fail(400,'任务执行次数无效');
-  const job=db.prepare('SELECT id,user_id,type FROM jobs WHERE id=? AND user_id=?').get(jobId,user.id);if(!job)fail(404,'任务不存在');if(job.type!==type)fail(409,'任务类型与计费服务不一致');
+  const job=db.prepare('SELECT id,user_id,type FROM jobs WHERE id=? AND user_id=?').get(jobId,user.id);if(!job)fail(404,'任务不存在');if(job.type!==type&&!(job.type==='thesis'&&type==='agent'))fail(409,'任务类型与计费服务不一致');
   const existing=db.prepare('SELECT * FROM billing_reservations WHERE job_id=? AND attempt=?').get(jobId,attempt);
   if(existing){if(existing.user_id!==user.id||existing.type!==type)fail(409,'任务预占信息不一致');return reservation(existing);}
   if(db.prepare("SELECT 1 FROM billing_reservations WHERE job_id=? AND status='held'").get(jobId))fail(409,'任务已有未结算预占');

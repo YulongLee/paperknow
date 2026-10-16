@@ -56,6 +56,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   const loginUrl = '/auth.html?mode=login&next=%2Fadmin.html';
   let authorized = false, user = null, currentView = 'overview', generation = 0, currentData = null, loadedAt = '', polling, toastTimer, previousFocus, dialogGeneration = 0;
   const paymentBaselines = new Map(), pendingPayments = new Set();
+  let agentBaseline = '', agentPending = false;
   const queries = Object.fromEntries(Object.keys(headers).map(key => [key, { page: 1, pageSize: 20, q: '', status: '' }]));
   const route = () => Object.hasOwn(paths, win.location.hash.slice(1)) ? win.location.hash.slice(1) : 'overview';
 
@@ -140,6 +141,31 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   function settingsPage(data) {
     const ai = data.ai || {}, auth = data.auth || {};
     return `<div class="settings-grid"><section class="panel"><div class="panel-heading"><div><h2>AI 模型配置</h2><p>模型变更对后续任务生效</p></div><span class="service-status ${ai.ready ? '' : 'off'}">${ai.ready ? '可用' : '未就绪'}</span></div><form id="model-form" class="settings-body"><div class="settings-meta"><div><span>模型服务</span><b>${esc(ai.provider || '未配置')}</b></div><div><span>连接配置</span><b>${ai.configured ? '已配置' : '未配置'}</b></div></div><label for="model-name">模型名称</label><input id="model-name" type="text" maxlength="100" required value="${esc(ai.model || '')}" placeholder="填写当前服务可用的模型名称" autocomplete="off"><p class="settings-note">请填写当前模型服务已开通的模型名称。</p><label class="toggle-row" for="model-enabled"><span><b>启用 AI 服务</b><p>暂停后，用户无法提交新的 AI 任务。</p></span><input id="model-enabled" type="checkbox" ${ai.enabled ? 'checked' : ''}></label>${!ai.configured ? '<div class="page-notice">连接信息尚未配置。仅开启此开关不会使模型服务可用。</div>' : ''}<div class="form-error" id="model-error" role="alert" hidden></div><div class="settings-actions"><button class="button primary" id="save-model" type="submit">保存配置</button><span class="settings-note">保存操作会写入操作日志</span></div></form></section><section class="panel"><div class="panel-heading"><h2>平台服务</h2></div><div class="service-status-list">${serviceRow('邮箱验证码', 'mail', auth.emailCode)}${serviceRow('短信验证码', 'phone', auth.phoneCode)}${serviceRow('在线支付', 'order', data.payment, '已开放')}</div><div class="settings-body"><div class="settings-meta"><div><span>文件存储</span><b>${storageName(data.storage?.provider)}</b></div></div><p class="settings-note">短信、邮件和文件存储使用服务端连接配置。此页面展示当前服务状态。支付参数与可售商品可在支付配置中管理。</p><a class="button payment-settings-link" href="#payments" data-view="payments">${icon('order')}管理支付配置 →</a></div></section></div>`;
+  }
+  function agentSettingsPanel(agent) {
+    if (!agent) return '';
+    const numberField = (key, label, min, max, step = 1) => `<div class="payment-field"><label for="agent-${key}">${label}</label><input name="${key}" id="agent-${key}" type="number" min="${min}" max="${max}" step="${step}" value="${esc(agent[key])}" required></div>`;
+    return `<section class="panel" id="agent-settings-panel"><div class="panel-heading"><div><h2>公共 Agent 执行配置</h2><p>供论文章节等功能共用；模型变更仅影响新任务，关闭后暂停未开始及后续章节</p></div><span class="service-status ${agent.ready ? '' : 'off'}">${agent.ready ? '已启用 · 待业务验收' : '未启用或配置未完整'}</span></div><form id="agent-settings-form" class="settings-body" autocomplete="off"><div class="settings-meta"><div><span>执行引擎</span><b>Claude Agent SDK</b></div><div><span>配置版本</span><b>${agent.version ? esc(agent.version.slice(0, 8)) : '尚未保存'}</b></div></div><p class="settings-note">仅支持 Anthropic Messages 兼容接口，不代表任意模型均兼容。密钥只保存在服务器，留空保留已有密钥；当前${agent.credentialConfigured ? '已配置密钥' : '未配置密钥'}。</p><div class="payment-field-grid"><div class="payment-field"><label for="agent-baseURL">Anthropic Base URL</label><input id="agent-baseURL" name="baseURL" type="url" value="${esc(agent.baseURL)}" placeholder="https://dashscope.aliyuncs.com/apps/anthropic" maxlength="500"></div><div class="payment-field"><label for="agent-model">模型名称</label><input id="agent-model" name="model" value="${esc(agent.model)}" maxlength="120" autocomplete="off"></div><div class="payment-field"><label for="agent-apiKey">API 密钥（留空保留）</label><input id="agent-apiKey" name="apiKey" type="password" value="" maxlength="4096" autocomplete="new-password" placeholder="${agent.credentialConfigured ? '已配置，留空保留' : '填写当前渠道的 API 密钥'}"></div>${numberField('maxTurns', '最多模型回合', 1, 12)}${numberField('timeoutMs', '执行时限（毫秒）', 5000, 300000)}${numberField('maxOutputTokens', '每回合输出 Token 上限', 32, 16384)}${numberField('maxCostUsd', 'SDK 估算预算（美元）', 0.01, 5, 0.01)}</div><label class="toggle-row" for="agent-enabled"><span><b>启用公共 Agent</b><p>关闭后不开始新的章节；已完成内容保留，重新开启并确认续跑时使用原配置版本。</p></span><input id="agent-enabled" name="enabled" type="checkbox" ${agent.enabled ? 'checked' : ''}></label><p class="settings-note">执行仅开放当前授权材料与注册技能，禁止通用命令、文件和网页工具。SDK 美元预算属于估算保护，自有模型的实际费用以渠道账单为准。</p>${!agent.encryptionReady ? '<p class="page-notice">服务器配置加密密钥未就绪，暂不能保存。</p>' : ''}${agent.configurationError ? `<p class="page-notice">${esc(agent.configurationError)}</p>` : ''}<p class="form-error" id="agent-error" role="alert" hidden></p><p class="settings-note" id="agent-test-result" role="status" hidden></p><div class="settings-actions"><button class="button primary" type="submit" ${agent.encryptionReady ? '' : 'disabled'}>保存 Agent 配置</button><button class="button" id="test-agent-connection" type="button" ${agent.version && agent.configured ? '' : 'disabled'}>基础连接测试</button></div><p class="settings-note">测试仅向已保存渠道发送一次最多 32 Token 的短请求，会产生少量 API 用量；通过不代表 Agent 多轮、工具调用或论文效果已验收。</p><span class="settings-note" data-agent-dirty hidden>有修改尚未保存；请先保存后再测试。</span></form></section>`;
+  }
+  function agentFingerprint() { const form = $('#agent-settings-form'); return form ? JSON.stringify([...form.querySelectorAll('[name]')].map(input => [input.name, input.type === 'checkbox' ? input.checked : input.value])) : ''; }
+  function agentHasWork() { return authorized && currentView === 'settings' && Boolean($('#agent-settings-form')) && (agentPending || agentFingerprint() !== agentBaseline); }
+  async function saveAgentSettings(event) {
+    event.preventDefault(); if (!authorized || currentView !== 'settings' || agentPending || !currentData?.agent) return;
+    const form = event.target, ticket = generation, errorNode = $('#agent-error'), payload = { version: currentData.agent.version, engine: 'claude-agent-sdk', enabled: $('#agent-enabled').checked };
+    for (const key of ['baseURL', 'model', 'apiKey']) payload[key] = form.elements.namedItem(key).value.trim();
+    for (const key of ['maxTurns', 'timeoutMs', 'maxOutputTokens', 'maxCostUsd']) payload[key] = Number(form.elements.namedItem(key).value);
+    agentPending = true; errorNode.hidden = true; for (const input of form.querySelectorAll('input')) input.disabled = true; for (const button of form.querySelectorAll('button')) button.disabled = true;
+    try { const result = await request('/admin/agent-settings', payload); if (!authorized || ticket !== generation) return; currentData.agent = result.agent; $('#agent-apiKey').value = ''; agentBaseline = agentFingerprint(); toast('Agent 配置已保存；新任务使用此版本，开关控制后续章节执行。'); agentPending = false; await loadView('settings'); }
+    catch (error) { if (authorized && ticket === generation) { errorNode.textContent = error.message; errorNode.hidden = false; } }
+    finally { agentPending = false; if (authorized && ticket === generation && form.isConnected) { for (const input of form.querySelectorAll('input')) input.disabled = false; form.querySelector('[type="submit"]').disabled = currentData.agent.encryptionReady !== true; $('#test-agent-connection').disabled = !currentData.agent.version || !currentData.agent.configured || agentHasWork(); } }
+  }
+  async function testAgentSettings() {
+    if (!authorized || currentView !== 'settings' || agentPending || !currentData?.agent?.version || agentHasWork()) return;
+    const button = $('#test-agent-connection'), output = $('#agent-test-result'), errorNode = $('#agent-error'), ticket = generation;
+    agentPending = true; button.disabled = true; errorNode.hidden = true; output.hidden = false; output.textContent = '正在检查已保存渠道的基础连接…';
+    try { const result = await request('/admin/agent-settings/test', { version: currentData.agent.version }); if (authorized && ticket === generation) output.textContent = result.ok === true ? '基础连接已通过；Agent 工具执行兼容性仍需单独验收。' : '基础连接未通过，请检查渠道配置。'; }
+    catch (error) { if (authorized && ticket === generation) { output.hidden = true; errorNode.textContent = error.message; errorNode.hidden = false; } }
+    finally { agentPending = false; if (authorized && ticket === generation) button.disabled = agentHasWork(); }
   }
   function paymentChannel(provider, data = {}, encryptionReady = false) {
     const spec = paymentProviders[provider], fields = data.fields || {}, flags = data.secretFields || {};
@@ -232,6 +258,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   function paymentsHaveWork() { return authorized && currentView === 'payments' && (pendingPayments.size > 0 || paymentForms().some(formIsDirty)); }
   function refreshPaymentDirty(form) { const dirty = formIsDirty(form); const note = form.querySelector('.payment-dirty'); if (note) note.hidden = !dirty; const check = form.querySelector('[data-payment-check]'); if (check) check.disabled = dirty || pendingPayments.has(paymentFormKey(form)); }
   function guardPayments(action) {
+    if (agentHasWork()) { if (agentPending) { toast('Agent 配置正在保存或测试，请等待完成。'); return; } openDialog('Agent 配置尚未保存', '<p class="dialog-copy">离开将丢弃未保存的 Agent 配置。</p><div class="dialog-actions"><button class="button" data-dialog-close>继续编辑</button><button class="button danger-solid" id="discard-agent-changes">放弃修改并离开</button></div>'); $('#discard-agent-changes').onclick = () => { agentBaseline = agentFingerprint(); closeDialog(); action(); }; return; }
     if (!paymentsHaveWork()) { action(); return; }
     if (pendingPayments.size) { toast('正在保存支付配置，请等待完成后再离开。'); return; }
     openDialog('支付配置尚未保存', '<p class="dialog-copy">离开将丢弃当前未保存的服务计价、渠道或商品修改。已保存的配置不受影响。</p><div class="dialog-actions"><button class="button" data-dialog-close>继续编辑</button><button class="button danger-solid" id="discard-payment-changes">放弃修改并离开</button></div>');
@@ -252,8 +279,9 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
       if (query && Number.isInteger(data.page) && data.page > 0) query.page = data.page;
       if (query && query.page > Math.max(1, Math.ceil((Number(data.total) || 0) / query.pageSize))) { query.page = Math.max(1, Math.ceil((Number(data.total) || 0) / query.pageSize)); await loadView(view); return; }
       currentData = data; loadedAt = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-      $('#admin-content').innerHTML = heading(view) + (view === 'overview' ? overviewPage(data) : view === 'settings' ? settingsPage(data) : view === 'payments' ? paymentsPage(data) : listPage(view, data));
+      $('#admin-content').innerHTML = heading(view) + (view === 'overview' ? overviewPage(data) : view === 'settings' ? settingsPage(data) + agentSettingsPanel(data.agent) : view === 'payments' ? paymentsPage(data) : listPage(view, data));
       if (view === 'payments') rememberPaymentForms();
+      if (view === 'settings') agentBaseline = agentFingerprint();
     } catch (error) {
       if (!authorized || ticket !== generation) return;
       if (quiet) { toast(error.message); return; }
@@ -312,6 +340,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   }
   async function saveSettings(event) {
     event.preventDefault(); if (!authorized || currentView !== 'settings' || !currentData) return;
+    if (agentHasWork()) { guardPayments(() => saveSettings(event)); return; }
     const model = $('#model-name').value.trim(), button = $('#save-model'), errorNode = $('#model-error'), ticket = generation;
     if (button.disabled) return;
     errorNode.hidden = true;
@@ -473,6 +502,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     if (link) { event.preventDefault(); navigateView(link.dataset.view); return; }
     if (!authorized) return;
     if (event.target.closest('#refresh-view, #retry-view')) { guardPayments(() => loadView()); return; }
+    if (event.target.closest('#test-agent-connection')) { testAgentSettings(); return; }
     const paymentCheck = event.target.closest('[data-payment-check]'); if (paymentCheck) { checkPaymentChannel(paymentCheck.dataset.paymentCheck); return; }
     const paymentConfigure = event.target.closest('[data-payment-configure]'); if (paymentConfigure) { const field = $(`#${paymentConfigure.dataset.paymentConfigure}-appId`); field?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); field?.focus({ preventScroll: true }); return; }
     const bundleEdit = event.target.closest('[data-bundle-add], [data-bundle-remove], [data-membership-add], [data-membership-remove]'); if (bundleEdit) { editBundleItems(bundleEdit); return; }
@@ -488,11 +518,12 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     if (!authorized) return;
     if (event.target.id === 'search-form') { event.preventDefault(); Object.assign(queries[currentView], { q: $('#admin-search').value.trim(), status: $('#status-filter')?.value || '', page: 1 }); loadView(); }
     if (event.target.id === 'model-form') saveSettings(event);
+    if (event.target.id === 'agent-settings-form') saveAgentSettings(event);
     if (event.target.matches('form[data-payment-provider]')) savePaymentChannel(event);
     if (event.target.matches('form[data-payment-product]')) savePaymentProduct(event);
     if (event.target.matches('form[data-billing-form]')) saveBilling(event);
   });
-  for (const name of ['input', 'change']) $('#admin-content').addEventListener(name, event => { const form = event.target.closest('form[data-payment-provider], form[data-payment-product], form[data-billing-form]'); if (form) refreshPaymentDirty(form); });
+  for (const name of ['input', 'change']) $('#admin-content').addEventListener(name, event => { if (event.target.closest('#agent-settings-form')) { const dirty = agentHasWork(); $('[data-agent-dirty]').hidden = !dirty; $('#test-agent-connection').disabled = dirty || !currentData?.agent?.version || !currentData?.agent?.configured; } const form = event.target.closest('form[data-payment-provider], form[data-payment-product], form[data-billing-form]'); if (form) refreshPaymentDirty(form); });
   $('#admin-content').addEventListener('change', event => { if (event.target.matches('[data-payment-toggle]')) void togglePaymentChannel(event.target); if (event.target.matches('[data-billing-mode]')) updateBillingCost(event.target.closest('form')); if (event.target.matches('[name="bundleKey"], [name="membershipKey"]')) { const prefix = event.target.name === 'bundleKey' ? 'bundle' : 'membership', row = event.target.closest(`[data-${prefix}-row]`), title = row?.querySelector(`[name="${prefix}Title"]`); if (title && !title.value.trim()) title.value = billableServices.find(service => service.key === event.target.value)?.title || ''; if (row) refreshPaymentDirty(event.target.closest('form')); } });
   $('#menu-toggle').onclick = () => { const open = $('#admin-app').classList.toggle('nav-open'); $('#sidebar-backdrop').hidden = !open; $('#menu-toggle').setAttribute('aria-expanded', String(open)); };
   $('#sidebar-backdrop').onclick = closeMenu;
@@ -503,7 +534,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   function historyNavigation() { if (!authorized || currentView === route()) return; const target = route(); if (paymentsHaveWork()) win.history.replaceState(null, '', '#' + currentView); guardPayments(() => { closeDialog(); closeMenu(); win.history.replaceState(null, '', '#' + target); loadView(target); }); }
   win.addEventListener('popstate', historyNavigation);
   win.addEventListener('hashchange', historyNavigation);
-  win.addEventListener('beforeunload', event => { if (paymentsHaveWork()) { event.preventDefault(); event.returnValue = ''; } });
+  win.addEventListener('beforeunload', event => { if (paymentsHaveWork() || agentHasWork()) { event.preventDefault(); event.returnValue = ''; } });
   $('#admin-app').addEventListener('click', event => { const link = event.target.closest('a[href]'); if (!link || link.hasAttribute('data-view') || link.target === '_blank' || link.getAttribute('href').startsWith('#') || !paymentsHaveWork()) return; event.preventDefault(); guardPayments(() => go(link.href)); });
   async function initialize() {
     $('#access-title').textContent = '正在验证管理权限'; $('#access-message').textContent = '请稍候，正在确认你的账户身份。'; $('#access-actions').replaceChildren();

@@ -12,6 +12,8 @@ const source=(await readFile(new URL('../dist/workspace/app.mjs',import.meta.url
 const homeSource=await readFile(new URL('../dist/index.html',import.meta.url),'utf8');
 const onlineSource=(await readFile(new URL('../dist/workspace/online-workspace.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const revisionSource=(await readFile(new URL('../dist/workspace/revision.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
+const thesisSource=(await readFile(new URL('../dist/workspace/thesis-online.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
+const documentExportSource=(await readFile(new URL('../dist/workspace/document-export.mjs',import.meta.url),'utf8')).replace(/^export /gm,'');
 const keys={profile:'paperknow-local-profile',preferences:'paperknow-preferences',drafts:'paperknow-drafts',projects:'paperknow-projects',tasks:'paperknow-local-tasks'};
 const response=(status,user)=>({status,ok:status>=200&&status<300,json:async()=>({user})});
 const signedIn={id:'researcher-1',name:'服务账户',email:null,phone:'+8613800000000',phoneVerifiedAt:'2026-10-15T00:00:00Z',hasPassword:false};
@@ -24,15 +26,36 @@ async function fixture(fetcher){
  storage.setItem(keys.profile,JSON.stringify({name:'本地昵称',degree:'硕士',major:'教育学'}));
  storage.setItem(keys.drafts,JSON.stringify([{id:'draft-one',title:'未上传的研究草稿'}]));
  const read=(key,fallback)=>JSON.parse(storage.getItem(key)||'null')??fallback;
- Object.assign(dom.window,{fetch:fetcher,AbortController,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
+ Object.assign(dom.window,{fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
   preferences:()=>({degree:'本科',...read(keys.preferences,{})}),profile:()=>({name:'研究者',...read(keys.profile,{})}),read,list:key=>read(key,[]),write:(key,value)=>storage.setItem(key,JSON.stringify(value)),projects:()=>read(keys.projects,[]),repository:{all:async()=>[]},formatDate:()=>'',mountNavigation:()=>({close(){}}),
   disposeFormat:()=>{},disposeResearch:()=>{},disposePresentation:()=>{},disposeRevision:()=>{},disposeAccountDraft:()=>{},accountDraftEditing:()=>false,accountDraftHasWork:()=>false,accountDraftConfirmLeave:async()=>true,accountDraftSessionChanged:()=>{},accountDraftRouteGuard:()=>true,
   disposePayment:()=>{paymentCalls.push({type:'dispose'});},renderPaymentOrders:async()=>{paymentCalls.push({type:'orders'});},renderPaymentCheckout:async options=>{paymentCalls.push({type:'checkout',productId:options.productId,orderId:options.orderId});},clearEditor:()=>{},clearHelpWork:()=>{},clearSettingsWork:()=>{},clearMoreWork:()=>{},trackDialogForm:()=>()=>{},retainWritingCatalog:()=>{},isCurrentRouteChange:()=>false,
+  editorRouteGuard:()=>true,helpRouteGuard:()=>true,settingsRouteGuard:()=>true,moreRouteGuard:()=>true,formatRouteGuard:()=>true,researchRouteGuard:()=>true,presentationRouteGuard:()=>true,revisionRouteGuard:()=>true,detectionRouteGuard:()=>true,
  });
+ vm.runInContext('(function(){'+documentExportSource+'\nObject.assign(globalThis,{documentExportButtons,bindDocumentExports});})()',dom.getInternalVMContext());
+ vm.runInContext('(function(){'+thesisSource+'\nObject.assign(globalThis,{mountOnlineThesis,mountThesisLibrary,disposeOnlineThesis,thesisOnlineHasWork,thesisOnlineRouteGuard,thesisOnlineSessionChanged});})()',dom.getInternalVMContext());
  vm.runInContext('(function(){'+onlineSource+'\nObject.assign(globalThis,{mountOnlineWorkspace,disposeOnlineWorkspace,onlineWorkspaceRouteGuard,onlineWorkspaceHasWork,onlineWorkspaceSessionChanged,onlineWorkspaceConfirmLeave,onlineWorkspaceHref});})()',dom.getInternalVMContext());
  await vm.runInContext('(async()=>{'+source+'\nglobalThis.workspaceAuthTest={loadWorkspaceSession,workspaceServiceFetch,signOutWorkspace,renderAccount,authHref,render};})()',dom.getInternalVMContext());
- return {dom,document:dom.window.document,storage,paymentCalls,api:dom.window.workspaceAuthTest,close(){timers.forEach(clearTimeout);dom.window.close();}};
+ return {dom,document:dom.window.document,storage,paymentCalls,api:dom.window.workspaceAuthTest,close(){dom.window.disposeOnlineThesis();timers.forEach(clearTimeout);dom.window.close();}};
 }
+
+test('main workspace thesis routes open real account records and prevent navigation from discarding unsaved chapter text',async()=>{
+ const seen=[],item={id:'cloud-thesis',version:2,title:'跨设备账户论文',profile:{level:'硕士',discipline:'社会学',method:'案例研究'},snapshot:{title:'跨设备账户论文',profile:{level:'硕士',discipline:'社会学',method:'案例研究'},materials:[],references:[],outline:[]},status:'completed',chapters:[{id:'chapter-1',title:'第一章',text:'已保存账户正文',version:1,status:'saved'}],job:null};
+ const json=data=>({ok:true,status:200,json:async()=>data});
+ const f=await fixture(async path=>{seen.push(path);if(path==='/api/auth/me')return response(200,signedIn);if(path==='/api/theses')return json({items:[item]});if(path==='/api/theses/cloud-thesis')return json({item});if(path==='/api/capabilities')return json({thesis:{ready:false,reason:'未配置模型'}});return json({items:[]});});
+ const settle=async()=>{for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));};
+ try{
+  await f.api.loadWorkspaceSession();f.dom.window.history.replaceState(null,'','/workspace.html#theses');f.api.render();await settle();
+  assert.equal(f.document.querySelector('.thesis-library a').getAttribute('href'),'#thesis/cloud-thesis');assert.equal(f.document.querySelector('.breadcrumb strong').textContent,'账户论文');
+  f.dom.window.history.replaceState(null,'','/workspace.html#thesis/cloud-thesis');f.api.render();await settle();
+  assert.equal(f.document.querySelector('[data-thesis-editor]').value,'已保存账户正文');assert.match(f.document.querySelector('.thesis-run-controls').textContent,/未配置模型/);
+  const editor=f.document.querySelector('[data-thesis-editor]');editor.value='本次未保存的修改';editor.dispatchEvent(new f.dom.window.Event('input',{bubbles:true}));assert.equal(f.dom.window.thesisOnlineHasWork(),true);
+  f.dom.window.isCurrentRouteChange=()=>true;f.dom.window.confirm=()=>false;const oldURL=f.dom.window.location.href,newURL='https://paperknow.cn/workspace.html#account';f.dom.window.history.replaceState(null,'',newURL);f.dom.window.dispatchEvent(new f.dom.window.HashChangeEvent('hashchange',{oldURL,newURL}));
+  assert.equal(f.dom.window.location.hash,'#thesis/cloud-thesis');assert.equal(f.document.querySelector('[data-thesis-editor]').value,'本次未保存的修改');
+  f.dom.window.confirm=()=>true;f.dom.window.history.replaceState(null,'',newURL);f.dom.window.dispatchEvent(new f.dom.window.HashChangeEvent('hashchange',{oldURL,newURL}));assert.ok(f.document.querySelector('#profile-form'));assert.equal(f.dom.window.thesisOnlineHasWork(),false);
+  assert.ok(seen.includes('/api/theses'));assert.ok(seen.includes('/api/theses/cloud-thesis'));assert.equal(seen.some(path=>path.endsWith('/generate')),false);
+ }finally{f.close();}
+});
 
 test('workspace payment and order routes mount the account payment modules with parsed server identifiers',async()=>{
  const f=await fixture(async()=>response(401));

@@ -6,7 +6,7 @@ export function loadLocalEnvironment(){
   if(existsSync(file))process.loadEnvFile(file);
 }
 export function environmentConfig(env=process.env){
-  return {agentEnabled:env.PK_AGENT_ENABLED==='1',aiURL:env.PK_AI_URL,aiKey:env.PK_AI_KEY,aiModel:env.PK_AI_MODEL,secure:env.PK_SECURE_COOKIE==='1',trustProxy:env.PK_TRUST_PROXY==='1',
+  return {agentEnabled:env.PK_AGENT_ENABLED==='1',agentRuntimeEnabled:env.PK_AGENT_RUNTIME_ENABLED==='1',agentBaseURL:env.PK_AGENT_BASE_URL,agentKey:env.PK_AGENT_API_KEY,agentModel:env.PK_AGENT_MODEL,agentConfigKey:env.PK_AGENT_CONFIG_KEY,agentMaxTurns:Number(env.PK_AGENT_MAX_TURNS),agentTimeoutMs:Number(env.PK_AGENT_TIMEOUT_MS),agentMaxOutputTokens:Number(env.PK_AGENT_MAX_OUTPUT_TOKENS),agentMaxCostUsd:Number(env.PK_AGENT_MAX_COST_USD),aiURL:env.PK_AI_URL,aiKey:env.PK_AI_KEY,aiModel:env.PK_AI_MODEL,secure:env.PK_SECURE_COOKIE==='1',trustProxy:env.PK_TRUST_PROXY==='1',
     aiMaxTokens:Number(env.PK_AI_MAX_TOKENS),aiTimeoutMs:Number(env.PK_AI_TIMEOUT_MS),aiUserDailyLimit:Number(env.PK_AI_USER_DAILY_LIMIT),aiGlobalDailyLimit:Number(env.PK_AI_GLOBAL_DAILY_LIMIT),
     ownerEmail:String(env.PK_OWNER_EMAIL||'').trim().toLowerCase(),paymentConfigKey:env.PK_PAYMENT_CONFIG_KEY,
     authCodeSecret:env.PK_AUTH_CODE_SECRET,authDailyLimit:/^[1-9]\d{0,3}$/.test(env.PK_AUTH_DAILY_SEND_LIMIT||'')?Number(env.PK_AUTH_DAILY_SEND_LIMIT):100,

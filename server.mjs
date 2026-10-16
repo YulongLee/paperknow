@@ -9,11 +9,19 @@ import {createAPI} from './backend/api.mjs';
 import {environmentConfig,loadLocalEnvironment,modelSettings} from './backend/config.mjs';
 import {createStorage} from './backend/storage.mjs';
 import {startWorker} from './backend/worker.mjs';
+import {createAgentSettings} from './backend/agent-settings.mjs';
+import {startThesisWorker} from './backend/thesis-worker.mjs';
+import {runAgentTask} from './backend/agent-runtime.mjs';
 import {sessionUser} from './backend/auth.mjs';
 import {accountDestination} from './dist/account-routes.mjs';
 export function createServer({dbPath=resolve(process.env.PK_DATA_DIR||'.data','paperknow.sqlite'),config=environmentConfig()}={}){
 if(config.aiURL){const u=new URL(config.aiURL);if(u.protocol!=='https:'&&!(u.protocol==='http:'&&['127.0.0.1','localhost'].includes(u.hostname)))throw new Error('模型接口必须使用 HTTPS 或本地地址');}
-const storage=createStorage(config,config.ossClient),db=database(dbPath),settings=modelSettings(db,config);config={...config,storage,settings,getAI:()=>settings.get()};const worker=startWorker(db,config),api=createAPI(db,worker,config),root=resolve('dist');
+const storage=createStorage(config,config.ossClient),db=database(dbPath),settings=modelSettings(db,config);
+config={...config,storage,settings,getAI:()=>settings.get()};
+const agentSettings=createAgentSettings(db,config);config={...config,agentSettings,getAgentSettings:id=>id?agentSettings.version(id):agentSettings.get(),agentTaskRunner:config.agentTaskRunner||runAgentTask};
+const legacyWorker=startWorker(db,config),thesisWorker=startThesisWorker(db,config);
+const worker={async tick(){await legacyWorker.tick();await thesisWorker.tick();},cancel(id){legacyWorker.cancel(id);thesisWorker.cancel(id);},async stop(){await Promise.all([legacyWorker.stop(),thesisWorker.stop()]);}};
+const api=createAPI(db,worker,config),root=resolve('dist');
 const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2','.txt':'text/plain; charset=utf-8','.xml':'application/xml; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.csv':'text/csv; charset=utf-8'};
 const publicPages=new Map();
 try{for(const page of JSON.parse(readFileSync(resolve(root,'public-pages.json'),'utf8')).pages||[]){if(/^\/(?:[a-z0-9-]+\/)+$/.test(page.slug)&&page.file===page.slug.slice(1)+'index.html')publicPages.set(page.slug,page.file);}}catch{/* A fresh checkout can still serve the workspace before the first build. */}
