@@ -36,11 +36,19 @@ test('guest sees an account login link and cannot create a local or demo order',
 });
 
 test('empty published catalogue stays closed even when payment channels are ready',async t=>{
- const f=await fixture(t,{catalogue:{enabled:true,channels,products:[]}});assert.match(f.doc.body.textContent,/可购服务正在准备中/);assert.match(f.doc.body.textContent,/当前不会创建付款订单/);assert.equal(f.doc.querySelector('[data-payment-create]'),null);assert.equal(f.calls.some(call=>call.body),false);
+ const f=await fixture(t,{catalogue:{enabled:true,channels,products:[]}});assert.match(f.doc.body.textContent,/可购服务正在准备中/);assert.match(f.doc.body.textContent,/当前不会创建付款订单/);assert.equal(f.doc.querySelector('[data-payment-create]'),null);assert.equal(f.doc.querySelector('.payment-channel-preview'),null);assert.doesNotMatch(f.doc.body.textContent,/微信支付|支付宝/);assert.equal(f.calls.some(call=>call.body),false);
 });
 
 test('unconfigured channels never enable checkout and no arbitrary price is accepted',async t=>{
- const f=await fixture(t,{catalogue:{enabled:false,channels:channels.map(channel=>({...channel,ready:false})),products}});assert.equal(f.doc.querySelector('[data-payment-create]').disabled,true);assert.equal(f.doc.querySelectorAll('[data-payment-provider]:disabled').length,2);assert.match(f.doc.body.textContent,/暂未开放收款/);assert.equal(f.calls.some(call=>call.body),false);
+ for(const catalogue of [{enabled:false,channels,products},{enabled:true,channels:channels.map(channel=>({...channel,ready:false})),products}]){const f=await fixture(t,{catalogue});assert.equal(f.doc.querySelector('[data-payment-create]'),null);assert.equal(f.doc.querySelectorAll('[data-payment-provider]').length,0);assert.match(f.doc.body.textContent,/当前暂停收款/);assert.doesNotMatch(f.doc.body.textContent,/微信支付|支付宝|暂未开通/);assert.equal(f.calls.some(call=>call.body),false);}
+});
+
+test('only the enabled ready supported provider is shown and selected when no preference was supplied',async t=>{
+ const available=[{provider:'wechat',ready:false},{provider:'alipay',ready:true},{provider:'unknown',ready:true},null];const f=await fixture(t,{catalogue:{enabled:true,channels:available,products}});assert.deepEqual([...f.doc.querySelectorAll('[data-payment-provider]')].map(button=>button.dataset.paymentProvider),['alipay']);assert.equal(f.doc.querySelector('[data-payment-provider="alipay"]').getAttribute('aria-pressed'),'true');assert.doesNotMatch(f.doc.querySelector('.payment-selection').textContent,/微信支付|暂未开通/);click(f,'[data-payment-create]');await settle(()=>f.doc.querySelector('[data-payment-qr] img'));assert.equal(f.calls.find(call=>call.body?.productId).body.provider,'alipay');
+});
+
+test('an explicitly closed preferred provider requires choosing an available method instead of switching silently',async t=>{
+ const f=await fixture(t,{preferredProvider:'wechat',catalogue:{enabled:true,channels:[{provider:'wechat',ready:false},{provider:'alipay',ready:true}],products}});assert.equal(f.doc.querySelector('[data-payment-provider="wechat"]'),null);assert.equal(f.doc.querySelector('[data-payment-provider][aria-pressed="true"]'),null);assert.equal(f.doc.querySelector('[data-payment-create]').disabled,true);assert.match(f.doc.querySelector('[data-payment-notice]').textContent,/原付款方式当前不可用/);assert.match(f.doc.querySelector('.payment-summary').textContent,/请选择可用方式/);assert.doesNotMatch(f.doc.body.textContent,/微信支付/);await f.doc.querySelector('[data-payment-create]').onclick();assert.equal(f.calls.some(call=>call.body?.productId),false);click(f,'[data-payment-provider="alipay"]');assert.equal(f.doc.querySelector('[data-payment-create]').disabled,false);click(f,'[data-payment-create]');await settle(()=>f.doc.querySelector('[data-payment-qr] img'));assert.equal(f.calls.find(call=>call.body?.productId).body.provider,'alipay');
 });
 
 test('checkout preserves selected Alipay and displays server credit quantity and price',async t=>{
@@ -62,7 +70,11 @@ test('membership and bundle checkout retain real validity and service counts on 
 });
 
 test('unconfigured channels block membership and bundle order creation even through the handler',async t=>{
- for(const product of [memberProduct,bundleProduct]){const f=await fixture(t,{initialProductId:product.id,catalogue:{enabled:false,channels:channels.map(c=>({...c,ready:false})),products:[product]}});const create=f.doc.querySelector('[data-payment-create]');assert.equal(create.disabled,true);await create.onclick();assert.equal(f.calls.some(call=>call.body),false);assert.equal(f.doc.querySelectorAll('[data-payment-provider]:disabled').length,2);}
+ for(const product of [memberProduct,bundleProduct]){const f=await fixture(t,{initialProductId:product.id,catalogue:{enabled:false,channels:channels.map(c=>({...c,ready:false})),products:[product]}});assert.equal(f.doc.querySelector('[data-payment-create]'),null);assert.equal(f.calls.some(call=>call.body),false);assert.equal(f.doc.querySelectorAll('[data-payment-provider]').length,0);assert.match(f.doc.body.textContent,/当前暂停收款/);}
+});
+
+test('an existing order keeps its original payment channel and remains queryable after all new purchase methods close',async t=>{
+ const f=await fixture(t,{orderId:'o1',catalogue:{enabled:false,channels:channels.map(channel=>({...channel,ready:false})),products},order:{provider:'wechat'}});assert.ok(f.doc.querySelector('[data-payment-qr] img'));assert.match(f.doc.querySelector('.payment-scan-instruction').textContent,/微信支付/);assert.equal(f.doc.querySelectorAll('[data-payment-provider]').length,0);click(f,'[data-payment-query]');await settle(()=>f.doc.querySelector('[data-payment-notice]').textContent.includes('尚未支付'));assert.ok(f.calls.some(call=>call.path==='/api/orders/o1/query'));assert.equal(f.calls.some(call=>call.body?.productId),false);assert.equal(f.w.localStorage.length,0);
 });
 
 test('requested membership and bundle checkout show only that SKU while the generic directory retains all choices',async t=>{

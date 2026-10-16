@@ -75,15 +75,109 @@ test('an empty server configuration renders safely and disallows credential stor
   assert.equal(ui.calls.filter(call => call.method === 'POST').length, 0);
 });
 
+test('independent channel switches distinguish saved configuration from checkout visibility and never enable on load', async t => {
+  const ui = await page(t);
+  assert.equal(ui.win.document.querySelectorAll('[data-payment-toggle][role="switch"]').length, 2);
+  assert.equal(ui.$('#wechat-enabled').checked, false); assert.equal(ui.$('#wechat-enabled').disabled, false);
+  assert.equal(ui.$('#alipay-enabled').checked, false); assert.equal(ui.$('#alipay-enabled').disabled, true);
+  assert.match(ui.$('[data-channel-control="wechat"] .badge').textContent, /未启用/);
+  assert.match(ui.$('[data-channel-control="wechat"]').textContent, /商户配置已保存/);
+  assert.match(ui.$('[data-channel-control="alipay"] .badge').textContent, /配置待完善/);
+  assert.match(ui.$('.payment-channel-controls-heading').textContent, /会员、积分、套餐共用/);
+  assert.equal(ui.$('#payment-wechat [name="enabled"]'), null);
+  assert.equal(ui.calls.filter(call => call.method === 'POST').length, 0);
+});
+
+test('enabling one channel posts only its boolean and preserves the other channel’s unsaved secrets', async t => {
+  let saved;
+  const ui = await page(t, { handle: (url, payload) => url === '/api/admin/payments/wechat' ? (saved = payload, { body: { ...channels[0], enabled: true, ready: true } }) : undefined });
+  ui.fill('#alipay-privateKey', 'unsaved-other-channel-key'); ui.check('#wechat-enabled', true);
+  await settle(() => saved && !ui.$('#wechat-enabled').disabled);
+  assert.deepEqual(saved, { enabled: true });
+  assert.equal(ui.$('#wechat-enabled').checked, true); assert.equal(ui.$('#alipay-enabled').checked, false);
+  assert.equal(ui.$('#alipay-privateKey').value, 'unsaved-other-channel-key');
+  assert.match(ui.$('[data-channel-control="wechat"] .badge').textContent, /已启用/);
+  assert.match(ui.$('#wechat-switch-message').textContent, /已启用/);
+  assert.equal(ui.calls.filter(call => call.method === 'POST').length, 1);
+  assert.equal(ui.$('#wechat-privateKey').value, '');
+});
+
+test('disabling a channel retains saved credentials and later parameter saves preserve the disabled state', async t => {
+  const saved = [], activeChannels = structuredClone(channels); activeChannels[0].enabled = true; activeChannels[0].ready = true;
+  const ui = await page(t, { data: { channels: activeChannels, catalog, encryptionReady: true }, handle: (url, payload) => url === '/api/admin/payments/wechat' ? (saved.push(payload), { body: { ...channels[0], enabled: payload.enabled, ready: false } }) : undefined });
+  ui.check('#wechat-enabled', false); await settle(() => saved.length === 1 && !ui.$('#wechat-enabled').disabled);
+  assert.deepEqual(saved[0], { enabled: false }); assert.equal(ui.$('#wechat-enabled').checked, false);
+  assert.match(ui.$('#wechat-switch-message').textContent, /参数与密钥已保留/);
+  assert.equal(ui.$('#payment-wechat .payment-secret-state').textContent, '已保存');
+  ui.fill('#wechat-merchantSerial', 'serial-next'); ui.submit('#payment-wechat');
+  await settle(() => saved.length === 2 && !ui.$('#payment-wechat [type="submit"]').disabled);
+  assert.equal(saved[1].enabled, false); assert.equal(saved[1].merchantSerial, 'serial-next');
+  assert.equal(Object.hasOwn(saved[1], 'clearSecrets'), false); assert.equal(Object.hasOwn(saved[1], 'privateKey'), false);
+});
+
+test('a dirty channel blocks its switch without submitting or discarding entered parameters', async t => {
+  const ui = await page(t); ui.fill('#wechat-privateKey', 'unsaved-own-key'); ui.check('#wechat-enabled', true);
+  assert.equal(ui.$('#wechat-enabled').checked, false); assert.equal(ui.$('#wechat-privateKey').value, 'unsaved-own-key');
+  assert.match(ui.$('#wechat-switch-message').textContent, /先保存下方修改/);
+  assert.equal(ui.$('#payment-wechat .payment-dirty').hidden, false);
+  assert.equal(ui.calls.filter(call => call.method === 'POST').length, 0);
+});
+
+test('incomplete configuration and unavailable encryption reject even a synthetic switch change', async t => {
+  const ui = await page(t); ui.check('#alipay-enabled', true);
+  assert.equal(ui.$('#alipay-enabled').checked, false); assert.equal(ui.$('#alipay-enabled').disabled, true);
+  assert.match(ui.$('#alipay-switch-message').textContent, /完善并保存商户参数/);
+  assert.equal(ui.calls.filter(call => call.method === 'POST').length, 0);
+  const locked = await page(t, { data: { channels, catalog, encryptionReady: false } }); locked.check('#wechat-enabled', true);
+  assert.equal(locked.$('#wechat-enabled').checked, false); assert.equal(locked.$('#wechat-enabled').disabled, true);
+  assert.match(locked.$('#wechat-switch-message').textContent, /加密配置尚未就绪/);
+  assert.equal(locked.calls.filter(call => call.method === 'POST').length, 0);
+});
+
+test('pending switch saves lock the matching form, reject duplicates and prevent leaving', async t => {
+  let finish;
+  const ui = await page(t, { handle: url => url === '/api/admin/payments/wechat' ? new Promise(resolve => { finish = resolve; }) : undefined });
+  ui.check('#wechat-enabled', true); await settle(() => finish);
+  assert.equal(ui.$('#wechat-enabled').disabled, true); assert.equal(ui.$('#wechat-appId').disabled, true);
+  ui.check('#wechat-enabled', true); ui.submit('#payment-wechat'); ui.click('[data-payment-check="wechat"]');
+  assert.equal(ui.calls.filter(call => call.method === 'POST').length, 1);
+  ui.click('[data-view="settings"]'); assert.equal(ui.win.location.hash, '#payments'); assert.equal(ui.$('#admin-dialog').open, false);
+  assert.match(ui.$('#admin-toast').textContent, /请等待/);
+  const unload = new ui.win.Event('beforeunload', { cancelable: true }); ui.win.dispatchEvent(unload); assert.equal(unload.defaultPrevented, true);
+  finish({ body: { ...channels[0], enabled: true, ready: true } }); await settle(() => !ui.$('#wechat-enabled').disabled);
+  assert.equal(ui.$('#wechat-enabled').checked, true); assert.equal(ui.$('#wechat-appId').disabled, false);
+});
+
+test('failed channel switches roll back their visual state and permit retry without losing configuration', async t => {
+  let attempts = 0;
+  const ui = await page(t, { handle: url => url === '/api/admin/payments/wechat' ? (++attempts === 1 ? { status: 400, body: { error: '配置已变更，请先检查。' } } : { body: { ...channels[0], enabled: true, ready: true } }) : undefined });
+  ui.check('#wechat-enabled', true); await settle(() => ui.$('#wechat-switch-message').textContent.includes('配置已变更'));
+  assert.equal(ui.$('#wechat-enabled').checked, false); assert.equal(ui.$('#wechat-enabled').disabled, false);
+  assert.equal(ui.$('#wechat-appId').value, 'wx-demo'); assert.equal(ui.$('#wechat-appId').disabled, false);
+  ui.check('#wechat-enabled', true); await settle(() => ui.$('[data-channel-control="wechat"] .badge').textContent === '已启用');
+  assert.equal(attempts, 2); assert.equal(ui.$('#wechat-enabled').checked, true);
+});
+
+test('a revoked role clears switch configuration and stale switch responses do not repaint another page', async t => {
+  const denied = await page(t, { handle: url => url === '/api/admin/payments/wechat' ? { status: 403, body: { error: '权限已失效' } } : undefined });
+  denied.check('#wechat-enabled', true); await settle(() => !denied.$('#access-gate').hidden);
+  assert.equal(denied.$('#admin-content').innerHTML, ''); assert.equal(denied.$('#admin-app').hidden, true);
+  let finish;
+  const ui = await page(t, { handle: url => url === '/api/admin/payments/wechat' ? new Promise(resolve => { finish = resolve; }) : undefined });
+  ui.check('#wechat-enabled', true); await settle(() => finish); ui.app.destroy(); ui.$('#admin-content').innerHTML = '<p>已离开的页面</p>';
+  finish({ body: { ...channels[0], enabled: true, ready: true } }); await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(ui.$('#admin-content').textContent, '已离开的页面');
+});
+
 test('saving one channel omits blank secrets and preserves the other channel’s unsaved work', async t => {
   let saved;
   const ui = await page(t, { handle: (url, payload) => {
     if (url === '/api/admin/payments/wechat') { saved = payload; return { body: { ...channels[0], enabled: payload.enabled, fields: { ...channels[0].fields, merchantId: payload.merchantId } } }; }
   } });
-  ui.fill('#alipay-appId', 'unsaved-alipay-app'); ui.fill('#wechat-merchantId', '1900000001'); ui.check('#wechat-enabled', true);
+  ui.fill('#alipay-appId', 'unsaved-alipay-app'); ui.fill('#wechat-merchantId', '1900000001');
   ui.submit('#payment-wechat'); ui.submit('#payment-wechat');
   await settle(() => ui.$('#wechat-merchantId').value === '1900000001' && !ui.$('#payment-wechat [type="submit"]').disabled);
-  assert.deepEqual(saved, { enabled: true, appId: 'wx-demo', merchantId: '1900000001', merchantSerial: 'serial-demo', platformPublicKeyId: 'PUB_KEY_ID_demo' });
+  assert.deepEqual(saved, { enabled: false, appId: 'wx-demo', merchantId: '1900000001', merchantSerial: 'serial-demo', platformPublicKeyId: 'PUB_KEY_ID_demo' });
   assert.equal(ui.calls.filter(call => call.url === '/api/admin/payments/wechat').length, 1);
   assert.equal(ui.$('#alipay-appId').value, 'unsaved-alipay-app');
   assert.equal(ui.$('#wechat-privateKey').value, '');
