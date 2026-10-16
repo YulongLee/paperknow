@@ -171,7 +171,7 @@ function flatStringObject(source) {
 
 // This checks the local handoff contract, not whether the merchant has an active
 // payment product. Only a verified query/notification can confirm payment.
-export function validateAlipayPaymentURL(value, order = {}) {
+function alipayPaymentURLFields(value, order = {}, qr = false) {
   try {
     if (typeof value !== 'string' || value.length > 8192 || !order || typeof order !== 'object' || Array.isArray(order)) return false;
     const url = new URL(value);
@@ -187,12 +187,13 @@ export function validateAlipayPaymentURL(value, order = {}) {
       || fields.notify_url !== ALIPAY_NOTIFY_URL || !validAlipayReturnURL(fields.return_url)
       || !/^[A-Za-z0-9+/]+={0,2}$/.test(fields.sign) || fields.sign.length > 2048 || Buffer.from(fields.sign, 'base64').length < 256 || Buffer.from(fields.sign, 'base64').toString('base64') !== fields.sign) return false;
     const biz = flatStringObject(fields.biz_content);
-    const bizKeys = ['out_trade_no', 'product_code', 'total_amount', 'subject', 'seller_id', 'time_expire'];
+    const bizKeys = ['out_trade_no', 'product_code', 'total_amount', 'subject', 'seller_id', 'time_expire', ...(qr ? ['qr_pay_mode', 'qrcode_width'] : [])];
     if (!biz || typeof biz !== 'object' || Array.isArray(biz) || Object.keys(biz).length !== bizKeys.length || Object.keys(biz).some(key => !bizKeys.includes(key))
       || typeof biz.out_trade_no !== 'string' || !/^[A-Za-z0-9_]{1,64}$/.test(biz.out_trade_no) || biz.product_code !== 'FAST_INSTANT_TRADE_PAY'
       || typeof biz.subject !== 'string' || !biz.subject.trim() || Buffer.byteLength(biz.subject) > 127 || /[\u0000-\u001f]/.test(biz.subject)
       || typeof biz.seller_id !== 'string' || !/^\d{10,32}$/.test(biz.seller_id) || !validChinaTime(biz.time_expire)
       || biz.time_expire <= fields.timestamp || typeof biz.total_amount !== 'string' || !/^(0|[1-9]\d*)\.\d{2}$/.test(biz.total_amount)) return false;
+    if (qr && (biz.qr_pay_mode !== '4' || biz.qrcode_width !== '244')) return false;
     const amount = cents(biz.total_amount);
     if (amount <= 0 || amount > 100_000_000) return false;
     const expected = { appId: fields.app_id, sellerId: biz.seller_id, outTradeNo: biz.out_trade_no, amountCents: amount, title: biz.subject, notifyUrl: fields.notify_url, returnUrl: fields.return_url };
@@ -201,8 +202,29 @@ export function validateAlipayPaymentURL(value, order = {}) {
       const expiry = Date.parse(order.expiresAt);
       if (!Number.isFinite(expiry) || chinaTime(expiry) !== biz.time_expire) return false;
     }
-    return true;
+    return { fields, biz };
   } catch { return false; }
+}
+export function validateAlipayPaymentURL(value, order = {}) { return Boolean(alipayPaymentURLFields(value, order)); }
+export function validateAlipayQRPaymentURL(value, order = {}) { return Boolean(alipayPaymentURLFields(value, order, true)); }
+
+// Alipay's official QR front-loading mode is an independently signed page-pay
+// request, displayed by Alipay in an iframe. It is not a QR-encoded gateway URL.
+// Derive only from the original, verified order and its frozen signing key.
+export function deriveAlipayQRPaymentURL(value, settings, order = {}, options = {}) {
+  try {
+    if (!settings || !order || typeof order !== 'object' || Array.isArray(order)) return null;
+    if (Object.hasOwn(order, 'appId') && order.appId !== text(settings.appId) || Object.hasOwn(order, 'sellerId') && order.sellerId !== text(settings.sellerId)) return null;
+    const expected = { ...order, appId: text(settings.appId), sellerId: text(settings.sellerId) };
+    const parsed = alipayPaymentURLFields(value, expected);
+    if (!parsed || Date.parse(parsed.biz.time_expire.replace(' ', 'T') + '+08:00') <= nowMs(options)) return null;
+    const privateKey = keyObject(settings.privateKey, 'private');
+    if (!verify('RSA-SHA256', Buffer.from(sortedParams(parsed.fields), 'utf8'), createPublicKey(privateKey), Buffer.from(parsed.fields.sign, 'base64'))) return null;
+    const fields = { ...parsed.fields, biz_content: JSON.stringify({ ...parsed.biz, qr_pay_mode: '4', qrcode_width: '244' }) };
+    fields.sign = sign('RSA-SHA256', Buffer.from(sortedParams(fields), 'utf8'), privateKey).toString('base64');
+    const paymentQrUrl = ALIPAY_GATEWAY + '?' + new URLSearchParams(fields).toString();
+    return validateAlipayQRPaymentURL(paymentQrUrl, expected) ? paymentQrUrl : null;
+  } catch { return null; }
 }
 function valueEnd(source, start) {
   let depth = 0; let quoted = false; let escaped = false;

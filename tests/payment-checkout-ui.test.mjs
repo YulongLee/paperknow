@@ -226,3 +226,62 @@ test('cashier navigation cleanup disables saved actions and aborts a late order 
  const item=cashierOrder(),f=await fixture(t,{orderId:'o1',order:item}),link=f.doc.querySelector('[data-payment-cashier]');assert.ok(link);f.w.dispatchEvent(new f.w.HashChangeEvent('hashchange'));assert.equal(link.hasAttribute('href'),false);assert.equal(f.timers.size,0);
  let resolveCreate;const delayed=await fixture(t,{preferredProvider:'alipay',order:item,onRequest:async(path,options,body)=>path==='/api/orders'&&body?new Promise(resolve=>resolveCreate=resolve):null});click(delayed,'[data-payment-create]');await settle(()=>resolveCreate);const signal=delayed.calls.find(call=>call.body?.productId).options.signal;click(delayed,'[data-payment-provider="wechat"]');assert.equal(signal.aborted,true);resolveCreate(response({item}));await new Promise(resolve=>setTimeout(resolve,4));assert.equal(delayed.doc.querySelector('[data-payment-cashier]'),null);assert.equal(delayed.doc.querySelector('[data-payment-provider="wechat"]').getAttribute('aria-pressed'),'true');assert.equal(delayed.qrInputs.length,0);assert.equal([...delayed.timers.values()].some(timer=>timer.delay===5000),false);
 });
+
+function qrCashierOrder(overrides={}){
+ const item=cashierOrder(overrides),url=new URL(item.paymentUrl),biz=JSON.parse(url.searchParams.get('biz_content'));
+ url.searchParams.set('biz_content',JSON.stringify({...biz,qr_pay_mode:'4',qrcode_width:'244'}));url.searchParams.set('sign',Buffer.alloc(256,2).toString('base64'));
+ return {...item,paymentQrUrl:url.href};
+}
+
+test('Alipay embeds its exact official QR view without generating a QR from the gateway URL',async t=>{
+ const item=qrCashierOrder(),f=await fixture(t,{preferredProvider:'alipay',order:item});
+ assert.match(f.doc.querySelector('[data-payment-notice]').textContent,/官方二维码/);click(f,'[data-payment-create]');await settle(()=>f.doc.querySelector('[data-payment-alipay-qr]'));
+ const frame=f.doc.querySelector('[data-payment-alipay-qr]');assert.equal(frame.src,item.paymentQrUrl);assert.equal(frame.title,'支付宝官方付款二维码');assert.equal(frame.getAttribute('sandbox'),'allow-scripts allow-same-origin allow-forms');assert.equal(frame.getAttribute('referrerpolicy'),'no-referrer');assert.equal(frame.getAttribute('loading'),'eager');assert.equal(frame.width,'280');assert.equal(frame.height,'280');assert.equal(frame.hasAttribute('allow'),false);assert.equal(frame.hasAttribute('srcdoc'),false);assert.equal(f.doc.querySelector('[data-payment-cashier]').href,item.paymentUrl);assert.equal(f.qrInputs.length,0);assert.equal(f.doc.querySelector('[data-payment-qr] img'),null);assert.match(f.doc.querySelector('.payment-scan-instruction').textContent,/支付宝扫一扫/);assert.equal(f.doc.querySelector('.payment-status').textContent,'待支付');
+});
+
+test('an iframe load or forged message cannot confirm Alipay payment and unchanged polling preserves the frame',async t=>{
+ const item=qrCashierOrder(),f=await fixture(t,{orderId:'o1',order:item}),frame=f.doc.querySelector('[data-payment-alipay-qr]');
+ frame.dispatchEvent(new f.w.Event('load'));f.w.dispatchEvent(new f.w.MessageEvent('message',{origin:'https://openapi.alipay.com',data:{trade_status:'TRADE_SUCCESS',status:'paid',orderId:item.id}}));
+ assert.match(f.doc.querySelector('[data-payment-frame-status]').textContent,/如未显示/);assert.equal(f.doc.querySelector('.is-paid'),null);assert.equal(f.calls.some(call=>call.path.endsWith('/query')),false);
+ await f.runTimer(5000);assert.equal(f.doc.querySelector('[data-payment-alipay-qr]'),frame);assert.equal(frame.src,item.paymentQrUrl);assert.equal(f.doc.querySelector('.payment-status').textContent,'待支付');assert.equal(f.qrInputs.length,0);
+});
+
+test('the official QR loading timeout preserves a usable cashier fallback without changing payment state',async t=>{
+ const f=await fixture(t,{orderId:'o1',order:qrCashierOrder()}),frame=f.doc.querySelector('[data-payment-alipay-qr]');await f.runTimer(12000);
+ assert.match(f.doc.querySelector('[data-payment-frame-status]').textContent,/加载较慢或被浏览器拦截/);assert.ok(f.doc.querySelector('[data-payment-cashier]').href);assert.equal(f.doc.querySelector('[data-payment-alipay-qr]'),frame);assert.equal(f.doc.querySelector('.payment-status').textContent,'待支付');assert.equal(f.calls.some(call=>call.path.endsWith('/query')),false);
+});
+
+test('an official QR frame error removes the frame and leaves the official full cashier action',async t=>{
+ const item=qrCashierOrder(),f=await fixture(t,{orderId:'o1',order:item}),frame=f.doc.querySelector('[data-payment-alipay-qr]');frame.dispatchEvent(new f.w.Event('error'));
+ assert.equal(frame.hasAttribute('src'),false);assert.equal(frame.isConnected,false);assert.match(f.doc.querySelector('[data-payment-frame-status]').textContent,/暂时无法加载/);assert.equal(f.doc.querySelector('[data-payment-cashier]').href,item.paymentUrl);assert.equal(f.doc.querySelector('.payment-status').textContent,'待支付');assert.equal([...f.timers.values()].some(timer=>timer.delay===12000),false);
+});
+
+test('unsafe, mixed-merchant, or mismatched official QR URLs never enter a frame but retain the validated cashier',async t=>{
+ const item=qrCashierOrder(),url=new URL(item.paymentQrUrl),biz=JSON.parse(url.searchParams.get('biz_content'));
+ const alter=(key,value)=>{const changed=new URL(item.paymentQrUrl);changed.searchParams.set(key,value);return changed.href;},changeBiz=change=>alter('biz_content',JSON.stringify({...biz,...change}));
+ const attacks={script:'javascript:alert(1)',html:'<iframe src="https://evil.example"></iframe>',http:item.paymentQrUrl.replace('https:','http:'),lookalike:item.paymentQrUrl.replace('openapi.alipay.com','openapi.alipay.com.evil.example'),userinfo:item.paymentQrUrl.replace('https://','https://evil@'),fragment:item.paymentQrUrl+'#paid',wrongPath:item.paymentQrUrl.replace('/gateway.do?','/other?'),extraParameter:item.paymentQrUrl+'&redirect=https://evil.example',duplicateMethod:item.paymentQrUrl+'&method=alipay.trade.page.pay',wrongMethod:alter('method','alipay.trade.precreate'),differentApp:alter('app_id','2026101600000002'),differentMerchant:changeBiz({seller_id:'2088000000000001'}),differentTitle:changeBiz({subject:'另一份商品'}),differentOrder:changeBiz({out_trade_no:'PKOTHER'}),differentAmount:changeBiz({total_amount:'0.01'}),differentExpiry:changeBiz({time_expire:'2099-01-01 00:00:00'}),differentTimestamp:alter('timestamp','2026-01-01 00:00:00'),wrongNotify:alter('notify_url','https://evil.example/notify'),wrongReturn:alter('return_url','https://paperknow.cn/api/payments/return/alipay?order=other'),wrongMode:changeBiz({qr_pay_mode:'2'}),wrongWidth:changeBiz({qrcode_width:'1000'}),numberMode:changeBiz({qr_pay_mode:4}),numberWidth:changeBiz({qrcode_width:244}),unknownBiz:changeBiz({redirect:'https://evil.example'}),emptySignature:alter('sign',''),nested:changeBiz({subject:{title:item.title}}),duplicateBiz:alter('biz_content',url.searchParams.get('biz_content').replace('"qr_pay_mode":"4"','"qr_pay_mode":"2","qr_pay_mode":"4"')),nonString:{url:item.paymentQrUrl}};
+ for(const [name,paymentQrUrl]of Object.entries(attacks)){
+  const f=await fixture(t,{orderId:'o1',order:{...item,paymentQrUrl,qrContent:'https://evil.example/should-never-encode'}});assert.equal(f.doc.querySelector('iframe,form,script'),null,name);assert.equal(f.doc.querySelector('[data-payment-cashier]').href,item.paymentUrl,name);assert.match(f.doc.querySelector('[data-payment-notice]').textContent,/二维码暂不可用/,name);assert.equal(f.qrInputs.length,0,name);assert.equal(f.doc.querySelector('.is-paid'),null,name);
+ }
+});
+
+test('a QR URL without a valid full cashier URL cannot bypass strict payment URL validation',async t=>{
+ const item=qrCashierOrder();for(const paymentUrl of [null,undefined,'https://evil.example/pay']){const f=await fixture(t,{orderId:'o1',order:{...item,paymentUrl,qrContent:'https://evil.example/should-never-encode'}});assert.equal(f.doc.querySelector('iframe,[data-payment-cashier]'),null);assert.equal(f.qrInputs.length,0);assert.match(f.doc.querySelector('[data-payment-notice]').textContent,/入口校验未通过/);}
+});
+
+test('a server-confirmed Alipay payment removes and disables the official QR frame and its cashier link',async t=>{
+ const item=qrCashierOrder(),f=await fixture(t,{orderId:'o1',order:item,onRequest:async path=>path==='/api/orders/o1/query'?response({item:{...item,status:'paid'}}):null}),frame=f.doc.querySelector('[data-payment-alipay-qr]');
+ click(f,'[data-payment-query]');await settle(()=>f.doc.querySelector('.is-paid'));assert.equal(frame.hasAttribute('src'),false);assert.equal(frame.isConnected,false);assert.equal(f.doc.querySelector('iframe,[data-payment-cashier]'),null);assert.equal([...f.timers.values()].some(timer=>[5000,12000].includes(timer.delay)),false);assert.equal(f.qrInputs.length,0);
+});
+
+test('local expiry, closing, and route cleanup remove the official QR frame source and loading timeout',async t=>{
+ for(const action of ['expiry','close','hashchange','cleanup']){
+  const item=qrCashierOrder({expiresAt:new Date(Date.now()+4000).toISOString()}),f=await fixture(t,{orderId:'o1',order:item}),frame=f.doc.querySelector('[data-payment-alipay-qr]');assert.ok(frame,action);
+  if(action==='expiry'){f.advance(5000);await f.runTimer(1000);await settle(()=>f.doc.querySelector('.is-expired'));}else if(action==='close')click(f,'[data-payment-back]');else if(action==='hashchange')f.w.dispatchEvent(new f.w.HashChangeEvent('hashchange'));else f.cleanup();
+  assert.equal(frame.hasAttribute('src'),false,action);assert.equal(frame.isConnected,false,action);assert.equal(f.doc.querySelector('[data-payment-alipay-qr]'),null,action);assert.equal([...f.timers.values()].some(timer=>timer.delay===12000),false,action);frame.dispatchEvent(new f.w.Event('load'));assert.equal(f.doc.querySelector('[data-payment-alipay-qr]'),null,action);
+ }
+});
+
+test('a saved official QR view is never rendered for paid or other closed server states',async t=>{
+ for(const status of ['paid','failed','closed','expired','refunded']){const f=await fixture(t,{orderId:'o1',order:qrCashierOrder({status})});assert.equal(f.doc.querySelector('iframe,[data-payment-cashier]'),null,status);assert.equal(f.qrInputs.length,0,status);assert.equal([...f.timers.values()].some(timer=>timer.delay===12000),false,status);}
+});

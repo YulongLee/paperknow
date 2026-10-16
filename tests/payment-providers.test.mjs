@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign, verify, createCipheriv } from 'node:crypto';
-import { validateProvider, validateAlipayPaymentURL, createProviderPayment, queryProviderPayment, parseProviderNotification } from '../backend/payment-providers.mjs';
+import { validateProvider, validateAlipayPaymentURL, validateAlipayQRPaymentURL, deriveAlipayQRPaymentURL, createProviderPayment, queryProviderPayment, parseProviderNotification } from '../backend/payment-providers.mjs';
 
 const merchant = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
 const platform = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
@@ -217,4 +217,55 @@ test('provider errors remain safe and timeouts cancel a request that would other
 
 test('only expected provider QR schemes are accepted after verification', async () => {
   await assert.rejects(createProviderPayment('wechat', settings.wechat, order, options(async () => wechatResponse({ code_url: 'https://evil.example/checkout' }))), safeError('payment_response_invalid'));
+});
+
+
+test('Alipay QR front-loading derives a stable official RSA2 request for the identical frozen order only', async () => {
+  const { paymentUrl } = await createProviderPayment('alipay', settings.alipay, alipayOrder, { now });
+  const expected = { ...alipayOrder, appId: settings.alipay.appId, sellerId: settings.alipay.sellerId };
+  const qrUrl = deriveAlipayQRPaymentURL(paymentUrl, settings.alipay, expected, { now });
+  assert.equal(typeof qrUrl, 'string'); assert.equal(validateAlipayQRPaymentURL(qrUrl, expected), true);
+  assert.equal(validateAlipayPaymentURL(qrUrl, expected), false, 'ordinary page links retain their six-field contract');
+  assert.equal(validateAlipayQRPaymentURL(paymentUrl, expected), false);
+  assert.equal(deriveAlipayQRPaymentURL(paymentUrl, settings.alipay, expected, { now: nowValue + 60_000 }), qrUrl, 'polls do not refresh timestamps or expiry');
+  const original = new URL(paymentUrl), qr = new URL(qrUrl), fields = Object.fromEntries(qr.searchParams);
+  assert.deepEqual([...qr.searchParams.keys()], [...original.searchParams.keys()]);
+  for (const [key, value] of original.searchParams) if (!['biz_content', 'sign'].includes(key)) assert.equal(qr.searchParams.get(key), value);
+  assert.deepEqual(JSON.parse(fields.biz_content), { ...JSON.parse(original.searchParams.get('biz_content')), qr_pay_mode: '4', qrcode_width: '244' });
+  const signed = Object.keys(fields).filter(key => key !== 'sign').sort().map(key => `${key}=${fields[key]}`).join('&');
+  assert.ok(verify('RSA-SHA256', Buffer.from(signed), merchant.publicKey, Buffer.from(fields.sign, 'base64')));
+  assert.equal(verify('RSA-SHA256', Buffer.from(signed), merchant.publicKey, Buffer.from(original.searchParams.get('sign'), 'base64')), false);
+  assert.ok(!qrUrl.includes('PRIVATE KEY')); assert.ok(!qrUrl.includes(settings.alipay.privateKey));
+});
+
+test('Alipay QR derivation rejects tampered signatures, mismatched frozen identities, invalid keys and expiry', async () => {
+  const { paymentUrl } = await createProviderPayment('alipay', settings.alipay, alipayOrder, { now });
+  const expected = { ...alipayOrder, appId: settings.alipay.appId, sellerId: settings.alipay.sellerId };
+  for (const invalid of [
+    { ...settings.alipay, appId: '2021999999999999' }, { ...settings.alipay, sellerId: '2088999999999999' },
+    { ...settings.alipay, privateKey: platform.privateKey }, { ...settings.alipay, privateKey: '' },
+  ]) assert.equal(deriveAlipayQRPaymentURL(paymentUrl, invalid, expected, { now }), null);
+  for (const override of [{ amountCents: 1 }, { title: 'changed' }, { outTradeNo: 'different_order' }, { appId: '2021999999999999' }, { sellerId: '2088999999999999' }, { expiresAt: '2026-10-15T04:31:00.000Z' }, { notifyUrl: 'https://evil.example' }, { returnUrl: 'https://evil.example' }]) {
+    assert.equal(deriveAlipayQRPaymentURL(paymentUrl, settings.alipay, { ...expected, ...override }, { now }), null);
+  }
+  const tampered = new URL(paymentUrl); tampered.searchParams.set('sign', signature('not the page request', merchant.privateKey));
+  assert.equal(validateAlipayPaymentURL(tampered.href, expected), true, 'shape-valid signatures still require cryptographic verification before derivation');
+  assert.equal(deriveAlipayQRPaymentURL(tampered.href, settings.alipay, expected, { now }), null);
+  const changedTitle = new URL(paymentUrl), biz = JSON.parse(changedTitle.searchParams.get('biz_content')); biz.subject = 'changed'; changedTitle.searchParams.set('biz_content', JSON.stringify(biz));
+  assert.equal(deriveAlipayQRPaymentURL(changedTitle.href, settings.alipay, { ...expected, title: 'changed' }, { now }), null);
+  assert.equal(deriveAlipayQRPaymentURL(paymentUrl, settings.alipay, expected, { now: Date.parse(alipayOrder.expiresAt) }), null);
+  assert.equal(deriveAlipayQRPaymentURL(paymentUrl, settings.alipay, expected, { now: Date.parse(alipayOrder.expiresAt) + 1 }), null);
+});
+
+test('Alipay QR validation accepts only the fixed front-loading mode and size without relaxing URL or order checks', async () => {
+  const { paymentUrl } = await createProviderPayment('alipay', settings.alipay, alipayOrder, { now });
+  const expected = { ...alipayOrder, appId: settings.alipay.appId, sellerId: settings.alipay.sellerId };
+  const qrUrl = deriveAlipayQRPaymentURL(paymentUrl, settings.alipay, expected, { now });
+  for (const override of [{ qr_pay_mode: '0' }, { qr_pay_mode: 4 }, { qrcode_width: '245' }, { qrcode_width: 244 }, { total_amount: '0.01' }, { seller_id: '2088999999999999' }, { extra: 'bad' }]) {
+    const changed = new URL(qrUrl), biz = JSON.parse(changed.searchParams.get('biz_content')); changed.searchParams.set('biz_content', JSON.stringify({ ...biz, ...override }));
+    assert.equal(validateAlipayQRPaymentURL(changed.href, expected), false);
+  }
+  for (const invalid of [qrUrl.replace('https://', 'http://'), qrUrl.replace('openapi.alipay.com', 'evil.example'), qrUrl + '&method=alipay.trade.page.pay', qrUrl + '&extra=bad', qrUrl + '#fragment']) assert.equal(validateAlipayQRPaymentURL(invalid, expected), false);
+  const duplicate = new URL(qrUrl), biz = duplicate.searchParams.get('biz_content'); duplicate.searchParams.set('biz_content', biz.slice(0, -1) + ',"qr_pay_mode":"4"}');
+  assert.equal(validateAlipayQRPaymentURL(duplicate.href, expected), false);
 });

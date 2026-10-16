@@ -1,6 +1,6 @@
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {createPaymentSettings,paymentBundleItems,paymentCatalog,paymentNotifyURL} from './payment-settings.mjs';
-import {createProviderPayment,queryProviderPayment,parseProviderNotification,validateProvider,validateAlipayPaymentURL} from './payment-providers.mjs';
+import {createProviderPayment,queryProviderPayment,parseProviderNotification,validateProvider,validateAlipayPaymentURL,deriveAlipayQRPaymentURL} from './payment-providers.mjs';
 import {productDelivery} from './commerce-readiness.mjs';
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const at=()=>new Date().toISOString();
@@ -20,7 +20,11 @@ export function createPaymentService(db,config={}){
   if(order.provider!=='alipay'||order.status!=='pending'||Date.parse(order.expires_at)<=Date.now())return null;
   try{const channel=settings.version(order.config_id);return validateAlipayPaymentURL(order.payment_url,providerOrder(order,channel.settings))?order.payment_url:null;}catch{return null;}
  }
- function publicOrder(order){let snapshot;try{snapshot=JSON.parse(order.entitlement);}catch{}return {id:order.id,productId:order.product_id,outTradeNo:order.out_trade_no||order.id,status:order.status,amountCents:order.amount_cents??null,currency:order.currency||'CNY',title:order.title,provider:order.provider||null,entitlementType:snapshot?.type||null,creditAmount:snapshot?.type==='credits'?snapshot.creditAmount:null,durationDays:['membership','bundle'].includes(snapshot?.type)?snapshot.durationDays:null,bundleItems:snapshot?.type==='bundle'?paymentBundleItems(snapshot.bundleItems)||[]:[],...(snapshot?.type==='membership'?{membershipItems:paymentBundleItems(snapshot.membershipItems||[],{allowEmpty:true})||[]}:{}),qrContent:order.status==='pending'?order.qr_content||null:null,paymentUrl:paymentURL(order),expiresAt:order.expires_at||null,createdAt:order.created_at,paidAt:order.paid_at||null};}
+ function paymentQRURL(order,url){
+  if(!url)return null;
+  try{const channel=settings.version(order.config_id);return deriveAlipayQRPaymentURL(url,channel.settings,providerOrder(order,channel.settings));}catch{return null;}
+ }
+ function publicOrder(order){const url=paymentURL(order);let snapshot;try{snapshot=JSON.parse(order.entitlement);}catch{}return {id:order.id,productId:order.product_id,outTradeNo:order.out_trade_no||order.id,status:order.status,amountCents:order.amount_cents??null,currency:order.currency||'CNY',title:order.title,provider:order.provider||null,entitlementType:snapshot?.type||null,creditAmount:snapshot?.type==='credits'?snapshot.creditAmount:null,durationDays:['membership','bundle'].includes(snapshot?.type)?snapshot.durationDays:null,bundleItems:snapshot?.type==='bundle'?paymentBundleItems(snapshot.bundleItems)||[]:[],...(snapshot?.type==='membership'?{membershipItems:paymentBundleItems(snapshot.membershipItems||[],{allowEmpty:true})||[]}:{}),qrContent:order.status==='pending'?order.qr_content||null:null,paymentUrl:url,paymentQrUrl:paymentQRURL(order,url),expiresAt:order.expires_at||null,createdAt:order.created_at,paidAt:order.paid_at||null};}
  function options(){const channels=['wechat','alipay'].map(provider=>({provider,label:provider==='wechat'?'微信支付':'支付宝',ready:settings.summary(provider).ready})),products=paymentCatalog(db).map(product=>({...product,...productDelivery(product,config.billing)}));return {enabled:channels.some(c=>c.ready)&&products.some(product=>product.purchasable!==false),channels,products,...(config.billing?{billing:config.billing.rules()}:{} )};}
  function identity(order,result,channel){
  const merchant=order.provider==='wechat'?channel.merchantId:channel.sellerId;

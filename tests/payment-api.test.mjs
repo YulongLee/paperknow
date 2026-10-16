@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import {randomBytes,generateKeyPairSync,createHash} from 'node:crypto';
+import {randomBytes,generateKeyPairSync,createHash,verify} from 'node:crypto';
 import {database} from '../backend/database.mjs';
 import {createAPI} from '../backend/api.mjs';
 import {createSession} from '../backend/auth.mjs';
-import {validateProvider,createProviderPayment,validateAlipayPaymentURL} from '../backend/payment-providers.mjs';
+import {validateProvider,createProviderPayment,validateAlipayPaymentURL,validateAlipayQRPaymentURL} from '../backend/payment-providers.mjs';
 import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
 
 const rsa=generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});
@@ -306,4 +306,48 @@ test('a verified missing page-pay trade stays pending until opening the cashier,
  assert.equal((await f.request('/api/orders/'+page.id+'/query',{data:{}})).status,502);assert.equal(f.count('payment_credit_ledger'),0);
  failure=false;f.db.prepare('UPDATE payment_orders SET last_queried_at=0 WHERE order_id=?').run(page.id);
  const settled=await f.request('/api/orders/'+page.id+'/query',{data:{}});assert.equal(settled.status,200);assert.equal(settled.value.item.status,'paid');assert.equal(settled.value.item.paymentUrl,null);assert.equal(settled.value.item.qrContent,null);assert.equal((await f.request('/api/payments/entitlements')).value.credits.balance,200);assert.equal(f.count('payment_credit_ledger'),1);
+});
+
+test('Alipay exposes a stable official QR page for its owner without treating display or polling as payment',async t=>{
+ const f=await fixture(t);await f.ready('alipay');const item=(await f.create({provider:'alipay',productId:'credits-200'})).value.item;
+ const expected={...f.created[0].input,appId:alipay.appId,sellerId:alipay.sellerId};
+ assert.equal(validateAlipayPaymentURL(item.paymentUrl,expected),true);assert.equal(validateAlipayQRPaymentURL(item.paymentQrUrl,expected),true);assert.equal(item.qrContent,null);
+ const page=new URL(item.paymentUrl),qr=new URL(item.paymentQrUrl),params=Object.fromEntries(qr.searchParams);
+ for(const [key,value]of page.searchParams)if(!['biz_content','sign'].includes(key))assert.equal(qr.searchParams.get(key),value);
+ assert.deepEqual(JSON.parse(params.biz_content),{...JSON.parse(page.searchParams.get('biz_content')),qr_pay_mode:'4',qrcode_width:'244'});
+ const signed=Object.keys(params).filter(key=>key!=='sign').sort().map(key=>`${key}=${params[key]}`).join('&');
+ assert.equal(verify('RSA-SHA256',Buffer.from(signed),rsa.publicKey,Buffer.from(params.sign,'base64')),true);
+ for(const result of [await f.request('/api/orders/'+item.id),await f.request('/api/orders/'+item.id+'/query',{data:{}}),await f.request('/api/orders')]){
+  const current=result.value.item||result.value.items[0];assert.equal(current.paymentQrUrl,item.paymentQrUrl);assert.equal(current.status,'pending');assert.ok(!result.text.includes('PRIVATE KEY'));assert.ok(!result.text.includes('sealed_settings'));
+ }
+ assert.equal((await f.request('/api/orders/'+item.id,{cookie:f.other.cookie})).status,404);assert.equal((await f.request('/api/orders/'+item.id,{cookie:''})).status,401);
+ assert.equal((await f.request('/api/payments/entitlements')).value.credits.balance,0);assert.equal(f.count('payment_credit_ledger'),0);assert.equal(f.count('payment_entitlements'),0);
+});
+
+test('Alipay QR signs with its frozen configuration despite active merchant changes and hides when frozen credentials cannot be read',async t=>{
+ const f=await fixture(t);await f.ready('alipay');const item=(await f.create({provider:'alipay',productId:'credits-200'})).value.item;
+ const frozen=f.db.prepare('SELECT config_id FROM payment_orders WHERE order_id=?').get(item.id).config_id;
+ const other=generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});
+ assert.equal((await f.channel('alipay',{appId:'2026999999999999',sellerId:'2088999999999999',privateKey:other.privateKey,alipayPublicKey:other.publicKey})).status,200);
+ const current=(await f.request('/api/orders/'+item.id)).value.item;assert.equal(current.paymentUrl,item.paymentUrl);assert.equal(current.paymentQrUrl,item.paymentQrUrl);
+ assert.equal(new URL(current.paymentQrUrl).searchParams.get('app_id'),alipay.appId);assert.equal(JSON.parse(new URL(current.paymentQrUrl).searchParams.get('biz_content')).seller_id,alipay.sellerId);
+ f.db.prepare('UPDATE payment_config_versions SET sealed_settings=? WHERE id=?').run('unreadable-frozen-settings',frozen);
+ const unavailable=(await f.request('/api/orders/'+item.id)).value.item;assert.equal(unavailable.paymentUrl,null);assert.equal(unavailable.paymentQrUrl,null);assert.equal(unavailable.status,'pending');assert.equal(f.count('payment_credit_ledger'),0);
+});
+
+test('Alipay QR disappears for paid, expired, closed, legacy and malformed orders while verified settlement stays exactly once',async t=>{
+ const f=await fixture(t);await f.ready('alipay');const paid=(await f.create({provider:'alipay',productId:'credits-200'})).value.item;assert.ok(paid.paymentQrUrl);
+ assert.equal((await f.notify(paid)).status,200);assert.equal((await f.notify(paid)).status,200);const settled=(await f.request('/api/orders/'+paid.id)).value.item;
+ assert.equal(settled.status,'paid');assert.equal(settled.paymentUrl,null);assert.equal(settled.paymentQrUrl,null);assert.equal(f.count('payment_credit_ledger'),1);assert.equal((await f.request('/api/payments/entitlements')).value.credits.balance,200);
+ const expired=(await f.create({provider:'alipay'})).value.item;f.db.prepare('UPDATE payment_orders SET expires_at=? WHERE order_id=?').run(new Date(Date.now()-1000).toISOString(),expired.id);
+ const stale=(await f.request('/api/orders/'+expired.id)).value.item;assert.equal(stale.status,'expired');assert.equal(stale.paymentQrUrl,null);
+ const closed=(await f.create({provider:'alipay'})).value.item;f.orderEntry(closed).state='closed';const ended=(await f.request('/api/orders/'+closed.id+'/query',{data:{}})).value.item;assert.equal(ended.status,'closed');assert.equal(ended.paymentQrUrl,null);
+ const legacy=(await f.create({provider:'alipay'})).value.item;f.db.prepare('UPDATE payment_orders SET payment_url=NULL,qr_content=? WHERE order_id=?').run('https://qr.alipay.com/legacy-order',legacy.id);
+ const historical=(await f.request('/api/orders/'+legacy.id)).value.item;assert.equal(historical.qrContent,'https://qr.alipay.com/legacy-order');assert.equal(historical.paymentQrUrl,null);
+ const corrupt=(await f.create({provider:'alipay'})).value.item;const changed=new URL(corrupt.paymentUrl);changed.searchParams.set('sign',Buffer.alloc(256,1).toString('base64'));f.db.prepare('UPDATE payment_orders SET payment_url=? WHERE order_id=?').run(changed.href,corrupt.id);
+ assert.equal((await f.request('/api/orders/'+corrupt.id)).value.item.paymentQrUrl,null);
+ f.db.prepare('UPDATE payment_orders SET payment_url=? WHERE order_id=?').run(corrupt.paymentUrl.replace('openapi.alipay.com','evil.example'),corrupt.id);
+ const invalid=(await f.request('/api/orders/'+corrupt.id)).value.item;assert.equal(invalid.paymentUrl,null);assert.equal(invalid.paymentQrUrl,null);
+ await f.channel('wechat');const wechatOrder=(await f.create()).value.item;assert.match(wechatOrder.qrContent,/^weixin:/);assert.equal(wechatOrder.paymentQrUrl,null);
+ assert.equal(f.count('payment_credit_ledger'),1);assert.equal(f.count('payment_entitlements'),0);
 });
