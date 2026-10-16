@@ -22,10 +22,10 @@ export const toolBannerCategories=Object.freeze({
   usage:{title:'模型用量',group:'个人与服务',icon:'chart',description:'查看当前账户的模型调用与实际用量记录。'}
 });
 
-// Titles and descriptions can contain user-provided document metadata.
+// Titles, descriptions and optional labels can contain user-provided text.
 // Actions are trusted markup from the owning tool and keep their original IDs.
-export function toolBanner(key,{title,description,actions='',extraClass=''}={}){
+export function toolBanner(key,{title,description,label,actions='',extraClass=''}={}){
   const category=Object.hasOwn(toolBannerCategories,key)?key:'writing';
   const feature=toolBannerCategories[category];
-  return `<header class="tool-banner hub-heading ${esc(extraClass)}" data-tool-category="${category}"><div class="tool-banner-scene" aria-hidden="true"><span class="tool-banner-orbit"></span><span class="tool-banner-glass"></span><span class="tool-banner-token">${icon(feature.icon,18)}</span><span class="tool-banner-spark">${icon('plus',14)}</span></div><div class="tool-banner-copy"><span class="tool-banner-label"><span class="tool-banner-label-icon">${icon(feature.icon,15)}</span><span>${esc(feature.group||'论文与科研')} · ${esc(feature.title)}</span></span><h1>${esc(title||feature.title)}</h1><p>${esc(description??feature.description)}</p>${actions?`<div class="hub-heading-actions tool-banner-actions">${actions}</div>`:''}</div></header>`;
+  return `<header class="tool-banner hub-heading ${esc(extraClass)}" data-tool-category="${category}"><div class="tool-banner-scene" aria-hidden="true"><span class="tool-banner-orbit"></span><span class="tool-banner-glass"></span><span class="tool-banner-token">${icon(feature.icon,18)}</span><span class="tool-banner-spark">${icon('plus',14)}</span></div><div class="tool-banner-copy"><span class="tool-banner-label"><span class="tool-banner-label-icon">${icon(feature.icon,15)}</span><span>${esc(label??`${feature.group||'论文与科研'} · ${feature.title}`)}</span></span><h1>${esc(title||feature.title)}</h1><p>${esc(description??feature.description)}</p>${actions?`<div class="hub-heading-actions tool-banner-actions">${actions}</div>`:''}</div></header>`;
 }

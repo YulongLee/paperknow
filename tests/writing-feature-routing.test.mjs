@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {JSDOM} from 'jsdom';
+import {catalog} from '../dist/workspace/writing-catalog.mjs';
+import {getWritingFeatureIdentity} from '../dist/workspace/writing-feature-identities.mjs';
+function setup(){const dom=new JSDOM('<aside class="sidebar"><a class="nav-link" href="#category/writing">AI 写作</a></aside><div class="breadcrumb"><strong></strong></div><main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'https://paperknow.cn/workspace.html#category/writing'});for(const key of ['window','document','localStorage','FormData','location','AbortController','DOMParser','XMLSerializer'])globalThis[key]=dom.window[key];dom.window.HTMLElement.prototype.scrollIntoView=()=>{};dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};return {dom,ctx:{notify(){},modal(_title,markup){document.querySelector('#workspace-dialog-body').innerHTML=markup;}}};}
+const initial=setup();const {mountTool}=await import('../dist/workspace/tools.mjs');const {clearEditor}=await import('../dist/workspace/edit-guard.mjs');initial.dom.window.close();
+for(const [key,title]of catalog)test(`${key} route and saved draft keep the same independent writing identity`,()=>{
+ const f=setup();try{
+  assert.equal(mountTool(key,undefined,undefined,f.ctx),true);const identity=getWritingFeatureIdentity(key),banner=document.querySelector('.writing-task-banner');assert.ok(banner.classList.contains('writing-task-'+identity.key));assert.equal(banner.querySelector('h1').textContent,title);assert.equal(banner.querySelector('.tool-banner-label').textContent,'AI 写作 · '+title);assert.ok(document.querySelector('#writing-form'));assert.equal(document.querySelector('.tool-editor-grid'),null);
+  const input=document.querySelector('#writing-title');input.value='功能路由与草稿恢复验证';input.dispatchEvent(new window.Event('input',{bubbles:true}));document.querySelector('#writing-save').click();const saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.ok(saved);assert.equal(saved.tool,key==='idea'?'topic':key);clearEditor();assert.equal(mountTool(saved.tool,saved.id,undefined,f.ctx),true);assert.ok(document.querySelector('.writing-task-banner').classList.contains('writing-task-'+identity.key));assert.equal(document.querySelector('.tool-banner-label').textContent,'AI 写作 · '+title);assert.equal(document.querySelector('#writing-title').value,'功能路由与草稿恢复验证');
+ }finally{clearEditor();f.dom.window.close();}
+});
+
+test('untrusted saved document title stays plain text when reopening an independently branded task',()=>{
+ const f=setup();try{mountTool('proposal',undefined,undefined,f.ctx);const title='<img src=x onerror="alert(1)"> & 真实研究 "材料"',input=document.querySelector('#writing-title');input.value=title;input.dispatchEvent(new window.Event('input',{bubbles:true}));document.querySelector('#writing-save').click();const saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.title,title);clearEditor();mountTool(saved.tool,saved.id,undefined,f.ctx);assert.equal(document.querySelector('#writing-title').value,title);assert.equal(document.querySelector('img[src=x]'),null);assert.equal(document.querySelector('script'),null);assert.equal(document.querySelector('.writing-task-banner h1').textContent,'开题报告');assert.equal(document.querySelector('.tool-banner-label').textContent,'AI 写作 · 开题报告');}finally{clearEditor();f.dom.window.close();}
+});
