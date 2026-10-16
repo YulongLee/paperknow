@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {aiReady,publicModelSettings} from './config.mjs';
 import {paymentCatalog,savePaymentProduct} from './payment-settings.mjs';
+import {productDelivery} from './commerce-readiness.mjs';
 
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const identityJoins=`LEFT JOIN auth_identities ue ON ue.user_id=u.id AND ue.channel='email'
@@ -124,10 +125,11 @@ export function createAdminAPI(db,worker,config,auth){
     const actor=db.prepare('SELECT id,role FROM users WHERE id=?').get(user.id);
     if(!actor)fail(401,'请先登录');
     if(actor.role!=='admin')fail(403,'需要管理员权限');
-    const paymentConfig=()=>({channels:['wechat','alipay'].map(p=>config.payments.settings.summary(p)),catalog:paymentCatalog(db,{all:true}),encryptionReady:config.payments.settings.encryptionReady});
+    const paymentConfig=()=>({channels:['wechat','alipay'].map(p=>config.payments.settings.summary(p)),catalog:paymentCatalog(db,{all:true}).map(product=>({...product,...productDelivery(product,config.billing)})),encryptionReady:config.payments.settings.encryptionReady,billing:config.billing?.rules()});
     if(path==='/api/admin/payments'&&method==='GET'){parameters(query,[]);return paymentConfig();}
+    if(path==='/api/admin/billing'&&method==='POST'){parameters(query,[]);const input=await readBody();return transaction(()=>{const billing=config.billing.saveRules(input);audit(actor,'billing.rules.update','setting','billing',{version:billing.version,services:billing.services.map(({key,mode,creditCost})=>({key,mode,creditCost}))});return {billing};});}
     const paymentProduct=path.match(/^\/api\/admin\/payments\/products\/([a-zA-Z0-9_-]+)$/);
-    if(paymentProduct&&method==='POST'){parameters(query,[]);const input=await readBody();const item=transaction(()=>{const saved=savePaymentProduct(db,paymentProduct[1],input);audit(actor,'payment.product.update','product',saved.id,{status:saved.status,priceCents:saved.priceCents,durationDays:saved.durationDays,entitlementType:saved.entitlementType,creditAmount:saved.creditAmount,...(saved.entitlementType==='bundle'?{bundleItems:saved.bundleItems}:{})});return saved;});return {item};}
+    if(paymentProduct&&method==='POST'){parameters(query,[]);const input=await readBody();const item=transaction(()=>{const saved=savePaymentProduct(db,paymentProduct[1],input),delivery=productDelivery(saved,config.billing);if(saved.status==='active'&&!delivery.purchasable)fail(409,delivery.unavailableReason);audit(actor,'payment.product.update','product',saved.id,{status:saved.status,priceCents:saved.priceCents,durationDays:saved.durationDays,entitlementType:saved.entitlementType,creditAmount:saved.creditAmount,...(saved.entitlementType==='bundle'?{bundleItems:saved.bundleItems}:saved.entitlementType==='membership'?{membershipItems:saved.membershipItems}:{})});return {...saved,...delivery};});return {item};}
     const paymentChannel=path.match(/^\/api\/admin\/payments\/(wechat|alipay)(\/check)?$/);
     if(paymentChannel&&method==='POST'){
       parameters(query,[]);const provider=paymentChannel[1];
@@ -161,6 +163,7 @@ export function createAdminAPI(db,worker,config,auth){
         if(!['queued','running'].includes(job.status))fail(409,'任务已结束，不能取消');
         const changed=db.prepare("UPDATE jobs SET status='cancelled',stage='cancelled',updated_at=? WHERE id=? AND status IN ('queued','running')").run(new Date().toISOString(),job.id);
         if(!changed.changes)fail(409,'任务状态已变化，请刷新后重试');
+        config.billing?.release(job.id);
         audit(actor,'job.cancel','job',job.id,{from_status:job.status,to_status:'cancelled'});
       });
       worker.cancel(cancel[1]);

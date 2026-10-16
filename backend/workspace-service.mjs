@@ -21,7 +21,7 @@ function cleanTree(value,depth=0,key=''){
 }
 function payloadJSON(value){if(!object(value))error(400,'请提供草稿内容');const clean=cleanTree(value);for(const key of ['id','projectId','project_id','clientKey'])delete clean[key];const json=JSON.stringify(clean);if(Buffer.byteLength(json)>maxDraftBytes)error(413,'单份账户草稿最多 750KB，请导出本地备份或分章节保存');return json;}
 
-export function createWorkspaceService(db){
+export function createWorkspaceService(db,{billing}={}){
  const own=(table,id,user)=>{const row=db.prepare(`SELECT * FROM ${table} WHERE id=? AND user_id=?`).get(id,user.id);if(!row)error(404,'记录不存在');return row;};
  const projectId=(id,user)=>{if(id===undefined||id===null||id==='')return null;if(typeof id!=='string')error(400,'项目编号无效');own('projects',id,user);return id;};
  const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const value=fn();db.exec('COMMIT');return value;}catch(cause){db.exec('ROLLBACK');throw cause;}};
@@ -42,7 +42,7 @@ export function createWorkspaceService(db){
    const archived=db.prepare("SELECT count(*) n FROM projects p JOIN workspace_project_details d ON d.project_id=p.id WHERE p.user_id=? AND d.status='archived'").get(user.id).n;
    const jobs=Object.fromEntries(db.prepare('SELECT status,count(*) n FROM jobs WHERE user_id=? GROUP BY status').all(user.id).map(row=>[row.status,row.n]));
    const usage=db.prepare('SELECT count(*) records,coalesce(sum(input_tokens),0) inputTokens,coalesce(sum(output_tokens),0) outputTokens,coalesce(sum(CASE WHEN billable!=0 THEN 1 ELSE 0 END),0) billableRecords FROM usage WHERE user_id=?').get(user.id);
-   return result({counts:{projects:count('projects'),activeProjects:count('projects')-archived,archivedProjects:archived,files:count('files'),drafts:count('workspace_drafts'),results:count('results'),jobs:count('jobs'),queuedJobs:jobs.queued||0,runningJobs:jobs.running||0,completedJobs:jobs.completed||0,failedJobs:jobs.failed||0,cancelledJobs:jobs.cancelled||0},storage:{fileBytes:db.prepare('SELECT coalesce(sum(bytes),0) n FROM files WHERE user_id=?').get(user.id).n,draftBytes:db.prepare('SELECT coalesce(sum(bytes),0) n FROM workspace_drafts WHERE user_id=?').get(user.id).n,maxFileBytes:2*1024*1024,maxAccountFileBytes:maxAccountBytes,maxDraftBytes,maxAccountDraftBytes:maxAccountBytes},usage:{...usage,billingEnabled:false}});
+   return result({counts:{projects:count('projects'),activeProjects:count('projects')-archived,archivedProjects:archived,files:count('files'),drafts:count('workspace_drafts'),results:count('results'),jobs:count('jobs'),queuedJobs:jobs.queued||0,runningJobs:jobs.running||0,completedJobs:jobs.completed||0,failedJobs:jobs.failed||0,cancelledJobs:jobs.cancelled||0},storage:{fileBytes:db.prepare('SELECT coalesce(sum(bytes),0) n FROM files WHERE user_id=?').get(user.id).n,draftBytes:db.prepare('SELECT coalesce(sum(bytes),0) n FROM workspace_drafts WHERE user_id=?').get(user.id).n,maxFileBytes:2*1024*1024,maxAccountFileBytes:maxAccountBytes,maxDraftBytes,maxAccountDraftBytes:maxAccountBytes},usage:{...usage,billingEnabled:billing?.rules().services.some(item=>item.mode==='paid'&&item.available)||false}});
   }
   if(path==='/api/projects'){
    if(method==='GET')return result({items:db.prepare(projectSelect+' WHERE p.user_id=? ORDER BY p.updated_at DESC').all(user.id)});

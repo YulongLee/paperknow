@@ -54,7 +54,11 @@ export function database(path){
     }
     // The owner approved these recharge tiers. Existing edits are never reset on startup.
     for(const amount of [200,500,1000]){
-      db.prepare('INSERT OR IGNORE INTO products(id,title,status,rules) VALUES(?,?,?,?)').run(`credits-${amount}`,`${amount} 科研积分`,'active',JSON.stringify({priceCents:amount*10,durationDays:null,creditAmount:amount,description:`支付成功后向当前账户充值 ${amount} 科研积分。积分消费服务尚未开放，当前不会自动扣除积分。`,entitlementType:'credits',paymentEnabled:true}));
+      const description=`支付成功后向当前账户充值 ${amount} 科研积分，用于已开放的计费任务。提交前确认，成功扣减；失败或取消释放预占。`;
+      db.prepare('INSERT OR IGNORE INTO products(id,title,status,rules) VALUES(?,?,?,?)').run(`credits-${amount}`,`${amount} 科研积分`,'active',JSON.stringify({priceCents:amount*10,durationDays:null,creditAmount:amount,description,entitlementType:'credits',paymentEnabled:true}));
+      // Only update the exact obsolete seed copy. Preserve every merchant edit and paid order snapshot.
+      const existing=db.prepare('SELECT rules FROM products WHERE id=?').get(`credits-${amount}`);let rules;try{rules=JSON.parse(existing.rules);}catch{}
+      if(rules?.entitlementType==='credits'&&rules.creditAmount===amount&&rules.description===`支付成功后向当前账户充值 ${amount} 科研积分。积分消费服务尚未开放，当前不会自动扣除积分。`){rules.description=description;db.prepare('UPDATE products SET rules=? WHERE id=?').run(JSON.stringify(rules),`credits-${amount}`);}
     }
     // Reference bundles stay unpublished until an administrator confirms delivery and validity.
     const checks=[['similarity-check','旗舰版查重',2],['aigc-check','AIGC 检测',2],['revision-advice','修改建议',2]];

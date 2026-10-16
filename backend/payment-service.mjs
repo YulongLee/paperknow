@@ -1,6 +1,7 @@
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {createPaymentSettings,paymentBundleItems,paymentCatalog,paymentNotifyURL} from './payment-settings.mjs';
 import {createProviderPayment,queryProviderPayment,parseProviderNotification,validateProvider} from './payment-providers.mjs';
+import {productDelivery} from './commerce-readiness.mjs';
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const at=()=>new Date().toISOString();
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -13,8 +14,8 @@ export function createPaymentService(db,config={}){
  const get=id=>db.prepare(orderSelect+' WHERE o.id=?').get(id);
  const own=(id,user)=>{const order=get(id);if(!order||order.user_id!==user.id)fail(404,'订单不存在');return order;};
  const expire=userId=>db.prepare("UPDATE orders SET status='expired' WHERE user_id=? AND status='pending' AND id IN (SELECT order_id FROM payment_orders WHERE expires_at<=?)").run(userId,at());
- function publicOrder(order){let snapshot;try{snapshot=JSON.parse(order.entitlement);}catch{}return {id:order.id,productId:order.product_id,outTradeNo:order.out_trade_no||order.id,status:order.status,amountCents:order.amount_cents??null,currency:order.currency||'CNY',title:order.title,provider:order.provider||null,entitlementType:snapshot?.type||null,creditAmount:snapshot?.type==='credits'?snapshot.creditAmount:null,durationDays:['membership','bundle'].includes(snapshot?.type)?snapshot.durationDays:null,bundleItems:snapshot?.type==='bundle'?paymentBundleItems(snapshot.bundleItems)||[]:[],qrContent:order.status==='pending'?order.qr_content||null:null,expiresAt:order.expires_at||null,createdAt:order.created_at,paidAt:order.paid_at||null};}
- function options(){const channels=['wechat','alipay'].map(provider=>({provider,label:provider==='wechat'?'微信支付':'支付宝',ready:settings.summary(provider).ready})),products=paymentCatalog(db);return {enabled:channels.some(c=>c.ready)&&products.length>0,channels,products};}
+ function publicOrder(order){let snapshot;try{snapshot=JSON.parse(order.entitlement);}catch{}return {id:order.id,productId:order.product_id,outTradeNo:order.out_trade_no||order.id,status:order.status,amountCents:order.amount_cents??null,currency:order.currency||'CNY',title:order.title,provider:order.provider||null,entitlementType:snapshot?.type||null,creditAmount:snapshot?.type==='credits'?snapshot.creditAmount:null,durationDays:['membership','bundle'].includes(snapshot?.type)?snapshot.durationDays:null,bundleItems:snapshot?.type==='bundle'?paymentBundleItems(snapshot.bundleItems)||[]:[],...(snapshot?.type==='membership'?{membershipItems:paymentBundleItems(snapshot.membershipItems||[],{allowEmpty:true})||[]}:{}),qrContent:order.status==='pending'?order.qr_content||null:null,expiresAt:order.expires_at||null,createdAt:order.created_at,paidAt:order.paid_at||null};}
+ function options(){const channels=['wechat','alipay'].map(provider=>({provider,label:provider==='wechat'?'微信支付':'支付宝',ready:settings.summary(provider).ready})),products=paymentCatalog(db).map(product=>({...product,...productDelivery(product,config.billing)}));return {enabled:channels.some(c=>c.ready)&&products.some(product=>product.purchasable!==false),channels,products,...(config.billing?{billing:config.billing.rules()}:{} )};}
  function identity(order,result,channel){
  const merchant=order.provider==='wechat'?channel.merchantId:channel.sellerId;
  if(!result||result.outTradeNo!==order.out_trade_no||!Number.isSafeInteger(result.amountCents)||result.amountCents!==order.amount_cents||result.currency!=='CNY'||result.merchantId!==merchant||result.appId!==channel.appId)fail(400,'支付通知与订单信息不匹配');
@@ -67,6 +68,7 @@ export function createPaymentService(db,config={}){
  if(existing){if(existing.input_hash!==inputHash)fail(409,'重复请求标识已经用于其他商品或支付渠道');return {item:publicOrder(existing)};}
  if(!options().enabled)fail(503,'支付渠道或可售商品尚未开通，暂不能创建付款订单');
  const product=paymentCatalog(db).find(p=>p.id===input.productId);if(!product)fail(409,'商品尚未上架或已停止销售');
+ const delivery=productDelivery(product,config.billing);if(!delivery.purchasable)fail(409,delivery.unavailableReason);
  const channel=settings.current(input.provider);if(!channel.enabled||validateProvider(input.provider,channel.settings).length)fail(503,'所选支付渠道尚未开通');
  expire(user.id);if(db.prepare("SELECT count(*) AS n FROM orders o JOIN payment_orders d ON d.order_id=o.id WHERE o.user_id=? AND o.status='pending'").get(user.id).n>=5)fail(429,'待支付订单较多，请先查看已有订单或等待过期');
  const id=randomUUID(),created=at(),expiresAt=new Date(Date.now()+15*60000).toISOString(),outTradeNo='PK'+Date.now().toString()+randomBytes(7).toString('hex');
@@ -124,7 +126,7 @@ export function createPaymentService(db,config={}){
  function entitlements(user){
  const items=db.prepare('SELECT e.order_id,e.product_id,e.type,e.starts_at,e.expires_at,d.title,d.entitlement FROM payment_entitlements e JOIN payment_orders d ON d.order_id=e.order_id WHERE e.user_id=? ORDER BY e.expires_at DESC LIMIT 100').all(user.id).map(({entitlement,...item})=>{
   let snapshot;try{snapshot=JSON.parse(entitlement);}catch{snapshot=null;}
-  return {...item,description:typeof snapshot?.description==='string'?snapshot.description:''};
+  return {...item,description:typeof snapshot?.description==='string'?snapshot.description:'',...(config.billing?{membershipItems:paymentBundleItems(snapshot?.membershipItems||[],{allowEmpty:true})||[]}:{} )};
  });
  const balance=db.prepare('SELECT COALESCE(sum(amount),0) AS balance FROM payment_credit_ledger WHERE user_id=?').get(user.id).balance;
  const ledger=db.prepare('SELECT e.order_id AS orderId,e.product_id AS productId,d.title,e.amount,e.kind,e.created_at AS createdAt FROM payment_credit_ledger e JOIN payment_orders d ON d.order_id=e.order_id WHERE e.user_id=? ORDER BY e.created_at DESC,e.order_id DESC LIMIT 100').all(user.id);
@@ -132,6 +134,7 @@ export function createPaymentService(db,config={}){
   let snapshot,parsed;try{snapshot=JSON.parse(entitlement);}catch{}try{parsed=paymentBundleItems(JSON.parse(items));}catch{}
   return {...item,description:typeof snapshot?.description==='string'?snapshot.description:'',items:parsed||[]};
  });
+ if(config.billing){const billing=config.billing.entitlements(user.id);return {items:items.map(item=>({...item,usage:billing.membershipUsage[item.order_id]||[]})),credits:config.billing.balance(user.id),bundles:bundles.map(item=>({...item,items:billing.bundleUsage[item.orderId]||item.items})),billing};}
  return {items,credits:{balance,ledger},bundles};
  }
  return {settings,options,create,query,notify,getOrder,list,entitlements};

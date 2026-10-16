@@ -20,6 +20,7 @@ async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params=
  w.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({path,body,options});if(request){const custom=await request(path,options);if(custom)return custom;}
   let status=200,value={};
   if(path==='/api/capabilities')value={ai,agent,aiProvider:'test-provider',storage:'local'};
+  else if(path==='/api/billing/quote')value={token:'quote-for-'+body.type,type:body.type,title:({polish:'学术润色',review:'导师意见修改',agent:'科研智能助手'})[body.type],source:'free',creditCost:0,expiresAt:new Date(Date.now()+60000).toISOString(),policyVersion:1};
   else if(path==='/api/auth/me'){status=guest?401:200;value=guest?{error:'请登录'}:{user:{id:'u1',name:'测试账户',email:'person@example.invalid'}};}
   else if(path==='/api/projects'){if(body){projects.push({...body,id:'p2',updated_at:now});value={id:'p2'};}else value={items:projects};}
   else if(path==='/api/files'){if(body){files.push({...body,id:'f2',bytes:3});value={id:'f2'};}else value={items:files};}
@@ -82,9 +83,9 @@ test('task input is protected on navigation and unavailable AI stays disabled af
 test('account jobs cancel immediately and require explicit retry confirmation',async t=>{
  const f=await fixture(t,{view:'tasks'});f.doc.querySelector('[data-job="pending"]').click();await settle(()=>f.doc.querySelector('.tag.cancelled'));
  assert.ok(f.calls.some(call=>call.path==='/api/jobs/pending/cancel'));
- f.doc.querySelector('[data-job="failed"]').click();assert.equal(f.doc.querySelector('#online-confirm').open,true);f.doc.querySelector('#online-confirm-no').click();await new Promise(resolve=>setTimeout(resolve,5));
+ f.doc.querySelector('[data-job="failed"]').click();await settle(()=>f.doc.querySelector('#online-confirm').open);assert.equal(f.doc.querySelector('#online-confirm').open,true);f.doc.querySelector('#online-confirm-no').click();await new Promise(resolve=>setTimeout(resolve,5));
  assert.equal(f.calls.some(call=>call.path==='/api/jobs/failed/retry'),false);
- f.doc.querySelector('[data-job="failed"]').click();f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.calls.some(call=>call.path==='/api/jobs/failed/retry'));
+ f.doc.querySelector('[data-job="failed"]').click();await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.calls.some(call=>call.path==='/api/jobs/failed/retry'));
  assert.match(f.doc.querySelector('#job-list').textContent,/科研智能助手/);
 });
 
@@ -97,7 +98,7 @@ test('account results preview, editing, saved versions and export preserve origi
 });
 
 test('agent submission uses selected account materials and distinct task route',async t=>{
- const f=await fixture(t,{view:'agent'});input(f,'#agent-text','整理这份研究材料');f.doc.querySelector('#agent-materials option').selected=true;submit(f,'#agent-form');await settle(()=>f.calls.some(call=>call.path==='/api/jobs'&&call.body));
+ const f=await fixture(t,{view:'agent'});input(f,'#agent-text','整理这份研究材料');f.doc.querySelector('#agent-materials option').selected=true;submit(f,'#agent-form');await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.calls.some(call=>call.path==='/api/jobs'&&call.body));
  const job=f.calls.find(call=>call.path==='/api/jobs'&&call.body);assert.equal(job.body.type,'agent');assert.deepEqual(job.body.fileIds,['f1']);assert.ok(f.doc.querySelector('.account-task-modes a.active').href.endsWith('#tasks?scope=account&view=agent'));
 });
 
@@ -133,14 +134,14 @@ test('purchased membership shows escaped order snapshots with active, scheduled 
 });
 
 test('empty purchased membership uses actual account counts without encouraging a payment',async t=>{
- const f=await fixture(t,{view:'membership'});assert.match(f.doc.querySelector('#view').textContent,/暂无已生效的会员权益/);assert.equal(f.doc.querySelectorAll('.account-entitlement').length,0);assert.equal(f.doc.querySelector('a[href*="membership/pay"]'),null);assert.equal(f.calls.filter(call=>call.path==='/api/payments/entitlements').length,1);assert.equal(f.calls.some(call=>call.body),false);
+ const f=await fixture(t,{view:'membership'});assert.match(f.doc.querySelector('#view').textContent,/暂无已生效的会员权益/);assert.equal(f.doc.querySelectorAll('.account-entitlement').length,0);assert.equal(f.doc.querySelector('a[href*="membership/pay"]'),null);assert.equal(f.calls.filter(call=>call.path==='/api/payments/entitlements').length,1);assert.equal(f.calls.some(call=>call.body&&call.path!=='/api/billing/quote'),false);
 });
 
 test('account workspace displays paid bundle snapshots separately with active, scheduled and expired periods',async t=>{
  const today=Date.now(),stamp=offset=>new Date(today+offset*86400000).toISOString();
  const bundles=[{orderId:'bundle/current',productId:'bundle-one',title:'真实套餐 <img src=x>',description:'套餐快照 <script>x</script>',startsAt:stamp(-1),expiresAt:stamp(3),items:[{key:'detection',title:'已购检测',quantity:2}]},{orderId:'bundle-future',productId:'bundle-two',title:'待生效套餐',description:'后续服务',startsAt:stamp(4),expiresAt:stamp(10),items:[{key:'ppt',title:'答辩 PPT',quantity:1}]},{orderId:'bundle-old',productId:'bundle-one',title:'到期记录',description:'历史购买',startsAt:stamp(-14),expiresAt:stamp(-7),items:[{key:'detection',title:'已购检测',quantity:2}]}];
  const f=await fixture(t,{view:'membership',request:async path=>path==='/api/payments/entitlements'?{ok:true,status:200,json:async()=>({items:[{type:'bundle',title:'不能成为会员',starts_at:stamp(-1),expires_at:stamp(999)}],bundles})}:undefined});
- const cards=[...f.doc.querySelectorAll('.member-bundle-record')];assert.equal(cards.length,3);assert.deepEqual(cards.map(card=>card.querySelector('.tag').textContent),['有效','待生效','已到期']);assert.equal(cards[0].querySelector('h3').textContent,bundles[0].title);assert.equal(cards[0].querySelector('.member-bundle-description').textContent,bundles[0].description);assert.match(cards[0].textContent,/已购检测2 次/);assert.equal(cards[0].querySelector('img'),null);assert.equal(cards[0].querySelector('script'),null);assert.ok(cards[0].querySelector('a[href="#membership/pay?order=bundle%2Fcurrent"]'));assert.equal(f.doc.querySelector('.member-purchase-member h2').textContent,'免费使用');assert.equal(f.doc.querySelector('.member-purchase-bundles h2').textContent,'3 份已购套餐');assert.equal(f.doc.querySelectorAll('.account-entitlement').length,0);assert.match(f.doc.querySelector('.member-bundle-records').textContent,/消费扣减尚未接入/);assert.equal(f.calls.some(call=>call.body),false);assert.match(f.w.localStorage.getItem('paperknow-drafts'),/本地未上传成果/);
+ const cards=[...f.doc.querySelectorAll('.member-bundle-record')];assert.equal(cards.length,3);assert.deepEqual(cards.map(card=>card.querySelector('.tag').textContent),['有效','待生效','已到期']);assert.equal(cards[0].querySelector('h3').textContent,bundles[0].title);assert.equal(cards[0].querySelector('.member-bundle-description').textContent,bundles[0].description);assert.match(cards[0].textContent,/已购检测包含 2 次/);assert.equal(cards[0].querySelector('img'),null);assert.equal(cards[0].querySelector('script'),null);assert.ok(cards[0].querySelector('a[href="#membership/pay?order=bundle%2Fcurrent"]'));assert.equal(f.doc.querySelector('.member-purchase-member h2').textContent,'免费使用');assert.equal(f.doc.querySelector('.member-purchase-bundles h2').textContent,'3 份已购套餐');assert.equal(f.doc.querySelectorAll('.account-entitlement').length,0);assert.match(f.doc.querySelector('.member-bundle-records').textContent,/实际已用与预占次数/);assert.equal(f.calls.some(call=>call.body),false);assert.match(f.w.localStorage.getItem('paperknow-drafts'),/本地未上传成果/);
 });
 
 
@@ -177,9 +178,87 @@ test('account task status filtering preserves current form input and keeps retry
  f.doc.querySelector('[data-account-job-filter="failed"]').click();
  assert.equal(f.doc.querySelector('[data-account-job-filter="failed"]').getAttribute('aria-pressed'),'true');
  assert.equal(f.doc.querySelectorAll('.account-job-row').length,1);assert.equal(f.doc.querySelector('[data-job="pending"]'),null);assert.ok(f.doc.querySelector('[data-job="failed"]'));
- f.doc.querySelector('[data-job="failed"]').click();assert.equal(f.doc.querySelector('#online-confirm').open,true);f.doc.querySelector('#online-confirm-no').click();
+ assert.equal(f.doc.querySelector('[data-job="failed"]').disabled,true);f.doc.querySelector('[data-job="failed"]').click();assert.equal(f.doc.querySelector('#online-confirm').open,false);
  await new Promise(resolve=>setTimeout(resolve,5));assert.equal(f.calls.some(call=>call.path==='/api/jobs/failed/retry'),false);
  f.doc.querySelector('[data-account-job-filter="completed"]').click();assert.equal(f.doc.querySelectorAll('.account-job-row').length,0);assert.match(f.doc.querySelector('#job-list').textContent,/当前筛选下没有任务/);
  f.doc.querySelector('[data-account-job-filter="all"]').click();assert.equal(f.doc.querySelectorAll('.account-job-row').length,2);
- assert.equal(f.doc.querySelector('#task-text').value,'尚未提交的论文正文');assert.equal(f.calls.some(call=>call.body),false);
+ assert.equal(f.doc.querySelector('#task-text').value,'尚未提交的论文正文');assert.equal(f.calls.some(call=>call.body&&call.path!=='/api/billing/quote'),false);
+});
+
+function billingResponse(type,{source='credits',creditCost=12,expiresAt=new Date(Date.now()+60000).toISOString(),...rest}={}){return {ok:true,status:200,json:async()=>({token:'confirmed-'+type,type,title:({polish:'学术润色',review:'导师意见修改',agent:'科研智能助手'})[type],source,creditCost,expiresAt,policyVersion:2,...rest})};}
+
+test('AI task quote is confirmed before submit and the confirmed token travels with the original material',async t=>{
+ const f=await fixture(t,{view:'tasks',request:async(path,options)=>path==='/api/billing/quote'?billingResponse(JSON.parse(options.body).type):undefined});
+ input(f,'#task-text','用户主动选择的正文');submit(f,'#task-form');await settle(()=>f.doc.querySelector('#online-confirm').open);
+ assert.match(f.doc.querySelector('#online-confirm-message').textContent,/本次使用 12 科研积分/);
+ assert.equal(f.calls.some(call=>call.path==='/api/jobs'&&call.body),false);
+ assert.equal(f.w.onlineTest.onlineWorkspaceRouteGuard('#projects?scope=local'),false);
+ f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.calls.some(call=>call.path==='/api/jobs'&&call.body));
+ const post=f.calls.find(call=>call.path==='/api/jobs'&&call.body);assert.equal(post.body.billingQuote,'confirmed-polish');assert.equal(post.body.text,'用户主动选择的正文');assert.equal(post.body.type,'polish');
+});
+
+test('cancelled quote retains form input and does not create an AI task or spend anything',async t=>{
+ const f=await fixture(t,{view:'tasks',request:async path=>path==='/api/billing/quote'?billingResponse('polish'):undefined});
+ input(f,'#task-text','取消后仍保留的原文');submit(f,'#task-form');await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-no').click();await settle(()=>!f.doc.querySelector('#task-submit').disabled);
+ assert.equal(f.calls.some(call=>call.path==='/api/jobs'&&call.body),false);assert.equal(f.doc.querySelector('#task-text').value,'取消后仍保留的原文');
+});
+
+test('unavailable quote never bypasses cost confirmation and leaves user material available for retry',async t=>{
+ const f=await fixture(t,{view:'tasks',request:async path=>path==='/api/billing/quote'?{ok:false,status:409,json:async()=>({error:'可用积分不足'})}:undefined});
+ input(f,'#task-text','保留研究材料');submit(f,'#task-form');await settle(()=>f.notices.includes('可用积分不足'));
+ assert.equal(f.doc.querySelector('#online-confirm').open,false);assert.equal(f.calls.some(call=>call.path==='/api/jobs'&&call.body),false);assert.equal(f.doc.querySelector('#task-text').value,'保留研究材料');
+});
+
+test('a task quote that expires while its confirmation is open must not be submitted',async t=>{
+ let expiry;const f=await fixture(t,{view:'tasks',request:async path=>path==='/api/billing/quote'?billingResponse('polish',{expiresAt:expiry=new Date(Date.now()+90).toISOString()}):undefined});
+ input(f,'#task-text','等待确认的正文');submit(f,'#task-form');await settle(()=>f.doc.querySelector('#online-confirm').open);await new Promise(resolve=>setTimeout(resolve,Math.max(0,Date.parse(expiry)-Date.now())+15));f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.notices.some(message=>message.includes('报价已过期')));
+ assert.equal(f.calls.some(call=>call.path==='/api/jobs'&&call.body),false);
+});
+
+test('AI retry obtains a fresh quote for the real job type and uses its explicitly confirmed entitlement',async t=>{
+ const f=await fixture(t,{view:'tasks',request:async(path,options)=>path==='/api/billing/quote'?billingResponse(JSON.parse(options.body).type,{source:'bundle',creditCost:0,sourceOrderId:'paid-bundle'}):undefined});
+ f.doc.querySelector('[data-job="failed"]').click();await settle(()=>f.doc.querySelector('#online-confirm').open);assert.match(f.doc.querySelector('#online-confirm-message').textContent,/本次使用套餐权益 1 次/);assert.match(f.doc.querySelector('#online-confirm-message').textContent,/本次重试将按新报价结算/);assert.equal(f.calls.find(call=>call.path==='/api/billing/quote').body.type,'agent');assert.equal(f.calls.some(call=>call.path==='/api/jobs/failed/retry'),false);
+ f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.calls.some(call=>call.path==='/api/jobs/failed/retry'));assert.equal(f.calls.find(call=>call.path==='/api/jobs/failed/retry').body.billingQuote,'confirmed-agent');
+});
+
+test('invalid or mismatched cost quotes are rejected without offering confirmation',async t=>{
+ const f=await fixture(t,{view:'agent',request:async path=>path==='/api/billing/quote'?billingResponse('polish',{creditCost:-2}):undefined});
+ input(f,'#agent-text','整理研究任务');submit(f,'#agent-form');await settle(()=>f.notices.some(message=>message.includes('无法核对')));assert.equal(f.doc.querySelector('#online-confirm').open,false);assert.equal(f.calls.some(call=>call.path==='/api/jobs'&&call.body),false);
+});
+
+
+test('uncertain AI submission retries the same material with the same server idempotency key',async t=>{
+ let posts=0;const f=await fixture(t,{view:'tasks',request:async(path,options)=>path==='/api/billing/quote'?billingResponse('polish'):path==='/api/jobs'&&options.body&&++posts===1?{ok:false,status:503,json:async()=>({error:'连接中断，请重试'})}:undefined});
+ input(f,'#task-text','只应创建一次的研究任务');submit(f,'#task-form');await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.notices.includes('连接中断，请重试'));
+ submit(f,'#task-form');await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>posts===2);const requests=f.calls.filter(call=>call.path==='/api/jobs'&&call.body);assert.equal(requests.length,2);assert.equal(requests[0].body.idempotencyKey,requests[1].body.idempotencyKey);assert.equal(requests[0].body.text,requests[1].body.text);
+});
+
+
+test('member review action opens the matching task type and confirms the review quote',async t=>{
+ const stamp=offset=>new Date(Date.now()+offset*86400000).toISOString();
+ const entitlements={items:[{order_id:'member-review',type:'membership',title:'研究会员',starts_at:stamp(-1),expires_at:stamp(7),usage:[{key:'review',title:'导师意见修改',quantity:3,used:0,held:0,remaining:3}]}],bundles:[]};
+ const f=await fixture(t,{view:'membership',request:async(path,options)=>path==='/api/payments/entitlements'?{ok:true,status:200,json:async()=>entitlements}:path==='/api/billing/quote'?billingResponse(JSON.parse(options.body).type,{source:'membership',creditCost:0}):undefined});
+ const serviceLink=f.doc.querySelector('.account-entitlement .member-quota-rows a');assert.equal(serviceLink.getAttribute('href'),'#tasks?scope=account&type=review');const url=new URL(serviceLink.href),params=new f.w.URLSearchParams(url.hash.split('?')[1]);
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'tasks',f.ctx,params);assert.equal(f.doc.querySelector('#task-type').value,'review');assert.equal(f.doc.querySelector('#sources-form').hidden,true);
+ input(f,'#task-text','根据导师意见整理这份论文');submit(f,'#task-form');await settle(()=>f.doc.querySelector('#online-confirm').open);assert.equal(f.calls.find(call=>call.path==='/api/billing/quote').body.type,'review');assert.match(f.doc.querySelector('#online-confirm-message').textContent,/导师意见修改/);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.calls.some(call=>call.path==='/api/jobs'&&call.body));assert.equal(f.calls.find(call=>call.path==='/api/jobs'&&call.body).body.type,'review');
+});
+
+test('task deep links cannot select disabled AI or misroute agent into the text modification form',async t=>{
+ const f=await fixture(t,{view:'tasks',params:'type=review',ai:false});assert.equal(f.doc.querySelector('#task-type').value,'compare');assert.equal(f.doc.querySelector('#task-submit').disabled,false);
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'tasks',f.ctx,new f.w.URLSearchParams('type=agent'));assert.equal(f.doc.querySelector('#task-type').value,'compare');assert.equal(f.doc.querySelector('#agent-form'),null);
+});
+
+
+test('paused billing service cannot submit or retry despite a configured AI model while other service stays available',async t=>{
+ const capabilities={ai:true,agent:true,aiProvider:'test-provider',billing:{services:[{key:'polish',mode:'disabled',available:true},{key:'review',mode:'paid',creditCost:8,available:true},{key:'agent',mode:'disabled',available:false}]}};
+ const f=await fixture(t,{view:'tasks',params:'type=polish',request:async path=>path==='/api/capabilities'?{ok:true,status:200,json:async()=>capabilities}:undefined});
+ assert.equal(f.doc.querySelector('#task-type').value,'polish');assert.equal(f.doc.querySelector('#task-submit').disabled,true);assert.match(f.doc.querySelector('#task-note').textContent,/已暂停/);assert.equal(f.doc.querySelector('[data-job="failed"]').disabled,true);
+ input(f,'#task-text','服务暂停期间的研究材料');submit(f,'#task-form');await settle(()=>f.notices.some(message=>message.includes('已暂停')));assert.equal(f.doc.querySelector('#task-submit').disabled,true);assert.equal(f.calls.some(call=>call.path==='/api/billing/quote'),false);assert.equal(f.calls.some(call=>call.path==='/api/jobs'&&call.body),false);
+ const select=f.doc.querySelector('#task-type');select.value='review';select.dispatchEvent(new f.w.Event('change'));assert.equal(f.doc.querySelector('#task-submit').disabled,false);
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'agent',f.ctx);assert.equal(f.doc.querySelector('#agent-submit').disabled,true);assert.equal(f.doc.querySelector('#agent-submit').textContent,'已暂停');
+});
+
+test('a configured model does not make an unavailable billing service ready',async t=>{
+ const f=await fixture(t,{view:'tasks',request:async path=>path==='/api/capabilities'?{ok:true,status:200,json:async()=>({ai:true,agent:true,billing:{services:[{key:'polish',mode:'free',available:false},{key:'review',mode:'paid',available:true},{key:'agent',mode:'paid',available:false}]}})}:undefined});
+ assert.equal(f.doc.querySelector('#task-submit').disabled,true);assert.match(f.doc.querySelector('#task-note').textContent,/完成服务配置/);await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'agent',f.ctx);assert.equal(f.doc.querySelector('#agent-submit').disabled,true);assert.equal(f.doc.querySelector('#agent-submit').textContent,'待配置');
 });

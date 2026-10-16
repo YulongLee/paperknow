@@ -137,3 +137,15 @@ test('balance sums the full credit ledger even when only the most recent 100 rec
  for(let i=0;i<102;i++){const item=await f.create();await f.notify(item);}
  const entitlements=f.service.entitlements(f.user);assert.equal(entitlements.credits.balance,20400);assert.equal(entitlements.credits.ledger.length,100);assert.equal(entitlements.items.length,0);
 });
+
+
+test('obsolete seed descriptions migrate without changing prices, custom copy or paid snapshots',async t=>{
+ const directory=mkdtempSync(join(tmpdir(),'paperknow-credit-copy-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));
+ const f=fixture(t,{path:join(directory,'account.sqlite')});
+ const old='支付成功后向当前账户充值 200 科研积分。积分消费服务尚未开放，当前不会自动扣除积分。';
+ const seed=JSON.parse(f.db.prepare('SELECT rules FROM products WHERE id=?').get('credits-200').rules);seed.description=old;seed.priceCents=2300;f.db.prepare('UPDATE products SET rules=? WHERE id=?').run(JSON.stringify(seed),'credits-200');
+ savePaymentProduct(f.db,'credits-500',productInput(500,{description:'运营自定义积分规则，必须保留。'}));
+ f.channel('wechat');const item=await f.create();await f.notify(item);f.restart();
+ const after=paymentCatalog(f.db).find(p=>p.id==='credits-200');assert.equal(after.priceCents,2300);assert.equal(after.creditAmount,200);assert.match(after.description,/成功扣减/);assert.equal(paymentCatalog(f.db).find(p=>p.id==='credits-500').description,'运营自定义积分规则，必须保留。');
+ assert.equal(JSON.parse(f.db.prepare('SELECT entitlement FROM payment_orders WHERE order_id=?').get(item.id).entitlement).description,old);assert.equal(f.service.entitlements(f.user).credits.balance,200);
+});

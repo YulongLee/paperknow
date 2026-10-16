@@ -6,24 +6,26 @@ import {database} from '../backend/database.mjs';
 import {createAPI} from '../backend/api.mjs';
 import {createSession} from '../backend/auth.mjs';
 import {validateProvider} from '../backend/payment-providers.mjs';
+import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
 
 const rsa=generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});
 const wechat={appId:'wx1234567890abcdef',merchantId:'1234567890',merchantSerial:'1234567890ABCDEF1234567890ABCDEF',privateKey:rsa.privateKey,apiV3Key:'a'.repeat(32),platformPublicKeyId:'PUB_KEY_ID_1234567890',platformPublicKey:rsa.publicKey};
 const alipay={appId:'2026101512345678',sellerId:'2088123456789012',privateKey:rsa.privateKey,alipayPublicKey:rsa.publicKey};
 assert.deepEqual(validateProvider('wechat',wechat),[]);
 assert.deepEqual(validateProvider('alipay',alipay),[]);
-const product={title:'账户会员测试商品',description:'提供 7 天账户会员记录，以当前已开放服务为准。',priceCents:321,durationDays:7,status:'active'};
+const product={title:'账户会员测试商品',description:'提供 7 天账户会员记录，以当前已开放服务为准。',priceCents:321,durationDays:7,status:'active',membershipItems:[{key:'polish',title:'测试学术润色',quantity:2},{key:'review',title:'测试导师意见修改',quantity:2}]};
 const signature=(provider,settings)=>provider==='wechat'?settings.apiV3Key:createHash('sha256').update(settings.alipayPublicKey.trim()).digest('hex');
 
 async function fixture(t,{config:overrides={},adapters={}}={}){
  const db=database(':memory:'),created=[],queried=[],verified=[],remote=new Map();
- const config={authCodeSecret:'payment-test-auth-secret-2026-do-not-use-in-production',paymentConfigKey:randomBytes(32).toString('base64'),ownerEmail:'owner-payment@example.invalid',getAI:()=>({enabled:false}),...overrides};
+ const config={authCodeSecret:'payment-test-auth-secret-2026-do-not-use-in-production',paymentConfigKey:randomBytes(32).toString('base64'),ownerEmail:'owner-payment@example.invalid',getAI:()=>({aiURL:'https://billing-fixture.example.invalid/v1/chat',aiKey:'payment-fixture-only-no-network',aiModel:'test-model'}),...overrides};
  const paymentAdapters={
   async create(provider,settings,input){created.push({provider,settings:{...settings},input:{...input}});remote.set(input.outTradeNo,{provider,settings:{...settings},input:{...input},state:'pending'});if(adapters.create)return adapters.create(provider,settings,input);return {qrContent:provider==='wechat'?'weixin://wxpay/bizpayurl?pr=payment-test-order':'https://qr.alipay.com/payment-test-order'};},
   async query(provider,settings,input,options){queried.push({provider,settings:{...settings},input:{...input},options});if(adapters.query)return adapters.query(provider,settings,input,options);const entry=remote.get(input.outTradeNo);return paidResult(entry,{state:entry?.state||'pending'});},
   async notify(provider,settings,request){verified.push({provider,settings:{...settings}});if(adapters.notify)return adapters.notify(provider,settings,request);if(request.headers['x-test-sign']!==signature(provider,settings))throw new Error('test invalid provider signature');const raw=request.rawBody.toString();return JSON.parse(provider==='wechat'?raw:new URLSearchParams(raw).get('payload'));}
  };
  config.paymentAdapters=paymentAdapters;
+ const billing=createBillingService(db,config);billing.saveRules({version:billing.rules().version,services:billingServiceTypes.map(({key})=>({key,mode:key==='agent'?'disabled':'paid',creditCost:key==='agent'?null:10}))});
  const api=createAPI(db,{cancel(){}},config),server=http.createServer((req,res)=>void api(req,res));
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`;
  t.after(async()=>{await new Promise(resolve=>server.close(resolve));db.close();});
@@ -83,7 +85,7 @@ test('an unconfirmed create timeout retains a queryable pending order and never 
 });
 
 test('orders and entitlements remain private to their owning account',async t=>{
- const f=await fixture(t);await f.ready();const item=(await f.create()).value.item;assert.equal((await f.request('/api/orders/'+item.id,{cookie:''})).status,401);assert.equal((await f.request('/api/orders/'+item.id,{cookie:f.other.cookie})).status,404);assert.equal((await f.request('/api/orders/'+item.id+'/query',{cookie:f.other.cookie,data:{}})).status,404);assert.equal((await f.request('/api/orders',{cookie:f.other.cookie})).value.items.length,0);assert.equal((await f.request('/api/orders')).value.items[0].id,item.id);assert.equal((await f.notify(item)).status,204);assert.equal((await f.request('/api/payments/entitlements',{cookie:f.other.cookie})).value.items.length,0);assert.equal((await f.request('/api/payments/entitlements')).value.items.length,1);assert.equal(f.queried.length,0);
+ const f=await fixture(t);await f.ready();const item=(await f.create()).value.item;assert.equal((await f.request('/api/orders/'+item.id,{cookie:''})).status,401);assert.equal((await f.request('/api/orders/'+item.id,{cookie:f.other.cookie})).status,404);assert.equal((await f.request('/api/orders/'+item.id+'/query',{cookie:f.other.cookie,data:{}})).status,404);assert.equal((await f.request('/api/orders',{cookie:f.other.cookie})).value.items.length,0);assert.equal((await f.request('/api/orders')).value.items[0].id,item.id);assert.equal((await f.notify(item)).status,204);assert.deepEqual((await f.request('/api/payments/entitlements',{cookie:f.other.cookie})).value,{items:[],credits:{balance:0,held:0,available:0,ledger:[]},bundles:[],billing:{reservations:[],membershipUsage:{},bundleUsage:{}}});assert.equal((await f.request('/api/payments/entitlements')).value.items.length,1);assert.equal(f.queried.length,0);
 });
 
 test('verified server notifications need no session or Origin and return the provider acknowledgement format',async t=>{
@@ -99,7 +101,7 @@ test('duplicate callbacks and an in-flight provider query grant an order exactly
 });
 
 test('editing a product never changes an existing order amount, title or fulfilled duration snapshot',async t=>{
- const f=await fixture(t);await f.ready();const item=(await f.create()).value.item;assert.equal((await f.publish('basic',{priceCents:999,title:'修改后的商品',durationDays:30,description:'新商品的 30 天权益。'})).status,200);const stored=(await f.request('/api/orders/'+item.id)).value.item;assert.equal(stored.amountCents,321);assert.equal(stored.title,product.title);assert.equal((await f.notify(item,{result:f.paidResult(f.orderEntry(item),{amountCents:999})})).status,400);assert.equal((await f.notify(item)).status,204);const entitlement=f.db.prepare('SELECT * FROM payment_entitlements WHERE order_id=?').get(item.id);assert.equal(Date.parse(entitlement.expires_at)-Date.parse(entitlement.starts_at),7*86400000);const publicEntitlement=(await f.request('/api/payments/entitlements')).value.items[0];assert.equal(publicEntitlement.title,product.title);assert.equal(publicEntitlement.description,product.description);assert.equal(publicEntitlement.order_id,item.id);for(const field of ['entitlement','config','config_id','sealed_settings','privateKey','apiV3Key'])assert.equal(field in publicEntitlement,false);const newItem=(await f.create()).value.item;assert.equal(newItem.amountCents,999);assert.equal(newItem.title,'修改后的商品');
+ const f=await fixture(t);await f.ready();const item=(await f.create()).value.item;assert.equal((await f.publish('basic',{priceCents:999,title:'修改后的商品',durationDays:30,description:'新商品的 30 天权益。'})).status,200);const stored=(await f.request('/api/orders/'+item.id)).value.item;assert.equal(stored.amountCents,321);assert.equal(stored.title,product.title);assert.equal((await f.notify(item,{result:f.paidResult(f.orderEntry(item),{amountCents:999})})).status,400);assert.equal((await f.notify(item)).status,204);const entitlement=f.db.prepare('SELECT * FROM payment_entitlements WHERE order_id=?').get(item.id);assert.equal(Date.parse(entitlement.expires_at)-Date.parse(entitlement.starts_at),7*86400000);const publicEntitlement=(await f.request('/api/payments/entitlements')).value.items[0];assert.equal(publicEntitlement.title,product.title);assert.equal(publicEntitlement.description,product.description);assert.equal(publicEntitlement.order_id,item.id);assert.deepEqual(publicEntitlement.membershipItems,product.membershipItems);assert.deepEqual(publicEntitlement.usage,product.membershipItems.map(service=>({...service,held:0,used:0,remaining:service.quantity})));for(const field of ['entitlement','config','config_id','sealed_settings','privateKey','apiV3Key'])assert.equal(field in publicEntitlement,false);const newItem=(await f.create()).value.item;assert.equal(newItem.amountCents,999);assert.equal(newItem.title,'修改后的商品');
 });
 
 test('same-merchant credential rotation keeps old orders payable with current verified credentials',async t=>{
@@ -176,4 +178,14 @@ test('administrator credit edits persist explicit units and auditable quantity w
  const row=f.db.prepare("SELECT detail FROM admin_audit WHERE action='payment.product.update' AND target_id='credits-200'").get();
  const detail=JSON.parse(row.detail);assert.equal(detail.entitlementType,'credits');assert.equal(detail.creditAmount,250);assert.equal(detail.priceCents,2500);
  assert.equal(f.count('orders'),0);assert.equal(f.count('payment_credit_ledger'),0);
+});
+
+test('free service policy pauses selling credits and membership rather than collecting payment without a consumable service',async t=>{
+ const f=await fixture(t);await f.channel();const current=(await f.request('/api/billing/rules')).value;
+ assert.equal((await f.request('/api/admin/billing',{cookie:f.admin.cookie,data:{version:current.version,services:billingServiceTypes.map(({key})=>({key,mode:'free',creditCost:null}))}})).status,200);
+ assert.equal((await f.publish()).status,409);const options=(await f.request('/api/payments/options',{cookie:''})).value;assert.ok(options.products.every(item=>item.purchasable===false));assert.equal((await f.create({productId:'credits-200'})).status,503);assert.equal(f.count('orders'),0);assert.equal(f.created.length,0);
+});
+
+test('unconfigured AI rejects new membership publication and credit payments even when merchant settings are valid',async t=>{
+ const f=await fixture(t,{config:{getAI:()=>({aiEnabled:false})}});assert.equal((await f.channel()).status,200);assert.equal((await f.publish()).status,409);assert.equal((await f.create({productId:'credits-200'})).status,503);assert.ok((await f.request('/api/payments/options',{cookie:''})).value.products.every(item=>item.purchasable===false));assert.equal(f.count('orders'),0);assert.equal(f.created.length,0);
 });

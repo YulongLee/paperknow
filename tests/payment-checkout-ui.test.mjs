@@ -64,7 +64,7 @@ test('membership and bundle checkout retain real validity and service counts on 
  for(const product of [memberProduct,bundleProduct])for(const provider of ['wechat','alipay']){
   const f=await fixture(t,{initialProductId:product.id,preferredProvider:provider,catalogue:{enabled:true,channels,products:[product]},order:{title:product.title,amountCents:product.priceCents,entitlementType:product.entitlementType,durationDays:product.durationDays,bundleItems:product.bundleItems}});
   const summary=f.doc.querySelector('.payment-summary');assert.match(summary.textContent,new RegExp(`${product.durationDays} 天`));assert.match(summary.textContent,new RegExp(product.entitlementType==='bundle'?'套餐有效期':'会员有效期'));
-  if(product.entitlementType==='bundle'){assert.match(summary.textContent,/论文检测× 2/);assert.match(summary.textContent,/文本修改× 3/);assert.match(summary.textContent,/消费扣减尚未接入/);}
+  if(product.entitlementType==='bundle'){assert.match(summary.textContent,/论文检测× 2/);assert.match(summary.textContent,/文本修改× 3/);assert.match(summary.textContent,/有效期内总次数/);}
   click(f,'[data-payment-create]');await settle(()=>f.doc.querySelector('[data-payment-qr] img'));const request=f.calls.find(call=>call.body?.productId);assert.equal(request.body.productId,product.id);assert.equal(request.body.provider,provider);assert.deepEqual(Object.keys(request.body).sort(),['idempotencyKey','productId','provider']);assert.match(f.doc.querySelector('.payment-order-summary').textContent,new RegExp(`${product.durationDays} 天`));assert.equal(f.w.localStorage.length,0);
  }
 });
@@ -158,4 +158,13 @@ test('continuing a pending order reads its existing QR and never creates a dupli
 
 test('hash navigation and replacement mounts abort old requests and polling',async t=>{
  const f=await fixture(t);click(f,'[data-payment-create]');await settle(()=>f.doc.querySelector('[data-payment-qr] img'));await f.orders();assert.equal([...f.timers.values()].some(timer=>timer.delay===5000),false);await f.remount();click(f,'[data-payment-create]');await settle(()=>f.doc.querySelector('[data-payment-qr] img'));f.w.dispatchEvent(new f.w.HashChangeEvent('hashchange'));assert.equal(f.timers.size,0);
+});
+
+
+test('undeliverable published SKU cannot create an order even if a payment channel is ready',async t=>{
+ const product={...products[0],purchasable:false,unavailableReason:'积分消费服务尚未开放，当前暂停充值。'};
+ const f=await fixture(t,{initialProductId:product.id,catalogue:{enabled:true,channels,products:[product]}});
+ assert.equal(f.doc.querySelector('[data-payment-create]').disabled,true);assert.match(f.doc.querySelector('[data-payment-notice]').textContent,/暂停充值/);
+ f.doc.querySelector('[data-payment-create]').disabled=false;click(f,'[data-payment-create]');await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.calls.some(call=>call.body?.productId),false);assert.equal(f.created.length,0);
 });

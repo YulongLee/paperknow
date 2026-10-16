@@ -9,6 +9,7 @@ import {database} from '../backend/database.mjs';
 import {createAPI} from '../backend/api.mjs';
 import {createSession} from '../backend/auth.mjs';
 import {paymentBundleItems,paymentCatalog,savePaymentProduct} from '../backend/payment-settings.mjs';
+import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
 
 // The adapters below replace both payment networks. No real merchant or order is used.
 const rsa=generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});
@@ -16,15 +17,16 @@ const credentials={
  wechat:{appId:'wx1234567890abcdef',merchantId:'1234567890',merchantSerial:'1234567890ABCDEF1234567890ABCDEF',privateKey:rsa.privateKey,apiV3Key:'b'.repeat(32),platformPublicKeyId:'PUB_KEY_ID_1234567890',platformPublicKey:rsa.publicKey},
  alipay:{appId:'2026101512345678',sellerId:'2088123456789012',privateKey:rsa.privateKey,alipayPublicKey:rsa.publicKey}
 };
-const items=()=>[{key:'similarity-check',title:'自备材料核对',quantity:2},{key:'revision-advice',title:'修改建议',quantity:3}];
-const bundleInput=(extra={})=>({title:'套餐测试商品',description:'30 天内保留这份已购服务数量记录；当前不提供自动消费扣减。',priceCents:9900,durationDays:30,status:'active',entitlementType:'bundle',bundleItems:items(),...extra});
+const items=()=>[{key:'polish',title:'测试学术润色',quantity:2},{key:'review',title:'修改建议',quantity:3}];
+const bundleInput=(extra={})=>({title:'套餐测试商品',description:'30 天内使用已接通的测试服务次数，服务由测试桩替代，不访问模型或支付网络。',priceCents:9900,durationDays:30,status:'active',entitlementType:'bundle',bundleItems:items(),...extra});
 async function fixture(t,{path=':memory:',query:customQuery}={}){
  const db=database(path),remote=new Map(),created=[];
- const config={paymentConfigKey:randomBytes(32).toString('base64'),authCodeSecret:'bundle-api-unit-test-secret-not-for-real-accounts',getAI:()=>({enabled:false}),paymentAdapters:{
+ const config={paymentConfigKey:randomBytes(32).toString('base64'),authCodeSecret:'bundle-api-unit-test-secret-not-for-real-accounts',getAI:()=>({aiURL:'https://bundle-fixture.example.invalid/v1/chat',aiKey:'bundle-fixture-only-no-network',aiModel:'test-model'}),paymentAdapters:{
   async create(provider,settings,input){const entry={provider,settings,input,state:'pending'};remote.set(input.outTradeNo,entry);created.push(entry);return {qrContent:provider==='wechat'?'weixin://wxpay/bizpayurl?pr=bundle-test':'https://qr.alipay.com/bundle-test'};},
   async query(provider,settings,input){return customQuery?customQuery(provider,settings,input):result(remote.get(input.outTradeNo),{state:remote.get(input.outTradeNo).state});},
   async notify(provider,settings,request){if(request.headers['x-test-signature']!=='bundle-unit-valid')throw new Error('invalid mock signature');return JSON.parse(provider==='wechat'?request.rawBody:new URLSearchParams(request.rawBody.toString()).get('payload'));}
  }};
+ const billing=createBillingService(db,config);billing.saveRules({version:billing.rules().version,services:billingServiceTypes.map(({key})=>({key,mode:key==='agent'?'disabled':'paid',creditCost:key==='agent'?null:10}))});
  const api=createAPI(db,{cancel(){}},config),server=http.createServer((req,res)=>void api(req,res));
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`;
  t.after(async()=>{await new Promise(resolve=>server.close(resolve));db.close();});
@@ -58,9 +60,9 @@ test('both payment channels grant a separate bundle record using exact amount, d
   assert.equal(f.db.prepare('SELECT count(*) AS n FROM payment_bundle_entitlements WHERE order_id=?').get(item.id).n,0);
   const acknowledgement=await f.notify(item);assert.equal(acknowledgement.status,provider==='wechat'?204:200);if(provider==='alipay')assert.equal(acknowledgement.text,'success');
   const owned=(await f.request('/api/payments/entitlements')).value,bundle=owned.bundles.find(b=>b.orderId===item.id);
-  assert.ok(bundle);assert.equal(bundle.productId,'bundle-rewrite');assert.equal(bundle.title,'套餐测试商品');assert.equal(bundle.description,bundleInput().description);assert.deepEqual(bundle.items,items());assert.equal(Date.parse(bundle.expiresAt)-Date.parse(bundle.startsAt),30*86400000);
+  assert.ok(bundle);assert.equal(bundle.productId,'bundle-rewrite');assert.equal(bundle.title,'套餐测试商品');assert.equal(bundle.description,bundleInput().description);assert.deepEqual(bundle.items,items().map(item=>({...item,held:0,used:0,remaining:item.quantity})));assert.equal(Date.parse(bundle.expiresAt)-Date.parse(bundle.startsAt),30*86400000);
  }
- const owned=(await f.request('/api/payments/entitlements')).value;assert.equal(owned.bundles.length,2);assert.deepEqual(owned.items,[]);assert.deepEqual(owned.credits,{balance:0,ledger:[]});assert.equal(f.count('payment_entitlements'),0);assert.equal(f.count('payment_credit_ledger'),0);
+ const owned=(await f.request('/api/payments/entitlements')).value;assert.equal(owned.bundles.length,2);assert.deepEqual(owned.items,[]);assert.deepEqual(owned.credits,{balance:0,held:0,available:0,ledger:[]});assert.equal(f.count('payment_entitlements'),0);assert.equal(f.count('payment_credit_ledger'),0);
 });
 
 test('replayed notifications and an in-flight query cannot grant a bundle twice',async t=>{
@@ -77,16 +79,16 @@ test('editing or unpublishing a bundle cannot change an existing order snapshot 
  assert.equal((await f.publish({title:'已修改商品',description:'新的套餐说明',priceCents:25000,durationDays:90,bundleItems:[{key:'different-service',title:'新服务',quantity:99}],status:'preview'})).status,200);
  const before=(await f.request('/api/orders/'+item.id)).value.item;assert.equal(before.amountCents,9900);assert.equal(before.title,'套餐测试商品');assert.equal(before.durationDays,30);assert.deepEqual(before.bundleItems,items());
  assert.equal((await f.notify(item,{data:f.result(f.remote.get(item.outTradeNo),{amountCents:25000})})).status,400);assert.equal((await f.notify(item)).status,204);
- const granted=(await f.request('/api/payments/entitlements')).value.bundles[0];assert.equal(granted.title,'套餐测试商品');assert.equal(granted.description,bundleInput().description);assert.equal(Date.parse(granted.expiresAt)-Date.parse(granted.startsAt),30*86400000);assert.deepEqual(granted.items,items());
+ const granted=(await f.request('/api/payments/entitlements')).value.bundles[0];assert.equal(granted.title,'套餐测试商品');assert.equal(granted.description,bundleInput().description);assert.equal(Date.parse(granted.expiresAt)-Date.parse(granted.startsAt),30*86400000);assert.deepEqual(granted.items,items().map(item=>({...item,held:0,used:0,remaining:item.quantity})));
  assert.equal((await f.create()).status,409);
 });
 
 test('account isolation protects bundle orders and entitlement records without exposing payment credentials',async t=>{
  const f=await fixture(t);await f.ready();const item=(await f.create()).value.item;await f.notify(item);
  assert.equal((await f.request('/api/payments/entitlements',{cookie:''})).status,401);assert.equal((await f.request('/api/orders/'+item.id,{cookie:f.other.cookie})).status,404);assert.equal((await f.request('/api/orders/'+item.id+'/query',{cookie:f.other.cookie,data:{}})).status,404);
- const other=(await f.request('/api/payments/entitlements',{cookie:f.other.cookie})).value;assert.deepEqual(other.bundles,[]);assert.deepEqual(other.items,[]);assert.equal(other.credits.balance,0);
+ const other=(await f.request('/api/payments/entitlements',{cookie:f.other.cookie})).value;assert.deepEqual(other,{items:[],credits:{balance:0,held:0,available:0,ledger:[]},bundles:[],billing:{reservations:[],membershipUsage:{},bundleUsage:{}}});
  const owned=(await f.request('/api/payments/entitlements')).value;for(const secret of ['privateKey','apiV3Key','sealed_settings','entitlement','config_id'])assert.equal(Object.hasOwn(owned.bundles[0],secret),false);
- assert.deepEqual(Object.keys(owned.bundles[0].items[0]).sort(),['key','quantity','title']);
+ assert.deepEqual(Object.keys(owned.bundles[0].items[0]).sort(),['held','key','quantity','remaining','title','used']);
 });
 
 test('unverified callbacks and mismatched amount, currency, application or merchant never grant bundles',async t=>{
@@ -116,7 +118,7 @@ test('administrator-only publishing is origin protected, audited and rolled back
  const f=await fixture(t),path='/api/admin/payments/products/bundle-rewrite';
  assert.equal((await f.request(path,{cookie:f.user.cookie,data:bundleInput()})).status,403);assert.equal((await f.request(path,{cookie:f.admin.cookie,data:bundleInput(),origin:''})).status,403);assert.equal((await f.publish()).status,200);
  const audit=f.db.prepare("SELECT detail FROM admin_audit WHERE action='payment.product.update' ORDER BY rowid DESC LIMIT 1").get(),detail=JSON.parse(audit.detail);assert.equal(detail.entitlementType,'bundle');assert.equal(detail.durationDays,30);assert.deepEqual(detail.bundleItems,items());
- f.db.exec("CREATE TRIGGER reject_bundle_audit BEFORE INSERT ON admin_audit BEGIN SELECT RAISE(ABORT,'audit unavailable'); END;");assert.equal((await f.publish({priceCents:12300,bundleItems:[{key:'changed',title:'不同服务',quantity:8}]})).status,500);assert.equal(paymentCatalog(f.db).find(p=>p.id==='bundle-rewrite').priceCents,9900);assert.deepEqual(paymentCatalog(f.db).find(p=>p.id==='bundle-rewrite').bundleItems,items());
+ f.db.exec("CREATE TRIGGER reject_bundle_audit BEFORE INSERT ON admin_audit BEGIN SELECT RAISE(ABORT,'audit unavailable'); END;");assert.equal((await f.publish({priceCents:12300,bundleItems:[{key:'polish',title:'不同服务',quantity:8}]})).status,500);assert.equal(paymentCatalog(f.db).find(p=>p.id==='bundle-rewrite').priceCents,9900);assert.deepEqual(paymentCatalog(f.db).find(p=>p.id==='bundle-rewrite').bundleItems,items());
 });
 
 test('bundle grant failure or duplicate provider transaction rolls back the complete payment transaction',async t=>{

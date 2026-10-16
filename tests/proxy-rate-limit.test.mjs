@@ -1,12 +1,14 @@
-import test from 'node:test';
+import test,{after} from 'node:test';
+import {database} from '../backend/database.mjs';
+const databases=[];after(()=>databases.forEach(db=>db.close()));
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
 import {createAPI} from '../backend/api.mjs';
 import {environmentConfig} from '../backend/config.mjs';
 
 function authRequests(config={}){
-  // Invalid credentials stop before database access but still consume the auth limit.
-  const api=createAPI({prepare(){throw new Error('Unexpected database access');}},null,config);
+  // Initialization prepares billing tables; invalid credentials still consume the IP quota.
+  const db=database(':memory:');databases.push(db);const api=createAPI(db,null,config);
   return async(remoteAddress,headers={},path='/api/auth/login')=>{
     const req=Object.assign(Readable.from([Buffer.from('{}')]),{
       method:'POST',url:path,socket:{remoteAddress},
