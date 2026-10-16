@@ -12,8 +12,12 @@ export function createStorage(config,client){
   return {provider:'aliyun_oss',bucket:config.ossBucket,prefix,
     async put(id,userId,kind,buffer){
       const key=`${prefix}users/${userId}/originals/${id}.${kind}`;
-      try{await oss.put(key,buffer,{headers:{'x-oss-object-acl':'private','Content-Type':'application/octet-stream'}});}catch{throw new Error('OSS 文件保存失败，请稍后重试');}
+      try{await oss.put(key,buffer,{headers:{'x-oss-object-acl':'private','Content-Type':'application/octet-stream'}});}catch{try{await oss.delete(key);}catch{/* A private object may need storage reconciliation if both operations fail. */}throw new Error('OSS 文件保存失败，请稍后重试');}
       return key;
+    },async remove(file){
+      const expected=prefix+'users/'+file.user_id+'/originals/'+file.id+'.'+file.kind;
+      if(!/^[A-Za-z0-9_-]+$/.test(file.id||'')||!/^[A-Za-z0-9_-]+$/.test(file.user_id||'')||!['txt','docx','pdf'].includes(file.kind)||file.storage_bucket!==config.ossBucket||file.storage_key!==expected)throw new Error('文件存储位置与当前项目配置不匹配');
+      try{await oss.delete(file.storage_key);}catch{throw new Error('OSS 原件删除未完成，请稍后重试');}
     },async read(file){
       if(file.storage_bucket!==config.ossBucket||!file.storage_key?.startsWith(`${prefix}users/${file.user_id}/originals/`))throw new Error('文件存储位置与当前项目配置不匹配');
       let result;try{result=await oss.get(file.storage_key);}catch{throw new Error('OSS 文件读取失败，请稍后重试');}

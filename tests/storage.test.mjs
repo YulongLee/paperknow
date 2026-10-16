@@ -16,3 +16,16 @@ test('local originals remain readable with OSS enabled and foreign object paths 
  assert.equal(reads,0);
  await assert.rejects(fileBytes({storage_provider:'aliyun_oss'},null),/请配置存储/);
 });
+
+test('OSS removal accepts only the exact owned project object and hides provider failure details',async()=>{
+ const keys=[];let unavailable=false;const store=createStorage(settings,{async delete(key){keys.push(key);if(unavailable)throw new Error('secret-provider-trace');}});
+ const row={id:'file-1',user_id:'user-1',kind:'txt',storage_bucket:'test-bucket',storage_key:'paperknow/users/user-1/originals/file-1.txt'};
+ for(const change of [{id:'other'},{user_id:'other'},{kind:'html'},{storage_bucket:'other'},{storage_key:'paperknow/users/user-1/originals/other.txt'},{storage_key:'other/users/user-1/originals/file-1.txt'}])await assert.rejects(store.remove({...row,...change}),/不匹配/);
+ assert.equal(keys.length,0);await store.remove(row);assert.deepEqual(keys,[row.storage_key]);unavailable=true;
+ await assert.rejects(store.remove(row),error=>error.message==='OSS 原件删除未完成，请稍后重试'&&!error.message.includes('secret'));
+});
+
+test('an ambiguous OSS upload failure attempts cleanup of its exact newly allocated object',async()=>{
+ const deleted=[];const store=createStorage(settings,{async put(){throw new Error('ambiguous-timeout-secret');},async delete(key){deleted.push(key);}});
+ await assert.rejects(store.put('new-file','owner','txt',Buffer.from('original')),error=>error.message==='OSS 文件保存失败，请稍后重试');assert.deepEqual(deleted,['paperknow/users/owner/originals/new-file.txt']);
+});

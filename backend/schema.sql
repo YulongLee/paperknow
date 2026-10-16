@@ -3,6 +3,16 @@ CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE,name TEXT
 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),title TEXT NOT NULL,degree TEXT NOT NULL,major TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),project_id TEXT REFERENCES projects(id),name TEXT NOT NULL,kind TEXT NOT NULL,bytes INTEGER NOT NULL,sha256 TEXT NOT NULL,body BLOB NOT NULL,created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS workspace_file_uploads(
+ id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),project_id TEXT REFERENCES projects(id),
+ bytes INTEGER NOT NULL CHECK(bytes>0),expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS workspace_file_uploads_owner ON workspace_file_uploads(user_id,expires_at);
+CREATE TABLE IF NOT EXISTS workspace_file_deletions(
+ file_id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expected_sha256 TEXT NOT NULL,
+ status TEXT NOT NULL CHECK(status IN ('pending','completed')),created_at TEXT NOT NULL,updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS workspace_file_deletions_owner ON workspace_file_deletions(user_id,status);
 CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),project_id TEXT REFERENCES projects(id),type TEXT NOT NULL,status TEXT NOT NULL,stage TEXT NOT NULL,input TEXT NOT NULL,error TEXT,result_id TEXT,attempt INTEGER NOT NULL DEFAULT 0,idempotency_key TEXT NOT NULL,input_hash TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(user_id,idempotency_key));
 CREATE TABLE IF NOT EXISTS results(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),project_id TEXT REFERENCES projects(id),job_id TEXT UNIQUE REFERENCES jobs(id),type TEXT NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS usage(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),job_id TEXT UNIQUE REFERENCES jobs(id),provider TEXT NOT NULL,model TEXT NOT NULL,input_tokens INTEGER,output_tokens INTEGER,billable INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL);

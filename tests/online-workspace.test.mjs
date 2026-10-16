@@ -65,7 +65,7 @@ test('account project creation and file upload use real APIs and route parsing t
  assert.equal(f.doc.querySelector('#upload-file').files[0],file,'saving a project must retain the selected paper file');
  f.doc.querySelector('#upload-project').value='p1';submit(f,'#upload-form');
  await settle(()=>f.navigations.length>0);
- assert.deepEqual(f.navigations,['#tasks?scope=account']);
+ assert.deepEqual(f.navigations,['#tasks?scope=account&project=p1']);
  assert.equal(f.calls.find(call=>call.path==='/api/files'&&call.body).body.data,'YWJj');
  const parse=f.calls.find(call=>call.path==='/api/jobs'&&call.body);assert.equal(parse.body.type,'parse');assert.equal(parse.body.projectId,'p1');assert.equal(parse.body.fileId,'f2');assert.ok(parse.body.idempotencyKey);
  assert.match(f.w.localStorage.getItem('paperknow-drafts'),/本地未上传成果/);
@@ -150,7 +150,7 @@ test('account drafts are opened by account id while local copies upload only aft
  const cloud=[{id:'cloud1',title:'账户提纲',tool:'writing',version:3,project_id:'p1',updated_at:now}];
  const f=await fixture(t,{view:'results',request:async(path,options)=>path==='/api/workspace/drafts'?{ok:true,status:200,json:async()=>options.body?{item:{id:'cloud-created'}}:{items:cloud}}:undefined});
  assert.ok(f.doc.querySelector('a[href="#account-draft/cloud1"]'));assert.equal(f.calls.some(c=>c.body),false);
- f.w.localStorage.setItem('paperknow-drafts',JSON.stringify([{id:'local1',title:'仅上传这一份',tool:'writing',text:'真实用户输入',exportUnlocked:true},{id:'local2',title:'另一份不上传',tool:'writing',text:'私人材料'}]));f.doc.querySelector('#import-local-draft').click();assert.equal(f.calls.some(c=>c.body),false);f.doc.querySelector('#draft-import-id').value='local1';f.doc.querySelector('#draft-import-project').value='p1';submit(f,'#draft-import-form');await settle(()=>f.w.location.hash==='#account-draft/cloud-created');const sent=f.calls.find(c=>c.path==='/api/workspace/drafts'&&c.body);assert.equal(sent.body.projectId,'p1');assert.equal(sent.body.payload.text,'真实用户输入');assert.equal(sent.body.payload.exportUnlocked,undefined);assert.doesNotMatch(JSON.stringify(sent.body),/私人材料/);assert.match(f.w.localStorage.getItem('paperknow-drafts'),/私人材料/);
+ f.w.localStorage.setItem('paperknow-drafts',JSON.stringify([{id:'local1',title:'仅上传这一份',tool:'writing',text:'真实用户输入',exportUnlocked:true},{id:'local2',title:'另一份不上传',tool:'writing',text:'私人材料'}]));f.doc.querySelector('#import-local-draft').click();await settle(()=>f.doc.querySelector('#draft-import-id'));assert.equal(f.calls.some(c=>c.body),false);f.doc.querySelector('#draft-import-id').value='local1';f.doc.querySelector('#draft-import-project').value='p1';submit(f,'#draft-import-form');await settle(()=>f.w.location.hash==='#account-draft/cloud-created');const sent=f.calls.find(c=>c.path==='/api/workspace/drafts'&&c.body);assert.equal(sent.body.projectId,'p1');assert.equal(sent.body.payload.text,'真实用户输入');assert.equal(sent.body.payload.exportUnlocked,undefined);assert.doesNotMatch(JSON.stringify(sent.body),/私人材料/);assert.match(f.w.localStorage.getItem('paperknow-drafts'),/私人材料/);
 });
 
 test('an expired session with a non-JSON response clears account content instead of leaving private data on screen',async t=>{
@@ -262,4 +262,54 @@ test('paused billing service cannot submit or retry despite a configured AI mode
 test('a configured model does not make an unavailable billing service ready',async t=>{
  const f=await fixture(t,{view:'tasks',request:async path=>path==='/api/capabilities'?{ok:true,status:200,json:async()=>({ai:true,agent:true,billing:{services:[{key:'polish',mode:'free',available:false},{key:'review',mode:'paid',available:true},{key:'agent',mode:'paid',available:false}]}})}:undefined});
  assert.equal(f.doc.querySelector('#task-submit').disabled,true);assert.match(f.doc.querySelector('#task-note').textContent,/完成服务配置/);await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'agent',f.ctx);assert.equal(f.doc.querySelector('#agent-submit').disabled,true);assert.equal(f.doc.querySelector('#agent-submit').textContent,'待配置');
+});
+
+test('result management preserves unsaved edits when changing panels or deleting another draft is declined',async t=>{
+ const cloud=[{id:'cloud1',title:'保留的账户草稿',tool:'writing',version:2,project_id:'p1',updated_at:now}];
+ const f=await fixture(t,{view:'results',request:async(path,options)=>path==='/api/workspace/drafts'&&!options.body?{ok:true,status:200,json:async()=>({items:cloud})}:undefined});
+ f.doc.querySelector('[data-result="r1"]').click();await settle(()=>f.doc.querySelector('#revision-text'));input(f,'#revision-text','尚未保存的研究修改');
+ for(const selector of ['#import-local-draft','[data-draft-project="cloud1"]','[data-result-organize="r1"]','[data-draft-delete="cloud1"]']){
+  f.doc.querySelector(selector).click();await settle(()=>f.doc.querySelector('#online-confirm').open);assert.equal(f.doc.querySelector('#revision-text').value,'尚未保存的研究修改');f.doc.querySelector('#online-confirm-no').click();await settle(()=>!f.doc.querySelector('#online-confirm').open);
+ }
+ assert.equal(f.calls.some(call=>call.path.includes('/delete')||call.body),false);
+ f.doc.querySelector('[data-draft-project="cloud1"]').click();await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.doc.querySelector('#draft-organize'));assert.equal(f.doc.querySelector('#revision-form'),null);input(f,'#draft-title','草稿名称修改尚未保存');
+ f.doc.querySelector('[data-result-organize="r1"]').click();await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-no').click();assert.equal(f.doc.querySelector('#draft-title').value,'草稿名称修改尚未保存');
+});
+
+test('account project scope keeps original files, result counts and task metrics aligned to that project',async t=>{
+ const projects=[{id:'p1',title:'当前研究',status:'active',stage:'detection',version:1},{id:'p2',title:'其他研究',status:'active',version:1}],files=[{id:'f1',name:'当前原件.txt',project_id:'p1',bytes:5,sha256:'a'.repeat(64)},{id:'f2',name:'其他原件.txt',project_id:'p2',bytes:7,sha256:'b'.repeat(64)}],jobs=[{id:'j1',type:'parse',project_id:'p1',status:'queued',attempt:1,created_at:now},{id:'j2',type:'parse',project_id:'p2',status:'queued',attempt:1,created_at:now}],results=[{id:'r1',type:'parse',title:'当前成果',project_id:'p1',created_at:now},{id:'r2',type:'parse',title:'其他成果',project_id:'p2',created_at:now}];
+ const request=async(path,options)=>!options.body&&({'/api/projects':projects,'/api/files':files,'/api/jobs':jobs,'/api/results':results}[path])?{ok:true,status:200,json:async()=>({items:({'/api/projects':projects,'/api/files':files,'/api/jobs':jobs,'/api/results':results}[path])})}:undefined;
+ const f=await fixture(t,{params:'project=p1',request});assert.match(f.doc.querySelector('.account-originals').textContent,/当前原件/);assert.doesNotMatch(f.doc.querySelector('.account-originals').textContent,/其他原件/);assert.equal(f.doc.querySelector('[data-management-stat="已保存原件"]').textContent,'1');assert.match(f.doc.querySelector('.account-project-card').textContent,/检测/);
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'tasks',f.ctx,new f.w.URLSearchParams('project=p1'));assert.equal(f.doc.querySelector('[data-management-stat="处理中 / 排队"]').textContent,'1');assert.equal(f.doc.querySelectorAll('.account-job-row').length,1);
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'results',f.ctx,new f.w.URLSearchParams('project=p1'));assert.equal(f.doc.querySelector('[data-management-stat="处理成果"]').textContent,'1');assert.match(f.doc.querySelector('.management-assets-search').textContent,/1 份内容/);assert.doesNotMatch(f.doc.querySelector('.management-result-rows').textContent,/其他成果/);
+});
+
+test('unknown account project shows an accurate missing-project state without selecting an invalid upload destination',async t=>{
+ const f=await fixture(t,{params:'project=missing'});assert.match(f.doc.querySelector('#account-project-detail').textContent,/未找到这个账户项目/);assert.equal(f.doc.querySelector('#upload-project').value,'');assert.equal(f.doc.querySelector('#account-file-upload').open,false);
+});
+
+test('account tasks can find cancelled records by project or ID without discarding current material',async t=>{
+ const jobs=[{id:'j-cancel',type:'parse',status:'cancelled',project_id:'p1',attempt:1,created_at:now},{id:'j-done',type:'compare',status:'completed',attempt:1,created_at:now}];
+ const f=await fixture(t,{view:'tasks',request:async path=>path==='/api/jobs'?{ok:true,status:200,json:async()=>({items:jobs})}:undefined});input(f,'#task-text','仍然保留的任务材料');f.doc.querySelector('[data-account-job-filter="cancelled"]').click();input(f,'#account-job-query','账户研究');assert.equal(f.doc.querySelectorAll('.account-job-row').length,1);input(f,'#account-job-query','j-done');assert.equal(f.doc.querySelectorAll('.account-job-row').length,0);f.doc.querySelector('[data-account-job-filter="all"]').click();assert.equal(f.doc.querySelectorAll('.account-job-row').length,1);assert.equal(f.doc.querySelector('#task-text').value,'仍然保留的任务材料');assert.match(f.doc.querySelector('.management-list-range').textContent,/最近 100 条任务/);assert.equal(f.calls.some(call=>call.body),false);
+});
+
+test('uncertain parse submission reuses both saved original and idempotency key',async t=>{
+ let attempts=0;const f=await fixture(t,{request:async(path,options)=>path==='/api/jobs'&&options.body&&++attempts===1?{ok:false,status:503,json:async()=>({error:'连接已中断'})}:undefined});const file={name:'same.txt',size:3,lastModified:1,arrayBuffer:async()=>new TextEncoder().encode('abc').buffer};Object.defineProperty(f.doc.querySelector('#upload-file'),'files',{value:[file]});submit(f,'#upload-form');await settle(()=>f.notices.includes('连接已中断'));submit(f,'#upload-form');await settle(()=>attempts===2);const calls=f.calls.filter(call=>call.path==='/api/jobs'&&call.body);assert.equal(calls[0].body.idempotencyKey,calls[1].body.idempotencyKey);assert.equal(f.calls.filter(call=>call.path==='/api/files'&&call.body).length,1);
+});
+
+test('deleting an original requires explicit confirmation and a matching file fingerprint, preserving records on failure',async t=>{
+ const files=[{id:'f/1',name:'应保留的原件.txt',project_id:'p1',bytes:5,sha256:'a'.repeat(64)}];let deleted=false;
+ const f=await fixture(t,{request:async(path,options)=>path==='/api/files'&&!options.body?{ok:true,status:200,json:async()=>({items:deleted?[]:files})}:path==='/api/files/f%2F1/delete'?{ok:false,status:409,json:async()=>({error:'原件仍被任务使用'})}:undefined});
+ assert.equal(f.calls.some(call=>call.body),false);f.doc.querySelector('[data-account-file-delete]').click();await settle(()=>f.doc.querySelector('#online-confirm').open);assert.match(f.doc.querySelector('#online-confirm-message').textContent,/已经生成的成果与草稿会保留/);f.doc.querySelector('#online-confirm-no').click();await settle(()=>!f.doc.querySelector('#online-confirm').open);assert.equal(f.calls.some(call=>call.path.endsWith('/delete')),false);
+ f.doc.querySelector('[data-account-file-delete]').click();await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.notices.includes('原件仍被任务使用'));assert.equal(f.calls.find(call=>call.path.endsWith('/delete')).body.expectedSha256,'a'.repeat(64));assert.match(f.doc.querySelector('.account-originals').textContent,/应保留的原件/);
+});
+
+test('pending original deletion offers a retry without exposing download or inclusion in a new agent task',async t=>{
+ const files=[{id:'f1',name:'正在删除的原件.txt',bytes:9,sha256:'a'.repeat(64),deletionStatus:'pending'}];let removed=false;const request=async(path,options)=>path==='/api/files'&&!options.body?{ok:true,status:200,json:async()=>({items:removed?[]:files})}:path==='/api/files/f1/delete'?(removed=true,{ok:true,status:200,json:async()=>({ok:true})}):undefined;
+ const f=await fixture(t,{request});assert.match(f.doc.querySelector('.account-originals').textContent,/删除未完成，可重试/);assert.equal(f.doc.querySelector('.account-originals a[href*="download"]'),null);f.doc.querySelector('[data-account-file-delete]').click();await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.notices.includes('原件已删除，已生成成果仍保留。'));assert.equal(f.doc.querySelector('[data-account-file-delete]'),null);
+ removed=false;await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'agent',f.ctx);assert.equal(f.doc.querySelectorAll('#agent-materials option').length,0);
+});
+
+test('refreshing an edited project resets editing identity so a later new project cannot overwrite the old one',async t=>{
+ const f=await fixture(t);f.doc.querySelector('[data-account-project-edit="p1"]').click();await settle(()=>f.doc.querySelector('#project-edit-note').textContent.includes('正在编辑'));input(f,'#project-title','放弃的项目修改');f.doc.querySelector('.account-refresh').click();await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.notices.includes('已读取最新账户内容'));assert.equal(f.doc.querySelector('#project-title').value,'');input(f,'#project-title','真正的新项目');submit(f,'#project-form');await settle(()=>f.notices.includes('项目已保存'));assert.equal(f.calls.some(call=>call.path==='/api/projects/p1'&&call.body),false);assert.equal(f.calls.find(call=>call.path==='/api/projects'&&call.body).body.title,'真正的新项目');
 });

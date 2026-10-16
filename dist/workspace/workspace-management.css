@@ -249,6 +249,12 @@
 .management-record-icon,
 .management-project-icon,
 .management-disclosure-icon { display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; color: var(--pk-blue, #246bfd); background: var(--pk-blue-soft, #edf3ff); border-radius: 11px; }
+/* A row's leading symbol must never inherit the flexible text-column sizing. */
+.account-workspace .row > .management-record-icon,
+.account-workspace .row > .management-project-icon { flex: 0 0 40px; width: 40px; min-width: 40px; max-width: 40px; height: 40px; align-self: flex-start; }
+.account-workspace .management-record-row > span:nth-child(2),
+.account-workspace .account-project-card > .row > div,
+.account-workspace .account-job-copy { min-width: 0; overflow-wrap: anywhere; }
 .management-overview > div:nth-child(2) .management-metric-icon,
 .management-disclosure-icon.mint { background: #eaf7f3; color: #209a83; }
 .management-overview > div:nth-child(3) .management-metric-icon { background: #f1edff; color: #7d61c7; }
@@ -360,7 +366,13 @@
 .hub-theme-dark .management-record-icon.completed { background: #163b36; color: #87d1bb; }
 .hub-theme-dark .account-workspace .tag.failed,
 .hub-theme-dark .management-record-icon.failed { background: #432d38; color: #efa4ab; }
-.hub-theme-dark .management-overview > div:nth-child(2) .management-metric-icon,
+.hub-theme-dark /* A row's leading symbol must never inherit the flexible text-column sizing. */
+.account-workspace .row > .management-record-icon,
+.account-workspace .row > .management-project-icon { flex: 0 0 40px; width: 40px; min-width: 40px; max-width: 40px; height: 40px; align-self: flex-start; }
+.account-workspace .management-record-row > span:nth-child(2),
+.account-workspace .account-project-card > .row > div,
+.account-workspace .account-job-copy { min-width: 0; overflow-wrap: anywhere; }
+.management-overview > div:nth-child(2) .management-metric-icon,
 .hub-theme-dark .management-disclosure-icon.mint { background: #163b36; color: #87d1bb; }
 .hub-theme-dark .management-overview > div:nth-child(3) .management-metric-icon { background: #322d4e; color: #b8a1f1; }
 
@@ -495,9 +507,9 @@
   .account-project-tools details > form { padding: 0 20px 20px; }
   .account-project-tools details > h2 { padding-inline: 20px; }
   .account-workspace .management-record-row { gap: 10px; align-items: flex-start; }
-  .account-workspace .management-record-row > .management-record-icon { width: 34px; height: 36px; flex-basis: 34px; border-radius: 9px; }
-  .account-workspace .management-record-row > span:nth-child(2) { flex-basis: calc(100% - 44px); }
-  .account-workspace .management-record-row > .actions { margin-left: 44px; width: calc(100% - 44px); }
+  .account-workspace .management-record-row > .management-record-icon { width: 40px; height: 40px; flex-basis: 40px; border-radius: 9px; }
+  .account-workspace .management-record-row > span:nth-child(2) { flex-basis: calc(100% - 50px); }
+  .account-workspace .management-record-row > .actions { margin-left: 50px; width: calc(100% - 50px); }
   .account-workspace .management-record-row .actions button,
   .account-workspace .management-record-row .actions a { min-height: 42px; font-size: 12px; padding: 10px 12px; }
   .management-assets-search { flex-wrap: wrap; gap: 10px; }
@@ -506,7 +518,7 @@
   .account-workspace .management-project-toolbar input { font-size: 14px; min-height: 44px; }
   .account-workspace .account-job-filters { gap: 3px; }
   .account-workspace .account-job-filters button { min-height: 42px; padding: 8px; font-size: 12px; }
-  .account-workspace .account-job-row > .management-record-icon { width: 34px; height: 36px; flex-basis: 34px; }
+  .account-workspace .account-job-row > .management-record-icon { width: 40px; height: 40px; flex-basis: 40px; }
   .account-workspace .account-job-row { gap: 10px; flex-wrap: nowrap; }
   .account-job-title { align-items: flex-start; }
   .account-job-title > b { font-size: 14px; }

@@ -166,3 +166,32 @@ test('draft replacement enforces quota with verified serialized bytes and reject
  assert.equal((await f.request('/workspace/drafts/'+saved.id,{version:2,payload:{text:'x'.repeat(750*1024)}})).status,413);
  const final=(await f.request('/workspace/drafts/'+saved.id)).value.item;assert.equal(final.version,2);assert.equal(final.payload.text,'修改正文');
 });
+
+test('account archive exports complete owned content without originals, credentials or administrative notes',async t=>{
+ const f=await fixture(t),p=await f.project(),d=(await f.save({projectId:p.id,payload:{text:'完整账户草稿'}})).value.item;
+ const ownFile=(await f.request('/files',{name:'测试原件.txt',projectId:p.id,data:Buffer.from('原件字节不包含在归档中').toString('base64')})).value.id;
+ const foreign=await f.request('/workspace/drafts',{title:'他人私密草稿',tool:'writing',payload:{text:'bob-secret-content'}},f.users.bob);assert.equal(foreign.status,201);
+ const at=new Date().toISOString();f.db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run('archive-result','alice',p.id,null,'parse','解析成果',JSON.stringify({text:'用户成果正文'}),at);
+ f.db.prepare('INSERT INTO result_revisions VALUES(?,?,?,?,?)').run('own-revision','archive-result','alice','用户修订正文',at);
+ f.db.prepare('INSERT INTO result_revisions VALUES(?,?,?,?,?)').run('foreign-revision','archive-result','bob','foreign-revision-secret',at);
+ const feedback=(await f.request('/feedback',{text:'我的问题建议'})).value.id;f.db.prepare('INSERT INTO feedback_management VALUES(?,?,?,?,?)').run(feedback,'processing','private-admin-note','admin',at);
+ f.db.prepare("UPDATE users SET password_hash='secret-password-hash' WHERE id='alice'").run();
+ const response=await f.request('/account/export');assert.equal(response.status,200);const data=response.value,serialized=JSON.stringify(data);
+ assert.equal(data.format,'paperknow-account-archive');assert.equal(data.version,1);assert.equal(data.scope,'account');assert.equal(data.account.id,'alice');assert.equal(data.includesOriginalFiles,false);assert.equal(data.restoreSupported,false);
+ assert.equal(data.projects[0].id,p.id);assert.equal(data.drafts[0].id,d.id);assert.equal(data.drafts[0].payload.text,'完整账户草稿');assert.equal(data.files[0].downloadPath,'/api/files/'+ownFile+'/download');assert.equal(data.results[0].body.text,'用户成果正文');assert.equal(data.results[0].revisions.length,1);assert.equal(data.results[0].revisions[0].body,'用户修订正文');assert.equal(data.feedback[0].status,'processing');
+ for(const excluded of ['原件字节不包含在归档中','bob-secret-content','foreign-revision-secret','private-admin-note','secret-password-hash','storage_key','storage_bucket','token_hash','hasPassword'])assert.equal(serialized.includes(excluded),false,excluded);
+ const other=(await f.request('/account/export',undefined,f.users.bob)).value;assert.equal(other.drafts.length,1);for(const key of ['projects','files','results','jobs','feedback'])assert.deepEqual(other[key],[]);
+ assert.equal((await f.request('/account/export',undefined,null)).status,401);assert.equal((await f.request('/account/export',{})).status,405);
+ f.db.prepare('UPDATE workspace_drafts SET bytes=? WHERE id=?').run(101*1024*1024,d.id);assert.equal((await f.request('/account/export')).status,413);
+});
+
+test('feedback limits a daily burst rather than permanently locking out long-standing users',async t=>{
+ const f=await fixture(t),old=new Date(Date.now()-3*86400000).toISOString();for(let n=0;n<100;n++)f.db.prepare('INSERT INTO feedback VALUES(?,?,?,?,?)').run('historical-'+n,'alice','产品建议','过去的问题'+n,old);
+ assert.equal((await f.request('/feedback',{text:'新的问题仍可提交'})).status,201);
+ for(let n=0;n<19;n++)assert.equal((await f.request('/feedback',{text:'今日反馈'+n})).status,201);
+ assert.equal((await f.request('/feedback',{text:'超过每日限制'})).status,429);assert.equal((await f.request('/feedback',{text:'另一个账户'},f.users.bob)).status,201);
+});
+
+test('account archive download is rate limited independently for each signed-in account',async t=>{
+ const f=await fixture(t);for(let i=0;i<5;i++)assert.equal((await f.request('/account/export')).status,200);assert.equal((await f.request('/account/export')).status,429);assert.equal((await f.request('/account/export',undefined,f.users.bob)).status,200);assert.equal((await f.request('/account/profile')).status,200);
+});

@@ -8,7 +8,7 @@ import {createWorkspaceService} from './workspace-service.mjs';
 import {createBillingService} from './billing-service.mjs';
 import {createModelBudget} from './model-budget.mjs';
 import {aiReady,publicModelSettings} from './config.mjs';
-import {fileBytes} from './storage.mjs';
+import {createFileService} from './file-service.mjs';
 import {now} from './database.mjs';
 import {clientAddress} from './client-address.mjs';
 class APIError extends Error{constructor(status,message){super(message);this.status=status;}}
@@ -22,10 +22,12 @@ const billing=createBillingService(db,config);
 const modelBudget=createModelBudget(db,config);
 const payments=createPaymentService(db,{...config,billing});
 const workspace=createWorkspaceService(db,{billing});
+const files=createFileService(db,config);
 const admin=createAdminAPI(db,worker,{...config,payments,billing},auth);
 const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}};
+const archiveAttempts=new Map();
 const attempts=new Map();function rate(req,limit){const key=clientAddress(req,config);const t=Date.now();if(attempts.size>10000)for(const [k,v]of attempts)if(v.until<t)attempts.delete(k);const item=attempts.get(key)||{count:0,until:t+600000};if(item.until<t){item.count=0;item.until=t+600000;}item.count++;attempts.set(key,item);if(item.count>limit)fail(429,'请求过于频繁，请稍后重试');}
-function own(table,id,user){const row=db.prepare(`SELECT * FROM ${table} WHERE id=? AND user_id=?`).get(id,user.id);if(!row)fail(404,'记录不存在');return row;}
+function own(table,id,user){const row=db.prepare(`SELECT * FROM ${table} WHERE id=? AND user_id=?`).get(id,user.id);if(!row)fail(404,'记录不存在');if(table==='files'&&db.prepare("SELECT 1 FROM workspace_file_deletions WHERE file_id=? AND status='pending'").get(id))fail(409,'原件正在删除，请重新选择可用原件');return row;}
 function project(id,user){if(id)own('projects',id,user);return id||null;}
 return async(req,res)=>{const send=(status,value,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers});res.end(JSON.stringify(value));};try{
 const requestURL=new URL(req.url,'http://localhost');const path=requestURL.pathname;const method=req.method;
@@ -68,11 +70,10 @@ if(path==='/api/auth/me'&&method==='GET'){send(200,{user});return;}
 if(path==='/api/auth/logout'&&method==='POST'){const token=(req.headers.cookie||'').split(';').map(v=>v.trim()).find(v=>v.startsWith('pk_session='))?.slice(11);if(token)db.prepare('DELETE FROM sessions WHERE token_hash=?').run(digest(token));send(200,{ok:true},{'Set-Cookie':sessionCookie('',config.secure)});return;}
 if(path==='/api/billing/rules'&&method==='GET'){send(200,billing.rules());return;}
 if(path==='/api/billing/quote'&&method==='POST'){rate(req,60);send(200,billing.quote(user,await body(req)));return;}
+if(path==='/api/account/export'&&method==='GET'){const t=Date.now();for(const [id,item] of archiveAttempts)if(item.until<=t)archiveAttempts.delete(id);const item=archiveAttempts.get(user.id)||{count:0,until:t+600000};if(item.count>=5)fail(429,'账户资料导出较频繁，请十分钟后再试');item.count++;archiveAttempts.set(user.id,item);}
 const workspaceResponse=await workspace({path,method,user,readBody:()=>body(req)});if(workspaceResponse){send(workspaceResponse.status,workspaceResponse.value);return;}
-if(path==='/api/files'){
-if(method==='GET'){send(200,{items:db.prepare('SELECT id,project_id,name,kind,bytes,sha256,created_at FROM files WHERE user_id=? ORDER BY created_at DESC').all(user.id)});return;}
-const b=await body(req),name=text(b.name,200),kind=name.split('.').at(-1).toLowerCase();if(!['txt','docx','pdf'].includes(kind))fail(400,'支持 TXT、DOCX 和文本 PDF');if(typeof b.data!=='string'||!b.data.length||!/^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(b.data))fail(400,'文件编码无效');const buffer=Buffer.from(b.data,'base64');if(!buffer.length||buffer.length>2*1024*1024)fail(413,'文件最大 2MB');const total=db.prepare('SELECT coalesce(sum(bytes),0) n FROM files WHERE user_id=?').get(user.id).n;if(total+buffer.length>50*1024*1024)fail(409,'当前账户文件总量最多 50MB');if(kind==='pdf'&&!buffer.subarray(0,5).equals(Buffer.from('%PDF-')))fail(400,'PDF 文件格式无效');if(kind==='docx'&&!buffer.subarray(0,2).equals(Buffer.from('PK')))fail(400,'DOCX 文件格式无效');const id=randomUUID();const projectId=project(b.projectId,user);let storageKey=null;if(config.storage)storageKey=await config.storage.put(id,user.id,kind,buffer);db.prepare('INSERT INTO files(id,user_id,project_id,name,kind,bytes,sha256,body,created_at,storage_provider,storage_key,storage_bucket) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(id,user.id,projectId,name,kind,buffer.length,digest(buffer),storageKey?Buffer.alloc(0):buffer,now(),config.storage?.provider||'local_server_sqlite',storageKey,config.storage?.bucket||null);send(201,{id});return;}
-const download=path.match(/^\/api\/files\/([^/]+)\/download$/);if(download&&method==='GET'){const file=own('files',download[1],user);const buffer=await fileBytes(file,config.storage);res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':`attachment; filename="document.${file.kind}"; filename*=UTF-8''${encodeURIComponent(file.name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(buffer);return;}
+const fileResponse=await files({path,method,user,readBody:()=>body(req)});
+if(fileResponse){if(fileResponse.body){res.writeHead(fileResponse.status||200,{...fileResponse.headers,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(fileResponse.body);}else send(fileResponse.status||200,fileResponse.value);return;}
 if(path==='/api/jobs'){
 if(method==='GET'){send(200,{items:db.prepare('SELECT id,project_id,type,status,stage,error,result_id,attempt,created_at,updated_at FROM jobs WHERE user_id=? ORDER BY created_at DESC LIMIT 100').all(user.id)});return;}
 rate(req,60);const b=await body(req);const type=b.type;if(!['parse','polish','review','compare','agent'].includes(type))fail(400,'不支持的任务');if(['polish','review','agent'].includes(type)&&!aiReady(config.getAI()))fail(503,'AI 服务尚未配置');if(type==='agent'&&!config.agentEnabled)fail(503,'Codex 智能任务未启用');const projectId=project(b.projectId,user);let input;
@@ -81,6 +82,11 @@ else{input={text:(text(b.text,type==='compare'?8000:6000),b.text),requirements:t
 const key=text(b.idempotencyKey,100);const hash=digest(JSON.stringify({type,input,projectId}));const existing=db.prepare('SELECT id,input_hash FROM jobs WHERE user_id=? AND idempotency_key=?').get(user.id,key);if(existing){if(existing.input_hash!==hash)fail(409,'重复请求标识已用于其他内容');send(200,{id:existing.id});return;}if(db.prepare("SELECT count(*) n FROM jobs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=3)fail(409,'最多同时提交 3 个待处理任务');const id=randomUUID(),t=now();transaction(()=>{if(['polish','review','agent'].includes(type))modelBudget.check(user.id);db.prepare('INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,user.id,projectId,type,'queued','queued',JSON.stringify(input),key,hash,t,t);if(['polish','review','agent'].includes(type))billing.reserve(user,id,1,type,b.billingQuote);});send(201,{id});return;}
 const action=path.match(/^\/api\/jobs\/([^/]+)\/(cancel|retry)$/);if(action&&method==='POST'){
  if(action[2]==='retry')rate(req,60);const input=await body(req);const job=own('jobs',action[1],user);
+ if(action[2]==='retry'&&['parse','agent'].includes(job.type)){
+  const original=JSON.parse(job.input),ids=job.type==='parse'?[original.fileId]:(original.fileIds||[]);
+  try{for(const id of ids)own('files',id,user);}catch{fail(409,'任务引用的原件已移除或正在删除，请重新上传后新建任务');}
+ }
+
  transaction(()=>{
   if(action[2]==='cancel'){
    if(!['queued','running'].includes(job.status))fail(409,'任务已结束');

@@ -28,7 +28,7 @@
 .account-workspace a:focus-visible,.account-workspace button:focus-visible,.workspace-scope-tabs a:focus-visible{outline:3px solid #a9c5fb;outline-offset:3px}
 .account-workspace .row{display:flex;justify-content:space-between;align-items:center;gap:15px;border-bottom:1px solid #edf1f7;padding:17px 0;min-width:0}
 .account-workspace .row:last-child{border-bottom:0;padding-bottom:0}
-.account-workspace .row>span:first-child{min-width:0;flex:1}
+.account-workspace .row>span:first-child:not(.management-record-icon):not(.management-project-icon){min-width:0;flex:1}
 .account-workspace .row b{font-size:14px;font-weight:600;overflow-wrap:anywhere;line-height:1.6}
 .account-workspace .row small{font-size:11px;line-height:1.8;color:#91a0b5}
 .account-workspace .row>a,.account-workspace .row>button{flex-shrink:0;font-size:12px}
@@ -72,7 +72,13 @@
 .hub-theme-dark .account-workspace input,.hub-theme-dark .account-workspace textarea,.hub-theme-dark .account-workspace select{background:#13253a;color:#d5e2f4;border-color:#38516e}
 .hub-theme-dark .account-workspace .compare pre{background:#14263b;color:#c6d8ef;border-color:#37506c}
 @media(max-width:1050px){.workspace-content-scope{align-items:flex-start;flex-direction:column;gap:10px}.workspace-content-scope>p{text-align:left}.account-workspace .grid{gap:16px}.account-workspace .card{padding:21px}}
-@media(max-width:760px){.workspace-content-scope{padding:12px;margin-bottom:18px}.workspace-scope-tabs{width:100%}.workspace-scope-tabs a{flex:1;justify-content:center;padding:9px 10px}.workspace-content-scope>p{font-size:11px;padding:0 4px}.account-workspace .grid,.account-workspace .compare{grid-template-columns:1fr}.account-workspace .card{padding:20px}.account-workspace .row{flex-wrap:wrap}.account-workspace .row>span:first-child{flex-basis:70%}.account-workspace input,.account-workspace select,.account-workspace textarea{font-size:16px}.account-workspace h1{font-size:21px}.account-workspace h2{font-size:17px}}
+@media(max-width:760px){.workspace-content-scope{padding:12px;margin-bottom:18px}.workspace-scope-tabs{width:100%}.workspace-scope-tabs a{flex:1;justify-content:center;padding:9px 10px}.workspace-content-scope>p{font-size:11px;padding:0 4px}.account-workspace .grid,.account-workspace .compare{grid-template-columns:1fr}.account-workspace .card{padding:20px}.account-workspace .row{flex-wrap:wrap}.account-workspace .row>span:first-child:not(.management-record-icon):not(.management-project-icon){flex-basis:70%}.account-workspace input,.account-workspace select,.account-workspace textarea{font-size:16px}.account-workspace h1{font-size:21px}.account-workspace h2{font-size:17px}}
 .account-project-card{border:1px solid #e3eaf5;border-radius:12px;padding:20px;margin-top:16px;background:linear-gradient(135deg,#fbfdff,#fff)}
 .account-project-card h2{margin-bottom:6px}.account-project-card h3{font-size:14px;margin-top:20px}.account-project-card>.actions{margin:18px 0}.account-workspace .account-refresh{margin:0 0 20px auto;display:flex;min-height:34px;padding:7px 12px;font-size:12px}.account-task-modes+.account-refresh{margin-top:-13px}.account-draft-bar{position:relative;z-index:1;flex-wrap:wrap}.account-draft-bar>div:first-child{flex:1;min-width:220px}.account-draft-bar b{display:flex;align-items:center;gap:8px}.account-draft-bar p{font-size:12px;color:#778ba8;margin:8px 0}.account-draft-bar #account-draft-status{color:#a35c44;font-size:12px}.account-draft-bar>.actions{display:flex;gap:10px;align-items:center}.account-workspace #draft-import:empty{display:none}.account-workspace #draft-import{margin:16px 0;padding:18px;background:#f7faff;border-radius:10px}.account-workspace details>summary{font-weight:600;color:#42638f}.hub-theme-dark .account-project-card{background:#192b42;border-color:#344b67}
 .dashboard[data-account-editing] .creation-trust,.dashboard[data-account-editing] .ppt-backup,.dashboard[data-account-editing] .research-backup{display:none}
+/* Keep account task discovery usable without resetting an in-progress submission. */
+.account-workspace .account-job-search{display:flex;align-items:center;gap:10px;margin:0 0 14px;color:#7890b1}
+.account-workspace .account-job-search input{min-width:0;margin:0;flex:1}
+.account-workspace .management-list-range{font-size:11px;line-height:1.75;color:#8090a7;margin:16px 0 0}
+.account-workspace .account-job-filters{flex-wrap:wrap}
+@media(max-width:480px){.account-workspace .account-job-filters button{flex:1 1 auto}.account-workspace .account-job-search input{font-size:16px}}

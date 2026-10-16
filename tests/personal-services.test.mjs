@@ -132,3 +132,24 @@ test('paused and unavailable services do not appear ready or expose a use action
  const env=setup(async path=>path==='/payments/entitlements'?{items:[{order_id:'member-1',type:'membership',title:'已有会员',starts_at:'2020-01-01',expires_at:'2099-01-01',usage:[{key:'polish',title:'学术润色',quantity:3,used:0,held:0,remaining:3},{key:'review',title:'导师意见修改',quantity:2,used:0,held:0,remaining:2}]}],bundles:[{orderId:'bundle-1',title:'已有套餐',startsAt:'2020-01-01',expiresAt:'2099-01-01',items:[{key:'agent',title:'智能助手',quantity:1,used:0,held:0,remaining:1}]}]}:path==='/capabilities'?capabilities:{counts:{}},'#membership?scope=account');
  try{await renderOnlinePersonal('membership',env.ctx);assert.match(env.ctx.target.textContent,/学术润色已暂停/);assert.match(env.ctx.target.textContent,/导师意见修改已开放/);assert.match(env.ctx.target.textContent,/科研智能助手待配置/);const links=[...document.querySelectorAll('.member-quota-rows a')].map(link=>link.getAttribute('href'));assert.deepEqual(links,['#tasks?scope=account&type=review']);assert.match(document.querySelector('.member-bundle-record').textContent,/剩余 1/);assert.equal(document.querySelectorAll('.member-bundle-record .member-quota-rows a').length,0);}finally{env.dom.window.close();}
 });
+
+
+test('account summary distinguishes spendable credits from held credits without inventing availability',()=>{
+ const env=setup(async()=>({}));try{
+  env.ctx.target.innerHTML=membershipPurchaseTiles({account:true,credits:{balance:200,available:180,held:20},items:[{type:'membership',title:'真实会员',starts_at:'2020-01-01',expires_at:'2099-01-01'}]});
+  const tile=document.querySelector('.member-purchase-credits');assert.equal(tile.querySelector('h2').textContent,'180');assert.match(tile.textContent,/可用科研积分/);assert.match(tile.querySelector('p').textContent,/账户余额 200 · 任务预占 20/);assert.match(document.querySelector('.member-purchase-member p').textContent,/2099/);
+  env.ctx.target.innerHTML=membershipPurchaseTiles({account:true,credits:{balance:200,held:20}});assert.equal(document.querySelector('.member-purchase-credits h2').textContent,'200');assert.match(document.querySelector('.member-purchase-credits').textContent,/可用额与预占额待核对/);assert.doesNotMatch(document.querySelector('.member-purchase-credits .member-purchase-kicker').textContent,/可用科研积分/);assert.equal(localStorage.length,0);
+ }finally{env.dom.window.close();}
+});
+
+test('feedback list failures keep the real submit form and support available without claiming the list is empty',async()=>{
+ let reads=0,posts=0;const item={id:'recover-1',category:'使用咨询',body:'记录读取失败时仍需提供反馈入口',created_at:'2026-10-16',status:'open'};
+ const env=setup(async(_,data)=>{if(data){posts++;return {id:item.id,item};}if(++reads===1)throw Error('offline');return {items:[item]};});
+ try{await renderOnlinePersonal('help',env.ctx);assert.ok(document.querySelector('#feedback-form'));assert.match(document.querySelector('#feedback-records').textContent,/暂时无法读取/);assert.doesNotMatch(document.querySelector('#feedback-records').textContent,/还没有提交过反馈/);assert.match(document.querySelector('.personal-feedback-support').textContent,/OneShowAILab/);document.querySelector('#feedback').value=item.body;await env.submit();assert.equal(posts,1);assert.match(document.querySelector('#feedback-records').textContent,/记录读取失败时仍需提供反馈入口/);assert.match(document.querySelector('#feedback-submit-status').textContent,/已提交/);}finally{env.dom.window.close();}
+});
+
+test('a stale feedback refresh cannot erase a newly confirmed submission',async()=>{
+ let reads=0,finishRefresh;const item={id:'new-1',category:'功能问题',body:'新的反馈应当保留',created_at:'2026-10-16',status:'open'};
+ const env=setup(async(_,data)=>{if(data)return {id:item.id,item};if(++reads===2)return new Promise(resolve=>{finishRefresh=resolve;});return {items:reads===1?[]:[item]};});
+ try{await renderOnlinePersonal('help',env.ctx);document.querySelector('#feedback').value=item.body;const refreshing=env.click('#feedback-refresh');await Promise.resolve();await Promise.resolve();assert.equal(document.querySelector('#feedback-refresh').disabled,true);const saving=env.submit();await Promise.resolve();await Promise.resolve();assert.match(document.querySelector('#feedback-records').textContent,/新的反馈应当保留/);finishRefresh({items:[]});await Promise.all([refreshing,saving]);assert.match(document.querySelector('#feedback-records').textContent,/新的反馈应当保留/);assert.equal(document.querySelectorAll('.account-feedback-record').length,1);assert.equal(reads,3);}finally{env.dom.window.close();}
+});
