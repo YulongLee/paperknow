@@ -1,0 +1,150 @@
+/* Shared catalog geometry stays compact inside editors; landing treatments follow. */
+.writing-capabilities.writing-catalog-commercial{display:block;min-width:0;scroll-margin-top:24px;container:writing-catalog/inline-size}
+.writing-capabilities.writing-catalog-commercial>div,.writing-capabilities.writing-catalog-commercial>div>div{min-width:0}
+.writing-capabilities.writing-catalog-commercial .capabilities-head>div,.writing-capabilities.writing-catalog-commercial .capability-group,.writing-capabilities.writing-catalog-commercial .writing-recommendation-main{display:block}
+.writing-capabilities.writing-catalog-commercial .capabilities-head{display:flex;justify-content:space-between;align-items:flex-start}
+.writing-capabilities.writing-catalog-commercial .capabilities-head p{max-width:620px;margin:6px 0 0;line-height:1.75}
+.writing-capabilities.writing-catalog-commercial .capabilities-count{padding:6px 10px;border-radius:20px}
+.writing-capabilities.writing-catalog-commercial .writing-recommendation{display:block}
+.writing-capabilities.writing-catalog-commercial .writing-recommendation-main{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 20px;align-items:center}
+.writing-capabilities.writing-catalog-commercial .writing-recommendation-copy{grid-row:1/3}
+.writing-capabilities.writing-catalog-commercial .writing-recommendation-main>.writing-recommendation-meta{grid-column:2;margin:0 0 8px}
+.writing-capabilities.writing-catalog-commercial .writing-recommendation-main>.writing-recommendation-cta{grid-column:2;justify-self:start}
+.writing-capabilities.writing-catalog-commercial .writing-recommendation-copy>span{display:inline-flex;align-items:center;gap:6px}
+.writing-capabilities.writing-catalog-commercial .writing-recommendation-eyebrow i{display:inline-flex;font-style:normal}
+.writing-capabilities.writing-catalog-commercial .writing-recommendation-meta{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap}
+.writing-capabilities.writing-catalog-commercial .writing-recommendation-meta span{display:inline-flex;align-items:center;gap:3px;padding:4px 8px;border-radius:7px}
+.writing-capabilities.writing-catalog-commercial .writing-recommendation-preview,.writing-capabilities.writing-catalog-commercial .writing-recommendation-steps{display:none}
+.writing-capabilities.writing-catalog-commercial .writing-recommendation-cta{display:inline-flex;align-items:center;justify-content:center;width:auto;min-height:42px;margin:2px 0 0;padding:10px 18px;gap:12px;color:#fff}
+.writing-capabilities.writing-catalog-commercial .capability-groups{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);align-items:start;gap:24px}
+.writing-capabilities.writing-catalog-commercial .capability-group-title{display:flex;align-items:center;gap:10px}
+.writing-capabilities.writing-catalog-commercial .capability-group-title>div{min-width:0;flex:1}
+.writing-capabilities.writing-catalog-commercial .capability-group-title strong{display:block;width:auto;white-space:normal}
+.writing-capabilities.writing-catalog-commercial .capability-group-title small{display:block;margin-top:3px;line-height:1.6}
+.writing-capabilities.writing-catalog-commercial .capability-group-count{font-size:11px;color:var(--tool-muted,#71819a);white-space:nowrap}
+.writing-capabilities.writing-catalog-commercial .capability-group-icon{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;border-radius:10px}
+.writing-capabilities.writing-catalog-commercial .capability-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.writing-capabilities.writing-catalog-commercial .capability-card{position:relative;display:flex;align-items:center;gap:12px;min-width:0;min-height:88px;padding:14px;color:var(--tool-text,#263956);text-decoration:none;overflow:hidden;isolation:isolate}
+.writing-capabilities.writing-catalog-commercial .capability-symbol{display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;align-self:center;background:#edf3ff;color:#416ee2;border-radius:12px}
+.writing-capabilities.writing-catalog-commercial .capability-symbol>svg{display:block;flex-shrink:0}
+.writing-capabilities.writing-catalog-commercial .capability-copy{display:block;min-width:0;flex:1}
+.writing-capabilities.writing-catalog-commercial .capability-copy strong{display:flex;align-items:center;gap:7px;flex-wrap:wrap;width:auto;white-space:normal;line-height:1.55;margin:0}
+.writing-capabilities.writing-catalog-commercial .capability-copy small{display:block;white-space:normal;overflow-wrap:anywhere;line-height:1.65}
+.writing-capabilities.writing-catalog-commercial .capability-copy em{display:inline-flex;align-items:center;font-style:normal;font-size:10px;line-height:1.5;padding:1px 5px;border-radius:4px;background:#edf2ff;color:#4267cb}
+.writing-capabilities.writing-catalog-commercial .capability-output,.writing-capabilities.writing-catalog-commercial .capability-label{display:none}
+.writing-capabilities.writing-catalog-commercial .capability-arrow{position:static;flex:0 0 15px;width:15px;color:#8b9dbb;font-size:17px;line-height:1;transition:transform .18s ease}
+.writing-capabilities.writing-catalog-commercial .capability-card:focus-visible,.writing-capabilities.writing-catalog-commercial .writing-recommendation-cta:focus-visible{outline:3px solid #9ebdff;outline-offset:4px}
+
+/* The landing page gives the primary workflow and tool groups a distinct hierarchy. */
+.writing-landing .writing-catalog-commercial .writing-recommendation-main{display:block}
+.writing-landing .writing-catalog-commercial .writing-recommendation-main>.writing-recommendation-meta{margin:14px 0 0}
+.writing-landing .writing-capabilities.writing-catalog-commercial{padding:28px;border-radius:20px;border:1px solid #e1e8f4;background:#fff;box-shadow:0 12px 36px #233c6b05}
+.writing-landing .writing-catalog-commercial .capabilities-head{margin-bottom:23px;gap:18px}
+.writing-landing .writing-catalog-commercial .capabilities-kicker{font-size:10px;letter-spacing:.12em;color:#7c8fac;font-weight:650}
+.writing-landing .writing-catalog-commercial .capabilities-head h2{margin:7px 0 0;font-size:22px;line-height:1.45;letter-spacing:-.02em;color:#223654}
+.writing-landing .writing-catalog-commercial .capabilities-head p{font-size:13px;color:#72819a}
+.writing-landing .writing-catalog-commercial .capabilities-count{margin-top:12px;background:#f5f7fc;border:1px solid #e8edf6;color:#6f819f;font-size:11px}
+.writing-landing .writing-catalog-commercial .writing-recommendation{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:32px;align-items:center;padding:28px 30px;margin:0 0 30px;border:1px solid #dce5ff;border-radius:18px;background:radial-gradient(ellipse at 98% 15%,#e7e4ff 0,transparent 48%),linear-gradient(116deg,#f1f6ff 0%,#f9fbff 52%,#eff0ff 100%);overflow:hidden;isolation:isolate}
+.writing-landing .writing-catalog-commercial .writing-recommendation:after{content:"";position:absolute;z-index:-1;width:310px;height:310px;border:1px solid #cad9ff80;border-radius:50%;right:-125px;bottom:-225px;box-shadow:0 0 0 36px #dce6ff38,0 0 0 72px #e2eaff2b;pointer-events:none}
+.writing-landing .writing-catalog-commercial .writing-recommendation-copy>span{font-size:11px;font-weight:600;letter-spacing:.015em;color:#4c68ca;background:#e5ecff;padding:5px 9px;border-radius:6px}
+.writing-landing .writing-catalog-commercial .writing-recommendation-copy h3{max-width:460px;margin:15px 0 10px;font-size:24px;line-height:1.5;font-weight:650;letter-spacing:-.025em;color:#243b69}
+.writing-landing .writing-catalog-commercial .writing-recommendation-copy p{max-width:455px;margin:0;color:#7182a2;font-size:13px;line-height:1.8}
+.writing-landing .writing-catalog-commercial .writing-recommendation-meta{gap:14px;margin:14px 0 0}
+.writing-landing .writing-catalog-commercial .writing-recommendation-meta span{position:relative;background:none;border:0;padding:0;color:#7385a6;font-size:11px}
+.writing-landing .writing-catalog-commercial .writing-recommendation-meta span+span:before{content:"";width:3px;height:3px;border-radius:50%;background:#aebcda;margin-right:6px}
+.writing-landing .writing-catalog-commercial .writing-recommendation-meta b{font-weight:600;color:#4165c0}
+.writing-landing .writing-catalog-commercial .writing-recommendation-steps{display:flex;align-items:flex-start;list-style:none;margin:22px 0 20px;padding:0;gap:0;max-width:460px}
+.writing-landing .writing-catalog-commercial .writing-recommendation-steps li{position:relative;display:flex;align-items:center;flex:1;min-width:0;gap:6px}
+.writing-landing .writing-catalog-commercial .writing-recommendation-steps li:not(:last-child):after{content:"";position:absolute;width:calc(100% - 32px);height:1px;top:14px;left:30px;background:#d6e1fc;z-index:-1}
+.writing-landing .writing-catalog-commercial .writing-recommendation-steps li>span{display:grid;place-items:center;background:#e6edff;border:1px solid #d6e1ff;color:#5f7bc1;font-size:10px;font-weight:600;width:28px;height:28px;flex:0 0 28px;border-radius:8px}
+.writing-landing .writing-catalog-commercial .writing-recommendation-steps li>b{font-size:11px;font-weight:500;color:#6e82aa;background:#f5f8ff;padding:2px 2px 2px 0;white-space:nowrap}
+.writing-landing .writing-catalog-commercial .writing-recommendation-cta{margin:0;min-height:43px;padding:11px 19px;border:1px solid #376bdf;border-radius:9px;background:linear-gradient(115deg,#3475f0,#4f64d8);box-shadow:0 5px 15px #3b66cc24;font-size:13px;font-weight:550;transition:box-shadow .18s ease,transform .18s ease}
+.writing-landing .writing-catalog-commercial .writing-recommendation-cta:hover{background:linear-gradient(115deg,#2a69df,#4759ca);box-shadow:0 7px 18px #3b66cc32;transform:translateY(-1px)}
+.writing-landing .writing-catalog-commercial .writing-recommendation-preview{position:relative;display:block;justify-self:center;width:250px;min-height:254px;padding:6px 14px 0}
+.writing-landing .writing-catalog-commercial .writing-preview-orbit{position:absolute;inset:4px -22px 10px;border:1px solid #cdd8f759;border-radius:50%;background:radial-gradient(ellipse,#cad9ff5c 0%,transparent 68%);transform:rotate(-20deg);pointer-events:none}
+.writing-landing .writing-catalog-commercial .writing-preview-back{position:absolute;width:193px;height:225px;left:36px;top:14px;border:1px solid #dce4fa;border-radius:10px;background:#eaf0ff;transform:rotate(6deg);box-shadow:0 8px 20px #5678b10d}
+.writing-landing .writing-catalog-commercial .writing-preview-paper{position:relative;width:204px;padding:17px 16px 12px;border:1px solid #e4eafa;border-radius:10px;background:linear-gradient(150deg,#fff,#fbfcff);box-shadow:0 12px 30px #536fa91b;transform:rotate(-4deg);transition:transform .35s ease}
+.writing-landing .writing-catalog-commercial .writing-recommendation:hover .writing-preview-paper{transform:rotate(-2deg) translateY(-3px)}
+.writing-landing .writing-catalog-commercial .writing-preview-paper-head{display:flex;align-items:center;gap:5px;padding-bottom:10px;border-bottom:1px solid #edf0f8;color:#738dbf}
+.writing-landing .writing-catalog-commercial .writing-preview-paper-head>span{display:inline-flex}
+.writing-landing .writing-catalog-commercial .writing-preview-paper-head b{font-size:10px;font-weight:550;color:#6178a0}
+.writing-landing .writing-catalog-commercial .writing-preview-paper-head small{margin-left:auto;font-size:8px;line-height:1.5;background:#f1f5ff;padding:2px 4px;border-radius:3px;color:#9aa9c3}
+.writing-landing .writing-catalog-commercial .writing-preview-paper-title{width:74%;height:7px;margin:16px auto 6px;border-radius:2px;background:#b2c4e8}
+.writing-landing .writing-catalog-commercial .writing-preview-paper-subtitle{width:42%;height:4px;margin:0 auto 16px;border-radius:2px;background:#e0e7f5}
+.writing-landing .writing-catalog-commercial .writing-preview-chapter{display:flex;align-items:center;gap:7px;margin:11px 0 6px;line-height:1.6}
+.writing-landing .writing-catalog-commercial .writing-preview-chapter>span{display:grid;place-items:center;width:19px;height:18px;background:#edf2ff;border-radius:4px;font-size:8px;color:#7c95ca}
+.writing-landing .writing-catalog-commercial .writing-preview-chapter>b{font-size:9px;color:#6d7f9e;font-weight:500}
+.writing-landing .writing-catalog-commercial .writing-preview-lines{display:grid;gap:5px;margin-left:26px}
+.writing-landing .writing-catalog-commercial .writing-preview-lines i{height:3px;width:100%;border-radius:2px;background:#edf1f8}
+.writing-landing .writing-catalog-commercial .writing-preview-lines i:last-child{width:76%}
+.writing-landing .writing-catalog-commercial .writing-preview-paper-foot{margin-top:16px;padding-top:8px;border-top:1px solid #f0f3f9;color:#a3afc3;font-size:8px;text-align:center;white-space:nowrap}
+.writing-landing .writing-catalog-commercial .writing-preview-note{position:absolute;bottom:0;right:-3px;display:flex;align-items:center;gap:6px;padding:10px 12px;background:#ffffffed;border:1px solid #e1e7f7;border-radius:8px;color:#6e85b4;box-shadow:0 5px 15px #4f72ae10;font-size:10px;white-space:nowrap}
+.writing-landing .writing-catalog-commercial .writing-preview-note>span:first-child{display:inline-flex;color:#668ee8}
+.writing-landing .writing-catalog-commercial .capability-groups{grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:26px}
+.writing-landing .writing-catalog-commercial .capability-group-title{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #e8edf7;gap:10px}
+.writing-landing .writing-catalog-commercial .capability-group-title strong{font-size:15px;font-weight:600;color:#324768}
+.writing-landing .writing-catalog-commercial .capability-group-title small{font-size:11px;color:#8b99af}
+.writing-landing .writing-catalog-commercial .capability-group-writing .capability-group-icon{background:linear-gradient(145deg,#eaf0ff,#f1ecff);color:#6683d7}
+.writing-landing .writing-catalog-commercial .capability-group-preparation .capability-group-icon{background:#e6f5f0;color:#339f8c}
+.writing-landing .writing-catalog-commercial .capability-group-writing .capability-card:first-child{grid-column:1/-1}
+.writing-landing .writing-catalog-commercial .capability-group-preparation .capability-list{grid-template-columns:minmax(0,1fr)}
+.writing-landing .writing-catalog-commercial .capability-card{--cap-accent:#4d77d1;--cap-soft:#edf3ff;--cap-border:#e1e9f8;align-items:flex-start;min-height:114px;padding:17px 16px;border:1px solid var(--cap-border);border-radius:13px;background:linear-gradient(125deg,#fff 35%,#f8faff 100%);box-shadow:0 3px 10px #2b427503;transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+.writing-landing .writing-catalog-commercial .capability-card:after{content:"";position:absolute;z-index:-1;width:90px;height:90px;border:12px solid var(--cap-soft);border-radius:50%;right:-45px;bottom:-58px;opacity:.8;pointer-events:none}
+.writing-landing .writing-catalog-commercial .capability-card.capability-tone-violet{--cap-accent:#8469c9;--cap-soft:#f1edfc;--cap-border:#e8e3f4;background:linear-gradient(125deg,#fff 35%,#fcfaff 100%)}
+.writing-landing .writing-catalog-commercial .capability-card.capability-tone-teal{--cap-accent:#339c89;--cap-soft:#e8f5f1;--cap-border:#deede8;background:linear-gradient(125deg,#fff 35%,#f8fdfa 100%)}
+.writing-landing .writing-catalog-commercial .capability-card[aria-current]{border-color:#b8cafa;background:linear-gradient(115deg,#f1f5ff,#fafbff);box-shadow:inset 3px 0 #7e9fea}
+.writing-landing .writing-catalog-commercial .capability-card:hover{border-color:#b7c8ed;background:linear-gradient(125deg,#fcfdff,#f5f8ff);box-shadow:0 7px 18px #4261990d;transform:translateY(-2px)}
+.writing-landing .writing-catalog-commercial .capability-card.capability-tone-teal:hover{border-color:#b5dacf;background:linear-gradient(125deg,#fcfffe,#f0faf6);box-shadow:0 7px 18px #428a6e0d}
+.writing-landing .writing-catalog-commercial .capability-symbol{align-self:flex-start;width:42px;height:42px;flex-basis:42px;border-radius:12px;background:var(--cap-soft);color:var(--cap-accent);box-shadow:inset 0 0 0 1px #ffffff70}
+.writing-landing .writing-catalog-commercial .capability-copy strong{color:#304563;font-size:14px;font-weight:600;padding-right:14px;line-height:1.5}
+.writing-landing .writing-catalog-commercial .capability-copy small{color:#8390a6;font-size:11px;margin-top:4px}
+.writing-landing .writing-catalog-commercial .capability-copy em{background:#e5edff;color:#5c80ce}
+.writing-landing .writing-catalog-commercial .capability-output{display:block;margin-top:8px;color:var(--cap-accent);font-size:10px;line-height:1.6;letter-spacing:.01em}
+.writing-landing .writing-catalog-commercial .capability-label{position:absolute;display:block;right:13px;top:16px;padding:3px 6px;border-radius:5px;background:var(--cap-soft);color:var(--cap-accent);font-size:9px;line-height:1.5;white-space:nowrap}
+.writing-landing .writing-catalog-commercial .capability-copy{padding-top:0}
+.writing-landing .writing-catalog-commercial .capability-arrow{align-self:flex-end;transition:transform .18s ease;color:#9aacca;font-size:17px;line-height:1.3}
+.writing-landing .writing-catalog-commercial .capability-card:hover .capability-arrow{transform:translateX(3px);color:var(--cap-accent)}
+.writing-landing .writing-catalog-commercial .capability-card strong{padding-right:56px}
+
+@media(min-width:1600px){.writing-landing .writing-catalog-commercial .writing-recommendation{grid-template-columns:minmax(0,1fr) 300px;padding:32px 36px}.writing-landing .writing-catalog-commercial .writing-recommendation-copy h3{font-size:27px;max-width:none}.writing-landing .writing-catalog-commercial .writing-recommendation-preview{transform:scale(1.04)}}
+@media(max-width:1100px){.writing-capabilities.writing-catalog-commercial .capability-groups{grid-template-columns:minmax(0,1fr)}.writing-landing .writing-capabilities.writing-catalog-commercial{padding:24px}.writing-landing .writing-catalog-commercial .capability-groups{grid-template-columns:minmax(0,1fr);gap:25px}.writing-landing .writing-catalog-commercial .capability-group-preparation .capability-list{grid-template-columns:repeat(2,minmax(0,1fr))}.writing-landing .writing-catalog-commercial .capability-group-writing .capability-card:first-child{grid-column:auto}.writing-landing .writing-catalog-commercial .writing-recommendation{padding:25px;gap:20px;grid-template-columns:minmax(0,1fr) 215px}.writing-landing .writing-catalog-commercial .writing-recommendation-preview{width:215px;padding-left:4px;padding-right:4px;transform:scale(.94);transform-origin:right center}.writing-landing .writing-catalog-commercial .writing-recommendation-copy h3{font-size:23px}.writing-landing .writing-catalog-commercial .writing-recommendation-steps li{display:block}.writing-landing .writing-catalog-commercial .writing-recommendation-steps li>b{display:block;margin-top:7px;padding:0;background:none}}
+@media(max-width:760px){.writing-capabilities.writing-catalog-commercial .capabilities-head{display:flex}.writing-capabilities.writing-catalog-commercial .capability-list{grid-template-columns:minmax(0,1fr)}.writing-landing .writing-capabilities.writing-catalog-commercial{padding:21px;border-radius:16px}.writing-landing .writing-catalog-commercial .capabilities-head h2{font-size:20px}.writing-landing .writing-catalog-commercial .capabilities-head p{font-size:12px}.writing-landing .writing-catalog-commercial .capabilities-count{font-size:10px;padding:5px 7px;margin-top:10px}.writing-landing .writing-catalog-commercial .writing-recommendation{grid-template-columns:minmax(0,1fr) 190px;padding:22px 20px;gap:14px;margin-bottom:25px;border-radius:14px}.writing-landing .writing-catalog-commercial .writing-recommendation-preview{width:190px;transform:scale(.83);transform-origin:right center}.writing-landing .writing-catalog-commercial .writing-recommendation-copy h3{font-size:22px}.writing-landing .writing-catalog-commercial .writing-recommendation-copy p{font-size:12px}.writing-landing .writing-catalog-commercial .writing-recommendation-meta{gap:10px}.writing-landing .writing-catalog-commercial .writing-recommendation-steps{margin-top:18px}.writing-landing .writing-catalog-commercial .writing-recommendation-steps li>b{font-size:10px}.writing-landing .writing-catalog-commercial .capability-list{grid-template-columns:repeat(2,minmax(0,1fr))}.writing-landing .writing-catalog-commercial .capability-card{min-height:116px;padding:15px 12px;gap:10px}.writing-landing .writing-catalog-commercial .capability-symbol{width:38px;height:38px;flex-basis:38px;border-radius:10px}.writing-landing .writing-catalog-commercial .capability-label{font-size:9px;top:14px;right:10px}.writing-landing .writing-catalog-commercial .capability-card strong{padding-right:42px;font-size:13px}.writing-landing .writing-catalog-commercial .capability-output{font-size:10px}}
+@media(max-width:620px){.writing-landing .writing-capabilities.writing-catalog-commercial{padding:18px}.writing-landing .writing-catalog-commercial .capabilities-head{display:block;margin-bottom:20px}.writing-landing .writing-catalog-commercial .capabilities-count{display:inline-flex;margin-top:12px}.writing-landing .writing-catalog-commercial .writing-recommendation{display:block;padding:22px 19px}.writing-landing .writing-catalog-commercial .writing-recommendation-preview{display:none}.writing-landing .writing-catalog-commercial .writing-recommendation-copy h3{font-size:23px;max-width:330px}.writing-landing .writing-catalog-commercial .writing-recommendation-meta{gap:10px}.writing-landing .writing-catalog-commercial .writing-recommendation-meta span{font-size:10px}.writing-landing .writing-catalog-commercial .writing-recommendation-steps{max-width:none;gap:5px;margin:22px 0}.writing-landing .writing-catalog-commercial .writing-recommendation-steps li>b{font-size:10px;line-height:1.6;white-space:normal}.writing-landing .writing-catalog-commercial .writing-recommendation-steps li>span{width:26px;height:26px;flex-basis:26px}.writing-landing .writing-catalog-commercial .writing-recommendation-cta{display:flex;width:100%;margin:0;min-height:44px}.writing-landing .writing-catalog-commercial .capability-list,.writing-landing .writing-catalog-commercial .capability-group-preparation .capability-list{grid-template-columns:minmax(0,1fr)}.writing-landing .writing-catalog-commercial .capability-card{min-height:111px;padding:17px 15px;gap:12px}.writing-landing .writing-catalog-commercial .capability-symbol{width:42px;height:42px;flex-basis:42px}.writing-landing .writing-catalog-commercial .capability-card strong{font-size:14px;padding-right:56px}.writing-landing .writing-catalog-commercial .capability-label{top:16px;right:14px}.writing-landing .writing-catalog-commercial .capability-copy small{font-size:12px}.writing-landing .writing-catalog-commercial .capability-output{font-size:11px}.writing-landing .writing-catalog-commercial .capability-group-title small{font-size:11px}}
+.hub-theme-dark .writing-capabilities.writing-catalog-commercial .capability-symbol{background:#233e65;color:#9cb9f5}
+.hub-theme-dark .writing-landing .writing-capabilities.writing-catalog-commercial{background:#17273d;border-color:#2b405e;box-shadow:none}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .capabilities-head h2,.hub-theme-dark .writing-landing .writing-catalog-commercial .capability-group-title strong{color:#dce7fc}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .writing-recommendation{background:radial-gradient(ellipse at right top,#353050 0,transparent 58%),linear-gradient(120deg,#1a304e,#202c46);border-color:#3d5077}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .writing-recommendation-copy h3{color:#dce7fc}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .writing-recommendation-copy p,.hub-theme-dark .writing-landing .writing-catalog-commercial .writing-recommendation-meta span{color:#99afcf}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .writing-recommendation-copy>span{background:#2e426b;color:#adc5f5}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .writing-recommendation-steps li>span{background:#2d4165;border-color:#3b527b;color:#b2c8ef}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .writing-recommendation-steps li>b{background:transparent;color:#a7b9d5}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .writing-recommendation-steps li:after{background:#3a5077}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .capability-card,.hub-theme-dark .writing-landing .writing-catalog-commercial .capability-card[aria-current]{--cap-accent:#9bb6ed;--cap-soft:#263e62;--cap-border:#2e4466;background:linear-gradient(120deg,#1a2b44,#1e304b);box-shadow:none}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .capability-card.capability-tone-violet{--cap-accent:#b9a7e8;--cap-soft:#39304e;--cap-border:#433b59;background:linear-gradient(120deg,#232a42,#2a2b46)}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .capability-card.capability-tone-teal{--cap-accent:#90cfc0;--cap-soft:#223e3f;--cap-border:#2d4b4c;background:linear-gradient(120deg,#1c303b,#1e353d)}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .capability-copy strong{color:#d4e1f8}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .capability-copy small{color:#9cacbf}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .capability-group-title{border-color:#2b405e}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .capability-group-writing .capability-group-icon{background:#283959;color:#9cb7ef}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .capability-group-preparation .capability-group-icon{background:#24423e;color:#92d0bd}
+.hub-theme-dark .writing-landing .writing-catalog-commercial .capabilities-count{background:#20344f;border-color:#334864;color:#aabbd3}
+@media(prefers-reduced-motion:reduce){.writing-landing .writing-catalog-commercial .writing-preview-paper,.writing-landing .writing-catalog-commercial .writing-recommendation-cta,.writing-landing .writing-catalog-commercial .capability-card,.writing-landing .writing-catalog-commercial .capability-arrow{transition:none;animation:none}.writing-landing .writing-catalog-commercial .capability-card:hover,.writing-landing .writing-catalog-commercial .writing-recommendation-cta:hover{transform:none}.writing-landing .writing-catalog-commercial .writing-recommendation:hover .writing-preview-paper{transform:rotate(-4deg)}}
+
+@container writing-catalog (max-width:760px){
+ .writing-landing .writing-catalog-commercial .writing-recommendation{display:block;padding:24px}
+ .writing-landing .writing-catalog-commercial .writing-recommendation-preview{display:none}
+ .writing-landing .writing-catalog-commercial .writing-recommendation-copy h3{max-width:520px}
+ .writing-landing .writing-catalog-commercial .writing-recommendation-steps{max-width:500px}
+ .writing-landing .writing-catalog-commercial .writing-recommendation-steps li{display:block}
+ .writing-landing .writing-catalog-commercial .writing-recommendation-steps li>b{display:block;margin-top:7px;background:none;padding:0}
+ .writing-landing .writing-catalog-commercial .capability-groups{grid-template-columns:minmax(0,1fr)}
+ .writing-landing .writing-catalog-commercial .capability-group-writing .capability-card:first-child{grid-column:auto}
+ .writing-landing .writing-catalog-commercial .capability-group-preparation .capability-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@container writing-catalog (max-width:550px){
+ .writing-capabilities.writing-catalog-commercial .writing-recommendation-main{display:block}
+ .writing-capabilities.writing-catalog-commercial .writing-recommendation-main>.writing-recommendation-meta{margin:12px 0}
+ .writing-landing .writing-catalog-commercial .capability-list,.writing-landing .writing-catalog-commercial .capability-group-preparation .capability-list{grid-template-columns:minmax(0,1fr)}
+ .writing-landing .writing-catalog-commercial .writing-recommendation-cta{display:flex;width:100%}
+}
