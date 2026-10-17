@@ -129,7 +129,7 @@ test('repeated database startup preserves edited prices and never reissues exist
  const f=fixture(t,{path:join(directory,'account.sqlite')});f.channel('wechat');const item=await f.create();await f.notify(item);
  savePaymentProduct(f.db,'credits-200',productInput(250,{priceCents:2500,title:'已调整商品'}));
  for(let i=0;i<3;i++){f.restart();const product=paymentCatalog(f.db).find(p=>p.id==='credits-200');assert.equal(product.priceCents,2500);assert.equal(product.creditAmount,250);assert.equal(product.title,'已调整商品');await f.notify(item);assert.equal(f.service.entitlements(f.user).credits.balance,200);}
- assert.equal(f.db.prepare('SELECT count(*) AS n FROM payment_credit_ledger').get().n,1);assert.equal(f.db.prepare('SELECT count(*) AS n FROM products').get().n,13);
+ assert.equal(f.db.prepare('SELECT count(*) AS n FROM payment_credit_ledger').get().n,1);assert.equal(f.db.prepare('SELECT count(*) AS n FROM products').get().n,16);
 });
 
 test('balance sums the full credit ledger even when only the most recent 100 records are returned',async t=>{

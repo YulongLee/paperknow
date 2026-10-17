@@ -1,6 +1,7 @@
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,mkdirSync,chmodSync} from 'node:fs';
 import {dirname} from 'node:path';
+import {seedCommercialOffers} from './commercial-offers.mjs';
 function migrateUsers(db,path){
   const columns=db.prepare('PRAGMA table_info(users)').all();
   if(!columns.some(column=>['email','password_hash'].includes(column.name)&&column.notnull))return;
@@ -55,6 +56,7 @@ export function database(path){
     for(const [id,title] of [['basic','基础会员'],['advanced','进阶会员'],['premium','尊享会员']]){
       db.prepare('INSERT OR IGNORE INTO products VALUES(?,?,?,?)').run(id,title,'preview',JSON.stringify({unit:null,quota:null,duration:null,paymentEnabled:false}));
     }
+    seedCommercialOffers(db);
     // The owner approved these recharge tiers. Existing edits are never reset on startup.
     for(const amount of [200,500,1000]){
       const description=`支付成功后向当前账户充值 ${amount} 科研积分，用于已开放的计费任务。提交前确认，成功扣减；失败或取消释放预占。`;

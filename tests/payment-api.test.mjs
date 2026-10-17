@@ -109,6 +109,17 @@ test('public catalogue contains approved credit tiers and only fully priced publ
  const f=await fixture(t);await f.channel();const initial=await f.request('/api/payments/options',{cookie:''});assert.equal(initial.value.products.length,3);assert.ok(initial.value.products.every(item=>item.entitlementType==='credits'));assert.equal(initial.value.enabled,true);for(const fields of [{priceCents:3.21},{priceCents:'321'},{priceCents:0},{priceCents:-1},{durationDays:0},{description:''}])assert.equal((await f.publish('basic',fields)).status,400);assert.equal(f.count('orders'),0);assert.equal((await f.publish()).status,200);const options=(await f.request('/api/payments/options',{cookie:''})).value;assert.equal(options.enabled,true);assert.equal(options.products.length,4);const membership=options.products.find(item=>item.id==='basic');assert.equal(membership.priceCents,321);assert.equal(membership.entitlement.durationDays,7);assert.equal(JSON.stringify(options).includes(wechat.apiV3Key),false);assert.equal((await f.publish('no-such-product')).status,404);
 });
 
+test('public payment options expose scoped service prices without runtime or merchant settings',async t=>{
+ const f=await fixture(t);await f.channel();
+ const response=await f.request('/api/payments/options',{cookie:''});
+ assert.equal(response.status,200);assert.equal(response.value.toolBilling.services.length,13);
+ for(const service of response.value.toolBilling.services){
+  assert.deepEqual(Object.keys(service).sort(),['available','creditCost','effectiveCreditCost','effectiveMode','group','key','mode','title']);
+ }
+ for(const secret of [rsa.privateKey,wechat.apiV3Key,'payment-fixture-only-no-network','test-model','billing-fixture.example.invalid'])assert.equal(response.text.includes(secret),false);
+ assert.equal(f.count('orders'),0);
+});
+
 test('server fixes the exact cents and rejects client price, currency, quantity or entitlement overrides',async t=>{
  const f=await fixture(t);await f.ready();for(const extra of [{amountCents:1},{priceCents:1},{amount:0.01},{currency:'USD'},{quantity:3},{entitlement:{durationDays:999}}])assert.equal((await f.create(extra)).status,400);assert.equal(f.count('orders'),0);const response=await f.create();assert.equal(response.status,201);assert.equal(response.value.item.amountCents,321);assert.equal(response.value.item.currency,'CNY');assert.equal(f.created[0].input.amountCents,321);assert.equal(f.created[0].input.notifyUrl,'https://paperknow.cn/api/payments/notify/wechat');assert.equal(f.db.prepare('SELECT amount_cents FROM payment_orders').get().amount_cents,321);
 });
