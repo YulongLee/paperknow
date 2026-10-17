@@ -4,7 +4,7 @@ import {validThesisQuote} from './thesis-online.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const active=item=>['queued','running'].includes(item?.status);
 const statusText={queued:'正在排队',running:'正在生成方法建议',completed:'方法建议已生成',failed:'方法建议生成未完成',cancelled:'已停止生成'};
-const stages={queued:'等待 AI 服务处理',preparing:'整理主题与研究资料',agent_running:'设计拟开展的研究路径',agent_tools:'核对方法适用条件',completed:'请先预览，再填入补充说明',failed:'请查看具体原因',cancelled:'原有补充说明未改动'};
+const stages={queued:'等待 AI 服务处理',preparing:'整理主题与研究资料',agent_running:'设计拟开展的研究路径',agent_tools:'核对方法适用条件',completed:'请先预览，再填入补充说明',failed:'未生成可用的方法建议，原有补充说明未改动。',cancelled:'原有补充说明未改动'};
 const abortError=()=>Object.assign(new Error('页面已切换'),{name:'AbortError'});
 
 // The server owns durable jobs and billing. Suggestions stay proposed plans and are never applied or confirmed as research evidence by this controller.
@@ -64,7 +64,7 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
   if(!current()||!opened)return;
   withStableView(container.closest('.dashboard')||container,()=>{
    container.hidden=false;
-   const running=active(item),completed=item?.status==='completed',text=completed?previewText:'',drift=!!contextKey&&!contextMatches()||commandPending&&!contextKey;
+   const running=active(item),completed=item?.status==='completed',failed=item?.status==='failed',text=completed?previewText:'',drift=!!contextKey&&!contextMatches()||commandPending&&!contextKey;
    const brief=snapshot||{},profile=brief.profile||{};
    let body='';
    if(busy&&!user&&!loadError)body='<p class="writing-outline-ai-loading writing-method-ai-loading" role="status">正在读取账户与方法建议服务…</p>';
@@ -72,7 +72,10 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
    else if(user){
     body=`<div class="writing-outline-ai-brief writing-method-ai-brief"><small>本次论文主题</small><h4>${esc(brief.title||'已保存的方法建议生成任务')}</h4><div class="writing-outline-ai-facts writing-method-ai-facts"><span>${esc(profile.level||'按当前写作设置')}</span>${profile.discipline||profile.major?`<span>${esc(profile.discipline||profile.major)}</span>`:''}<span>${Array.isArray(brief.materials)?brief.materials.length:0} 份资料</span><span>${Array.isArray(brief.references)?brief.references.length:0} 篇参考文献</span></div></div>`;
     if(drift)body+='<p class="writing-outline-ai-warning writing-method-ai-warning" role="status">论文主题或研究资料已有变化。请先核对当前信息，再重新生成；这份结果不会直接替换当前补充说明。</p>';
-    if(item)body+=`<div class="writing-outline-ai-progress writing-method-ai-progress" role="status"><strong>${esc(statusText[item.status])}</strong><span>${esc(stages[item.stage]||stages[item.status]||'根据已确认的信息处理')}</span>${running?'<p>可离开此页面，后台任务会继续；重新打开可读取进度。</p>':''}${item.error?`<p class="writing-outline-ai-error writing-method-ai-error">${esc(typeof item.error==='string'?item.error:item.error.message||'生成中断，请稍后重新生成。')}</p>`:''}</div>`;
+    if(item){
+     const detail=typeof item.error==='string'?item.error:item.error?.message;
+     body+=`<div class="writing-outline-ai-progress writing-method-ai-progress" role="status"><strong>${esc(statusText[item.status])}</strong><span>${esc(failed?stages.failed:stages[item.stage]||stages[item.status]||'根据已确认的信息处理')}</span>${running?'<p>可离开此页面，后台任务会继续；重新打开可读取进度。</p>':''}${failed||detail?`<p class="writing-outline-ai-error writing-method-ai-error" role="alert">具体原因：${esc(String(detail||'本次任务未能返回可用建议，请重新确认费用后再试。').trim()||'本次任务未能返回可用建议，请重新确认费用后再试。')}</p>`:''}</div>`;
+    }
     if(completed)body+=`<div class="writing-outline-ai-preview writing-method-ai-preview"><label for="writing-method-ai-result">拟开展的研究方法建议（可编辑）</label><textarea id="writing-method-ai-result" data-scroll-key="writing-method-ai-preview" rows="12" maxlength="12000">${esc(text)}</textarea><p>生成内容尚未应用。你可以先修改建议，再点击“填入补充说明”。该方案仅供拟开展研究参考，不代表已经完成研究。</p></div>`;
     if(quote&&!item){body+=`<div class="writing-outline-ai-charge writing-method-ai-charge"><strong>${esc(costText())}</strong><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；方法建议与后续提纲、正文生成分别计费。</p><label class="writing-outline-ai-consent writing-method-ai-consent"><input type="checkbox" data-method-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容交由 AI 服务处理以生成拟开展的研究方案，并确认本次费用。</label></div>`;}
     body+='<div class="writing-outline-ai-actions writing-method-ai-actions">';
