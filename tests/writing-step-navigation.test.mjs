@@ -63,7 +63,7 @@ test('five-step transitions keep the viewport and do not force focus away from t
  }finally{f.close();}
 });
 
-test('completed steps use one real check in the original number slot and reset cleanly when returning',async()=>{
+test('completed steps use one real check in the original number slot and retain confirmation when returning',async()=>{
  const f=fixture();
  try{
   mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','状态检查');
@@ -71,14 +71,14 @@ test('completed steps use one real check in the original number slot and reset c
   const steps=[...document.querySelectorAll('[data-writing-step]')];
   assert.equal(steps.length,5);
   assert.deepEqual(steps.map(step=>step.querySelector('.writing-detail-step-number').textContent),['✓','✓','✓','04','05']);
-  assert.deepEqual(steps.map(step=>step.querySelector('.writing-detail-step-state').textContent),['已完成','已完成','已完成','正在进行','待进行']);
+  assert.deepEqual(steps.map(step=>step.querySelector('.writing-detail-step-state').textContent),['已完成','已完成','已完成','正在进行','待解锁']);
   assert.equal(steps.filter(step=>step.classList.contains('is-complete')).length,3);
   assert.equal(steps.filter(step=>step.getAttribute('aria-current')==='step').length,1);
   assert.equal(steps[3].getAttribute('aria-current'),'step');
   assert.ok(steps.every(step=>step.querySelectorAll('.writing-detail-step-number').length===1));
   assert.ok(steps.every(step=>step.querySelector('.writing-detail-step-number').getAttribute('aria-hidden')==='true'));
   steps[1].click();await settle();
-  assert.deepEqual(steps.map(step=>step.querySelector('.writing-detail-step-number').textContent),['✓','02','03','04','05']);
+  assert.deepEqual(steps.map(step=>step.querySelector('.writing-detail-step-number').textContent),['✓','02','✓','04','05']);
   assert.equal(steps[1].getAttribute('aria-current'),'step');
  }finally{f.close();}
 });

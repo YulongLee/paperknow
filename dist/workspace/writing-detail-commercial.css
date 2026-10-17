@@ -138,3 +138,28 @@
 .writing-detail-commercial .writing-method-ai-panel{margin-top:18px}.writing-detail-commercial .writing-method-ai-panel .writing-outline-ai-shell{box-shadow:none}
 @media(max-width:640px){.dashboard.writing-detail-commercial[data-writing-stage="2"] #knowledge-ai .knowledge-ai-actions>.btn{flex:1 1 auto}.writing-detail-commercial #knowledge-ai .knowledge-ai-actions .knowledge-usage{flex-basis:100%;margin-left:0}}
 @media(max-width:760px){.writing-detail-commercial .outline-source-actions:has(#outline-manual-trigger){grid-template-columns:minmax(0,1fr)}.writing-detail-commercial .writing-outline-ai-shell{padding:16px}.writing-detail-commercial .writing-outline-ai-actions .btn{width:100%}}
+
+/* Keep the thesis wizard scoped to its active step, including generated decoration. */
+#app .dashboard.thesis-sequential :is([hidden],[hidden] *){display:none!important;visibility:hidden!important}
+#app .dashboard.thesis-sequential [hidden] *::before,#app .dashboard.thesis-sequential [hidden] *::after{content:none!important;display:none!important}
+.dashboard.thesis-sequential .writing-detail-stepper [data-writing-step]{cursor:pointer;outline-offset:4px}
+.dashboard.thesis-sequential .writing-detail-stepper [data-writing-step]:not(.is-locked):hover{border-color:color-mix(in srgb,var(--detail-accent) 55%,var(--detail-border,#e0e6f1))}
+.dashboard.thesis-sequential .writing-detail-stepper [data-writing-step]:focus-visible{outline:3px solid color-mix(in srgb,var(--detail-accent) 45%,white)}
+.dashboard.thesis-sequential .writing-detail-stepper [data-writing-step].is-locked{cursor:not-allowed;opacity:.58;box-shadow:none;transition:none}
+.dashboard.thesis-sequential .writing-detail-stepper [data-writing-step].is-locked:hover{border-color:var(--detail-border,#e0e6f1);background:var(--detail-surface,#fff);box-shadow:none}
+.dashboard.thesis-sequential .writing-detail-stepper .writing-process-context{border-left:3px solid var(--detail-accent);padding-left:13px}
+.dashboard.thesis-sequential #writing-process-context-text{color:var(--detail-ink);font-weight:550}
+.dashboard.thesis-sequential .thesis-step-footer{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:24px;padding-top:20px;border-top:1px solid var(--detail-border,#e0e6f1)}
+.dashboard.thesis-sequential .thesis-step-footer>span{flex:1;min-width:170px;color:var(--pk-muted,#7b8da8);font-size:12px;line-height:1.8}
+.dashboard.thesis-sequential .thesis-step-footer>.btn{flex:0 0 auto;min-height:42px;margin:0;width:auto;max-width:100%;font-size:12px;padding:10px 16px}
+.dashboard.thesis-sequential .thesis-step-footer>#outline-confirm{margin:0;padding:10px 18px;font-size:12px;width:auto;min-width:218px}
+.dashboard.thesis-sequential #writing-final-navigation{margin:0 0 22px;padding:15px 18px;border:1px solid var(--detail-border,#e0e6f1);border-radius:12px;background:var(--pk-surface-soft,#f8faff)}
+.hub-theme-dark #app .dashboard.thesis-sequential [data-writing-step].is-locked:hover{background:var(--pk-surface-soft);border-color:var(--pk-border)}
+.hub-theme-dark #app .dashboard.thesis-sequential #writing-process-context-text{color:var(--pk-text)}
+@media(max-width:760px){
+ .dashboard.thesis-sequential .thesis-step-footer{justify-content:stretch;gap:9px;margin-top:20px;padding-top:16px}
+ .dashboard.thesis-sequential .thesis-step-footer>span{order:-1;flex-basis:100%;min-width:0;font-size:11px}
+ .dashboard.thesis-sequential .thesis-step-footer>.btn{flex:1;min-width:0;padding:10px 12px;font-size:11px}
+ .dashboard.thesis-sequential .thesis-step-footer>#outline-confirm{flex-basis:100%;width:100%;min-width:0;min-height:44px}
+ .dashboard.thesis-sequential #writing-final-navigation{padding:14px;margin-bottom:18px}
+}
