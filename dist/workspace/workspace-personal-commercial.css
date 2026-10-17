@@ -197,6 +197,10 @@
 .account-workspace .personal-service-view .account-personal-table :is(th,td){font-size:13px;padding:15px 16px;color:var(--pk-text,#1d2b43);border-color:var(--pk-border,#e5ebf3);vertical-align:top}
 .account-workspace .personal-service-view .account-personal-table th{font-size:12px;font-weight:500;background:var(--pk-surface-soft,#f6f8fc);color:var(--pk-muted,#64748b)}
 .account-workspace .personal-service-view .account-personal-table tbody tr:last-child td{border:0}
+.account-workspace .personal-service-view .member-record-scroll{box-sizing:border-box;max-height:380px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#b5c4da transparent}
+.account-workspace .personal-service-view .member-record-scroll thead th{position:sticky;top:0;z-index:1;box-shadow:inset 0 -1px var(--pk-border,#e5ebf3)}
+.account-workspace .personal-service-view .member-record-scroll:focus-visible{outline:2px solid var(--pk-blue,#246bfd);outline-offset:3px}
+.hub-theme-dark .account-workspace .personal-service-view .member-record-scroll{scrollbar-color:#576d91 transparent}
 .account-workspace .personal-service-view .personal-feedback-columns{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}
 .account-workspace .personal-service-view label{font-size:14px;color:var(--pk-text,#1d2b43);margin:20px 0 9px;font-weight:500}
 .account-workspace .personal-service-view :is(input,select,textarea){color:var(--pk-text,#1d2b43);background:var(--pk-surface,#fff);border-color:var(--pk-border,#e5ebf3);border-radius:10px;font-size:14px;min-height:44px}
