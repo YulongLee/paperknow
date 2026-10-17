@@ -133,4 +133,16 @@
 .writing-detail-commercial .outline-budget-explanation{margin:0 0 16px;padding:0 20px;color:var(--pk-muted,#7b8da9);font-size:12px;line-height:1.8}
 #app .writing-detail-commercial .outline-edit-row.is-budget-summary .outline-row-words[readonly]{background:var(--pk-surface-soft,#eef4ff);border-color:transparent;color:var(--detail-accent,#3569ee);font-weight:600;cursor:default}
 .writing-detail-commercial .outline-edit-row.is-budget-summary .outline-row-count{color:var(--detail-accent,#3569ee)}
+.writing-detail-commercial #knowledge-ai .knowledge-ai-actions{flex-wrap:wrap;gap:10px}
+.dashboard.writing-detail-commercial[data-writing-stage="2"] #knowledge-ai .knowledge-ai-actions>.btn{width:auto;flex:0 0 auto}
+.writing-detail-commercial #knowledge-ai .knowledge-ai-actions .knowledge-usage{margin-left:auto}
+.writing-detail-commercial #knowledge-method-generate{background:linear-gradient(120deg,var(--detail-accent,#5377dc),#7667df);border-color:transparent;box-shadow:0 5px 15px #536bdc20}
+.writing-detail-commercial .knowledge-method-draft{margin-top:20px;padding:18px;border:1px solid var(--pk-border,#dce5f4);border-radius:12px;background:linear-gradient(135deg,var(--pk-surface-soft,#f4f6ff),var(--pk-surface,#fff))}
+.writing-detail-commercial .knowledge-method-draft-head,.writing-detail-commercial .knowledge-method-draft-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.writing-detail-commercial .knowledge-method-draft-head{margin-bottom:12px}.writing-detail-commercial .knowledge-method-draft-head label{margin:0;font-weight:600}.writing-detail-commercial .knowledge-method-draft-head label small{display:inline;margin-left:6px;color:var(--pk-muted,#8493aa);font-weight:400}
+.writing-detail-commercial .knowledge-method-draft-head>span{padding:4px 9px;border-radius:6px;background:var(--detail-soft,#eef1ff);color:var(--detail-accent,#5377dc);font-size:11px}
+#app .writing-detail-commercial #knowledge-method-input{box-sizing:border-box;width:100%;min-height:220px;margin:0;line-height:1.9;resize:vertical}
+.writing-detail-commercial .knowledge-method-draft-foot{margin-top:10px;color:var(--pk-muted,#8493aa);font-size:12px}
+.writing-detail-commercial .writing-method-ai-panel{margin-top:18px}.writing-detail-commercial .writing-method-ai-panel .writing-outline-ai-shell{box-shadow:none}
+@media(max-width:640px){.dashboard.writing-detail-commercial[data-writing-stage="2"] #knowledge-ai .knowledge-ai-actions>.btn{flex:1 1 auto}.writing-detail-commercial #knowledge-ai .knowledge-ai-actions .knowledge-usage{flex-basis:100%;margin-left:0}}
 @media(max-width:760px){.writing-detail-commercial .outline-source-actions:has(#outline-manual-trigger){grid-template-columns:minmax(0,1fr)}.writing-detail-commercial .writing-outline-ai-shell{padding:16px}.writing-detail-commercial .writing-outline-ai-actions .btn{width:100%}}

@@ -124,7 +124,7 @@ export function createBillingService(db,config={}){
  function event(id,kind,now){db.prepare('INSERT INTO billing_events(id,reservation_id,kind,created_at) VALUES(?,?,?,?)').run(randomUUID(),id,kind,now);}
  function reserve(user,jobId,attempt,type,token){
   if(!Number.isSafeInteger(attempt)||attempt<1||typeof jobId!=='string')fail(400,'任务执行次数无效');
-  const job=db.prepare('SELECT id,user_id,type FROM jobs WHERE id=? AND user_id=?').get(jobId,user.id);if(!job)fail(404,'任务不存在');if(job.type!==type&&!(['thesis','thesis_outline'].includes(job.type)&&type==='agent'))fail(409,'任务类型与计费服务不一致');
+  const job=db.prepare('SELECT id,user_id,type FROM jobs WHERE id=? AND user_id=?').get(jobId,user.id);if(!job)fail(404,'任务不存在');if(job.type!==type&&!(['thesis','thesis_outline','thesis_method'].includes(job.type)&&type==='agent'))fail(409,'任务类型与计费服务不一致');
   const existing=db.prepare('SELECT * FROM billing_reservations WHERE job_id=? AND attempt=?').get(jobId,attempt);
   if(existing){if(existing.user_id!==user.id||existing.type!==type)fail(409,'任务预占信息不一致');return reservation(existing);}
   if(db.prepare("SELECT 1 FROM billing_reservations WHERE job_id=? AND status='held'").get(jobId))fail(409,'任务已有未结算预占');

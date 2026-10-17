@@ -1,4 +1,4 @@
-const aiTypes=Object.freeze(['polish','review','agent','thesis','thesis_outline']);
+const aiTypes=Object.freeze(['polish','review','agent','thesis','thesis_outline','thesis_method']);
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const limit=(value,fallback,max)=>Number.isSafeInteger(value)&&value>=1&&value<=max?value:fallback;
 
@@ -36,8 +36,8 @@ export function createModelBudget(db,config={}){
   const globalUsed=db.prepare('SELECT count(*) n FROM model_attempts WHERE created_at>=? AND created_at<?').get(window.start,window.end).n;
   let queued=0,globalQueued=0;
   if(includeQueued){
-   queued=db.prepare("SELECT count(*) n FROM jobs WHERE status='queued' AND type IN ('polish','review','agent','thesis','thesis_outline') AND user_id=? AND (? IS NULL OR id!=?)").get(userId,excludeJobId,excludeJobId).n;
-   globalQueued=db.prepare("SELECT count(*) n FROM jobs WHERE status='queued' AND type IN ('polish','review','agent','thesis','thesis_outline') AND (? IS NULL OR id!=?)").get(excludeJobId,excludeJobId).n;
+   queued=db.prepare("SELECT count(*) n FROM jobs WHERE status='queued' AND type IN ('polish','review','agent','thesis','thesis_outline','thesis_method') AND user_id=? AND (? IS NULL OR id!=?)").get(userId,excludeJobId,excludeJobId).n;
+   globalQueued=db.prepare("SELECT count(*) n FROM jobs WHERE status='queued' AND type IN ('polish','review','agent','thesis','thesis_outline','thesis_method') AND (? IS NULL OR id!=?)").get(excludeJobId,excludeJobId).n;
   }
   return {used,queued,globalUsed,globalQueued};
  }

@@ -26,6 +26,17 @@ CREATE TABLE IF NOT EXISTS thesis_outline_runs(
 );
 CREATE INDEX IF NOT EXISTS thesis_outline_runs_queue ON thesis_outline_runs(status,created_at);
 CREATE INDEX IF NOT EXISTS thesis_outline_runs_owner ON thesis_outline_runs(user_id,created_at);
+CREATE TABLE IF NOT EXISTS thesis_method_runs(
+ id TEXT PRIMARY KEY REFERENCES jobs(id),user_id TEXT NOT NULL REFERENCES users(id),
+ snapshot TEXT NOT NULL,input_hash TEXT NOT NULL,client_key TEXT NOT NULL,
+ settings_version TEXT NOT NULL,settings_meta TEXT NOT NULL,
+ status TEXT NOT NULL,stage TEXT NOT NULL,error TEXT,output TEXT,result_id TEXT,
+ input_tokens INTEGER NOT NULL DEFAULT 0,output_tokens INTEGER NOT NULL DEFAULT 0,
+ usage_known INTEGER NOT NULL DEFAULT 1 CHECK(usage_known IN (0,1)),
+ created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(user_id,client_key)
+);
+CREATE INDEX IF NOT EXISTS thesis_method_runs_queue ON thesis_method_runs(status,created_at);
+CREATE INDEX IF NOT EXISTS thesis_method_runs_owner ON thesis_method_runs(user_id,created_at);
 CREATE TABLE IF NOT EXISTS thesis_commands(
  user_id TEXT NOT NULL REFERENCES users(id),client_key TEXT NOT NULL,thesis_id TEXT NOT NULL REFERENCES theses(id),
  run_id TEXT NOT NULL REFERENCES thesis_runs(id),input_hash TEXT NOT NULL,created_at TEXT NOT NULL,
