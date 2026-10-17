@@ -36,6 +36,9 @@ export function createDesktopReleaseStorage(config={},client){
   try{result=await oss.head(release.storageKey,{timeout:15000});}catch{throw new Error('安装包尚未上传或 OSS 暂时无法验证');}
   const headers=result.res?.headers||{},metadata=result.meta||{};
   if(Number(headers['content-length'])!==release.bytes||String(metadata.sha256||headers['x-oss-meta-sha256']||'')!==release.sha256||String(metadata['paperknow-release']||headers['x-oss-meta-paperknow-release']||'')!==`${release.platform}/${release.arch}/${release.version}`)throw new Error('OSS 安装包完整性校验失败');
+  const contentType=String(headers['content-type']||'').split(';')[0].trim().toLowerCase(),disposition=String(headers['content-disposition']||''),cacheControl=String(headers['cache-control']||'').toLowerCase().split(',').map(value=>value.trim());
+  const attachment=/^\s*attachment\s*;\s*filename\s*=\s*(?:"([^"]*)"|([^;\s]+))\s*;?\s*$/i.exec(disposition);
+  if(contentType!=='application/octet-stream'||/[\r\n\u0000]/.test(disposition)||!attachment||(attachment[1]??attachment[2])!==release.fileName||!cacheControl.includes('private')||!cacheControl.includes('no-store'))throw new Error('安装包下载响应头校验失败');
   let acl;try{acl=await oss.getACL(release.storageKey,{timeout:15000});}catch{throw new Error('无法验证安装包的私有访问权限');}
   if(acl.acl!=='private')throw new Error('安装包必须使用私有对象访问权限');
   return release;
@@ -67,7 +70,9 @@ export function createDesktopReleaseStorage(config={},client){
   },
   async downloadURL(value){
    const release=await verify(value);
-   let target;try{target=await oss.signatureUrlV4('GET',300,{queries:{'response-content-disposition':`attachment; filename="${release.fileName}"`,'response-content-type':'application/octet-stream','response-cache-control':'private, no-store'}},release.storageKey);}catch{throw new Error('安装包下载链接暂时不可用');}
+   // OSS default domains can reject response-header override query parameters.
+   // The verified object already carries binary, attachment and no-store headers.
+   let target;try{target=await oss.signatureUrlV4('GET',300,{},release.storageKey);}catch{throw new Error('安装包下载链接暂时不可用');}
    const url=new URL(target),expectedHost=`${config.ossBucket}.${endpoint.hostname}`;
    if(url.protocol!=='https:'||url.hostname!==expectedHost||url.username||url.password||decodeURIComponent(url.pathname)!==`/${release.storageKey}`)throw new Error('安装包下载地址校验失败');
    return target;

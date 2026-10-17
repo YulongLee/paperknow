@@ -15,9 +15,9 @@ const settings={ossBucket:'test-bucket',ossEndpoint:'https://oss-cn-shanghai.ali
 function mockStorage(){
  const objects=new Map(),calls=[];let uploadFailure=false;
  const client={
-  async head(key){calls.push({method:'head',key});const item=objects.get(key);if(!item)throw Object.assign(new Error('fixture missing'),{status:404});return {meta:item.meta,res:{headers:{'content-length':String(item.buffer.length)}}};},
+  async head(key){calls.push({method:'head',key});const item=objects.get(key);if(!item)throw Object.assign(new Error('fixture missing'),{status:404});return {meta:item.meta,res:{headers:{'content-length':String(item.buffer.length),...item.headers}}};},
   async getACL(key){calls.push({method:'getACL',key});return {acl:objects.get(key)?.acl||'private'};},
-  async multipartUpload(key,file,options){calls.push({method:'multipartUpload',key,file,options});options.progress?.(0,{uploadId:'fixture-upload-id'});if(uploadFailure)throw new Error('fixture-secret-do-not-disclose');objects.set(key,{buffer:await readFile(file),meta:options.meta,acl:options.headers['x-oss-object-acl']});},
+  async multipartUpload(key,file,options){calls.push({method:'multipartUpload',key,file,options});options.progress?.(0,{uploadId:'fixture-upload-id'});if(uploadFailure)throw new Error('fixture-secret-do-not-disclose');objects.set(key,{buffer:await readFile(file),meta:options.meta,acl:options.headers['x-oss-object-acl'],headers:{'content-type':options.mime,'content-disposition':options.headers['Content-Disposition'],'cache-control':options.headers['Cache-Control']}});},
   async abortMultipartUpload(key,uploadId){calls.push({method:'abort',key,uploadId});},
   async signatureUrlV4(method,expires,request,key){calls.push({method:'sign',httpMethod:method,expires,request,key});return `https://${settings.ossBucket}.oss-cn-shanghai.aliyuncs.com/${key}?fixture-only-signature=not-real`;}
  };
@@ -99,12 +99,22 @@ test('anonymous download API returns controlled no-store redirects and never str
  const api=createAPI(db,{cancel(){}},{desktopReleaseStorage:mock.storage,getAI:()=>({})}),server=http.createServer((req,res)=>void api(req,res));await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();});const base=`http://127.0.0.1:${server.address().port}`;
  const response=await fetch(base+'/api/desktop/releases'),catalog=await response.json();assert.equal(response.status,200);assert.equal(catalog.releases.length,1);assert.equal(catalog.releases[0].downloadUrl,'/api/desktop/download/macos/arm64');assert.equal(catalog.releases[0].sha256,release.sha256);assert.equal(JSON.stringify(catalog).includes('test-bucket'),false);assert.equal(JSON.stringify(catalog).includes('storageKey'),false);assert.equal(JSON.stringify(catalog).includes('fixture-secret'),false);
  const download=await fetch(base+catalog.releases[0].downloadUrl,{redirect:'manual'});assert.equal(download.status,302);assert.equal(await download.text(),'');assert.equal(download.headers.get('cache-control'),'private, no-store');assert.equal(download.headers.get('referrer-policy'),'no-referrer');assert.ok(download.headers.get('location').startsWith('https://test-bucket.oss-cn-shanghai.aliyuncs.com/paperknow/clients/'));
- const sign=mock.calls.find(value=>value.method==='sign');assert.equal(sign.httpMethod,'GET');assert.equal(sign.expires,300);assert.match(sign.request.queries['response-content-disposition'],/^attachment; filename="PaperKnow-/);
+ const sign=mock.calls.find(value=>value.method==='sign');assert.equal(sign.httpMethod,'GET');assert.equal(sign.expires,300);assert.deepEqual(sign.request,{});assert.equal([...new URL(download.headers.get('location')).searchParams.keys()].some(key=>key.startsWith('response-')),false);
  for(const path of ['/api/desktop/download/windows/arm64','/api/desktop/download/linux/x64','/api/desktop/download/windows/x64'])assert.equal((await fetch(base+path,{redirect:'manual'})).status,404);
  mock.objects.delete(release.storageKey);const unavailable=await fetch(base+catalog.releases[0].downloadUrl,{redirect:'manual'});assert.equal(unavailable.status,503);assert.deepEqual(await unavailable.json(),{error:'客户端下载暂时不可用，请稍后重试'});assert.equal(unavailable.headers.get('location'),null);
 });
 test('untrusted signed download hosts are rejected rather than redirected',async()=>{
  const mock=mockStorage(),release=await uploaded(mock);mock.client.signatureUrlV4=async()=>`https://attacker.invalid/${release.storageKey}`;await assert.rejects(mock.storage.downloadURL(release),/地址校验失败/);
+});
+test('download signing relies on verified stored attachment headers and rejects unsafe metadata',async()=>{
+ const mock=mockStorage(),release=await uploaded(mock),object=mock.objects.get(release.storageKey),expectedHeaders={...object.headers};
+ for(const change of [{'content-type':'text/html'},{'content-type':''},{'content-disposition':'inline'},{'content-disposition':'attachment; filename="another.exe"'},{'cache-control':'public, max-age=3600'}]){
+  object.headers={...expectedHeaders,...change};await assert.rejects(mock.storage.downloadURL(release),/响应头校验失败/);
+ }
+ assert.equal(mock.calls.some(value=>value.method==='sign'),false);
+ object.headers=expectedHeaders;await mock.storage.downloadURL(release);const sign=mock.calls.find(value=>value.method==='sign');assert.deepEqual(sign.request,{});
+ for(const disposition of [`attachment;filename=${release.fileName}`,` ATTACHMENT ; filename = "${release.fileName}" ; `]){object.headers={...expectedHeaders,'content-disposition':disposition};await mock.storage.downloadURL(release);}
+ object.headers={...expectedHeaders,'content-disposition':`attachment; filename="${release.fileName.toLowerCase()}"`};await assert.rejects(mock.storage.downloadURL(release),/响应头校验失败/);
 });
 test('CLI requires absolute paths, catalogue revision and exclusive manifest output',async()=>{
  assert.throws(()=>parseDesktopReleaseArguments(['upload','--spec','relative.json','--manifest','/tmp/manifest.json']),/绝对路径/);
