@@ -1,0 +1,18 @@
+[Unit]
+Description=PaperKnow immutable code release retention
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /opt/paperknow/bin/retention.py --apply
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=25%
+MemoryMax=256M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RuntimeDirectory=paperknow-ops
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=/opt/paperknow /run/paperknow-ops

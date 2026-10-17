@@ -1,5 +1,9 @@
 import OSS from 'ali-oss';
+import {randomUUID} from 'node:crypto';
 import {digest} from './auth.mjs';
+const safeId=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,120}$/.test(value);
+const originalKinds=['txt','docx','pdf'];
+const artifactKinds=['txt','md','csv','json','html','svg','png','jpg','jpeg','pdf','docx','pptx','xlsx','zip'];
 export function createStorage(config,client){
   const values=[config.ossBucket,config.ossEndpoint,config.ossRegion,config.ossAccessKeyId,config.ossAccessKeySecret];
   if(!client&&!values.some(Boolean))return null;
@@ -9,21 +13,61 @@ export function createStorage(config,client){
   const prefix=config.ossPrefix||'paperknow/';
   if(!/^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*\/$/.test(prefix))throw new Error('OSS 项目目录无效');
   const oss=client||new OSS({bucket:config.ossBucket,endpoint:config.ossEndpoint,region:config.ossRegion.startsWith('oss-')?config.ossRegion:`oss-${config.ossRegion}`,accessKeyId:config.ossAccessKeyId,accessKeySecret:config.ossAccessKeySecret,authorizationV4:true,secure:true,timeout:30000});
+  const objectKey=(id,userId,kind,area)=>{
+    if(!safeId(id)||!safeId(userId)||!(area==='originals'?originalKinds:artifactKinds).includes(kind))throw new Error('文件存储位置与当前项目配置不匹配');
+    return `${prefix}users/${userId}/${area}/${id}.${kind}`;
+  };
+  const assertObject=(file,area)=>{
+    const key=objectKey(file.id,file.user_id,file.kind,area);
+    if(file.storage_bucket!==config.ossBucket||file.storage_key!==key)throw new Error('文件存储位置与当前项目配置不匹配');
+    return key;
+  };
+  const readObject=async(file,area)=>{
+    const key=assertObject(file,area),maximum=(area==='exports'?20:2)*1024*1024;
+    if(!Number.isSafeInteger(file.bytes)||file.bytes<1||file.bytes>maximum||!/^[a-f0-9]{64}$/.test(file.sha256||''))throw new Error('文件完整性校验失败');
+    let buffer;
+    try{
+      if(typeof oss.getStream==='function'){
+        const {stream}=await oss.getStream(key);let length=0;const chunks=[];
+        const timeout=setTimeout(()=>stream.destroy(new Error('storage-read-timeout')),30000);timeout.unref?.();
+        try{for await(const chunk of stream){length+=chunk.length;if(length>file.bytes){stream.destroy();throw new Error('storage-read-size');}chunks.push(Buffer.from(chunk));}buffer=Buffer.concat(chunks,length);}finally{clearTimeout(timeout);}
+      }else buffer=Buffer.from((await oss.get(key)).content);
+    }catch{throw new Error('OSS 文件读取失败，请稍后重试');}
+    if(buffer.length!==file.bytes||digest(buffer)!==file.sha256)throw new Error('文件完整性校验失败');
+    return buffer;
+  };
+  let healthState={configured:true,ok:null,checkedAt:null,lastSuccessAt:null};
   return {provider:'aliyun_oss',bucket:config.ossBucket,prefix,
     async put(id,userId,kind,buffer){
-      const key=`${prefix}users/${userId}/originals/${id}.${kind}`;
+      const key=objectKey(id,userId,kind,'originals');
       try{await oss.put(key,buffer,{headers:{'x-oss-object-acl':'private','Content-Type':'application/octet-stream'}});}catch{try{await oss.delete(key);}catch{/* A private object may need storage reconciliation if both operations fail. */}throw new Error('OSS 文件保存失败，请稍后重试');}
       return key;
     },async remove(file){
-      const expected=prefix+'users/'+file.user_id+'/originals/'+file.id+'.'+file.kind;
-      if(!/^[A-Za-z0-9_-]+$/.test(file.id||'')||!/^[A-Za-z0-9_-]+$/.test(file.user_id||'')||!['txt','docx','pdf'].includes(file.kind)||file.storage_bucket!==config.ossBucket||file.storage_key!==expected)throw new Error('文件存储位置与当前项目配置不匹配');
-      try{await oss.delete(file.storage_key);}catch{throw new Error('OSS 原件删除未完成，请稍后重试');}
+      const key=assertObject(file,'originals');
+      try{await oss.delete(key);}catch{throw new Error('OSS 原件删除未完成，请稍后重试');}
     },async read(file){
-      if(file.storage_bucket!==config.ossBucket||!file.storage_key?.startsWith(`${prefix}users/${file.user_id}/originals/`))throw new Error('文件存储位置与当前项目配置不匹配');
-      let result;try{result=await oss.get(file.storage_key);}catch{throw new Error('OSS 文件读取失败，请稍后重试');}
-      const buffer=Buffer.from(result.content);
-      if(buffer.length!==file.bytes||digest(buffer)!==file.sha256)throw new Error('文件完整性校验失败');
-      return buffer;
+      return readObject(file,'originals');
+    },async putArtifact(id,userId,kind,buffer,sha256){
+      const key=objectKey(id,userId,kind,'exports');
+      if(!Buffer.isBuffer(buffer)||!buffer.length||digest(buffer)!==sha256)throw new Error('文件完整性校验失败');
+      // The caller has persisted this exact private key before I/O. On an ambiguous
+      // failure it keeps cleanup metadata until removeArtifact succeeds.
+      try{await oss.put(key,buffer,{headers:{'x-oss-object-acl':'private','Content-Type':'application/octet-stream','Content-Disposition':'attachment'}});}catch{throw new Error('OSS 成果保存失败，请稍后重试');}
+      return key;
+    },async readArtifact(file){return readObject(file,'exports');
+    },async removeArtifact(file){
+      const key=assertObject(file,'exports');
+      try{await oss.delete(key);}catch{throw new Error('OSS 成果删除未完成，请稍后重试');}
+    },healthStatus(){return {...healthState};
+    },async health(){
+      const checkedAt=new Date().toISOString(),key=`${prefix}_health/${randomUUID()}.txt`,buffer=Buffer.from('paperknow-storage-health');let ok=false,reason='OSS 存储读写检查未通过';
+      try{
+        await oss.put(key,buffer,{timeout:3000,headers:{'x-oss-object-acl':'private','Content-Type':'application/octet-stream'}});
+        const result=await oss.get(key,{timeout:3000});ok=digest(Buffer.from(result.content))===digest(buffer);
+      }catch{/* Do not disclose provider credentials or diagnostics. */}
+      try{await oss.delete(key,{timeout:3000});}catch{ok=false;reason='OSS 存储检查清理未完成';}
+      healthState={configured:true,ok,checkedAt,lastSuccessAt:ok?checkedAt:healthState.lastSuccessAt,...(ok?{}:{reason})};
+      return {...healthState};
     }};
 }
 export async function fileBytes(file,storage){

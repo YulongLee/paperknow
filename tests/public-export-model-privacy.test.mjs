@@ -1,3 +1,4 @@
+import {installGuestExportSession,waitForExport} from './fixtures/artifact-session.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -36,7 +37,7 @@ test('actual PDF pages and document metadata exclude runtime identity without ce
  }finally{await task.destroy();}
 });
 
-test('customer TXT download emits only the manuscript and cited bibliography, never the surrounding runtime object',async()=>{
+test('customer TXT download emits only the manuscript and cited bibliography, never the surrounding runtime object',async()=>{const restoreExport=installGuestExportSession();
  const dom=new JSDOM('<main class="dashboard"></main>',{url:'https://paperknow.test/workspace.html#thesis/privacy-thesis'}),globals=['window','document','location','AbortController'],saved=new Map(globals.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)])),objectURL=URL.createObjectURL,revokeURL=URL.revokeObjectURL,schedule=globalThis.setTimeout,blobs=[],clicked=[];
  disposeOnlineThesis();
  try{
@@ -47,10 +48,10 @@ test('customer TXT download emits only the manuscript and cited bibliography, ne
   const item=thesis(),api=async path=>{if(path==='/auth/me')return {user:{id:'researcher'}};if(path==='/capabilities')return {thesis:{ready:true}};if(path==='/theses/privacy-thesis')return {item};throw Error('Unexpected request '+path);},view=mountOnlineThesis({id:item.id,ctx:{api,session:async()=>({status:'ready',user:{id:'researcher'}})},container:document.querySelector('.dashboard')});
   await view.ready;
   const button=document.querySelector('[data-thesis-txt]');assert.ok(button);assert.equal(button.disabled,false);button.click();
-  assert.equal(blobs.length,1);assert.equal(clicked.length,1);assert.match(clicked[0].name,/\.txt$/);assert.equal(blobs[0].type,'text/plain;charset=utf-8');
+  await waitForExport(()=>blobs.length);assert.equal(blobs.length,1);assert.equal(clicked.length,1);assert.match(clicked[0].name,/\.txt$/);assert.equal(blobs[0].type,'text/plain;charset=utf-8');
   const text=await blobs[0].text();assertPrivateIdentityAbsent(text);assert.ok(text.includes(researchText));assert.ok(text.includes(citationTitle));assert.equal(text.includes('尚未引用的来源'),false);
  }finally{
-  disposeOnlineThesis();dom.window.close();URL.createObjectURL=objectURL;URL.revokeObjectURL=revokeURL;globalThis.setTimeout=schedule;
+  restoreExport();disposeOnlineThesis();dom.window.close();URL.createObjectURL=objectURL;URL.revokeObjectURL=revokeURL;globalThis.setTimeout=schedule;
   for(const [key,descriptor]of saved)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];
  }
 });

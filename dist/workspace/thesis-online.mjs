@@ -1,3 +1,4 @@
+import {download as exportFile} from './ui.mjs';
 import {withStableView} from './view-stability.mjs';
 import {documentExportButtons,bindDocumentExports} from './document-export.mjs';
 import {toolBanner} from './tool-banner.mjs';
@@ -342,9 +343,9 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,onSaved,o
     const value=await api('/theses/'+encodeURIComponent(id)+'/chapters/'+encodeURIComponent(chapterId),{version,text:edit.text});takeItem(value.item);edits.delete(chapterId);persistDraft();editorError='';notice('已保存章节新版本，旧版本仍由账户保留。');
    });
   });
-  $('[data-thesis-txt]')?.addEventListener('click',()=>{
+  $('[data-thesis-txt]')?.addEventListener('click',async()=>{
    if(dirty()||!thesisDocumentText(item))return;
-   const url=URL.createObjectURL(new Blob([thesisDocumentText(item)],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=String(item.title||'论文正文').replace(/[\\/:*?"<>|]/g,'_')+'.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);notice('已发起 TXT 下载。');
+   try{const exported=await exportFile(String(item.title||'论文正文')+'.txt',thesisDocumentText(item),'text/plain;charset=utf-8',{sourceType:'thesis',sourceId:item.id});notice(exported.message);}catch(error){notice(error.message);}
   });
   if(item){bindDocumentExports('thesis-online',()=>current()&&!dirty()?thesisDocumentText(item):'',()=>item.title||'论文正文',$('[data-thesis-export-status]'));updateExportButtons();}
  }

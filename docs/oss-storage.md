@@ -23,7 +23,8 @@ paperknow/
 ├── users/
 │   └── {userId}/
 │       ├── originals/{fileId}.{txt|docx|pdf}  # 当前账户上传原件
-│       └── exports/                         # 预留，不代表已实现导出上传
+│       └── exports/{artifactId}.{kind}       # 账户生成的最终成果文件
+├── _health/{probeId}.txt                    # 临时私有读写探针，检查后立即删除
 ├── clients/
 │   ├── macos/
 │   │   ├── arm64/{version}/                 # 预留 Apple Silicon 安装包
@@ -42,6 +43,25 @@ OSS 使用对象 key 模拟目录。已建立 `users/`、三个客户端平台�
 - 历史保存在 SQLite 的原件继续按原存储类型读取，本次未批量搬迁、清空或删除历史资料。
 - 账户、项目、解析正文、任务和成果记录仍在服务器数据库。浏览器本地草稿、文献与备份不会因为启用 OSS 自动上传。
 - 账户原件上传仍为单文件 2 MiB、每账户总量 50 MiB；启用 OSS 不会自动更改产品限额。
+
+## 生成成果文件（2026-10-18 实现）
+
+最终 DOCX、PDF、PPTX、XLSX、TXT、Markdown、CSV、JSON、HTML、SVG、PNG、JPEG 与 ZIP 导出使用专用 `artifacts` 表及 OSS `exports/` 目录。二进制只经过受限内存缓冲，数据库保存归属、名称、大小、SHA-256、来源、对象位置和完成状态，不保存文件 BLOB，也不生成服务器长期临时文件。若 OSS 未配置或不可用，保存失败并明确提示，不回退服务器文件或 SQLite BLOB。
+
+浏览器本地草稿仍只在本机保存；游客本地下载不会自动上传。登录账户主动导出时保存最终文件到自己的私有 OSS 目录。论文正文、章节版本、引用追溯、任务状态仍是可编辑的结构化业务数据，继续使用有容量上限的数据库存储。这些记录不能直接当成临时文件删除；当前并非服务器磁盘容量的主要来源。
+
+接口：
+
+- `POST /api/artifacts`：`{name,data,sha256?,projectId?,sourceType?,sourceId?,expectedUserId?}`。`data` 是标准 base64，单文件不超过 20 MiB；默认每账户 500 MiB、2,000 个未删除文件。服务端校验后缀、基础文件标记、归属及内容哈希；同一账户相同内容和格式幂等返回已有成果。
+- `GET /api/artifacts`：支持 `page` / `pageSize`（1～50）、名称 `q`、`sourceType`；也支持 `limit` / `cursor` 分页。返回元数据列表及配额，不包含私有 OSS key、地址或凭据。
+- `GET /api/artifacts/{id}/download`：会话归属检查后由服务器读取 OSS，核对长度和 SHA-256，再以 `attachment`、`nosniff`、`sandbox` 交付。HTML / SVG 也不会在本站内联执行。
+- `POST /api/artifacts/{id}/delete`：`{expectedSha256,expectedUserId?}`，先标记正在删除，再删除远端对象，最后保留已删除状态；失败可重试。下载和上传都不会跨用户使用路径。
+
+上传在读取请求体之前限为 2 个并发，下载对象读取也限为 2 个并发。专用成果上传接口允许 28 MiB JSON，请求解码后仍限制 20 MiB；其他接口保持原有限额。配额在 OSS I/O 前预留，防止并发超额。上传未完成或补偿删除失败会保留 `uploading` / `failed` 元数据供监控与人工处理；不能把它标为已交付。删除失败保留 `deleting` 状态，不自动丢弃记录。
+
+`storage.health()` 执行项目专属私有对象写入、读取、哈希校验和删除；`healthStatus()` 只读取最近状态。监控每 15 分钟调用一次即可，不应每分钟创建探针。检查结果只返回固定说明及时间，不暴露提供商异常、对象内容或密钥。探针清理失败也计为检查失败。
+
+不对 `users/` 整体设置自动过期删除。将来如增加大 JSON 归档，应先写入、回读校验，再使用版本和哈希的比较更新把正文改为 OSS 引用；下载与删除链必须同时支持该引用。不要在现有同步计费/任务完成事务中插入远端 I/O，也不要先清空数据库正文再上传。
 
 ## 客户端安装包发布
 

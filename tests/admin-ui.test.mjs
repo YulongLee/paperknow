@@ -71,7 +71,7 @@ test('administrator sees real metrics and service states only after role verific
   assert.deepEqual([...ui.win.document.querySelectorAll('.metric-number')].map(el => el.textContent), ['8', '20', '15', '3']);
   assert.match(ui.$('#admin-content').textContent, /2 KB/);
   assert.match(ui.$('[role="img"]').getAttribute('aria-label'), /2026-10-14：新增用户 2，任务 7/);
-  assert.equal(ui.win.document.querySelectorAll('.admin-nav-link').length, 10);
+  assert.equal(ui.win.document.querySelectorAll('.admin-nav-link').length, 11);
 });
 
 test('lists support search, status filtering, pagination and reset while preserving phone-only identity', async t => {

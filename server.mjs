@@ -2,12 +2,13 @@ import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {resolve,extname,sep} from 'node:path';
+import {resolve,extname,sep,dirname} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {database} from './backend/database.mjs';
 import {createAPI} from './backend/api.mjs';
 import {environmentConfig,loadLocalEnvironment,modelSettings} from './backend/config.mjs';
 import {createStorage} from './backend/storage.mjs';
+import {createMonitoring} from './backend/monitoring.mjs';
 import {startWorker} from './backend/worker.mjs';
 import {createAgentSettings} from './backend/agent-settings.mjs';
 import {startThesisWorker} from './backend/thesis-worker.mjs';
@@ -22,6 +23,9 @@ export function createServer({dbPath=resolve(process.env.PK_DATA_DIR||'.data','p
 if(config.aiURL){const u=new URL(config.aiURL);if(u.protocol!=='https:'&&!(u.protocol==='http:'&&['127.0.0.1','localhost'].includes(u.hostname)))throw new Error('模型接口必须使用 HTTPS 或本地地址');}
 const storage=createStorage(config,config.ossClient),db=database(dbPath),settings=modelSettings(db,config);
 config={...config,storage,settings,getAI:()=>settings.get()};
+const productionTree=process.cwd().startsWith('/opt/paperknow/');
+const monitoring=createMonitoring(db,config,{databasePath:dbPath===':memory:'?null:dbPath,volumePath:dbPath===':memory:'?process.cwd():dirname(resolve(dbPath)),directorySummaryFile:productionTree?'/run/paperknow-ops/storage.json':null,directoryTargets:productionTree?{releases:'/opt/paperknow/releases',backups:'/opt/paperknow/backups',cache:'/opt/paperknow/build-home/npm-cache'}:{}});
+config={...config,monitoring};
 const agentSettings=createAgentSettings(db,config);config={...config,agentSettings,getAgentSettings:id=>id?agentSettings.version(id):agentSettings.get(),agentTaskRunner:config.agentTaskRunner||runAgentTask};
 const legacyWorker=startWorker(db,config),thesisWorker=startThesisWorker(db,config),outlineWorker=startThesisOutlineWorker(db,config),methodWorker=startThesisMethodWorker(db,config),writingWorker=startWritingWorker(db,config),toolWorker=startToolRunWorker(db,config);
 const worker={async tick(){await legacyWorker.tick();await thesisWorker.tick();await outlineWorker.tick();await methodWorker.tick();await writingWorker.tick();await toolWorker.tick();},cancel(id){legacyWorker.cancel(id);thesisWorker.cancel(id);outlineWorker.cancel(id);methodWorker.cancel(id);writingWorker.cancel(id);toolWorker.cancel(id);},async stop(){await Promise.all([legacyWorker.stop(),thesisWorker.stop(),outlineWorker.stop(),methodWorker.stop(),writingWorker.stop(),toolWorker.stop()]);}};
@@ -31,6 +35,8 @@ const publicPages=new Map();
 try{for(const page of JSON.parse(readFileSync(resolve(root,'public-pages.json'),'utf8')).pages||[]){if(/^\/(?:[a-z0-9-]+\/)+$/.test(page.slug)&&page.file===page.slug.slice(1)+'index.html')publicPages.set(page.slug,page.file);}}catch{/* A fresh checkout can still serve the workspace before the first build. */}
 const privateHTML=new Set(['/workspace.html','/auth.html','/admin.html','/service.html','/brand-preview.html','/precheck','/precheck/','/precheck/index.html']);
 const server=http.createServer(async(req,res)=>{
+  const requestStarted=performance.now();
+  res.once('finish',()=>monitoring.observeRequest({statusCode:res.statusCode,durationMs:performance.now()-requestStarted}));
   if(req.url?.split('?')[0]==='/api/payments/return/alipay'){
     const headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','X-Robots-Tag':'noindex','Content-Type':'text/plain; charset=utf-8'};
     if(req.method!=='GET'){res.writeHead(405,{...headers,Allow:'GET'}).end('不支持的请求方式');return;}
@@ -78,6 +84,8 @@ const server=http.createServer(async(req,res)=>{
   }catch{res.writeHead(404,{'Content-Type':'text/plain; charset=utf-8'}).end('页面不存在');}
 });
 server.requestTimeout=120000;server.headersTimeout=15000;
-return {server,db,worker,async close(){await worker.stop();await new Promise(r=>server.close(r));db.close();}};
+monitoring.start();
+let closePromise;
+return {server,db,worker,monitoring,close(){return closePromise??=(async()=>{const connectionsClosed=new Promise(r=>server.close(r));await Promise.all([monitoring.stop(),worker.stop(),connectionsClosed]);db.close();})();}};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){loadLocalEnvironment();const app=createServer();const port=Number(process.env.PORT||5173);app.server.listen(port,'127.0.0.1',()=>console.log(`PaperKnow: http://127.0.0.1:${port}/workspace.html`));for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>void app.close().then(()=>process.exit(0)));}

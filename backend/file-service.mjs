@@ -26,6 +26,7 @@ export function createFileService(db,config={}){
    return {body:await fileBytes(row,config.storage),headers:{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename="document.'+row.kind+'"; filename*=UTF-8\'\''+encodeURIComponent(row.name)}};
   }
   if(method!=='POST')fail(405,'不支持的文件操作');
+  if(!deletion&&config.requireRemoteStorage&&(!config.storage||config.storage.provider!=='aliyun_oss'||typeof config.storage.put!=='function'))fail(503,'原件云存储暂不可用，请稍后重试；文件不会写入服务器');
   const input=await readBody();
   if(deletion){
    if(Object.keys(input).some(k=>k!=='expectedSha256')||typeof input.expectedSha256!=='string')fail(400,'请确认需要删除的原件');

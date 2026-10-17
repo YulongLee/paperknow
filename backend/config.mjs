@@ -15,7 +15,7 @@ export function environmentConfig(env=process.env){
     smsAccessKeyId:env.PK_SMS_ACCESS_KEY_ID,smsAccessKeySecret:env.PK_SMS_ACCESS_KEY_SECRET,smsSignName:env.PK_SMS_SIGN_NAME,
     smsTemplateCode:env.PK_SMS_TEMPLATE_CODE,smsCodeParam:env.PK_SMS_CODE_PARAM||'code',
     ossBucket:env.PK_OSS_BUCKET,ossEndpoint:env.PK_OSS_ENDPOINT,ossRegion:env.PK_OSS_REGION,
-    ossPrefix:env.PK_OSS_PREFIX||'paperknow/',ossAccessKeyId:env.PK_OSS_ACCESS_KEY_ID,ossAccessKeySecret:env.PK_OSS_ACCESS_KEY_SECRET};
+    ossPrefix:env.PK_OSS_PREFIX||'paperknow/',ossAccessKeyId:env.PK_OSS_ACCESS_KEY_ID,ossAccessKeySecret:env.PK_OSS_ACCESS_KEY_SECRET,requireRemoteStorage:env.PK_REQUIRE_OSS==='1'};
 }
 export function modelRequestLimits(config={}){
   const limit=(value,fallback,min,max)=>Number.isSafeInteger(value)&&value>=min&&value<=max?value:fallback;

@@ -1,3 +1,4 @@
+import {download as exportFile} from './ui.mjs';
 import {presentThesisDocument} from './thesis-document.mjs';
 import {writingDetailHeading} from './writing-catalog.mjs';
 import {writingFlowSpecs,writingFlowKind,writingFlowSpec,migrateWritingFlow,writingFlowSnapshot,flowOutlineRows,flowAllocate} from './writing-flow-model.mjs';
@@ -92,7 +93,7 @@ export function mountWritingFlow({kind,container=document.querySelector('.dashbo
   $('[data-wf-txt]')?.addEventListener('click',()=>{capture();download(exportText(),(data.title||spec.title)+'.txt');});
   bindDocumentExports('wf-body',()=>{capture();return resultText()?exportText():'';},()=>data.title||spec.title,$('#writing-status'));
  }
- function download(text,name){if(!text)return;const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=name.replace(/[\\/:*?"<>|]/g,'_');a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);}
+ async function download(text,name){if(!text)return;try{const exportStatus=$('#writing-status'),exported=await exportFile(name,text);if(exportStatus?.isConnected)exportStatus.textContent=exported.message;}catch(error){setError(error.message);}}
  render();const instance={dispose(){if(!live)return;capture();live=false;parseRevision++;jobPanel?.dispose();refDispose?.();},save,hasWork:()=>parsing};currentFlow=instance;
  registerEditor({label:spec.title,ctx,getValue:()=>{capture();return data;},save:()=>save({quiet:false}),...(!hasDraftScope()?{saveDraft:save}:{}),busy:()=>parsing,dispose:instance.dispose});return instance;
 }

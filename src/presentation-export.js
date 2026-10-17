@@ -23,4 +23,4 @@ export function createPresentation(deck){
  }
  return pptx;
 }
-export async function exportPresentation(deck){await createPresentation(deck).writeFile({fileName:(deck.title||'演示文稿').replace(/[\\/:*?"<>|]/g,'_')+'.pptx',compression:true});}
+export async function exportPresentation(deck){return createPresentation(deck).write({outputType:'uint8array',compression:true});}

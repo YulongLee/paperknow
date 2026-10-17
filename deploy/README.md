@@ -184,3 +184,31 @@ PaperKnow 使用 `PK_AI_URL`（完整 Chat Completions 地址）、`PK_AI_KEY` �
 `PK_AI_USER_DAILY_LIMIT` 默认每账户 30 次（1–500），`PK_AI_GLOBAL_DAILY_LIMIT` 默认全站 300 次（1–10000），按北京时间自然日计算。排队任务预留调用名额，worker 派发前再次核对；失败、取消和重试的实际模型尝试仍计入当日上游费用预算。这与用户付费权益不同：失败取消释放用户权益，不重复消费，但模型服务商可能已经计费。模型尝试记录持久化且不可修改，服务重启不会重置限额。
 
 `PK_AGENT_ENABLED` 保持关闭，直至 Responses API、工具调用与 Codex 运行时另行验收。普通聊天模型接入不会自动接通论文生成、PPT、文献检索或翻译，也不改变商品计价、上架或支付渠道开关。
+
+
+## 发布版本容量保留（2026-10-18）
+
+新增 `retention.py`，只清理已存在于 PaperKnow 独立 Git 仓库的旧代码目录，保留正在运行的版本和最近两个回滚版本。使用同一部署锁，保护所有引用版本目录的进程。数据库、环境配置、业务文件和其他服务目录不在清理范围。
+
+- 不带参数：只输出计划。`--apply` 执行。
+- 一次性 `--legacy-archives`：逐个完整检查旧发布压缩包，只允许代码目录，不含 `.env`、`.data` 或数据库；不能验证的包保留。日常定时任务不扫描、不删除数据库与配置快照。
+- 每次成功发布后运行；独立 `paperknow-retention.timer` 每天补跑。失败只记录，不回滚已健康的应用。
+- 仅数值的容量汇总写入 `/run/paperknow-ops/storage.json`，root持有、应用只读。备份目录保持0700，不为监控放开密钥和数据库权限。
+- 不再将所有旧版本重复压缩留在同一系统盘。Git保存源码历史，服务器仅保留有限回滚构建。数据备份有单独保留/异地恢复要求，不能当成无用缓存清空。
+
+安装（只新增本站定时器）：
+
+```sh
+sudo install -o root -g root -m 0644 deploy/retention.py /opt/paperknow/bin/retention.py
+sudo install -o root -g root -m 0644 deploy/paperknow-retention.service deploy/paperknow-retention.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now paperknow-retention.timer
+```
+
+## 生成文件与监控
+
+登录用户主动导出的DOCX/PDF/PPTX/图形/报告，先写项目私有OSS并保留账户文件索引，校验后才发起下载。文件内容不在服务器创建持久文件或SQLite二进制BLOB。游客明确仅本地下载，不静默上传本地草稿；浏览器原生打印另存PDF由浏览器控制，不是平台可读取的文件。
+
+产物接口独立限制原始文件20MiB、JSON 28MiB、每账户500MiB/2000文件，读写各2个并发。仅 `/api/artifacts` 的Nginx请求体限额为28m并关闭请求磁盘缓冲；下载关闭响应缓冲。其他接口仍3MiB，上传原件仍2MiB。`PK_REQUIRE_OSS=1` 禁止新原件在无OSS时落SQLite，历史原件仍可读。结构化编辑状态、账户/交易/任务索引继续保留必要数据库，不等同于把整个数据库移到OSS。
+
+后台 `/admin.html#monitoring` 默认60秒采样、可配置阈值，历史与告警有界。监控数据不含用户正文、URL、请求参数或密钥；OSS小对象实际读写删探测15分钟一次。主机完全停机的独立探测、短信/邮件通知需另外配置腾讯云监控，本次未自动开通或发送通知。

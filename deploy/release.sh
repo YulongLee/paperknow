@@ -63,4 +63,10 @@ else
 fi
 backup
 activate "$TARGET"
+if [[ -f "$SCRIPT_DIR/retention.py" ]]; then
+  # A cleanup failure must never roll back a healthy release. The daily timer retries.
+  # Release retention uses the same lock, so run after releasing our inherited FD.
+  flock -u 9
+  /usr/bin/python3 -I "$SCRIPT_DIR/retention.py" --apply || log 'Release retention deferred; inspect the retention timer.'
+fi
 log 'Only paperknow.service was restarted; other services and Nginx were unchanged.'

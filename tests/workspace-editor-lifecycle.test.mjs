@@ -9,7 +9,7 @@ import {toolBanner} from '../dist/workspace/tool-banner.mjs';
 import {withStableView} from '../dist/workspace/view-stability.mjs';
 const source=(await readFile(new URL('../dist/workspace/format.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const thesisSource=(await readFile(new URL('../dist/workspace/thesis-online.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
-const documentExportSource=(await readFile(new URL('../dist/workspace/document-export.mjs',import.meta.url),'utf8')).replace(/^export /gm,'');
+const documentExportSource=(await readFile(new URL('../dist/workspace/document-export.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 test('a document parse that finishes after disposal cannot redraw another account page',async()=>{
  const dom=new JSDOM('<main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#account-draft/a',runScripts:'outside-only'}),w=dom.window;let resolveExample,parsed=false;
  Object.assign(w,{hasDraftScope:()=>false,withStableView,keys:{drafts:'d'},list:()=>[],defaultRules:()=>({}),exampleDocx:()=>new Promise(resolve=>resolveExample=resolve),parseDocx:async()=>{parsed=true;return {paragraphs:[]};},esc:v=>String(v),toolBanner});

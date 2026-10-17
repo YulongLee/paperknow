@@ -1,3 +1,4 @@
+import {mockArtifactFetch} from './fixtures/artifact-session.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
@@ -38,7 +39,7 @@ test('account archive export downloads only a valid authenticated archive and ne
  const archive={format:'paperknow-account-archive',version:1,scope:'account',exportedAt:'2026-10-16',account:{id:'account-1',name:'当前账户'},projects:[{id:'p1',title:'真实项目'}],drafts:[],files:[],results:[],jobs:[],feedback:[]};
  try{
   localStorage.setItem('paperknow-projects','[{"id":"local-1","name":"本地保留"}]');URL.createObjectURL=value=>{blob=value;return 'blob:archive';};URL.revokeObjectURL=()=>{};window.HTMLAnchorElement.prototype.click=()=>downloads++;
-  globalThis.fetch=async(path,options)=>{calls.push([path,options]);return {ok:true,json:async()=>archive};};m.mountSettings(ctx,'data');await document.querySelector('#settings-account-export').onclick();
+  globalThis.fetch=mockArtifactFetch(async(path,options)=>{calls.push([path,options]);return {ok:true,json:async()=>archive};},{userId:'account-1'});m.mountSettings(ctx,'data');await document.querySelector('#settings-account-export').onclick();
   assert.equal(downloads,1);assert.deepEqual(JSON.parse(await blob.text()),archive);assert.equal(calls[0][0],'/api/account/export');assert.equal(calls[0][1].credentials,'same-origin');assert.equal(calls[0][1].cache,'no-store');assert.match(document.querySelector('#settings-account-status').textContent,/已发起.*下载/);assert.match(document.querySelector('.settings-account-export').textContent,/原件文件需另外下载/);assert.match(document.querySelector('.settings-account-export').textContent,/不能用作本地合并恢复/);assert.match(localStorage.getItem('paperknow-projects'),/本地保留/);
   for(const response of [{ok:false,status:401,json:async()=>({error:'Unauthorized'})},{ok:false,status:413,json:async()=>({error:'账户资料超过 100 MB，请分项导出'})},{ok:true,json:async()=>({...archive,scope:'local'})}]){globalThis.fetch=async()=>response;await document.querySelector('#settings-account-export').onclick();assert.equal(downloads,1);assert.equal(document.querySelector('#settings-account-status').classList.contains('error'),true);assert.doesNotMatch(document.querySelector('#settings-account-status').textContent,/已发起/);assert.equal(document.querySelector('#settings-account-export').disabled,false);}
  }finally{globalThis.fetch=request;URL.createObjectURL=create;URL.revokeObjectURL=revoke;window.HTMLAnchorElement.prototype.click=click;m.clearSettingsWork();dom.window.close();}

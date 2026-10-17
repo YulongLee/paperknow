@@ -1,4 +1,5 @@
 import {toolBillingServiceTypes,toolBillingModes,toolBillingPage,toolBillingRulesValid,toolBillingPayload} from './admin-tool-billing.mjs';
+import {monitoringPage,monitoringSettingsPayload} from './admin-monitoring.mjs';
 const paths = {
   overview: ['运营概览', '掌握账户、任务与服务的运行情况。', 'grid'],
   users: ['用户管理', '查看注册账户、联系方式验证与使用情况。', 'users'],
@@ -7,6 +8,7 @@ const paths = {
   feedback: ['用户反馈', '记录处理进度，让每一条反馈都有回应。', 'message'],
   orders: ['订单记录', '查看已有订单与商品信息。', 'order'],
   usage: ['用量记录', '查看模型调用及实际返回的 Token 用量。', 'chart'],
+  monitoring: ['运行监控', '监控容量、任务、支付与对象存储，提前发现运行风险。', 'chart'],
   settings: ['系统设置', '管理模型配置，查看平台服务的连接状态。', 'settings'],
   payments: ['商品与计费', '管理服务计价、可交付权益与收款渠道。', 'order'],
   audit: ['操作日志', '追溯管理员执行的关键操作。', 'shield']
@@ -279,11 +281,11 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
       const data = await request('/admin/' + view + suffix);
       if (!authorized || ticket !== generation) return;
       if (query && !Array.isArray(data.items)) throw new Error('返回的数据格式不正确，请重试。');
-      if (quiet && (doc.activeElement?.closest('#search-form, #model-form') || $('#admin-dialog').open || paymentsHaveWork())) return;
+      if (quiet && (doc.activeElement?.closest('#search-form, #model-form, #monitoring-form') || $('#monitoring-form')?.dataset.dirty === 'true' || $('#admin-dialog').open || paymentsHaveWork())) return;
       if (query && Number.isInteger(data.page) && data.page > 0) query.page = data.page;
       if (query && query.page > Math.max(1, Math.ceil((Number(data.total) || 0) / query.pageSize))) { query.page = Math.max(1, Math.ceil((Number(data.total) || 0) / query.pageSize)); await loadView(view); return; }
       currentData = data; loadedAt = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-      $('#admin-content').innerHTML = heading(view) + (view === 'overview' ? overviewPage(data) : view === 'settings' ? settingsPage(data) + agentSettingsPanel(data.agent) : view === 'payments' ? paymentsPage(data) : listPage(view, data));
+      $('#admin-content').innerHTML = heading(view) + (view === 'overview' ? overviewPage(data) : view === 'monitoring' ? monitoringPage(data) : view === 'settings' ? settingsPage(data) + agentSettingsPanel(data.agent) : view === 'payments' ? paymentsPage(data) : listPage(view, data));
       if (view === 'payments') rememberPaymentForms();
       if (view === 'settings') agentBaseline = agentFingerprint();
     } catch (error) {
@@ -509,12 +511,32 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
    catch(error){if(authorized&&ticket===generation&&currentView==='payments'){errorNode.textContent=error.message;errorNode.hidden=false;}}
    finally{pendingPayments.delete(key);if(authorized&&ticket===generation&&currentView==='payments'){const live=$('#tool-billing-form');if(live){for(const field of live.elements)field.disabled=false;live.querySelector('[type="submit"]').textContent='保存科研工具计费';updateToolBillingCost(live);refreshPaymentDirty(live);}}}
   }
+  async function saveMonitoring(event) {
+    event.preventDefault();const form=event.target,ticket=generation;
+    if(!authorized||currentView!=='monitoring'||form.dataset.saving==='true')return;
+    const errorNode=form.querySelector('.form-error');errorNode.hidden=true;
+    let payload;try{payload=monitoringSettingsPayload(form,currentData?.settings?.version);}catch(error){errorNode.textContent=error.message;errorNode.hidden=false;return;}
+    form.dataset.saving='true';for(const field of form.elements)field.disabled=true;
+    try{await request('/admin/monitoring/settings',payload);if(authorized&&ticket===generation){toast('监控配置已保存，自动采样按新设置运行。');await loadView('monitoring');}}
+    catch(error){if(authorized&&ticket===generation){errorNode.textContent=error.message;errorNode.hidden=false;}}
+    finally{form.dataset.saving='false';for(const field of form.elements)field.disabled=false;}
+  }
+  async function sampleMonitoring() {
+    const button=$('#monitor-sample'),ticket=generation;if(!authorized||currentView!=='monitoring'||!button||button.disabled)return;
+    button.disabled=true;button.textContent='正在采样…';
+    try{await request('/admin/monitoring/sample',{});if(authorized&&ticket===generation){toast('采样已完成，请核对采样时间和告警。');await loadView('monitoring');}}
+    catch(error){if(authorized&&ticket===generation)toast(error.message);}
+    finally{if(button.isConnected){button.disabled=false;button.textContent='立即采样';}}
+  }
+  $('#admin-content').addEventListener('input',event=>{const form=event.target.closest('#monitoring-form');if(form){form.dataset.dirty='true';form.querySelector('[data-monitor-dirty]').hidden=false;}});
+  $('#admin-content').addEventListener('change',event=>{const form=event.target.closest('#monitoring-form');if(form){form.dataset.dirty='true';form.querySelector('[data-monitor-dirty]').hidden=false;}});
   $('#admin-app').addEventListener('click', event => {
     const link = event.target.closest('[data-view]');
     if (link) { event.preventDefault(); navigateView(link.dataset.view); return; }
     if (!authorized) return;
     if (event.target.closest('#refresh-view, #retry-view')) { guardPayments(() => loadView()); return; }
     if (event.target.closest('#test-agent-connection')) { testAgentSettings(); return; }
+    if (event.target.closest('#monitor-sample')) { void sampleMonitoring(); return; }
     const paymentCheck = event.target.closest('[data-payment-check]'); if (paymentCheck) { checkPaymentChannel(paymentCheck.dataset.paymentCheck); return; }
     const paymentConfigure = event.target.closest('[data-payment-configure]'); if (paymentConfigure) { const field = $(`#${paymentConfigure.dataset.paymentConfigure}-appId`); field?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); field?.focus({ preventScroll: true }); return; }
     const bundleEdit = event.target.closest('[data-bundle-add], [data-bundle-remove], [data-membership-add], [data-membership-remove]'); if (bundleEdit) { editBundleItems(bundleEdit); return; }
@@ -531,6 +553,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     if (event.target.id === 'search-form') { event.preventDefault(); Object.assign(queries[currentView], { q: $('#admin-search').value.trim(), status: $('#status-filter')?.value || '', page: 1 }); loadView(); }
     if (event.target.id === 'model-form') saveSettings(event);
     if (event.target.id === 'agent-settings-form') saveAgentSettings(event);
+    if (event.target.id === 'monitoring-form') void saveMonitoring(event);
     if (event.target.matches('form[data-payment-provider]')) savePaymentChannel(event);
     if (event.target.matches('form[data-payment-product]')) savePaymentProduct(event);
     if (event.target.matches('form[data-billing-form]')) saveBilling(event);
@@ -559,7 +582,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
       $('#access-gate').hidden = true; $('#admin-app').hidden = false; currentView = route();
       await loadView(currentView);
       win.clearInterval(polling);
-      if (authorized) polling = win.setInterval(() => { if (authorized && !doc.hidden && ['overview', 'jobs'].includes(currentView) && !$('#admin-dialog').open && !doc.activeElement?.closest('#search-form')) loadView(currentView, { quiet: true }); }, pollIntervalMs);
+      if (authorized) polling = win.setInterval(() => { if (authorized && !doc.hidden && ['overview', 'jobs', 'monitoring'].includes(currentView) && !$('#admin-dialog').open && !doc.activeElement?.closest('#search-form, #monitoring-form') && $('#monitoring-form')?.dataset.dirty !== 'true') loadView(currentView, { quiet: true }); }, pollIntervalMs);
     } catch (error) {
       if (error.status === 401 || error.status === 403) return;
       $('#access-title').textContent = '暂时无法验证账户'; $('#access-message').textContent = error.message;

@@ -129,6 +129,20 @@ export function createAdminAPI(db,worker,config,auth){
     const actor=db.prepare('SELECT id,role FROM users WHERE id=?').get(user.id);
     if(!actor)fail(401,'请先登录');
     if(actor.role!=='admin')fail(403,'需要管理员权限');
+    if(path.startsWith('/api/admin/monitoring')){
+      parameters(query,[]);
+      if(!config.monitoring)fail(503,'运行监控尚未启用');
+      if(path==='/api/admin/monitoring'&&method==='GET')return config.monitoring.snapshot();
+      if(path==='/api/admin/monitoring/settings'&&method==='POST'){
+        const input=await readBody();
+        return transaction(()=>{const monitoring=config.monitoring.save(input);audit(actor,'monitoring.settings.update','setting','monitoring',{version:monitoring.version,enabled:monitoring.enabled,changedFields:Object.keys(input).filter(key=>key!=='version')});return {settings:monitoring};});
+      }
+      if(path==='/api/admin/monitoring/sample'&&method==='POST'){
+        const input=await readBody();if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length)fail(400,'采样不接受外部目标或参数');
+        return config.monitoring.manualSample();
+      }
+      fail(404,'监控接口不存在');
+    }
     if(path==='/api/admin/agent-settings'&&['GET','POST'].includes(method)){parameters(query,[]);if(method==='POST')return {agent:agentSettings.save(actor,await readBody())};return {agent:agentSettings.public()};}
     if(path==='/api/admin/agent-settings/test'&&method==='POST'){
       parameters(query,[]);const input=await readBody();if(!input||Object.keys(input).some(name=>name!=='version'))fail(400,'测试仅使用已保存配置');const snapshot=agentSettings.get();if(!snapshot.version||input.version!==snapshot.version)fail(409,'请先保存当前配置后再测试');if(agentTestRunning||Date.now()-agentTestAt<30000)fail(429,'请等待 30 秒后再测试');agentTestRunning=true;agentTestAt=Date.now();

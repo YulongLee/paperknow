@@ -1,3 +1,4 @@
+import {installGuestExportSession,waitForExport} from './fixtures/artifact-session.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
@@ -29,16 +30,16 @@ test('AI reading keeps exactly four task entries, local search, reader notes and
 });
 
 test('research preserves chart save and professional descriptions across its three honest workflows',async()=>{
- const {dom,ctx,notices}=setup(),create=URL.createObjectURL,revoke=URL.revokeObjectURL,click=window.HTMLAnchorElement.prototype.click;let blob;
+ const {dom,ctx,notices}=setup(),restoreExport=installGuestExportSession(),create=URL.createObjectURL,revoke=URL.revokeObjectURL,click=window.HTMLAnchorElement.prototype.click;let blob;
  try{
   mountResearch(ctx);assert.equal(document.querySelectorAll('.research-mode-cards [data-mode]').length,3);assert.equal(document.querySelectorAll('.research-workflow-strip li').length,3);
   input('[data-option="title"]','用户真实图表');$('[data-action="save"]').click();assert.equal(JSON.parse(localStorage.getItem('paperknow-drafts'))[0].title,'用户真实图表');
   $('[data-mode="pro"]').click();$('[data-pro-type="9"]').click();input('[data-pro-description]','绘制电源、开关与电阻串联关系，并标注电流方向。');assert.equal(researchHasWork(),true);
   $('[data-mode="formula"]').click();$('[data-mode="pro"]').click();assert.match($('[data-pro-description]').value,/电源、开关与电阻/);assert.equal($('[data-pro-type="9"]').getAttribute('aria-pressed'),'true');assert.match($('[data-action="pro-generate"]').textContent,/AI 生成结构图/);assert.match($('.research-credit').textContent,/确认用量/);
   URL.createObjectURL=value=>{blob=value;return 'blob:research';};URL.revokeObjectURL=()=>{};window.HTMLAnchorElement.prototype.click=()=>{};
-  $('[data-action="pro-export"]').click();assert.match(await blob.text(),/电子电路/);assert.match(await blob.text(),/电流方向/);assert.equal(JSON.parse(localStorage.getItem('paperknow-drafts')).length,1);assert.doesNotMatch(notices.join(' '),/图表已生成|已扣费/);
+  $('[data-action="pro-export"]').click();await waitForExport(()=>blob);assert.match(await blob.text(),/电子电路/);await waitForExport(()=>blob);assert.match(await blob.text(),/电流方向/);assert.equal(JSON.parse(localStorage.getItem('paperknow-drafts')).length,1);assert.doesNotMatch(notices.join(' '),/图表已生成|已扣费/);
   globalThis.confirm=()=>{throw Error('不应弹出离开确认');};assert.equal(researchRouteGuard(),true);
- }finally{URL.createObjectURL=create;URL.revokeObjectURL=revoke;window.HTMLAnchorElement.prototype.click=click;disposeResearch();delete globalThis.confirm;dom.window.close();}
+ }finally{URL.createObjectURL=create;URL.revokeObjectURL=revoke;window.HTMLAnchorElement.prototype.click=click;disposeResearch();restoreExport();delete globalThis.confirm;dom.window.close();}
 });
 
 test('formula workflow keeps editable text and never claims a copy succeeded when clipboard fails',async()=>{

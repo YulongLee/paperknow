@@ -16,6 +16,7 @@ import {createThesisMethodService} from './thesis-method-service.mjs';
 import {aiReady} from './config.mjs';
 import {configuredAIIdentityValues,publicAIResponse} from './public-ai-metadata.mjs';
 import {createFileService} from './file-service.mjs';
+import {createArtifactService} from './artifact-service.mjs';
 import {createLiteratureSearch} from './literature-search.mjs';
 import {now} from './database.mjs';
 import {clientAddress} from './client-address.mjs';
@@ -23,7 +24,7 @@ class APIError extends Error{constructor(status,message){super(message);this.sta
 const fail=(status,message)=>{throw new APIError(status,message);};
 const text=(v,max=200,min=1)=>{if(typeof v!=='string'||v.trim().length<min||v.length>max)fail(400,`请输入 ${min}～${max} 字符的有效内容`);return v.trim();};
 const url=v=>{if(!v)return '';try{const u=new URL(v);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw 0;return u.href;}catch{fail(400,'来源网址必须是有效的 HTTP/HTTPS 链接');}};
-async function body(req){if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'请提交 JSON 内容');let bytes=0,chunks=[];for await(const chunk of req){bytes+=chunk.length;if(bytes>3*1024*1024)fail(413,'请求超过 3MB 限制');chunks.push(chunk);}try{const v=JSON.parse(Buffer.concat(chunks).toString());if(!v||Array.isArray(v)||typeof v!=='object')throw 0;return v;}catch{fail(400,'请求内容不是有效 JSON');}}
+async function body(req,maxBytes=3*1024*1024){if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'请提交 JSON 内容');let bytes=0,chunks=[];for await(const chunk of req){bytes+=chunk.length;if(bytes>maxBytes)fail(413,maxBytes===3*1024*1024?'请求超过 3MB 限制':'生成文件请求超过 28MB 限制');chunks.push(chunk);}try{const v=JSON.parse(Buffer.concat(chunks).toString());if(!v||Array.isArray(v)||typeof v!=='object')throw 0;return v;}catch{fail(400,'请求内容不是有效 JSON');}}
 export function createAPI(db,worker,config={}){
 const auth=createAuthService(db,{secret:config.authCodeSecret,dailyLimit:config.authDailyLimit,ownerEmail:config.ownerEmail,delivery:config.authDelivery||createAuthDelivery(config)});
 const billing=createBillingService(db,config);
@@ -37,6 +38,7 @@ const questionnaires=createQuestionnaireService(db,config);
 const payments=createPaymentService(db,{...config,billing});
 const workspace=createWorkspaceService(db,{billing});
 const files=createFileService(db,config);
+const artifacts=createArtifactService(db,config);
 const literatureSearch=createLiteratureSearch({fetchImpl:config.literatureFetch});
 const admin=createAdminAPI(db,worker,{...config,payments,billing},auth);
 const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}};
@@ -89,6 +91,19 @@ if(method==='POST'&&Object.hasOwn(authRoutes,path)){
 }
 const user=adminUser||sessionUser(db,req,config.ownerEmail);if(!user)fail(401,'请先登录服务账户');
 if(adminRequest){send(200,await admin({path,method,query:requestURL.searchParams,readBody:()=>body(req),user}));return;}
+if(path==='/api/artifacts'||path.startsWith('/api/artifacts/')){
+ if(method==='POST')rate(req,30);
+ const response=await artifacts({path,method,user,query:requestURL.searchParams,readBody:()=>body(req,path==='/api/artifacts'?28*1024*1024:3*1024*1024)});
+ if(!response)fail(404,'生成文件接口不存在');
+ if(response.body!==undefined){
+  const release=response.release||(()=>{});
+  if(res.destroyed||res.writableEnded){release();return;}
+  res.once('finish',release);res.once('close',release);res.once('error',release);
+  try{res.writeHead(response.status||200,{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...response.headers});res.end(response.body);}catch(error){release();throw error;}
+ }
+ else send(response.status||200,response.value);
+ return;
+}
 if(path==='/api/auth/me'&&method==='GET'){send(200,{user});return;}
 if(path==='/api/auth/logout'&&method==='POST'){const token=(req.headers.cookie||'').split(';').map(v=>v.trim()).find(v=>v.startsWith('pk_session='))?.slice(11);if(token)db.prepare('DELETE FROM sessions WHERE token_hash=?').run(digest(token));send(200,{ok:true},{'Set-Cookie':sessionCookie('',config.secure)});return;}
 if(path==='/api/billing/rules'&&method==='GET'){send(200,billing.rules());return;}
