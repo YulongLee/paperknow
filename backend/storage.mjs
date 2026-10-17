@@ -52,7 +52,7 @@ export function createStorage(config,client){
       if(!Buffer.isBuffer(buffer)||!buffer.length||digest(buffer)!==sha256)throw new Error('文件完整性校验失败');
       // The caller has persisted this exact private key before I/O. On an ambiguous
       // failure it keeps cleanup metadata until removeArtifact succeeds.
-      try{await oss.put(key,buffer,{headers:{'x-oss-object-acl':'private','Content-Type':'application/octet-stream','Content-Disposition':'attachment'}});}catch{throw new Error('OSS 成果保存失败，请稍后重试');}
+      try{await oss.put(key,buffer,{timeout:90000,headers:{'x-oss-object-acl':'private','Content-Type':'application/octet-stream','Content-Disposition':'attachment'}});}catch{throw new Error('OSS 成果保存失败，请稍后重试');}
       return key;
     },async readArtifact(file){return readObject(file,'exports');
     },async removeArtifact(file){

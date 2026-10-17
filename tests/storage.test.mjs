@@ -29,3 +29,10 @@ test('an ambiguous OSS upload failure attempts cleanup of its exact newly alloca
  const deleted=[];const store=createStorage(settings,{async put(){throw new Error('ambiguous-timeout-secret');},async delete(key){deleted.push(key);}});
  await assert.rejects(store.put('new-file','owner','txt',Buffer.from('original')),error=>error.message==='OSS 文件保存失败，请稍后重试');assert.deepEqual(deleted,['paperknow/users/owner/originals/new-file.txt']);
 });
+
+test('large artifact upload budget fits limited egress while small health probes stay bounded',async()=>{
+ const {digest}=await import('../backend/auth.mjs'),objects=new Map(),calls=[];
+ const store=createStorage(settings,{async put(key,value,options){calls.push(['put',options.timeout]);objects.set(key,Buffer.from(value));},async get(key,options){calls.push(['get',options.timeout]);return {content:objects.get(key)};},async delete(key,options){calls.push(['delete',options?.timeout]);objects.delete(key);}});
+ const value=Buffer.from('generated-file');await store.putArtifact('export-1','owner-1','txt',value,digest(value));
+ assert.deepEqual(calls.shift(),['put',90000]);assert.equal((await store.health()).ok,true);assert.deepEqual(calls,[['put',3000],['get',3000],['delete',3000]]);
+});

@@ -10,6 +10,7 @@ import argparse
 import fcntl
 import json
 import os
+import pwd
 import re
 import shutil
 import subprocess
@@ -33,6 +34,11 @@ def publish_capacity_summary():
     directory.mkdir(mode=0o755, exist_ok=True)
     if directory.stat().st_uid != 0 or directory.stat().st_mode & 0o022:
         raise RuntimeError('Untrusted metrics directory.')
+    # Deployment runs with umask 077. Explicitly grant only the app's group
+    # traversal; keep env/database backup directories completely unchanged.
+    group = pwd.getpwnam('paperknow').pw_gid
+    os.chown(directory, 0, group)
+    directory.chmod(0o750)
     values = {}
     for name, path in [('releases', BASE / 'releases'), ('backups', BASE / 'backups'),
                        ('cache', BASE / 'build-home' / 'npm-cache')]:
@@ -47,7 +53,8 @@ def publish_capacity_summary():
     temporary = directory / ('.storage-' + str(os.getpid()))
     with temporary.open('x') as out:
         out.write(json.dumps(value) + '\n')
-    temporary.chmod(0o644)
+    os.chown(temporary, 0, group)
+    temporary.chmod(0o640)
     temporary.replace(target)
 
 

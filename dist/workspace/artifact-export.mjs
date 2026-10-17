@@ -34,7 +34,7 @@ export async function exportGeneratedFile({name,content,type='text/plain;charset
   notify('正在保存到账户云文件，保存成功后开始下载…');
   const payload={name:filename,data:await artifactBase64(blob),sourceType:sourceTypes.has(sourceType)?sourceType:'other',expectedUserId:userId};
   if(sourceId)payload.sourceId=String(sourceId).slice(0,120);if(projectId)payload.projectId=projectId;
-  const response=await fetchImpl('/api/artifacts',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(60000)}),value=await json(response);
+  const response=await fetchImpl('/api/artifacts',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(120000)}),value=await json(response);
   if(!response.ok)throw Error((value?.error||'云文件保存失败')+'；未发起下载，当前内容仍保留，请重试。');
   if(typeof value?.item?.id!=='string'||!value.item.id)throw Error('云文件保存结果无法核对，未发起下载。请到“我的成果”核对后重试。');
   saved=value.item;
