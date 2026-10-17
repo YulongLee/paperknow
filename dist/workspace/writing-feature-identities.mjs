@@ -8,10 +8,10 @@ const definitions=[
  ['article','期刊文章','论文与报告','cyan','#5c94bf','面向投稿的文章结构整理','文章结构 · 投稿准备草稿','期刊写作'],
  ['course','课程作业','论文与报告','sage','#659f85','按课程要求完成研究作业','课程研究 · 作业框架','课程任务'],
  ['practice','实践报告','论文与报告','coral','#bf8d71','整理实践过程与成果反思','实践记录 · 总结反思草稿','实践总结'],
- ['idea','课题思路','研究准备','amber','#c69c4c','从问题出发形成研究计划','问题梳理 · 可行性计划','选题思路'],
- ['questionnaire','问卷设计','研究准备','lilac','#9b7eb8','设计问题、维度与答题说明','问题维度 · 问卷草稿','问卷准备'],
- ['analysis','数据分析','研究准备','indigo','#6484b8','整理变量、样本与分析计划','变量梳理 · 分析计划','分析规划'],
- ['quick','快速写作','研究准备','rose','#bf7c8d','快速生成可编辑的写作框架','写作提纲 · 可编辑框架','快速起步']
+ ['idea','课题思路','研究准备','amber','#c69c4c','获得候选题目与研究思路','选题比较 · 研究思路','选题思路'],
+ ['questionnaire','问卷设计','研究准备','lilac','#9b7eb8','从问卷设计到答卷收集与分析','可编辑问卷 · 真实答卷报告','问卷调查'],
+ ['analysis','数据分析','研究准备','indigo','#6484b8','上传数据，核对统计与分析结果','真实数据 · 描述统计报告','真实数据'],
+ ['quick','快速写作','研究准备','rose','#bf7c8d','从标题到摘要、提纲与文章','摘要提纲 · 可编辑正文','快速起步']
 ];
 const mix=(hex,weight,toward)=>'#'+[1,3,5].map(at=>Math.round(parseInt(hex.slice(at,at+2),16)*weight+toward*(1-weight)).toString(16).padStart(2,'0')).join('');
 export const writingFeatureIdentities=Object.freeze(Object.fromEntries(definitions.map(([key,title,group,tone,accent,description,output,tag])=>[key,Object.freeze({

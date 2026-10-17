@@ -31,6 +31,17 @@ export function createWorkspaceService(db,{billing}={}){
  const draftColumns='id,user_id,project_id,title,tool,version,bytes,created_at,updated_at';
  const draftRow=(id,user,full=true)=>{const row=db.prepare(`SELECT ${draftColumns}${full?',payload':''} FROM workspace_drafts WHERE id=? AND user_id=?`).get(id,user.id);if(!row)error(404,'记录不存在');if(full)row.payload=JSON.parse(row.payload);return row;};
  const draftQuota=(user,bytes,replacing=0)=>{try{assertThesisAccountQuota(db,user.id,bytes-replacing);}catch(cause){if(cause.code==='storage_limit')error(409,'账户草稿、论文资料与章节历史合计最多 50MB，请先下载备份并整理内容');throw cause;}};
+ // New feature tables are initialized by their services. Standalone workspace instances
+ // and older databases must remain exportable before those services are installed.
+ const tableExists=name=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name));
+ const optionalRows=(table,sql,userId)=>tableExists(table)?db.prepare(sql).all(userId):[];
+ const optionalBytes=(table,sql,userId)=>tableExists(table)?db.prepare(sql).get(userId).n:0;
+ const newExportBytes=userId=>
+  optionalBytes('writing_runs',"SELECT coalesce(sum(length(CAST(snapshot AS BLOB))+length(CAST(plan AS BLOB))+length(CAST(coalesce(output,'') AS BLOB))),0) n FROM writing_runs WHERE user_id=?",userId)+
+  (tableExists('writing_runs')?optionalBytes('writing_checkpoints','SELECT coalesce(sum(length(CAST(c.output AS BLOB))),0) n FROM writing_checkpoints c JOIN writing_runs r ON r.id=c.run_id WHERE r.user_id=?',userId):0)+
+  optionalBytes('questionnaires','SELECT coalesce(sum(length(CAST(content AS BLOB))),0) n FROM questionnaires WHERE user_id=?',userId)+
+  (tableExists('questionnaires')?optionalBytes('questionnaire_publications','SELECT coalesce(sum(length(CAST(p.content AS BLOB))),0) n FROM questionnaire_publications p JOIN questionnaires q ON q.id=p.questionnaire_id WHERE q.user_id=?',userId):0)+
+  (tableExists('questionnaires')&&tableExists('questionnaire_publications')?optionalBytes('questionnaire_responses','SELECT coalesce(sum(length(CAST(r.answers AS BLOB))),0) n FROM questionnaire_responses r JOIN questionnaire_publications p ON p.id=r.publication_id JOIN questionnaires q ON q.id=p.questionnaire_id WHERE q.user_id=?',userId):0);
  const feedbackItem=(id,user)=>db.prepare(`SELECT f.id,f.category,f.body,f.created_at,coalesce(m.status,'open') status,coalesce(m.updated_at,f.created_at) updated_at FROM feedback f LEFT JOIN feedback_management m ON m.feedback_id=f.id WHERE f.id=? AND f.user_id=?`).get(id,user.id);
  return async({path,method,user,readBody})=>{
   const result=(value,status=200)=>({value,status});
@@ -44,7 +55,7 @@ export function createWorkspaceService(db,{billing}={}){
     db.prepare('SELECT coalesce(sum(length(CAST(v.text AS BLOB))),0) n FROM thesis_chapter_versions v JOIN theses t ON t.id=v.thesis_id WHERE t.user_id=?').get(user.id).n+
     db.prepare('SELECT coalesce(sum(length(CAST(c.text AS BLOB))+length(CAST(c.trace AS BLOB))),0) n FROM thesis_checkpoints c JOIN thesis_runs r ON r.id=c.run_id WHERE r.user_id=?').get(user.id).n+
     db.prepare("SELECT coalesce(sum(length(CAST(snapshot AS BLOB))+length(CAST(coalesce(output,'') AS BLOB))),0) n FROM thesis_outline_runs WHERE user_id=?").get(user.id).n+
-    db.prepare("SELECT coalesce(sum(length(CAST(snapshot AS BLOB))+length(CAST(coalesce(output,'') AS BLOB))),0) n FROM thesis_method_runs WHERE user_id=?").get(user.id).n;
+    db.prepare("SELECT coalesce(sum(length(CAST(snapshot AS BLOB))+length(CAST(coalesce(output,'') AS BLOB))),0) n FROM thesis_method_runs WHERE user_id=?").get(user.id).n+newExportBytes(user.id);
    if(contentBytes>100*1024*1024)error(413,'账户资料超过单次归档大小，请按项目下载原件与成果');
    const profile=safeUser(db,user.id);
    const projects=db.prepare(projectSelect+' WHERE p.user_id=? ORDER BY p.created_at,p.id').all(user.id);
@@ -61,7 +72,12 @@ export function createWorkspaceService(db,{billing}={}){
    const thesisSections=db.prepare('SELECT c.* FROM thesis_checkpoints c JOIN thesis_runs r ON r.id=c.run_id WHERE r.user_id=? ORDER BY c.run_id,c.position').all(user.id).map(row=>({...row,source_ids:JSON.parse(row.source_ids),missing_evidence:JSON.parse(row.missing_evidence),trace:JSON.parse(row.trace)}));
    const thesisOutlineRuns=db.prepare('SELECT id,snapshot,input_hash,status,stage,error,output,result_id,input_tokens,output_tokens,usage_known,created_at,updated_at FROM thesis_outline_runs WHERE user_id=? ORDER BY created_at,id').all(user.id).map(row=>({...row,snapshot:JSON.parse(row.snapshot),output:row.output?JSON.parse(row.output):null}));
    const thesisMethodRuns=db.prepare('SELECT id,snapshot,input_hash,status,stage,error,output,result_id,input_tokens,output_tokens,usage_known,created_at,updated_at FROM thesis_method_runs WHERE user_id=? ORDER BY created_at,id').all(user.id).map(row=>({...row,snapshot:JSON.parse(row.snapshot),output:row.output?JSON.parse(row.output):null}));
-   const archive={format:'paperknow-account-archive',version:1,exportedAt:now(),scope:'account',account:{id:profile.id,name:profile.name,email:profile.email,phone:profile.phone},projects,drafts,files,results,jobs,feedback,theses,thesisRuns,thesisChapters,thesisSections,thesisOutlineRuns,thesisMethodRuns,includesOriginalFiles:false,restoreSupported:false};
+   const writingRuns=optionalRows('writing_runs','SELECT id,kind,operation,snapshot,input_hash,status,stage,error,plan,output,result_id,attempt,input_tokens,output_tokens,usage_known,created_at,updated_at FROM writing_runs WHERE user_id=? ORDER BY created_at,id',user.id).map(row=>({...row,snapshot:JSON.parse(row.snapshot),plan:JSON.parse(row.plan),output:row.output?JSON.parse(row.output):null}));
+   const writingCheckpoints=tableExists('writing_runs')?optionalRows('writing_checkpoints','SELECT c.run_id,c.unit_id,c.position,c.output,c.created_at FROM writing_checkpoints c JOIN writing_runs r ON r.id=c.run_id WHERE r.user_id=? ORDER BY c.run_id,c.position',user.id).map(row=>({...row,output:JSON.parse(row.output)})):[];
+   const questionnaires=optionalRows('questionnaires','SELECT id,project_id,version,content,created_at,updated_at FROM questionnaires WHERE user_id=? ORDER BY created_at,id',user.id).map(row=>({...row,content:JSON.parse(row.content)}));
+   const questionnairePublications=tableExists('questionnaires')?optionalRows('questionnaire_publications','SELECT p.id,p.questionnaire_id,p.token,p.version,p.content,p.status,p.created_at,p.closed_at FROM questionnaire_publications p JOIN questionnaires q ON q.id=p.questionnaire_id WHERE q.user_id=? ORDER BY p.created_at,p.id',user.id).map(row=>({...row,content:JSON.parse(row.content)})):[];
+   const questionnaireResponses=tableExists('questionnaires')&&tableExists('questionnaire_publications')?optionalRows('questionnaire_responses','SELECT r.id,r.publication_id,r.answers,r.created_at FROM questionnaire_responses r JOIN questionnaire_publications p ON p.id=r.publication_id JOIN questionnaires q ON q.id=p.questionnaire_id WHERE q.user_id=? ORDER BY r.created_at,r.id',user.id).map(row=>({...row,answers:JSON.parse(row.answers)})):[];
+   const archive={format:'paperknow-account-archive',version:1,exportedAt:now(),scope:'account',account:{id:profile.id,name:profile.name,email:profile.email,phone:profile.phone},projects,drafts,files,results,jobs,feedback,theses,thesisRuns,thesisChapters,thesisSections,thesisOutlineRuns,thesisMethodRuns,writingRuns,writingCheckpoints,questionnaires,questionnairePublications,questionnaireResponses,includesOriginalFiles:false,restoreSupported:false};
    if(Buffer.byteLength(JSON.stringify(archive))>100*1024*1024)error(413,'账户资料超过单次归档大小，请按项目下载原件与成果');
    return result(archive);
   }
