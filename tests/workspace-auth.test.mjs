@@ -1,3 +1,6 @@
+import {thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount} from '../dist/workspace/thesis-editor-presentation.mjs';
+import {isOutlineReferenceChapter} from '../dist/workspace/outline-word-budget.mjs';
+import {presentThesisDocument} from '../dist/workspace/thesis-document.mjs';
 import {publicBackupCopy,publicDraftCopy,publicTaskCopy} from '../dist/workspace/public-draft.mjs';
 import {withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures} from '../dist/workspace/view-stability.mjs';
 import test from 'node:test';
@@ -31,7 +34,7 @@ async function fixture(fetcher){
  storage.setItem(keys.profile,JSON.stringify({name:'本地昵称',degree:'硕士',major:'教育学'}));
  storage.setItem(keys.drafts,JSON.stringify([{id:'draft-one',title:'未上传的研究草稿'}]));
  const read=(key,fallback)=>JSON.parse(storage.getItem(key)||'null')??fallback;
- Object.assign(dom.window,{publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
+ Object.assign(dom.window,{thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
   preferences:()=>({degree:'本科',...read(keys.preferences,{})}),profile:()=>({name:'研究者',...read(keys.profile,{})}),read,list:key=>read(key,[]),write:(key,value)=>storage.setItem(key,JSON.stringify(value)),projects:()=>read(keys.projects,[]),repository:{all:async()=>[]},formatDate:()=>'',mountNavigation:()=>({close(){}}),
   disposeFormat:()=>{},disposeResearch:()=>{},disposePresentation:()=>{},disposeRevision:()=>{},disposeAccountDraft:()=>{},accountDraftEditing:()=>false,accountDraftHasWork:()=>false,accountDraftConfirmLeave:async()=>true,accountDraftSessionChanged:()=>{},accountDraftRouteGuard:()=>true,
   disposePayment:()=>{paymentCalls.push({type:'dispose'});},renderPaymentOrders:async()=>{paymentCalls.push({type:'orders'});},renderPaymentCheckout:async options=>{paymentCalls.push({type:'checkout',productId:options.productId,orderId:options.orderId});},clearEditor:()=>{},clearHelpWork:()=>{},clearSettingsWork:()=>{},clearMoreWork:()=>{},trackDialogForm:()=>()=>{},retainWritingCatalog:()=>{},isCurrentRouteChange:()=>false,
@@ -44,7 +47,7 @@ async function fixture(fetcher){
  return {dom,document:dom.window.document,storage,paymentCalls,api:dom.window.workspaceAuthTest,close(){dom.window.disposeOnlineThesis();timers.forEach(clearTimeout);dom.window.close();}};
 }
 
-test('main workspace thesis routes open real account records and prevent navigation from discarding unsaved chapter text',async()=>{
+test('main workspace thesis routes autosave chapter text before navigation and restore it on return',async()=>{
  const seen=[],item={id:'cloud-thesis',version:2,title:'跨设备账户论文',profile:{level:'硕士',discipline:'社会学',method:'案例研究'},snapshot:{title:'跨设备账户论文',profile:{level:'硕士',discipline:'社会学',method:'案例研究'},materials:[],references:[],outline:[]},status:'completed',chapters:[{id:'chapter-1',title:'第一章',text:'已保存账户正文',version:1,status:'saved'}],job:null};
  const json=data=>({ok:true,status:200,json:async()=>data});
  const f=await fixture(async path=>{seen.push(path);if(path==='/api/auth/me')return response(200,signedIn);if(path==='/api/theses')return json({items:[item]});if(path==='/api/theses/cloud-thesis')return json({item});if(path==='/api/capabilities')return json({thesis:{ready:false,reason:'未配置模型'}});return json({items:[]});});
@@ -57,8 +60,8 @@ test('main workspace thesis routes open real account records and prevent navigat
   assert.equal(f.document.querySelector('[data-thesis-editor]').value,'已保存账户正文');assert.match(f.document.querySelector('.thesis-run-controls').textContent,/未配置模型/);
   const editor=f.document.querySelector('[data-thesis-editor]');editor.value='本次未保存的修改';editor.dispatchEvent(new f.dom.window.Event('input',{bubbles:true}));assert.equal(f.dom.window.thesisOnlineHasWork(),true);
   f.dom.window.isCurrentRouteChange=()=>true;f.dom.window.confirm=()=>false;const oldURL=f.dom.window.location.href,newURL='https://paperknow.cn/workspace.html#account';f.dom.window.history.replaceState(null,'',newURL);f.dom.window.dispatchEvent(new f.dom.window.HashChangeEvent('hashchange',{oldURL,newURL}));
-  assert.equal(f.dom.window.location.hash,'#thesis/cloud-thesis');assert.equal(f.document.querySelector('[data-thesis-editor]').value,'本次未保存的修改');
-  f.dom.window.confirm=()=>true;f.dom.window.history.replaceState(null,'',newURL);f.dom.window.dispatchEvent(new f.dom.window.HashChangeEvent('hashchange',{oldURL,newURL}));assert.ok(f.document.querySelector('#profile-form'));assert.equal(f.dom.window.thesisOnlineHasWork(),false);
+  assert.equal(f.dom.window.location.hash,'#account');assert.ok(f.document.querySelector('#profile-form'));assert.equal(f.dom.window.thesisOnlineHasWork(),false);
+  f.dom.window.history.replaceState(null,'','/workspace.html#thesis/cloud-thesis');f.api.render();await settle();assert.equal(f.document.querySelector('[data-thesis-editor]').value,'本次未保存的修改');assert.match(f.document.querySelector('[data-thesis-notice]').textContent,/已恢复此账户/);assert.equal(f.dom.window.thesisOnlineHasWork(),true);
   assert.ok(seen.includes('/api/theses'));assert.ok(seen.includes('/api/theses/cloud-thesis'));assert.equal(seen.some(path=>path.endsWith('/generate')),false);
  }finally{f.close();}
 });
@@ -152,7 +155,7 @@ test('direct AI-rate navigation mounts the AI reduction service and updates the 
 
 test('real AI reduction entry keeps its own heading, theme and selection across shared revision routes',()=>{
  const dom=new JSDOM('<div class="breadcrumb"><strong></strong></div><main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#category/aigc',runScripts:'outside-only'});
- Object.assign(dom.window,{publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
+ Object.assign(dom.window,{thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
  try{
   vm.runInContext('(function(){'+revisionSource+'\nglobalThis.mountActualRevision=mountRevision;})()',dom.getInternalVMContext());
   const query=selector=>dom.window.document.querySelector(selector);
@@ -319,4 +322,11 @@ test('workspace search finds account projects, drafts, task results and original
 
 test('a failed account search shows an unavailable state rather than claiming zero matches',async()=>{
  const f=await fixture(async path=>path==='/api/auth/me'?response(200,signedIn):{ok:false,status:503,json:async()=>({error:'暂时不可用'})});try{f.dom.window.location.hash='#search/'+encodeURIComponent('课堂');f.api.render();await new Promise(resolve=>setTimeout(resolve,15));const panel=f.document.querySelector('#account-search-panel');assert.match(panel.textContent,/无法确认匹配数量/);assert.doesNotMatch(panel.textContent,/没有匹配的记录/);}finally{f.close();}
+});
+
+
+test('native thesis-library link navigation renders the thesis when the clicked link retains focus',async()=>{
+ const item={id:'cloud-thesis',version:2,title:'真实路由测试论文',profile:{level:'本科'},snapshot:{title:'真实路由测试论文',profile:{level:'本科'},materials:[],references:[],outline:[]},status:'draft',chapters:[{id:'c1',title:'第一章',text:'已保存正文',version:1,status:'saved'}],job:null},json=data=>({ok:true,status:200,json:async()=>data});
+ const f=await fixture(async path=>{if(path==='/api/auth/me')return response(200,signedIn);if(path==='/api/theses')return json({items:[item]});if(path==='/api/theses/cloud-thesis')return json({item});if(path==='/api/capabilities')return json({thesis:{ready:true}});return json({items:[]});});
+ try{await f.api.loadWorkspaceSession();f.dom.window.history.replaceState(null,'','/workspace.html#theses');f.api.render();for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));f.dom.window.isCurrentRouteChange=(event,url)=>event.newURL===url;const link=f.document.querySelector('.thesis-library a');link.focus();assert.equal(f.document.activeElement,link);link.click();for(let i=0;i<12;i++)await new Promise(resolve=>setTimeout(resolve,1));assert.equal(f.dom.window.location.hash,'#thesis/cloud-thesis');assert.equal(f.document.querySelector('.thesis-library'),null);assert.equal(f.document.querySelector('[data-thesis-editor]').value,'已保存正文');assert.match(f.document.querySelector('.thesis-summary').textContent,/真实路由测试论文/);const back=f.document.querySelector('.thesis-bottom-actions a[href="#theses"]');back.focus();back.click();for(let i=0;i<12;i++)await new Promise(resolve=>setTimeout(resolve,1));assert.equal(f.dom.window.location.hash,'#theses');assert.ok(f.document.querySelector('.thesis-library'));assert.equal(f.document.querySelector('[data-thesis-editor]'),null);}finally{f.close();}
 });

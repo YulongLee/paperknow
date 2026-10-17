@@ -11,7 +11,7 @@ const abortError=()=>Object.assign(new Error('页面已切换'),{name:'AbortErro
 export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getContextKey,onApply,onJobChange,onCommandChange,onPreviewChange,pendingPreview=null,pendingJobId=null,pendingContextKey=null,pendingClientKey=null,isCurrent=()=>true}={}){
  if(!container)throw new TypeError('缺少方法建议生成区域');
  const doc=container.ownerDocument,win=doc.defaultView;
- let alive=true,opened=false,epoch=0,timer=null,busy=false,user=null,cap=null,quote=null,item=null,snapshot=null,contextKey=pendingContextKey,jobId=pendingJobId||null,clientKey=pendingClientKey||null,commandPending=!!pendingClientKey,consent=false,ambiguous=!!pendingClientKey&&!pendingJobId,message='',error='',loadError=false,applied=false,previewText=typeof pendingPreview?.text==='string'?pendingPreview.text:'',previewJobId=pendingPreview?.jobId?String(pendingPreview.jobId):null;
+ let alive=true,opened=false,epoch=0,timer=null,busy=false,user=null,accountId=null,cap=null,quote=null,item=null,snapshot=null,contextKey=pendingContextKey,jobId=pendingJobId||null,clientKey=pendingClientKey||null,commandPending=!!pendingClientKey,consent=false,ambiguous=!!pendingClientKey&&!pendingJobId,message='',error='',loadError=false,applied=false,previewText=typeof pendingPreview?.text==='string'?pendingPreview.text:'',previewJobId=pendingPreview?.jobId?String(pendingPreview.jobId):null;
  const controllers=new Set();
  const current=()=>alive&&container.isConnected&&isCurrent();
  const usable=token=>current()&&opened&&epoch===token;
@@ -46,11 +46,13 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
   if(value?.status==='error'||value?.status==='loading')throw Error('暂时无法核对登录状态，请稍后重试；原有补充说明仍保留。');
   const next=identity(value);if(!next)throw Error('账户信息不完整，请重新登录后再生成方法建议。');return next;
  }
+ function changedAccount(){
+  user=null;quote=null;consent=false;item=null;clearPoll();setError('登录账户已变化，请重新登录并打开方法建议生成。');throw Error(error);
+ }
  async function owner(token=epoch){
   const next=await authenticate({fresh:true,token});
-  if(!next||!user||String(next.id)!==String(user.id)){
-   user=null;quote=null;item=null;clearPoll();setError('登录账户已变化，请重新登录并打开方法建议生成。');throw Error(error);
-  }
+  if(!next||!accountId||String(next.id)!==accountId)changedAccount();
+  user=next;
  }
  function takeItem(value,expectedId){
   if(!value?.id||!Object.hasOwn(statusText,value.status)||expectedId&&String(value.id)!==String(expectedId))throw Error('方法建议任务数据不完整，请读取最新状态。');
@@ -99,7 +101,7 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
   $('[data-method-ai-start]')?.addEventListener('click',()=>void start());
   $('[data-method-ai-requote]')?.addEventListener('click',()=>void prepare());
   $('[data-method-ai-new]')?.addEventListener('click',()=>void prepare({newCommand:true}));
-  $('[data-method-ai-reload]')?.addEventListener('click',()=>void (jobId&&!item||commandPending&&!item?open():prepare()));
+  $('[data-method-ai-reload]')?.addEventListener('click',()=>void (!user||loadError||jobId&&!item||commandPending&&!item?open({fresh:true}):prepare()));
   $('[data-method-ai-refresh]')?.addEventListener('click',()=>void refresh());
   $('[data-method-ai-cancel]')?.addEventListener('click',()=>void cancel());
   $('[data-method-ai-apply]')?.addEventListener('click',()=>void apply());
@@ -129,12 +131,14 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
    await loadQuote(token);
   });
  }
- async function open(){
+ async function open({fresh=false}={}){
   if(!current())return;
+  const reauthenticate=fresh||loadError||!!accountId;
   opened=true;epoch++;busy=true;error='';loadError=false;message='';clearPoll();abortRequests();const token=epoch;render();
   try{
-   const next=await authenticate({token});if(!usable(token))return;if(user&&String(user.id)!==String(next?.id)){quote=null;item=null;snapshot=null;jobId=null;clientKey=null;commandPending=false;consent=false;ambiguous=false;contextKey=null;previewText='';previewJobId=null;}user=next;
-   if(!user){quote=null;return;}
+   const next=await authenticate({fresh:reauthenticate,token});if(!usable(token))return;
+   if(accountId&&String(next?.id)!==accountId)changedAccount();
+   user=next;if(!user){quote=null;return;}accountId=String(user.id);
    await owner(token);
    if(jobId){const value=await request('/theses/methods/'+encodeURIComponent(jobId),undefined,token);takeItem(value.item,jobId);message='已读取保存的方法建议任务；未重复提交或扣费。';}
    else if(commandPending&&clientKey){

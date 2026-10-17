@@ -11,7 +11,7 @@ const abortError=()=>Object.assign(new Error('页面已切换'),{name:'AbortErro
 export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getContextKey,onApply,onJobChange,onCommandChange,pendingJobId=null,pendingContextKey=null,pendingClientKey=null,isCurrent=()=>true}={}){
  if(!container)throw new TypeError('缺少提纲生成区域');
  const doc=container.ownerDocument,win=doc.defaultView;
- let alive=true,opened=false,epoch=0,timer=null,busy=false,user=null,cap=null,quote=null,item=null,snapshot=null,contextKey=pendingContextKey,jobId=pendingJobId||null,clientKey=pendingClientKey||null,commandPending=!!pendingClientKey,consent=false,ambiguous=!!pendingClientKey&&!pendingJobId,message='',error='',loadError=false,applied=false;
+ let alive=true,opened=false,epoch=0,timer=null,busy=false,user=null,accountId=null,cap=null,quote=null,item=null,snapshot=null,contextKey=pendingContextKey,jobId=pendingJobId||null,clientKey=pendingClientKey||null,commandPending=!!pendingClientKey,consent=false,ambiguous=!!pendingClientKey&&!pendingJobId,message='',error='',loadError=false,applied=false;
  const controllers=new Set();
  const current=()=>alive&&container.isConnected&&isCurrent();
  const usable=token=>current()&&opened&&epoch===token;
@@ -45,11 +45,13 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
   if(value?.status==='error'||value?.status==='loading')throw Error('暂时无法核对登录状态，请稍后重试；原有提纲仍保留。');
   const next=identity(value);if(!next)throw Error('账户信息不完整，请重新登录后再生成提纲。');return next;
  }
+ function changedAccount(){
+  user=null;quote=null;consent=false;item=null;clearPoll();setError('登录账户已变化，请重新登录并打开提纲生成。');throw Error(error);
+ }
  async function owner(token=epoch){
   const next=await authenticate({fresh:true,token});
-  if(!next||!user||String(next.id)!==String(user.id)){
-   user=null;quote=null;item=null;clearPoll();setError('登录账户已变化，请重新登录并打开提纲生成。');throw Error(error);
-  }
+  if(!next||!accountId||String(next.id)!==accountId)changedAccount();
+  user=next;
  }
  function takeItem(value,expectedId){
   if(!value?.id||!Object.hasOwn(statusText,value.status)||expectedId&&String(value.id)!==String(expectedId))throw Error('提纲任务数据不完整，请读取最新状态。');
@@ -93,7 +95,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
   $('[data-outline-ai-start]')?.addEventListener('click',()=>void start());
   $('[data-outline-ai-requote]')?.addEventListener('click',()=>void prepare());
   $('[data-outline-ai-new]')?.addEventListener('click',()=>void prepare({newCommand:true}));
-  $('[data-outline-ai-reload]')?.addEventListener('click',()=>void (jobId&&!item||commandPending&&!item?open():prepare()));
+  $('[data-outline-ai-reload]')?.addEventListener('click',()=>void (!user||loadError||jobId&&!item||commandPending&&!item?open({fresh:true}):prepare()));
   $('[data-outline-ai-refresh]')?.addEventListener('click',()=>void refresh());
   $('[data-outline-ai-cancel]')?.addEventListener('click',()=>void cancel());
   $('[data-outline-ai-apply]')?.addEventListener('click',()=>void apply());
@@ -123,12 +125,14 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
    await loadQuote(token);
   });
  }
- async function open(){
+ async function open({fresh=false}={}){
   if(!current())return;
+  const reauthenticate=fresh||loadError||!!accountId;
   opened=true;epoch++;busy=true;error='';loadError=false;message='';clearPoll();abortRequests();const token=epoch;render();
   try{
-   const next=await authenticate({token});if(!usable(token))return;if(user&&String(user.id)!==String(next?.id)){quote=null;item=null;snapshot=null;jobId=null;clientKey=null;commandPending=false;consent=false;ambiguous=false;contextKey=null;}user=next;
-   if(!user){quote=null;return;}
+   const next=await authenticate({fresh:reauthenticate,token});if(!usable(token))return;
+   if(accountId&&String(next?.id)!==accountId)changedAccount();
+   user=next;if(!user){quote=null;return;}accountId=String(user.id);
    await owner(token);
    if(jobId){const value=await request('/theses/outlines/'+encodeURIComponent(jobId),undefined,token);takeItem(value.item,jobId);message='已读取保存的提纲任务；未重复提交或扣费。';}
    else if(commandPending&&clientKey){

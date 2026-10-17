@@ -1,4 +1,8 @@
 /* The confirmed brief, generation controls and editable paper have distinct roles. */
+.thesis-chapter-conflict{margin:18px 0;padding:18px 20px;border:1px solid #ecd5aa;border-radius:12px;background:#fff9ef;overflow-wrap:anywhere}
+.thesis-chapter-conflict :is(h3,h4){margin:0 0 8px;font-size:14px;color:#805b20}.thesis-chapter-conflict p{font-size:12px;color:#805f2d}
+.thesis-chapter-conflict details{margin:12px 0}.thesis-chapter-conflict pre{padding:14px;border:1px solid #e9ddc7;border-radius:8px;background:#fff;font:inherit;font-size:12px;line-height:1.9;white-space:pre-wrap;max-height:320px;overflow:auto}
+.hub-theme-dark .thesis-chapter-conflict{background:#332e24;border-color:#715d38}.hub-theme-dark .thesis-chapter-conflict :is(h3,h4,p){color:#e5cc9d}.hub-theme-dark .thesis-chapter-conflict pre{background:var(--pk-surface);border-color:#715d38}
 .thesis-online-shell{--thesis-blue:#3265f4;--thesis-line:var(--pk-border);--thesis-muted:var(--pk-muted);color:var(--pk-text);font-size:14px}
 .thesis-online-shell h2,.thesis-online-shell h3{color:var(--pk-text)}
 .thesis-online-shell p{color:var(--pk-muted);line-height:1.85}

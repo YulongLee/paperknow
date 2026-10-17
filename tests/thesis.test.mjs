@@ -73,6 +73,45 @@ test('strict section validation rejects unknown/unread sources, shortages, trunc
  assert.throws(()=>parseThesisSection({...good,trace:[]},value,unit),/尚未实际读取/);
 });
 
+test('actual chapter prose must stay inside the unit budget in both Chinese characters and English words',()=>{
+ const boundaries=[[20,20,40],[97,77,117],[171,136,206],[199,159,239],[200,160,240],[232,185,279],[1800,1440,2160]];
+ for(const language of ['中文','English'])for(const [target,min,max] of boundaries){
+  const value=normalizeThesisSnapshot(snapshot({profile:{...snapshot().profile,language}})),unit={...thesisPlan(value)[0],targetWords:target},task=thesisAgentTask(value,unit,[]);
+  assert.equal(task.context.lengthBudget.target,target);assert.equal(task.context.lengthBudget.min,min);assert.equal(task.context.lengthBudget.max,max);
+  const response=count=>({text:JSON.stringify({text:(language==='English'?'research '.repeat(count):'研'.repeat(count))+'[source:source-1]',source_ids:['source-1'],missing_evidence:[],complete:true}),trace:[{tool:'read_material',status:'completed',materialId:'source-1'}]});
+  for(const count of [min,target,max]){const raw=response(count),before=structuredClone(raw),parsed=parseThesisSection(raw,value,unit);assert.equal(parsed.wordCount,count);assert.deepEqual(raw,before);assert.match(parsed.text,/\[source:source-1\]$/);}
+  assert.throws(()=>parseThesisSection(response(min-1),value,unit),error=>error.code==='incomplete');
+  assert.throws(()=>parseThesisSection(response(max+1),value,unit),error=>error.code==='word_limit_exceeded'&&error.message.includes(String(max+1))&&error.message.includes(`${min}～${max}`));
+  assert.match(task.instructions,new RegExp(`目标篇幅为 ${target}，允许范围 ${min}～${max}`));assert.match(task.instructions,/不得把 context.profile.targetWords 当成本单元的篇幅/);
+  assert.match(task.context.lengthBudget.countMethod,language==='English'?/英文按词计数/:/非空白 Unicode 字符/);
+ }
+});
+
+test('source marker length never changes prose length and an evidence gap remains a real failure',()=>{
+ const value=normalizeThesisSnapshot(snapshot()),unit={...thesisPlan(value)[0],targetWords:97},text='研'.repeat(97)+'[source:source-1]'.repeat(100),raw={text:JSON.stringify({text,source_ids:['source-1'],missing_evidence:[],complete:true}),trace:[{tool:'read_material',status:'completed',materialId:'source-1'}]};
+ assert.equal(parseThesisSection(raw,value,unit).wordCount,97);assert.equal(parseThesisSection(raw,value,unit).text,text);
+ const task=thesisAgentTask(value,{...unit,title:'研究局限与后续验证计划'},[]);assert.match(task.instructions,/未来待收集清单、尚未提供的学校格式模板或导师意见，不能单独成为/);assert.match(task.instructions,/不能因为尚待验证而拒绝撰写验证计划本身/);
+ assert.throws(()=>parseThesisSection({...raw,text:JSON.stringify({text:'',source_ids:[],missing_evidence:['支撑已经改善效果的真实实验数据尚未提供'],complete:false})},value,unit),error=>error.code==='needs_materials'&&error.missingEvidence.length===1);
+});
+
+test('an overlong real worker response preserves saved versions, releases its hold and never retries or settles silently',async t=>{
+ let overlong=false,calls=0;const f=fixture(t,{agentTaskRunner:async({task})=>{calls++;if(!overlong)return output(task);const source=task.materials[0].id;return output(task,{text:JSON.stringify({text:'研'.repeat(task.context.unit.targetWords*5)+`[source:${source}]`,source_ids:[source],missing_evidence:[],complete:true})});}});
+ f.pay();const worker=f.start(),first=await f.generate(await f.create());await worker.tick();const original=f.get(first.id),versions=original.chapters.map(row=>({id:row.id,version:row.version,text:row.text}));assert.equal(original.status,'completed');assert.equal(calls,2);
+ overlong=true;const queued=await f.generate(original);assert.equal(f.billing.balance(f.user.id).held,10);await worker.tick();const failed=f.get(first.id);
+ assert.equal(failed.status,'failed');assert.equal(failed.job.completedSections,0);assert.match(failed.job.error,/超过本节允许/);assert.deepEqual(failed.chapters.map(row=>({id:row.id,version:row.version,text:row.text})),versions);
+ assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,1);
+ assert.equal(f.db.prepare("SELECT count(*) n FROM thesis_checkpoints WHERE run_id=? AND status='completed'").get(queued.job.id).n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_chapter_versions WHERE run_id=?').get(queued.job.id).n,0);
+ await worker.tick();assert.equal(calls,3,'failure does not dispatch a hidden model retry');assert.equal(f.billing.balance(f.user.id).balance,190);
+});
+
+test('chapter checking may use six turns but never exceeds the administrator turn or other configured budgets',async t=>{
+ for(const adminTurns of [1,2,3,4,6,12]){
+  const configured={...settings,maxTurns:adminTurns},seen=[],f=fixture(t,{getAgentSettings:()=>configured,agentTaskRunner:async({task,settings:runtime})=>{seen.push(runtime);return output(task);}}),worker=f.start();
+  const queued=await f.generate(await f.create());await worker.tick();assert.equal(f.get(queued.id).status,'completed');assert.equal(seen.length,2);
+  for(const runtime of seen){assert.equal(runtime.maxTurns,Math.min(6,adminTurns));assert.equal(runtime.maxOutputTokens,configured.maxOutputTokens);assert.equal(runtime.maxCostUsd,configured.maxCostUsd);assert.equal(runtime.timeoutMs,configured.timeoutMs);}
+ }
+});
+
 test('cloud CRUD is owner-isolated, optimistic, idempotent and preserves imported/manual chapter history',async t=>{
  const f=fixture(t),body=snapshot({bodySections:[{id:'chapter-1',title:'研究背景',text:'用户已写的原文'}]}),key=randomUUID();
  const item=(await f.request('/api/theses','POST',{snapshot:body,clientKey:key})).item;
@@ -92,7 +131,7 @@ test('generate freezes credits atomically, blocks active snapshot edits and comp
  const again=await f.generate(item,{clientKey:key});assert.equal(again.job.id,queued.job.id);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_runs').get().n,1);
  await assert.rejects(f.request('/api/theses/'+item.id,'POST',{version:queued.version,snapshot:snapshot()}),{status:409});
  const worker=f.start();await Promise.all([worker.tick(),worker.tick()]);const done=f.get(item.id);
- assert.equal(done.status,'completed');assert.equal(done.job.completedSections,2);assert.equal(done.chapters.length,2);assert.ok(done.fullText.includes('[source:source-1]'));
+ assert.equal(done.status,'completed');assert.equal(done.job.completedSections,2);assert.equal(done.chapters.length,2);assert.ok(done.fullText.includes('[材料1]'));assert.doesNotMatch(done.fullText,/\[source:/);assert.ok(done.chapters.every(chapter=>chapter.text.includes('[source:source-1]')));
  assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,1);assert.equal(f.db.prepare('SELECT count(*) n FROM usage').get().n,1);await worker.tick();assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,1);
  const stored=f.db.prepare('SELECT input FROM jobs WHERE id=?').get(done.job.id).input;assert.equal(stored.includes(settings.apiKey),false);assert.equal(f.db.prepare('SELECT settings_meta FROM thesis_runs WHERE id=?').get(done.job.id).settings_meta.includes(settings.apiKey),false);
 });

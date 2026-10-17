@@ -47,7 +47,7 @@ export function startThesisWorker(db,config={}){
     const checkpoint=db.prepare('SELECT * FROM thesis_checkpoints WHERE run_id=? AND unit_id=?').get(run.id,unit.id);if(checkpoint.status==='completed')continue;
     assertThesisSettings(await config.getAgentSettings?.());
     const complete=db.prepare("SELECT * FROM thesis_checkpoints WHERE run_id=? AND status='completed' ORDER BY position").all(run.id);
-    const task=thesisAgentTask(snapshot,unit,complete),maxTurns=Math.min(3,Math.max(1,Number(runtime.maxTurns)||3)),maxOutputTokens=Math.min(8000,Math.max(32,Number(runtime.maxOutputTokens)||4096));
+    const task=thesisAgentTask(snapshot,unit,complete),maxTurns=Math.min(6,Math.max(1,Number(runtime.maxTurns)||3)),maxOutputTokens=Math.min(8000,Math.max(32,Number(runtime.maxOutputTokens)||4096));
     // The runtime relay enforces maxTotalTokens against the complete actual SDK
     // request, including system instructions, tool schemas and growing history.
     const totals=db.prepare('SELECT input_tokens,output_tokens FROM thesis_runs WHERE id=?').get(run.id),spent=totals.input_tokens+totals.output_tokens-baseline;

@@ -1,3 +1,4 @@
+import {normalizeThesisSnapshot} from '../backend/thesis-model.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
@@ -116,4 +117,136 @@ test('chapter actions and status refresh preserve keyboard focus and open resear
  const refresh=f.$('[data-thesis-refresh]');refresh.focus();refresh.click();await settle();
  assert.equal(document.activeElement.hasAttribute('data-thesis-refresh'),true);assert.equal(f.$('.thesis-sources').open,true);
  f.close();
+});
+
+
+test('legacy full-text exports render citation labels and inventories without changing stored chapter markers',()=>{
+ const original='已有研究指出这一现象 [source:r1]。用户观察见 [source:m1]；未识别来源 [source:removed-private-id]。';
+ const value=thesis({title:'来源呈现测试',fullText:'旧版服务端全文 '+original,chapters:[{id:'c1',title:'第一章',text:original,sourceIds:['r1','m1','removed-private-id']}]});
+ value.snapshot.references=[{id:'r1',title:'经用户确认的参考文献',authors:'研究者甲',year:'2025',confirmed:true},{id:'unused',title:'未使用文献',confirmed:true}];
+ const raw=structuredClone(value),result=thesisDocumentText(value);
+ assert.match(result,/已有研究指出这一现象 \[1\]/);assert.match(result,/用户观察见 \[材料1\]/);assert.match(result,/未识别来源 \[来源待核对\]/);assert.match(result,/经用户确认的参考文献/);assert.match(result,/实验笔记/);assert.doesNotMatch(result,/\[source:|removed-private-id|未使用文献|旧版服务端全文/);assert.deepEqual(value,raw);
+});
+
+test('an already formatted server document passes through verbatim and fallback uses citation presentation',()=>{
+ const value=thesis({chapters:[{id:'c1',title:'第一章',text:'参考研究 [source:r1] 与材料 [source:m1]。',sourceIds:['r1','m1']}]});
+ value.snapshot.references=[{id:'r1',title:'研究参考文献',confirmed:true}];
+ const formatted='服务端已排版正文\n\n第一章\n保留原有内容与空格  [1]';assert.equal(thesisDocumentText({...value,fullText:formatted}),formatted);
+ const fallback=thesisDocumentText(value);assert.match(fallback,/参考研究 \[1\] 与材料 \[材料1\]/);assert.match(fallback,/研究参考文献/);assert.match(fallback,/实验笔记/);assert.doesNotMatch(fallback,/\[source:/);
+});
+
+
+test('creating an account snapshot normalizes server defaults without falsely requiring a resync',async()=>{
+ const local=snapshot();local.requirements={contentMode:'text',researchPlan:{text:'拟采用文献分析并由用户核对',origin:'ai',status:'proposed',jobId:null}};local.bodySections=[{id:'c1',text:'独立手动正文'}];local.projectId='browser-project';
+ const f=fixture({handler:(path,data)=>{if(path==='/theses'&&data){const normalized=normalizeThesisSnapshot(data.snapshot),saved=thesis({snapshot:normalized,profile:normalized.profile,outline:normalized.outline});f.setItem(saved);return {item:saved};}}});
+ try{const stop=mountThesisStage({container:f.$('.dashboard'),getSnapshot:()=>structuredClone(local),ctx:f.ctx});await stop.ready;f.$('[data-thesis-create]').click();await settle();assert.equal(f.$('.thesis-snapshot-drift'),null);assert.equal(f.$('[data-thesis-quote]').disabled,false);f.$('[data-thesis-quote]').click();await settle();assert.ok(f.$('[data-thesis-consent]'));assert.equal(f.$('[data-thesis-start]').disabled,true);assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);}finally{f.close();}
+});
+
+test('a changed step-four outline prominently blocks quotations until explicit versioned sync and renewed consent',async()=>{
+ let local=snapshot(),confirmations=0;const f=fixture();try{const stop=mountThesisStage({id:'t1',container:f.$('.dashboard'),getSnapshot:()=>structuredClone(local),ctx:f.ctx});await stop.ready;assert.equal(f.$('.thesis-snapshot-drift'),null);local.outline[0].title='第一章 更新后的研究问题';local.outline[0].targetWords=5000;local.outline[1].targetWords=3000;
+ f.$('[data-thesis-refresh]').click();await settle();assert.match(f.$('.thesis-snapshot-drift').textContent,/前四步与账户信息不一致/);assert.match(f.$('.thesis-snapshot-drift').textContent,/论文提纲与字数分配/);assert.equal(f.$('[data-thesis-sync-primary]').closest('details'),null);assert.equal(f.$('[data-thesis-quote]').disabled,true);f.$('[data-thesis-quote]').dispatchEvent(new window.MouseEvent('click',{bubbles:true}));await settle();assert.equal(f.calls.some(row=>row.path==='/billing/quote'),false);
+ window.confirm=()=>{confirmations++;return true;};f.$('[data-thesis-sync-primary]').click();await settle();assert.equal(confirmations,1);const synced=f.calls.find(row=>row.path==='/theses/t1'&&row.data);assert.equal(synced.data.version,1);assert.equal(synced.data.snapshot.outline[0].title,'第一章 更新后的研究问题');assert.equal(synced.data.snapshot.outline[0].targetWords,5000);assert.equal(f.$('.thesis-snapshot-drift'),null);assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);f.$('[data-thesis-quote]').click();await settle();assert.equal(f.$('[data-thesis-start]').disabled,true);const consent=f.$('[data-thesis-consent]');consent.checked=true;consent.dispatchEvent(new window.Event('change'));f.$('[data-thesis-start]').click();await settle();assert.equal(f.calls.filter(row=>row.path.endsWith('/generate')).length,1);assert.equal(f.calls.find(row=>row.path.endsWith('/generate')).data.version,2);
+ }finally{f.close();}
+});
+
+test('account-only research additions stay intact unless the user explicitly chooses to replace them',async()=>{
+ const local=snapshot(),saved=snapshot();saved.materials.push({id:'account-only',name:'账户独立补充',text:'独立补充的真实资料',confirmed:true});const f=fixture({item:thesis({version:6,snapshot:saved})});
+ try{const stop=mountThesisStage({id:'t1',container:f.$('.dashboard'),getSnapshot:()=>structuredClone(local),ctx:f.ctx});await stop.ready;assert.equal(f.$('[data-thesis-quote]').disabled,true);assert.match(f.$('.thesis-snapshot-drift').textContent,/账户中独立补充/);f.$('[data-thesis-use-account]').click();assert.match(f.$('.thesis-account-choice').textContent,/本次使用账户已保存的信息/);assert.equal(f.calls.some(row=>row.data),false);f.$('[data-thesis-quote]').click();await settle();const consent=f.$('[data-thesis-consent]');consent.checked=true;consent.dispatchEvent(new window.Event('change'));f.$('[data-thesis-start]').click();await settle();assert.equal(f.calls.find(row=>row.path.endsWith('/generate')).data.version,6);assert.equal(f.calls.some(row=>row.path==='/theses/t1'&&row.data),false);assert.match(f.$('.thesis-sources').textContent,/账户独立补充/);
+ }finally{f.close();}
+});
+
+test('an account-version change invalidates an earlier choice to use account information',async()=>{
+ const local=snapshot(),saved=snapshot();saved.profile.method='账户补充方法';const f=fixture({item:thesis({snapshot:saved,profile:saved.profile})});
+ try{const stop=mountThesisStage({id:'t1',container:f.$('.dashboard'),getSnapshot:()=>structuredClone(local),ctx:f.ctx});await stop.ready;f.$('[data-thesis-use-account]').click();assert.equal(f.$('[data-thesis-quote]').disabled,false);f.setItem(thesis({version:2,snapshot:saved,profile:saved.profile}));f.$('[data-thesis-refresh]').click();await settle();assert.ok(f.$('[data-thesis-use-account]'));assert.equal(f.$('[data-thesis-quote]').disabled,true);assert.equal(f.$('.thesis-account-choice'),null);assert.equal(f.calls.some(row=>row.data),false);
+ }finally{f.close();}
+});
+
+test('local information changed after quotation cannot reuse stale consent to start generation',async()=>{
+ let local=snapshot();const f=fixture();try{const stop=mountThesisStage({id:'t1',container:f.$('.dashboard'),getSnapshot:()=>structuredClone(local),ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote]').click();await settle();const consent=f.$('[data-thesis-consent]');local.outline[0].title='报价后修改的新章节';consent.checked=true;consent.dispatchEvent(new window.Event('change'));assert.equal(f.$('[data-thesis-start]').disabled,true);f.$('[data-thesis-start]').dispatchEvent(new window.MouseEvent('click',{bubbles:true}));await settle();assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);assert.match(f.$('[data-thesis-notice]').textContent,/前四步已更新/);assert.ok(f.$('[data-thesis-sync-primary]'));assert.equal(f.$('[data-thesis-start]'),null);
+ }finally{f.close();}
+});
+
+test('a failed snapshot read blocks generation instead of assuming that the previous account outline is current',async()=>{
+ const f=fixture();try{const stop=mountThesisStage({id:'t1',container:f.$('.dashboard'),getSnapshot:()=>{throw Error('新提纲中尚有空标题');},ctx:f.ctx});await stop.ready;assert.match(f.$('.thesis-snapshot-drift').textContent,/新提纲中尚有空标题/);assert.equal(f.$('[data-thesis-quote]').disabled,true);assert.equal(f.$('[data-thesis-use-account]'),null);f.$('[data-thesis-quote]').dispatchEvent(new window.MouseEvent('click',{bubbles:true}));await settle();assert.equal(f.calls.some(row=>row.path==='/billing/quote'),false);assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);
+ }finally{f.close();}
+});
+
+test('changes while a quotation is being fetched invalidate that quotation before it can be confirmed',async()=>{
+ let local=snapshot(),resolveQuote;const f=fixture({handler:path=>path==='/billing/quote'?new Promise(resolve=>{resolveQuote=resolve;}):undefined});try{const stop=mountThesisStage({id:'t1',container:f.$('.dashboard'),getSnapshot:()=>structuredClone(local),ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote]').click();await settle();assert.ok(resolveQuote);local.profile.targetWords=9000;resolveQuote(quote());await settle();assert.equal(f.$('[data-thesis-consent]'),null);assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);assert.ok(f.$('[data-thesis-sync-primary]'));
+ }finally{f.close();}
+});
+
+
+test('cancelling snapshot synchronization preserves the account version and leaves changed local information blocked',async()=>{
+ const local=snapshot();local.outline[0].title='尚未同步的新提纲';const f=fixture();try{const stop=mountThesisStage({id:'t1',container:f.$('.dashboard'),getSnapshot:()=>structuredClone(local),ctx:f.ctx});await stop.ready;window.confirm=()=>false;f.$('[data-thesis-sync-primary]').click();await settle();assert.equal(f.calls.some(row=>row.path==='/theses/t1'&&row.data),false);assert.match(f.$('.thesis-summary').textContent,/真实研究/);assert.equal(f.$('[data-thesis-quote]').disabled,true);assert.ok(f.$('[data-thesis-use-account]'));assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);
+ }finally{f.close();}
+});
+
+test('an optimistic conflict during snapshot synchronization retains the unsynced choice and never retries generation',async()=>{
+ const local=snapshot();local.outline[0].title='本地新提纲';const f=fixture({handler:(path,data)=>path==='/theses/t1'&&data?Promise.reject(Object.assign(Error('账户版本冲突'),{status:409})):undefined});try{const stop=mountThesisStage({id:'t1',container:f.$('.dashboard'),getSnapshot:()=>structuredClone(local),ctx:f.ctx});await stop.ready;f.$('[data-thesis-sync-primary]').click();await settle();assert.match(f.$('[data-thesis-notice]').textContent,/内容版本已更新/);assert.equal(f.calls.filter(row=>row.path==='/theses/t1'&&row.data).length,1);assert.equal(f.$('[data-thesis-quote]').disabled,true);assert.ok(f.$('[data-thesis-use-account]'));assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);
+ }finally{f.close();}
+});
+
+
+test('a completed empty bibliography is labelled unused rather than pending, including legacy reference headings',async()=>{
+ for(const reference of [{id:'refs',title:'参考文献',status:'pending',text:'',version:0},{id:'refs',title:'研究来源清单',kind:'references',status:'pending',text:'',version:0}]){
+  const f=fixture({item:thesis({status:'completed',job:{status:'completed',completedSections:3,totalSections:3},chapters:[{id:'c1',title:'第一章',text:'引用真实私有研究材料 [source:m1]',sourceIds:['m1'],version:1,status:'saved'},reference]})});
+  try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;const row=f.$('[data-thesis-chapter="refs"]');assert.match(row.textContent,/未编入文献/);assert.doesNotMatch(row.textContent,/待生成/);row.click();assert.match(f.$('.thesis-editor').textContent,/当前正文未引用选中题录/);assert.match(f.$('.thesis-editor').textContent,/未读取全文的题录不会冒充正文依据/);assert.match(f.$('[data-thesis-edit-state]').textContent,/未引用选中题录/);assert.equal(f.$('[data-thesis-editor]').value,'');assert.equal(f.calls.some(call=>call.data),false);assert.match(f.$('.thesis-progress').textContent,/已完成/);assert.equal(f.$('progress').value,100);}finally{f.close();}
+ }
+});
+
+test('a pending bibliography remains pending while real generation is still running',async()=>{
+ const f=fixture({item:thesis({status:'running',job:{status:'running',completedSections:2,totalSections:3},chapters:[{id:'refs',title:'参考文献',kind:'references',status:'pending',text:'',version:0}]})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.match(f.$('[data-thesis-chapter="refs"]').textContent,/待生成/);assert.doesNotMatch(f.$('.thesis-editor').textContent,/当前正文未引用选中题录|未编入文献/);assert.equal(f.$('[data-thesis-editor]').readOnly,true);assert.equal(f.calls.some(call=>call.data),false);}finally{f.close();}
+});
+
+test('the chapter editor shows short source labels while local recovery and explicit account saves retain canonical IDs',async()=>{
+ const raw='用户材料中的研究背景 [source:m1]；文献待核对 [source:r1]。',f=fixture({item:thesis({status:'completed',chapters:[{id:'c1',title:'第一章',version:1,status:'saved',text:raw,sourceIds:['m1','r1']}]})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.equal(f.$('[data-thesis-editor]').value,'用户材料中的研究背景 〔材料1〕；文献待核对 〔文献1〕。');assert.match(f.$('.thesis-editor-citations').textContent,/材料1.*实验笔记/);assert.match(f.$('.thesis-editor-citations').textContent,/文献1.*用户导入文献.*仅题录，未读取全文/);assert.doesNotMatch(f.$('[data-thesis-editor]').value,/\[source:/);
+ input(f,'[data-thesis-editor]',f.$('[data-thesis-editor]').value+' 人工补充及 〔材料99〕');assert.match(f.$('[data-thesis-notice]').textContent,/未关联来源的短标记/);const stored=JSON.parse(window.localStorage.getItem('paperknow-thesis-edits-v1:u1:t1'));assert.equal(stored.chapters[0].text,raw+' 人工补充及 〔材料99〕');assert.doesNotMatch(stored.chapters[0].text,/〔材料1〕|〔文献1〕/);f.$('[data-thesis-save-chapter]').click();await settle();assert.equal(f.calls.find(row=>row.path==='/theses/t1/chapters/c1'&&row.data).data.text,raw+' 人工补充及 〔材料99〕');
+ }finally{f.close();}
+});
+
+test('recovered canonical chapter drafts follow their original source when account source order changes',async()=>{
+ const raw='引用原有资料 [source:m1]。',original=thesis({chapters:[{id:'c1',title:'第一章',version:1,status:'saved',text:raw,sourceIds:['m1']}]}),f=fixture({item:original});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;input(f,'[data-thesis-editor]',f.$('[data-thesis-editor]').value+' 保留手动修改');const newer=structuredClone(original);newer.version=2;newer.snapshot.materials.unshift({id:'m2',name:'另一份资料',text:'不同原文',confirmed:true});f.setItem(newer);f.$('[data-thesis-refresh]').click();await settle();assert.equal(f.$('[data-thesis-editor]').value,'引用原有资料 〔材料2〕。 保留手动修改');assert.match(f.$('.thesis-editor-citations').textContent,/材料2.*实验笔记/);f.$('[data-thesis-save-chapter]').click();await settle();const saved=f.calls.find(row=>row.path==='/theses/t1/chapters/c1'&&row.data);assert.equal(saved.data.version,2);assert.equal(saved.data.text,raw+' 保留手动修改');assert.doesNotMatch(saved.data.text,/source:m2/);
+ }finally{f.close();}
+});
+
+test('a literal display-label collision keeps raw text intact and explains why the chapter is not transformed',async()=>{
+ const raw='既有说明〔材料1〕，真实引用[source:m1]。',f=fixture({item:thesis({chapters:[{id:'c1',title:'第一章',version:1,status:'saved',text:raw,sourceIds:['m1']}]})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.equal(f.$('[data-thesis-editor]').value,raw);assert.match(f.$('.thesis-editor').textContent,/为避免误关联，本章按原始文字显示/);input(f,'[data-thesis-editor]',raw+' 补充');f.$('[data-thesis-save-chapter]').click();await settle();assert.equal(f.calls.find(row=>row.path==='/theses/t1/chapters/c1'&&row.data).data.text,raw+' 补充');
+ }finally{f.close();}
+});
+
+test('a manually saved draft remains a saved draft rather than being labelled as needing generation',async()=>{
+ const f=fixture({item:thesis({status:'draft',job:{status:'completed',completedSections:3,totalSections:3},chapters:[{id:'c1',title:'第一章',text:'已手动修订并保存的完整正文',version:2,status:'saved'}]})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.equal(f.$('.thesis-progress b').textContent,'草稿已保存');assert.equal(f.$('progress').value,100);assert.match(f.$('.thesis-progress').textContent,/下面为上次任务进度/);assert.equal(f.$('#thesis-online-docx').disabled,false);assert.equal(f.calls.some(call=>call.data),false);}finally{f.close();}
+});
+
+
+test('an unknown citation displays a clear unverified label without exposing its internal ID in the default editor',async()=>{
+ const unknown='unknown-private-implementation-id',raw='尚需核对的依据 [source:'+unknown+']。',f=fixture({item:thesis({chapters:[{id:'c1',title:'第一章',version:1,status:'saved',text:raw,sourceIds:[unknown]}]})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.equal(f.$('[data-thesis-editor]').value,'尚需核对的依据 〔待核对来源1〕。');assert.match(f.$('.thesis-editor').textContent,/未匹配到当前已保存的资料，请核对来源/);assert.doesNotMatch(f.$('.thesis-editor').textContent,/unknown-private-implementation-id/);input(f,'[data-thesis-editor]',f.$('[data-thesis-editor]').value+' 人工补充');f.$('[data-thesis-save-chapter]').click();await settle();assert.equal(f.calls.find(row=>row.path==='/theses/t1/chapters/c1'&&row.data).data.text,raw+' 人工补充');}finally{f.close();}
+});
+
+
+test('chapter navigation counts canonical prose without long source markers and updates unsaved edits in place',async()=>{
+ const body='甲'.repeat(80)+' [source:m1]',original=thesis({chapters:[{id:'c1',title:'第一章',version:1,status:'saved',text:body,targetWords:60,sourceIds:['m1']},{id:'c2',title:'第二章',version:0,status:'pending',text:'',targetWords:40}]}),f=fixture({item:original});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.match(f.$('[data-thesis-chapter-state="c1"]').textContent,/正文 80字 \/ 目标 60字/);assert.match(f.$('[data-thesis-chapter-state="c2"]').textContent,/待生成.*目标 40字/);assert.doesNotMatch(f.$('.thesis-chapter-nav').textContent,/字符/);const editor=f.$('[data-thesis-editor]');input(f,'[data-thesis-editor]',editor.value+'乙乙');assert.equal(f.$('[data-thesis-editor]'),editor);assert.match(f.$('[data-thesis-chapter-state="c1"]').textContent,/本地编辑草稿.*正文 82字 \/ 目标 60字/);assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();}
+});
+
+test('English chapter and completed-section previews use the same word count instead of raw character totals',async()=>{
+ const text="We can't over-claim. [source:m1]",original=thesis({profile:{...snapshot().profile,language:'English'},status:'needs_materials',job:{status:'needs_materials',completedSections:1,totalSections:2},chapters:[{id:'c1',title:'Introduction',version:1,status:'partial',text,targetWords:60,sourceIds:['m1'],totalSections:2}],sections:[{id:'s1',chapterId:'c1',status:'completed',text,sourceIds:['m1']}]}),f=fixture({item:original});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.match(f.$('[data-thesis-chapter-state="c1"]').textContent,/正文 3词 \/ 目标 60词/);assert.equal(f.$('.thesis-completed-sections summary small').textContent,'3词');assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();}
+});
+
+
+test('an unused empty bibliography stays uncompiled after a completed manuscript is manually saved as a draft',async()=>{
+ const f=fixture({item:thesis({status:'draft',job:{status:'completed',completedSections:3,totalSections:3},chapters:[{id:'c1',title:'第一章',version:2,status:'saved',text:'手动修订并保存的正文',sourceIds:['m1']},{id:'refs',title:'参考文献',version:0,status:'pending',text:''}]})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.match(f.$('[data-thesis-chapter="refs"]').textContent,/未编入文献/);assert.doesNotMatch(f.$('[data-thesis-chapter="refs"]').textContent,/待生成/);f.$('[data-thesis-chapter="refs"]').click();assert.match(f.$('.thesis-editor').textContent,/当前正文未引用选中题录/);assert.equal(f.$('.thesis-progress b').textContent,'草稿已保存');assert.equal(f.$('progress').value,100);assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();}
+});
+
+test('an empty bibliography is uncompiled when all body chapters are saved, while a truly pending manuscript remains pending',async()=>{
+ for(const saved of [true,false]){const f=fixture({item:thesis({status:'draft',job:null,chapters:[{id:'c1',title:'第一章',version:saved?1:0,status:saved?'saved':'pending',text:saved?'用户手写并保存的正文':''},{id:'refs',title:'参考文献',version:0,status:'pending',text:''}]})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.match(f.$('[data-thesis-chapter="refs"]').textContent,saved?/未编入文献/:/待生成/);assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();}}
+});
+
+
+test('a focused ordinary library link cannot crash the next thesis mount during view capture',async()=>{
+ const f=fixture();try{const library=mountThesisLibrary({ctx:f.ctx});await library.ready;const link=f.$('.thesis-library a');link.focus();assert.equal(document.activeElement,link);assert.equal(link.id,'');assert.equal(link.attributes.length,1);let next;assert.doesNotThrow(()=>{next=mountOnlineThesis({id:'t1',ctx:f.ctx});});await next.ready;assert.ok(f.$('[data-thesis-editor]'));assert.equal(f.$('.thesis-library'),null);assert.match(f.$('.thesis-summary').textContent,/真实研究/);}finally{f.close();}
+});
+
+test('view capture accepts plain focused elements without an ID or thesis data attribute',async()=>{
+ for(const markup of ['<button type="button">普通按钮</button>','<input name="plain-field">','<div tabindex="0">普通可聚焦区域</div>']){const f=fixture();try{const control=document.createElement('div');control.innerHTML=markup;const focused=control.firstElementChild;f.$('.dashboard').append(focused);focused.focus();assert.equal(document.activeElement,focused);let next;assert.doesNotThrow(()=>{next=mountOnlineThesis({id:'t1',ctx:f.ctx});});await next.ready;assert.ok(f.$('[data-thesis-editor]'));}finally{f.close();}}
 });

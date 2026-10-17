@@ -58,3 +58,35 @@ test('parser rejects minimum-budget conflicts and never trusts model actual coun
 test('task requests relative weights against configured target and retains non-fabrication boundaries',()=>{
  const snapshot=normalizeThesisOutlineSnapshot({title:'科研方案',profile:{level:'研究工作者',targetWords:80000},materials:[],references:[]}),task=thesisOutlineTask(snapshot);assert.equal(task.context.profile.targetWords,80000);assert.match(task.instructions,/wordWeight.*相对篇幅权重/);assert.match(task.instructions,/context.profile.targetWords/);assert.match(task.instructions,/参考文献不参与正文篇幅/);assert.match(task.instructions,/不能伪称已经实施实验/);
 });
+test('short AI outlines explicitly use complete chapters without tiny twenty-word subsections',()=>{
+ for(const target of [500,501,1000,1499,1500]){
+  const snapshot=normalizeThesisOutlineSnapshot({title:'高校图书馆服务改进',profile:{targetWords:target},materials:[],references:[]}),task=thesisOutlineTask(snapshot),guide=task.context.structureGuidance;
+  assert.equal(guide.targetWords,target);assert.equal(guide.bodyChaptersMin,3);assert.equal(guide.bodyChaptersMax,4);assert.equal(guide.maxSectionsPerChapter,0);assert.equal(guide.maxBodyLeaves,4);
+  assert.match(task.instructions,/所有章节的 sections 必须为 \[\]/);assert.match(task.instructions,/不要设置任何二级小节/);assert.match(task.instructions,/不得用每叶节点最低 20 字倒推出大量章节/);
+  const result=parseThesisOutline({text:JSON.stringify({complete:true,chapters:[chapter('研究问题与边界',0),chapter('服务改进路径分析',0),chapter('结论与待验证事项',0)]})},snapshot);
+  exact(result.chapters,target);assert.ok(result.chapters.every(row=>row.sections.length===0&&row.targetWords>20));assert.ok(result.chapters[1].targetWords>result.chapters[2].targetWords);
+ }
+});
+test('AI structure guidance scales at each target-word boundary and keeps long-form hierarchy bounded',()=>{
+ const expected=[
+  [1501,3,5,2,5],[5000,3,5,2,10],
+  [5001,4,7,3,10],[15000,4,7,3,18],
+  [15001,5,8,4,21],[40000,5,8,4,32],
+  [40001,6,10,5,44],[80000,6,10,5,50]
+ ];
+ for(const [target,min,max,sections,leaves] of expected){
+  const snapshot=normalizeThesisOutlineSnapshot({title:'按篇幅规划研究结构',profile:{targetWords:target,level:'博士'},materials:[],references:[]}),task=thesisOutlineTask(snapshot),guide=task.context.structureGuidance;
+  assert.deepEqual([guide.targetWords,guide.bodyChaptersMin,guide.bodyChaptersMax,guide.maxSectionsPerChapter,guide.maxBodyLeaves],[target,min,max,sections,leaves]);
+  assert.equal(guide.referenceChaptersMax,1);assert.ok(guide.maxBodyLeaves*guide.suggestedLeafWords<=target);assert.ok(guide.bodyChaptersMin<=guide.maxBodyLeaves);
+  assert.match(task.instructions,/每个正文一级章节可不分小节/);assert.match(task.instructions,/不为满足上限强行拆分/);assert.match(guide.leafDefinition,/参考文献不计入/);
+ }
+});
+test('guidance uses the normalized target and is advisory without mutating or truncating existing structures',()=>{
+ const snapshot=normalizeThesisOutlineSnapshot({title:'旧结构兼容',targetWords:'1500',materials:[],references:[]}),before=structuredClone(snapshot);
+ const task=thesisOutlineTask(snapshot);assert.equal(task.context.structureGuidance.targetWords,1500);assert.deepEqual(snapshot,before);assert.match(task.context.structureGuidance.scope,/不改变用户上传、编辑或保存的提纲/);
+ // The new planning prompt does not silently drop accepted nodes or replace
+ // the established parser's safety and exact allocation rules.
+ const raw=[chapter('研究边界',3),chapter('第一主题分析',3),chapter('第二主题分析',3),chapter('讨论与局限',3),chapter('参考文献',0)],parsed=parseThesisOutline({text:JSON.stringify({complete:true,chapters:raw})},snapshot);
+ assert.deepEqual(parsed.chapters.map(row=>row.title),raw.map(row=>row.title));assert.deepEqual(parsed.chapters.map(row=>row.sections.length),[3,3,3,3,0]);exact(parsed.chapters,1500);
+ const defaults=thesisOutlineTask(normalizeThesisOutlineSnapshot({title:'默认篇幅',materials:[],references:[]}));assert.equal(defaults.context.structureGuidance.targetWords,8000);assert.equal(defaults.context.structureGuidance.maxSectionsPerChapter,3);
+});
