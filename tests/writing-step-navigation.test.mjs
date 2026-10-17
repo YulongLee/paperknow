@@ -21,21 +21,21 @@ const {mountWriting}=await import('../dist/workspace/writing.mjs');
 const {clearEditor}=await import('../dist/workspace/edit-guard.mjs');
 bootstrap.dom.window.close();
 
-test('five-step transitions focus the visible heading and reuse one content anchor without scrolling the outline',async()=>{
+test('five-step transitions keep the viewport and do not force focus away from the user',async()=>{
  const f=fixture();
  try{
   mountWriting(undefined,undefined,f.ctx);
   assert.equal(f.scrolls.length,0,'mounting does not move the user');
   f.input('#writing-title','真实研究步骤定位');f.input('#writing-method','文献分析');f.input('#writing-material','用户提供的真实研究资料');
   const shell=f.$('.creation-grid');
-  for(const [selector,heading] of [['#writing-generate','#writing-material-review h2'],['#writing-material-confirm','#writing-reference-review h2'],['#writing-reference-confirm','.preview-heading h2']]){
+  f.$('#writing-process-next').focus();
+  const retainedFocus=document.activeElement,focusCount=f.focuses.length;
+  for(const selector of ['#writing-generate','#writing-material-confirm','#writing-reference-confirm']){
    const count=f.scrolls.length;f.$(selector).click();await settle();
-   assert.equal(f.scrolls.length,count+1,'a stage change scrolls once');
-   assert.equal(f.scrolls.at(-1).element,shell);
-   assert.deepEqual(f.scrolls.at(-1).options,{block:'start',inline:'nearest',behavior:'instant'});
-   assert.equal(document.activeElement,f.$(heading));
-   assert.equal(f.focuses.at(-1).options.preventScroll,true);
-   assert.equal(document.activeElement.closest('[hidden]'),null);
+   assert.equal(f.scrolls.length,count,'a stage change never scrolls');
+   assert.equal(f.$('.creation-grid'),shell,'the content shell stays mounted');
+   assert.equal(document.activeElement,retainedFocus);
+   assert.equal(f.focuses.length,focusCount,'step changes never force focus');
   }
   assert.equal(f.$('.dashboard').dataset.writingStage,'4');
   assert.equal(f.$('#outline-paper .outline-row-title')!==null,true);
@@ -44,17 +44,22 @@ test('five-step transitions focus the visible heading and reuse one content anch
   assert.match(f.$('#writing-material').value,/真实研究资料/);
   f.$('[data-writing-step="3"]').click();await settle();
   f.$('[data-writing-step="4"]').click();await settle();
-  assert.equal(f.scrolls.at(-1).element,shell,'step navigation uses the same anchor as confirmation');
-  assert.equal(document.activeElement,f.$('.preview-heading h2'));
+  assert.equal(f.scrolls.length,0,'clicking step cards preserves the viewport');
+  assert.equal(document.activeElement,retainedFocus);
   const beforeFinal=f.scrolls.length;f.$('#outline-confirm').click();await settle();
   assert.equal(f.$('.dashboard').dataset.writingStage,'5');
-  assert.equal(f.scrolls.length,beforeFinal+1);
-  assert.equal(f.scrolls.at(-1).element,shell);
-  assert.equal(document.activeElement,f.$('.preview-heading h2'));
+  assert.equal(f.scrolls.length,beforeFinal);
+  assert.equal(document.activeElement,retainedFocus);
   assert.match(f.$('#thesis-online-stage').textContent,/登录后保存到账户/);
   f.$('[data-writing-step="1"]').click();await settle();
-  assert.equal(document.activeElement,f.$('.creation-input>h2'));
-  assert.equal(f.scrolls.at(-1).element,shell);
+  assert.equal(document.activeElement,retainedFocus);
+  assert.equal(f.scrolls.length,0);
+  assert.equal(f.focuses.length,focusCount);
+  const status=f.$('#writing-process-context-text');
+  assert.equal(status.getAttribute('role'),'status');
+  assert.equal(status.getAttribute('aria-live'),'polite');
+  assert.equal(status.getAttribute('aria-atomic'),'true');
+  assert.equal(status.textContent,'当前步骤：基础信息填写');
  }finally{f.close();}
 });
 
@@ -101,16 +106,38 @@ test('queued navigation from a disposed editor cannot move the replacement page'
  }finally{f.close();}
 });
 
-test('rapid step changes discard stale focus and scroll work',async()=>{
+test('rapid step changes schedule no focus or scroll work',async()=>{
  const f=fixture();
  try{
   mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','快速切换步骤');
   f.$('#writing-generate').click();f.$('#writing-material-confirm').click();f.$('#writing-reference-confirm').click();
   await settle();
-  assert.equal(f.scrolls.length,1);
+  assert.equal(f.scrolls.length,0);
   assert.equal(f.$('.dashboard').dataset.writingStage,'4');
-  assert.equal(document.activeElement,f.$('.preview-heading h2'));
-  assert.equal(document.activeElement.closest('[hidden]'),null);
+  assert.equal(f.focuses.length,0);
+  assert.equal(f.$('#writing-process-context-text').textContent,'当前步骤：论文提纲确认');
+ }finally{f.close();}
+});
+
+test('collapsed flow advances in place while a validation error still locates its field',async()=>{
+ const f=fixture();
+ try{
+  mountWriting(undefined,undefined,f.ctx);
+  f.input('#writing-title','短');f.$('#writing-process-next').click();await settle();
+  assert.equal(f.$('.dashboard').dataset.writingStage,'1');
+  assert.equal(document.activeElement,f.$('#writing-title'));
+  assert.match(f.$('#writing-error').textContent,/至少 2 个字/);
+  f.input('#writing-title','折叠流程后继续写作');
+  f.$('.writing-process-toggle').click();
+  assert.ok(f.$('.writing-process-guide').classList.contains('is-collapsed'));
+  f.$('#writing-process-next').focus();const focusCount=f.focuses.length;
+  for(const stage of ['2','3','4']){
+   f.$('#writing-process-next').click();await settle();
+   assert.equal(f.$('.dashboard').dataset.writingStage,stage);
+   assert.equal(document.activeElement,f.$('#writing-process-next'));
+   assert.equal(f.focuses.length,focusCount);
+   assert.equal(f.scrolls.length,0);
+  }
  }finally{f.close();}
 });
 
