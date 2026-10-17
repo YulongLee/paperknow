@@ -4,7 +4,7 @@ import {validThesisQuote} from './thesis-online.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const active=item=>['queued','running'].includes(item?.status);
 const statusText={queued:'正在排队',running:'正在生成提纲',completed:'提纲已生成',failed:'提纲生成未完成',cancelled:'已停止生成'};
-const stages={queued:'等待模型处理',preparing:'整理主题与研究资料',agent_running:'根据主题组织章节',agent_tools:'整理研究依据',completed:'请先预览，再使用提纲',failed:'请查看具体原因',cancelled:'原有提纲未改动'};
+const stages={queued:'等待 AI 服务处理',preparing:'整理主题与研究资料',agent_running:'根据主题组织章节',agent_tools:'整理研究依据',completed:'请先预览，再使用提纲',failed:'请查看具体原因',cancelled:'原有提纲未改动'};
 const abortError=()=>Object.assign(new Error('页面已切换'),{name:'AbortError'});
 
 // The server owns the durable job and billing. This controller never replaces the local outline on submission or polling.
@@ -72,7 +72,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
     if(drift)body+='<p class="writing-outline-ai-warning" role="status">论文主题或研究资料已有变化。请先核对当前信息，再重新生成；这份结果不会直接替换当前提纲。</p>';
     if(item)body+=`<div class="writing-outline-ai-progress" role="status"><strong>${esc(statusText[item.status])}</strong><span>${esc(stages[item.stage]||stages[item.status]||'根据已确认的信息处理')}</span>${running?'<p>可离开此页面，后台任务会继续；重新打开可读取进度。</p>':''}${item.error?`<p class="writing-outline-ai-error">${esc(typeof item.error==='string'?item.error:item.error.message||'生成中断，请稍后重新生成。')}</p>`:''}</div>`;
     if(text)body+=`<div class="writing-outline-ai-preview"><label for="writing-outline-ai-result">AI 提纲预览</label><textarea id="writing-outline-ai-result" data-scroll-key="writing-outline-ai-preview" readonly rows="14">${esc(text)}</textarea><p>生成内容尚未应用。使用后，你仍可上传其他提纲或逐项编辑章节。</p></div>`;
-    if(quote&&!item){body+=`<div class="writing-outline-ai-charge"><strong>${esc(costText())}</strong><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；提纲生成与后续正文生成分别计费。</p><label class="writing-outline-ai-consent"><input type="checkbox" data-outline-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容发送至后台配置的模型，并确认本次费用。</label></div>`;}
+    if(quote&&!item){body+=`<div class="writing-outline-ai-charge"><strong>${esc(costText())}</strong><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；提纲生成与后续正文生成分别计费。</p><label class="writing-outline-ai-consent"><input type="checkbox" data-outline-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容交由 AI 服务处理，并确认本次费用。</label></div>`;}
     body+='<div class="writing-outline-ai-actions">';
     if(running)body+=`<button type="button" class="btn secondary" data-outline-ai-refresh ${busy?'disabled':''}>读取最新状态</button><button type="button" class="btn secondary" data-outline-ai-cancel ${busy?'disabled':''}>停止生成</button>`;
     else if(text)body+=`<button type="button" class="btn primary" data-outline-ai-apply ${busy||drift?'disabled':''}>${applied?'再次使用这份 AI 提纲':'使用这份 AI 提纲'}</button><button type="button" class="btn secondary" data-outline-ai-new ${busy?'disabled':''}>重新生成</button>`;

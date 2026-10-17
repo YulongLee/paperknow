@@ -1,3 +1,4 @@
+import {publicDraftCopy} from '../dist/workspace/public-draft.mjs';
 import {withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures} from '../dist/workspace/view-stability.mjs';
 import {membershipPurchaseTiles} from '../dist/workspace/membership-summary.mjs';
 import test from 'node:test';
@@ -18,7 +19,7 @@ async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params=
  w.URL.createObjectURL=()=>'blob:test';w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=function(){if(this.download)downloads.push(this.download);};
  w.localStorage.setItem('paperknow-drafts','[{"title":"本地未上传成果"}]');
  const calls=[],navigations=[],downloads=[],notices=[];let saved=[],projects=[{id:'p1',title:'账户研究项目',degree:'本科',major:'教育学',updated_at:now}],files=[{id:'f1',name:'账户原件.txt',bytes:30,project_id:'p1'}],jobs=[{id:'pending',type:'parse',status:'queued',attempt:0,created_at:now},{id:'failed',type:'agent',status:'failed',attempt:1,created_at:now,error:'测试任务失败'}];
- Object.assign(w,{withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures});w.membershipPurchaseTiles=membershipPurchaseTiles;w.supportContactsMarkup=supportContactsMarkup;w.bindSupportContacts=bindSupportContacts;w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts'};w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
+ Object.assign(w,{withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures});w.publicDraftCopy=publicDraftCopy;w.membershipPurchaseTiles=membershipPurchaseTiles;w.supportContactsMarkup=supportContactsMarkup;w.bindSupportContacts=bindSupportContacts;w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts'};w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
  w.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({path,body,options});if(request){const custom=await request(path,options);if(custom)return custom;}
   let status=200,value={};
   if(path==='/api/capabilities')value={ai,agent,aiProvider:'test-provider',storage:'local'};
@@ -92,7 +93,7 @@ test('account jobs cancel immediately and require explicit retry confirmation',a
 });
 
 test('account results preview, editing, saved versions and export preserve original model content',async t=>{
- const f=await fixture(t,{view:'results',params:'result=r1'});assert.equal(f.doc.querySelector('#revision-text').value,'原始建议');assert.equal(f.w.onlineTest.onlineWorkspaceHasWork(),false);
+ const f=await fixture(t,{view:'results',params:'result=r1'});assert.equal(f.doc.querySelector('#revision-text').value,'原始建议');assert.doesNotMatch(f.doc.querySelector('#result-detail').textContent,/test-model|模型/);assert.match(f.doc.querySelector('#result-detail').textContent,/AI 生成内容/);assert.equal(f.w.onlineTest.onlineWorkspaceHasWork(),false);
  input(f,'#revision-text','人工核对后的编辑稿');assert.equal(f.w.onlineTest.onlineWorkspaceHasWork(),true);submit(f,'#revision-form');
  await settle(()=>f.saved.length===1);await settle(()=>f.notices.includes('新版本已保存'));
  assert.equal(f.doc.querySelector('#revision-text').value,'人工核对后的编辑稿');assert.equal(f.saved[0].body,'人工核对后的编辑稿');assert.match(f.doc.querySelector('.compare pre').textContent,/真实原文/);assert.equal(f.w.onlineTest.onlineWorkspaceHasWork(),false);
@@ -105,7 +106,7 @@ test('generated thesis outlines open and export safely without requesting unsupp
  const f=await fixture(t,{view:'results',params:'result=outline-result',request:async path=>path==='/api/results'?{ok:true,status:200,json:async()=>({items:[item]})}:path==='/api/results/outline-result'?{ok:true,status:200,json:async()=>({item})}:undefined});
  assert.equal(f.doc.querySelector('#result-detail pre').textContent,outline);
  assert.equal(f.doc.querySelector('#result-detail script'),null);
- assert.match(f.doc.querySelector('#result-detail').textContent,/configured-model/);
+ assert.doesNotMatch(f.doc.querySelector('#result-detail').textContent,/configured-model|后台配置模型/);assert.match(f.doc.querySelector('#result-detail').textContent,/AI 生成提纲/);
  assert.ok(f.doc.querySelector('#result-detail a[href="#tool/writing"]'));
  assert.equal(f.doc.querySelector('#revision-form'),null);
  assert.equal(f.calls.some(call=>call.path.endsWith('/revisions')),false);
@@ -326,4 +327,22 @@ test('pending original deletion offers a retry without exposing download or incl
 
 test('refreshing an edited project resets editing identity so a later new project cannot overwrite the old one',async t=>{
  const f=await fixture(t);f.doc.querySelector('[data-account-project-edit="p1"]').click();await settle(()=>f.doc.querySelector('#project-edit-note').textContent.includes('正在编辑'));input(f,'#project-title','放弃的项目修改');f.doc.querySelector('.account-refresh').click();await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.notices.includes('已读取最新账户内容'));assert.equal(f.doc.querySelector('#project-title').value,'');input(f,'#project-title','真正的新项目');submit(f,'#project-form');await settle(()=>f.notices.includes('项目已保存'));assert.equal(f.calls.some(call=>call.path==='/api/projects/p1'&&call.body),false);assert.equal(f.calls.find(call=>call.path==='/api/projects'&&call.body).body.title,'真正的新项目');
+});
+
+test('legacy provider metadata never appears in AI task forms or usage rows',async t=>{
+ const f=await fixture(t,{view:'tasks'});assert.match(f.doc.querySelector('#task-note').textContent,/AI 服务处理/);assert.doesNotMatch(f.doc.querySelector('#online').textContent,/test-provider|test-model/);
+ const agent=await fixture(t,{view:'agent'});assert.match(agent.doc.querySelector('#agent-form').textContent,/AI 服务处理/);assert.doesNotMatch(agent.doc.querySelector('#online').textContent,/test-provider|test-model/);
+ const usage=await fixture(t,{view:'usage'});assert.match(usage.doc.querySelector('#online').textContent,/AI 服务调用明细/);assert.doesNotMatch(usage.doc.querySelector('#online').textContent,/test-provider|test-model|未返回模型名/);assert.match(usage.doc.querySelector('#online').textContent,/12/);assert.match(usage.doc.querySelector('#online').textContent,/未知/);
+});
+
+test('AI result previews omit model engine and raw tool identities but retain research text and material evidence',async t=>{
+ const item={id:'private-agent-result',type:'agent',title:'研究任务成果',body:{model:'private-model',engine:'codex_sdk',provider:'private-provider',original:'研究说明：采用回归模型分析',suggestion:'用户研究主题可涉及 OpenAI 的公开研究。',materials:[{name:'真实材料名称'}],trace:[{tool:'read_material',status:'completed',server:'claude-code'},{tool:'private-engine-tool',status:'provider-private-status'}]}};
+ const f=await fixture(t,{view:'results',params:'result=private-agent-result',request:async path=>path==='/api/results'?{ok:true,status:200,json:async()=>({items:[item]})}:path==='/api/results/private-agent-result'?{ok:true,status:200,json:async()=>({item})}:path==='/api/results/private-agent-result/revisions'?{ok:true,status:200,json:async()=>({items:[]})}:undefined});
+ const text=f.doc.querySelector('#result-detail').textContent;assert.doesNotMatch(text,/private-model|codex_sdk|private-provider|claude-code|private-engine-tool|provider-private-status/);assert.match(text,/AI 生成内容/);assert.match(text,/真实材料名称/);assert.match(text,/读取资料正文 · 已完成/);assert.match(text,/资料处理 · 已记录/);assert.equal(f.doc.querySelector('#revision-text').value,item.body.suggestion);assert.match(text,/采用回归模型分析/);
+});
+
+test('AI method results use a neutral origin label without losing the proposed-method notice',async t=>{
+ const item={id:'method-private-result',type:'thesis_method',title:'研究方法建议',body:{model:'private-model',engine:'codex_sdk',text:'拟开展：文献分析与回归模型比较。'}};
+ const f=await fixture(t,{view:'results',params:'result=method-private-result',request:async path=>path==='/api/results'?{ok:true,status:200,json:async()=>({items:[item]})}:path==='/api/results/method-private-result'?{ok:true,status:200,json:async()=>({item})}:undefined});
+ const text=f.doc.querySelector('#result-detail').textContent;assert.doesNotMatch(text,/private-model|codex_sdk/);assert.match(text,/AI 生成方法建议/);assert.match(text,/拟开展方案/);assert.equal(f.doc.querySelector('#result-detail pre').textContent,item.body.text);
 });

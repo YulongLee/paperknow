@@ -89,3 +89,8 @@ test('a pending command for an old topic cannot retry a different payload and ex
 test('failed command persistence prevents the paid submission instead of risking an unrecoverable task',async t=>{
  const f=fixture(t,{onCommandChange:()=>{throw Error('草稿保存失败，请先备份');}});await f.controller.open();await f.charge();assert.equal(f.calls.filter(call=>call.path==='/theses/outlines').length,0);assert.match(f.container.textContent,/草稿保存失败，请先备份/);assert.equal(f.applies.length,0);
 });
+
+test('legacy outline job metadata is hidden in queued and completed previews without changing research content',async t=>{
+ const f=fixture(t);await f.controller.open();await f.charge();f.setItem({...queued,model:'private-model-id',engine:'codex_sdk',provider:'private-provider'});await f.tick();assert.doesNotMatch(f.container.textContent,/private-model-id|codex_sdk|private-provider|使用模型/);assert.match(f.container.textContent,/等待 AI 服务处理/);
+ const text='第一章 机器学习模型研究\n1.1 公开研究中的 OpenAI 方法比较';f.setItem({...completed,model:'private-model-id',engine:'codex_sdk',provider:'private-provider',output:{text}});await f.tick();assert.doesNotMatch(f.container.textContent,/private-model-id|codex_sdk|private-provider|使用模型/);assert.equal(f.$('#writing-outline-ai-result').value,text);assert.equal(f.applies.length,0);
+});

@@ -10,7 +10,8 @@ import {createModelBudget} from './model-budget.mjs';
 import {createThesisService} from './thesis-service.mjs';
 import {createThesisOutlineService} from './thesis-outline-service.mjs';
 import {createThesisMethodService} from './thesis-method-service.mjs';
-import {aiReady,publicModelSettings} from './config.mjs';
+import {aiReady} from './config.mjs';
+import {configuredAIIdentityValues,publicAIResponse} from './public-ai-metadata.mjs';
 import {createFileService} from './file-service.mjs';
 import {createLiteratureSearch} from './literature-search.mjs';
 import {now} from './database.mjs';
@@ -37,11 +38,13 @@ const archiveAttempts=new Map();
 const attempts=new Map();function rate(req,limit){const key=clientAddress(req,config);const t=Date.now();if(attempts.size>10000)for(const [k,v]of attempts)if(v.until<t)attempts.delete(k);const item=attempts.get(key)||{count:0,until:t+600000};if(item.until<t){item.count=0;item.until=t+600000;}item.count++;attempts.set(key,item);if(item.count>limit)fail(429,'请求过于频繁，请稍后重试');}
 function own(table,id,user){const row=db.prepare(`SELECT * FROM ${table} WHERE id=? AND user_id=?`).get(id,user.id);if(!row)fail(404,'记录不存在');if(table==='files'&&db.prepare("SELECT 1 FROM workspace_file_deletions WHERE file_id=? AND status='pending'").get(id))fail(409,'原件正在删除，请重新选择可用原件');return row;}
 function project(id,user){if(id)own('projects',id,user);return id||null;}
-return async(req,res)=>{const send=(status,value,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers});res.end(JSON.stringify(value));};try{
+return async(req,res)=>{let responsePath='',authorizedAdmin=false,identityValues=[];const send=(status,value,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers});res.end(JSON.stringify(publicAIResponse(responsePath,value,{authorizedAdmin,identityValues})));};try{
 const requestURL=new URL(req.url,'http://localhost');const path=requestURL.pathname;const method=req.method;
+responsePath=path;
 const adminRequest=path==='/api/admin'||path.startsWith('/api/admin/');
 let adminUser;
-if(adminRequest){adminUser=sessionUser(db,req,config.ownerEmail);if(!adminUser)fail(401,'请先登录');if(adminUser.role!=='admin')fail(403,'需要管理员权限');}
+if(adminRequest){adminUser=sessionUser(db,req,config.ownerEmail);if(!adminUser)fail(401,'请先登录');if(adminUser.role!=='admin')fail(403,'需要管理员权限');authorizedAdmin=true;}
+if(!adminRequest&&/^\/api\/(?:capabilities|usage|jobs|results|theses|projects|workspace\/drafts|account\/export)(?:\/|$)/.test(path))identityValues=await configuredAIIdentityValues(config);
 if(!['GET','POST'].includes(method))fail(405,'不支持的请求方式');
 const notification=path.match(/^\/api\/payments\/notify\/(wechat|alipay)$/);
 if(notification&&method==='POST'){
@@ -61,7 +64,7 @@ if(path==='/api/literature/search'&&method==='GET'){
  catch(error){send(error.status||503,{error:error.message,...error.response},error.retryAfter?{'Retry-After':String(error.retryAfter)}:{});}
  return;
 }
-if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),aiProvider:publicModelSettings(config.getAI()).provider,agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),agentEngine:config.agentEnabled?'codex_sdk':null,billing:billing.rules(),payment:payments.options().enabled,academicSearch:true,academicSearchSources:['crossref','europepmc'],thesis:await theses.capabilities(),thesisOutline:await thesisOutlines.capabilities(),thesisMethod:await thesisMethods.capabilities(),maxFileBytes:2*1024*1024});return;}
+if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),billing:billing.rules(),payment:payments.options().enabled,academicSearch:true,academicSearchSources:['crossref','europepmc'],thesis:await theses.capabilities(),thesisOutline:await thesisOutlines.capabilities(),thesisMethod:await thesisMethods.capabilities(),maxFileBytes:2*1024*1024});return;}
 if(path==='/api/payments/options'&&method==='GET'){send(200,payments.options());return;}
 if(path==='/api/auth/options'&&method==='GET'){send(200,auth.options());return;}
 const authRoutes={

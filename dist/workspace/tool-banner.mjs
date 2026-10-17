@@ -19,7 +19,7 @@ export const toolBannerCategories=Object.freeze({
   help:{title:'帮助与反馈',group:'个人与服务',icon:'help',description:'查找使用指南、记录问题并获取支持。'},
   account:{title:'账户中心',group:'个人与服务',icon:'user',description:'管理登录账户、安全信息与研究偏好。'},
   orders:{title:'订单记录',group:'个人与服务',icon:'file',description:'查看账户中的订单与实际处理状态。'},
-  usage:{title:'模型用量',group:'个人与服务',icon:'chart',description:'查看当前账户的模型调用与实际用量记录。'}
+  usage:{title:'AI 服务用量',group:'个人与服务',icon:'chart',description:'查看当前账户的 AI 服务使用与实际用量记录。'}
 });
 
 // Titles, descriptions and optional labels can contain user-provided text.

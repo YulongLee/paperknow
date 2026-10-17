@@ -63,7 +63,8 @@ test('method results display proposed provenance and escape content while export
  const f=await fixture(t,{view:'results',params:'result=method-result',results:[item],item});
  assert.match(f.doc.querySelector('#view').textContent,/研究方法建议/);
  assert.match(f.doc.querySelector('#result-detail').textContent,/拟开展方案，需结合真实研究条件核对/);
- assert.match(f.doc.querySelector('#result-detail').textContent,/configured-method-model/);
+ assert.doesNotMatch(f.doc.querySelector('#result-detail').textContent,/configured-method-model/);
+ assert.match(f.doc.querySelector('#result-detail').textContent,/AI 生成方法建议/);
  assert.equal(f.doc.querySelector('#result-detail pre').textContent,text);
  assert.equal(f.doc.querySelector('#result-detail script'),null);
  assert.equal(f.doc.querySelector('#revision-form'),null);
