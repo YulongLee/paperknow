@@ -1,3 +1,4 @@
+import {withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures} from '../dist/workspace/view-stability.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -7,6 +8,9 @@ import {esc,icon,empty} from '../dist/workspace/ui.mjs';
 import {toolBanner} from '../dist/workspace/tool-banner.mjs';
 import {workspaceLinks} from '../dist/workspace/interface.mjs';
 import * as revisionModel from '../dist/workspace/revision-model.mjs';
+import * as taskModel from '../dist/workspace/task-model.mjs';
+import * as projectModel from '../dist/workspace/project-model.mjs';
+import * as assetModel from '../dist/workspace/asset-model.mjs';
 
 const source=(await readFile(new URL('../dist/workspace/app.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
 const homeSource=await readFile(new URL('../dist/index.html',import.meta.url),'utf8');
@@ -26,7 +30,7 @@ async function fixture(fetcher){
  storage.setItem(keys.profile,JSON.stringify({name:'本地昵称',degree:'硕士',major:'教育学'}));
  storage.setItem(keys.drafts,JSON.stringify([{id:'draft-one',title:'未上传的研究草稿'}]));
  const read=(key,fallback)=>JSON.parse(storage.getItem(key)||'null')??fallback;
- Object.assign(dom.window,{fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
+ Object.assign(dom.window,{withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
   preferences:()=>({degree:'本科',...read(keys.preferences,{})}),profile:()=>({name:'研究者',...read(keys.profile,{})}),read,list:key=>read(key,[]),write:(key,value)=>storage.setItem(key,JSON.stringify(value)),projects:()=>read(keys.projects,[]),repository:{all:async()=>[]},formatDate:()=>'',mountNavigation:()=>({close(){}}),
   disposeFormat:()=>{},disposeResearch:()=>{},disposePresentation:()=>{},disposeRevision:()=>{},disposeAccountDraft:()=>{},accountDraftEditing:()=>false,accountDraftHasWork:()=>false,accountDraftConfirmLeave:async()=>true,accountDraftSessionChanged:()=>{},accountDraftRouteGuard:()=>true,
   disposePayment:()=>{paymentCalls.push({type:'dispose'});},renderPaymentOrders:async()=>{paymentCalls.push({type:'orders'});},renderPaymentCheckout:async options=>{paymentCalls.push({type:'checkout',productId:options.productId,orderId:options.orderId});},clearEditor:()=>{},clearHelpWork:()=>{},clearSettingsWork:()=>{},clearMoreWork:()=>{},trackDialogForm:()=>()=>{},retainWritingCatalog:()=>{},isCurrentRouteChange:()=>false,
@@ -147,7 +151,7 @@ test('direct AI-rate navigation mounts the AI reduction service and updates the 
 
 test('real AI reduction entry keeps its own heading, theme and selection across shared revision routes',()=>{
  const dom=new JSDOM('<div class="breadcrumb"><strong></strong></div><main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#category/aigc',runScripts:'outside-only'});
- Object.assign(dom.window,{...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
+ Object.assign(dom.window,{withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
  try{
   vm.runInContext('(function(){'+revisionSource+'\nglobalThis.mountActualRevision=mountRevision;})()',dom.getInternalVMContext());
   const query=selector=>dom.window.document.querySelector(selector);
@@ -179,6 +183,25 @@ test('real AI reduction entry keeps its own heading, theme and selection across 
   mount('#category/aigc');assertAIPage();
   assert.equal(query('[data-revision-plan="dual"]').getAttribute('aria-pressed'),'false');
  }finally{dom.window.close();}
+});
+
+test('workspace rerenders and same-feature scope changes stay in place while a new feature starts at the top',async()=>{
+ const f=await fixture(async path=>path==='/api/auth/me'?response(401):({ok:true,status:200,json:async()=>({items:[]})}));
+ const w=f.dom.window,calls=[];let y=370;
+ Object.assign(w,taskModel,projectModel,assetModel);
+ Object.defineProperty(w,'scrollY',{configurable:true,get:()=>y});
+ w.scrollTo=options=>{calls.push(options);y=options.top;};
+ const go=hash=>{w.history.replaceState(null,'',hash);f.api.render();};
+ try{
+  go('#projects?scope=local');assert.equal(y,0);
+  y=240;calls.length=0;f.api.render();assert.equal(y,240);assert.equal(calls.length,0);
+  go('#projects?scope=account');for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(y,240);assert.equal(calls.length,0);
+  assert.ok(f.document.querySelector('.account-login-required'));
+  go('#tasks?scope=local');assert.equal(y,0);assert.equal(calls.length,1);
+  y=180;calls.length=0;go('#tasks?scope=local&view=agent');
+  assert.equal(y,180);assert.equal(calls.length,0);
+ }finally{f.close();}
 });
 
 test('phone account identity stays separate from browser preferences and password actions return to the current route',async()=>{

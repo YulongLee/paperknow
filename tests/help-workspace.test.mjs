@@ -4,6 +4,15 @@ import {JSDOM} from 'jsdom';
 import {articles,searchHelp,feedbackKey,normalizeFeedback,feedbackText} from '../dist/workspace/help-model.mjs';
 const setup=()=>{const dom=new JSDOM('<main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'http://localhost/workspace.html#help'});for(const key of ['window','document','localStorage','FormData','location'])globalThis[key]=dom.window[key];document.querySelector('dialog').close=()=>{};return {dom,ctx:{notify:()=>{},modal:(_,html)=>document.querySelector('#workspace-dialog-body').innerHTML=html}};};
 const click=s=>document.querySelector(s).click();const input=(s,value)=>{const el=document.querySelector(s);el.value=value;el.dispatchEvent(new window.Event('input',{bubbles:true}));};
+test('help searches and FAQ filters reserve the current viewport without moving focus or losing feedback',async()=>{
+ const {dom,ctx}=setup(),m=await import('../dist/workspace/help.mjs');
+ try{
+  m.mountHelp(ctx);let y=1400;const root=document.querySelector('.dashboard'),scrolls=[];Object.defineProperty(window,'scrollY',{configurable:true,get:()=>y});window.scrollTo=options=>{scrolls.push(options);y=options.top;};root.getBoundingClientRect=()=>({top:100-y,left:0,width:1200,height:2400});
+  input('#help-feedback-content','保留正在编辑的反馈');const query=document.querySelector('#help-search');query.value='备份';query.focus({preventScroll:true});document.querySelector('#help-search-form').dispatchEvent(new window.Event('submit',{cancelable:true}));
+  assert.equal(document.activeElement,query);assert.match(root.style.minHeight,/2068px/);assert.equal(y,1400);
+  const tab=document.querySelector('[data-help-faq="detection"]');tab.focus({preventScroll:true});tab.click();assert.equal(document.activeElement,tab);assert.equal(document.querySelector('#help-feedback-content').value,'保留正在编辑的反馈');assert.equal(y,1400);assert.equal(scrolls.length,0);assert.equal(m.helpHasWork(),true);
+ }finally{m.clearHelpWork();dom.window.close();}
+});
 test('search finds real scope instructions, supports combined keywords, category and empty results',()=>{assert.ok(searchHelp('PDF 扫描').some(a=>a.id==='upload-pdf'));assert.ok(searchHelp('知网').some(a=>a.id==='detection-meaning'));assert.equal(searchHelp('PDF','writing').length,0);assert.equal(searchHelp('<img src=x>').length,0);assert.equal(searchHelp('', 'start').length,2);assert.equal(articles.length,13);assert.equal(searchHelp('新手').length,2);assert.match(articles.find(a=>a.id==='detection-meaning').note,/未接入全网/);});
 test('support instructions use current commercial status and preserve old feedback feature names',()=>{
  assert.doesNotMatch(articles.find(a=>a.id==='account-service').note,/支付暂不开放/);

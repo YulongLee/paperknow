@@ -10,6 +10,14 @@ function settingsEnvironment(){
  for(const key of ['window','document','localStorage','FormData','location'])globalThis[key]=dom.window[key];
  return {dom,ctx:{apply:()=>{},notify:()=>{},modal:()=>{},exportBackup:async()=>{},restored:async()=>{}}};
 }
+test('backup preview cancellation keeps the viewport floor without restoring or overwriting local records',async()=>{
+ const {dom,ctx}=settingsEnvironment(),m=await import('../dist/workspace/settings.mjs');
+ try{
+  const before='[{"id":"local-kept","name":"当前项目"}]';localStorage.setItem('paperknow-projects',before);m.mountSettings(ctx,'data');const root=document.querySelector('.dashboard');let y=1600;const scrolls=[];Object.defineProperty(window,'scrollY',{configurable:true,get:()=>y});window.scrollTo=options=>{scrolls.push(options);y=options.top;};root.getBoundingClientRect=()=>({top:100-y,left:0,width:1200,height:3000});
+  const contents=JSON.stringify({format:'paperknow-workspace-backup',version:1,projects:[],drafts:[],reports:[],literature:[],tasks:[]}),file=document.querySelector('#settings-file');Object.defineProperty(file,'files',{configurable:true,value:[{name:'empty-local-backup.json',size:contents.length,text:async()=>contents}]});await file.onchange({target:file});
+  assert.ok(document.querySelector('#settings-import-cancel'));document.querySelector('#settings-import-cancel').click();assert.equal(document.querySelector('#settings-import-preview').children.length,0);assert.match(document.querySelector('#settings-status').textContent,/已取消/);assert.equal(localStorage.getItem('paperknow-projects'),before);assert.equal(y,1600);assert.equal(scrolls.length,0);assert.match(root.style.minHeight,/2268px/);
+ }finally{m.clearSettingsWork();dom.window.close();}
+});
 test('editing one settings category preserves other windows changes and blocks conflicting or corrupt values',async()=>{
  const {dom,ctx}=settingsEnvironment(),m=await import('../dist/workspace/settings.mjs');
  const change=(selector,value)=>{const field=document.querySelector(selector);if(field.type==='radio')field.checked=true;else field.value=value;field.dispatchEvent(new window.Event('input',{bubbles:true}));};

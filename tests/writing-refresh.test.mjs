@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {catalog,catalogNav,retainWritingCatalog} from '../dist/workspace/writing-catalog.mjs';
+import {resetStableView} from '../dist/workspace/view-stability.mjs';
 function setup(){const dom=new JSDOM('<aside class="sidebar"></aside><div class="breadcrumb"><strong></strong></div><main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'http://localhost/workspace.html#category/writing'});for(const k of ['window','document','localStorage','FormData','location','AbortController'])globalThis[k]=dom.window[k];dom.window.HTMLElement.prototype.scrollIntoView=()=>{};document.querySelector('dialog').close=()=>{};return {dom,ctx:{notify:()=>{},modal:(_,html)=>document.querySelector('#workspace-dialog-body').innerHTML=html}};}
 setup();
 const {mountWriting}=await import('../dist/workspace/writing.mjs');
@@ -16,3 +17,26 @@ test('practice rejects reversed dates for both framework creation and save',()=>
 
 test('task navigation retains link identity and focus while updating selected task',()=>{const {dom}=setup();const main=$('.dashboard');main.innerHTML=catalogNav('writing');const previous=$('.writing-catalog'),link=previous.querySelector('a[href="#tool/article"]');link.focus();const focused=document.activeElement;main.innerHTML=catalogNav('article');retainWritingCatalog(previous,$('.writing-catalog'),focused);assert.equal($('.writing-catalog'),previous);assert.equal(document.activeElement,link);assert.equal(link.getAttribute('aria-current'),'page');assert.equal(previous.querySelectorAll('[aria-current]').length,1);dom.window.close();});
 test('queued route changes render only the latest destination',async()=>{const {isCurrentRouteChange}=await import('../dist/workspace/interface.mjs');const url='http://localhost/workspace.html#tool/article',events=['writing','proposal','article'].map(id=>({newURL:'http://localhost/workspace.html#tool/'+id}));assert.deepEqual(events.filter(e=>isCurrentRouteChange(e,url)).map(e=>e.newURL),[url]);});
+
+test('legacy support guide collapse prevents short-page clamp and preserves the active guide control',()=>{
+ const {dom,ctx}=setup();
+ try{
+  mountWritingSupport('analysis',undefined,undefined,ctx);const main=$('.dashboard'),panel=$('#writing-guide'),button=$('.guide-toggle');resetStableView(main);let y=640;const viewport=750;Object.defineProperties(window,{scrollY:{get:()=>y},innerHeight:{value:viewport,configurable:true}});window.scrollTo=options=>{y=options.top;};main.getBoundingClientRect=()=>({top:100-y});
+  const native=Object.getOwnPropertyDescriptor(window.HTMLElement.prototype,'hidden');Object.defineProperty(panel,'hidden',{get:()=>native.get.call(panel),set:value=>{native.set.call(panel,value);if(value){const reserved=Math.max(0,...[...main.style.minHeight.matchAll(/(\d+)px/g)].map(match=>Number(match[1])));y=Math.min(y,Math.max(0,100+Math.max(200,reserved)-viewport));}}});
+  button.focus({preventScroll:true});button.click();assert.equal(panel.hidden,true);assert.equal(y,640);assert.equal(document.activeElement,button);assert.equal(editorHasWork(),false);assert.equal(localStorage.getItem('paperknow-writing-guide'),'hidden');button.click();assert.equal(panel.hidden,false);assert.equal(y,640);
+ }finally{clearEditor();dom.window.close();}
+});
+
+test('legacy support framework creation and explicit replacement keep the existing editor and user input',()=>{
+ const {dom,ctx}=setup();
+ try{
+  mountWritingSupport('proposal',undefined,undefined,ctx);input('#support-title','真实开题计划');input('#support-background','来自真实资料的研究背景');const submit=$('#support-form button[type="submit"]'),output=$('#support-output');submit.focus({preventScroll:true});$('#support-form').requestSubmit();assert.equal(document.activeElement,submit);assert.match(output.value,/来自真实资料/);input('#support-output','手工核对后的正文');input('#support-background','更新后的研究背景');$('#support-form').requestSubmit();assert.equal(output.value,'手工核对后的正文');$('#support-replace').click();assert.equal($('#support-output'),output);assert.match(output.value,/更新后的研究背景/);assert.equal($('#support-background').value,'更新后的研究背景');assert.ok($('.dashboard').style.minHeight);assert.equal(editorHasWork(),true);
+ }finally{clearEditor();dom.window.close();}
+});
+
+test('legacy support invalid-form validation can keep its purposeful focus and position outside the stability wrapper',()=>{
+ const {dom,ctx}=setup();
+ try{
+  mountWritingSupport('practice',undefined,undefined,ctx);const main=$('.dashboard');resetStableView(main);let y=640;Object.defineProperty(window,'scrollY',{get:()=>y});window.scrollTo=options=>{y=options.top;};$('#support-form').reportValidity=()=>{$('#support-title').focus();y=0;return false;};$('#support-save').click();assert.equal(document.activeElement,$('#support-title'));assert.equal(y,0);assert.equal(main.style.minHeight,'');assert.equal(localStorage.getItem('paperknow-drafts'),null);
+ }finally{clearEditor();dom.window.close();}
+});

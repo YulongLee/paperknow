@@ -1,3 +1,4 @@
+import {withStableView} from './view-stability.mjs';
 import {documentExportButtons,bindDocumentExports} from './document-export.mjs';
 import {toolBanner} from './tool-banner.mjs';
 
@@ -149,7 +150,8 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,onSaved,o
   if(typeof focus.start==='number'&&typeof node.setSelectionRange==='function'){node.setSelectionRange(focus.start,focus.end);node.scrollTop=focus.scroll;}
   pendingFocus=null;
  }
- function render(){
+ function render(){if(!current())return;return withStableView(container.closest('.dashboard')||container,renderView,{restoreFocus:false});}
+ function renderView(){
   if(!current())return;
   captureView();
   const prefix=standalone?toolBanner('writing',{title:library?'我的账户论文':'毕业论文',label:library?'AI 写作 · 账户论文':'AI 写作 · 毕业论文',description:'从确认提纲，到分章写作、核对与导出。让每一步研究，都留下可以继续完善的版本。',extraClass:'writing-task-banner writing-task-writing detail-service-banner thesis-studio-banner',actions:`<a class="btn secondary" href="${library?'#tool/writing':'#theses'}">${library?'新建毕业论文':'账户论文'}</a><a class="btn secondary" href="#category/writing">返回 AI 写作</a>`}):'';

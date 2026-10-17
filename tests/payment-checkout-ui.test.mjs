@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
 import {esc,icon} from '../dist/workspace/ui.mjs';
 import {toolBanner} from '../dist/workspace/tool-banner.mjs';
+import {withStableView} from '../dist/workspace/view-stability.mjs';
 
 const source=(await readFile(new URL('../dist/workspace/payment.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const products=[{id:'credits-100',title:'100 研究币',priceCents:1000,currency:'CNY',description:'用于已开放的账户服务。',entitlement:{type:'credits',quantity:100}},{id:'credits-300',title:'300 研究币',priceCents:2500,currency:'CNY',description:'以正式商品说明为准。',entitlement:{type:'credits',quantity:300}}];
@@ -21,7 +22,7 @@ async function fixture(t,{guest=false,catalogue={enabled:true,channels,products}
  const realNow=w.Date.now;w.Date.now=()=>realNow()+clockOffset;
  const calls=[],qrInputs=[],navigations=[],created=[];let cleanups=[];
  const order={id:'o1',outTradeNo:'PK20261015001',title:'100 研究币',amountCents:1000,currency:'CNY',provider:'wechat',status:'pending',qrContent:'weixin://wxpay/bizpayurl?pr=actual-provider-qr',createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+15*60*1000).toISOString(),...orderOverride};
- w.esc=esc;w.icon=icon;w.toolBanner=toolBanner;
+ w.esc=esc;w.icon=icon;w.toolBanner=toolBanner;w.withStableView=withStableView;
  w.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({path,options,body});const custom=onRequest&&await onRequest(path,options,body);if(custom)return custom;if(path==='/api/auth/me')return guest?response({error:'请登录'},401):response({user:{id:'u1'}});if(path==='/api/payments/options')return response(catalogue);if(path==='/api/orders'&&!body)return response({items});if(path==='/api/orders'&&body){const item={...order,provider:body.provider};created.push(item);return response({item});}if(path==='/api/orders/o1')return response({item:order});if(path==='/api/orders/o1/query')return response({item:order});throw new Error('Unexpected API '+path);};
  w.eval(source+'\nwindow.paymentTest={renderPaymentCheckout,renderPaymentOrders};');
  const args={productId:initialProductId,orderId,provider:preferredProvider,container:w.document.querySelector('.dashboard'),navigate:href=>navigations.push(href),renderQRCode:async value=>{qrInputs.push(value);return renderQRCode?renderQRCode(value):qr;}};
@@ -30,6 +31,30 @@ async function fixture(t,{guest=false,catalogue={enabled:true,channels,products}
  return {w,doc:w.document,calls,qrInputs,navigations,created,order,timers,cleanup,args,async orders(){const clean=await w.paymentTest.renderPaymentOrders(args);cleanups.push(clean);return clean;},async remount(){const clean=await w.paymentTest.renderPaymentCheckout(args);cleanups.push(clean);return clean;},advance(ms){clockOffset+=ms;},async runTimer(delay){const entry=[...timers].find(([,timer])=>timer.delay===delay);if(!entry)return false;timers.delete(entry[0]);await entry[1].fn();await new Promise(resolve=>setTimeout(resolve,3));return true;}};
 }
 const click=(f,selector)=>{const button=f.doc.querySelector(selector);assert.ok(button,'Missing '+selector);button.click();};
+
+function viewportFixture(w,container,initialY=900){
+ let y=initialY;const scrolls=[];Object.defineProperty(w,'scrollY',{configurable:true,get:()=>y});Object.defineProperty(w,'scrollX',{configurable:true,get:()=>0});
+ w.scrollTo=value=>{scrolls.push(value);y=Number(value.top)||0;};container.getBoundingClientRect=()=>({top:100-y,bottom:3000-y,left:0,right:1200,width:1200,height:2900});
+ return {scrolls,get y(){return y;},move(value){y=value;}};
+}
+
+test('checkout product and channel redraws keep the selected control focused without moving the viewport',async t=>{
+ const f=await fixture(t,{initialProductId:null}),container=f.doc.querySelector('.dashboard'),view=viewportFixture(f.w,container),focusCalls=[],focus=f.w.HTMLElement.prototype.focus;
+ f.w.HTMLElement.prototype.focus=function(options){focusCalls.push(options);return focus.call(this,options);};
+ for(const selector of ['[data-payment-provider="alipay"]','[data-payment-product="credits-300"]']){
+  const before=f.doc.querySelector(selector);before.focus({preventScroll:true});focusCalls.length=0;before.click();const after=f.doc.querySelector(selector);
+  assert.notEqual(after,before);assert.equal(f.doc.activeElement,after);assert.equal(after.getAttribute('aria-pressed'),'true');assert.equal(view.y,900);assert.match(container.style.minHeight,/1568px/);assert.equal(view.scrolls.length,0);assert.ok(focusCalls.every(options=>options?.preventScroll===true));
+ }
+ assert.equal(f.calls.some(call=>call.body?.productId),false);
+});
+
+test('order refresh preserves the live search caret and render-time viewport after the user scrolls during the request',async t=>{
+ let reads=0,finish;const items=[{id:'match-order',outTradeNo:'PK-MATCH',title:'研究会员',status:'paid',amountCents:2000,provider:'wechat',createdAt:new Date().toISOString()}];
+ const f=await fixture(t,{items,onRequest:(path,_options,body)=>{if(path==='/api/orders'&&!body&&++reads===2)return new Promise(resolve=>{finish=resolve;});}});await f.orders();
+ const container=f.doc.querySelector('.dashboard'),view=viewportFixture(f.w,container),search=f.doc.querySelector('[data-orders-search]');search.value='match';search.focus({preventScroll:true});search.setSelectionRange(1,4);search.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+ click(f,'[data-orders-refresh]');await settle(()=>typeof finish==='function');view.move(1300);finish(response({items}));await settle(()=>f.doc.querySelector('[data-orders-search]')!==search&&f.doc.querySelector('[data-orders-refresh]').disabled===false);
+ const restored=f.doc.querySelector('[data-orders-search]');assert.equal(restored.value,'match');assert.equal(f.doc.activeElement,restored);assert.equal(restored.selectionStart,1);assert.equal(restored.selectionEnd,4);assert.equal(view.y,1300);assert.equal(view.scrolls.length,0);assert.match(container.style.minHeight,/1968px/);
+});
 
 test('guest sees an account login link and cannot create a local or demo order',async t=>{
  const f=await fixture(t,{guest:true});assert.match(f.doc.body.textContent,/登录后查看账户与支付订单/);const link=new URL(f.doc.querySelector('.payment-empty a').href);assert.equal(link.pathname,'/auth.html');assert.equal(link.searchParams.get('next'),'/workspace.html#membership/pay');assert.equal(f.calls.some(call=>call.path==='/api/orders'),false);assert.equal(f.doc.querySelector('#preserved').textContent,'原有导航');assert.equal(f.w.localStorage.length,0);

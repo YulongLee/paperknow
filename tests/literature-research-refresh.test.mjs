@@ -45,3 +45,20 @@ test('formula workflow keeps editable text and never claims a copy succeeded whe
  const {dom,ctx,notices}=setup();
  try{mountResearch(ctx);$('[data-mode="formula"]').click();input('[data-formula]','\\alpha + \\beta');assert.equal($('#formula-preview').textContent,'\\alpha + \\beta');$('[data-formula-token="0"]').click();assert.equal($('[data-formula]').value,'\\alpha + \\beta \\frac{a}{b}');assert.equal(document.querySelector('[data-formula-token="0"]').textContent,'分式');$('[data-action="formula-copy"]').click();await Promise.resolve();assert.match(notices.at(-1),/无法自动复制/);assert.doesNotMatch(notices.join(' '),/公式已复制/);Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw Error('denied');}},configurable:true});$('[data-action="formula-copy"]').click();await new Promise(resolve=>setTimeout(resolve,0));assert.match(notices.at(-1),/复制未成功/);assert.doesNotMatch(notices.join(' '),/公式已复制/);$('[data-mode="basic"]').click();$('[data-mode="formula"]').click();assert.equal($('[data-formula]').value,'\\alpha + \\beta \\frac{a}{b}');}finally{disposeResearch();dom.window.close();}
 });
+
+test('research mode, chart type, input tabs and formula insertion preserve the selected keyboard control',()=>{
+ const {dom,ctx}=setup();
+ try{
+  mountResearch(ctx);const activate=selector=>{const node=$(selector);assert.ok(node,selector);node.focus({preventScroll:true});node.click();assert.equal(document.activeElement,$(selector),'Focus lost after '+selector);};
+  activate('[data-mode="formula"]');activate('[data-formula-preset="1"]');activate('[data-formula-token="0"]');assert.match($('[data-formula]').value,/frac/);activate('[data-mode="basic"]');activate('[data-tab="paste"]');activate('[data-tab="manual"]');activate('[data-type="line"]');activate('[data-mode="pro"]');assert.ok($('.dashboard').style.minHeight);
+ }finally{disposeResearch();dom.window.close();}
+});
+
+test('literature filters and reading views remain in place, while explicit note editing focuses without scrolling',()=>{
+ const {dom,ctx}=setup(),paper=validatePaper({id:'stable-paper',title:'原位阅读',authors:'作者',year:'2025',text:'真实原文正文',scope:'full',tags:[],notes:[{id:'n1',text:'已保存笔记',location:'研究方法'}],status:'unread'});
+ try{
+  localStorage.setItem(literatureKey,JSON.stringify([paper]));mountLiterature(ctx);const filter=$('[data-lit-status="read"]');filter.focus({preventScroll:true});filter.click();assert.equal(document.activeElement,filter);assert.match($('#lit-count').textContent,/0 篇/);const query=$('#lit-query');query.focus({preventScroll:true});input('#lit-query','不存在的主题');assert.equal(document.activeElement,query);
+  mountLiteratureReader(paper.id,ctx);for(const tab of ['notes','text']){const button=$('[data-read-tab="'+tab+'"]');button.focus({preventScroll:true});button.click();assert.equal(document.activeElement,button);}
+  $('[data-read-tab="notes"]').click();const focusCalls=[],original=$('#note-text').focus;$('#note-text').focus=function(options){focusCalls.push(options);return original.call(this,options);};$('[data-edit-note="n1"]').click();assert.deepEqual(focusCalls,[{preventScroll:true}]);assert.equal($('#note-text').value,'已保存笔记');assert.ok($('.dashboard').style.minHeight);
+ }finally{clearEditor();dom.window.close();}
+});

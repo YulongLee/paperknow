@@ -21,16 +21,16 @@ export function mountNavigation({sidebar,toggle,backdrop,main,media=window.match
    if(handle){handle.setAttribute('aria-valuenow',String(width));handle.setAttribute('aria-valuetext',width+' 像素');handle.tabIndex=media.matches||collapsed?-1:0;}
   }
  };
- const close=()=>{const inside=sidebar.contains(document.activeElement);open=false;apply();if(inside&&media.matches)toggle.focus();};
- const toggleOpen=()=>{if(!media.matches&&desktop){collapsed=!collapsed;save();apply();if(collapsed)toggle.focus();return;}if(media.matches&&open){close();return;}open=!open;apply();if(open&&media.matches)sidebar.querySelector('a,button')?.focus();};
- const collapseMenu=()=>{if(media.matches){close();return;}collapsed=true;save();apply();toggle.focus();};
- const key=e=>{if(!media.matches)return;if(e.key==='Escape'&&open){e.preventDefault();close();}if(e.key==='Tab'&&open){const items=[...sidebar.querySelectorAll('a[href],button:not(:disabled)')].filter(el=>!el.hidden);if(!items.length)return;const first=items[0],last=items.at(-1);if(e.shiftKey&&(document.activeElement===first||!sidebar.contains(document.activeElement))){e.preventDefault();last.focus();}else if(!e.shiftKey&&(document.activeElement===last||!sidebar.contains(document.activeElement))){e.preventDefault();first.focus();}}};
+ const close=()=>{const inside=sidebar.contains(document.activeElement);open=false;apply();if(inside&&media.matches)toggle.focus({preventScroll:true});};
+ const toggleOpen=()=>{if(!media.matches&&desktop){collapsed=!collapsed;save();apply();if(collapsed)toggle.focus({preventScroll:true});return;}if(media.matches&&open){close();return;}open=!open;apply();if(open&&media.matches)sidebar.querySelector('a,button')?.focus({preventScroll:true});};
+ const collapseMenu=()=>{if(media.matches){close();return;}collapsed=true;save();apply();toggle.focus({preventScroll:true});};
+ const key=e=>{if(!media.matches)return;if(e.key==='Escape'&&open){e.preventDefault();close();}if(e.key==='Tab'&&open){const items=[...sidebar.querySelectorAll('a[href],button:not(:disabled)')].filter(el=>!el.hidden);if(!items.length)return;const first=items[0],last=items.at(-1);if(e.shiftKey&&(document.activeElement===first||!sidebar.contains(document.activeElement))){e.preventDefault();last.focus({preventScroll:true});}else if(!e.shiftKey&&(document.activeElement===last||!sidebar.contains(document.activeElement))){e.preventDefault();first.focus({preventScroll:true});}}};
  const finish=e=>{if(!drag||e&&e.pointerId!==drag.id)return;const id=drag.id;drag=null;root?.classList.remove('navigation-resizing');if(handle?.hasPointerCapture?.(id))handle.releasePointerCapture(id);save();};
- const start=e=>{if(media.matches||collapsed||e.button!==0)return;e.preventDefault();drag={id:e.pointerId,x:e.clientX,width};handle.setPointerCapture?.(e.pointerId);handle.focus();root.classList.add('navigation-resizing');};
+ const start=e=>{if(media.matches||collapsed||e.button!==0)return;e.preventDefault();drag={id:e.pointerId,x:e.clientX,width};handle.setPointerCapture?.(e.pointerId);handle.focus({preventScroll:true});root.classList.add('navigation-resizing');};
  const move=e=>{if(!drag||e.pointerId!==drag.id)return;width=limit(drag.width+e.clientX-drag.x);apply();};
  const resizeKey=e=>{if(media.matches||collapsed)return;const steps={ArrowLeft:-16,ArrowRight:16};if(e.key in steps){width=limit(width+steps[e.key]);}else if(e.key==='Home')width=240;else if(e.key==='End')width=360;else return;e.preventDefault();save();apply();};
  const resetWidth=()=>{width=256;save();apply();};
- const resize=()=>{finish();open=false;apply();if(sidebar.inert&&sidebar.contains(document.activeElement))toggle.focus();};
+ const resize=()=>{finish();open=false;apply();if(sidebar.inert&&sidebar.contains(document.activeElement))toggle.focus({preventScroll:true});};
  const windowResize=()=>{if(desktop)apply();};
  toggle.addEventListener('click',toggleOpen);collapse?.addEventListener('click',collapseMenu);backdrop?.addEventListener('click',close);document.addEventListener('keydown',key);media.addEventListener('change',resize);window.addEventListener('resize',windowResize);
  handle?.addEventListener('pointerdown',start);handle?.addEventListener('pointermove',move);handle?.addEventListener('pointerup',finish);handle?.addEventListener('pointercancel',finish);handle?.addEventListener('lostpointercapture',finish);handle?.addEventListener('keydown',resizeKey);handle?.addEventListener('dblclick',resetWidth);apply();
@@ -41,9 +41,9 @@ export function trackDialogForm(dialog){
  const form=dialog.querySelector('form:not([data-unprotected])');const baseline=form?formValue(form):'';
  return ()=>{
  if(!form||formValue(form)===baseline){dialog.close();return;}
- const existing=dialog.querySelector('.dialog-leave-confirm');if(existing){existing.querySelector('button').focus();return;}
+ const existing=dialog.querySelector('.dialog-leave-confirm');if(existing){existing.querySelector('button').focus({preventScroll:true});return;}
  const box=document.createElement('section');box.className='dialog-leave-confirm';box.setAttribute('role','alert');box.innerHTML='<b>填写内容尚未保存</b><p>关闭后会丢弃当前输入。你可以继续填写。</p><div><button type="button" class="btn primary">继续填写</button><button type="button" class="btn secondary">放弃输入并关闭</button></div>';
- const previous=document.activeElement;box.querySelectorAll('button')[0].onclick=()=>{box.remove();previous?.focus();};box.querySelectorAll('button')[1].onclick=()=>dialog.close();dialog.append(box);box.querySelector('button').focus();
+ const previous=document.activeElement;box.querySelectorAll('button')[0].onclick=()=>{box.remove();previous?.focus({preventScroll:true});};box.querySelectorAll('button')[1].onclick=()=>dialog.close();dialog.append(box);box.querySelector('button').focus({preventScroll:true});
  };
 }
 export const workspaceLinks=[['工作空间',[['home','工作台','grid'],['projects','我的项目','folder'],['assets','我的成果','file'],['tasks','任务中心','clock']]],['论文与科研',[['category/writing','AI 写作','pen'],['category/literature','AI 研读','book'],['category/reduce','降重复率','pen'],['category/aigc','降AI率','spark'],['category/detection','免费查重','shield'],['category/ppt','PPT 创作','chart'],['category/format','格式排版','file'],['category/research','科研工具','chart']]],['个人与服务',[['membership','会员与用量','diamond'],['settings','设置中心','settings'],['help','帮助与反馈','help']]]];

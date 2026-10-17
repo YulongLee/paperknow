@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
 import {esc,icon,formatDate} from '../dist/workspace/ui.mjs';
 import {toolBanner} from '../dist/workspace/tool-banner.mjs';
+import {withStableView} from '../dist/workspace/view-stability.mjs';
 import * as revisionModel from '../dist/workspace/revision-model.mjs';
 import * as detectionModel from '../dist/workspace/detection-model.mjs';
 import * as detectionEngine from '../dist/precheck/engine.mjs';
@@ -13,7 +14,7 @@ const detectionSource=clean(await readFile(new URL('../dist/workspace/detection.
 function fixture(t,{hash='#category/reduce',failSave=false,extractFile=async()=>({text:'真正提取的第一段正文。\n\n真正提取的第二段正文。',warnings:[]})}={}){
  const dom=new JSDOM('<nav class="sidebar"><a class="nav-link" href="#category/reduce">降重</a><a class="nav-link" href="#category/aigc">表达</a></nav><div class="breadcrumb"><strong></strong></div><main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'https://paperknow.cn/workspace.html'+hash,runScripts:'outside-only'}),w=dom.window,notices=[],downloads=[],requests=[];
  const qs=selector=>w.document.querySelector(selector);qs('dialog').close=()=>{};
- Object.assign(w,{esc,icon,formatDate,toolBanner,...revisionModel,...detectionModel,...detectionEngine,__extractFile:extractFile,keys:{drafts:'test-drafts'},projects:()=>[{id:'p1',name:'真实项目'}],list:key=>JSON.parse(w.localStorage.getItem(key)||'[]'),write:(key,rows)=>{if(failSave)throw Error('模拟保存空间不足');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:record=>requests.push(record),download:(...args)=>downloads.push(args)});
+ Object.assign(w,{withStableView,esc,icon,formatDate,toolBanner,...revisionModel,...detectionModel,...detectionEngine,__extractFile:extractFile,keys:{drafts:'test-drafts'},projects:()=>[{id:'p1',name:'真实项目'}],list:key=>JSON.parse(w.localStorage.getItem(key)||'[]'),write:(key,rows)=>{if(failSave)throw Error('模拟保存空间不足');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:record=>requests.push(record),download:(...args)=>downloads.push(args)});
  w.confirm=()=>false;
  const ctx={mode:'reduce',notify:text=>notices.push(text),modal:(_title,html)=>{qs('#workspace-dialog-body').innerHTML=html;}};
  const click=selector=>{const target=qs(selector);assert.ok(target,'Missing '+selector);target.click();};
@@ -50,4 +51,17 @@ test('local detection retains paste, real chapter confirmation and source-bound 
 });
 test('without actual source materials the detection flow creates no invented report',async t=>{
  const f=fixture(t,{hash:'#category/detection'}),store=await mountDetection(f);assert.equal(f.qs('.doc-detail-readiness').querySelectorAll('[data-ready="true"]').length,0);assert.equal(f.qs('#detection-space').dataset.detectionState,'empty');f.click('[data-det-action="paste"]');f.input('#det-paste',original);f.submit('#det-paste-form');assert.equal(f.qs('.doc-detail-readiness').querySelectorAll('[data-ready="true"]').length,1);f.click('#det-next');assert.equal(f.qs('#detection-space').dataset.detectionState,'scope');assert.match(f.qs('.doc-detail-readiness').textContent,/待添加对照材料/);f.click('#det-next');await f.settle(()=>f.notices.some(message=>/没有实际对照正文/.test(message)));assert.equal(store.reports.length,0);assert.match(f.qs('.det-history-empty').textContent,/暂无检测报告/);
+});
+
+test('revision import modes, paragraph choice and acceptance keep the initiating control in place',t=>{
+ const f=fixture(t);mountRevision(f);const paste=f.qs('[data-revision-input="paste"]');paste.focus({preventScroll:true});paste.click();assert.equal(f.w.document.activeElement,paste);assert.ok(f.qs('#revision-service').style.minHeight);
+ f.input('#revision-service-title','原位编辑的文稿');f.input('#revision-service-text',original);f.submit('#revision-entry-form');
+ const select=f.qs('#rev-paragraph');select.value='1';select.focus({preventScroll:true});select.dispatchEvent(new f.w.Event('change',{bubbles:true}));assert.equal(f.w.document.activeElement,f.qs('#rev-paragraph'));assert.equal(f.qs('#rev-paragraph').value,'1');
+ const accept=f.qs('[data-rev-action="accept"]');accept.focus({preventScroll:true});accept.click();assert.equal(f.w.document.activeElement,f.qs('[data-rev-action="accept"]'));assert.match(f.qs('.doc-detail-metrics').textContent,/已采纳修改1/);
+});
+
+test('detection tabs and report filters preserve keyboard focus without resetting entered query text',async t=>{
+ const f=fixture(t,{hash:'#category/detection'});await mountDetection(f);
+ for(const value of ['ai','check']){const button=f.qs('.det-tabs [data-det-tab="'+value+'"]');button.focus({preventScroll:true});button.click();assert.equal(f.w.document.activeElement,f.qs('.det-tabs [data-det-tab="'+value+'"]'));}
+ const query=f.qs('#det-query');query.focus({preventScroll:true});query.value='尚无匹配的真实论文';query.dispatchEvent(new f.w.Event('input',{bubbles:true}));assert.equal(f.w.document.activeElement,query);assert.equal(query.value,'尚无匹配的真实论文');assert.ok(f.qs('.dashboard').style.minHeight);
 });
