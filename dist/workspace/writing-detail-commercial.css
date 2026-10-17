@@ -130,4 +130,7 @@
 .writing-detail-commercial .writing-outline-ai-preview label{display:block;font-size:12px;font-weight:600;margin:15px 0 10px}
 .hub-theme-dark #app .writing-outline-ai-shell{background:var(--pk-surface-soft);border-color:var(--pk-border)}
 .hub-theme-dark #app .writing-detail-commercial #outline-ai-generate{background:var(--pk-surface-soft)}
+.writing-detail-commercial .outline-budget-explanation{margin:0 0 16px;padding:0 20px;color:var(--pk-muted,#7b8da9);font-size:12px;line-height:1.8}
+#app .writing-detail-commercial .outline-edit-row.is-budget-summary .outline-row-words[readonly]{background:var(--pk-surface-soft,#eef4ff);border-color:transparent;color:var(--detail-accent,#3569ee);font-weight:600;cursor:default}
+.writing-detail-commercial .outline-edit-row.is-budget-summary .outline-row-count{color:var(--detail-accent,#3569ee)}
 @media(max-width:760px){.writing-detail-commercial .outline-source-actions:has(#outline-manual-trigger){grid-template-columns:minmax(0,1fr)}.writing-detail-commercial .writing-outline-ai-shell{padding:16px}.writing-detail-commercial .writing-outline-ai-actions .btn{width:100%}}

@@ -1,3 +1,5 @@
+import {isOutlineReferenceChapter} from './outline-word-budget.mjs';
+
 export const outlineChapters=['第一章　绪论','　1.1 研究背景与意义','　1.2 研究问题与研究目标','第二章　文献综述与理论基础','　2.1 相关研究进展','　2.2 理论基础','第三章　研究设计','　3.1 研究方法与研究对象','　3.2 数据来源与分析思路','第四章　结果与讨论（依据实际研究填写）','第五章　结论与展望','参考文献（填写真实来源）'];
 export function buildOutline(v){return [v.title,`${v.mode} · ${v.degree} · ${v.major||'学科待填写'}`,'',...outlineChapters,v.language?'写作语言：'+v.language:'','',v.targetWords?'目标字数：'+v.targetWords+' 字':'',v.method?'研究方法：'+v.method:'',v.requirements?'研究要求：'+v.requirements:'','本地结构模板：请依据真实研究完善；未调用 AI 或分析参考材料。'].filter(Boolean).join('\n');}
 export function reconcileSections(outline,previous=[]){const titles=[...new Set(outline.split('\n').map(l=>l.trim()).filter(l=>/^(?:第[^\s]{1,12}章|Chapter\s+(?:[IVXLCDM]+|\d+)\b)/i.test(l)||/^(?:参考文献|References|Bibliography)/i.test(l)))];if(!titles.length)titles.push('正文');const next=titles.map(title=>{const old=previous.find(s=>s.title===title);return {id:old?.id||crypto.randomUUID(),title,text:old?.text||'',retained:false};});return [...next,...previous.filter(s=>!titles.includes(s.title)&&s.text.trim()).map(s=>({...s,retained:true}))];}
@@ -8,11 +10,11 @@ export function thesisSnapshotFromDraft(draft={}){
  const clean=value=>String(value??'').trim();
  const sourceIds=(rows,prefix)=>{const used=new Map();return rows.map((row,index)=>{const raw=clean(row.id)||`item-${index+1}`,safe=raw.replace(/[^\p{L}\p{N}_.:-]/gu,'_').slice(0,65);let hash=2166136261;for(const char of raw)hash=Math.imul(hash^char.codePointAt(0),16777619);const base=`${prefix}:${safe}-${(hash>>>0).toString(16)}`,count=(used.get(base)||0)+1;used.set(base,count);return {...row,id:base+(count>1?'-'+count:'')};});};
  const level=clean(draft.degree)==='科研人员'?'研究工作者':clean(draft.degree)||'本科';
- const targetWords=Number(draft.targetWords)||8000;
+ const targetWords=clean(draft.targetWords)===''?8000:Number(draft.targetWords);
  if(!Number.isSafeInteger(targetWords)||targetWords<500||targetWords>80000)throw Error('在线论文目标字数须为 500–80,000 字，请返回基础信息调整。');
  const outline=[];
  for(const row of draft.outlineRows||[]){
-  const entry={id:clean(row.id),title:clean(row.title),targetWords:Math.max(0,Number(row.words)||0)};
+  const entry={id:clean(row.id),title:clean(row.title),targetWords:Math.max(0,Number(row.words)||0),...(isOutlineReferenceChapter(row)?{kind:'references'}:{})};
   if(!entry.title)throw Error('提纲中还有空标题，请返回提纲确认步骤。');
   if(Number(row.level)===2&&outline.length)(outline.at(-1).sections??=[]).push(entry);else outline.push(entry);
  }

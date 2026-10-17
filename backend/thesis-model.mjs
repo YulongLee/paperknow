@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
+import {isOutlineReferenceChapter} from '../dist/workspace/outline-word-budget.mjs';
 
 export const thesisError=(status,message,code)=>Object.assign(new Error(message),{status,...(code?{code}:{})});
 const fail=(status,message)=>{throw thesisError(status,message);};
@@ -11,7 +12,7 @@ const unique=(items,label)=>{if(new Set(items.map(item=>item.id)).size!==items.l
 export function initializeThesisSchema(db){db.exec(readFileSync(new URL('./thesis-schema.sql',import.meta.url),'utf8'));const columns=new Set(db.prepare('PRAGMA table_info(thesis_runs)').all().map(row=>row.name));for(const [name,type] of [['usage_known','INTEGER NOT NULL DEFAULT 1'],['provider_calls','INTEGER NOT NULL DEFAULT 0']])if(!columns.has(name))db.exec(`ALTER TABLE thesis_runs ADD COLUMN ${name} ${type}`);}
 export const thesisHash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export function thesisLimits(config={}){return {maxChapters:30,maxSections:integer(config.thesisMaxSections,120,1,120),maxTargetWords:integer(config.thesisMaxTargetWords,80000,500,80000),sectionWords:integer(config.thesisSectionWords,1800,200,2500),maxSourceCharacters:integer(config.thesisMaxSourceCharacters,100000,1000,200000),maxRunTokens:integer(config.thesisMaxRunTokens,400000,1000,2000000),maxChapterVersions:200};}
-export const isThesisReferenceChapter=chapter=>chapter?.kind==='references'||/^(?:参考文献|参考资料|references|bibliography)(?:\s*[（(].*)?$/i.test(String(chapter?.title||'').trim());
+export const isThesisReferenceChapter=isOutlineReferenceChapter;
 function legacyOutline(input){
  const rows=Array.isArray(input.outlineRows)?input.outlineRows:[],out=[];
  for(const row of rows){if(row?.level===1)out.push({id:row.id,title:row.title,targetWords:row.words,sections:[]});else if(out.length)out.at(-1).sections.push({id:row.id,title:row.title,targetWords:row.words});}
@@ -56,16 +57,21 @@ export function thesisPlan(snapshot,config={}){
  if(specified>snapshot.profile.targetWords)fail(400,'章节目标字数合计不能超过论文目标字数');
  const unspecified=writingChapters.filter(row=>!row.targetWords).length;
  if(unspecified&&snapshot.profile.targetWords-specified<unspecified*20)fail(400,'尚有正文章节未分配足够字数，请返回提纲按叶节点重新分配目标字数');
- const fallback=Math.max(1,Math.floor((snapshot.profile.targetWords-specified)/(unspecified||1)));
+ const remainingChapterWords=snapshot.profile.targetWords-specified,fallback=Math.floor(remainingChapterWords/(unspecified||1));let unspecifiedChapterIndex=0;
  const plan=[];
  for(const chapter of writingChapters){
-  const chapterWords=chapter.targetWords||fallback;
+  const chapterWords=chapter.targetWords||(fallback+(unspecifiedChapterIndex++<remainingChapterWords%unspecified?1:0));
   const sections=chapter.sections.length?chapter.sections:[{id:chapter.id,title:chapter.title,targetWords:chapterWords,sourceIds:chapter.sourceIds}];
   const allocated=sections.reduce((n,row)=>n+row.targetWords,0),empty=sections.filter(row=>!row.targetWords).length;
   if(chapter.sections.length&&allocated>chapterWords)fail(400,`“${chapter.title}”的小节字数超过章节目标`);
+  const remainingSectionWords=chapterWords-allocated;
+  if(empty&&remainingSectionWords<empty*20)fail(400,`“${chapter.title}”还有未分配的小节，每节至少需要 20 字，请返回提纲重新分配`);
+  let emptySectionIndex=0;
   for(const section of sections){
-   const words=section.targetWords||Math.max(1,Math.floor((chapterWords-allocated)/(empty||1))),parts=Math.ceil(words/limits.sectionWords);
-   for(let part=0;part<parts;part++)plan.push({id:`${chapter.id}::${section.id}::${part+1}`,chapterId:chapter.id,chapterTitle:chapter.title,sectionId:section.id,title:section.title,part:part+1,parts,targetWords:Math.ceil(words/parts),sourceIds:section.sourceIds?.length?section.sourceIds:chapter.sourceIds,position:plan.length});
+   const words=section.targetWords||(Math.floor(remainingSectionWords/empty)+(emptySectionIndex++<remainingSectionWords%empty?1:0));
+   if(!Number.isSafeInteger(words)||words<20)fail(400,`“${section.title}”至少需要分配 20 字的整数目标，请返回提纲调整`);
+   const parts=Math.ceil(words/limits.sectionWords);
+   for(let part=0;part<parts;part++)plan.push({id:`${chapter.id}::${section.id}::${part+1}`,chapterId:chapter.id,chapterTitle:chapter.title,sectionId:section.id,title:section.title,part:part+1,parts,targetWords:Math.floor(words/parts)+(part<words%parts?1:0),sourceIds:section.sourceIds?.length?section.sourceIds:chapter.sourceIds,position:plan.length});
   }
  }
  if(plan.length>limits.maxSections)fail(400,`当前提纲需 ${plan.length} 个生成单元，最多支持 ${limits.maxSections} 个，请减少小节或目标字数`);
