@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
 const html=await readFile(new URL('../dist/index.html',import.meta.url),'utf8');
 const code=await readFile(new URL('../dist/home-app.js',import.meta.url),'utf8');
-async function page(t,user,prepare){const dom=new JSDOM(html,{url:'http://localhost/',runScripts:'outside-only'});t.after(()=>dom.window.close());const w=dom.window;w.matchMedia=query=>({media:query,matches:false,addEventListener(){},removeEventListener(){}});w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};w.localStorage.setItem('paperknow-local-profile',JSON.stringify({name:'过期本地昵称'}));w.fetch=async path=>{if(user==='offline')throw new Error('offline');return {ok:path!='/api/auth/me'||!!user,status:user?200:401,json:async()=>path==='/api/auth/me'?{user}:{ai:false}};};prepare?.(w);w.eval(code);for(let i=0;i<10;i++)await new Promise(r=>setTimeout(r,1));return w.document;}
+async function page(t,user,prepare){const dom=new JSDOM(html,{url:'http://localhost/',runScripts:'outside-only'});t.after(()=>dom.window.close());const w=dom.window;w.matchMedia=query=>({media:query,matches:false,addEventListener(){},removeEventListener(){}});w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};w.localStorage.setItem('paperknow-local-profile',JSON.stringify({name:'过期本地昵称'}));w.fetch=async path=>{if(user==='offline')throw new Error('offline');return {ok:path!='/api/auth/me'||!!user,status:user?200:401,json:async()=>path==='/api/auth/me'?{user}:path==='/api/desktop/releases'?{version:'0.1.0',releases:[]}:{ai:false}};};prepare?.(w);w.eval(code);for(let i=0;i<10;i++)await new Promise(r=>setTimeout(r,1));return w.document;}
 
 function carouselEnvironment({reducedMotion=false}={}){
  const timers=new Map();
@@ -128,21 +128,80 @@ test('homepage previews expose all eight workspace capabilities and switch witho
  key('Home');assertActive('writing');
 });
 
-test('homepage keeps sample results and unavailable desktop downloads clearly identified',async t=>{
+const releaseFixture=(platform,arch,extra={})=>({platform,arch,version:'0.1.0',fileName:`PaperKnow-0.1.0-${platform}-${arch}.${platform==='macos'?'dmg':'exe'}`,bytes:120*1024*1024,sha256:'a'.repeat(64),downloadUrl:`/api/desktop/download/${platform}/${arch}`,signed:false,minSystem:platform==='macos'?'macOS 13 或更高版本':'Windows 10 或更高版本',format:platform==='macos'?'dmg':'exe',...extra});
+const allReleases=()=>[releaseFixture('macos','arm64'),releaseFixture('macos','x64'),releaseFixture('windows','x64')];
+const desktopResponse=(w,data)=>{w.fetch=async path=>({ok:path!=='/api/auth/me',status:path==='/api/auth/me'?401:200,json:async()=>path==='/api/desktop/releases'?data:{ai:false}});};
+
+test('homepage keeps sample results and unpublished desktop files clearly identified',async t=>{
  const d=await page(t,null);
  d.querySelector('[data-example="report"]').click();
  assert.match(d.querySelector('#home-dialog-body').textContent,/不是一次实际检测结果/);
  assert.match(d.querySelector('#home-dialog-body').textContent,/未接入全网检索/);
  d.querySelector('#dialog-close').click();
- for(const platform of ['mac','windows']){
-  d.querySelector(`[data-download-platform="${platform}"]`).click();
-  assert.match(d.querySelector('#home-dialog-body').textContent,/客户端即将上线/);
-  assert.equal(d.querySelector('#home-dialog-body a').getAttribute('href'),'/workspace.html#home');
-  d.querySelector('#dialog-close').click();
+ for(const card of d.querySelectorAll('[data-desktop-card]')){
+  assert.equal(card.querySelector('[data-desktop-status]').textContent,'暂未提供');
+  assert.equal(card.querySelector('[data-desktop-action] a'),null);
+  assert.ok(card.querySelector('[data-desktop-action] button').disabled);
  }
+ assert.match(d.querySelector('#desktop-download-notice').textContent,/暂无已发布/);
+ assert.ok(d.querySelector('a[href="/workspace.html#home"]'));
+ assert.equal(d.querySelector('[data-download-platform]'),null,'old unavailable modal has been removed');
  d.querySelector('#status-button').click();
  assert.match(d.querySelector('#home-dialog-body').textContent,/尚未配置模型/);
  assert.match(d.querySelector('#home-dialog-body').textContent,/尚未接入在线数据库或检测服务/);
+});
+
+test('desktop download cards use published API files, switch Mac architectures, and show honest metadata',async t=>{
+ let calls=0;
+ const d=await page(t,null,w=>{desktopResponse(w,{version:'0.1.0',releases:allReleases()});const fetch=w.fetch;w.fetch=(path,...rest)=>{if(path==='/api/desktop/releases')calls++;return fetch(path,...rest);};});
+ const mac=d.querySelector('[data-desktop-card="macos"]'),windows=d.querySelector('[data-desktop-card="windows"]');
+ assert.equal(calls,1);
+ assert.equal(mac.querySelector('[data-desktop-status]').textContent,'v0.1.0');
+ assert.equal(mac.querySelector('[data-desktop-download]').getAttribute('href'),'/api/desktop/download/macos/arm64');
+ assert.equal(windows.querySelector('[data-desktop-download]').getAttribute('href'),'/api/desktop/download/windows/x64');
+ assert.match(mac.querySelector('[data-desktop-meta]').textContent,/120.0 MB/);
+ assert.match(mac.querySelector('[data-desktop-meta]').textContent,/macOS 13/);
+ assert.match(mac.querySelector('code').textContent,new RegExp('a'.repeat(64)));
+ assert.match(d.querySelector('#desktop-download-notice').textContent,/尚未签名/);
+ assert.match(d.querySelector('#desktop-faq-status').textContent,/v0.1.0 已提供下载/);
+ d.querySelector('input[name="desktop-mac-arch"][value="x64"]').click();
+ assert.equal(mac.querySelector('[data-desktop-download]').getAttribute('href'),'/api/desktop/download/macos/x64');
+ assert.equal(calls,1,'switching hardware does not create a second request');
+ assert.equal(mac.getAttribute('aria-busy'),'false');
+});
+
+test('desktop release loading and failure never expose fake links, and retry recovers from the same API',async t=>{
+ let resolveReleases;
+ const d=await page(t,null,w=>{w.fetch=async path=>path==='/api/desktop/releases'?new Promise(resolve=>{resolveReleases=resolve;}):({ok:false,status:401,json:async()=>({})});});
+ assert.equal(d.querySelector('[data-desktop-card]').getAttribute('aria-busy'),'true');
+ assert.equal(d.querySelector('[data-desktop-download]'),null);
+ resolveReleases({ok:false,status:503});
+ for(let i=0;i<5;i++)await new Promise(resolve=>setTimeout(resolve,1));
+ assert.match(d.querySelector('#desktop-download-notice').textContent,/暂时无法获取/);
+ assert.equal(d.querySelector('[data-desktop-download]'),null);
+ assert.equal(d.querySelector('#desktop-download-retry').hidden,false);
+ desktopResponse(d.defaultView,{version:'0.1.0',releases:[releaseFixture('windows','x64')]});
+ d.querySelector('#desktop-download-retry').click();
+ for(let i=0;i<5;i++)await new Promise(resolve=>setTimeout(resolve,1));
+ assert.ok(d.querySelector('[data-desktop-download="windows/x64"]'));
+ assert.equal(d.querySelector('[data-desktop-card="macos"] a'),null);
+});
+
+test('desktop downloads reject untrusted paths and malformed release metadata without injecting content',async t=>{
+ const malicious=[
+  releaseFixture('macos','arm64',{downloadUrl:'https://untrusted.invalid/install.dmg'}),
+  releaseFixture('macos','x64',{bytes:0}),
+  releaseFixture('windows','x64',{downloadUrl:'javascript:alert(1)'}),
+  releaseFixture('windows','arm64'),
+  releaseFixture('windows','x64',{sha256:'missing'}),
+  releaseFixture('windows','x64',{fileName:'../../malware.exe'})
+ ];
+ const d=await page(t,null,w=>desktopResponse(w,{version:'0.1.0',releases:malicious}));
+ assert.equal(d.querySelector('[data-desktop-download]'),null);
+ assert.match(d.querySelector('#desktop-download-notice').textContent,/暂无已发布/);
+ const safe=await page(t,null,w=>desktopResponse(w,{version:'0.1.0',releases:[releaseFixture('windows','x64',{minSystem:'<img src=x onerror=alert(1)>'})]}));
+ assert.equal(safe.querySelector('[data-desktop-meta] img'),null);
+ assert.match(safe.querySelector('[data-desktop-card="windows"] [data-desktop-meta]').textContent,/<img/);
 });
 
 test('capability carousel advances in view, wraps after the last capability, and leaves keyboard focus alone',async t=>{

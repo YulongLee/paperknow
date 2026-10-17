@@ -11,8 +11,62 @@ dialog.addEventListener('close',()=>{document.body.classList.remove('home-modal-
 dialog.addEventListener('click',e=>{if(e.target!==dialog)return;const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();});
 const examples={outline:{title:'论文大纲 · 结构示例',selector:'.mini-outline',note:'这是本地模板的结构示例。请结合真实研究完善章节、证据与引用；当前未调用 AI 生成正文。',url:'/workspace.html#category/writing',action:'开始创建论文'},report:{title:'查重报告 · 界面示例',selector:'.mini-comparison',note:'这里展示的是相似片段与对照正文的呈现方式，不是一次实际检测结果。正式体验会根据当前本地材料计算文本匹配，未接入全网检索。',url:'/workspace.html#category/detection',action:'上传论文体验'},revision:{title:'修改任务 · 模板示例',selector:'.mini-revision',note:'这是通用修改清单示例，未解析导师批注或执行 AI 修改。你可以进入工作台填写导师意见，整理、编辑和保存任务模板。',url:'/workspace.html#tool/review',action:'整理修改任务'}};
 document.querySelectorAll('[data-example]').forEach(b=>b.addEventListener('click',()=>{const e=examples[b.dataset.example];openDialog(e.title,`<p>${e.note}</p><div class="example-modal-preview">${$(e.selector).outerHTML}</div><div class="home-dialog-actions"><a class="button" href="${e.url}">${e.action} ${svg('arrow')}</a></div>`);}));
-const downloadOptions={mac:{title:'macOS 客户端',detail:'macOS 客户端正在准备中。正式安装包发布后，会在这里提供安全的 .dmg 下载。当前可以直接使用网页端，研究内容与工作流程保持一致。'},windows:{title:'Windows 客户端',detail:'Windows 客户端正在准备中。正式安装包发布后，会在这里提供安全的安装程序下载。当前可以直接使用网页端，研究内容与工作流程保持一致。'}};
-document.querySelectorAll('[data-download-platform]').forEach(link=>link.addEventListener('click',e=>{e.preventDefault();const option=downloadOptions[link.dataset.downloadPlatform];if(!option)return;openDialog(option.title,`<p>${option.detail}</p><div class="download-modal-status"><span class="platform-mark ${link.dataset.downloadPlatform==='windows'?'windows':''}">${link.dataset.downloadPlatform==='windows'?'⊞':'⌘'}</span><div><b>客户端即将上线</b><small>上线后可在此处直接下载并获取更新说明。</small></div></div><div class="home-dialog-actions"><a class="button" href="/workspace.html#home">立即使用网页端 ${svg('arrow')}</a></div>`);}));
+// The published release API is the only source of download links and file metadata.
+let desktopReleases=[],desktopReleaseState='loading',desktopReleaseVersion='';
+function desktopFileSize(bytes){const mb=bytes/1024/1024;return mb>=1024?(mb/1024).toFixed(2)+' GB':mb.toFixed(1)+' MB';}
+function normalizeDesktopRelease(release){
+ if(!release||!['macos','windows'].includes(release.platform)||!['arm64','x64'].includes(release.arch))return null;
+ if(release.platform==='windows'&&release.arch!=='x64')return null;
+ if(release.format!==(release.platform==='macos'?'dmg':'exe'))return null;
+ if(!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(release.version||'')||!Number.isSafeInteger(release.bytes)||release.bytes<=0||!/^[a-f0-9]{64}$/i.test(release.sha256||''))return null;
+ if(typeof release.fileName!=='string'||!release.fileName||release.fileName.length>180||/[\x00-\x1f/\\]/.test(release.fileName))return null;
+ if(typeof release.minSystem!=='string'||!release.minSystem.trim()||release.minSystem.length>120)return null;
+ if(typeof release.signed!=='boolean'||release.downloadUrl!==`/api/desktop/download/${release.platform}/${release.arch}`)return null;
+ return release;
+}
+function renderDesktopDownloads(){
+ document.querySelectorAll('[data-desktop-card]').forEach(card=>{
+  const platform=card.dataset.desktopCard,arch=platform==='macos'?$('input[name="desktop-mac-arch"]:checked')?.value:'x64';
+  const release=desktopReleases.find(item=>item.platform===platform&&item.arch===arch);
+  const status=card.querySelector('[data-desktop-status]'),meta=card.querySelector('[data-desktop-meta]'),action=card.querySelector('[data-desktop-action]');
+  card.setAttribute('aria-busy',String(desktopReleaseState==='loading'));card.classList.toggle('ready',Boolean(release));
+  if(release){
+   status.textContent='v'+release.version;
+   meta.innerHTML=`<strong>${esc(desktopFileSize(release.bytes))} <span>· ${esc(release.format.toUpperCase())}</span></strong><span>适用于 ${esc(release.minSystem)}</span><details class="desktop-checksum"><summary>查看文件校验信息</summary><span>${esc(release.fileName)}</span><code>SHA-256: ${esc(release.sha256)}</code></details>`;
+   action.innerHTML=`<a class="button" href="${esc(release.downloadUrl)}" download="${esc(release.fileName)}" data-desktop-download="${platform}/${arch}">${svg('download')} 下载 ${platform==='macos'?'macOS':'Windows'} 客户端</a>`;
+  }else{
+   status.textContent=desktopReleaseState==='loading'?'查询中':desktopReleaseState==='error'?'暂时不可用':'暂未提供';
+   meta.textContent=desktopReleaseState==='loading'?'正在获取版本与安装包信息…':desktopReleaseState==='error'?'安装包信息获取失败，请稍后重试。':'该设备的安装包暂未发布，请先使用网页端。';
+   action.innerHTML=`<button class="button" disabled>${desktopReleaseState==='loading'?'正在获取安装包':'暂无可下载的安装包'}</button>`;
+  }
+ });
+ const available=desktopReleases.length>0,notice=$('#desktop-download-notice'),faq=$('#desktop-faq-status');
+ $('#desktop-download-retry').hidden=desktopReleaseState==='loading';
+ if(desktopReleaseState==='loading')notice.textContent='正在查询已发布的客户端版本。';
+ else if(desktopReleaseState==='error')notice.textContent='暂时无法获取客户端下载信息，你可以继续使用网页工作台。';
+ else if(!available)notice.textContent='当前暂无已发布的安装包。网页工作台可正常使用。';
+ else notice.textContent=desktopReleases.some(item=>!item.signed)?'首版安装包尚未签名，系统可能提示发布者无法验证。请从本站获取安装包。':'请按设备类型选择安装包，版本与系统要求见上方。';
+ if(faq)faq.textContent=desktopReleaseState==='ready'&&available?`网页端无需安装。客户端 ${desktopReleaseVersion?'v'+desktopReleaseVersion+' ':''}已提供下载；请按设备选择版本，并核对系统要求。网页端与客户端的本地草稿分别保存在各自设备环境中，不会自动互相迁移。`:'网页端无需安装。客户端的版本、系统要求与可下载状态，请查看本页「客户端下载」。';
+}
+async function loadDesktopReleases(){
+ if(desktopReleaseState==='loading'&&loadDesktopReleases.pending)return;
+ desktopReleaseState='loading';desktopReleases=[];renderDesktopDownloads();
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
+ loadDesktopReleases.pending=true;
+ try{
+  const response=await fetch('/api/desktop/releases',{credentials:'same-origin',cache:'no-store',signal:controller.signal});
+  if(!response.ok)throw new Error('release list unavailable');
+  const data=await response.json();
+  if(!data||!Array.isArray(data.releases)||data.releases.length>20)throw new Error('invalid release list');
+  const seen=new Set();desktopReleases=data.releases.map(normalizeDesktopRelease).filter(release=>{if(!release)return false;const key=release.platform+'/'+release.arch;if(seen.has(key))return false;seen.add(key);return true;});
+  desktopReleaseVersion=/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(data.version||'')?data.version:'';
+  desktopReleaseState='ready';
+ }catch{desktopReleases=[];desktopReleaseState='error';}
+ finally{clearTimeout(timeout);loadDesktopReleases.pending=false;renderDesktopDownloads();}
+}
+document.querySelectorAll('input[name="desktop-mac-arch"]').forEach(input=>input.addEventListener('change',renderDesktopDownloads));
+$('#desktop-download-retry')?.addEventListener('click',loadDesktopReleases);
+loadDesktopReleases();
 $('#status-button').addEventListener('click',()=>{openDialog('PaperKnow 功能状态',`<p>在同一工作台使用本地工具和账户内容，以下说明实际可用范围。</p><div class="status-list">${[['论文写作','大纲模板、编辑、保存与导出','本地可用'],['文档解析','DOCX、文本型 PDF、UTF-8 TXT；扫描 PDF 暂无 OCR','本地可用'],['论文查重','对照导入正文，比对片段并展示来源；不是全网正式查重','本地可用'],['科研绘图','根据实际数据生成多系列图表，导出 SVG / PNG / CSV','本地可用'],['修改、排版与 PPT','手动修改与版本保存、DOCX 排版副本、可编辑 PPTX 导出','本地可用'],['文献研读','正文阅读、手动笔记与译文整理；AI 尚未接入','本地可用'],['账户与任务','注册登录、项目文件、正文解析、材料比对、成果与版本保存','已可用'],['在线 AI 修改',serviceCapabilities?.ai?'服务已配置模型，任务页会说明正文发送范围；请人工核对结果。':'尚未配置模型，不生成模拟内容',serviceCapabilities?.ai?'已配置':'待开放'],['全网检索与 AI 率检测','尚未接入在线数据库或检测服务','待开放']].map(([t,d,s])=>`<div><div><b>${t}</b><small>${d}</small></div><span class="status-tag ${s==='待开放'?'neutral':''}">${s}</span></div>`).join('')}</div><div class="home-dialog-actions"><a class="button" href="/workspace.html">进入工作台 ${svg('arrow')}</a></div>`);});
 $('#about-button').addEventListener('click',()=>openDialog('关于 PaperKnow','<p>PaperKnow 面向专科、本科、硕士、博士及科研人员，帮助整理从选题、开题到写作、修改和成果输出的工作流程。</p><p>支持邮箱与手机号登录，账户可保存在线项目、文件和任务成果。本地体验数据单独保存在浏览器中；支付与全网学术检索尚未开放。</p><div class="home-dialog-actions"><a class="button outline" href="/about/">阅读产品介绍</a><a class="button outline" href="/help/">查看使用帮助</a><a class="button" href="/workspace.html">开始体验</a></div>'));
 let serviceUser=null,serviceCapabilities=null;

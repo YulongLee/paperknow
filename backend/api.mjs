@@ -18,6 +18,7 @@ import {configuredAIIdentityValues,publicAIResponse} from './public-ai-metadata.
 import {createFileService} from './file-service.mjs';
 import {createArtifactService} from './artifact-service.mjs';
 import {createLiteratureSearch} from './literature-search.mjs';
+import {createDesktopReleaseService} from './desktop-release-service.mjs';
 import {now} from './database.mjs';
 import {clientAddress} from './client-address.mjs';
 class APIError extends Error{constructor(status,message){super(message);this.status=status;}}
@@ -40,6 +41,7 @@ const workspace=createWorkspaceService(db,{billing});
 const files=createFileService(db,config);
 const artifacts=createArtifactService(db,config);
 const literatureSearch=createLiteratureSearch({fetchImpl:config.literatureFetch});
+const desktopReleases=createDesktopReleaseService(db,config);
 const admin=createAdminAPI(db,worker,{...config,payments,billing},auth);
 const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}};
 const archiveAttempts=new Map();
@@ -67,6 +69,9 @@ if(notification&&method==='POST'){
  return;
 }
 if(method==='POST'){const origin=req.headers.origin;if(!origin||origin!==`${config.secure?'https':'http'}://${req.headers.host}`)fail(403,'请求来源不匹配');}
+if(path==='/api/desktop/releases'&&method==='GET'){send(200,desktopReleases.catalog());return;}
+const desktopDownload=path.match(/^\/api\/desktop\/download\/([^/]+)\/([^/]+)$/);
+if(desktopDownload&&method==='GET'){rate(req,120);const location=await desktopReleases.download(desktopDownload[1],desktopDownload[2]);res.writeHead(302,{'Location':location,'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}).end();return;}
 if(path.startsWith('/api/questionnaires/public/')){if(method==='POST')rate(req,120);const response=await questionnaires.handle({path,method,user:null,query:requestURL.searchParams,readBody:()=>body(req),clientKey:clientAddress(req,config)});if(response){send(response.status,response.value);return;}fail(404,'问卷链接不存在');}
 if(path==='/api/literature/search'&&method==='GET'){
  try{send(200,await literatureSearch.search(requestURL.searchParams,{clientKey:clientAddress(req,config)}));}

@@ -2,6 +2,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,mkdirSync,chmodSync} from 'node:fs';
 import {dirname} from 'node:path';
 import {seedCommercialOffers} from './commercial-offers.mjs';
+import {initializeDesktopReleases} from './desktop-release-service.mjs';
 function migrateUsers(db,path){
   const columns=db.prepare('PRAGMA table_info(users)').all();
   if(!columns.some(column=>['email','password_hash'].includes(column.name)&&column.notnull))return;
@@ -43,6 +44,7 @@ export function database(path){
   try{
     db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');
     db.exec(readFileSync(new URL('./schema.sql',import.meta.url),'utf8'));
+    initializeDesktopReleases(db);
     migrateUsers(db,path);
     db.prepare(`INSERT OR IGNORE INTO auth_identities(channel,address,user_id,verified_at,created_at)
       SELECT 'email',lower(email),id,NULL,created_at FROM users WHERE email IS NOT NULL`).run();

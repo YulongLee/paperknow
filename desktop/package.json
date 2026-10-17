@@ -1,0 +1,69 @@
+{
+  "name": "paperknow-desktop",
+  "productName": "PaperKnow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PaperKnow 科研工作台桌面客户端",
+  "author": "oneshowailab-paperknow",
+  "license": "UNLICENSED",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "icons": "node scripts/icons.mjs",
+    "pack:mac": "electron-builder --mac dmg --arm64 --publish never && electron-builder --mac dmg --x64 --publish never",
+    "pack:win": "electron-builder --win nsis --x64 --publish never",
+    "pack:all": "npm run pack:mac && npm run pack:win"
+  },
+  "devDependencies": {
+    "electron": "44.9.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "cn.paperknow.desktop",
+    "productName": "PaperKnow",
+    "copyright": "Copyright © 2026 oneshowailab-paperknow",
+    "asar": true,
+    "directories": { "output": "../outputs/desktop-0.1.0", "buildResources": "assets" },
+    "files": [ "main.cjs", "security.cjs", "offline.html", "assets/icon.png", "package.json" ],
+    "extraResources": [
+      { "from": "node_modules/electron/dist/LICENSE", "to": "licenses/ELECTRON-LICENSE.txt" },
+      { "from": "node_modules/electron/dist/LICENSES.chromium.html", "to": "licenses/LICENSES.chromium.html" }
+    ],
+    "artifactName": "PaperKnow-${version}-${os}-${arch}.${ext}",
+    "npmRebuild": false,
+    "forceCodeSigning": false,
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
+      "identity": null,
+      "hardenedRuntime": false,
+      "notarize": false,
+      "minimumSystemVersion": "13.0",
+      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }]
+    },
+    "dmg": {
+      "title": "PaperKnow 0.1.0",
+      "icon": "assets/icon.icns",
+      "contents": [{"x": 140, "y": 180}, {"x": 420, "y": 180, "type": "link", "path": "/Applications"}]
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "signExecutable": false,
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PaperKnow",
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": ["zh_CN", "en_US"]
+    },
+    "publish": null
+  }
+}

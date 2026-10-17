@@ -58,3 +58,40 @@
  .home-platform main .hero .writing-hero-title .hero-title-line,.home-platform main .hero .hero-description,.home-platform main .hero .hero-actions{animation:none!important;opacity:1;transform:none}
  .home-platform main .hero .writing-hero-title .hero-title-accent em{animation:none!important;background:none;color:var(--blue);-webkit-text-fill-color:currentColor}
 }
+
+/* Desktop release cards: link availability and version metadata come from the release API. */
+.home-platform main .desktop-eyebrow{display:block;margin-bottom:10px;color:#537ebc;font-size:11px;font-weight:600;letter-spacing:2px}
+.home-platform main .desktop-download-grid{align-items:stretch}
+.home-platform main .desktop-download-grid .access-card{position:relative;padding:27px;gap:19px;overflow:hidden;box-shadow:0 8px 30px #2c578607}
+.home-platform main .desktop-client-card{background:linear-gradient(150deg,#f6f9ff,#fff 55%);border-color:#e0e8f7}
+.home-platform main .desktop-client-card:before{content:'';position:absolute;width:160px;height:160px;right:-80px;top:-85px;border:23px solid #3578ef05;border-radius:50%;pointer-events:none}
+.home-platform main .desktop-client-card[data-desktop-card="windows"]{background:linear-gradient(150deg,#f4f9ff,#fff 55%)}
+.home-platform main .desktop-client-card .platform-icon{color:#4776ba;background:#eaf1fd;font-size:27px;flex-shrink:0}
+.home-platform main .desktop-client-card .access-head h3{font-weight:600;font-size:16px}
+.home-platform main .desktop-client-card .access-head .pill{font-size:10px;white-space:nowrap}
+.home-platform main .desktop-architecture{display:flex;gap:6px;margin:0;padding:0;border:0;min-height:34px;align-items:center}
+.home-platform main .desktop-architecture legend{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.home-platform main .desktop-architecture label{position:relative;flex:1;cursor:pointer}
+.home-platform main .desktop-architecture input{position:absolute;inset:0;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.home-platform main .desktop-architecture label span{display:block;text-align:center;padding:8px 9px;border:1px solid #e0e8f6;border-radius:7px;background:#fff;color:#657b99;font-size:11px;line-height:1.5;transition:border-color .18s,background .18s,color .18s}
+.home-platform main .desktop-architecture input:checked+span{border-color:#98b8ee;background:#edf4ff;color:#2563c8;font-weight:500}
+.home-platform main .desktop-architecture input:focus-visible+span{outline:2px solid #2467ef;outline-offset:3px}
+.home-platform main .desktop-windows-arch,.home-platform main .desktop-web-note{min-height:34px;display:flex;align-items:center;color:#6982a2;font-size:12px}
+.home-platform main .desktop-release-meta{display:flex;flex-direction:column;gap:6px;font-size:11px;line-height:1.7;color:#8495ae;min-height:68px}
+.home-platform main .desktop-release-meta strong{font-weight:500;font-size:13px;color:#526c8e}
+.home-platform main .desktop-release-meta strong span{color:#879ab4;font-size:11px;font-weight:400}
+.home-platform main .desktop-download-action{margin-top:auto}
+.home-platform main .desktop-download-action .button{display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:11px 17px;font-size:12px}
+.home-platform main .desktop-download-action .button:disabled{background:#edf2f8;color:#9baabd;box-shadow:none;cursor:not-allowed}
+.home-platform main .desktop-download-action svg{width:15px;height:15px}
+.home-platform main .desktop-checksum{margin-top:2px;line-height:1.8}
+.home-platform main .desktop-checksum summary{cursor:pointer;color:#6a86ac;font-size:10px}
+.home-platform main .desktop-checksum code{display:block;word-break:break-all;font-size:10px;padding-top:5px;color:#7c8fa8}
+.home-platform main .desktop-checksum>span{display:block;font-size:10px;word-break:break-all}
+.home-platform main .desktop-release-foot{display:flex;justify-content:center;align-items:center;gap:12px;margin:18px 0 0;flex-wrap:wrap}
+.home-platform main .desktop-release-foot p{font-size:11px;color:#899bb2;line-height:1.8;margin:0}
+.home-platform main .desktop-release-foot .text-button{font-size:11px;color:#4d7cbf;padding:4px 0;white-space:nowrap}
+.home-platform main .desktop-release-foot [hidden]{display:none}
+.home-platform main .desktop-no-script{font-size:12px;color:#7b8fae;text-align:center;margin-top:18px}
+@media(max-width:900px){.home-platform main .desktop-download-grid .access-card{padding:22px 18px}.home-platform main .desktop-client-card .access-head{gap:8px}.home-platform main .desktop-client-card .access-head h3{font-size:14px}.home-platform main .desktop-client-card .platform-icon{width:30px;height:30px;font-size:22px}.home-platform main .desktop-architecture label span{font-size:10px;padding:8px 5px}.home-platform main .desktop-download-action .button{font-size:11px;padding:10px 12px}}
+@media(max-width:680px){.home-platform main .desktop-download-grid .access-card{padding:23px;gap:16px}.home-platform main .desktop-release-meta{min-height:0}.home-platform main .desktop-architecture{max-width:290px}.home-platform main .desktop-download-action .button{font-size:12px}.home-platform main .desktop-client-card .access-head h3{font-size:16px}.home-platform main .desktop-release-foot{justify-content:flex-start;gap:7px}}
