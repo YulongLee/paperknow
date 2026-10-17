@@ -30,12 +30,33 @@ test('snapshot supports all study levels and arbitrary/interdisciplinary domains
  const legacy=normalizeThesisSnapshot({title:'已有论文',degree:'硕士',major:'文学',targetWords:500,knowledgeFiles:[{id:'m-1',name:'旧资料',text:'正文'}],writingReferences:[],outlineRows:[{id:'c-1',title:'第一章',level:1,words:500},{id:'s-1',title:'1.1 背景',level:2,words:500}]});assert.equal(legacy.materials[0].confirmed,false);assert.equal(legacy.outline[0].sections[0].id,'s-1');
 });
 
-test('generation requires confirmed body evidence and method, with bounded chapters and output plan',()=>{
+test('generation requires confirmed body evidence with bounded chapters and output plan',()=>{
  assert.throws(()=>thesisPlan(normalizeThesisSnapshot(snapshot({materials:[{...snapshot().materials[0],confirmed:false}]}))),/确认至少一份/);
- assert.throws(()=>thesisPlan(normalizeThesisSnapshot(snapshot({profile:{...snapshot().profile,method:''}}))),/研究方法/);
  assert.throws(()=>normalizeThesisSnapshot(snapshot({outline:Array.from({length:31},(_,i)=>({id:'c-'+i,title:'章'}))})),/30/);
  const huge=normalizeThesisSnapshot(snapshot({profile:{...snapshot().profile,targetWords:80000},outline:[{id:'c-1',title:'文献分析'}]}));const plan=thesisPlan(huge);assert.ok(plan.length>30);assert.ok(plan.every(unit=>unit.targetWords<=1800));assert.ok(plan.reduce((n,row)=>n+row.targetWords,0)>=80000);
  assert.throws(()=>normalizeThesisSnapshot(snapshot({profile:{...snapshot().profile,targetWords:80001}})),/80000/);
+});
+
+test('all study levels can plan with optional discipline and research fields omitted without inventing profile values',()=>{
+ for(const level of ['专科','本科','硕士','博士','研究工作者']){
+  const value=normalizeThesisSnapshot(snapshot({profile:{level,language:'中文',targetWords:500}})),plan=thesisPlan(value);
+  for(const key of ['discipline','major','direction','researchQuestion','method'])assert.equal(value.profile[key],'');
+  assert.equal(plan.length,2);const task=thesisAgentTask(value,plan[0],[]);assert.deepEqual(task.context.profile,value.profile);assert.equal(task.materials[0].id,'source-1');
+  assert.match(task.instructions,/学科专业、研究方向、核心研究问题和研究方法允许留空/);assert.match(task.instructions,/方法只可依据资料中明确记载的内容描述/);assert.match(task.instructions,/不能从题目或空字段假定已经采用某种方法/);assert.match(task.instructions,/不得编造文献、作者、DOI、访谈、实验、数据、结果或研究结论/);
+  assert.throws(()=>thesisPlan({...value,materials:[]}),/确认至少一份含正文/);
+  assert.throws(()=>thesisPlan({...value,outline:[]}),/确认至少一个论文章节/);
+ }
+ const legacy=normalizeThesisSnapshot(snapshot({profile:{...snapshot().profile,discipline:'人文学科',major:'比较文学',method:''}}));assert.equal(legacy.profile.discipline,'人文学科');assert.equal(legacy.profile.major,'比较文学');assert.equal(legacy.profile.method,'');assert.equal(thesisPlan(legacy).length,2);
+});
+
+test('blank optional profile fields pass cloud saving, generation and worker execution for all study levels with normal billing',async t=>{
+ const seen=[],f=fixture(t,{agentTaskRunner:async({task})=>{seen.push(task.context.profile);return output(task);}});f.pay();const worker=f.start();
+ for(const [index,level] of ['专科','本科','硕士','博士','研究工作者'].entries()){
+  const item=await f.create(snapshot({profile:{level,language:'中文',targetWords:500}}));for(const key of ['discipline','major','direction','researchQuestion','method'])assert.equal(item.profile[key],'');
+  const queued=await f.generate(item);assert.equal(queued.job.totalSections,2);assert.equal(f.billing.balance(f.user.id).held,10);
+  await worker.tick();const done=f.get(item.id);assert.equal(done.status,'completed');assert.equal(done.job.completedSections,2);assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.billing.balance(f.user.id).balance,200-(index+1)*10);
+ }
+ assert.equal(seen.length,10);assert.ok(seen.every(profile=>['discipline','major','direction','researchQuestion','method'].every(key=>profile[key]==='')));assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,5);
 });
 
 test('evidence extraction is deterministic, source-linked, bounded and explicitly excerpts',()=>{

@@ -92,3 +92,15 @@
 .hub-theme-dark #app .dashboard.writing-detail-commercial .writing-detail-stepper li.is-complete .writing-detail-step-number{background:#214a3b;border-color:#3b715a;color:#8bd6b1}
 .hub-theme-dark #app .dashboard.writing-detail-commercial .writing-detail-stepper li.is-complete :is(b,.writing-detail-step-state){color:#8bd6b1}
 .hub-theme-dark #app .dashboard.writing-detail-commercial .writing-detail-stepper li.is-complete small{color:#9bbcaf}
+.writing-detail-commercial .writing-research-options>summary{display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;list-style:none}
+.writing-detail-commercial .writing-research-options>summary::-webkit-details-marker{display:none}
+.writing-detail-commercial .writing-research-options>summary b{display:block;font-size:13px;font-weight:600;color:var(--pk-text,#283b5a)}
+.writing-detail-commercial .writing-research-options>summary em{display:inline-block;font-size:10px;font-style:normal;font-weight:400;margin-left:8px;padding:2px 7px;border-radius:5px;background:#f0f4fb;color:#7587a3}
+.writing-detail-commercial .writing-research-options>summary small{display:block;font-size:11px;line-height:1.8;margin-top:5px;color:var(--pk-muted,#8b9ab0)}
+.writing-detail-commercial .writing-research-toggle{font-size:11px;color:var(--pk-muted,#7b8da9);white-space:nowrap}
+.writing-detail-commercial .writing-research-toggle:before{content:'展开填写 ＋'}
+.writing-detail-commercial .writing-research-options[open] .writing-research-toggle:before{content:'收起 −'}
+.writing-detail-commercial .writing-research-options:not([open])>.writing-research-body{display:none}
+.writing-detail-commercial .writing-research-body{padding-top:16px;margin-top:16px;border-top:1px solid var(--pk-border,#e7edf5)}
+.writing-detail-commercial .writing-research-body>p,.writing-detail-commercial .writing-research-body>small{display:block;font-size:11px;line-height:1.9;color:var(--pk-muted,#8b9ab0);margin:0 0 14px}
+.writing-detail-commercial .writing-research-body>small{margin:12px 0 0}

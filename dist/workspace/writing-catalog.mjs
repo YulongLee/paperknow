@@ -53,7 +53,7 @@ export function decorateWritingDetail(root,id){
   if(profileGroup)for(const control of [project,language]){const label=control?.previousElementSibling;if(!label||label.parentElement!==profileGroup)continue;const field=document.createElement('div');field.className='writing-detail-field';profileGroup.insertBefore(field,label);field.append(label,control);}
   if(feature.key==='writing'&&profileGroup){const options=form.querySelector(':scope > .writing-options');if(options){options.classList.add('writing-detail-profile-options');profileGroup.append(options);}}
   const detail=form.querySelector('.thesis-profile-fields');
-  if(detail){detail.classList.add('writing-detail-research-fields');const heading=document.createElement('div');heading.className='writing-detail-group-title';heading.innerHTML='<b>研究问题与方法</b><small>写清楚你要研究什么，以及如何展开论证。</small>';detail.prepend(heading);}
+  if(detail){detail.classList.add('writing-detail-research-fields');if(!detail.querySelector('summary')){const heading=document.createElement('div');heading.className='writing-detail-group-title';heading.innerHTML='<b>研究问题与方法</b><small>写清楚你要研究什么，以及如何展开论证。</small>';detail.prepend(heading);}}
   const extra=[...form.children].filter(node=>node.matches('.practice-basic-fields,.topic-basic-fields,.questionnaire-basic-fields,.analysis-basic-fields,.quick-basic-fields,.article-basic-fields'));
   group(extra,{name:feature.title+'要求',description:'围绕真实任务补充要求，让后续结构更有针对性。',key:'requirements'});
   const input=root.querySelector('.creation-input');input?.classList.add('writing-detail-input');

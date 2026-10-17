@@ -49,8 +49,15 @@ test('cloud save does not generate; model generation requires a valid quote and 
 });
 test('missing research evidence blocks quoting and saving research materials creates an explicit new snapshot',async()=>{
  const empty=thesis({profile:{...snapshot().profile,method:''},snapshot:{...snapshot(),profile:{...snapshot().profile,method:''},materials:[]}}),f=fixture({item:empty});const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
- f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(c=>c.path==='/billing/quote').length,0);assert.match(f.$('[data-thesis-notice]').textContent,/研究方法/);
+ f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(c=>c.path==='/billing/quote').length,0);assert.match(f.$('[data-thesis-notice]').textContent,/含正文的真实研究材料/);
  input(f,'#thesis-research-method','文献分析');input(f,'#thesis-research-supplement','用户提供的原始证据');f.$('[data-thesis-save-research]').click();await settle();const write=f.calls.find(c=>c.path==='/theses/t1'&&c.data);assert.equal(write.data.snapshot.profile.method,'文献分析');assert.equal(write.data.snapshot.materials[0].confirmed,true);assert.equal(write.data.snapshot.materials[0].text,'用户提供的原始证据');f.close();
+});
+test('optional blank profile reaches the quote with confirmed evidence and still requires explicit consent before generation',async()=>{
+ const value=snapshot();value.profile={level:'本科',language:'中文',targetWords:8000,discipline:'',major:'',direction:'',researchQuestion:'',method:''};
+ const f=fixture({item:thesis({profile:value.profile,snapshot:value})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.match(f.$('.thesis-sources').textContent,/暂未补充（可选）/);f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(c=>c.path==='/billing/quote').length,1);assert.equal(f.$('[data-thesis-start]').disabled,true);assert.equal(f.calls.filter(c=>/generate/.test(c.path)).length,0);const consent=f.$('[data-thesis-consent]');consent.checked=true;consent.dispatchEvent(new window.Event('change'));f.$('[data-thesis-start]').click();await settle();assert.equal(f.calls.filter(c=>c.path==='/theses/t1/generate').length,1);}finally{f.close();}
+});
+test('blank local optional fields remain empty in an account snapshot instead of receiving a fabricated discipline',()=>{
+ const value=thesisSnapshotFromDraft({title:'研究题目',degree:'本科',outlineRows:[{id:'c1',level:1,title:'第一章 研究背景',words:8000}]});for(const key of ['discipline','major','direction','researchQuestion','method'])assert.equal(value.profile[key],'');
 });
 test('invalid and expired quotes never enable a generation submission',async()=>{
  assert.equal(validThesisQuote({...quote(),expiresAt:new Date(0).toISOString()}),false);assert.equal(validThesisQuote({...quote(),creditCost:0}),false);assert.equal(validThesisQuote({...quote(),source:'membership',creditCost:0}),true);
