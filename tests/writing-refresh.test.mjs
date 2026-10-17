@@ -7,9 +7,70 @@ function setup(){const dom=new JSDOM('<aside class="sidebar"></aside><div class=
 setup();
 const {mountWriting}=await import('../dist/workspace/writing.mjs');
 const {mountWritingSupport,supportFields}=await import('../dist/workspace/writing-support.mjs');
-const {clearEditor,editorHasWork}=await import('../dist/workspace/edit-guard.mjs');
+const {clearEditor,editorHasWork,flushEditorDraft,editorRouteGuard}=await import('../dist/workspace/edit-guard.mjs');
+const {beginDraftScope,endDraftScope,list:scopedList,keys:stateKeys}=await import('../dist/workspace/state.mjs');
 const $=s=>document.querySelector(s);
 function input(s,v){$(s).value=v;$(s).dispatchEvent(new window.Event('input',{bubbles:true}));}
+test('local writing automatically retains unfinished inputs and resumes one draft without validation, model requests or task spam',()=>{
+ const {dom,ctx}=setup();let validations=0,requests=0;ctx.api=()=>{requests++;throw Error('Autosave must not submit online work');};
+ try{
+  mountWriting(undefined,undefined,ctx);$('#writing-form').reportValidity=()=>{validations++;return false;};
+  input('#writing-major','  图书情报  ');input('#writing-method','未完成的方法说明');input('#outline-source-input','第一章 还没点击采用的提纲');input('#knowledge-ai-input','尚未点击记录的研究说明');
+  $('[data-writing-step="2"]').click();assert.equal(editorRouteGuard('home'),true);assert.equal(editorHasWork(),false);
+  let rows=JSON.parse(localStorage.getItem('paperknow-drafts'));assert.equal(rows.length,1);const id=rows[0].id;
+  assert.equal(rows[0].title,'未命名毕业论文');assert.equal(rows[0].writingEditorState.inputs['writing-title'],'');assert.equal(rows[0].writingEditorState.inputs['writing-major'],'  图书情报  ');assert.equal(rows[0].workflowStage,2);assert.equal(rows[0].writingResume,true);
+  const firstStored=localStorage.getItem('paperknow-drafts');assert.equal(flushEditorDraft(),true);assert.equal(localStorage.getItem('paperknow-drafts'),firstStored);assert.equal(localStorage.getItem('paperknow-local-tasks'),null);assert.equal(validations,0);assert.equal(requests,0);
+  clearEditor();mountWriting(undefined,undefined,ctx);assert.equal($('#writing-title').value,'');assert.equal($('#writing-major').value,'  图书情报  ');assert.equal($('#writing-method').value,'未完成的方法说明');assert.equal($('#outline-source-input').value,'第一章 还没点击采用的提纲');assert.equal($('#knowledge-ai-input').value,'尚未点击记录的研究说明');assert.equal($('.dashboard').dataset.writingStage,'2');
+  input('#writing-title','题');assert.equal(flushEditorDraft(),true);rows=JSON.parse(localStorage.getItem('paperknow-drafts'));assert.equal(rows.length,1);assert.equal(rows[0].id,id);assert.equal(rows[0].title,'题');assert.equal(localStorage.getItem('paperknow-local-tasks'),null);
+ }finally{clearEditor();dom.window.close();}
+});
+test('new writing draft saves the current draft, opens a separate blank draft and resumes its latest saved content',()=>{
+ const {dom,ctx}=setup();
+ try{
+  location.hash='tool/writing';mountWriting(undefined,undefined,ctx);input('#writing-title','现有论文');input('#writing-material','当前尚未手动保存的材料');$('#writing-new-draft').click();
+  assert.match(location.hash,/^#tool\/writing\?new=/);let rows=JSON.parse(localStorage.getItem('paperknow-drafts'));assert.equal(rows.length,1);const originalId=rows[0].id;assert.equal(rows[0].material,'当前尚未手动保存的材料');
+  clearEditor();mountWriting(undefined,undefined,ctx);assert.equal($('#writing-title').value,'');assert.equal($('#writing-material').value,'');input('#writing-title','第二篇论文');assert.equal(flushEditorDraft(),true);rows=JSON.parse(localStorage.getItem('paperknow-drafts'));assert.equal(rows.length,2);const second=rows.find(row=>row.id!==originalId);assert.equal(second.title,'第二篇论文');assert.equal(rows.find(row=>row.id===originalId).title,'现有论文');
+  clearEditor();mountWriting(undefined,undefined,ctx);assert.equal($('#writing-title').value,'第二篇论文');assert.equal(flushEditorDraft(),true);assert.equal(JSON.parse(localStorage.getItem('paperknow-drafts')).length,2);clearEditor();location.hash='tool/writing';mountWriting(undefined,undefined,ctx);assert.equal($('#writing-title').value,'第二篇论文');
+ }finally{clearEditor();dom.window.close();}
+});
+test('new writing draft stays on the current page when preserving it fails and is not exposed for account drafts',()=>{
+ const {dom,ctx}=setup(),storage=dom.window.Storage.prototype,nativeSet=storage.setItem;let notice='';ctx.notify=text=>{notice=text;};
+ try{
+  location.hash='tool/writing';mountWriting(undefined,undefined,ctx);input('#writing-title','留在当前页面');storage.setItem=function(key,value){if(key==='paperknow-drafts')throw new dom.window.DOMException('Storage full','QuotaExceededError');return nativeSet.call(this,key,value);};$('#writing-new-draft').click();assert.equal(location.hash,'#tool/writing');assert.equal($('#writing-title').value,'留在当前页面');assert.match(notice,/未能保存/);storage.setItem=nativeSet;clearEditor();
+  beginDraftScope({drafts:[{id:'account',tool:'writing',title:'账户论文'}]});mountWriting('account',undefined,ctx);assert.equal($('#writing-new-draft'),null);
+ }finally{storage.setItem=nativeSet;clearEditor();endDraftScope();dom.window.close();}
+});
+test('automatic practice draft tolerates incomplete dates while explicit save still validates them',()=>{
+ const {dom,ctx}=setup();
+ try{mountWriting(undefined,undefined,ctx,'practice');input('#writing-title','实践研究记录');input('#practice-start','2026-10-20');input('#practice-end','2026-10-01');$('#writing-save').click();assert.match($('#writing-error').textContent,/不能早于/);assert.equal(localStorage.getItem('paperknow-drafts'),null);assert.equal(flushEditorDraft(),true);const row=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(row.practiceStart,'2026-10-20');assert.equal(row.practiceEnd,'2026-10-01');clearEditor();mountWriting(undefined,undefined,ctx,'practice');assert.equal($('#practice-end').value,'2026-10-01');}finally{clearEditor();dom.window.close();}
+});
+test('automatic draft failure stays unsaved and retries the same draft after storage recovers',()=>{
+ const {dom,ctx}=setup(),storage=dom.window.Storage.prototype,nativeSet=storage.setItem;
+ try{mountWriting(undefined,undefined,ctx);input('#writing-title','草');storage.setItem=function(key,value){if(key==='paperknow-drafts')throw new dom.window.DOMException('Storage full','QuotaExceededError');return nativeSet.call(this,key,value);};assert.equal(flushEditorDraft(),false);assert.equal(editorHasWork(),true);assert.equal(localStorage.getItem('paperknow-drafts'),null);assert.match($('#writing-status').textContent,/保存失败/);assert.equal($('#writing-title').value,'草');storage.setItem=nativeSet;assert.equal(flushEditorDraft(),true);assert.equal(JSON.parse(localStorage.getItem('paperknow-drafts')).length,1);input('#writing-major','教育学');assert.equal(flushEditorDraft(),true);assert.equal(JSON.parse(localStorage.getItem('paperknow-drafts')).length,1);}finally{storage.setItem=nativeSet;clearEditor();dom.window.close();}
+});
+test('writing resume excludes archived and other tool/project drafts and never leaks an account draft scope to browser drafts',()=>{
+ const {dom,ctx}=setup();
+ try{
+  localStorage.setItem('paperknow-projects',JSON.stringify([{id:'p1',name:'项目一'},{id:'p2',name:'项目二'}]));localStorage.setItem('paperknow-drafts',JSON.stringify([{id:'old',tool:'writing',title:'项目一的论文',projectId:'p1',writingResume:true,updatedAt:'2026-10-01'},{id:'latest',tool:'writing',title:'项目二的论文',projectId:'p2',writingResume:true,updatedAt:'2026-10-10'},{id:'archived',tool:'writing',title:'已归档论文',writingResume:true,archived:true,updatedAt:'2026-10-20'},{id:'other',tool:'proposal',title:'开题报告',writingResume:true,updatedAt:'2026-10-21'}]));
+  mountWriting(undefined,'p1',ctx);assert.equal($('#writing-title').value,'项目一的论文');clearEditor();mountWriting(undefined,undefined,ctx);assert.equal($('#writing-title').value,'项目二的论文');const before=localStorage.getItem('paperknow-drafts');clearEditor();
+  beginDraftScope({drafts:[{id:'account-only',tool:'writing',title:'账户隔离论文',writingResume:true}]});mountWriting(undefined,undefined,ctx);assert.equal($('#writing-title').value,'账户隔离论文');input('#writing-title','账户内容修改');$('#writing-save').click();assert.match($('#writing-status').textContent,/保存到账户/);assert.equal(scopedList(stateKeys.drafts)[0].title,'账户内容修改');assert.equal(localStorage.getItem('paperknow-drafts'),before);clearEditor();endDraftScope();mountWriting(undefined,undefined,ctx);assert.equal($('#writing-title').value,'项目二的论文');
+ }finally{clearEditor();endDraftScope();dom.window.close();}
+});
+test('canonical project reassignment overrides legacy raw snapshots and survives autosave after reopening',()=>{
+ const {dom,ctx}=setup();
+ try{
+  localStorage.setItem('paperknow-projects',JSON.stringify([{id:'p1',name:'旧项目'},{id:'p2',name:'新项目'}]));localStorage.setItem('paperknow-drafts',JSON.stringify([{id:'moved-draft',tool:'writing',title:'重新关联项目的论文',projectId:'p2',writingResume:true,writingEditorState:{inputs:{'writing-project':'p1','writing-title':'重新关联项目的论文'}}}]));
+  mountWriting('moved-draft',undefined,ctx);assert.equal($('#writing-project').value,'p2');input('#writing-major','教育学');assert.equal(flushEditorDraft(),true);let saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.projectId,'p2');assert.equal(Object.hasOwn(saved.writingEditorState.inputs,'writing-project'),false);
+  clearEditor();mountWriting(undefined,undefined,ctx);assert.equal($('#writing-project').value,'p2');$('#writing-project').value='p1';$('#writing-project').dispatchEvent(new window.Event('change',{bubbles:true}));assert.equal(flushEditorDraft(),true);saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.projectId,'p1');clearEditor();mountWriting(undefined,undefined,ctx);assert.equal($('#writing-project').value,'p1');
+ }finally{clearEditor();dom.window.close();}
+});
+test('automatic draft preserves existing body, structured outline and pending AI recovery fields across a normal tool reopen',()=>{
+ const {dom,ctx}=setup();
+ try{
+  const row={id:'existing-ai',tool:'writing',title:'已保存的研究',writingResume:true,outlineText:'第一章 研究背景\n第二章 研究方法',outlineConfirmed:true,workflowStage:4,outlineRows:[{id:'c1',title:'第一章 研究背景',level:1,words:4000},{id:'c2',title:'第二章 研究方法',level:1,words:4000}],bodySections:[{id:'c1',title:'第一章 研究背景',text:'第一章的已有正文'},{id:'c2',title:'第二章 研究方法',text:'第二章的已有正文'}],outlineJobId:'pending-ai-job',outlineJobContext:'pending-topic-context',outlineCommandKey:'pending-key-123',outlineAIResult:{jobId:'previous-ai',model:'configured-model'},knowledgeFiles:[{id:'material',name:'真实材料',text:'已确认材料正文',state:'confirmed'}],writingReferences:[{id:'ref',title:'真实文献',confirmed:true}],legacyMetadata:'保留'};
+  localStorage.setItem('paperknow-drafts',JSON.stringify([row]));mountWriting(undefined,undefined,ctx);$('#body-chapter').value='c2';$('#body-chapter').dispatchEvent(new window.Event('change',{bubbles:true}));input('#body-editor','第二章未手动保存的正文修改');assert.equal(flushEditorDraft(),true);clearEditor();mountWriting(undefined,undefined,ctx);assert.equal($('#body-chapter').value,'c2');assert.equal($('#body-editor').value,'第二章未手动保存的正文修改');const saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.outlineRows[0].id,'c1');assert.equal(saved.outlineJobId,'pending-ai-job');assert.equal(saved.outlineCommandKey,'pending-key-123');assert.equal(saved.outlineAIResult.model,'configured-model');assert.equal(saved.writingReferences[0].confirmed,true);assert.equal(saved.knowledgeFiles[0].text,'已确认材料正文');assert.equal(saved.legacyMetadata,'保留');
+ }finally{clearEditor();dom.window.close();}
+});
 test('real writing integration blocks AI submission when its recovery key cannot be persisted and reports an unsaved adoption honestly',async()=>{
  const {dom,ctx}=setup(),calls=[],storage=dom.window.Storage.prototype,nativeSet=storage.setItem;
  const settle=async()=>{for(let i=0;i<12;i++)await new Promise(resolve=>setImmediate(resolve));};

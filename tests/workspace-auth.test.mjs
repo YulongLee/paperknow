@@ -34,7 +34,7 @@ async function fixture(fetcher){
   preferences:()=>({degree:'本科',...read(keys.preferences,{})}),profile:()=>({name:'研究者',...read(keys.profile,{})}),read,list:key=>read(key,[]),write:(key,value)=>storage.setItem(key,JSON.stringify(value)),projects:()=>read(keys.projects,[]),repository:{all:async()=>[]},formatDate:()=>'',mountNavigation:()=>({close(){}}),
   disposeFormat:()=>{},disposeResearch:()=>{},disposePresentation:()=>{},disposeRevision:()=>{},disposeAccountDraft:()=>{},accountDraftEditing:()=>false,accountDraftHasWork:()=>false,accountDraftConfirmLeave:async()=>true,accountDraftSessionChanged:()=>{},accountDraftRouteGuard:()=>true,
   disposePayment:()=>{paymentCalls.push({type:'dispose'});},renderPaymentOrders:async()=>{paymentCalls.push({type:'orders'});},renderPaymentCheckout:async options=>{paymentCalls.push({type:'checkout',productId:options.productId,orderId:options.orderId});},clearEditor:()=>{},clearHelpWork:()=>{},clearSettingsWork:()=>{},clearMoreWork:()=>{},trackDialogForm:()=>()=>{},retainWritingCatalog:()=>{},isCurrentRouteChange:()=>false,
-  editorRouteGuard:()=>true,helpRouteGuard:()=>true,settingsRouteGuard:()=>true,moreRouteGuard:()=>true,formatRouteGuard:()=>true,researchRouteGuard:()=>true,presentationRouteGuard:()=>true,revisionRouteGuard:()=>true,detectionRouteGuard:()=>true,
+  editorIsActive:()=>false,editorRouteGuard:()=>true,helpRouteGuard:()=>true,settingsRouteGuard:()=>true,moreRouteGuard:()=>true,formatRouteGuard:()=>true,researchRouteGuard:()=>true,presentationRouteGuard:()=>true,revisionRouteGuard:()=>true,detectionRouteGuard:()=>true,
  });
  vm.runInContext('(function(){'+documentExportSource+'\nObject.assign(globalThis,{documentExportButtons,bindDocumentExports});})()',dom.getInternalVMContext());
  vm.runInContext('(function(){'+thesisSource+'\nObject.assign(globalThis,{mountOnlineThesis,mountThesisLibrary,disposeOnlineThesis,thesisOnlineHasWork,thesisOnlineRouteGuard,thesisOnlineSessionChanged});})()',dom.getInternalVMContext());
@@ -201,6 +201,29 @@ test('workspace rerenders and same-feature scope changes stay in place while a n
   go('#tasks?scope=local');assert.equal(y,0);assert.equal(calls.length,1);
   y=180;calls.length=0;go('#tasks?scope=local&view=agent');
   assert.equal(y,180);assert.equal(calls.length,0);
+ }finally{f.close();}
+});
+
+test('cross-tab storage updates preserve an autosaved local editor and its current creation route',async()=>{
+ const f=await fixture(async()=>response(401));
+ const w=f.dom.window;let active=false,mounts=0;
+ await f.api.loadWorkspaceSession();
+ Object.assign(w,{
+  clearEditor:()=>{active=false;},editorIsActive:()=>active,editorHasWork:()=>false,
+  mountTool:()=>{mounts++;active=true;f.document.querySelector('.dashboard').innerHTML='<input id="storage-test-title" value="">';return true;}
+ });
+ try{
+  w.history.replaceState(null,'','#tool/writing');f.api.render();
+  const input=f.document.querySelector('#storage-test-title');
+  input.value='已经自动保存的论文主题';input.focus();input.setSelectionRange(5,5);
+  f.storage.setItem(keys.drafts,JSON.stringify([{id:'autosaved-draft',tool:'writing',title:input.value}]));
+  const saved=f.storage.getItem(keys.drafts);
+  w.dispatchEvent(new w.StorageEvent('storage',{key:keys.tasks,newValue:'[]',url:'https://paperknow.cn/workspace.html#tasks',storageArea:f.storage}));
+  assert.equal(mounts,1,'a saved editor still has a live editing context');
+  assert.equal(f.document.querySelector('#storage-test-title'),input);
+  assert.equal(input.value,'已经自动保存的论文主题');
+  assert.equal(f.document.activeElement,input);assert.equal(input.selectionStart,5);
+  assert.equal(w.location.hash,'#tool/writing');assert.equal(f.storage.getItem(keys.drafts),saved);
  }finally{f.close();}
 });
 
