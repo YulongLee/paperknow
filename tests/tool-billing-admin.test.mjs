@@ -1,0 +1,53 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import {readFile} from 'node:fs/promises';
+import {JSDOM} from 'jsdom';
+import {database} from '../backend/database.mjs';
+import {createAPI} from '../backend/api.mjs';
+import {createSession} from '../backend/auth.mjs';
+import {createAdminPage} from '../dist/admin.mjs';
+import {toolBillingServiceTypes,toolBillingPayload} from '../dist/admin-tool-billing.mjs';
+const html=await readFile(new URL('../dist/admin.html',import.meta.url),'utf8');
+const policy=(overrides={},version=1)=>({version,services:toolBillingServiceTypes.map(s=>({...s,mode:'inherit',creditCost:null,effectiveMode:'paid',effectiveCreditCost:10,available:true,...overrides[s.key]}))});
+const baseBilling={version:2,services:['polish','review','agent'].map(key=>({key,title:key,mode:'paid',creditCost:10,available:true}))};
+const until=async check=>{for(let i=0;i<100;i++){if(check())return;await new Promise(r=>setTimeout(r,3));}assert.ok(check());};
+async function apiFixture(t){
+ const db=database(':memory:'),config={aiURL:'https://fixture.invalid/v1/chat',aiKey:'fixture-key',aiModel:'fixture-model',agentEnabled:true,getAgentSettings:()=>({enabled:true,engine:'claude-agent-sdk',baseURL:'https://fixture.example.com/anthropic',model:'fixture-model',apiKey:'fixture-only-key',version:'fixture-version'}),authCodeSecret:'fixture-auth-no-network'};const api=createAPI(db,{cancel(){}},config),server=http.createServer((req,res)=>void api(req,res));await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port,users={};
+ for(const [id,role]of [['admin','admin'],['user','user']]){db.prepare('INSERT INTO users(id,name,role,created_at) VALUES(?,?,?,?)').run(id,'合成账户',role,new Date().toISOString());users[id]='pk_session='+createSession(db,id);}
+ t.after(async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));db.close();});const request=async(path,{data,owner='admin',source=origin}={})=>{const response=await fetch(origin+'/api'+path,{method:data===undefined?'GET':'POST',headers:{...(owner?{Cookie:users[owner]}:{}),...(data===undefined?{}:{Origin:source,'Content-Type':'application/json'})},body:data===undefined?undefined:JSON.stringify(data)});return{status:response.status,body:await response.json()};};return{db,request};
+}
+async function uiFixture(t,{role='admin',rules=policy(),handle}={}){
+ const dom=new JSDOM(html,{url:'https://paperknow.cn/admin.html#payments',pretendToBeVisual:true}),w=dom.window,calls=[];w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};w.fetch=async(url,init={})=>{const payload=init.body?JSON.parse(init.body):undefined;calls.push({url,payload,method:init.method});let result=await handle?.(url,payload,init);if(!result){if(url==='/api/auth/me')result={body:{user:{id:'admin',name:'合成管理员',role}}};else if(url==='/api/admin/payments')result={body:{billing:structuredClone(baseBilling),toolBilling:structuredClone(rules),channels:[],catalog:[{id:'bundle-rewrite',title:'科研套餐',description:'专属功能次数',status:'preview',priceCents:9900,durationDays:30,entitlementType:'bundle',bundleItems:[{key:'presentation-ai',title:'AI PPT 次数',quantity:2}]}],encryptionReady:false}};else result={body:{}};}return{status:result.status||200,ok:(result.status||200)<400,json:async()=>result.body};};const app=createAdminPage(w.document,{navigate(){},pollIntervalMs:60000});t.after(()=>{app.destroy();w.close();});await app.ready;const $=s=>w.document.querySelector(s),change=(s,v)=>{$(s).value=v;$(s).dispatchEvent(new w.Event('change',{bubbles:true}));},submit=()=>$('#tool-billing-form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));return{w,$,app,calls,change,submit};
+}
+
+test('tool billing administration is authenticated, role-bound, same-origin, versioned and audited',async t=>{
+ const f=await apiFixture(t),path='/admin/tool-billing',input={version:1,services:toolBillingServiceTypes.map(({key})=>({key,mode:'inherit',creditCost:null}))};assert.equal((await f.request(path,{owner:null})).status,401);assert.equal((await f.request(path,{owner:'user'})).status,403);assert.equal((await f.request(path,{owner:'user',data:input})).status,403);assert.equal((await f.request(path,{data:input,source:'https://foreign.example'})).status,403);
+ const before=await f.request(path);assert.equal(before.status,200);assert.equal(before.body.toolBilling.services.length,13);const saved=await f.request(path,{data:{...input,services:input.services.map(s=>s.key==='presentation-ai'?{...s,mode:'paid',creditCost:35}:s)}});assert.equal(saved.status,200);assert.equal(saved.body.toolBilling.version,2);assert.equal(saved.body.toolBilling.services.find(s=>s.key==='presentation-ai').effectiveCreditCost,35);assert.equal((await f.request(path,{data:input})).status,409);assert.equal(f.db.prepare("SELECT count(*) n FROM admin_audit WHERE action='billing.tools.update'").get().n,1);
+ const response=await f.request('/admin/payments');assert.equal(response.body.toolBilling.version,2);assert.equal(response.body.billing.services.length,3);assert.doesNotMatch(JSON.stringify(response.body.toolBilling),/fixture-key|fixture-model/);
+});
+
+test('administrator can set a dedicated SKU and publish a matching bundle while free unpriced SKUs remain blocked',async t=>{
+ const f=await apiFixture(t),input={version:1,services:toolBillingServiceTypes.map(({key})=>({key,mode:key==='presentation-ai'?'paid':'inherit',creditCost:key==='presentation-ai'?25:null}))};assert.equal((await f.request('/admin/tool-billing',{data:input})).status,200);const common={title:'演示专属套餐',description:'两次演示创作，30天有效。',status:'active',priceCents:2000,durationDays:30,entitlementType:'bundle'};
+ const saved=await f.request('/admin/payments/products/bundle-rewrite',{data:{...common,bundleItems:[{key:'presentation-ai',title:'AI PPT',quantity:2}]}});assert.equal(saved.status,200);assert.equal(saved.body.item.purchasable,true);const denied=await f.request('/admin/payments/products/bundle-rewrite',{data:{...common,bundleItems:[{key:'literature-read',title:'文献解读',quantity:2}]}});assert.equal(denied.status,409);assert.equal(f.db.prepare("SELECT count(*) n FROM admin_audit WHERE action='payment.product.update'").get().n,1);
+});
+
+test('the tool pricing panel is admin-only and reads all thirteen defaults without saving on load',async t=>{
+ const denied=await uiFixture(t,{role:'user'});assert.equal(denied.$('#tool-billing-form'),null);assert.deepEqual(denied.calls.map(c=>c.url),['/api/auth/me']);const ui=await uiFixture(t);assert.equal(ui.w.document.querySelectorAll('[data-tool-billing-service]').length,13);assert.equal(ui.w.document.querySelectorAll('[data-billing-service]').length,3);assert.equal(ui.calls.filter(c=>c.method==='POST').length,0);assert.equal(ui.$('#tool-billing-presentation-ai-mode').value,'inherit');assert.equal(ui.$('#tool-billing-presentation-ai-cost').disabled,true);assert.match(ui.$('[data-tool-effective="presentation-ai"]').textContent,/10 积分/);assert.equal(ui.$('[name="bundleKey"]').value,'presentation-ai');assert.ok([...ui.$('[name="bundleKey"]').options].some(o=>o.value==='research-chart'));
+});
+
+test('independent tool pricing submits exact integer amounts and preserves unsaved base pricing and merchant fields',async t=>{
+ let sent;const ui=await uiFixture(t,{handle:(url,payload)=>url==='/api/admin/tool-billing'?(sent=payload,{body:{toolBilling:policy({'presentation-ai':{mode:'paid',creditCost:35,effectiveCreditCost:35}},2),catalog:[]}}):undefined});ui.change('#billing-agent-cost','88');ui.change('#tool-billing-presentation-ai-mode','paid');assert.equal(ui.$('#tool-billing-presentation-ai-cost').disabled,false);ui.change('#tool-billing-presentation-ai-cost','35');ui.submit();await until(()=>sent&&ui.$('#tool-billing-form [type="submit"]').disabled===false);assert.equal(sent.version,1);assert.equal(sent.services.length,13);assert.deepEqual(sent.services.find(s=>s.key==='presentation-ai'),{key:'presentation-ai',mode:'paid',creditCost:35});assert.equal(ui.$('#billing-agent-cost').value,'88');assert.equal(ui.$('#billing-form .payment-dirty').hidden,false);assert.equal(ui.$('#tool-billing-form .payment-dirty').hidden,true);
+});
+
+test('invalid prices and conflicts retain edits without silently saving or leaving the page',async t=>{
+ const ui=await uiFixture(t,{handle:url=>url==='/api/admin/tool-billing'?{status:409,body:{error:'计价已被其他管理员修改'}}:undefined});ui.change('#tool-billing-literature-read-mode','paid');for(const value of ['0','1.5','-1','100001','x']){ui.change('#tool-billing-literature-read-cost',value);ui.submit();assert.match(ui.$('#tool-billing-form .form-error').textContent,/1–100000/);}assert.equal(ui.calls.filter(c=>c.url==='/api/admin/tool-billing').length,0);ui.change('#tool-billing-literature-read-cost','12');ui.submit();await until(()=>ui.$('#tool-billing-form .form-error').textContent.includes('其他管理员'));assert.equal(ui.$('#tool-billing-literature-read-cost').value,'12');assert.equal(ui.$('#tool-billing-form [type="submit"]').disabled,false);assert.equal(ui.$('#tool-billing-form .payment-dirty').hidden,false);ui.$('[data-view="settings"]').click();assert.equal(ui.$('#admin-dialog').open,true);assert.ok(ui.$('#tool-billing-form'));
+});
+
+test('missing tool pricing data prevents mutation and never invents a connected paid service',async t=>{
+ const ui=await uiFixture(t,{rules:null});assert.equal(ui.$('#tool-billing-form [type="submit"]').disabled,true);assert.match(ui.$('#tool-billing-form').textContent,/暂未取得/);ui.submit();assert.equal(ui.calls.filter(c=>c.url==='/api/admin/tool-billing').length,0);assert.throws(()=>toolBillingPayload(ui.$('#tool-billing-form'),undefined),/未取得/);
+});
+
+test('an audit persistence failure rolls back the entire administrator tool pricing change',async t=>{
+ const f=await apiFixture(t);f.db.exec("CREATE TRIGGER reject_tool_billing_audit BEFORE INSERT ON admin_audit WHEN NEW.action='billing.tools.update' BEGIN SELECT RAISE(ABORT,'audit fixture failure'); END;");const input={version:1,services:toolBillingServiceTypes.map(({key})=>({key,mode:'paid',creditCost:25}))};const failed=await f.request('/admin/tool-billing',{data:input});assert.equal(failed.status,500);const current=(await f.request('/admin/tool-billing')).body.toolBilling;assert.equal(current.version,1);assert.ok(current.services.every(s=>s.mode==='inherit'));assert.equal(f.db.prepare("SELECT count(*) n FROM admin_audit WHERE action='billing.tools.update'").get().n,0);
+});

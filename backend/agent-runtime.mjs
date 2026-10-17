@@ -59,7 +59,7 @@ function normalizedTask(task){
   return {skill:task.skill,instructions:task.instructions,context:JSON.parse(context),materials};
 }
 const token=value=>Number.isSafeInteger(value)&&value>=0?value:0;
-export async function runAgentTask({settings,task,signal,onStage,maxTotalTokens,validateWritingOutput,dependencies={}}){
+export async function runAgentTask({settings,task,signal,onStage,maxTotalTokens,validateWritingOutput,validateToolOutput,dependencies={}}){
   const config=structuredClone(settings);if(maxTotalTokens!==undefined)config.maxTotalTokens=maxTotalTokens;if(!agentSettingsReady(config))fail(503,'公共 Agent 尚未启用或配置不完整');
   if(!Number.isSafeInteger(config.maxTurns)||config.maxTurns<1||config.maxTurns>12||!Number.isSafeInteger(config.timeoutMs)||config.timeoutMs<5000||config.timeoutMs>300000||!Number.isSafeInteger(config.maxOutputTokens)||config.maxOutputTokens<32||config.maxOutputTokens>16384||!Number.isFinite(config.maxCostUsd)||config.maxCostUsd<0.01||config.maxCostUsd>5)fail(400,'Agent 执行预算无效');
   if(config.maxTotalTokens!==undefined&&(!Number.isSafeInteger(config.maxTotalTokens)||config.maxTotalTokens<1||config.maxTotalTokens>2000000))fail(400,'Agent 本次剩余 Token 预算无效');
@@ -70,13 +70,15 @@ export async function runAgentTask({settings,task,signal,onStage,maxTotalTokens,
   // Avoid spending bounded execution turns loading either a second time.
   // Only a server-owned writing validator can enable result submission. A task
   // context flag, a thesis skill or an SDK response cannot grant this tool.
-  const writingSubmission=input.skill==='writing-task'&&typeof validateWritingOutput==='function';
+  const writingSubmission=input.skill==='writing-task'&&typeof validateWritingOutput==='function'||input.skill==='tool-task'&&typeof validateToolOutput==='function';
+  const submissionValidator=input.skill==='tool-task'?validateToolOutput:validateWritingOutput;
+  const toolCallLimit=input.skill==='tool-task'&&typeof validateToolOutput==='function'?40:20;
   const indexedChapter=writingSubmission||['thesis-section','writing-task'].includes(input.skill)&&lengthBudget;
   const allowed=[...(indexedChapter?['read_material']:toolNames),...(writingSubmission?['submit_writing_output']:lengthBudget?['check_text_length']:[])].map(name=>'mcp__paperknow__'+name);
   const directory=await mkdtemp(join(tmpdir(),'paperknow-agent-'));const controller=new AbortController();let timedOut=false,stream,relay,observedUsage=null,observedCost=null,trace=[],calls=0,bytes=0,acceptedWritingText=null;
   const cancelled=()=>controller.abort();signal?.addEventListener('abort',cancelled,{once:true});const timer=setTimeout(()=>{timedOut=true;controller.abort();},config.timeoutMs);
   const result=value=>({content:[{type:'text',text:JSON.stringify(value)}]});
-  const wrapped=(name,handler)=>async args=>{if(controller.signal.aborted)throw new Error('Aborted');if(++calls>20)fail(429,'Agent 工具调用次数已达上限');let output;try{output=await handler(args);}catch(error){trace.push({tool:name,status:'failed'});throw error;}trace.push({tool:name,status:'completed',...(name==='read_material'?{materialId:args.id}:{}),...(name==='check_text_length'?{length:{...output}}:{})});onStage?.('agent_tools');return result(output);};
+  const wrapped=(name,handler)=>async args=>{if(controller.signal.aborted)throw new Error('Aborted');if(++calls>toolCallLimit)fail(429,'Agent 工具调用次数已达上限');let output;try{output=await handler(args);}catch(error){trace.push({tool:name,status:'failed'});throw error;}trace.push({tool:name,status:'completed',...(name==='read_material'?{materialId:args.id,...(input.skill==='tool-task'?{offset:args.offset||0,limit:args.limit||6000}:{})}:{}),...(name==='check_text_length'?{length:{...output}}:{})});onStage?.('agent_tools');return result(output);};
   const privateTrace=()=>trace.slice(-20).map(({tool,status,length})=>({tool,status,...(length?{length:{count:length.count,target:length.target,min:length.min,max:length.max,withinRange:length.withinRange,delta:length.delta,nextAction:length.nextAction}}:{})}));
   try{
     if(signal?.aborted)controller.abort();await mkdir(join(directory,'home'),{mode:0o700});relay=await createAgentRelay(config,{signal:controller.signal,resolver:dependencies.lookup||lookup,requestImpl:dependencies.httpsRequest||httpsRequest,...(writingSubmission?{writingToolPolicy:()=>acceptedWritingText===null?'required':'accepted'}:{})});
@@ -88,7 +90,7 @@ export async function runAgentTask({settings,task,signal,onStage,maxTotalTokens,
         if(acceptedWritingText!==null)return{accepted:true,frozen:true,nextAction:'finish'};
         let text;try{text=JSON.stringify(candidate);}catch{return{accepted:false,code:'invalid_writing_output',nextAction:'revise',rule:'必须提交完整可序列化的 JSON 对象。'};}
         if(typeof text!=='string'||text.length>100000)return{accepted:false,code:'invalid_writing_output',nextAction:'revise',rule:'候选超过本次完整结果的大小限制。'};
-        const feedback=await validateWritingOutput({text,trace:structuredClone(trace)});
+        const feedback=await submissionValidator({text,trace:structuredClone(trace)});
         if(controller.signal.aborted)throw new Error('Aborted');
         // MCP calls can run concurrently. The first accepted complete candidate
         // wins even if another validation was already awaiting its callback.
@@ -108,7 +110,7 @@ export async function runAgentTask({settings,task,signal,onStage,maxTotalTokens,
     const submitted=acceptedWritingText!==null,acceptedTurnLimit=submitted&&completed?.subtype==='error_max_turns';
     if(!completed||(!acceptedTurnLimit&&(completed.subtype!=='success'||completed.is_error))){if(completed?.subtype==='error_max_turns')fail(502,'Agent 已达到回合上限，结果未完成');if(completed?.subtype==='error_max_budget_usd')fail(502,'Agent 已达到预算上限，结果未完成');fail(502,'Agent 执行失败，请检查模型的 Anthropic 与工具调用兼容性');}
     if(completed.permission_denials?.length)fail(502,'Agent 触发了未授权工具，结果未完成');if(['max_tokens','length'].includes(completed.stop_reason))fail(502,'Agent 输出被截断，请调整章节范围或输出预算');
-    if(signal?.aborted||timedOut||controller.signal.aborted||relay?.budgetExceeded||submitted&&calls>20)fail(429,'Agent 已超出执行预算，结果未提交');
+    if(signal?.aborted||timedOut||controller.signal.aborted||relay?.budgetExceeded||submitted&&calls>toolCallLimit)fail(429,'Agent 已超出执行预算，结果未提交');
     // A provider may ignore required tool choice. A plain SDK success cannot
     // bypass the complete-candidate validator or its accounting requirements.
     if(writingSubmission&&!submitted)fail(502,'本次写作未通过完整结果提交校验，原草稿保留');

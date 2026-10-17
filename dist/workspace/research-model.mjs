@@ -6,7 +6,7 @@
  */
 export const researchModes=Object.freeze([
   {id:'basic',label:'基础绘图',description:'柱状图、折线图、散点图等常用图表',status:'available'},
-  {id:'professional',label:'专业图表',description:'按学科选择科研图表模板',status:'catalog'},
+  {id:'professional',label:'专业图表',description:'从元素与关系生成可编辑结构示意图',status:'available'},
   {id:'formula',label:'公式编辑',description:'编辑、预览并导出 LaTeX 公式',status:'available'}
 ]);
 export const chartTypes=[['bar','柱状图'],['line','折线图'],['scatter','散点图'],['grouped','分组柱状图']];

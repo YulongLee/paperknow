@@ -1,0 +1,112 @@
+{
+  "format": "paperknow-third-party-licenses",
+  "version": 1,
+  "scope": "MathJax and its installed runtime dependency tree",
+  "packages": [
+    {
+      "name": "@xmldom/xmldom",
+      "version": "0.9.10",
+      "license": "MIT",
+      "source": "https://github.com/xmldom/xmldom",
+      "files": [
+        {
+          "file": "xmldom-xmldom-0.9.10-LICENSE.txt",
+          "source": "node_modules/speech-rule-engine/node_modules/@xmldom/xmldom/LICENSE",
+          "sha256": "4da724fc305d81606b245b324d4d2586916b9d248b23d82183df753ace0fdf71"
+        }
+      ]
+    },
+    {
+      "name": "commander",
+      "version": "13.1.0",
+      "license": "MIT",
+      "source": "https://github.com/tj/commander.js",
+      "files": [
+        {
+          "file": "commander-13.1.0-LICENSE.txt",
+          "source": "node_modules/commander/LICENSE",
+          "sha256": "04512a63dce4d2d506ad612dc0bd7681ccf6e3655f7b6eaef7dfac8323d1ec0b"
+        }
+      ]
+    },
+    {
+      "name": "esm",
+      "version": "3.2.25",
+      "license": "MIT",
+      "source": "https://github.com/standard-things/esm",
+      "files": [
+        {
+          "file": "esm-3.2.25-LICENSE.txt",
+          "source": "node_modules/esm/LICENSE",
+          "sha256": "fe315c4bce49df19bf06297ca372b2b486f4351d09a487918711c8ed624dcbe8"
+        }
+      ]
+    },
+    {
+      "name": "mathjax-full",
+      "version": "3.2.2",
+      "license": "Apache-2.0",
+      "source": "https://github.com/mathjax/Mathjax-src",
+      "files": [
+        {
+          "file": "mathjax-full-3.2.2-LICENSE.txt",
+          "source": "node_modules/mathjax-full/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "name": "mhchemparser",
+      "version": "4.2.1",
+      "license": "Apache-2.0",
+      "source": "https://github.com/mhchem/mhchemParser",
+      "files": [
+        {
+          "file": "mhchemparser-4.2.1-LICENSE.txt",
+          "source": "node_modules/mhchemparser/LICENSE.txt",
+          "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+        }
+      ]
+    },
+    {
+      "name": "mj-context-menu",
+      "version": "0.6.1",
+      "license": "Apache-2.0",
+      "source": "https://github.com/zorkow/context-menu",
+      "note": "The upstream npm package declares Apache-2.0 in package.json but omits a standalone license file. The unchanged standard Apache-2.0 text is supplied from mathjax-full/LICENSE.",
+      "files": [
+        {
+          "file": "mj-context-menu-0.6.1-LICENSE.txt",
+          "source": "node_modules/mathjax-full/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "name": "speech-rule-engine",
+      "version": "4.1.4",
+      "license": "Apache-2.0",
+      "source": "https://github.com/zorkow/speech-rule-engine",
+      "files": [
+        {
+          "file": "speech-rule-engine-4.1.4-LICENSE.txt",
+          "source": "node_modules/speech-rule-engine/LICENSE",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "name": "wicked-good-xpath",
+      "version": "1.3.0",
+      "license": "MIT",
+      "source": "https://github.com/google/wicked-good-xpath",
+      "files": [
+        {
+          "file": "wicked-good-xpath-1.3.0-LICENSE.txt",
+          "source": "node_modules/wicked-good-xpath/LICENSE",
+          "sha256": "1691999de7a5de50698e735c25506ea8ab6b71d008d27ef9e1400a5075000e78"
+        }
+      ]
+    }
+  ]
+}

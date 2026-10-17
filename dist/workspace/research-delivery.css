@@ -1,0 +1,17 @@
+/* Research delivery keeps data editing separate from generated suggestions. */
+.dashboard .research-diagram-studio{grid-column:1/-1;padding:26px;border-radius:18px}
+.research-scope-note{display:flex;gap:12px;align-items:flex-start;padding:14px 17px;border:1px solid #dfe9f8;border-radius:12px;background:#f6f9ff;color:#647c9d;margin:20px 0;font-size:12px;line-height:1.8}
+.research-scope-note svg{flex:none;margin-top:4px;color:#5e83cd}.research-scope-note p{margin:0}
+.research-diagram-grid{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:24px;align-items:start}
+.research-diagram-grid>div{min-width:0}.research-diagram-grid .research-pro-description{margin-top:20px;display:block}
+.research-diagram-grid .research-pro-description textarea{min-height:160px;width:100%;box-sizing:border-box}
+.research-pro-domain-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}.research-pro-domain-chips button{padding:5px 9px;border:1px solid #e2e9f6;border-radius:7px;background:#fff;color:#6a7e9c;font-size:11px}.research-pro-domain-chips button.active{color:#346aff;border-color:#98b3ff;background:#eff4ff}
+.research-diagram-canvas{border:1px solid #e2e9f6;border-radius:13px;background:#f8faff;min-height:320px;overflow:auto;display:grid;align-items:center;padding:12px}
+.research-diagram-canvas svg{width:100%;height:auto;min-width:380px}.research-diagram-canvas .research-empty{min-width:0;padding:45px 16px;text-align:center}.research-diagram-canvas .research-empty h3{font-size:15px;margin:15px 0 9px}.research-diagram-canvas .research-empty p{font-size:12px;line-height:1.8}
+.research-diagram-editor,.research-version-history{padding:15px 16px;border:1px solid #e0e8f5;border-radius:11px;margin-top:18px;background:#fafcff;font-size:12px}.research-diagram-editor summary,.research-version-history summary{cursor:pointer;color:#4a6794;font-weight:600;line-height:1.7}.research-diagram-editor textarea{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;width:100%;box-sizing:border-box}.research-version-history>div{display:flex;gap:12px;align-items:center;justify-content:space-between;border-top:1px solid #e4ebf6;padding:10px 0;margin-top:9px}.research-version-history .btn{padding:6px 10px;min-height:29px;font-size:11px}
+#research-ai-panel:empty{display:none}#research-ai-panel{margin:18px 0}
+.research-formula-preview #formula-preview{min-height:155px;display:grid;place-items:center;overflow:auto;padding:22px;box-sizing:border-box}.research-formula-preview #formula-preview svg{max-width:100%;width:auto;height:auto;max-height:300px;min-width:100px}
+.research-formula-preview .research-error{margin:10px 0 0;font-size:12px;color:#b54545}.research-diagram-grid textarea,.research-field textarea{resize:vertical}
+@media(max-width:1100px){.research-diagram-grid{grid-template-columns:minmax(0,1fr)}.research-diagram-canvas{min-height:260px}}@media(max-width:650px){.dashboard .research-diagram-studio{padding:16px}.research-diagram-canvas{padding:4px}.research-diagram-canvas svg{min-width:350px}.research-scope-note{padding:12px}.research-pro-domain-chips button{font-size:10px}}
+
+.det-source-row{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}.det-source-actions{display:flex;gap:8px}.det-source-actions .btn{font-size:11px;min-height:30px;padding:6px 9px}

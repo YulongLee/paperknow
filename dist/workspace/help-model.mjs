@@ -1,21 +1,248 @@
 export const feedbackKey='paperknow-help-feedback';
 export const feedbackTypes=['功能问题','使用咨询','体验建议','其他'];
-export const helpCategories=[{id:'start',title:'新手入门',description:'创建项目与管理成果',icon:'book',color:'blue'},{id:'writing',title:'写作与修改',description:'大纲编辑与内容保存',icon:'pen',color:'purple'},{id:'literature',title:'AI 研读',description:'文献导入与笔记整理',icon:'file',color:'mint'},{id:'detection',title:'免费查重',description:'上传要求与报告解读',icon:'search',color:'orange'},{id:'files',title:'文件与导出',description:'Word、PDF 与 PPT',icon:'upload',color:'blue'},{id:'data',title:'账户与数据',description:'偏好设置与备份恢复',icon:'settings',color:'purple'}];
+export const helpCategories=[{"id":"start","title":"新手入门","description":"创建项目与管理成果","icon":"book","color":"blue"},{"id":"writing","title":"写作与修改","description":"大纲编辑与内容保存","icon":"pen","color":"purple"},{"id":"literature","title":"AI 研读","description":"原文解读、问答与翻译","icon":"file","color":"mint"},{"id":"detection","title":"免费查重","description":"上传要求与报告解读","icon":"search","color":"orange"},{"id":"files","title":"文件与导出","description":"Word、PDF 与 PPT","icon":"upload","color":"blue"},{"id":"data","title":"账户与数据","description":"偏好设置与备份恢复","icon":"settings","color":"purple"}];
 export const relatedFeatures=['未选择','工作台与项目','我的成果','任务中心','AI 写作','AI 研读','降重复率','降 AI 率','免费查重','PPT 创作','科研工具','格式排版','会员与用量','设置与备份','其他'];
 export const articles=[
-{id:'start-project',category:'start',title:'如何创建项目并管理研究成果？',tags:'入门 新建项目 关联 草稿',summary:'按研究课题组织草稿、文献与报告，区分本地项目和账户内容。',steps:['进入「我的项目」，先确认正在查看「本地内容」还是「账户内容」，再填写项目名称、学段与专业。','本地写作等工具可选择所属项目；已有本地成果可以从「我的成果」管理项目关联。账户项目和上传原件在账户内容中管理。','保存后在对应空间重新打开项目或成果，确认实际记录已经写入。'],note:'本地项目保存在当前浏览器，账户项目由服务端保存；登录不会自动迁移本地项目，也不代表团队共享。',action:'#projects',actionLabel:'前往我的项目'},
-{id:'start-task',category:'start',title:'如何开始一项研究任务？',tags:'入门 工具 开始',summary:'从目标选择工具，保存后再到成果页继续。',steps:['选择 AI 写作、AI 研读、免费查重或其他相关工具。','按页面提示填写真实研究信息，核对页面标注的当前可用范围。','编辑并保存内容，再到「我的成果」重新打开；任务中心查看已记录的实际操作。'],note:'本地模板和操作记录不代表在线 AI 服务已调用。',action:'#home',actionLabel:'前往工作台'},
-{id:'writing-outline',category:'writing',title:'如何编辑论文大纲与保存正文？',tags:'大纲 写作 保存 草稿 导出',summary:'大纲是组织研究的起点，正文需按真实材料编辑。',steps:['进入 AI 写作，填写题目、学段、专业与研究要求，生成本地大纲模板。','核对和调整章节，再填写正文。没有写入的研究结果不会被自动补成真实结论。','点击保存，再从成果页继续编辑；导出前核对实际正文和引用。'],note:'本地大纲模板不代表已调用在线 AI；在线修改以账户任务的实际配置为准。引用和研究数据需自行核实。',action:'#category/writing',actionLabel:'前往 AI 写作'},
-{id:'revision-boundary',category:'writing',title:'降重复率与降 AI 率有哪些限制？',tags:'降重 降AI率 AIGC 导师 修改',summary:'整理修改意见，保留事实、证据与个人表达。',steps:['选择导师批注修改、降重复率与润色或降 AI 率对应任务。','记录导师意见或需要改进的段落，按问题核对研究事实与引用来源。','人工编辑并保存修改内容，提交前检查数据、术语及引用是否准确。'],note:'本地手动修改不会自动调用 AI 服务；账户任务的在线修改以实际服务配置为准。不保证检测分数下降或学校审核通过。',action:'#category/reduce',actionLabel:'前往降重复率'},
-{id:'literature-reading',category:'literature',title:'如何整理文献、研读笔记与译文？',tags:'文献 阅读 翻译 笔记 来源 DOI',summary:'保存真实来源与阅读记录，方便后续写作引用。',steps:['进入 AI 研读，按页面要求录入真实文献信息或导入可解析文本。','在研读工作区核对原文，整理问题、方法、发现和局限。','手动保存笔记或原文与译文，关联项目后继续查看。'],note:'在线检索、AI 阅读与自动翻译尚未接入；元数据不等于已获得合法全文。',action:'#category/literature',actionLabel:'前往 AI 研读'},
-{id:'detection-meaning',category:'detection',title:'论文查重结果代表什么？',tags:'重复率 相似度 查重 知网 万方 维普 报告',summary:'当前结果仅来自用户提供的本地对照材料。',steps:['上传或输入待比对正文，并提供有权使用的来源材料。','核对解析正文与章节范围，再执行本地文本比对。','阅读标记段落、实际来源和引用排除区间；没有来源不能判定与外部论文重复。'],note:'当前未接入全网学术检索；结果不等同于知网、万方或维普。语义相似度与 AI 率检测未启用。',action:'#category/detection',actionLabel:'前往免费查重'},
-{id:'detection-citation',category:'detection',title:'为什么去除引用后的相似度仍需人工核对？',tags:'引用 排除 相似字数 来源',summary:'核对引用位置和原始来源，再理解比对结果。',steps:['打开报告，查看相似来源和正文逐段标记。','检查系统标记的引用排除范围，确认引文确实对应真实来源。','结合报告说明核对分母、章节范围和重复区间，必要时回到原文修改。'],note:'文本相似不直接构成学术不端结论；报告仅覆盖列出的对照材料。',action:'#assets?category=detection',actionLabel:'查看已保存报告'},
-{id:'upload-pdf',category:'files',faq:'upload',title:'为什么扫描版 PDF 无法解析？',tags:'上传失败 文件 PDF OCR 扫描 空白 文字层',summary:'当前支持含文字层的 PDF；扫描件需要先转换为可提取文字的文档。',steps:['尝试在 PDF 阅读器中选中并复制一段正文。无法复制的扫描件通常缺少文字层。','使用你有权使用的工具先做 OCR，或准备包含正文文字的 Word / TXT 文档。','重新导入后核对错字、章节和符号，再开始下一步处理。'],note:'当前 PaperKnow 不提供扫描件 OCR，图片不会被当作已解析正文。'},
-{id:'upload-retry',category:'files',faq:'upload',title:'上传失败或正文解析不完整怎么办？',tags:'上传失败 DOCX TXT PDF 格式 文件大小',summary:'先核对工具支持的格式，再检查实际解析内容。',steps:['查看当前工具的文件格式和大小限制；不同工具的限制不同。','确认文件未加密且可正常打开。旧版 .doc 请先另存为 .docx，再在支持 DOCX 的页面导入。','导入后核对正文，特别检查表格、公式、参考文献和乱码；错误内容修正后再处理。'],note:'格式排版当前只处理 DOCX；浏览器文本预览不等同于 Word 原样版式。'},
-{id:'export-files',category:'files',title:'导出的 Word、PPT 与页面预览有什么区别？',tags:'导出 下载 Word PPT DOCX 排版 字体',summary:'按各工具实际导出格式核对文件，不把预览当作最终文件。',steps:['使用对应工具提供的导出按钮，并确认浏览器已下载文件。','在 Word 或 PowerPoint 中检查字体、分页、图表、公式与版式。','修改后重新导出并保留原件；本地排版预览不模拟完整 Word 分页。'],note:'各页面的导出能力以实际按钮为准；文本导出不会自动变成排版后的 Word 文档。',action:'#assets',actionLabel:'前往我的成果'},
-{id:'data-location',category:'data',faq:'data',title:'保存的内容在哪里？',tags:'保存 丢失 浏览器 换电脑 云端 隐私 账户',summary:'本地体验与在线账户分别保存，登录不会自动迁移本地草稿。',steps:['本地体验中的项目、草稿、笔记与报告，需在同一设备、浏览器及网站地址下重新打开。','账户项目、主动上传的原件、后台任务和成果由服务端保存，登录同一账户后在「账户内容」中查看。','更换设备或清理网站数据前，导出本地工作空间备份。账户资料可从设置中心另行导出资料包，原件文件需另外下载；未保存输入不包含在备份中。'],note:'在线账户已开放，本地草稿不会自动跨设备同步；本地反馈草稿单独保存，请通过反馈区导出文本。',action:'#settings/data',actionLabel:'前往数据与备份'},
-{id:'data-backup',category:'data',faq:'data',title:'如何备份并恢复工作空间？',tags:'备份 恢复 JSON 导入 数据',summary:'先导出本地工作空间备份，恢复时预览并合并新增记录。',steps:['在设置中心「数据与隐私」按范围导出：账户资料包用于查阅与保管，原件另行下载；本地工作空间备份 JSON 用于下方合并恢复。','恢复时选择 PaperKnow 版本 1 备份文件（最大 50 MB），核对新增与重复记录预览。','确认合并后只新增不存在的编号，重复记录保留当前版本；个人资料与偏好需主动勾选才恢复。'],note:'本地备份不等于在线账户数据库备份，也不包含所有上传原件和帮助页反馈草稿。账户资料包不支持导入恢复；浏览器崩溃或断电可能中断本地恢复。',action:'#settings/data',actionLabel:'管理备份'},
-{id:'account-service',category:'data',title:'账户、会员、在线 AI 与云同步现在可以使用吗？',tags:'会员 支付 订单 账户 AI 服务 云同步',summary:'账户项目已开放，本地草稿仍独立保存；付费和在线 AI 以实际开放范围为准。',steps:['邮箱和中国大陆手机号账户已开放，支持密码与验证码登录；账户项目、原件、任务与成果可在登录后的账户内容查看。','本地草稿不会因为登录自动上传或跨设备同步。账户草稿需主动保存；在线 AI 是否可用请查看账户服务的实际状态，学术检索以对应工具说明为准。','使用工具时查看对应页面的当前状态；真实 AI 服务用量在账户用量页核对，缺失 Token 显示未知，记录数量不代表会员额度。'],note:'支付渠道及可购服务以付款页的实时开放状态为准。创建订单不代表已付款，服务器确认付款后才发放积分或权益；本地模板不等于AI 生成结果。',action:'/status/',actionLabel:'查看功能开放范围'}
+  {
+    "id": "start-project",
+    "category": "start",
+    "title": "如何创建项目并管理研究成果？",
+    "tags": "入门 新建项目 关联 草稿",
+    "summary": "按研究课题组织草稿、文献与报告，区分本地项目和账户内容。",
+    "steps": [
+      "进入「我的项目」，先确认正在查看「本地内容」还是「账户内容」，再填写项目名称、学段与专业。",
+      "本地写作等工具可选择所属项目；已有本地成果可以从「我的成果」管理项目关联。账户项目和上传原件在账户内容中管理。",
+      "保存后在对应空间重新打开项目或成果，确认实际记录已经写入。"
+    ],
+    "note": "本地项目保存在当前浏览器，账户项目由服务端保存；登录不会自动迁移本地项目，也不代表团队共享。",
+    "action": "#projects",
+    "actionLabel": "前往我的项目"
+  },
+  {
+    "id": "start-task",
+    "category": "start",
+    "title": "如何开始一项研究任务？",
+    "tags": "入门 工具 开始",
+    "summary": "从目标选择工具，保存后再到成果页继续。",
+    "steps": [
+      "选择 AI 写作、AI 研读、免费查重或其他相关工具。",
+      "按页面提示填写真实研究信息，核对页面标注的当前可用范围。",
+      "编辑并保存内容，再到「我的成果」重新打开；任务中心查看已记录的实际操作。"
+    ],
+    "note": "本地模板和操作记录不代表在线 AI 服务已调用。",
+    "action": "#home",
+    "actionLabel": "前往工作台"
+  },
+  {
+    "id": "writing-outline",
+    "category": "writing",
+    "title": "如何生成提纲、核对字数并保存正文？",
+    "tags": "大纲 写作 保存 草稿 导出",
+    "summary": "按对应写作流程准备资料，确认费用后生成可编辑的提纲或正文。",
+    "steps": [
+      "选择毕业论文、开题报告等对应工具，填写题目、学段、专业和目标字数。",
+      "准备实际材料与参考文献，确认本次费用后生成提纲；生成结构会映射到可编辑内容与字数分配，也可导入或自行修改。",
+      "核对后继续生成正文，审核采纳并保存；导出前检查研究事实、引用、章节和实际格式。"
+    ],
+    "note": "AI 写作 11 项流程已接通相应能力，在线任务以当前服务状态为准。没有提供的实验、问卷和数据不得补造为研究结论；本地草稿与账户成果分别管理。",
+    "action": "#category/writing",
+    "actionLabel": "前往 AI 写作"
+  },
+  {
+    "id": "revision-boundary",
+    "category": "writing",
+    "title": "降重复率与降 AI 率有哪些限制？",
+    "tags": "降重 降AI率 AIGC 导师 修改",
+    "summary": "整理修改意见，保留事实、证据与个人表达。",
+    "steps": [
+      "导入实际原文或粘贴正文，说明导师意见、来源位置和表达目标。",
+      "选择当前段落或全部原文，每次最多 32,000 字符、单段最多 3,500 字符；核对并确认本次 AI 处理与费用。",
+      "生成候选后逐段查看差异，核对数字、术语和引用，采纳后进入导出稿。草稿自动保存，主动保存版本可保留历史。"
+    ],
+    "note": "AI 候选不直接覆盖原稿；未采纳保留原文。可导出 DOCX、PDF、TXT 与备份。AI 率检测与学校数据库未接入，不承诺分数下降或审核通过。",
+    "action": "#category/reduce",
+    "actionLabel": "前往降重复率"
+  },
+  {
+    "id": "literature-reading",
+    "category": "literature",
+    "title": "如何整理文献、研读笔记与译文？",
+    "tags": "文献 阅读 翻译 笔记 来源 DOI",
+    "summary": "用实际原文进行解读、问答与逐段翻译，保留可定位的来源。",
+    "steps": [
+      "在我的文献导入有权使用的正文或摘要，也可从 Crossref 与 Europe PMC 检索题录后补充原文。",
+      "进入文献，选择实际段落，使用 AI 研读、原文问答或文献翻译。生成前确认范围、目标语言与费用。",
+      "核对解读的原文摘录或按段对应译文，采纳后保存，可继续修改并导出 TXT、DOCX 或 PDF。"
+    ],
+    "note": "每次最多 20 段、32,000 字符；翻译每段最多 3,500 字符。只有题录不能开始全文研读；未选择的原文不会声称已读。文献与采纳的研读记录保存在当前浏览器，请及时备份。",
+    "action": "#category/literature",
+    "actionLabel": "前往 AI 研读"
+  },
+  {
+    "id": "detection-meaning",
+    "category": "detection",
+    "title": "论文查重结果代表什么？",
+    "tags": "重复率 相似度 查重 知网 万方 维普 报告",
+    "summary": "当前结果仅来自用户提供的本地对照材料。",
+    "steps": [
+      "上传或输入待比对正文，并提供有权使用的来源材料。",
+      "核对解析正文与章节范围，再执行本地文本比对。",
+      "阅读标记段落、实际来源和引用排除区间；没有来源不能判定与外部论文重复。"
+    ],
+    "note": "当前未接入全网学术检索；结果不等同于知网、万方或维普。语义相似度与 AI 率检测未启用。",
+    "action": "#category/detection",
+    "actionLabel": "前往免费查重"
+  },
+  {
+    "id": "detection-citation",
+    "category": "detection",
+    "title": "为什么去除引用后的相似度仍需人工核对？",
+    "tags": "引用 排除 相似字数 来源",
+    "summary": "核对引用位置和原始来源，再理解比对结果。",
+    "steps": [
+      "打开报告，查看相似来源和正文逐段标记。",
+      "检查系统标记的引用排除范围，确认引文确实对应真实来源。",
+      "结合报告说明核对分母、章节范围和重复区间，必要时回到原文修改。"
+    ],
+    "note": "文本相似不直接构成学术不端结论；报告仅覆盖列出的对照材料。",
+    "action": "#assets?category=detection",
+    "actionLabel": "查看已保存报告"
+  },
+  {
+    "id": "upload-pdf",
+    "category": "files",
+    "faq": "upload",
+    "title": "为什么扫描版 PDF 无法解析？",
+    "tags": "上传失败 文件 PDF OCR 扫描 空白 文字层",
+    "summary": "当前支持含文字层的 PDF；扫描件需要先转换为可提取文字的文档。",
+    "steps": [
+      "尝试在 PDF 阅读器中选中并复制一段正文。无法复制的扫描件通常缺少文字层。",
+      "使用你有权使用的工具先做 OCR，或准备包含正文文字的 Word / TXT 文档。",
+      "重新导入后核对错字、章节和符号，再开始下一步处理。"
+    ],
+    "note": "当前 PaperKnow 不提供扫描件 OCR，图片不会被当作已解析正文。"
+  },
+  {
+    "id": "upload-retry",
+    "category": "files",
+    "faq": "upload",
+    "title": "上传失败或正文解析不完整怎么办？",
+    "tags": "上传失败 DOCX TXT PDF 格式 文件大小",
+    "summary": "先核对工具支持的格式，再检查实际解析内容。",
+    "steps": [
+      "查看当前工具的文件格式和大小限制；不同工具的限制不同。",
+      "确认文件未加密且可正常打开。旧版 .doc 请先另存为 .docx，再在支持 DOCX 的页面导入。",
+      "导入后核对正文，特别检查表格、公式、参考文献和乱码；错误内容修正后再处理。"
+    ],
+    "note": "格式排版当前只处理 DOCX；浏览器文本预览不等同于 Word 原样版式。"
+  },
+  {
+    "id": "export-files",
+    "category": "files",
+    "title": "导出的 Word、PPT 与页面预览有什么区别？",
+    "tags": "导出 下载 Word PPT DOCX 排版 字体",
+    "summary": "按各工具实际导出格式核对文件，不把预览当作最终文件。",
+    "steps": [
+      "使用对应工具提供的导出按钮，并确认浏览器已下载文件。",
+      "在 Word 或 PowerPoint 中检查字体、分页、图表、公式与版式。",
+      "修改后重新导出并保留原件；本地排版预览不模拟完整 Word 分页。"
+    ],
+    "note": "各页面的导出能力以实际按钮为准；文本导出不会自动变成排版后的 Word 文档。",
+    "action": "#assets",
+    "actionLabel": "前往我的成果"
+  },
+  {
+    "id": "data-location",
+    "category": "data",
+    "faq": "data",
+    "title": "保存的内容在哪里？",
+    "tags": "保存 丢失 浏览器 换电脑 云端 隐私 账户",
+    "summary": "本地体验与在线账户分别保存，登录不会自动迁移本地草稿。",
+    "steps": [
+      "本地体验中的项目、草稿、笔记与报告，需在同一设备、浏览器及网站地址下重新打开。",
+      "账户项目、主动上传的原件、后台任务和成果由服务端保存，登录同一账户后在「账户内容」中查看。",
+      "更换设备或清理网站数据前，导出本地工作空间备份。账户资料可从设置中心另行导出资料包，原件文件需另外下载；未保存输入不包含在备份中。"
+    ],
+    "note": "在线账户已开放，本地草稿不会自动跨设备同步；本地反馈草稿单独保存，请通过反馈区导出文本。",
+    "action": "#settings/data",
+    "actionLabel": "前往数据与备份"
+  },
+  {
+    "id": "data-backup",
+    "category": "data",
+    "faq": "data",
+    "title": "如何备份并恢复工作空间？",
+    "tags": "备份 恢复 JSON 导入 数据",
+    "summary": "先导出本地工作空间备份，恢复时预览并合并新增记录。",
+    "steps": [
+      "在设置中心「数据与隐私」按范围导出：账户资料包用于查阅与保管，原件另行下载；本地工作空间备份 JSON 用于下方合并恢复。",
+      "恢复时选择 PaperKnow 版本 1 备份文件（最大 50 MB），核对新增与重复记录预览。",
+      "确认合并后只新增不存在的编号，重复记录保留当前版本；个人资料与偏好需主动勾选才恢复。"
+    ],
+    "note": "本地备份不等于在线账户数据库备份，也不包含所有上传原件和帮助页反馈草稿。账户资料包不支持导入恢复；浏览器崩溃或断电可能中断本地恢复。",
+    "action": "#settings/data",
+    "actionLabel": "管理备份"
+  },
+  {
+    "id": "account-service",
+    "category": "data",
+    "title": "账户、会员、在线 AI 与云同步现在可以使用吗？",
+    "tags": "会员 支付 订单 账户 AI 服务 云同步",
+    "summary": "账户项目已开放，本地草稿仍独立保存；付费和在线 AI 以实际开放范围为准。",
+    "steps": [
+      "邮箱和中国大陆手机号账户已开放，支持密码与验证码登录；账户项目、原件、任务与成果可在登录后的账户内容查看。",
+      "本地草稿不会因为登录自动上传或跨设备同步。账户草稿需主动保存；在线 AI 是否可用请查看账户服务的实际状态，学术检索以对应工具说明为准。",
+      "使用工具时查看对应页面的当前状态；真实 AI 服务用量在账户用量页核对，缺失 Token 显示未知，记录数量不代表会员额度。"
+    ],
+    "note": "支付渠道及可购服务以付款页的实时开放状态为准。创建订单不代表已付款，服务器确认付款后才发放积分或权益；本地模板不等于AI 生成结果。",
+    "action": "/status/",
+    "actionLabel": "查看功能开放范围"
+  },
+  {
+    "id": "presentation-creation",
+    "category": "files",
+    "title": "如何用 AI 制作通用、开题或毕业 PPT？",
+    "tags": "PPT AI 答辩 开题 毕业 演示 PPTX 备注",
+    "summary": "准备主题或真实报告，确认费用后生成草稿，审核并编辑每页。",
+    "steps": [
+      "选择 AI PPT、开题 PPT 或毕业 PPT；开题与毕业需要实际报告或论文正文。",
+      "核对题目、页数、版式与材料，可先修改大纲，再确认本次费用生成页面和演讲备注。",
+      "预览采纳后逐页编辑、保存并导出可编辑 PPTX，正式汇报前在 PowerPoint 或 WPS 中试播。"
+    ],
+    "note": "不编造原文中没有的研究数据或结论，不提供已经完成的人工答辩稿、资料包或问答包交付。",
+    "action": "#category/ppt",
+    "actionLabel": "前往 PPT 创作"
+  },
+  {
+    "id": "research-drawing",
+    "category": "files",
+    "title": "科研图表、结构示意和公式分别能做什么？",
+    "tags": "科研工具 绘图 图表 公式 LaTeX 结构 示意 SVG",
+    "summary": "图表依赖实际数值，结构示意表达关系，公式支持数学排版。",
+    "steps": [
+      "基础绘图导入实际 CSV/TSV 或手动数据，选择图形并核对坐标、单位与数值。",
+      "专业绘图可确认费用生成节点关系结构示意，采纳后编辑并保存导出；不将其当作专业仿真或 CAD。",
+      "公式可输入 LaTeX 进行数学排版，或确认费用获取辅助建议；核对变量、适用条件与符号后导出。"
+    ],
+    "note": "不伪造数值、显著性或实验结论。结构示意不能作为电路仿真、精确分子建模、CAD 工程图或医学诊断。",
+    "action": "#category/research",
+    "actionLabel": "前往科研工具"
+  },
+  {
+    "id": "format-fine-review",
+    "category": "files",
+    "title": "格式精细复核是不是人工精修？",
+    "tags": "格式 排版 DOCX 字体 行距 页边距 精修",
+    "summary": "基于实际规则进行检测与排版，不代表人工接单交付。",
+    "steps": [
+      "导入 2MB 以内 DOCX，选择通用或自定义规则，核对学校或期刊要求。",
+      "使用格式检测、智能排版或精细复核，查看段落问题和修改清单；可另行确认 AI 格式建议。",
+      "保留原文件并导出副本，再在 Word 或 WPS 中检查目录、页码、复杂表格、公式及图片。"
+    ],
+    "note": "高校授权模板库与人工精修交付未开放。规则检查覆盖有限项目，不表示论文全部格式已经合格。",
+    "action": "#category/format",
+    "actionLabel": "前往格式排版"
+  }
 ];
 export function searchHelp(query='',category='all'){const tokens=query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);return articles.filter(a=>(category==='all'||a.category===category)&&tokens.every(t=>[a.title,helpCategories.find(c=>c.id===a.category)?.title||'',a.tags,a.summary,...a.steps,a.note].join(' ').toLocaleLowerCase().includes(t)));}
 export function normalizeFeedback(raw={}){if(!raw||typeof raw!=='object'||Array.isArray(raw))raw={};const oldFeatures={'文献与研读':'AI 研读','修改与润色':'降重复率','论文检测':'免费查重'};return {type:feedbackTypes.includes(raw.type)?raw.type:feedbackTypes[0],feature:relatedFeatures.includes(raw.feature)?raw.feature:(Object.hasOwn(oldFeatures,raw.feature)?oldFeatures[raw.feature]:relatedFeatures[0]),content:typeof raw.content==='string'?raw.content.slice(0,3000):'',savedAt:typeof raw.savedAt==='string'?raw.savedAt:''};}

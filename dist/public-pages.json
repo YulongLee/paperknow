@@ -9,49 +9,49 @@
     {
       "slug": "/features/ai-writing/",
       "file": "features/ai-writing/index.html",
-      "modifiedAt": "2026-10-17",
+      "modifiedAt": "2026-10-18",
       "title": "AI 论文写作工具｜毕业论文五步确认与分章生成"
     },
     {
       "slug": "/features/ai-reading/",
       "file": "features/ai-reading/index.html",
-      "modifiedAt": "2026-10-17",
-      "title": "文献检索与管理工具｜Crossref、Europe PMC 与研读笔记"
+      "modifiedAt": "2026-10-18",
+      "title": "AI 文献研读与翻译｜真实原文问答、引用定位与文献检索"
     },
     {
       "slug": "/features/reduce-similarity/",
       "file": "features/reduce-similarity/index.html",
-      "modifiedAt": "2026-10-15",
-      "title": "论文降重流程｜人工修改、引用核对与版本保存"
+      "modifiedAt": "2026-10-18",
+      "title": "论文降重与表达优化｜AI 逐段候选、原文对照与版本保存"
     },
     {
       "slug": "/features/reduce-ai/",
       "file": "features/reduce-ai/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-18",
       "title": "降 AI 率功能说明｜论文表达核对与原稿管理"
     },
     {
       "slug": "/features/similarity-check/",
       "file": "features/similarity-check/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-18",
       "title": "论文文本比对工具｜本地材料与相似片段核对"
     },
     {
       "slug": "/features/ppt/",
       "file": "features/ppt/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-18",
       "title": "答辩 PPT 制作｜开题、毕业与可编辑 PPTX"
     },
     {
       "slug": "/features/format/",
       "file": "features/format/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-18",
       "title": "论文格式排版工具｜DOCX 检测与样式整理"
     },
     {
       "slug": "/features/research-tools/",
       "file": "features/research-tools/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-18",
       "title": "科研绘图工具｜基础图表、数据导出与公式编辑"
     },
     {
@@ -63,67 +63,67 @@
     {
       "slug": "/guides/paper-outline/",
       "file": "guides/paper-outline/index.html",
-      "modifiedAt": "2026-10-15",
-      "title": "论文大纲生成与编辑指南｜本地模板与章节规划"
+      "modifiedAt": "2026-10-18",
+      "title": "论文大纲生成与编辑指南｜AI 提纲、字数分配与核对"
     },
     {
       "slug": "/guides/material-comparison/",
       "file": "guides/material-comparison/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-18",
       "title": "本地材料比对怎么用｜正文、来源与报告核对"
     },
     {
       "slug": "/guides/docx-format/",
       "file": "guides/docx-format/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-18",
       "title": "DOCX 论文格式排版步骤｜检查、应用与副本复核"
     },
     {
       "slug": "/guides/research-ppt/",
       "file": "guides/research-ppt/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-18",
       "title": "开题与毕业 PPT 制作步骤｜结构、页面与 PPTX 导出"
     },
     {
       "slug": "/guides/research-charts/",
       "file": "guides/research-charts/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-18",
       "title": "科研基础图表制作步骤｜CSV 输入与 SVG、PNG 导出"
     },
     {
       "slug": "/about/",
       "file": "about/index.html",
-      "modifiedAt": "2026-10-17",
+      "modifiedAt": "2026-10-18",
       "title": "关于 PaperKnow｜论文写作与科研辅助工作台"
     },
     {
       "slug": "/help/",
       "file": "help/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-18",
       "title": "PaperKnow 使用帮助｜登录、保存、上传与成果导出"
     },
     {
       "slug": "/privacy/",
       "file": "privacy/index.html",
-      "modifiedAt": "2026-10-17",
+      "modifiedAt": "2026-10-18",
       "title": "PaperKnow 数据与隐私说明｜本地资料、账户文件与处理范围"
     },
     {
       "slug": "/terms/",
       "file": "terms/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-18",
       "title": "PaperKnow 服务规则｜使用范围、成果核对与费用状态"
     },
     {
       "slug": "/contact/",
       "file": "contact/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-10-18",
       "title": "联系 PaperKnow｜产品支持与资料处理问题"
     },
     {
       "slug": "/status/",
       "file": "status/index.html",
-      "modifiedAt": "2026-10-17",
+      "modifiedAt": "2026-10-18",
       "title": "PaperKnow 功能开放状态｜账户、AI、检索与导出范围"
     }
   ]

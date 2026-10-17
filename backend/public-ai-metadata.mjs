@@ -71,16 +71,17 @@ export function publicAIResponse(path,value,{authorizedAdmin=false,identityValue
  const task=row=>publicTask(row,identityValues),thesis=row=>publicThesis(row,identityValues),writing=row=>publicWriting(row,identityValues);
  if(path==='/api/capabilities'){
   clean={...clean};delete clean.aiProvider;delete clean.agentEngine;
-  for(const key of ['thesis','thesisOutline','thesisMethod','writing'])if(object(clean[key]))clean[key]=publicCapability(clean[key],identityValues);
+  for(const key of ['thesis','thesisOutline','thesisMethod','writing','tools'])if(object(clean[key]))clean[key]=publicCapability(clean[key],identityValues);
  }else if(path==='/api/usage')clean={...clean,...list(clean,'items',withoutRuntime)};
  else if(path==='/api/results'||/^\/api\/results\/[^/]+$/.test(path||''))clean={...clean,...one(clean,publicResult),...list(clean,'items',publicResult)};
  else if(path==='/api/jobs'||/^\/api\/jobs\//.test(path||''))clean={...clean,...one(clean,task),...list(clean,'items',task)};
  else if(path==='/api/theses'||path?.startsWith('/api/theses/'))clean={...(path.endsWith('/capabilities')?publicCapability(clean,identityValues):task(clean)),...one(clean,thesis),...list(clean,'items',thesis)};
+ else if(path==='/api/tool-runs'||path?.startsWith('/api/tool-runs/'))clean={...(path.endsWith('/capabilities')?publicCapability(clean,identityValues):task(clean)),...one(clean,writing),...list(clean,'items',writing)};
  else if(path==='/api/writing'||path?.startsWith('/api/writing/'))clean={...(path.endsWith('/capabilities')?publicCapability(clean,identityValues):task(clean)),...one(clean,writing),...list(clean,'items',writing)};
  else if(path==='/api/workspace/drafts'||path?.startsWith('/api/workspace/drafts/'))clean={...clean,...one(clean,publicDraft),...list(clean,'items',publicDraft)};
  else if(/^\/api\/projects\/[^/]+$/.test(path||''))clean={...clean,...list(clean,'jobs',task),...list(clean,'results',publicResult),...list(clean,'drafts',publicDraft)};
  else if(path==='/api/account/export'){
-  clean={...clean,...list(clean,'results',publicResult),...list(clean,'jobs',task),...list(clean,'drafts',publicDraft),...list(clean,'theses',thesis),...list(clean,'writingRuns',writing),...list(clean,'writingCheckpoints',row=>({...task(row),...(object(row.output)?{output:publicWritingOutput(row.output,identityValues)}:{})})),...list(clean,'thesisRuns',task),...list(clean,'thesisOutlineRuns',task),...list(clean,'thesisMethodRuns',task),...list(clean,'thesisSections',row=>({...task(row),...(Object.hasOwn(row,'trace')?{trace:publicTrace(row.trace)}:{})}))};
+  clean={...clean,...list(clean,'results',publicResult),...list(clean,'jobs',task),...list(clean,'drafts',publicDraft),...list(clean,'theses',thesis),...list(clean,'toolRuns',writing),...list(clean,'toolCheckpoints',row=>({...task(row),...(object(row.output)?{output:publicWritingOutput(row.output,identityValues)}:{})})),...list(clean,'writingRuns',writing),...list(clean,'writingCheckpoints',row=>({...task(row),...(object(row.output)?{output:publicWritingOutput(row.output,identityValues)}:{})})),...list(clean,'thesisRuns',task),...list(clean,'thesisOutlineRuns',task),...list(clean,'thesisMethodRuns',task),...list(clean,'thesisSections',row=>({...task(row),...(Object.hasOwn(row,'trace')?{trace:publicTrace(row.trace)}:{})}))};
  }
  return clean;
 }

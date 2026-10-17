@@ -1,0 +1,46 @@
+PaperKnow — MathJax dependency notices
+
+These packages are installed for MathJax. The browser formula build bundles and minifies the required modules; other listed packages may be used only as runtime dependencies.
+Original license and copyright texts are preserved in the accompanying files. Application wrappers are maintained separately by PaperKnow.
+
+@xmldom/xmldom 0.9.10
+License: MIT
+Source: https://github.com/xmldom/xmldom
+License/notice file: xmldom-xmldom-0.9.10-LICENSE.txt
+
+commander 13.1.0
+License: MIT
+Source: https://github.com/tj/commander.js
+License/notice file: commander-13.1.0-LICENSE.txt
+
+esm 3.2.25
+License: MIT
+Source: https://github.com/standard-things/esm
+License/notice file: esm-3.2.25-LICENSE.txt
+
+mathjax-full 3.2.2
+License: Apache-2.0
+Source: https://github.com/mathjax/Mathjax-src
+License/notice file: mathjax-full-3.2.2-LICENSE.txt
+
+mhchemparser 4.2.1
+License: Apache-2.0
+Source: https://github.com/mhchem/mhchemParser
+License/notice file: mhchemparser-4.2.1-LICENSE.txt
+
+mj-context-menu 0.6.1
+License: Apache-2.0
+Source: https://github.com/zorkow/context-menu
+License/notice file: mj-context-menu-0.6.1-LICENSE.txt
+The upstream npm package declares Apache-2.0 in package.json but omits a standalone license file. The unchanged standard Apache-2.0 text is supplied from mathjax-full/LICENSE.
+
+speech-rule-engine 4.1.4
+License: Apache-2.0
+Source: https://github.com/zorkow/speech-rule-engine
+License/notice file: speech-rule-engine-4.1.4-LICENSE.txt
+
+wicked-good-xpath 1.3.0
+License: MIT
+Source: https://github.com/google/wicked-good-xpath
+License/notice file: wicked-good-xpath-1.3.0-LICENSE.txt
+

@@ -167,7 +167,7 @@ test('real AI reduction entry keeps its own heading, theme and selection across 
    assert.equal(query('.tool-banner h1').textContent,'降 AI 率');
    assert.equal(query('.revision-entry-summary [data-revision-selection-title]').textContent,'中文表达精修');
    assert.equal(query('.revision-plan-card[aria-pressed="true"]').dataset.revisionPlan,'strong');
-   assert.match(query('[data-revision-plan-status]').textContent,/不进行 AI 率检测或自动改写/);
+   assert.match(query('[data-revision-plan-status]').textContent,/可生成逐段候选修改.*不预测或承诺/);
    assert.ok(query('#revision-entry-form'));assert.equal(query('#revision-space'),null);
   };
   mount('#category/aigc');assertAIPage();
@@ -180,9 +180,9 @@ test('real AI reduction entry keeps its own heading, theme and selection across 
   query('[data-revision-plan="dual"]').click();
   assert.equal(query('.tool-banner h1').textContent,'降重复率');
   assert.equal(query('.revision-plan-card[aria-pressed="true"]').dataset.revisionPlan,'dual');
-  assert.equal(query('.revision-entry-summary [data-revision-selection-title]').textContent,'AIGC + 重复率双降');
-  assert.match(query('[data-revision-plan-status]').textContent,/此在线服务尚未开放/);
-  assert.match(query('[data-revision-plan-status]').textContent,/只能创建本地手动修改稿/);
+  assert.equal(query('.revision-entry-summary [data-revision-selection-title]').textContent,'表达与引用综合优化');
+  assert.match(query('[data-revision-plan-status]').textContent,/生成逐段候选/);
+  assert.match(query('[data-revision-plan-status]').textContent,/审核后采纳/);
   assert.ok(query('#revision-entry-form'));assert.equal(query('#revision-space'),null);
   mount('#category/aigc');assertAIPage();
   assert.equal(query('[data-revision-plan="dual"]').getAttribute('aria-pressed'),'false');

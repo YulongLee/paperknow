@@ -1,7 +1,8 @@
 // Sales follow executable services, never a descriptive feature list.
 export function productDelivery(product,billing){
  if(!billing)return {purchasable:true};
- const configured=billing.rules().services.filter(item=>item.mode==='paid');
+ const services=[...billing.rules().services,...(billing.toolRules?.().services||[]).map(item=>({...item,mode:item.effectiveMode,creditCost:item.effectiveCreditCost}))];
+ const configured=services.filter(item=>item.mode==='paid');
  const paid=configured.filter(item=>item.available);
  if(product.entitlementType==='credits'){
   if(!configured.length)return {purchasable:false,unavailableCode:'credit_pricing_missing',unavailableReason:'尚未配置按积分计费的服务，当前暂停充值。'};

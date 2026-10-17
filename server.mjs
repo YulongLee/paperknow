@@ -12,6 +12,7 @@ import {startWorker} from './backend/worker.mjs';
 import {createAgentSettings} from './backend/agent-settings.mjs';
 import {startThesisWorker} from './backend/thesis-worker.mjs';
 import {startThesisOutlineWorker} from './backend/thesis-outline-worker.mjs';
+import {startToolRunWorker} from './backend/tool-run-worker.mjs';
 import {startWritingWorker} from './backend/writing-worker.mjs';
 import {startThesisMethodWorker} from './backend/thesis-method-worker.mjs';
 import {runAgentTask} from './backend/agent-runtime.mjs';
@@ -22,8 +23,8 @@ if(config.aiURL){const u=new URL(config.aiURL);if(u.protocol!=='https:'&&!(u.pro
 const storage=createStorage(config,config.ossClient),db=database(dbPath),settings=modelSettings(db,config);
 config={...config,storage,settings,getAI:()=>settings.get()};
 const agentSettings=createAgentSettings(db,config);config={...config,agentSettings,getAgentSettings:id=>id?agentSettings.version(id):agentSettings.get(),agentTaskRunner:config.agentTaskRunner||runAgentTask};
-const legacyWorker=startWorker(db,config),thesisWorker=startThesisWorker(db,config),outlineWorker=startThesisOutlineWorker(db,config),methodWorker=startThesisMethodWorker(db,config),writingWorker=startWritingWorker(db,config);
-const worker={async tick(){await legacyWorker.tick();await thesisWorker.tick();await outlineWorker.tick();await methodWorker.tick();await writingWorker.tick();},cancel(id){legacyWorker.cancel(id);thesisWorker.cancel(id);outlineWorker.cancel(id);methodWorker.cancel(id);writingWorker.cancel(id);},async stop(){await Promise.all([legacyWorker.stop(),thesisWorker.stop(),outlineWorker.stop(),methodWorker.stop(),writingWorker.stop()]);}};
+const legacyWorker=startWorker(db,config),thesisWorker=startThesisWorker(db,config),outlineWorker=startThesisOutlineWorker(db,config),methodWorker=startThesisMethodWorker(db,config),writingWorker=startWritingWorker(db,config),toolWorker=startToolRunWorker(db,config);
+const worker={async tick(){await legacyWorker.tick();await thesisWorker.tick();await outlineWorker.tick();await methodWorker.tick();await writingWorker.tick();await toolWorker.tick();},cancel(id){legacyWorker.cancel(id);thesisWorker.cancel(id);outlineWorker.cancel(id);methodWorker.cancel(id);writingWorker.cancel(id);toolWorker.cancel(id);},async stop(){await Promise.all([legacyWorker.stop(),thesisWorker.stop(),outlineWorker.stop(),methodWorker.stop(),writingWorker.stop(),toolWorker.stop()]);}};
 const api=createAPI(db,worker,config),root=resolve('dist');
 const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2','.txt':'text/plain; charset=utf-8','.xml':'application/xml; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.csv':'text/csv; charset=utf-8'};
 const publicPages=new Map();

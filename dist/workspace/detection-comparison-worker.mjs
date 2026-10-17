@@ -1,0 +1,3 @@
+import {compileSources,compareParagraph} from '../precheck/engine.mjs';
+// Real matching runs off the UI thread so a long paragraph remains cancellable.
+self.onmessage=event=>{try{const {sources,paragraphs,text}=event.data;if(!Array.isArray(sources)||!Array.isArray(paragraphs)||typeof text!=='string')throw Error('比对输入无效。');const compiled=compileSources(sources);if(!compiled.length)throw Error('没有可用的实际对照正文。');const matches=[];for(let i=0;i<paragraphs.length;i++){matches.push(...compareParagraph(paragraphs[i],compiled,text));self.postMessage({type:'progress',completed:i+1,total:paragraphs.length});}self.postMessage({type:'complete',matches});}catch(error){self.postMessage({type:'error',message:error.message||'本地比对未能完成。'});}};
