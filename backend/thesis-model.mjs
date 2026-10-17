@@ -129,7 +129,8 @@ export function assertThesisAccountQuota(db,userId,additionalBytes,config={}){
   sum('SELECT coalesce(sum(max(512,length(CAST(snapshot AS BLOB))+length(CAST(plan AS BLOB)))),0) n FROM thesis_runs WHERE user_id=?',userId)+
   sum('SELECT coalesce(sum(max(512,length(CAST(v.text AS BLOB)))),0) n FROM thesis_chapter_versions v JOIN theses t ON t.id=v.thesis_id WHERE t.user_id=?',userId)+
   sum('SELECT coalesce(sum(max(512,length(CAST(c.text AS BLOB))+length(CAST(c.trace AS BLOB)))),0) n FROM thesis_checkpoints c JOIN thesis_runs r ON r.id=c.run_id WHERE r.user_id=?',userId)+
-  sum('SELECT count(*)*512 n FROM thesis_commands WHERE user_id=?',userId);
+  sum('SELECT count(*)*512 n FROM thesis_commands WHERE user_id=?',userId)+
+  sum("SELECT coalesce(sum(max(512,length(CAST(snapshot AS BLOB)))+max(512,length(CAST(coalesce(output,'') AS BLOB)))),0) n FROM thesis_outline_runs WHERE user_id=?",userId);
  if(used+additionalBytes>max)throw thesisError(413,'账户草稿、论文资料与章节历史合计最多 50MB；请导出备份，并联系支持整理历史内容','storage_limit');
 }
 export function assertThesisChapterCapacity(db,thesisId,chapterId){if(db.prepare('SELECT count(*) n FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=?').get(thesisId,chapterId).n>=200)throw thesisError(409,'该章节已保存 200 个历史版本，请导出备份并联系支持整理','version_limit');}

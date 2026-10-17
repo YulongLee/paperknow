@@ -8,6 +8,7 @@ import {createWorkspaceService} from './workspace-service.mjs';
 import {createBillingService} from './billing-service.mjs';
 import {createModelBudget} from './model-budget.mjs';
 import {createThesisService} from './thesis-service.mjs';
+import {createThesisOutlineService} from './thesis-outline-service.mjs';
 import {aiReady,publicModelSettings} from './config.mjs';
 import {createFileService} from './file-service.mjs';
 import {createLiteratureSearch} from './literature-search.mjs';
@@ -23,6 +24,7 @@ const auth=createAuthService(db,{secret:config.authCodeSecret,dailyLimit:config.
 const billing=createBillingService(db,config);
 const modelBudget=createModelBudget(db,config);
 const theses=createThesisService(db,{...config,billing,modelBudget,worker,cancelThesisRun:id=>worker.cancel(id)});
+const thesisOutlines=createThesisOutlineService(db,{...config,billing,modelBudget,cancelThesisOutline:id=>worker.cancel(id)});
 const payments=createPaymentService(db,{...config,billing});
 const workspace=createWorkspaceService(db,{billing});
 const files=createFileService(db,config);
@@ -57,7 +59,7 @@ if(path==='/api/literature/search'&&method==='GET'){
  catch(error){send(error.status||503,{error:error.message,...error.response},error.retryAfter?{'Retry-After':String(error.retryAfter)}:{});}
  return;
 }
-if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),aiProvider:publicModelSettings(config.getAI()).provider,agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),agentEngine:config.agentEnabled?'codex_sdk':null,billing:billing.rules(),payment:payments.options().enabled,academicSearch:true,academicSearchSources:['crossref','europepmc'],thesis:await theses.capabilities(),maxFileBytes:2*1024*1024});return;}
+if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),aiProvider:publicModelSettings(config.getAI()).provider,agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),agentEngine:config.agentEnabled?'codex_sdk':null,billing:billing.rules(),payment:payments.options().enabled,academicSearch:true,academicSearchSources:['crossref','europepmc'],thesis:await theses.capabilities(),thesisOutline:await thesisOutlines.capabilities(),maxFileBytes:2*1024*1024});return;}
 if(path==='/api/payments/options'&&method==='GET'){send(200,payments.options());return;}
 if(path==='/api/auth/options'&&method==='GET'){send(200,auth.options());return;}
 const authRoutes={
@@ -80,7 +82,7 @@ if(path==='/api/auth/logout'&&method==='POST'){const token=(req.headers.cookie||
 if(path==='/api/billing/rules'&&method==='GET'){send(200,billing.rules());return;}
 if(path==='/api/billing/quote'&&method==='POST'){rate(req,60);send(200,billing.quote(user,await body(req)));return;}
 if(path==='/api/account/export'&&method==='GET'){const t=Date.now();for(const [id,item] of archiveAttempts)if(item.until<=t)archiveAttempts.delete(id);const item=archiveAttempts.get(user.id)||{count:0,until:t+600000};if(item.count>=5)fail(429,'账户资料导出较频繁，请十分钟后再试');item.count++;archiveAttempts.set(user.id,item);}
-if(path==='/api/theses'||path.startsWith('/api/theses/')){if(method==='POST')rate(req,60);const response=await theses.handle({path,method,user,readBody:()=>body(req)});if(response){send(response.status,response.value);return;}fail(404,'论文接口不存在');}
+if(path==='/api/theses'||path.startsWith('/api/theses/')){if(method==='POST')rate(req,60);const response=await thesisOutlines.handle({path,method,user,readBody:()=>body(req)})||await theses.handle({path,method,user,readBody:()=>body(req)});if(response){send(response.status,response.value);return;}fail(404,'论文接口不存在');}
 const workspaceResponse=await workspace({path,method,user,readBody:()=>body(req)});if(workspaceResponse){send(workspaceResponse.status,workspaceResponse.value);return;}
 const fileResponse=await files({path,method,user,readBody:()=>body(req)});
 if(fileResponse){if(fileResponse.body){res.writeHead(fileResponse.status||200,{...fileResponse.headers,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(fileResponse.body);}else send(fileResponse.status||200,fileResponse.value);return;}
@@ -92,6 +94,7 @@ else{input={text:(text(b.text,type==='compare'?8000:6000),b.text),requirements:t
 const key=text(b.idempotencyKey,100);const hash=digest(JSON.stringify({type,input,projectId}));const existing=db.prepare('SELECT id,input_hash FROM jobs WHERE user_id=? AND idempotency_key=?').get(user.id,key);if(existing){if(existing.input_hash!==hash)fail(409,'重复请求标识已用于其他内容');send(200,{id:existing.id});return;}if(db.prepare("SELECT count(*) n FROM jobs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=3)fail(409,'最多同时提交 3 个待处理任务');const id=randomUUID(),t=now();transaction(()=>{if(['polish','review','agent'].includes(type))modelBudget.check(user.id);db.prepare('INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,user.id,projectId,type,'queued','queued',JSON.stringify(input),key,hash,t,t);if(['polish','review','agent'].includes(type))billing.reserve(user,id,1,type,b.billingQuote);});send(201,{id});return;}
 const action=path.match(/^\/api\/jobs\/([^/]+)\/(cancel|retry)$/);if(action&&method==='POST'){
  if(action[2]==='retry')rate(req,60);const input=await body(req);const job=own('jobs',action[1],user);
+ if(job.type==='thesis_outline'){if(action[2]==='retry')fail(409,'请返回论文提纲页面，重新确认本次费用后生成');const response=await thesisOutlines.handle({path:'/api/theses/outlines/'+job.id+'/cancel',method:'POST',user,readBody:async()=>({})});send(response.status,response.value);return;}
  if(job.type==='thesis'){if(action[2]==='retry')fail(409,'请进入账户论文，从已保存的章节继续生成并确认本次费用');const run=db.prepare('SELECT thesis_id FROM thesis_runs WHERE id=? AND user_id=?').get(job.id,user.id);if(!run)fail(409,'论文任务记录不可用，请联系支持');const response=await theses.handle({path:'/api/theses/'+run.thesis_id+'/cancel',method:'POST',user,readBody:async()=>({version:db.prepare('SELECT version FROM theses WHERE id=? AND user_id=?').get(run.thesis_id,user.id)?.version})});send(response.status,response.value);return;}
  if(action[2]==='retry'&&['parse','agent'].includes(job.type)){
   const original=JSON.parse(job.input),ids=job.type==='parse'?[original.fileId]:(original.fileIds||[]);

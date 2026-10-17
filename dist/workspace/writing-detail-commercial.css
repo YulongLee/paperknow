@@ -104,3 +104,30 @@
 .writing-detail-commercial .writing-research-body{padding-top:16px;margin-top:16px;border-top:1px solid var(--pk-border,#e7edf5)}
 .writing-detail-commercial .writing-research-body>p,.writing-detail-commercial .writing-research-body>small{display:block;font-size:11px;line-height:1.9;color:var(--pk-muted,#8b9ab0);margin:0 0 14px}
 .writing-detail-commercial .writing-research-body>small{margin:12px 0 0}
+.writing-detail-commercial .outline-source-actions:has(#outline-manual-trigger){grid-template-columns:repeat(3,minmax(0,1fr))}
+.writing-detail-commercial #outline-ai-generate{border-color:color-mix(in srgb,var(--detail-accent) 42%,#dfe7f3);background:linear-gradient(125deg,#f2f6ff,#fff)}
+.writing-detail-commercial .outline-template-choice{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 0;color:var(--pk-muted,#8494ad);font-size:11px}
+.writing-detail-commercial .outline-template-choice .material-toggle{margin:0;padding:2px 0;font-size:11px;color:var(--detail-accent,#3569ee)}
+.writing-detail-commercial .writing-outline-ai-panel{margin:18px 0 0}
+.writing-detail-commercial .writing-outline-ai-shell{border:1px solid #ccdcff;border-radius:12px;padding:22px;background:linear-gradient(125deg,#f5f8ff,#fff);color:var(--pk-text,#2e405e)}
+.writing-detail-commercial .writing-outline-ai-heading{position:relative;padding-right:42px}
+.writing-detail-commercial .writing-outline-ai-heading h3{font-size:17px;margin:4px 0 8px}
+.writing-detail-commercial .writing-outline-ai-heading small{font-size:10px;color:#5a7add;letter-spacing:1px}
+.writing-detail-commercial .writing-outline-ai-heading p,.writing-detail-commercial :is(.writing-outline-ai-notice,.writing-outline-ai-warning,.writing-outline-ai-save-hint,.writing-outline-ai-login,.writing-outline-ai-loading){font-size:12px;line-height:1.9;color:var(--pk-muted,#7e8eaa)}
+.writing-detail-commercial .writing-outline-ai-close{position:absolute;right:0;top:0;width:30px;height:30px;padding:0;border:1px solid #dce5f5;background:white;border-radius:7px;cursor:pointer;color:#8697b0}
+.writing-detail-commercial .writing-outline-ai-brief{padding:15px 18px;margin:16px 0;background:var(--pk-surface,#fff);border:1px solid var(--pk-border,#e1e8f5);border-radius:9px}
+.writing-detail-commercial .writing-outline-ai-brief small{font-size:10px;color:#8495ad}
+.writing-detail-commercial .writing-outline-ai-brief h4{font-size:14px;margin:6px 0 10px;overflow-wrap:anywhere}
+.writing-detail-commercial .writing-outline-ai-facts{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:11px;color:var(--pk-muted,#8293ad)}
+.writing-detail-commercial .writing-outline-ai-charge{font-size:13px;font-weight:600;line-height:1.8;margin:16px 0;color:var(--detail-accent,#416bd3)}
+.writing-detail-commercial .writing-outline-ai-consent{display:flex;align-items:flex-start;gap:9px;font-size:12px;line-height:1.9;cursor:pointer}
+.writing-detail-commercial .writing-outline-ai-consent input{width:15px;height:15px;flex-shrink:0;margin-top:5px;accent-color:var(--detail-accent,#416bd3)}
+.writing-detail-commercial .writing-outline-ai-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:18px}
+.writing-detail-commercial .writing-outline-ai-error{font-size:12px;color:#b45745;line-height:1.9;overflow-wrap:anywhere}
+.writing-detail-commercial .writing-outline-ai-progress{display:flex;flex-direction:column;gap:5px;padding:18px 0;font-size:12px;line-height:1.9}
+.writing-detail-commercial .writing-outline-ai-progress span{color:#7789a7}
+.writing-detail-commercial .writing-outline-ai-preview textarea{box-sizing:border-box;width:100%;min-height:260px;max-height:540px;padding:15px;border:1px solid var(--pk-border,#dbe5f4);border-radius:8px;background:var(--pk-surface,#fff);color:var(--pk-text,#304764);font:inherit;font-size:13px;line-height:1.9;resize:vertical}
+.writing-detail-commercial .writing-outline-ai-preview label{display:block;font-size:12px;font-weight:600;margin:15px 0 10px}
+.hub-theme-dark #app .writing-outline-ai-shell{background:var(--pk-surface-soft);border-color:var(--pk-border)}
+.hub-theme-dark #app .writing-detail-commercial #outline-ai-generate{background:var(--pk-surface-soft)}
+@media(max-width:760px){.writing-detail-commercial .outline-source-actions:has(#outline-manual-trigger){grid-template-columns:minmax(0,1fr)}.writing-detail-commercial .writing-outline-ai-shell{padding:16px}.writing-detail-commercial .writing-outline-ai-actions .btn{width:100%}}

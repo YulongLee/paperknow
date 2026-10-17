@@ -99,6 +99,19 @@ test('account results preview, editing, saved versions and export preserve origi
  f.doc.querySelector('#export-result').click();assert.deepEqual(f.downloads,['PaperKnow成果.txt']);
 });
 
+test('generated thesis outlines open and export safely without requesting unsupported revisions',async t=>{
+ const outline='1. 数字阅读服务研究背景\n1.1 用户需求 <script>alert(1)</script>';
+ const item={id:'outline-result',type:'thesis_outline',title:'主题专属论文提纲',created_at:now,body:{text:outline,model:'configured-model'}};
+ const f=await fixture(t,{view:'results',params:'result=outline-result',request:async path=>path==='/api/results'?{ok:true,status:200,json:async()=>({items:[item]})}:path==='/api/results/outline-result'?{ok:true,status:200,json:async()=>({item})}:undefined});
+ assert.equal(f.doc.querySelector('#result-detail pre').textContent,outline);
+ assert.equal(f.doc.querySelector('#result-detail script'),null);
+ assert.match(f.doc.querySelector('#result-detail').textContent,/configured-model/);
+ assert.ok(f.doc.querySelector('#result-detail a[href="#tool/writing"]'));
+ assert.equal(f.doc.querySelector('#revision-form'),null);
+ assert.equal(f.calls.some(call=>call.path.endsWith('/revisions')),false);
+ f.doc.querySelector('#export-result').click();assert.deepEqual(f.downloads,['PaperKnow成果.txt']);
+});
+
 test('agent submission uses selected account materials and distinct task route',async t=>{
  const f=await fixture(t,{view:'agent'});input(f,'#agent-text','整理这份研究材料');f.doc.querySelector('#agent-materials option').selected=true;submit(f,'#agent-form');await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.calls.some(call=>call.path==='/api/jobs'&&call.body));
  const job=f.calls.find(call=>call.path==='/api/jobs'&&call.body);assert.equal(job.body.type,'agent');assert.deepEqual(job.body.fileIds,['f1']);assert.ok(f.doc.querySelector('.account-task-modes a.active').href.endsWith('#tasks?scope=account&view=agent'));

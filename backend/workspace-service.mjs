@@ -42,7 +42,8 @@ export function createWorkspaceService(db,{billing}={}){
     db.prepare('SELECT coalesce(sum(length(CAST(snapshot AS BLOB))),0) n FROM theses WHERE user_id=?').get(user.id).n+
     db.prepare('SELECT coalesce(sum(length(CAST(snapshot AS BLOB))+length(CAST(plan AS BLOB))),0) n FROM thesis_runs WHERE user_id=?').get(user.id).n+
     db.prepare('SELECT coalesce(sum(length(CAST(v.text AS BLOB))),0) n FROM thesis_chapter_versions v JOIN theses t ON t.id=v.thesis_id WHERE t.user_id=?').get(user.id).n+
-    db.prepare('SELECT coalesce(sum(length(CAST(c.text AS BLOB))+length(CAST(c.trace AS BLOB))),0) n FROM thesis_checkpoints c JOIN thesis_runs r ON r.id=c.run_id WHERE r.user_id=?').get(user.id).n;
+    db.prepare('SELECT coalesce(sum(length(CAST(c.text AS BLOB))+length(CAST(c.trace AS BLOB))),0) n FROM thesis_checkpoints c JOIN thesis_runs r ON r.id=c.run_id WHERE r.user_id=?').get(user.id).n+
+    db.prepare("SELECT coalesce(sum(length(CAST(snapshot AS BLOB))+length(CAST(coalesce(output,'') AS BLOB))),0) n FROM thesis_outline_runs WHERE user_id=?").get(user.id).n;
    if(contentBytes>100*1024*1024)error(413,'账户资料超过单次归档大小，请按项目下载原件与成果');
    const profile=safeUser(db,user.id);
    const projects=db.prepare(projectSelect+' WHERE p.user_id=? ORDER BY p.created_at,p.id').all(user.id);
@@ -57,7 +58,8 @@ export function createWorkspaceService(db,{billing}={}){
    const thesisRuns=db.prepare('SELECT id,thesis_id,snapshot,plan,status,stage,error,attempt,result_id,input_tokens,output_tokens,created_at,updated_at FROM thesis_runs WHERE user_id=? ORDER BY created_at,id').all(user.id).map(row=>({...row,snapshot:JSON.parse(row.snapshot),plan:JSON.parse(row.plan)}));
    const thesisChapters=db.prepare('SELECT v.* FROM thesis_chapter_versions v JOIN theses t ON t.id=v.thesis_id WHERE t.user_id=? ORDER BY v.thesis_id,v.chapter_id,v.version').all(user.id).map(row=>({...row,source_ids:JSON.parse(row.source_ids)}));
    const thesisSections=db.prepare('SELECT c.* FROM thesis_checkpoints c JOIN thesis_runs r ON r.id=c.run_id WHERE r.user_id=? ORDER BY c.run_id,c.position').all(user.id).map(row=>({...row,source_ids:JSON.parse(row.source_ids),missing_evidence:JSON.parse(row.missing_evidence),trace:JSON.parse(row.trace)}));
-   const archive={format:'paperknow-account-archive',version:1,exportedAt:now(),scope:'account',account:{id:profile.id,name:profile.name,email:profile.email,phone:profile.phone},projects,drafts,files,results,jobs,feedback,theses,thesisRuns,thesisChapters,thesisSections,includesOriginalFiles:false,restoreSupported:false};
+   const thesisOutlineRuns=db.prepare('SELECT id,snapshot,input_hash,status,stage,error,output,result_id,input_tokens,output_tokens,usage_known,created_at,updated_at FROM thesis_outline_runs WHERE user_id=? ORDER BY created_at,id').all(user.id).map(row=>({...row,snapshot:JSON.parse(row.snapshot),output:row.output?JSON.parse(row.output):null}));
+   const archive={format:'paperknow-account-archive',version:1,exportedAt:now(),scope:'account',account:{id:profile.id,name:profile.name,email:profile.email,phone:profile.phone},projects,drafts,files,results,jobs,feedback,theses,thesisRuns,thesisChapters,thesisSections,thesisOutlineRuns,includesOriginalFiles:false,restoreSupported:false};
    if(Buffer.byteLength(JSON.stringify(archive))>100*1024*1024)error(413,'账户资料超过单次归档大小，请按项目下载原件与成果');
    return result(archive);
   }
