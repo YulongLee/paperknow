@@ -37,7 +37,7 @@ export function createFileService(db,config={}){
     if(old&&old.expected_sha256!==input.expectedSha256)fail(409,'原件已变化，请刷新后再删除');
     if(old?.status==='completed')return null;
     const row=file(id,user);if(row.sha256!==input.expectedSha256)fail(409,'原件已变化，请刷新后再删除');
-    const active=db.prepare("SELECT input FROM jobs WHERE user_id=? AND status IN ('queued','running') AND type IN ('parse','agent')").all(user.id);
+    const active=db.prepare("SELECT input FROM jobs WHERE user_id=? AND status IN ('queued','running') AND type IN ('parse','agent','document_parse')").all(user.id);
     if(active.some(job=>{try{const v=JSON.parse(job.input);return v.fileId===id||(Array.isArray(v.fileIds)&&v.fileIds.includes(id));}catch{return true;}}))fail(409,'仍有进行中的任务正在使用此原件，请等待完成或取消任务后再删除');
     const at=new Date().toISOString();
     db.prepare("INSERT INTO workspace_file_deletions(file_id,user_id,expected_sha256,status,created_at,updated_at) VALUES(?,?,?,'pending',?,?) ON CONFLICT(file_id) DO NOTHING").run(id,user.id,row.sha256,at,at);
@@ -53,12 +53,14 @@ export function createFileService(db,config={}){
    });
    return {value:{ok:true,id,deleted:true}};
   }
-  if(Object.keys(input).some(k=>!['name','data','projectId'].includes(k)))fail(400,'包含不支持的文件字段');
+  if(Object.keys(input).some(k=>!['name','data','projectId','expectedUserId'].includes(k)))fail(400,'包含不支持的文件字段');
+  if(input.expectedUserId!==undefined&&input.expectedUserId!==user.id)fail(409,'登录账户已变化，请重新确认文件上传');
   const name=text(input.name,200),kind=name.split('.').at(-1).toLowerCase();
-  if(!['txt','docx','pdf'].includes(kind))fail(400,'支持 TXT、DOCX 和文本 PDF');
-  if(typeof input.data!=='string'||!input.data.length||!/^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(input.data))fail(400,'文件编码无效');
+  if(!['txt','docx','pdf'].includes(kind))fail(400,'支持 TXT、DOCX 和 PDF');
+  if(typeof input.data!=='string'||!input.data.length||input.data.length%4!==0||!/^[A-Za-z0-9+/]*={0,2}$/.test(input.data))fail(400,'文件编码无效');
   const buffer=Buffer.from(input.data,'base64');
-  if(!buffer.length||buffer.length>maxFileBytes)fail(413,'文件最大 2MB');
+  if(buffer.toString('base64')!==input.data)fail(400,'文件编码无效');
+  if(!buffer.length||buffer.length>(kind==='pdf'?20*1024*1024:maxFileBytes))fail(413,kind==='pdf'?'PDF 文件最大 20MB':'TXT、DOCX 文件最大 2MB');
   if(kind==='pdf'&&!buffer.subarray(0,5).equals(Buffer.from('%PDF-')))fail(400,'PDF 文件格式无效');
   if(kind==='docx'&&!buffer.subarray(0,2).equals(Buffer.from('PK')))fail(400,'DOCX 文件格式无效');
   const id=randomUUID(),pid=input.projectId||null,at=new Date().toISOString();

@@ -20,7 +20,7 @@
 - [科研基础图表制作步骤｜CSV 输入与 SVG、PNG 导出](https://paperknow.cn/guides/research-charts/): 按 PaperKnow 当前绘图流程整理表头、类别与数值系列，选择基础图表，核对坐标、单位和图例，再导出 SVG、PNG 与 CSV。区分描述统计和显著性检验。
 - [关于 PaperKnow｜论文写作与科研辅助工作台](https://paperknow.cn/about/): 了解 PaperKnow 的产品定位、八项论文与科研工具、当前服务范围，以及本地体验与在线账户的区别。运营名称：oneshowailab-paperknow。
 - [PaperKnow 使用帮助｜登录、保存、上传与成果导出](https://paperknow.cn/help/): 查看 PaperKnow 邮箱手机号登录、本地体验与账户项目、文件上传、备份恢复及成果导出的常见问题和处理步骤。
-- [PaperKnow 数据与隐私说明｜本地资料、账户文件与处理范围](https://paperknow.cn/privacy/): 了解 PaperKnow 本地资料、账户文件、登录信息与在线任务的处理范围，以及主动检索时向 Crossref、Europe PMC 发送的关键词和筛选条件、短期内存缓存及资料备份方式。
+- [PaperKnow 数据与隐私说明｜本地资料、账户文件与处理范围](https://paperknow.cn/privacy/): 了解 PaperKnow 本地与账户资料、MinerU 云端 PDF 解析、阿里云内容安全审核、文献检索及私有对象存储的处理范围、确认方式与备份删除边界。
 - [PaperKnow 服务规则｜使用范围、成果核对与费用状态](https://paperknow.cn/terms/): 了解 PaperKnow 工具当前开放范围、材料使用要求、研究成果核对、导出条件与账户购买规则。
 - [联系 PaperKnow｜产品支持与资料处理问题](https://paperknow.cn/contact/): 通过 contact@oneshowailab.com 联系 PaperKnow，反馈登录、上传、保存和导出问题，或咨询资料处理范围。运营名称：oneshowailab-paperknow。
 - [PaperKnow 功能开放状态｜账户、AI、检索与导出范围](https://paperknow.cn/status/): 查看 PaperKnow 八类论文与科研工具的实际开放范围：AI 写作、原文研读翻译、逐段表达优化、PPT、格式规则处理与科研辅助；2026 年 10 月 18 日更新，不代表实时系统监控。

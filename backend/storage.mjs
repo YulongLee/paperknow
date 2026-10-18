@@ -23,7 +23,7 @@ export function createStorage(config,client){
     return key;
   };
   const readObject=async(file,area)=>{
-    const key=assertObject(file,area),maximum=(area==='exports'?20:2)*1024*1024;
+    const key=assertObject(file,area),maximum=(area==='exports'||file.kind==='pdf'?20:2)*1024*1024;
     if(!Number.isSafeInteger(file.bytes)||file.bytes<1||file.bytes>maximum||!/^[a-f0-9]{64}$/.test(file.sha256||''))throw new Error('文件完整性校验失败');
     let buffer;
     try{

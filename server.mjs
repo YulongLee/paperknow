@@ -16,6 +16,9 @@ import {startThesisOutlineWorker} from './backend/thesis-outline-worker.mjs';
 import {startToolRunWorker} from './backend/tool-run-worker.mjs';
 import {startWritingWorker} from './backend/writing-worker.mjs';
 import {startThesisMethodWorker} from './backend/thesis-method-worker.mjs';
+import {startDocumentParseWorker} from './backend/document-parse-worker.mjs';
+import {createContentModeration} from './backend/content-moderation.mjs';
+import {createModeratedAgentRunner} from './backend/moderated-agent.mjs';
 import {runAgentTask} from './backend/agent-runtime.mjs';
 import {sessionUser} from './backend/auth.mjs';
 import {accountDestination} from './dist/account-routes.mjs';
@@ -23,12 +26,13 @@ export function createServer({dbPath=resolve(process.env.PK_DATA_DIR||'.data','p
 if(config.aiURL){const u=new URL(config.aiURL);if(u.protocol!=='https:'&&!(u.protocol==='http:'&&['127.0.0.1','localhost'].includes(u.hostname)))throw new Error('模型接口必须使用 HTTPS 或本地地址');}
 const storage=createStorage(config,config.ossClient),db=database(dbPath),settings=modelSettings(db,config);
 config={...config,storage,settings,getAI:()=>settings.get()};
+config={...config,moderation:config.moderation||createContentModeration(config)};
 const productionTree=process.cwd().startsWith('/opt/paperknow/');
 const monitoring=createMonitoring(db,config,{databasePath:dbPath===':memory:'?null:dbPath,volumePath:dbPath===':memory:'?process.cwd():dirname(resolve(dbPath)),directorySummaryFile:productionTree?'/run/paperknow-ops/storage.json':null,directoryTargets:productionTree?{releases:'/opt/paperknow/releases',backups:'/opt/paperknow/backups',cache:'/opt/paperknow/build-home/npm-cache'}:{}});
 config={...config,monitoring};
-const agentSettings=createAgentSettings(db,config);config={...config,agentSettings,getAgentSettings:id=>id?agentSettings.version(id):agentSettings.get(),agentTaskRunner:config.agentTaskRunner||runAgentTask};
-const legacyWorker=startWorker(db,config),thesisWorker=startThesisWorker(db,config),outlineWorker=startThesisOutlineWorker(db,config),methodWorker=startThesisMethodWorker(db,config),writingWorker=startWritingWorker(db,config),toolWorker=startToolRunWorker(db,config);
-const worker={async tick(){await legacyWorker.tick();await thesisWorker.tick();await outlineWorker.tick();await methodWorker.tick();await writingWorker.tick();await toolWorker.tick();},cancel(id){legacyWorker.cancel(id);thesisWorker.cancel(id);outlineWorker.cancel(id);methodWorker.cancel(id);writingWorker.cancel(id);toolWorker.cancel(id);},async stop(){await Promise.all([legacyWorker.stop(),thesisWorker.stop(),outlineWorker.stop(),methodWorker.stop(),writingWorker.stop(),toolWorker.stop()]);}};
+const agentSettings=createAgentSettings(db,config);config={...config,agentSettings,getAgentSettings:id=>id?agentSettings.version(id):agentSettings.get(),agentTaskRunner:createModeratedAgentRunner(config.agentTaskRunner||runAgentTask,config)};
+const legacyWorker=startWorker(db,config),thesisWorker=startThesisWorker(db,config),outlineWorker=startThesisOutlineWorker(db,config),methodWorker=startThesisMethodWorker(db,config),writingWorker=startWritingWorker(db,config),toolWorker=startToolRunWorker(db,config),documentWorker=startDocumentParseWorker(db,config);
+const worker={async tick(){await legacyWorker.tick();await thesisWorker.tick();await outlineWorker.tick();await methodWorker.tick();await writingWorker.tick();await toolWorker.tick();await documentWorker.tick();},cancel(id){legacyWorker.cancel(id);thesisWorker.cancel(id);outlineWorker.cancel(id);methodWorker.cancel(id);writingWorker.cancel(id);toolWorker.cancel(id);documentWorker.cancel(id);},async stop(){await Promise.all([legacyWorker.stop(),thesisWorker.stop(),outlineWorker.stop(),methodWorker.stop(),writingWorker.stop(),toolWorker.stop(),documentWorker.stop()]);}};
 const api=createAPI(db,worker,config),root=resolve('dist');
 const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2','.txt':'text/plain; charset=utf-8','.xml':'application/xml; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.csv':'text/csv; charset=utf-8'};
 const publicPages=new Map();
