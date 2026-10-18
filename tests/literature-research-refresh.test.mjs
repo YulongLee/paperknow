@@ -66,5 +66,21 @@ test('literature filters and reading views remain in place, while explicit note 
 
 test('saved OpenAlex records preserve their actual provider and distinguish links from an imported full text',()=>{
  const {dom,ctx}=setup(),paper=validatePaper({id:'openalex-metadata',title:'开放题录',source:'openalex',sourceId:'W123456',url:'https://openalex.org/W123456',scope:'metadata',text:'',tags:[],notes:[],status:'unread'});
- try{localStorage.setItem(literatureKey,JSON.stringify([paper]));mountLiteratureReader(paper.id,ctx);assert.match($('.lit-source-info').textContent,/OpenAlex.*在线题录，未读取全文/);assert.match($('.lit-source-info').textContent,/在线题录 · 全文未读取/);assert.equal($('.lit-source-info a').href,'https://openalex.org/W123456');assert.match($('.lit-read-notice').textContent,/没有正文可供研读/);assert.equal($('.lit-read-text').textContent,'可通过编辑信息补充正文或摘要。');}finally{clearEditor();dom.window.close();}
+ try{localStorage.setItem(literatureKey,JSON.stringify([paper]));mountLiteratureReader(paper.id,ctx);assert.match($('.lit-source-info').textContent,/OpenAlex.*在线题录，未读取全文/);assert.match($('.lit-source-info').textContent,/在线题录 · 全文未读取/);assert.equal($('.lit-source-info a').href,'https://openalex.org/W123456');assert.match($('.lit-read-notice').textContent,/尚未选定 AI 研读材料/);assert.match($('.lit-read-text').textContent,/选择正文或摘要范围/);assert.equal($('.lit-database-abstract'),null);}finally{clearEditor();dom.window.close();}
+});
+
+test('saved database abstracts and public original links remain viewable without turning metadata into AI reading material',()=>{
+ const {dom,ctx}=setup(),paper=validatePaper({id:'openalex-abstract',title:'题录与摘要',source:'openalex',sourceId:'W123457',url:'https://openalex.org/W123457',fullTextUrl:'https://repository.example.test/paper.pdf',abstract:'Database abstract <img src=x onerror=alert(1)>\nSecond paragraph.',scope:'metadata',text:'',tags:[],notes:[{id:'own-note',text:'自己的笔记'}],status:'unread'});
+ try{
+  localStorage.setItem(literatureKey,JSON.stringify([paper]));mountLiteratureReader(paper.id,ctx);assert.match($('.lit-database-abstract summary').textContent,/已保存的数据库摘要（非全文）/);assert.match($('.lit-database-abstract p').textContent,/Database abstract <img/);assert.match($('.lit-database-abstract small').textContent,/不会自动成为 AI 研读材料/);assert.equal($('.lit-database-abstract img'),null);
+  assert.equal($('.lit-public-fulltext').href,paper.fullTextUrl);assert.equal($('.lit-public-fulltext').target,'_blank');assert.equal($('.lit-public-fulltext').rel,'noopener noreferrer');assert.match($('.lit-source-info').textContent,/未自动下载或读取全文/);assert.equal($('.lit-read-text .lit-ai-paragraph-label'),null);
+  const saved=JSON.parse(localStorage.getItem(literatureKey))[0];assert.equal(saved.scope,'metadata');assert.equal(saved.text,'');assert.equal(saved.abstract,paper.abstract);assert.equal(saved.fullTextUrl,paper.fullTextUrl);assert.deepEqual(saved.notes,paper.notes);assert.equal(saved.status,'unread');
+ }finally{clearEditor();dom.window.close();}
+});
+
+test('source information omits unsafe public links and does not invent missing database abstracts',()=>{
+ const {dom,ctx}=setup();
+ try{for(const fullTextUrl of ['javascript:alert(1)','data:text/html,unsafe','https://user:secret@example.test/private','']){
+  const paper=validatePaper({id:'unsafe-oa',title:'无摘要题录',source:'openalex',sourceId:'W123458',fullTextUrl,scope:'metadata',text:'',tags:[],notes:[],status:'unread'});localStorage.setItem(literatureKey,JSON.stringify([paper]));mountLiteratureReader(paper.id,ctx);assert.equal($('.lit-public-fulltext'),null);assert.equal($('.lit-database-abstract'),null);assert.equal(document.querySelector('script'),null);assert.doesNotMatch($('.lit-source-info').innerHTML,/javascript:|data:text|user:secret/);
+ }}finally{clearEditor();dom.window.close();}
 });
