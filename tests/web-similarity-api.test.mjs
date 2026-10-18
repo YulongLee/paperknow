@@ -27,4 +27,10 @@ test('HTTP task and private OSS report survive reload with source evidence and n
 test('input moderation rejection prevents search calls and never publishes a numeric result',async t=>{
  const f=await fixture(t,{moderationEnabled:true,moderation:{ready:true,async checkText(){return{allowed:false};}}}),id=(await f.submit()).value.item.id;
  await f.worker.tick();assert.equal((await f.request('/web-similarity/'+id)).value.item.status,'failed');assert.equal(f.calls.length,0);assert.equal((await f.request('/web-similarity/'+id+'/report')).status,409);
+ assert.equal((await f.request('/jobs/'+id+'/retry',{})).status,409);await f.worker.tick();assert.equal(f.calls.length,0);
+});
+
+test('generic task cancellation retains expected-owner confirmation and cannot bypass specialist retry policy',async t=>{
+ const f=await fixture(t),id=(await f.submit()).value.item.id;
+ assert.equal((await f.request('/jobs/'+id+'/cancel',{})).status,409);assert.equal((await f.request('/jobs/'+id+'/cancel',{expectedUserId:'bob'})).status,409);assert.equal((await f.request('/jobs/'+id+'/cancel',{expectedUserId:'alice'})).status,200);await f.worker.tick();assert.equal((await f.request('/web-similarity/'+id)).value.item.status,'cancelled');assert.equal(f.calls.length,0);
 });

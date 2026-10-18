@@ -8,6 +8,11 @@ const event=value=>'data: '+JSON.stringify(value)+'\n\n';
 const sse=values=>new Response(values.map(event).join('')+'data: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
 const empty={output:{choices:[{message:{content:'没有可用来源'}}],search_info:{search_results:[]}}};
 
+test('administrator model pause stops new search calls even when the dedicated web feature is enabled',async()=>{
+ let calls=0;const paused={...config,getAI:()=>({...config,aiEnabled:false})};assert.equal(webSearchConfigured(paused),false);
+ await assert.rejects(createWebSimilaritySearch(paused,{fetchImpl:async()=>{calls++;return response(empty);}}).search('一段真实待检索的公开文字'),error=>error.status===503);assert.equal(calls,0);
+});
+
 test('native multimodal request forces search and takes sources only from true search_info',async()=>{
  let request,calls=0;
  const client=createWebSimilaritySearch(config,{fetchImpl:async(url,options)=>{calls++;request={url,options};return sse([

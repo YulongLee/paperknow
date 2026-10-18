@@ -15,6 +15,7 @@ const nonempty=(preferred,fallback)=>preferred===undefined||preferred===''?fallb
 function settings(config){
  if(config?.webSimilarityEnabled!==true)return null;
  const ai=config.getAI?.()||config;
+ if(ai.aiEnabled===false)return null;
  const key=nonempty(config.webSimilarityKey,ai.aiKey??config.aiKey);
  const raw=nonempty(config.webSimilarityURL,ai.aiURL??config.aiURL);
  const model=nonempty(config.webSimilarityModel,'qwen3.8-flash');
