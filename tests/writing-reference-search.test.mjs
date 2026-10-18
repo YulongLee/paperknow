@@ -56,8 +56,29 @@ test('configured OpenAlex is selectable in the shared search and imports only tr
  const request=new URL(f.calls[0].url,'https://example.test');assert.equal(request.searchParams.get('source'),'openalex');assert.equal(request.searchParams.get('openAccess'),'true');assert.match(f.$('[data-ref-sources]').textContent,/OpenAlex已检索/);assert.match(f.$('.wrs-result-index').textContent,/OpenAlex/);assert.match(f.$('.wrs-result-links').textContent,/开放获取/);
  choose(f);f.$('[data-ref-import]').click();await settle();assert.equal(f.imports[0][0].source,'openalex');assert.match(f.imports[0][0].sourceLabel,/OpenAlex.*未读取全文/);assert.equal(f.imports[0][0].scope,'metadata');assert.equal(f.imports[0][0].text,'');assert.equal(f.imports[0][0].fullTextRead,false);f.close();
 });
+test('configured AMiner follows capabilities and imports academic metadata without claiming full-text access',async()=>{
+ const f=fixture({availableSources:['crossref','aminer','aminer','unknown'],fetcher:async(url,init)=>{f.calls.push({url,init});return reply(results([paper({source:'aminer',sourceId:'507f1f77bcf86cd799439011',url:'https://www.aminer.cn/pub/507f1f77bcf86cd799439011',sourceLabel:'CNKI synchronized full text',text:'Unrequested text',confirmed:true,fullTextRead:true})],{sources:[{id:'aminer',status:'ok',reason:'private provider details'}]}));}}),stop=f.setup();
+ try{
+  await stop.ready;assert.deepEqual([...f.$('[name=source]').options].map(option=>option.value),['all','crossref','aminer']);assert.match(f.$('[data-ref-provider-description]').textContent,/AMiner 提供跨学科学术题录/);assert.match(f.$('[data-ref-provider-description]').textContent,/AMiner 检索提供学术题录，导入后可继续补充全文和阅读笔记。/);assert.doesNotMatch(f.$('[data-ref-provider-description]').textContent,/摘要|知网|查重/);
+  input(f,'[name=source]','aminer');input(f,'[name=q]','人工智能 教育');submit(f);await settle();const request=new URL(f.calls[0].url,'https://example.test');assert.equal(request.searchParams.get('source'),'aminer');assert.equal(request.searchParams.get('q'),'人工智能 教育');assert.match(f.$('[data-ref-sources]').textContent,/AMiner已检索/);assert.match(f.$('.wrs-result-index').textContent,/AMiner/);assert.equal(f.$('.wrs-result-links a').href,'https://www.aminer.cn/pub/507f1f77bcf86cd799439011');assert.doesNotMatch(f.$('.writing-reference-search').textContent,/CNKI synchronized full text|private provider details/);
+  choose(f);f.$('[data-ref-import]').click();await settle();const saved=f.imports[0][0];assert.equal(saved.source,'aminer');assert.equal(saved.sourceId,'507f1f77bcf86cd799439011');assert.equal(saved.sourceLabel,'AMiner · 在线题录，未读取全文');assert.equal(saved.scope,'metadata');assert.equal(saved.abstract,'Database abstract only.');assert.equal(saved.text,'');assert.equal(saved.confirmed,false);assert.equal(saved.fullTextRead,false);
+ }finally{f.close();}
+});
 test('unconfigured OpenAlex is absent and source availability follows server capabilities',async()=>{
- const f=fixture({availableSources:['europepmc']}),stop=f.setup();await stop.ready;assert.deepEqual([...f.$('[name=source]').options].map(option=>option.value),['all','europepmc']);assert.doesNotMatch(f.$('[data-ref-provider-description]').textContent,/OpenAlex|Crossref/);assert.equal(f.calls.length,0);f.close();
+ const f=fixture({availableSources:['europepmc']}),stop=f.setup();await stop.ready;assert.deepEqual([...f.$('[name=source]').options].map(option=>option.value),['all','europepmc']);assert.doesNotMatch(f.$('[data-ref-provider-description]').textContent,/OpenAlex|Crossref|AMiner/);assert.equal(f.calls.length,0);f.close();
+});
+test('AMiner failures and unsupported filters use fixed actionable messages without exposing provider details',async()=>{
+ const cases=[['not_configured',503,/暂未开放/],['budget_exhausted',503,/今日检索额度已用完/],['rate_limited',503,/请求较多/],['error',503,/暂时无法响应/],['unsupported_filter',200,/暂不支持开放获取筛选/]];
+ for(const [status,httpStatus,message] of cases){
+  const f=fixture({availableSources:['aminer'],fetcher:async()=>reply({error:'private provider details',items:[],sources:[{id:'aminer',status,reason:'private provider details'}],partial:true},httpStatus)}),stop=f.setup();
+  try{await stop.ready;input(f,'[name=source]','aminer');submit(f);await settle();assert.match(f.$('[data-ref-sources]').textContent,message);if(httpStatus!==200)assert.match(f.$('[data-ref-error]').textContent,message);assert.doesNotMatch(f.$('.writing-reference-search').textContent,/private provider details/);assert.equal(f.imports.length,0);assert.equal(f.$('[data-ref-import]').disabled,true);}finally{f.close();}
+ }
+ const f=fixture({availableSources:['aminer'],fetcher:async()=>reply({error:'private provider details'},503)}),stop=f.setup();
+ try{await stop.ready;input(f,'[name=source]','aminer');submit(f);await settle();assert.match(f.$('[data-ref-error]').textContent,/AMiner 暂时无法响应/);assert.doesNotMatch(f.$('.writing-reference-search').textContent,/private provider details/);}finally{f.close();}
+});
+test('AMiner exhaustion leaves successful aggregate references selectable',async()=>{
+ const f=fixture({availableSources:['crossref','aminer'],mode:'recommend',fetcher:async()=>reply(results([paper()],{partial:true,sources:[{id:'crossref',status:'ok'},{id:'aminer',status:'budget_exhausted',reason:'private budget details'}]}))}),stop=f.setup();
+ try{await stop.ready;assert.match(f.$('[data-ref-sources]').textContent,/AMiner今日检索额度已用完/);assert.match(f.$('[data-ref-status]').textContent,/部分来源暂不可用/);assert.doesNotMatch(f.$('.writing-reference-search').textContent,/private budget details/);choose(f);f.$('[data-ref-import]').click();await settle();assert.equal(f.imports.length,1);assert.equal(f.imports[0][0].source,'crossref');}finally{f.close();}
 });
 test('OpenAlex daily budget and unavailable configuration show actionable messages without exposing provider details',async()=>{
  for(const status of ['budget_exhausted','not_configured']){

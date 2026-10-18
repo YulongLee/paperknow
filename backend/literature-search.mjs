@@ -1,12 +1,15 @@
+import {createHmac} from 'node:crypto';
+
 // Public bibliographic metadata only. Provider credentials stay in server-owned headers.
 const providers = Object.freeze({
   crossref: {id:'crossref',label:'Crossref',endpoint:'https://api.crossref.org/works'},
   europepmc: {id:'europepmc',label:'Europe PMC',endpoint:'https://www.ebi.ac.uk/europepmc/webservices/rest/search'},
+  aminer: {id:'aminer',label:'AMiner',endpoint:'https://datacenter.aminer.cn/gateway/open_platform/api/paper/search'},
   openalex: {id:'openalex',label:'OpenAlex',endpoint:'https://api.openalex.org/works'},
 });
 const namedEntities={amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:' ',ndash:'–',mdash:'—',hellip:'…',times:'×',plusmn:'±',alpha:'α',beta:'β',gamma:'γ',Delta:'Δ',pi:'π',mu:'μ',le:'≤',ge:'≥',rsquo:'’',lsquo:'‘',rdquo:'”',ldquo:'“'};
 class SearchError extends Error {
-  constructor(status,message,response,retryAfter){super(message);this.status=status;this.response=response;this.retryAfter=retryAfter;}
+  constructor(status,message,response,retryAfter,sourceStatus){super(message);this.status=status;this.response=response;this.retryAfter=retryAfter;this.sourceStatus=sourceStatus;}
 }
 const invalid=message=>{throw new SearchError(400,message);};
 function plain(value,max=1000){
@@ -72,6 +75,30 @@ function openAlexItem(item){
   const fullTextUrl=openAccess===true?(location?.is_oa===true?(publicOALink(location.pdf_url)||publicOALink(location.landing_page_url)):'')||publicOALink(item.open_access.oa_url):'';
   return {id:'openalex:'+sourceId,title,authors,year,doi,url:doi?doiLink(doi):'https://openalex.org/'+sourceId,source:'openalex',sourceId,...(abstract?{abstract}:{}),...(openAccess!==undefined?{openAccess}:{}),...(fullTextUrl?{fullTextUrl}:{}),...(type?{type}:{})};
 }
+function aminerItem(item){
+  const sourceId=typeof item?.id==='string'&&/^[a-f\d]{24}$/i.test(item.id)?item.id.toLowerCase():'';
+  const title=plain(item?.title)||plain(item?.title_zh);if(!sourceId||!title)return null;
+  // This search contract supplies bibliographic metadata, not abstracts or proof of access.
+  return {id:'aminer:'+sourceId,title,authors:plain(item.first_author,150),year:yearValue(item.year),doi:doiValue(item.doi),url:'https://www.aminer.cn/pub/'+sourceId,source:'aminer',sourceId};
+}
+function signAminerToken(apiKey,userId,time){
+  const timestamp=Math.floor(time/1000),encode=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
+  const content=encode({alg:'HS256',sign_type:'SIGN'})+'.'+encode({user_id:userId,exp:timestamp+300,timestamp});
+  return content+'.'+createHmac('sha256',apiKey).update(content).digest('base64url');
+}
+function aminerTokenExpiry(token){
+  if(typeof token!=='string'||token.length>10000||!/^[-\w]+\.[-\w]+\.[-\w]+$/.test(token))return null;
+  try{
+    const [headerPart,payloadPart,signaturePart]=token.split('.');
+    const decode=part=>{const bytes=Buffer.from(part,'base64url');if(bytes.toString('base64url')!==part)throw Error();return JSON.parse(bytes.toString('utf8'));};
+    const header=decode(headerPart),payload=decode(payloadPart),signature=Buffer.from(signaturePart,'base64url');
+    const validUser=typeof payload?.user_id==='string'?Boolean(payload.user_id.trim())&&payload.user_id.length<=100:Number.isSafeInteger(payload?.user_id)&&payload.user_id>0;
+    if(!header||Array.isArray(header)||header.alg!=='HS256'||!payload||Array.isArray(payload)||!validUser||!Number.isSafeInteger(payload.exp)||payload.exp<=0||signature.length!==32||signature.toString('base64url')!==signaturePart)return null;
+    // Administrator-supplied tokens are private trusted configuration. No signature claim is
+    // made here: without the issuer's secret, only structure and expiry can be checked.
+    return payload.exp*1000;
+  }catch{return null;}
+}
 export function parseLiteratureQuery(input){
   const p=input instanceof URLSearchParams?input:new URLSearchParams(input);
   const allowed=new Set(['q','source','yearFrom','yearTo','openAccess','limit']);
@@ -95,20 +122,30 @@ function providerURL(id,query){
     const terms=query.q.split(/\s+/).map(part=>part.replace(/["\\]/g,'')).filter(Boolean).map(part=>'"'+part+'"');
     let expression=terms.join(' AND ');if(query.yearFrom||query.yearTo)expression+=' AND FIRST_PDATE:['+(query.yearFrom||1000)+'-01-01 TO '+(query.yearTo||2100)+'-12-31]';if(query.openAccess)expression+=' AND OPEN_ACCESS:Y';
     u.searchParams.set('query',expression);u.searchParams.set('format','json');u.searchParams.set('pageSize',String(query.limit));u.searchParams.set('resultType','core');
-  }else{
+  }else if(id==='openalex'){
     // Search text is confined to one value; callers cannot add fields, filters or keys.
     u.searchParams.set('search',query.q);u.searchParams.set('per_page',String(query.limit));
     u.searchParams.set('select','id,doi,title,authorships,publication_year,abstract_inverted_index,open_access,best_oa_location,type');
     const filters=[];if(query.yearFrom)filters.push('from_publication_date:'+query.yearFrom+'-01-01');if(query.yearTo)filters.push('to_publication_date:'+query.yearTo+'-12-31');if(query.openAccess)filters.push('open_access.is_oa:true');if(filters.length)u.searchParams.set('filter',filters.join(','));
+  }else if(id==='aminer'){
+    // Only the confirmed free title-search endpoint is used. No paid/detail calls or pagination.
+    u.searchParams.set('page','1');u.searchParams.set('size',String(query.limit));u.searchParams.set('title',query.q);
   }
   return u;
 }
 function boundedSet(map,key,value,maximum){if(map.has(key))map.delete(key);while(map.size>=maximum)map.delete(map.keys().next().value);map.set(key,value);}
-export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.now,timeoutMs=8000,maxResponseBytes=2*1024*1024,clientLimit=20,cacheTtlMs=300000,maxCacheEntries=100,maxConcurrent=4,openAlexApiKey='',openAlexDailyLimit=500}={}){
+export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.now,timeoutMs=8000,maxResponseBytes=2*1024*1024,clientLimit=20,cacheTtlMs=300000,maxCacheEntries=100,maxConcurrent=4,openAlexApiKey='',openAlexDailyLimit=500,aminerEnabled=false,aminerApiKey='',aminerUserId='',aminerToken='',aminerDailyLimit=100}={}){
   const apiKey=typeof openAlexApiKey==='string'&&openAlexApiKey.length<=500&&!/[\s\u0000-\u001f\u007f]/.test(openAlexApiKey)?openAlexApiKey:'';
   const dailyLimit=Number.isInteger(openAlexDailyLimit)&&openAlexDailyLimit>=0&&openAlexDailyLimit<=10000?openAlexDailyLimit:500;
-  const availableIds=Object.keys(providers).filter(id=>id!=='openalex'||Boolean(apiKey));
-  let openAlexDay=-1,openAlexCount=0;
+  const aminerKey=typeof aminerApiKey==='string'&&aminerApiKey.length<=500&&!/[\s\u0000-\u001f\u007f]/.test(aminerApiKey)?aminerApiKey:'';
+  const aminerId=typeof aminerUserId==='string'&&/^[a-z\d_-]{1,100}$/i.test(aminerUserId)?aminerUserId:'';
+  const aminerLimit=Number.isInteger(aminerDailyLimit)&&aminerDailyLimit>=0&&aminerDailyLimit<=10000?aminerDailyLimit:100;
+  const aminerTokenProvided=aminerToken!==''&&aminerToken!==undefined&&aminerToken!==null,aminerExpires=aminerTokenProvided?aminerTokenExpiry(aminerToken):null;
+  // An explicitly supplied invalid/expired token never silently falls back to another credential.
+  const aminerConfigured=()=>aminerEnabled===true&&(aminerTokenProvided?aminerExpires!==null&&aminerExpires>clock():Boolean(aminerKey&&aminerId));
+  const availableIds=()=>Object.keys(providers).filter(id=>(id!=='openalex'||Boolean(apiKey))&&(id!=='aminer'||aminerConfigured()));
+  // Process-local request caps reset on restart and are not a persistent financial safeguard.
+  let openAlexDay=-1,openAlexCount=0,aminerDay=-1,aminerCount=0;
   const cache=new Map(),inflight=new Map(),clients=new Map(),providerState=new Map(Object.keys(providers).map(id=>[id,{active:0,minuteAt:0,minuteCount:0,secondAt:0,secondCount:0,cooldownUntil:0}]));let active=0;
   function clientRate(clientKey){
     const time=clock(),key=String(clientKey||'unknown').slice(0,100);let bucket=clients.get(key);
@@ -121,20 +158,27 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
       const day=Math.floor(time/86400000);if(openAlexDay!==day){openAlexDay=day;openAlexCount=0;}
       if(openAlexCount>=dailyLimit)throw new SearchError(503,'OpenAlex 今日检索额度已用完，请明日再试');
     }
+    if(id==='aminer'){
+      if(aminerTokenProvided&&(aminerExpires===null||aminerExpires<=time))throw new SearchError(503,'AMiner 授权已过期或不可用，请联系平台支持',undefined,undefined,'not_configured');
+      const day=Math.floor(time/86400000);if(aminerDay!==day){aminerDay=day;aminerCount=0;}
+      if(aminerCount>=aminerLimit)throw new SearchError(503,'AMiner 今日检索额度已用完，请明日再试',undefined,undefined,'budget_exhausted');
+    }
     if(state.minuteAt+60000<=time){state.minuteAt=time;state.minuteCount=0;}if(state.secondAt+1000<=time){state.secondAt=time;state.secondCount=0;}
     if(state.cooldownUntil>time||state.minuteCount>=60||state.secondCount>=3||state.active>=1||active>=maxConcurrent)throw new SearchError(503,'来源请求繁忙，请稍后重试');
     state.active++;active++;state.minuteCount++;state.secondCount++;
     if(id==='openalex')openAlexCount++;
+    if(id==='aminer')aminerCount++;
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
     try{
       // URL and all outbound headers are server-owned, never supplied by the client.
-      const response=await fetchImpl(providerURL(id,query),{method:'GET',redirect:'error',signal:controller.signal,headers:{Accept:'application/json','User-Agent':'PaperKnow/1.0 (https://paperknow.cn; mailto:contact@oneshowailab.com)',...(id==='openalex'?{Authorization:'Bearer '+apiKey}:{})}});
+      const response=await fetchImpl(providerURL(id,query),{method:'GET',redirect:'error',signal:controller.signal,headers:{Accept:'application/json','User-Agent':'PaperKnow/1.0 (https://paperknow.cn; mailto:contact@oneshowailab.com)',...(id==='openalex'?{Authorization:'Bearer '+apiKey}:id==='aminer'?{Authorization:aminerTokenProvided?aminerToken:signAminerToken(aminerKey,aminerId,time)}:{})}});
       const rejectResponse=async message=>{try{await response.body?.cancel();}catch{}throw new SearchError(503,message);};
       if(id==='openalex'&&response.headers.get('x-ratelimit-remaining')!==null&&Number(response.headers.get('x-ratelimit-remaining'))<=0){
         const reset=Number(response.headers.get('x-ratelimit-reset'));
         state.cooldownUntil=clock()+((Number.isFinite(reset)&&reset>0)?Math.min(86400,Math.ceil(reset))*1000:86400000-(clock()%86400000));
       }
       if(id==='openalex'&&[401,403].includes(response.status)){state.cooldownUntil=Math.max(state.cooldownUntil,clock()+300000);await rejectResponse('OpenAlex 授权暂时不可用，请联系平台支持');}
+      if(id==='aminer'&&[401,403].includes(response.status)){state.cooldownUntil=Math.max(state.cooldownUntil,clock()+300000);await rejectResponse('AMiner 授权暂时不可用，请联系平台支持');}
       if(response.status===429){const wait=Number(response.headers.get('retry-after'));state.cooldownUntil=Math.max(state.cooldownUntil,clock()+Math.min(300,Number.isFinite(wait)&&wait>0?wait:60)*1000);await rejectResponse('该文献来源限流，请稍后重试');}
       if(!response.ok)await rejectResponse('该文献来源暂时不可用');
       if(!/\bjson\b/i.test(response.headers.get('content-type')||''))await rejectResponse('该文献来源响应格式异常');
@@ -142,22 +186,29 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
       const reader=response.body?.getReader();if(!reader)throw new SearchError(503,'该文献来源响应为空');const chunks=[];let bytes=0;
       try{for(;;){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>maxResponseBytes){await reader.cancel();throw new SearchError(503,'该文献来源响应过大');}chunks.push(Buffer.from(value));}}finally{reader.releaseLock();}
       let data;try{data=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw new SearchError(503,'该文献来源响应格式异常');}
-      const rows=id==='crossref'?data?.message?.items:id==='europepmc'?data?.resultList?.result:data?.results,total=id==='crossref'?data?.message?.['total-results']:id==='europepmc'?data?.hitCount:data?.meta?.count;
+      if(id==='aminer'&&(data?.code!==200||data?.success!==true)){
+        const code=data?.code,auth=[40301,40302,40307,40308].includes(code),limited=code===40306;
+        state.cooldownUntil=Math.max(state.cooldownUntil,clock()+(auth?300000:60000));
+        throw new SearchError(503,auth?'AMiner 授权暂时不可用，请联系平台支持':limited?'AMiner 检索较频繁，请稍后重试':'AMiner 暂时不可用，请稍后重试',undefined,undefined,limited?'rate_limited':'error');
+      }
+      const rows=id==='crossref'?data?.message?.items:id==='europepmc'?data?.resultList?.result:id==='aminer'?data?.data:data?.results,total=id==='crossref'?data?.message?.['total-results']:id==='europepmc'?data?.hitCount:id==='aminer'?(query.yearFrom||query.yearTo?undefined:data?.total):data?.meta?.count;
       if(!Array.isArray(rows)||rows.length>1000)throw new SearchError(503,'该文献来源响应格式异常');
-      const items=rows.slice(0,query.limit).map(id==='crossref'?crossrefItem:id==='europepmc'?europeItem:openAlexItem).filter(Boolean).filter(item=>(!query.yearFrom||item.year>=query.yearFrom)&&(!query.yearTo||item.year!==null&&item.year<=query.yearTo)&&(!query.openAccess||item.openAccess===true));
+      const items=rows.slice(0,query.limit).map(id==='crossref'?crossrefItem:id==='europepmc'?europeItem:id==='aminer'?aminerItem:openAlexItem).filter(Boolean).filter(item=>(!query.yearFrom||item.year>=query.yearFrom)&&(!query.yearTo||item.year!==null&&item.year<=query.yearTo)&&(!query.openAccess||item.openAccess===true));
       return {items,...(Number.isSafeInteger(total)&&total>=0?{total}:{})};
     }catch(error){if(controller.signal.aborted)throw new SearchError(503,'该文献来源响应超时，请稍后重试');if(error instanceof SearchError)throw error;throw new SearchError(503,'该文献来源暂时不可用');}
     finally{clearTimeout(timer);state.active--;active--;}
   }
   async function execute(query){
-    const ids=query.source==='all'?availableIds:[query.source];
+    const ids=query.source==='all'?availableIds():[query.source];
     const results=await Promise.all(ids.map(async id=>{
       if(id==='openalex'&&!apiKey)return {source:{id,label:providers[id].label,status:'not_configured',reason:'OpenAlex 暂未开放，请选择其他文献来源。'},items:[]};
+      if(id==='aminer'&&!aminerConfigured())return {source:{id,label:providers[id].label,status:'not_configured',reason:'AMiner 暂未开放或授权已过期，请选择其他文献来源。'},items:[]};
       if(id==='crossref'&&query.openAccess)return {source:{id,label:providers[id].label,status:'unsupported_filter',reason:'Crossref 不提供可靠的开放获取筛选；可改选 Europe PMC 或取消筛选。'},items:[]};
-      try{const value=await retrieve(id,query);return{source:{id,label:providers[id].label,status:'ok',...(value.total!==undefined?{total:value.total}:{})},items:value.items};}catch(error){return {source:{id,label:providers[id].label,status:'error',reason:error.message},items:[]};}
+      if(id==='aminer'&&query.openAccess)return {source:{id,label:providers[id].label,status:'unsupported_filter',reason:'AMiner 当前检索不提供可靠的开放获取筛选；请选择其他文献来源或取消筛选。'},items:[]};
+      try{const value=await retrieve(id,query);return{source:{id,label:providers[id].label,status:'ok',...(value.total!==undefined?{total:value.total}:{})},items:value.items};}catch(error){return {source:{id,label:providers[id].label,status:error.sourceStatus||'error',reason:error.message},items:[]};}
     }));
     const sources=results.map(result=>result.source),ok=sources.filter(source=>source.status==='ok');
-    if(!ok.length&&sources.some(source=>['error','not_configured'].includes(source.status)))throw new SearchError(503,'文献来源暂时不可用，请稍后重试',{items:[],sources,query,partial:true});
+    if(!ok.length&&sources.some(source=>['error','not_configured','budget_exhausted','rate_limited'].includes(source.status)))throw new SearchError(503,'文献来源暂时不可用，请稍后重试',{items:[],sources,query,partial:true});
     const seen=new Map(),items=[];
     // Round-robin preserves each provider's relevance ordering without inventing a cross-provider score.
     for(let index=0;index<query.limit;index++)for(const result of results){const item=result.items[index];if(!item)continue;const key=item.doi||item.source+':'+item.sourceId;if(seen.has(key))continue;seen.set(key,item);items.push(item);}
@@ -165,14 +216,14 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
     return value;
   }
   return {
-    listSources(){return [...availableIds];},
-    sourceStatus(){return Object.values(providers).map(({id,label})=>({id,label,configured:availableIds.includes(id)}));},
+    listSources(){return availableIds();},
+    sourceStatus(){const ids=availableIds();return Object.values(providers).map(({id,label})=>({id,label,configured:ids.includes(id)}));},
     async search(input,{clientKey}={}){
-      const query=parseLiteratureQuery(input);clientRate(clientKey);const key=JSON.stringify(query),time=clock(),saved=cache.get(key);
+      const query=parseLiteratureQuery(input);clientRate(clientKey);const key=JSON.stringify([query,availableIds()]),time=clock(),saved=cache.get(key);
       if(saved&&saved.until>time)return structuredClone(saved.value);if(saved)cache.delete(key);
       if(inflight.has(key))return structuredClone(await inflight.get(key));
       const pending=execute(query);inflight.set(key,pending);
-      try{const value=await pending;if(value.sources.every(source=>source.status!=='error'))boundedSet(cache,key,{until:clock()+cacheTtlMs,value},maxCacheEntries);return structuredClone(value);}finally{inflight.delete(key);}
+      try{const value=await pending;if(value.sources.every(source=>!['error','budget_exhausted','rate_limited'].includes(source.status)))boundedSet(cache,key,{until:clock()+cacheTtlMs,value},maxCacheEntries);return structuredClone(value);}finally{inflight.delete(key);}
     },
   };
 }

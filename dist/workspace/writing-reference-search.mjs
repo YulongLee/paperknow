@@ -1,10 +1,12 @@
 import {esc,icon} from './ui.mjs';
 
-const sources={all:'聚合检索',crossref:'Crossref',europepmc:'Europe PMC',openalex:'OpenAlex'};
+const sources={all:'聚合检索',crossref:'Crossref',europepmc:'Europe PMC',openalex:'OpenAlex',aminer:'AMiner'};
 const baselineSources=['crossref','europepmc'];
-const sourceDescriptions={crossref:'Crossref 覆盖多个学科的出版题录',europepmc:'Europe PMC 侧重生命科学与医学',openalex:'OpenAlex 扩展跨学科文献与开放获取信息'};
+const sourceDescriptions={crossref:'Crossref 覆盖多个学科的出版题录',europepmc:'Europe PMC 侧重生命科学与医学',openalex:'OpenAlex 扩展跨学科文献与开放获取信息',aminer:'AMiner 提供跨学科学术题录'};
+const aminerScopeNotice='AMiner 检索提供学术题录，导入后可继续补充全文和阅读笔记。';
 const sourceStatusLabels={ok:'已检索',unsupported_filter:'不支持当前筛选',not_configured:'暂未开放',budget_exhausted:'今日检索额度已用完',rate_limited:'请求较多，请稍后重试'};
-const sourceReason=row=>row.status==='not_configured'?'该来源暂未开放，请切换其他来源或使用聚合检索。':row.status==='budget_exhausted'?'该来源今日检索额度已用完，其他可用来源仍可继续检索。':clip(row.reason,300);
+const aminerSourceReasons={ok:'',unsupported_filter:'AMiner 暂不支持开放获取筛选，请取消此条件或切换其他来源。',not_configured:'AMiner 暂未开放，请切换其他来源或使用聚合检索。',budget_exhausted:'AMiner 今日检索额度已用完，其他可用来源仍可继续检索。',rate_limited:'AMiner 请求较多，请稍后重试或切换其他来源。',error:'AMiner 暂时无法响应，请稍后重试或切换其他来源。'};
+const sourceReason=row=>row.id==='aminer'?(aminerSourceReasons[row.status]??aminerSourceReasons.error):row.status==='not_configured'?'该来源暂未开放，请切换其他来源或使用聚合检索。':row.status==='budget_exhausted'?'该来源今日检索额度已用完，其他可用来源仍可继续检索。':clip(row.reason,300);
 const clip=(value,max=200)=>String(value??'').replace(/\s+/g,' ').trim().slice(0,max);
 const plainKey=value=>String(value??'').normalize('NFKC').toLocaleLowerCase().replace(/[\p{P}\p{S}\s]+/gu,'');
 const doiOf=value=>clip(value,300).replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').replace(/^doi\s*:\s*/i,'').toLocaleLowerCase();
@@ -99,7 +101,7 @@ export function mountWritingReferenceSearch({container,mode='search',context={},
    if(!response.ok)return;const body=await response.json();if(!current()||abort.signal.aborted||!Array.isArray(body.academicSearchSources))return;
    const enabled=[...new Set(body.academicSearchSources.filter(value=>value!=='all'&&Object.hasOwn(sourceDescriptions,value)))],select=form.querySelector('[name=source]'),previous=select.value;
    select.innerHTML=['all',...enabled].map(value=>`<option value="${value}">${sources[value]}</option>`).join('');select.value=enabled.includes(previous)?previous:'all';
-   $('[data-ref-provider-description]').textContent=(enabled.length?enabled.map(value=>sourceDescriptions[value]).join('，')+'。':'当前暂无已开放的检索来源。')+'中文结果取决于数据库收录，英文关键词通常更易匹配。聚合检索会查询当前可用来源；开放获取筛选仅查询支持此条件的来源。';
+   $('[data-ref-provider-description]').textContent=(enabled.length?enabled.map(value=>sourceDescriptions[value]).join('，')+'。':'当前暂无已开放的检索来源。')+'中文结果取决于数据库收录，英文关键词通常更易匹配。聚合检索会查询当前可用来源；开放获取筛选仅查询支持此条件的来源。'+(enabled.includes('aminer')?aminerScopeNotice:'');
   }catch{/* Keep existing public sources usable when the status request is unavailable. */}
   finally{clearTimeout(capabilityTimer);capabilityController=null;}
  }
@@ -130,7 +132,7 @@ export function mountWritingReferenceSearch({container,mode='search',context={},
    const response=await fetcher('/api/literature/search?'+new URLSearchParams(filters),{method:'GET',credentials:'same-origin',cache:'no-store',signal:abort.signal,headers:{Accept:'application/json'}});
    const body=await response.json();if(!current()||request!==sequence)return;
    if(timedOut)throw Error('检索超时，请稍后重试。');if(abort.signal.aborted)return;
-   if(!response.ok){const states=Array.isArray(body.sources)?body.sources:[],unavailable=states.find(row=>row.status==='not_configured'||row.status==='budget_exhausted');throw Object.assign(Error(unavailable?sourceReason(unavailable):typeof body.error==='string'?clip(body.error,300):response.status===429?'检索过于频繁，请稍后重试。':'数据库暂时无法响应，请稍后重试。'),{sources:states});}
+   if(!response.ok){const states=Array.isArray(body.sources)?body.sources:[],unavailable=states.find(row=>row.id==='aminer'&&row.status!=='ok')||states.find(row=>row.status==='not_configured'||row.status==='budget_exhausted')||(filters.source==='aminer'?{id:'aminer',status:response.status===429?'rate_limited':'error'}:null);throw Object.assign(Error(unavailable?sourceReason(unavailable):typeof body.error==='string'?clip(body.error,300):response.status===429?'检索过于频繁，请稍后重试。':'数据库暂时无法响应，请稍后重试。'),{sources:states});}
    if(!Array.isArray(body.items))throw Error('检索响应不完整，请稍后重试。');
    items=newReferenceSearchItems(body.items);sourceStates=Array.isArray(body.sources)?body.sources:[];rowsMarkup();
    message(body.partial?`找到 ${items.length} 篇题录；部分来源暂不可用，可核对下方来源状态后重试。`:`找到 ${items.length} 篇题录。请选择需要核对的文献；这不代表已读取全文。`);
