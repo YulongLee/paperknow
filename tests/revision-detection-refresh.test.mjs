@@ -47,6 +47,7 @@ test('invalid or unsaved revision input cannot create a fake document or discard
  const f=fixture(t,{failSave:true});mountRevision(f);f.submit('#revision-entry-form');assert.match(f.qs('#revision-service-file-status').textContent,/请先选择/);assert.equal(f.w.localStorage.length,0);f.click('[data-revision-input="paste"]');f.input('#revision-service-title','保留的题目');f.input('#revision-service-text',original);f.submit('#revision-entry-form');assert.equal(f.qs('#revision-service-text').value,original);assert.equal(f.qs('#revision-service-title').value,'保留的题目');assert.equal(f.qs('#revision-space'),null);assert.equal(f.w.localStorage.length,0);assert.match(f.notices.join(''),/保存空间不足/);
 });
 async function mountDetection(f,{sources=[]}={}){
+ f.w.history.replaceState(null,'','#category/detection?view=local');f.w.ensureWebSimilarityStyle=()=>{};f.w.mountWebSimilarity=()=>({dispose(){}});
  const store={sources:[...sources],reports:[]};f.w.repository={all:async key=>store[key],save:async(key,row)=>{store[key].push(row);}};f.w.reportHtml=report=>'<p>'+esc(report.title)+'</p>';f.w.eval(detectionSource+'\nwindow.detectionTest={mountDetection,detectionRouteGuard};');await f.w.detectionTest.mountDetection(f.ctx);return store;
 }
 test('local detection retains paste, real chapter confirmation and source-bound reports without enabling absent AI services',async t=>{
