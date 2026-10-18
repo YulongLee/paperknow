@@ -42,7 +42,7 @@ const workspace=createWorkspaceService(db,{billing});
 const files=createFileService(db,config);
 const artifacts=createArtifactService(db,config);
 const documentParses=createDocumentParseService(db,{...config,cancelDocumentParse:id=>worker.cancel(id)});
-const literatureSearch=createLiteratureSearch({fetchImpl:config.literatureFetch});
+const literatureSearch=createLiteratureSearch({fetchImpl:config.literatureFetch,openAlexApiKey:config.openAlexApiKey,openAlexDailyLimit:config.openAlexDailyLimit});
 const desktopReleases=createDesktopReleaseService(db,config);
 const admin=createAdminAPI(db,worker,{...config,payments,billing},auth);
 const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}};
@@ -80,7 +80,7 @@ if(path==='/api/literature/search'&&method==='GET'){
  catch(error){send(error.status||503,{error:error.message,...error.response},error.retryAfter?{'Retry-After':String(error.retryAfter)}:{});}
  return;
 }
-if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),billing:billing.rules(),payment:payments.options().enabled,academicSearch:true,academicSearchSources:['crossref','europepmc'],thesis:await theses.capabilities(),thesisOutline:await thesisOutlines.capabilities(),thesisMethod:await thesisMethods.capabilities(),writing:await writing.capabilities(),tools:await tools.capabilities(),documentParsing:documentParses.capabilities(),detection:{local:true,external:false,scope:'用户提供的对照材料；不含学校数据库或全网全文'},maxFileBytes:2*1024*1024,maxPDFFileBytes:20*1024*1024});return;}
+if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),billing:billing.rules(),payment:payments.options().enabled,academicSearch:true,academicSearchSources:literatureSearch.listSources(),academicSearchSourceStatus:literatureSearch.sourceStatus(),thesis:await theses.capabilities(),thesisOutline:await thesisOutlines.capabilities(),thesisMethod:await thesisMethods.capabilities(),writing:await writing.capabilities(),tools:await tools.capabilities(),documentParsing:documentParses.capabilities(),detection:{local:true,external:false,scope:'用户提供的对照材料；不含学校数据库或全网全文'},maxFileBytes:2*1024*1024,maxPDFFileBytes:20*1024*1024});return;}
 if(path==='/api/payments/options'&&method==='GET'){send(200,payments.options());return;}
 if(path==='/api/auth/options'&&method==='GET'){send(200,auth.options());return;}
 const authRoutes={

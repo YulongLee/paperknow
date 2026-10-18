@@ -1,7 +1,8 @@
-// Public bibliographic metadata only. No user documents, credentials or model calls.
+// Public bibliographic metadata only. Provider credentials stay in server-owned headers.
 const providers = Object.freeze({
   crossref: {id:'crossref',label:'Crossref',endpoint:'https://api.crossref.org/works'},
   europepmc: {id:'europepmc',label:'Europe PMC',endpoint:'https://www.ebi.ac.uk/europepmc/webservices/rest/search'},
+  openalex: {id:'openalex',label:'OpenAlex',endpoint:'https://api.openalex.org/works'},
 });
 const namedEntities={amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:' ',ndash:'–',mdash:'—',hellip:'…',times:'×',plusmn:'±',alpha:'α',beta:'β',gamma:'γ',Delta:'Δ',pi:'π',mu:'μ',le:'≤',ge:'≥',rsquo:'’',lsquo:'‘',rdquo:'”',ldquo:'“'};
 class SearchError extends Error {
@@ -43,6 +44,34 @@ function europeItem(item){
   const url=safeLink('https://europepmc.org/article/'+encodeURIComponent(source)+'/'+encodeURIComponent(sourceId));
   return {id:'europepmc:'+source+':'+sourceId,title,authors:plain(item.authorString,3000),year,doi,url,source:'europepmc',sourceId:source+':'+sourceId,...(abstract?{abstract}:{}),...(openAccess!==undefined?{openAccess}:{}),...(fullTextUrl?{fullTextUrl}:{}),...(type?{type}:{})};
 }
+function openAlexAbstract(index){
+  if(!index||typeof index!=='object'||Array.isArray(index))return '';
+  // Never allocate a sparse array from untrusted positions. Work and output are bounded
+  // independently of the response-byte limit, including repeated/malformed positions.
+  const words=new Map();let positions=0;
+  for(const word of Object.keys(index).slice(0,4096)){
+    const offsets=index[word];if(typeof word!=='string'||word.length>256||!Array.isArray(offsets))continue;
+    for(const offset of offsets.slice(0,4096)){
+      if(++positions>8192)break;
+      if(Number.isInteger(offset)&&offset>=0&&offset<4096&&!words.has(offset))words.set(offset,word);
+    }
+    if(positions>8192)break;
+  }
+  return plain([...words.entries()].sort((a,b)=>a[0]-b[0]).map(([,word])=>word).join(' '),3000);
+}
+function openAlexItem(item){
+  const sourceId=typeof item?.id==='string'&&item.id.length<100?item.id.match(/^https:\/\/openalex\.org\/(W\d{1,30})$/)?.[1]:'';
+  const title=plain(item?.title||item?.display_name);if(!sourceId||!title)return null;
+  const doi=doiValue(item.doi),year=yearValue(item.publication_year),abstract=openAlexAbstract(item.abstract_inverted_index),type=plain(item.type,80);
+  const authors=Array.isArray(item.authorships)?item.authorships.slice(0,30).map(value=>plain(value?.author?.display_name,150)).filter(Boolean).join(', '):'';
+  const openAccess=typeof item.open_access?.is_oa==='boolean'?item.open_access.is_oa:undefined;
+  const location=item.best_oa_location;
+  // OpenAlex's paid content_urls require our key and must never become public links.
+  // Surface only provider-declared open locations, not arbitrary deposited PDF links.
+  const publicOALink=value=>{const link=safeLink(value);return link&&new URL(link).hostname!=='content.openalex.org'?link:'';};
+  const fullTextUrl=openAccess===true?(location?.is_oa===true?(publicOALink(location.pdf_url)||publicOALink(location.landing_page_url)):'')||publicOALink(item.open_access.oa_url):'';
+  return {id:'openalex:'+sourceId,title,authors,year,doi,url:doi?doiLink(doi):'https://openalex.org/'+sourceId,source:'openalex',sourceId,...(abstract?{abstract}:{}),...(openAccess!==undefined?{openAccess}:{}),...(fullTextUrl?{fullTextUrl}:{}),...(type?{type}:{})};
+}
 export function parseLiteratureQuery(input){
   const p=input instanceof URLSearchParams?input:new URLSearchParams(input);
   const allowed=new Set(['q','source','yearFrom','yearTo','openAccess','limit']);
@@ -61,16 +90,25 @@ function providerURL(id,query){
   if(id==='crossref'){
     u.searchParams.set('query.bibliographic',query.q);u.searchParams.set('rows',String(query.limit));
     const filters=[];if(query.yearFrom)filters.push('from-pub-date:'+query.yearFrom+'-01-01');if(query.yearTo)filters.push('until-pub-date:'+query.yearTo+'-12-31');if(filters.length)u.searchParams.set('filter',filters.join(','));
-  }else{
+  }else if(id==='europepmc'){
     // Treat all user tokens literally so advanced-query syntax cannot negate our filters.
     const terms=query.q.split(/\s+/).map(part=>part.replace(/["\\]/g,'')).filter(Boolean).map(part=>'"'+part+'"');
     let expression=terms.join(' AND ');if(query.yearFrom||query.yearTo)expression+=' AND FIRST_PDATE:['+(query.yearFrom||1000)+'-01-01 TO '+(query.yearTo||2100)+'-12-31]';if(query.openAccess)expression+=' AND OPEN_ACCESS:Y';
     u.searchParams.set('query',expression);u.searchParams.set('format','json');u.searchParams.set('pageSize',String(query.limit));u.searchParams.set('resultType','core');
+  }else{
+    // Search text is confined to one value; callers cannot add fields, filters or keys.
+    u.searchParams.set('search',query.q);u.searchParams.set('per_page',String(query.limit));
+    u.searchParams.set('select','id,doi,title,authorships,publication_year,abstract_inverted_index,open_access,best_oa_location,type');
+    const filters=[];if(query.yearFrom)filters.push('from_publication_date:'+query.yearFrom+'-01-01');if(query.yearTo)filters.push('to_publication_date:'+query.yearTo+'-12-31');if(query.openAccess)filters.push('open_access.is_oa:true');if(filters.length)u.searchParams.set('filter',filters.join(','));
   }
   return u;
 }
 function boundedSet(map,key,value,maximum){if(map.has(key))map.delete(key);while(map.size>=maximum)map.delete(map.keys().next().value);map.set(key,value);}
-export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.now,timeoutMs=8000,maxResponseBytes=2*1024*1024,clientLimit=20,cacheTtlMs=300000,maxCacheEntries=100,maxConcurrent=4}={}){
+export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.now,timeoutMs=8000,maxResponseBytes=2*1024*1024,clientLimit=20,cacheTtlMs=300000,maxCacheEntries=100,maxConcurrent=4,openAlexApiKey='',openAlexDailyLimit=500}={}){
+  const apiKey=typeof openAlexApiKey==='string'&&openAlexApiKey.length<=500&&!/[\s\u0000-\u001f\u007f]/.test(openAlexApiKey)?openAlexApiKey:'';
+  const dailyLimit=Number.isInteger(openAlexDailyLimit)&&openAlexDailyLimit>=0&&openAlexDailyLimit<=10000?openAlexDailyLimit:500;
+  const availableIds=Object.keys(providers).filter(id=>id!=='openalex'||Boolean(apiKey));
+  let openAlexDay=-1,openAlexCount=0;
   const cache=new Map(),inflight=new Map(),clients=new Map(),providerState=new Map(Object.keys(providers).map(id=>[id,{active:0,minuteAt:0,minuteCount:0,secondAt:0,secondCount:0,cooldownUntil:0}]));let active=0;
   function clientRate(clientKey){
     const time=clock(),key=String(clientKey||'unknown').slice(0,100);let bucket=clients.get(key);
@@ -79,36 +117,47 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
   }
   async function retrieve(id,query){
     const state=providerState.get(id),time=clock();
+    if(id==='openalex'){
+      const day=Math.floor(time/86400000);if(openAlexDay!==day){openAlexDay=day;openAlexCount=0;}
+      if(openAlexCount>=dailyLimit)throw new SearchError(503,'OpenAlex 今日检索额度已用完，请明日再试');
+    }
     if(state.minuteAt+60000<=time){state.minuteAt=time;state.minuteCount=0;}if(state.secondAt+1000<=time){state.secondAt=time;state.secondCount=0;}
     if(state.cooldownUntil>time||state.minuteCount>=60||state.secondCount>=3||state.active>=1||active>=maxConcurrent)throw new SearchError(503,'来源请求繁忙，请稍后重试');
     state.active++;active++;state.minuteCount++;state.secondCount++;
+    if(id==='openalex')openAlexCount++;
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
     try{
       // URL and all outbound headers are server-owned, never supplied by the client.
-      const response=await fetchImpl(providerURL(id,query),{method:'GET',redirect:'error',signal:controller.signal,headers:{Accept:'application/json','User-Agent':'PaperKnow/1.0 (https://paperknow.cn; mailto:contact@oneshowailab.com)'}});
+      const response=await fetchImpl(providerURL(id,query),{method:'GET',redirect:'error',signal:controller.signal,headers:{Accept:'application/json','User-Agent':'PaperKnow/1.0 (https://paperknow.cn; mailto:contact@oneshowailab.com)',...(id==='openalex'?{Authorization:'Bearer '+apiKey}:{})}});
       const rejectResponse=async message=>{try{await response.body?.cancel();}catch{}throw new SearchError(503,message);};
-      if(response.status===429){const wait=Number(response.headers.get('retry-after'));state.cooldownUntil=clock()+Math.min(300,Number.isFinite(wait)&&wait>0?wait:60)*1000;await rejectResponse('该文献来源限流，请稍后重试');}
+      if(id==='openalex'&&response.headers.get('x-ratelimit-remaining')!==null&&Number(response.headers.get('x-ratelimit-remaining'))<=0){
+        const reset=Number(response.headers.get('x-ratelimit-reset'));
+        state.cooldownUntil=clock()+((Number.isFinite(reset)&&reset>0)?Math.min(86400,Math.ceil(reset))*1000:86400000-(clock()%86400000));
+      }
+      if(id==='openalex'&&[401,403].includes(response.status)){state.cooldownUntil=Math.max(state.cooldownUntil,clock()+300000);await rejectResponse('OpenAlex 授权暂时不可用，请联系平台支持');}
+      if(response.status===429){const wait=Number(response.headers.get('retry-after'));state.cooldownUntil=Math.max(state.cooldownUntil,clock()+Math.min(300,Number.isFinite(wait)&&wait>0?wait:60)*1000);await rejectResponse('该文献来源限流，请稍后重试');}
       if(!response.ok)await rejectResponse('该文献来源暂时不可用');
       if(!/\bjson\b/i.test(response.headers.get('content-type')||''))await rejectResponse('该文献来源响应格式异常');
       if(Number(response.headers.get('content-length'))>maxResponseBytes)await rejectResponse('该文献来源响应过大');
       const reader=response.body?.getReader();if(!reader)throw new SearchError(503,'该文献来源响应为空');const chunks=[];let bytes=0;
       try{for(;;){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>maxResponseBytes){await reader.cancel();throw new SearchError(503,'该文献来源响应过大');}chunks.push(Buffer.from(value));}}finally{reader.releaseLock();}
       let data;try{data=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw new SearchError(503,'该文献来源响应格式异常');}
-      const rows=id==='crossref'?data?.message?.items:data?.resultList?.result,total=id==='crossref'?data?.message?.['total-results']:data?.hitCount;
+      const rows=id==='crossref'?data?.message?.items:id==='europepmc'?data?.resultList?.result:data?.results,total=id==='crossref'?data?.message?.['total-results']:id==='europepmc'?data?.hitCount:data?.meta?.count;
       if(!Array.isArray(rows)||rows.length>1000)throw new SearchError(503,'该文献来源响应格式异常');
-      const items=rows.slice(0,query.limit).map(id==='crossref'?crossrefItem:europeItem).filter(Boolean).filter(item=>(!query.yearFrom||item.year>=query.yearFrom)&&(!query.yearTo||item.year!==null&&item.year<=query.yearTo)&&(!query.openAccess||item.openAccess===true));
+      const items=rows.slice(0,query.limit).map(id==='crossref'?crossrefItem:id==='europepmc'?europeItem:openAlexItem).filter(Boolean).filter(item=>(!query.yearFrom||item.year>=query.yearFrom)&&(!query.yearTo||item.year!==null&&item.year<=query.yearTo)&&(!query.openAccess||item.openAccess===true));
       return {items,...(Number.isSafeInteger(total)&&total>=0?{total}:{})};
     }catch(error){if(controller.signal.aborted)throw new SearchError(503,'该文献来源响应超时，请稍后重试');if(error instanceof SearchError)throw error;throw new SearchError(503,'该文献来源暂时不可用');}
     finally{clearTimeout(timer);state.active--;active--;}
   }
   async function execute(query){
-    const ids=query.source==='all'?Object.keys(providers):[query.source];
+    const ids=query.source==='all'?availableIds:[query.source];
     const results=await Promise.all(ids.map(async id=>{
+      if(id==='openalex'&&!apiKey)return {source:{id,label:providers[id].label,status:'not_configured',reason:'OpenAlex 暂未开放，请选择其他文献来源。'},items:[]};
       if(id==='crossref'&&query.openAccess)return {source:{id,label:providers[id].label,status:'unsupported_filter',reason:'Crossref 不提供可靠的开放获取筛选；可改选 Europe PMC 或取消筛选。'},items:[]};
       try{const value=await retrieve(id,query);return{source:{id,label:providers[id].label,status:'ok',...(value.total!==undefined?{total:value.total}:{})},items:value.items};}catch(error){return {source:{id,label:providers[id].label,status:'error',reason:error.message},items:[]};}
     }));
     const sources=results.map(result=>result.source),ok=sources.filter(source=>source.status==='ok');
-    if(!ok.length&&sources.some(source=>source.status==='error'))throw new SearchError(503,'文献来源暂时不可用，请稍后重试',{items:[],sources,query,partial:true});
+    if(!ok.length&&sources.some(source=>['error','not_configured'].includes(source.status)))throw new SearchError(503,'文献来源暂时不可用，请稍后重试',{items:[],sources,query,partial:true});
     const seen=new Map(),items=[];
     // Round-robin preserves each provider's relevance ordering without inventing a cross-provider score.
     for(let index=0;index<query.limit;index++)for(const result of results){const item=result.items[index];if(!item)continue;const key=item.doi||item.source+':'+item.sourceId;if(seen.has(key))continue;seen.set(key,item);items.push(item);}
@@ -116,6 +165,8 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
     return value;
   }
   return {
+    listSources(){return [...availableIds];},
+    sourceStatus(){return Object.values(providers).map(({id,label})=>({id,label,configured:availableIds.includes(id)}));},
     async search(input,{clientKey}={}){
       const query=parseLiteratureQuery(input);clientRate(clientKey);const key=JSON.stringify(query),time=clock(),saved=cache.get(key);
       if(saved&&saved.until>time)return structuredClone(saved.value);if(saved)cache.delete(key);

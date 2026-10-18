@@ -14,7 +14,7 @@ function fixture(options={}){
  for(const key of ['window','document','location','AbortController'])globalThis[key]=dom.window[key];
  const calls=[],imports=[];let stop;
  const base={container:document.getElementById('search-host'),context:{title:'Education feedback',keywords:'learning, education'},getExisting:()=>[],onImport:rows=>imports.push(rows),fetcher:async(url,init)=>{calls.push({url,init});return reply(results());}};
- const setup=extra=>stop=mountWritingReferenceSearch({...base,...options,...extra});
+ const setup=extra=>{const settings={...base,...options,...extra},fetcher=settings.fetcher;settings.fetcher=(url,init)=>url==='/api/capabilities'?Promise.resolve(reply({academicSearchSources:options.availableSources||['crossref','europepmc']})):fetcher(url,init);return stop=mountWritingReferenceSearch(settings);};
  const $=selector=>document.querySelector(selector);
  return {dom,calls,imports,$,setup,close(){stop?.();document.querySelector('#workspace-dialog')?.dispatchEvent(new dom.window.Event('close'));dom.window.close();}};
 }
@@ -48,6 +48,26 @@ test('keyword search is explicit, uses only GET metadata filters and shows parti
  input(f,'[name=q]','feedback learning');input(f,'[name=yearFrom]','2020');input(f,'[name=yearTo]','2025');f.$('[name=openAccess]').checked=true;submit(f);await settle();
  const request=f.calls[0],url=new URL(request.url,'https://example.test');assert.equal(url.pathname,'/api/literature/search');assert.equal(url.searchParams.get('q'),'feedback learning');assert.equal(url.searchParams.get('yearFrom'),'2020');assert.equal(url.searchParams.get('yearTo'),'2025');assert.equal(url.searchParams.get('openAccess'),'true');assert.equal(url.searchParams.get('limit'),'10');assert.equal(request.init.method,'GET');assert.equal(request.init.body,undefined);
  assert.match(f.$('[data-ref-status]').textContent,/部分来源/);assert.match(f.$('[data-ref-sources]').textContent,/不支持当前筛选/);assert.equal(f.imports.length,0);assert.match(f.$('.wrs-results').textContent,/未读全文/);f.close();
+});
+test('configured OpenAlex is selectable in the shared search and imports only traceable metadata',async()=>{
+ const f=fixture({availableSources:['crossref','europepmc','openalex'],fetcher:async(url,init)=>{f.calls.push({url,init});return reply(results([paper({source:'openalex',sourceId:'W123456',doi:'',url:'https://openalex.org/W123456',fullTextUrl:'https://repository.example.test/paper.pdf',openAccess:true})],{sources:[{id:'openalex',status:'ok'}]}));}}),stop=f.setup();
+ await stop.ready;assert.deepEqual([...f.$('[name=source]').options].map(option=>option.value),['all','crossref','europepmc','openalex']);assert.match(f.$('[data-ref-provider-description]').textContent,/OpenAlex/);
+ input(f,'[name=source]','openalex');input(f,'[name=q]','education');f.$('[name=openAccess]').checked=true;submit(f);await settle();
+ const request=new URL(f.calls[0].url,'https://example.test');assert.equal(request.searchParams.get('source'),'openalex');assert.equal(request.searchParams.get('openAccess'),'true');assert.match(f.$('[data-ref-sources]').textContent,/OpenAlex已检索/);assert.match(f.$('.wrs-result-index').textContent,/OpenAlex/);assert.match(f.$('.wrs-result-links').textContent,/开放获取/);
+ choose(f);f.$('[data-ref-import]').click();await settle();assert.equal(f.imports[0][0].source,'openalex');assert.match(f.imports[0][0].sourceLabel,/OpenAlex.*未读取全文/);assert.equal(f.imports[0][0].scope,'metadata');assert.equal(f.imports[0][0].text,'');assert.equal(f.imports[0][0].fullTextRead,false);f.close();
+});
+test('unconfigured OpenAlex is absent and source availability follows server capabilities',async()=>{
+ const f=fixture({availableSources:['europepmc']}),stop=f.setup();await stop.ready;assert.deepEqual([...f.$('[name=source]').options].map(option=>option.value),['all','europepmc']);assert.doesNotMatch(f.$('[data-ref-provider-description]').textContent,/OpenAlex|Crossref/);assert.equal(f.calls.length,0);f.close();
+});
+test('OpenAlex daily budget and unavailable configuration show actionable messages without exposing provider details',async()=>{
+ for(const status of ['budget_exhausted','not_configured']){
+  const f=fixture({availableSources:['crossref','europepmc','openalex'],fetcher:async()=>reply({error:'Upstream private configuration details',sources:[{id:'openalex',status,reason:'Upstream private configuration details'}]},503)}),stop=f.setup();await stop.ready;input(f,'[name=source]','openalex');submit(f);await settle();
+  assert.match(f.$('[data-ref-error]').textContent,status==='budget_exhausted'?/今日检索额度已用完/:/暂未开放/);assert.match(f.$('[data-ref-sources]').textContent,/OpenAlex/);assert.doesNotMatch(f.$('.writing-reference-search').textContent,/Upstream private configuration details/);assert.equal(f.imports.length,0);assert.equal(f.$('[data-ref-import]').disabled,true);f.close();
+ }
+});
+test('an exhausted OpenAlex source does not hide successful aggregate results or permit full-text claims',async()=>{
+ const f=fixture({availableSources:['crossref','europepmc','openalex'],mode:'recommend',fetcher:async()=>reply(results([paper()],{partial:true,sources:[{id:'crossref',status:'ok'},{id:'openalex',status:'budget_exhausted'}]}))}),stop=f.setup();await stop.ready;
+ assert.match(f.$('[data-ref-sources]').textContent,/Crossref已检索/);assert.match(f.$('[data-ref-sources]').textContent,/OpenAlex今日检索额度已用完/);assert.match(f.$('.wrs-result').textContent,/Research methods in education/);assert.match(f.$('.wrs-result').textContent,/未读全文/);choose(f);f.$('[data-ref-import]').click();await settle();assert.equal(f.imports.length,1);f.close();
 });
 test('recommended results are real metadata, require selection to import, and remain pending confirmation',async()=>{
  const f=fixture({mode:'recommend'}),stop=f.setup();await stop.ready;assert.equal(f.calls.length,1);assert.match(new URL(f.calls[0].url,'https://example.test').searchParams.get('q'),/Education feedback/);
@@ -90,7 +110,7 @@ test('the shared library search saves metadata atomically and preserves existing
  try{
   globalThis.localStorage=f.dom.window.localStorage;
   const existing={id:'local-paper',title:'My imported source',year:'2022',doi:'10.9999/local',text:'User-provided full text.',scope:'full',notes:[{id:'note1',text:'My original note.'}],tags:[],status:'reading'};
-  localStorage.setItem(literatureKey,JSON.stringify([existing]));globalThis.fetch=async()=>reply(results());
+  localStorage.setItem(literatureKey,JSON.stringify([existing]));globalThis.fetch=async url=>reply(url==='/api/capabilities'?{academicSearchSources:['crossref','europepmc']}:results());
   const ctx={modal:(_,html)=>{f.$('#workspace-dialog-body').innerHTML=html;},notify:()=>{}};
   dispose=openLiteratureSearch(ctx);await dispose.ready;input(f,'[name=q]','education methods');submit(f);await settle();choose(f);f.$('[data-ref-import]').click();await settle();
   const saved=JSON.parse(localStorage.getItem(literatureKey));assert.equal(saved.length,2);assert.deepEqual(saved[1],existing);assert.equal(saved[0].scope,'metadata');assert.equal(saved[0].text,'');assert.equal(saved[0].confirmed,false);assert.equal(saved[0].status,'unread');assert.equal(saved[0].abstract,'Database abstract only.');assert.equal(saved[0].fullTextRead,false);
@@ -101,7 +121,7 @@ test('a full local library rejects the entire addition and retains the selected 
  const f=fixture(),previousFetch=globalThis.fetch;let dispose;
  try{
   globalThis.localStorage=f.dom.window.localStorage;
-  const before=Array.from({length:200},(_,i)=>({id:'local-'+i,title:'Existing paper '+i,year:'2020',scope:'metadata',text:'',tags:[],notes:[]}));localStorage.setItem(literatureKey,JSON.stringify(before));globalThis.fetch=async()=>reply(results());
+  const before=Array.from({length:200},(_,i)=>({id:'local-'+i,title:'Existing paper '+i,year:'2020',scope:'metadata',text:'',tags:[],notes:[]}));localStorage.setItem(literatureKey,JSON.stringify(before));globalThis.fetch=async url=>reply(url==='/api/capabilities'?{academicSearchSources:['crossref','europepmc']}:results());
   dispose=openLiteratureSearch({modal:(_,html)=>{f.$('#workspace-dialog-body').innerHTML=html;},notify:()=>{}});await dispose.ready;input(f,'[name=q]','education methods');submit(f);await settle();choose(f);f.$('[data-ref-import]').click();await settle();assert.match(f.$('[data-ref-error]').textContent,/最多保存 200 篇/);assert.equal(f.$('[data-ref-select]').checked,true);assert.deepEqual(JSON.parse(localStorage.getItem(literatureKey)),before);
  }finally{dispose?.();globalThis.fetch=previousFetch;f.close();}
 });

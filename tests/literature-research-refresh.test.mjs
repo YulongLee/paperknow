@@ -63,3 +63,8 @@ test('literature filters and reading views remain in place, while explicit note 
   $('[data-read-tab="notes"]').click();const focusCalls=[],original=$('#note-text').focus;$('#note-text').focus=function(options){focusCalls.push(options);return original.call(this,options);};$('[data-edit-note="n1"]').click();assert.deepEqual(focusCalls,[{preventScroll:true}]);assert.equal($('#note-text').value,'已保存笔记');assert.ok($('.dashboard').style.minHeight);
  }finally{clearEditor();dom.window.close();}
 });
+
+test('saved OpenAlex records preserve their actual provider and distinguish links from an imported full text',()=>{
+ const {dom,ctx}=setup(),paper=validatePaper({id:'openalex-metadata',title:'开放题录',source:'openalex',sourceId:'W123456',url:'https://openalex.org/W123456',scope:'metadata',text:'',tags:[],notes:[],status:'unread'});
+ try{localStorage.setItem(literatureKey,JSON.stringify([paper]));mountLiteratureReader(paper.id,ctx);assert.match($('.lit-source-info').textContent,/OpenAlex.*在线题录，未读取全文/);assert.match($('.lit-source-info').textContent,/在线题录 · 全文未读取/);assert.equal($('.lit-source-info a').href,'https://openalex.org/W123456');assert.match($('.lit-read-notice').textContent,/没有正文可供研读/);assert.equal($('.lit-read-text').textContent,'可通过编辑信息补充正文或摘要。');}finally{clearEditor();dom.window.close();}
+});

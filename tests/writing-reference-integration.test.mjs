@@ -8,7 +8,7 @@ function fixture(){
  const previousFetch=globalThis.fetch,calls=[];for(const k of ['window','document','localStorage','FormData','location','AbortController'])globalThis[k]=dom.window[k];
  dom.window.HTMLElement.prototype.scrollIntoView=()=>{};const $=s=>document.querySelector(s);
  const dialog=$('dialog');dialog.close=()=>{dialog.removeAttribute('open');dialog.dispatchEvent(new window.Event('close'));};
- globalThis.fetch=async(url,options)=>{calls.push({url,options});assert.match(url,/^\/api\/literature\/search\?/);return {ok:true,status:200,json:async()=>({items:[{id:'crossref:fixture',source:'crossref',sourceId:'10.1234/fixture',title:'Public metadata fixture',authors:'Test Author',year:2024,doi:'10.1234/fixture',url:'https://doi.org/10.1234/fixture',abstract:'An abstract is not a full text.'}],sources:[{id:'crossref',status:'ok'}],partial:false})};};
+ globalThis.fetch=async(url,options)=>{if(url==='/api/capabilities')return {ok:true,status:200,json:async()=>({academicSearchSources:['crossref','europepmc']})};calls.push({url,options});assert.match(url,/^\/api\/literature\/search\?/);return {ok:true,status:200,json:async()=>({items:[{id:'crossref:fixture',source:'crossref',sourceId:'10.1234/fixture',title:'Public metadata fixture',authors:'Test Author',year:2024,doi:'10.1234/fixture',url:'https://doi.org/10.1234/fixture',abstract:'An abstract is not a full text.'}],sources:[{id:'crossref',status:'ok'}],partial:false})};};
  const ctx={notify(){},modal(_title,html){$('#workspace-dialog-body').innerHTML=html;dialog.setAttribute('open','');}};
  const input=(s,v)=>{$(s).value=v;$(s).dispatchEvent(new window.Event('input',{bubbles:true}));};
  return {dom,$,ctx,input,calls,close(){clearEditor();globalThis.fetch=previousFetch;dom.window.close();}};

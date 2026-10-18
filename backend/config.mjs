@@ -10,6 +10,7 @@ export function environmentConfig(env=process.env){
     aiMaxTokens:Number(env.PK_AI_MAX_TOKENS),aiTimeoutMs:Number(env.PK_AI_TIMEOUT_MS),aiUserDailyLimit:Number(env.PK_AI_USER_DAILY_LIMIT),aiGlobalDailyLimit:Number(env.PK_AI_GLOBAL_DAILY_LIMIT),
     mineruEnabled:env.PK_MINERU_ENABLED==='1',mineruToken:env.PK_MINERU_API_TOKEN,mineruBaseURL:env.PK_MINERU_BASE_URL||'https://mineru.net/api/v4',
     moderationEnabled:env.PK_MODERATION_ENABLED==='1',moderationAccessKeyId:env.PK_MODERATION_ACCESS_KEY_ID,moderationAccessKeySecret:env.PK_MODERATION_ACCESS_KEY_SECRET,moderationEndpoint:env.PK_MODERATION_ENDPOINT,moderationRegion:env.PK_MODERATION_REGION,
+    openAlexApiKey:env.PK_OPENALEX_API_KEY||'',openAlexDailyLimit:/^(?:0|[1-9]\d{0,4})$/.test(env.PK_OPENALEX_DAILY_LIMIT||'')&&Number(env.PK_OPENALEX_DAILY_LIMIT)<=10000?Number(env.PK_OPENALEX_DAILY_LIMIT):500,
     ownerEmail:String(env.PK_OWNER_EMAIL||'').trim().toLowerCase(),paymentConfigKey:env.PK_PAYMENT_CONFIG_KEY,
     authCodeSecret:env.PK_AUTH_CODE_SECRET,authDailyLimit:/^[1-9]\d{0,3}$/.test(env.PK_AUTH_DAILY_SEND_LIMIT||'')?Number(env.PK_AUTH_DAILY_SEND_LIMIT):100,
     emailSMTPHost:env.PK_EMAIL_SMTP_HOST,emailSMTPPort:Number(env.PK_EMAIL_SMTP_PORT||465),emailSMTPSecure:env.PK_EMAIL_SMTP_SECURE!=='0',
