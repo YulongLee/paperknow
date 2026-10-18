@@ -10,6 +10,7 @@ import vm from 'node:vm';
 import {JSDOM} from 'jsdom';
 import {esc,icon,empty} from '../dist/workspace/ui.mjs';
 import {toolBanner} from '../dist/workspace/tool-banner.mjs';
+import {mountAigcDetection,ensureAigcStyle} from '../dist/workspace/aigc-detection.mjs';
 import {workspaceLinks} from '../dist/workspace/interface.mjs';
 import * as revisionModel from '../dist/workspace/revision-model.mjs';
 import * as taskModel from '../dist/workspace/task-model.mjs';
@@ -155,7 +156,7 @@ test('direct AI-rate navigation mounts the AI reduction service and updates the 
 
 test('real AI reduction entry keeps its own heading, theme and selection across shared revision routes',()=>{
  const dom=new JSDOM('<div class="breadcrumb"><strong></strong></div><main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#category/aigc',runScripts:'outside-only'});
- Object.assign(dom.window,{mountArtifactLibrary:()=>({refresh(){},dispose(){}}),thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
+ Object.assign(dom.window,{mountArtifactLibrary:()=>({refresh(){},dispose(){}}),mountAigcDetection,ensureAigcStyle,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
  try{
   vm.runInContext('(function(){'+revisionSource+'\nglobalThis.mountActualRevision=mountRevision;})()',dom.getInternalVMContext());
   const query=selector=>dom.window.document.querySelector(selector);

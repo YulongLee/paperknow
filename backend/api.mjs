@@ -20,6 +20,7 @@ import {createArtifactService} from './artifact-service.mjs';
 import {createDocumentParseService} from './document-parse-service.mjs';
 import {createDocumentTranslationService} from './document-translation-service.mjs';
 import {createFormulaOcrService} from './formula-ocr-service.mjs';
+import {createAigcDetectionService} from './aigc-detection-service.mjs';
 import {createLiteratureSearch} from './literature-search.mjs';
 import {createDesktopReleaseService} from './desktop-release-service.mjs';
 import {now} from './database.mjs';
@@ -46,6 +47,7 @@ const artifacts=createArtifactService(db,config);
 const documentParses=createDocumentParseService(db,{...config,cancelDocumentParse:id=>worker.cancel(id)});
 const documentTranslations=createDocumentTranslationService(db,{...config,cancelDocumentTranslation:id=>worker.cancel(id)});
 const formulaRecognitions=createFormulaOcrService(db,config);
+const aigcDetections=createAigcDetectionService(db,config);
 const literatureSearch=createLiteratureSearch({fetchImpl:config.literatureFetch,openAlexApiKey:config.openAlexApiKey,openAlexDailyLimit:config.openAlexDailyLimit});
 const desktopReleases=createDesktopReleaseService(db,config);
 const admin=createAdminAPI(db,worker,{...config,payments,billing},auth);
@@ -84,7 +86,7 @@ if(path==='/api/literature/search'&&method==='GET'){
  catch(error){send(error.status||503,{error:error.message,...error.response},error.retryAfter?{'Retry-After':String(error.retryAfter)}:{});}
  return;
 }
-if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),billing:billing.rules(),payment:payments.options().enabled,academicSearch:true,academicSearchSources:literatureSearch.listSources(),academicSearchSourceStatus:literatureSearch.sourceStatus(),thesis:await theses.capabilities(),thesisOutline:await thesisOutlines.capabilities(),thesisMethod:await thesisMethods.capabilities(),writing:await writing.capabilities(),tools:await tools.capabilities(),documentParsing:documentParses.capabilities(),documentTranslation:documentTranslations.capabilities(),formulaOcr:formulaRecognitions.capabilities(),detection:{local:true,external:false,scope:'用户提供的对照材料；不含学校数据库或全网全文'},maxFileBytes:2*1024*1024,maxPDFFileBytes:20*1024*1024});return;}
+if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),billing:billing.rules(),payment:payments.options().enabled,academicSearch:true,academicSearchSources:literatureSearch.listSources(),academicSearchSourceStatus:literatureSearch.sourceStatus(),thesis:await theses.capabilities(),thesisOutline:await thesisOutlines.capabilities(),thesisMethod:await thesisMethods.capabilities(),writing:await writing.capabilities(),tools:await tools.capabilities(),documentParsing:documentParses.capabilities(),documentTranslation:documentTranslations.capabilities(),formulaOcr:formulaRecognitions.capabilities(),aigcDetection:aigcDetections.capabilities(),detection:{local:true,external:false,scope:'用户提供的对照材料；不含学校数据库或全网全文'},maxFileBytes:2*1024*1024,maxPDFFileBytes:20*1024*1024});return;}
 if(path==='/api/payments/options'&&method==='GET'){send(200,payments.options());return;}
 if(path==='/api/auth/options'&&method==='GET'){send(200,auth.options());return;}
 const authRoutes={
@@ -102,6 +104,7 @@ if(method==='POST'&&Object.hasOwn(authRoutes,path)){
 }
 const user=adminUser||sessionUser(db,req,config.ownerEmail);if(!user)fail(401,'请先登录服务账户');
 if(adminRequest){send(200,await admin({path,method,query:requestURL.searchParams,readBody:()=>body(req),user}));return;}
+if(path==='/api/aigc-detections'||path.startsWith('/api/aigc-detections/')){if(method==='POST')rate(req,30);const response=await aigcDetections.handle({path,method,user,readBody:()=>body(req)});if(!response)fail(404,'文本鉴别接口不存在');send(response.status||200,response.value);return;}
 if(path==='/api/document-translations'||path.startsWith('/api/document-translations/')){if(method==='POST')rate(req,30);const response=await documentTranslations.handle({path,method,user,readBody:()=>body(req)});if(!response)fail(404,'文档翻译接口不存在');send(response.status||200,response.value);return;}
 if(path==='/api/formula-recognitions'||path.startsWith('/api/formula-recognitions/')){if(method==='POST')rate(req,30);const response=await formulaRecognitions.handle({path,method,user,readBody:()=>body(req)});if(!response)fail(404,'公式识别接口不存在');send(response.status||200,response.value);return;}
 if(path==='/api/document-parses'||path.startsWith('/api/document-parses/')){if(method==='POST')rate(req,30);const response=await documentParses.handle({path,method,user,readBody:()=>body(req)});if(!response)fail(404,'文档解析接口不存在');send(response.status||200,response.value);return;}
