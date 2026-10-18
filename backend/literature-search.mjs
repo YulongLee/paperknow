@@ -143,7 +143,7 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
   const aminerTokenProvided=aminerToken!==''&&aminerToken!==undefined&&aminerToken!==null,aminerExpires=aminerTokenProvided?aminerTokenExpiry(aminerToken):null;
   // An explicitly supplied invalid/expired token never silently falls back to another credential.
   const aminerConfigured=()=>aminerEnabled===true&&(aminerTokenProvided?aminerExpires!==null&&aminerExpires>clock():Boolean(aminerKey&&aminerId));
-  const availableIds=()=>Object.keys(providers).filter(id=>(id!=='openalex'||Boolean(apiKey))&&(id!=='aminer'||aminerConfigured()));
+  const availableIds=({allowAminer=true}={})=>Object.keys(providers).filter(id=>(id!=='openalex'||Boolean(apiKey))&&(id!=='aminer'||allowAminer===true&&aminerConfigured()));
   // Process-local request caps reset on restart and are not a persistent financial safeguard.
   let openAlexDay=-1,openAlexCount=0,aminerDay=-1,aminerCount=0;
   const cache=new Map(),inflight=new Map(),clients=new Map(),providerState=new Map(Object.keys(providers).map(id=>[id,{active:0,minuteAt:0,minuteCount:0,secondAt:0,secondCount:0,cooldownUntil:0}]));let active=0;
@@ -198,11 +198,11 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
     }catch(error){if(controller.signal.aborted)throw new SearchError(503,'该文献来源响应超时，请稍后重试');if(error instanceof SearchError)throw error;throw new SearchError(503,'该文献来源暂时不可用');}
     finally{clearTimeout(timer);state.active--;active--;}
   }
-  async function execute(query){
-    const ids=query.source==='all'?availableIds():[query.source];
+  async function execute(query,{allowAminer=true}={}){
+    const ids=query.source==='all'?availableIds({allowAminer}):[query.source];
     const results=await Promise.all(ids.map(async id=>{
       if(id==='openalex'&&!apiKey)return {source:{id,label:providers[id].label,status:'not_configured',reason:'OpenAlex 暂未开放，请选择其他文献来源。'},items:[]};
-      if(id==='aminer'&&!aminerConfigured())return {source:{id,label:providers[id].label,status:'not_configured',reason:'AMiner 暂未开放或授权已过期，请选择其他文献来源。'},items:[]};
+      if(id==='aminer'&&(allowAminer!==true||!aminerConfigured()))return {source:{id,label:providers[id].label,status:'not_configured',reason:'AMiner 当前暂未开放，请选择其他文献来源。'},items:[]};
       if(id==='crossref'&&query.openAccess)return {source:{id,label:providers[id].label,status:'unsupported_filter',reason:'Crossref 不提供可靠的开放获取筛选；可改选 Europe PMC 或取消筛选。'},items:[]};
       if(id==='aminer'&&query.openAccess)return {source:{id,label:providers[id].label,status:'unsupported_filter',reason:'AMiner 当前检索不提供可靠的开放获取筛选；请选择其他文献来源或取消筛选。'},items:[]};
       try{const value=await retrieve(id,query);return{source:{id,label:providers[id].label,status:'ok',...(value.total!==undefined?{total:value.total}:{})},items:value.items};}catch(error){return {source:{id,label:providers[id].label,status:error.sourceStatus||'error',reason:error.message},items:[]};}
@@ -216,13 +216,13 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
     return value;
   }
   return {
-    listSources(){return availableIds();},
-    sourceStatus(){const ids=availableIds();return Object.values(providers).map(({id,label})=>({id,label,configured:ids.includes(id)}));},
-    async search(input,{clientKey}={}){
-      const query=parseLiteratureQuery(input);clientRate(clientKey);const key=JSON.stringify([query,availableIds()]),time=clock(),saved=cache.get(key);
+    listSources(options={}){return availableIds(options);},
+    sourceStatus({allowAminer=true}={}){const ids=availableIds({allowAminer});return Object.values(providers).filter(({id})=>id!=='aminer'||allowAminer===true).map(({id,label})=>({id,label,configured:ids.includes(id)}));},
+    async search(input,{clientKey,allowAminer=true}={}){
+      const scope={allowAminer:allowAminer===true},query=parseLiteratureQuery(input);clientRate(clientKey);const key=JSON.stringify([query,availableIds(scope),scope.allowAminer]),time=clock(),saved=cache.get(key);
       if(saved&&saved.until>time)return structuredClone(saved.value);if(saved)cache.delete(key);
       if(inflight.has(key))return structuredClone(await inflight.get(key));
-      const pending=execute(query);inflight.set(key,pending);
+      const pending=execute(query,scope);inflight.set(key,pending);
       try{const value=await pending;if(value.sources.every(source=>!['error','budget_exhausted','rate_limited'].includes(source.status)))boundedSet(cache,key,{until:clock()+cacheTtlMs,value},maxCacheEntries);return structuredClone(value);}finally{inflight.delete(key);}
     },
   };

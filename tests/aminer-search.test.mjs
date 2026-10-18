@@ -43,6 +43,31 @@ test('AMiner stays disabled by default despite valid credentials and never joins
  }
 });
 
+test('AMiner request scopes isolate aggregate caches and cannot expose a cached administrator-only result',async()=>{
+ const calls=[];const search=service({aminerDailyLimit:1,fetchImpl:async url=>{
+  const host=new URL(url).hostname;calls.push(host);
+  if(host==='api.crossref.org')return new Response(JSON.stringify({message:{items:[{DOI:'10.1234/public',title:['Public provider record']}]}}),{headers:{'content-type':'application/json'}});
+  if(host==='www.ebi.ac.uk')return new Response(JSON.stringify({resultList:{result:[]}}),{headers:{'content-type':'application/json'}});
+  return response();
+ }});
+ assert.equal(search.listSources({allowAminer:false}).includes('aminer'),false);assert.equal(search.sourceStatus({allowAminer:false}).some(row=>row.id==='aminer'),false);
+ const query=params({source:'all'}),privileged=await search.search(query,{allowAminer:true}),restricted=await search.search(query,{allowAminer:false});
+ assert.equal(privileged.items.some(row=>row.source==='aminer'),true);assert.equal(restricted.items.some(row=>row.source==='aminer'),false);assert.equal(restricted.sources.some(row=>row.id==='aminer'),false);
+ assert.equal((await search.search(query,{allowAminer:true})).items.some(row=>row.source==='aminer'),true);assert.equal((await search.search(query,{allowAminer:false})).items.some(row=>row.source==='aminer'),false);
+ assert.equal(calls.filter(host=>host==='datacenter.aminer.cn').length,1);assert.equal(calls.filter(host=>host==='api.crossref.org').length,2);
+ await assert.rejects(search.search(params(),{allowAminer:false}),error=>error.status===503&&error.response.sources[0].status==='not_configured');
+ await assert.rejects(search.search(params(),{allowAminer:true}),error=>error.status===503&&error.response.sources[0].status==='budget_exhausted');
+});
+
+test('AMiner restricted requests cannot join an administrator in-flight request or reuse its direct cache',async()=>{
+ let calls=0,resolve;const search=service({fetchImpl:async()=>{calls++;return new Promise(done=>resolve=done);}});
+ const privileged=search.search(params(),{allowAminer:true});assert.equal(calls,1);
+ await assert.rejects(search.search(params(),{allowAminer:false}),error=>error.status===503&&error.response.sources[0].status==='not_configured');assert.equal(calls,1);
+ resolve(response());assert.equal((await privileged).items[0].source,'aminer');
+ await assert.rejects(search.search(params(),{allowAminer:false}),error=>error.status===503&&error.response.sources[0].status==='not_configured');assert.equal(calls,1);
+ assert.equal((await search.search(params(),{allowAminer:true})).items[0].source,'aminer');assert.equal(calls,1);
+});
+
 test('AMiner uses only its fixed free GET title search with page one and a raw short-lived HS256 JWT',async()=>{
  const time=1792382400123;let request;
  const search=service({clock:()=>time,fetchImpl:async(url,options)=>{request={url:new URL(url),options};return response();}});

@@ -49,6 +49,7 @@ const documentTranslations=createDocumentTranslationService(db,{...config,cancel
 const formulaRecognitions=createFormulaOcrService(db,config);
 const aigcDetections=createAigcDetectionService(db,config);
 const literatureSearch=createLiteratureSearch({fetchImpl:config.literatureFetch,openAlexApiKey:config.openAlexApiKey,openAlexDailyLimit:config.openAlexDailyLimit,aminerEnabled:config.aminerEnabled,aminerApiKey:config.aminerApiKey,aminerUserId:config.aminerUserId,aminerToken:config.aminerToken,aminerDailyLimit:config.aminerDailyLimit});
+const literatureScope=req=>({allowAminer:config.aminerAccess==='public'||sessionUser(db,req,config.ownerEmail)?.role==='admin'});
 const desktopReleases=createDesktopReleaseService(db,config);
 const admin=createAdminAPI(db,worker,{...config,payments,billing},auth);
 const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}};
@@ -82,11 +83,11 @@ const desktopDownload=path.match(/^\/api\/desktop\/download\/([^/]+)\/([^/]+)$/)
 if(desktopDownload&&method==='GET'){rate(req,120);const location=await desktopReleases.download(desktopDownload[1],desktopDownload[2]);res.writeHead(302,{'Location':location,'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}).end();return;}
 if(path.startsWith('/api/questionnaires/public/')){if(method==='POST')rate(req,120);const response=await questionnaires.handle({path,method,user:null,query:requestURL.searchParams,readBody:()=>body(req),clientKey:clientAddress(req,config)});if(response){send(response.status,response.value);return;}fail(404,'问卷链接不存在');}
 if(path==='/api/literature/search'&&method==='GET'){
- try{send(200,await literatureSearch.search(requestURL.searchParams,{clientKey:clientAddress(req,config)}));}
+ try{send(200,await literatureSearch.search(requestURL.searchParams,{clientKey:clientAddress(req,config),...literatureScope(req)}));}
  catch(error){send(error.status||503,{error:error.message,...error.response},error.retryAfter?{'Retry-After':String(error.retryAfter)}:{});}
  return;
 }
-if(path==='/api/capabilities'&&method==='GET'){send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),billing:billing.rules(),payment:payments.options().enabled,academicSearch:true,academicSearchSources:literatureSearch.listSources(),academicSearchSourceStatus:literatureSearch.sourceStatus(),thesis:await theses.capabilities(),thesisOutline:await thesisOutlines.capabilities(),thesisMethod:await thesisMethods.capabilities(),writing:await writing.capabilities(),tools:await tools.capabilities(),documentParsing:documentParses.capabilities(),documentTranslation:documentTranslations.capabilities(),formulaOcr:formulaRecognitions.capabilities(),aigcDetection:aigcDetections.capabilities(),detection:{local:true,external:false,scope:'用户提供的对照材料；不含学校数据库或全网全文'},maxFileBytes:2*1024*1024,maxPDFFileBytes:20*1024*1024});return;}
+if(path==='/api/capabilities'&&method==='GET'){const searchScope=literatureScope(req);send(200,{account:true,storage:config.storage?.provider||'local_server_sqlite',emailVerified:auth.options().emailCode,auth:auth.options(),ai:aiReady(config.getAI()),agent:Boolean(config.agentEnabled&&aiReady(config.getAI())),billing:billing.rules(),payment:payments.options().enabled,academicSearch:true,academicSearchSources:literatureSearch.listSources(searchScope),academicSearchSourceStatus:literatureSearch.sourceStatus(searchScope),thesis:await theses.capabilities(),thesisOutline:await thesisOutlines.capabilities(),thesisMethod:await thesisMethods.capabilities(),writing:await writing.capabilities(),tools:await tools.capabilities(),documentParsing:documentParses.capabilities(),documentTranslation:documentTranslations.capabilities(),formulaOcr:formulaRecognitions.capabilities(),aigcDetection:aigcDetections.capabilities(),detection:{local:true,external:false,scope:'用户提供的对照材料；不含学校数据库或全网全文'},maxFileBytes:2*1024*1024,maxPDFFileBytes:20*1024*1024});return;}
 if(path==='/api/payments/options'&&method==='GET'){send(200,payments.options());return;}
 if(path==='/api/auth/options'&&method==='GET'){send(200,auth.options());return;}
 const authRoutes={

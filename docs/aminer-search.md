@@ -8,15 +8,17 @@ OpenAlex in aggregate search and can also be selected directly.
 
 The validated integration uses the account's existing console-generated token:
 
-- `PK_AMINER_ENABLED`: only `1` publishes the source; disabled by default. Keep
-  production at `0` until the operator confirms the applicable commercial rights.
+- `PK_AMINER_ENABLED`: only `1` enables the integration; disabled by default.
+- `PK_AMINER_ACCESS`: defaults to `internal`. In this mode only an authenticated
+  server-verified administrator can see and query AMiner. Public publication
+  requires the explicit value `public` after the applicable rights are confirmed.
 - `PK_AMINER_TOKEN`: raw HS256 JWT, without a `Bearer` prefix.
 - `PK_AMINER_DAILY_LIMIT`: outbound attempts per UTC day; default 100, maximum
   10000, and 0 stops new outbound requests.
 
-Store these in `/etc/paperknow/aminer.env`, owned by root with mode 0600. After
-commercial authorization is confirmed, a PaperKnow-only systemd drop-in can load
-this file. No production drop-in is enabled during internal acceptance. Never put credentials in source,
+Store these in `/etc/paperknow/aminer.env`, owned by root with mode 0600. A
+PaperKnow-only systemd drop-in can load this file for administrator-only internal
+acceptance. Never put credentials in source,
 browser assets, reports, query strings or public capability responses. Replacing
 the token requires a PaperKnow service restart after installing the private file.
 The token is not a browser login/session cookie.
@@ -43,8 +45,9 @@ and account permissions before increasing traffic.
 The open platform's recharge agreement, section 3.2, describes non-commercial
 internal use unless separately agreed in writing. A free endpoint or successful
 HTTP response alone does not establish commercial display/redistribution rights.
-The integration can be accepted internally while production remains disabled;
-enable it after verifying the agreement that covers PaperKnow's intended use.
+The integration can be accepted on the existing site in administrator-only internal
+mode while ordinary users continue using existing sources. Switch to public mode
+after verifying the agreement that covers PaperKnow's intended use.
 
 Results contain the original title (Chinese title only as a fallback), supplied
 first author, year, DOI and official AMiner source link. No abstract, full text,
@@ -66,6 +69,12 @@ concurrency limits apply. Business error codes are checked even on HTTP 200.
 Only fixed public error descriptions are returned; upstream diagnostics and
 credentials are never echoed. Other providers can return partial results when
 AMiner fails. There are no automatic upstream retries.
+
+Access is enforced on the server for both capabilities and search. Anonymous and
+ordinary user requests cannot enable AMiner using a source parameter or a warm
+administrator cache entry. Aggregate searches omit restricted sources. The
+single provider instance retains shared budgets and concurrency controls across
+request scopes; browser UI visibility is not the security boundary.
 
 The daily counter is process-local: restarting resets it and multiple instances
 do not share it. It is an operating limit, not a financial spending guarantee.
