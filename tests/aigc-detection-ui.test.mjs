@@ -38,3 +38,50 @@ test('an explicit nonconclusive server result never becomes a confident verdict'
 test('document import prepares text locally and never submits detection or consents automatically',async()=>{const f=fixture(()=>null,{importDocument:async()=>({text:'提取后的真实正文',warnings:[]})});try{await f.panel.ready;const target=f.$('[data-aigc-file]');Object.defineProperty(target,'files',{value:[{name:'原稿.txt',size:100}],configurable:true});target.dispatchEvent(new f.dom.window.Event('change'));await settle();assert.equal(f.$('[data-aigc-text]').value,'提取后的真实正文');assert.equal(f.$('[data-aigc-consent]').checked,false);assert.equal(f.calls.some(call=>call.body),false);assert.match(f.$('[data-aigc-status]').textContent,/请核对正文并确认/);}finally{f.close();}});
 
 test('disposing a panel ignores late responses and stops result updates',async()=>{let finish;const f=fixture((url,body)=>url==='/api/aigc-detections'&&body?new Promise(resolve=>finish=resolve):null);try{await f.panel.ready;f.input('正文内容');f.consent();f.$('[data-aigc-start]').click();await settle();f.panel.dispose();finish(response(complete(),202));await settle();assert.equal(f.$('[data-aigc-result]').hidden,true);assert.equal(f.calls.filter(call=>call.body).length,1);}finally{f.close();}});
+
+test('completed AI report export saves through the owned cloud artifact workflow before downloading',async()=>{
+ const text='送检正文真实版本',bytes=[],events=[];let stored='';
+ const {exportGeneratedFile}=await import('../dist/workspace/artifact-export.mjs');
+ const f=fixture((url,body)=>{
+  if(url==='/api/aigc-detections'&&body)return response(complete({characters:8,createdAt:'2026-10-19T00:00:00.000Z',parts:[{index:0,start:0,end:8,characters:8,label:'ugc',confidence:95.4}]}),202);
+  if(url==='/api/artifacts'){events.push('upload');assert.equal(body.expectedUserId,'u1');assert.equal(body.sourceType,'detection');assert.equal(body.sourceId,'task-1');stored=Buffer.from(body.data,'base64').toString('utf8');return response({item:{id:'report-file-1',bytes:Buffer.byteLength(stored)}},201);}
+  if(url==='/api/artifacts/report-file-1/download?expectedUserId=u1'){events.push('cloud-read');return new Response(stored);}
+  return null;
+ },{exportFile:(options,dependencies)=>exportGeneratedFile(options,{...dependencies,notify:()=>{},urlAPI:{createObjectURL(blob){bytes.push(blob);events.push('object-url');return 'blob:report';},revokeObjectURL(){}},setTimeoutImpl(){}})});
+ try{f.dom.window.HTMLAnchorElement.prototype.click=function(){events.push('download');assert.match(this.download,/PaperKnow-AIGC.*\.html$/);};await f.panel.ready;assert.equal(f.$('[data-aigc-report-download]'),null);f.input(text);f.consent();f.$('[data-aigc-start]').click();await settle();f.$('[data-aigc-report-download]').click();await settle();assert.deepEqual(events,['upload','cloud-read','object-url','download']);assert.equal(bytes.length,1);const html=await bytes[0].text();assert.match(html,/送检正文真实版本/);assert.match(html,/不提供全篇 AI 字符占比/);assert.doesNotMatch(html,/95\.4%/);assert.match(f.$('[data-aigc-status]').textContent,/已保存到账户云文件/);assert.equal(f.calls.filter(call=>call.url==='/api/aigc-detections'&&call.body).length,1);}finally{f.close();}
+});
+
+test('report export rechecks the original owner at the artifact boundary and blocks cross-account material',async()=>{
+ let owner='u1',exports=0;
+ const f=fixture((url,body)=>url==='/api/auth/me'?response({user:{id:owner}}):url==='/api/aigc-detections'&&body?response(complete({characters:4,parts:[{index:0,start:0,end:4,characters:4,label:'ugc',confidence:90}]}),202):null,{exportFile:async(options,dependencies)=>{exports++;owner='u2';await dependencies.fetchImpl('/api/auth/me');assert.fail('must not pass changed owner');}});
+ try{await f.panel.ready;f.input('私有原文');f.consent();f.$('[data-aigc-start]').click();await settle();f.$('[data-aigc-report-download]').click();await settle();assert.equal(exports,1);assert.equal(f.$('[data-aigc-result]').hidden,true);assert.equal(f.$('[data-aigc-text]').value,'');assert.equal(f.calls.some(call=>call.url==='/api/artifacts'),false);assert.match(f.$('[data-aigc-status]').textContent,/登录账户已变化/);}finally{f.close();}
+});
+
+test('AI report preview is script-free, prints only after an owner check and disappears on account changes',async()=>{
+ let owner='u1',printed=0;const item=complete({createdAt:'2026-10-19T00:00:00.000Z'});
+ const f=fixture((url,body)=>url==='/api/auth/me'?response({user:{id:owner}}):url==='/api/aigc-detections'&&!body?response({items:[item]}):url==='/api/aigc-detections/task-1'?response(item):null);
+ try{await f.panel.ready;f.$('[data-aigc-report-preview]').click();await settle();const dialog=f.$('.aigc-report-preview'),frame=dialog.querySelector('iframe');assert.ok(dialog.open);assert.equal(frame.getAttribute('sandbox'),'allow-same-origin allow-modals');assert.doesNotMatch(frame.srcdoc,/<script|<img/);assert.match(frame.srcdoc,/当前历史记录不保存正文/);assert.equal(f.calls.some(call=>call.url==='/api/artifacts'),false);frame.contentWindow.focus=()=>{};frame.contentWindow.print=()=>printed++;f.$('[data-aigc-preview-print]').click();await settle();assert.equal(printed,1);assert.match(f.$('[data-aigc-status]').textContent,/PDF 保存在你选择的位置/);owner='u2';f.$('[data-aigc-preview-print]').click();await settle();assert.equal(printed,1);assert.equal(f.$('.aigc-report-preview'),null);assert.equal(f.$('[data-aigc-result]').hidden,true);}finally{f.close();}
+});
+
+test('failed and running AI tasks offer no completed report export',async()=>{
+ for(const status of ['running','failed']){const item=complete({status,completedParts:0,parts:[]}),f=fixture((url,body)=>url==='/api/aigc-detections'&&!body?response({items:[item]}):url==='/api/aigc-detections/task-1'?response(item):null);try{await f.panel.ready;assert.equal(f.$('[data-aigc-report-download]'),null);assert.equal(f.$('[data-aigc-report-preview]'),null);assert.equal(f.calls.some(call=>call.body),false);}finally{f.close();}}
+});
+
+test('a failed cloud report export leaves the completed result available and never announces success',async()=>{
+ let exports=0;const item=complete(),f=fixture((url,body)=>url==='/api/aigc-detections'&&!body?response({items:[item]}):url==='/api/aigc-detections/task-1'?response(item):null,{exportFile:async()=>{exports++;throw Error('private upstream stack');}});
+ try{await f.panel.ready;f.$('[data-aigc-report-download]').click();await settle();assert.equal(exports,1);assert.equal(f.$('[data-aigc-result]').hidden,false);assert.equal(f.$('[data-aigc-report-download]').disabled,false);assert.match(f.$('[data-aigc-status]').textContent,/未能确认保存或下载.*结果仍保留/);assert.doesNotMatch(f.$('[data-aigc-status]').textContent,/已保存|private|stack/);}finally{f.close();}
+});
+
+test('an account change during report download body transfer blocks all browser download and preview access',async()=>{
+ let owner='u1',stored='',finishBody;const events=[];
+ const {exportGeneratedFile}=await import('../dist/workspace/artifact-export.mjs');
+ const item=complete(),f=fixture((url,body)=>{
+  if(url==='/api/auth/me')return response({user:{id:owner}});
+  if(url==='/api/aigc-detections'&&!body)return response({items:[item]});
+  if(url==='/api/aigc-detections/task-1')return response(item);
+  if(url==='/api/artifacts'){stored=Buffer.from(body.data,'base64').toString('utf8');return response({item:{id:'slow-report',bytes:Buffer.byteLength(stored)}},201);}
+  if(url==='/api/artifacts/slow-report/download?expectedUserId=u1')return new Response(new ReadableStream({start(controller){finishBody=()=>{owner='u2';controller.enqueue(new TextEncoder().encode(stored));controller.close();};}}));
+  return null;
+ },{exportFile:(options,dependencies)=>exportGeneratedFile(options,{...dependencies,notify:()=>{},urlAPI:{createObjectURL(){events.push('object-url');return 'blob:report';},revokeObjectURL(){}},setTimeoutImpl(){}})});
+ try{f.dom.window.HTMLAnchorElement.prototype.click=function(){events.push('download');};await f.panel.ready;f.$('[data-aigc-report-download]').click();await settle();assert.equal(typeof finishBody,'function');assert.deepEqual(events,[]);finishBody();await settle();assert.deepEqual(events,[]);assert.equal(f.$('[data-aigc-result]').hidden,true);assert.equal(f.$('.aigc-report-preview'),null);assert.match(f.$('[data-aigc-status]').textContent,/登录账户已变化/);}finally{f.close();}
+});
