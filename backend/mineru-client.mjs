@@ -5,7 +5,7 @@ import {Readable} from 'node:stream';
 import JSZip from 'jszip';
 
 const MiB=1024*1024;
-const defaults=Object.freeze({timeoutMs:30000,dnsTimeoutMs:5000,maxApiBytes:256*1024,maxZipBytes:20*MiB,maxEntries:400,maxUncompressedBytes:40*MiB,maxEntryBytes:10*MiB,maxMarkdownBytes:2*MiB,maxJsonBytes:5*MiB,maxTextCharacters:200000});
+const defaults=Object.freeze({timeoutMs:30000,uploadTimeoutMs:60000,dnsTimeoutMs:5000,maxApiBytes:256*1024,maxZipBytes:20*MiB,maxEntries:400,maxUncompressedBytes:40*MiB,maxEntryBytes:10*MiB,maxMarkdownBytes:2*MiB,maxJsonBytes:5*MiB,maxTextCharacters:200000});
 const error=(code,message,status=502)=>Object.assign(new Error(message),{code,status,mineruSafe:true});
 const reject=(code='mineru_response_invalid',message='文档解析服务返回了无效结果',status=502)=>{throw error(code,message,status);};
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -81,6 +81,10 @@ export function createMineruClient({token,baseURL='https://mineru.net/api/v4',fe
  if(baseURL!=='https://mineru.net/api/v4'&&baseURL!=='https://mineru.net/api/v4/')reject('mineru_configuration','文档解析接口配置不受支持',503);
  const base=baseURL.replace(/\/$/,''),limits={...defaults};
  for(const [key,value]of Object.entries(overrides)){if(!Object.hasOwn(defaults,key)||!Number.isSafeInteger(value)||value<1||value>defaults[key])reject('mineru_configuration','文档解析安全限制配置无效',503);limits[key]=value;}
+ // The 20 MiB PUT needs over 30 seconds on a 5 Mbps connection. Keep API and
+ // result reads at 30 seconds, but preserve a caller's shorter global budget
+ // unless it explicitly supplies a separate (still hard-capped) upload budget.
+ if(Object.hasOwn(overrides,'timeoutMs')&&!Object.hasOwn(overrides,'uploadTimeoutMs'))limits.uploadTimeoutMs=Math.min(limits.uploadTimeoutMs,limits.timeoutMs);
  async function resolve(url,signal){
   let timer,abort;try{
    const addresses=await Promise.race([lookupImpl(url.hostname,{all:true,verbatim:true}),new Promise((_,rejectPromise)=>{timer=setTimeout(()=>rejectPromise(error('mineru_dns_failed','文档解析服务域名暂不可用')),limits.dnsTimeoutMs);}),new Promise((_,rejectPromise)=>{abort=()=>rejectPromise(error('mineru_cancelled','文档解析已取消',499));if(signal.aborted)abort();else signal.addEventListener('abort',abort,{once:true});})]);
@@ -88,7 +92,7 @@ export function createMineruClient({token,baseURL='https://mineru.net/api/v4',fe
   }finally{clearTimeout(timer);if(abort)signal.removeEventListener('abort',abort);}
  }
  async function request(value,kind,{method='GET',body}={},externalSignal,maximum=limits.maxApiBytes){
-  const url=allowedURL(value,kind),timerSignal=AbortSignal.timeout(limits.timeoutMs),signal=externalSignal?AbortSignal.any([externalSignal,timerSignal]):timerSignal;
+  const url=allowedURL(value,kind),timerSignal=AbortSignal.timeout(kind==='upload'?limits.uploadTimeoutMs:limits.timeoutMs),signal=externalSignal?AbortSignal.any([externalSignal,timerSignal]):timerSignal;
   try{
    if(signal.aborted)throw error('mineru_cancelled','文档解析已取消',499);
    const addresses=await resolve(url,signal),headers={...(kind==='api'?{Authorization:'Bearer '+token,Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})}:{}),...(body?{'Content-Length':String(Buffer.byteLength(body))}:{})};

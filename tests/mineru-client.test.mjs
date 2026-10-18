@@ -120,3 +120,25 @@ test('cancellation stops dispatch and timeout errors stay sanitized',async()=>{
  const service=client(async(_url,init)=>new Promise((_,reject)=>{init.signal.addEventListener('abort',()=>reject(new Error(token)),{once:true});}),{timeoutMs:5});
  const keepAlive=setTimeout(()=>{},100);try{await assert.rejects(()=>service.poll('a'),safe('mineru_timeout'));}finally{clearTimeout(keepAlive);}
 });
+
+test('upload has an independent longer bounded budget, remains cancellable and never retries',async()=>{
+ const calls=[];
+ const fetchImpl=async(_url,init)=>new Promise((resolve,reject)=>{
+  calls.push(init.method);
+  const timer=setTimeout(()=>{init.signal.removeEventListener('abort',abort);resolve(init.method==='PUT'?new Response(null,{status:204}):api({extract_result:[{state:'pending'}]}));},60);
+  const abort=()=>{clearTimeout(timer);reject(new Error(token));};init.signal.addEventListener('abort',abort,{once:true});
+ });
+ const service=client(fetchImpl,{timeoutMs:20,uploadTimeoutMs:200});
+ await assert.rejects(()=>service.poll('a'),safe('mineru_timeout'));
+ await service.upload(uploadURL,Buffer.from('%PDF-synthetic'));
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5);
+ try{await assert.rejects(()=>service.upload(uploadURL,Buffer.from('%PDF-synthetic'),controller.signal),safe('mineru_cancelled'));}finally{clearTimeout(timer);}
+ assert.deepEqual(calls,['GET','PUT','PUT']);
+ assert.throws(()=>client(fetchImpl,{uploadTimeoutMs:60001}),safe('mineru_configuration'));
+});
+
+test('a shorter global timeout also bounds upload unless an independent upload budget is supplied',async()=>{
+ let calls=0;const service=client(async(_url,init)=>new Promise((_,reject)=>{calls++;init.signal.addEventListener('abort',()=>reject(new Error(token)),{once:true});}),{timeoutMs:5});
+ const keepAlive=setTimeout(()=>{},100);try{await assert.rejects(()=>service.upload(uploadURL,Buffer.from('%PDF-synthetic')),safe('mineru_timeout'));}finally{clearTimeout(keepAlive);}
+ assert.equal(calls,1);
+});
