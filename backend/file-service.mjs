@@ -3,6 +3,9 @@ import {digest} from './auth.mjs';
 import {fileBytes} from './storage.mjs';
 
 const maxFileBytes=2*1024*1024,maxAccountBytes=50*1024*1024;
+// Count request bodies as well as storage writes: a PDF body is already large
+// before it can be decoded, validated or reserved against account quota.
+let activeUploads=0;
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const text=(value,max)=>{if(typeof value!=='string'||!value.trim()||value.length>max)fail(400,'文件资料无效');return value.trim();};
 export function createFileService(db,config={}){
@@ -27,6 +30,8 @@ export function createFileService(db,config={}){
   }
   if(method!=='POST')fail(405,'不支持的文件操作');
   if(!deletion&&config.requireRemoteStorage&&(!config.storage||config.storage.provider!=='aliyun_oss'||typeof config.storage.put!=='function'))fail(503,'原件云存储暂不可用，请稍后重试；文件不会写入服务器');
+  const uploadSlot=!deletion;if(uploadSlot){if(activeUploads>=2)fail(429,'当前上传较多，请稍后重试');activeUploads++;}
+  try{
   const input=await readBody();
   if(deletion){
    if(Object.keys(input).some(k=>k!=='expectedSha256')||typeof input.expectedSha256!=='string')fail(400,'请确认需要删除的原件');
@@ -84,5 +89,6 @@ export function createFileService(db,config={}){
    if(storageKey&&!persisted){try{await removeObject({id,user_id:user.id,kind,storage_provider:config.storage.provider,storage_key:storageKey,storage_bucket:config.storage.bucket});}catch{/* A failed cleanup never reports a saved file; the private object has no downloadable record. */}}
    throw error;
   }finally{db.prepare('DELETE FROM workspace_file_uploads WHERE id=? AND user_id=?').run(id,user.id);}
+  }finally{if(uploadSlot)activeUploads--;}
  };
 }

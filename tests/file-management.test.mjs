@@ -4,6 +4,7 @@ import http from 'node:http';
 import {database} from '../backend/database.mjs';
 import {createAPI} from '../backend/api.mjs';
 import {createSession,digest} from '../backend/auth.mjs';
+import {createFileService} from '../backend/file-service.mjs';
 
 const MiB=1024*1024;
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
@@ -18,6 +19,39 @@ async function fixture(t,storage){
  const job=(id,fileId,status='running')=>db.prepare('INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id,'alice','parse',status,status,JSON.stringify({fileId}),id,'hash',new Date().toISOString(),new Date().toISOString());
  return {db,request,upload,seed,job};
 }
+
+test('process-wide upload limit is acquired before reading bodies and does not block listing or deletion',async t=>{
+ const f=await fixture(t),first=createFileService(f.db),second=createFileService(f.db),gate=deferred();let reads=0;
+ const input={name:'资料.txt',data:Buffer.from('研究原件').toString('base64')};
+ const call=(service,user,readBody)=>service({path:'/api/files',method:'POST',user:{id:user},readBody});
+ const one=call(first,'alice',async()=>{reads++;await gate.promise;return input;});
+ const two=call(second,'bob',async()=>{reads++;await gate.promise;return input;});
+ try{
+  await assert.rejects(call(first,'alice',async()=>{reads++;return input;}),error=>error.status===429&&error.message.includes('上传'));
+  assert.equal(reads,2);
+  f.seed('delete-during-upload');
+  assert.equal((await first({path:'/api/files',method:'GET',user:{id:'alice'}})).value.items.length,1);
+  assert.equal((await second({path:'/api/files/delete-during-upload/delete',method:'POST',user:{id:'alice'},readBody:async()=>({expectedSha256:'hash'})})).value.deleted,true);
+ }finally{gate.resolve();await Promise.all([one,two]);}
+ assert.equal((await one).status,201);assert.equal((await two).status,201);
+ assert.equal((await call(first,'alice',async()=>input)).status,201);
+});
+
+test('upload slots release after body, validation and storage failures',async t=>{
+ const f=await fixture(t),service=createFileService(f.db,{storage:{provider:'aliyun_oss',async put(){throw new Error('storage failed');}}});
+ const input={name:'资料.txt',data:Buffer.from('研究原件').toString('base64')};
+ const call=readBody=>service({path:'/api/files',method:'POST',user:{id:'alice'},readBody});
+ for(let i=0;i<3;i++){
+  await assert.rejects(call(async()=>{throw new Error('body failed');}),/body failed/);
+  await assert.rejects(call(async()=>({...input,name:'资料.exe'})),error=>error.status===400);
+  await assert.rejects(call(async()=>input),/storage failed/);
+ }
+ assert.equal(f.db.prepare('SELECT count(*) n FROM workspace_file_uploads').get().n,0);
+ const local=createFileService(f.db),gate=deferred();
+ const one=local({path:'/api/files',method:'POST',user:{id:'alice'},readBody:async()=>{await gate.promise;return input;}});
+ const two=local({path:'/api/files',method:'POST',user:{id:'bob'},readBody:async()=>{await gate.promise;return input;}});
+ gate.resolve();assert.deepEqual((await Promise.all([one,two])).map(r=>r.status),[201,201]);
+});
 
 test('parallel OSS uploads reserve account quota before storage I/O and never oversubscribe',async t=>{
  const started=deferred(),finish=deferred();let puts=0;
