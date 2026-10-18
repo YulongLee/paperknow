@@ -344,10 +344,11 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,onSaved,o
    });
   });
   $('[data-thesis-txt]')?.addEventListener('click',async()=>{
-   if(dirty()||!thesisDocumentText(item))return;
-   try{const exported=await exportFile(String(item.title||'论文正文')+'.txt',thesisDocumentText(item),'text/plain;charset=utf-8',{sourceType:'thesis',sourceId:item.id});notice(exported.message);}catch(error){notice(error.message);}
+   if(!current()||!user?.id||dirty()||!thesisDocumentText(item))return;
+   const expectedUserId=user.id;
+   try{const exported=await exportFile(String(item.title||'论文正文')+'.txt',thesisDocumentText(item),'text/plain;charset=utf-8',{sourceType:'thesis',sourceId:item.id,expectedUserId});if(current()&&user?.id===expectedUserId)notice(exported.message);}catch(error){if(current()&&user?.id===expectedUserId)notice(error.message);}
   });
-  if(item){bindDocumentExports('thesis-online',()=>current()&&!dirty()?thesisDocumentText(item):'',()=>item.title||'论文正文',$('[data-thesis-export-status]'));updateExportButtons();}
+  if(item){bindDocumentExports('thesis-online',()=>current()&&!dirty()?thesisDocumentText(item):'',()=>item.title||'论文正文',$('[data-thesis-export-status]'),{expectedUserId:user?.id,isCurrent:current});updateExportButtons();}
  }
  function updateExportButtons(){const disabled=busy||dirty()||!thesisDocumentText(item);for(const selector of ['[data-thesis-txt]','#thesis-online-docx','#thesis-online-pdf']){const button=$(selector);if(button)button.disabled=disabled;}}
  async function load(){

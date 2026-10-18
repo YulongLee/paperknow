@@ -1,6 +1,6 @@
 export const keys={projects:'paperknow-projects',drafts:'paperknow-drafts',tasks:'paperknow-local-tasks',preferences:'paperknow-preferences',profile:'paperknow-local-profile'};
 let draftScope=null;
-export function beginDraftScope({drafts=[],projectRows=[]}={}){draftScope={revision:0,[keys.drafts]:structuredClone(drafts),[keys.projects]:structuredClone(projectRows),[keys.tasks]:[]};}
+export function beginDraftScope({drafts=[],projectRows=[],ownerId}={}){draftScope={revision:0,ownerId:typeof ownerId==='string'&&ownerId?ownerId:undefined,[keys.drafts]:structuredClone(drafts),[keys.projects]:structuredClone(projectRows),[keys.tasks]:[]};}
 export function endDraftScope(){draftScope=null;}
 export const hasDraftScope=()=>!!draftScope;
 export function read(key,fallback){if(draftScope&&Object.hasOwn(draftScope,key))return structuredClone(draftScope[key]);try{const value=JSON.parse(localStorage.getItem(key)||'null');return value??fallback;}catch{return fallback;}}
@@ -14,3 +14,7 @@ export function recordTask(task){const rows=list(keys.tasks);const item={id:task
 export const draftScopeRevision=()=>draftScope?.revision??0;
 
 export const lastDraftScopeRow=()=>draftScope?.lastSaved?structuredClone(draftScope.lastSaved):null;
+
+// Account ownership stays in memory only; exports must not rediscover it from a changed cookie.
+export const draftScopeOwnerId=()=>draftScope?.ownerId;
+export function captureDraftScope(){const captured=draftScope;return {ownerId:captured?.ownerId,isCurrent:()=>draftScope===captured};}

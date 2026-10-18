@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {exportGeneratedFile,artifactSourceType,artifactBase64,artifactExportLimit} from '../dist/workspace/artifact-export.mjs';
+import {beginDraftScope,endDraftScope} from '../dist/workspace/state.mjs';
 function fixture(handler){const events=[],notices=[],anchors=[];const dependencies={fetchImpl:async(path,options)=>{events.push(path);return handler(path,options,events);},notify:message=>notices.push(message),documentObject:{body:{append(anchor){anchors.push(anchor);}},createElement(){return {click(){events.push('click');},remove(){}};}},urlAPI:{createObjectURL(blob){events.push('object-url');return 'blob:output';},revokeObjectURL(){}},setTimeoutImpl(){}};return{events,notices,anchors,dependencies};}
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
 const me=id=>json({user:id?{id}:null});
@@ -23,3 +24,4 @@ test('a truncated cloud response is rejected before native download',async()=>{c
 // The session can change while a streamed cloud response is being read.
 test('a cross-tab switch during blob read prevents the final native download',async()=>{let reads=0;const f=fixture(path=>path==='/api/auth/me'?me(++reads<3?'alice':'bob'):path==='/api/artifacts'?json({item:{id:'saved'}}):new Response('private'));await assert.rejects(exportGeneratedFile({name:'private.txt',content:'private'},f.dependencies),/登录已变化/);assert.equal(f.events.includes('click'),false);assert.equal(f.events.includes('object-url'),false);});
 test('account-owned content cannot be exported to a different or signed-out account',async()=>{for(const id of ['bob',null]){const f=fixture(()=>me(id));await assert.rejects(exportGeneratedFile({name:'private.txt',content:'private',expectedUserId:'alice'},f.dependencies),/账户已变化/);assert.deepEqual(f.events,['/api/auth/me']);}});
+test('native account draft exports inherit their fixed owner without relying on every tool to pass it',async()=>{beginDraftScope({ownerId:'alice'});try{for(const id of ['bob',null]){const f=fixture(()=>me(id));await assert.rejects(exportGeneratedFile({name:'private.txt',content:'alice draft'},f.dependencies),/账户已变化/);assert.deepEqual(f.events,['/api/auth/me']);}}finally{endDraftScope();}});

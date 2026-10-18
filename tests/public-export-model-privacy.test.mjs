@@ -1,4 +1,4 @@
-import {installGuestExportSession,waitForExport} from './fixtures/artifact-session.mjs';
+import {mockArtifactFetch,waitForExport} from './fixtures/artifact-session.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -37,7 +37,7 @@ test('actual PDF pages and document metadata exclude runtime identity without ce
  }finally{await task.destroy();}
 });
 
-test('customer TXT download emits only the manuscript and cited bibliography, never the surrounding runtime object',async()=>{const restoreExport=installGuestExportSession();
+test('customer TXT download emits only the manuscript and cited bibliography, never the surrounding runtime object',async()=>{const originalFetch=globalThis.fetch,artifactFetch=mockArtifactFetch(path=>{throw Error('Unexpected request '+path);},{userId:'researcher'});globalThis.fetch=async(path,options)=>{const response=await artifactFetch(path,options);return String(path).includes('/download?')?new Response(await response.arrayBuffer(),{headers:{'Content-Type':'text/plain;charset=utf-8'}}):response;};const restoreExport=()=>{globalThis.fetch=originalFetch;};
  const dom=new JSDOM('<main class="dashboard"></main>',{url:'https://paperknow.test/workspace.html#thesis/privacy-thesis'}),globals=['window','document','location','AbortController'],saved=new Map(globals.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)])),objectURL=URL.createObjectURL,revokeURL=URL.revokeObjectURL,schedule=globalThis.setTimeout,blobs=[],clicked=[];
  disposeOnlineThesis();
  try{

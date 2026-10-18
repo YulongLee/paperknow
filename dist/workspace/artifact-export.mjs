@@ -1,5 +1,6 @@
 // Binary exports are only uploaded when the user explicitly chooses an export.
 // Local drafts and their original source files are never traversed or uploaded here.
+import {draftScopeOwnerId} from './state.mjs';
 export const artifactExportLimit=20*1024*1024;
 const sourceTypes=new Set(['writing','thesis','literature','revision','detection','presentation','format','research','backup','other']);
 export function artifactSourceType(path=globalThis.location?.hash||''){
@@ -23,7 +24,7 @@ export function artifactExportNotice(message,{error=false,documentObject=globalT
 async function json(response){return response.json().catch(()=>null);}
 async function owner(fetchImpl){const response=await fetchImpl('/api/auth/me',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(60000)});if(response.status===401)return null;const value=await json(response);if(!response.ok||!value||!Object.hasOwn(value,'user'))throw Error('无法确认当前账户，未保存云文件、未发起下载。请稍后重试。');if(value.user===null)return null;if(typeof value.user?.id!=='string'||!value.user.id)throw Error('当前账户状态无法确认，请重新登录后导出。');return value.user.id;}
 export async function artifactBase64(blob){const bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let offset=0;offset<bytes.length;offset+=8192)binary+=String.fromCharCode(...bytes.subarray(offset,offset+8192));return btoa(binary);}
-export async function exportGeneratedFile({name,content,type='text/plain;charset=utf-8',sourceType=artifactSourceType(),sourceId='',projectId='',expectedUserId}={},dependencies={}){
+export async function exportGeneratedFile({name,content,type='text/plain;charset=utf-8',sourceType=artifactSourceType(),sourceId='',projectId='',expectedUserId=draftScopeOwnerId()}={},dependencies={}){
  const {fetchImpl=globalThis.fetch,documentObject=globalThis.document,urlAPI=globalThis.URL,notify=artifactExportNotice,setTimeoutImpl=globalThis.setTimeout}=dependencies;
  if(content===undefined||content===null)throw Error('文件内容为空，未保存也未发起下载。');
  const filename=String(name||'研究成果.txt').replace(/[\\/:*?"<>|\u0000-\u001f]/g,'_').slice(0,180),blob=content instanceof Blob?content:new Blob([content],{type});
