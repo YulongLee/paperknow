@@ -42,7 +42,7 @@ export function createFileService(db,config={}){
     if(old&&old.expected_sha256!==input.expectedSha256)fail(409,'原件已变化，请刷新后再删除');
     if(old?.status==='completed')return null;
     const row=file(id,user);if(row.sha256!==input.expectedSha256)fail(409,'原件已变化，请刷新后再删除');
-    const active=db.prepare("SELECT input FROM jobs WHERE user_id=? AND status IN ('queued','running') AND type IN ('parse','agent','document_parse')").all(user.id);
+    const active=db.prepare("SELECT input FROM jobs WHERE user_id=? AND status IN ('queued','running') AND type IN ('parse','agent','document_parse','document_translation')").all(user.id);
     if(active.some(job=>{try{const v=JSON.parse(job.input);return v.fileId===id||(Array.isArray(v.fileIds)&&v.fileIds.includes(id));}catch{return true;}}))fail(409,'仍有进行中的任务正在使用此原件，请等待完成或取消任务后再删除');
     const at=new Date().toISOString();
     db.prepare("INSERT INTO workspace_file_deletions(file_id,user_id,expected_sha256,status,created_at,updated_at) VALUES(?,?,?,'pending',?,?) ON CONFLICT(file_id) DO NOTHING").run(id,user.id,row.sha256,at,at);

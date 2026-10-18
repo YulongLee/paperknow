@@ -47,6 +47,13 @@ export function createStorage(config,client){
       try{await oss.delete(key);}catch{throw new Error('OSS 原件删除未完成，请稍后重试');}
     },async read(file){
       return readObject(file,'originals');
+    },async signedOriginalURL(file,expires=600){
+      const key=assertObject(file,'originals');
+      if(!['pdf','docx'].includes(file.kind)||!Number.isSafeInteger(expires)||expires<60||expires>900)throw new Error('文档翻译原件签名参数无效');
+      const value=await oss.signatureUrlV4('GET',expires,{},key);
+      const signed=new URL(value);
+      if(signed.protocol!=='https:'||signed.hostname!==`${config.ossBucket}.${endpoint.hostname}`||signed.username||signed.password)throw new Error('原件访问签名地址无效');
+      return signed.href;
     },async putArtifact(id,userId,kind,buffer,sha256){
       const key=objectKey(id,userId,kind,'exports');
       if(!Buffer.isBuffer(buffer)||!buffer.length||digest(buffer)!==sha256)throw new Error('文件完整性校验失败');

@@ -36,3 +36,15 @@ test('large artifact upload budget fits limited egress while small health probes
  const value=Buffer.from('generated-file');await store.putArtifact('export-1','owner-1','txt',value,digest(value));
  assert.deepEqual(calls.shift(),['put',90000]);assert.equal((await store.health()).ok,true);assert.deepEqual(calls,[['put',3000],['get',3000],['delete',3000]]);
 });
+
+test('translation signs only an exact private owned original with V4 and a bounded expiry',async()=>{
+ const calls=[],store=createStorage(settings,{async signatureUrlV4(...args){calls.push(args);return 'https://test-bucket.oss-cn-shanghai.aliyuncs.com/paperknow/users/owner/originals/f.pdf?x-oss-signature=synthetic';}});
+ const file={id:'f',user_id:'owner',kind:'pdf',storage_bucket:'test-bucket',storage_key:'paperknow/users/owner/originals/f.pdf'};
+ await assert.rejects(store.signedOriginalURL({...file,storage_key:'other/f.pdf'}),/不匹配/);
+ await assert.rejects(store.signedOriginalURL({...file,kind:'txt'}),/不匹配|签名参数/);
+ for(const expiry of [0,59,901,Infinity,NaN])await assert.rejects(store.signedOriginalURL(file,expiry),/签名参数/);
+ assert.equal(calls.length,0);assert.match(await store.signedOriginalURL(file),/^https:/);
+ assert.deepEqual(calls,[['GET',600,{},file.storage_key]]);
+ const foreign=createStorage(settings,{async signatureUrlV4(){return 'https://foreign.oss-cn-shanghai.aliyuncs.com/x';}});
+ await assert.rejects(foreign.signedOriginalURL(file),/签名地址无效/);
+});
