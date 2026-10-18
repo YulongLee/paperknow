@@ -31,11 +31,12 @@ test('AMiner API keeps valid token configuration closed unless the publication s
  const payload={user_id:'synthetic-console-user',exp:Math.floor(Date.now()/1000)+300},content=Buffer.from(JSON.stringify({alg:'HS256',sign_type:'SIGN'})).toString('base64url')+'.'+Buffer.from(JSON.stringify(payload)).toString('base64url'),token=content+'.'+createHmac('sha256','synthetic-console-issuer').update(content).digest('base64url');let calls=0;
  const base=await apiServer(t,{...environmentConfig({PK_AMINER_ACCESS:'public',PK_AMINER_TOKEN:token}),literatureFetch:async url=>{
   calls++;const host=new URL(url).hostname;assert.notEqual(host,'datacenter.aminer.cn');
+   if(host==='export.arxiv.org')return new Response('<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"><opensearch:totalResults>0</opensearch:totalResults></feed>',{headers:{'content-type':'application/atom+xml'}});
   return host==='api.crossref.org'?new Response(JSON.stringify({message:{items:[]}}),{headers:{'content-type':'application/json'}}):new Response(JSON.stringify({resultList:{result:[]}}),{headers:{'content-type':'application/json'}});
  }});
  const cap=await(await fetch(base+'/api/capabilities')).json();assert.equal(cap.academicSearchSources.includes('aminer'),false);assert.equal(cap.academicSearchSourceStatus.find(row=>row.id==='aminer').configured,false);
  const direct=await fetch(base+'/api/literature/search?q=console%20search&source=aminer');assert.equal(direct.status,503);assert.equal((await direct.json()).sources[0].status,'not_configured');assert.equal(calls,0);
- const aggregate=await fetch(base+'/api/literature/search?q=console%20search&source=all');assert.equal(aggregate.status,200);assert.equal((await aggregate.json()).sources.some(row=>row.id==='aminer'),false);assert.equal(calls,2);
+ const aggregate=await fetch(base+'/api/literature/search?q=console%20search&source=all');assert.equal(aggregate.status,200);assert.equal((await aggregate.json()).sources.some(row=>row.id==='aminer'),false);assert.equal(calls,3);
 });
 
 async function apiServer(t,config,{seed}={}){
@@ -51,7 +52,7 @@ test('AMiner public search passes server JWT auth while capabilities, results an
   calls++;assert.equal(new URL(url).hostname,'datacenter.aminer.cn');assert.equal(new URL(url).searchParams.get('page'),'1');assert.equal(new URL(url).searchParams.get('size'),'10');token=options.headers.Authorization;assert.doesNotMatch(token,/^Bearer /);assert.equal(JSON.parse(Buffer.from(token.split('.')[1],'base64url')).user_id,userId);
   return new Response(JSON.stringify({code:200,success:true,data:[{id:'507f1f77bcf86cd799439011',title:'Public research metadata',year:2025,first_author:'Example Author',doi:'10.1234/public'}],total:1,diagnostics:apiKey}),{headers:{'content-type':'application/json'}});
  }});
- const capabilityText=await(await fetch(base+'/api/capabilities')).text(),cap=JSON.parse(capabilityText);assert.deepEqual(cap.academicSearchSources,['crossref','europepmc','aminer']);assert.equal(cap.academicSearchSourceStatus.find(row=>row.id==='aminer').configured,true);
+ const capabilityText=await(await fetch(base+'/api/capabilities')).text(),cap=JSON.parse(capabilityText);assert.deepEqual(cap.academicSearchSources,['crossref','europepmc','aminer','arxiv']);assert.equal(cap.academicSearchSourceStatus.find(row=>row.id==='aminer').configured,true);
  const result=await fetch(base+'/api/literature/search?q=public%20research&source=aminer'),text=await result.text(),value=JSON.parse(text);assert.equal(result.status,200);assert.equal(value.items[0].source,'aminer');assert.equal(value.items[0].url,'https://www.aminer.cn/pub/507f1f77bcf86cd799439011');assert.equal(value.items[0].doi,'10.1234/public');
  assert.equal((await fetch(base+'/api/literature/search?q=public%20research&source=aminer')).status,200);assert.equal(calls,1);
  const exhausted=await fetch(base+'/api/literature/search?q=another%20topic&source=aminer'),exhaustedText=await exhausted.text();assert.equal(exhausted.status,503);assert.equal(JSON.parse(exhaustedText).sources[0].status,'budget_exhausted');assert.equal(calls,1);
@@ -62,7 +63,7 @@ test('AMiner public search passes server JWT auth while capabilities, results an
 test('AMiner missing configuration and unsupported access filters never call the provider',async t=>{
  let calls=0;const fetchImpl=async()=>{calls++;throw Error('must not call');};
  const base=await apiServer(t,{aminerEnabled:true,aminerAccess:'public',literatureFetch:fetchImpl});
- const cap=await(await fetch(base+'/api/capabilities')).json();assert.deepEqual(cap.academicSearchSources,['crossref','europepmc']);assert.equal(cap.academicSearchSourceStatus.find(row=>row.id==='aminer').configured,false);
+ const cap=await(await fetch(base+'/api/capabilities')).json();assert.deepEqual(cap.academicSearchSources,['crossref','europepmc','arxiv']);assert.equal(cap.academicSearchSourceStatus.find(row=>row.id==='aminer').configured,false);
  const result=await fetch(base+'/api/literature/search?q=public%20research&source=aminer');assert.equal(result.status,503);assert.equal((await result.json()).sources[0].status,'not_configured');
  const configured=await apiServer(t,{aminerEnabled:true,aminerAccess:'public',aminerApiKey:'synthetic-secret',aminerUserId:'synthetic-user',literatureFetch:fetchImpl});
  const unsupported=await fetch(configured+'/api/literature/search?q=public%20research&source=aminer&openAccess=true');assert.equal(unsupported.status,200);assert.equal((await unsupported.json()).sources[0].status,'unsupported_filter');assert.equal(calls,0);
@@ -89,6 +90,7 @@ test('AMiner internal and unspecified access use persisted admin sessions, isola
   const calls=[],credentials={aminerEnabled:true,aminerApiKey:'synthetic-internal-secret',aminerUserId:'synthetic-internal-user',aminerDailyLimit:2};let cookies;
   const base=await apiServer(t,{...credentials,...(access===undefined?{}:{aminerAccess:access}),literatureFetch:async url=>{
    const host=new URL(url).hostname;calls.push(host);
+  if(host==='export.arxiv.org')return new Response('<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"><opensearch:totalResults>0</opensearch:totalResults></feed>',{headers:{'content-type':'application/atom+xml'}});
    if(host==='api.crossref.org')return new Response(JSON.stringify({message:{items:[{DOI:'10.1234/public',title:['Public search record']}]}}),{headers:{'content-type':'application/json'}});
    if(host==='www.ebi.ac.uk')return new Response(JSON.stringify({resultList:{result:[]}}),{headers:{'content-type':'application/json'}});
    return new Response(JSON.stringify({code:200,success:true,data:[{id:'507f1f77bcf86cd799439011',title:'Internal AMiner record'}],total:1}),{headers:{'content-type':'application/json'}});

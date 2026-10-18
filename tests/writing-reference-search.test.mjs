@@ -56,6 +56,40 @@ test('configured OpenAlex is selectable in the shared search and imports only tr
  const request=new URL(f.calls[0].url,'https://example.test');assert.equal(request.searchParams.get('source'),'openalex');assert.equal(request.searchParams.get('openAccess'),'true');assert.match(f.$('[data-ref-sources]').textContent,/OpenAlex已检索/);assert.match(f.$('.wrs-result-index').textContent,/OpenAlex/);assert.match(f.$('.wrs-result-links').textContent,/开放获取/);
  choose(f);f.$('[data-ref-import]').click();await settle();assert.equal(f.imports[0][0].source,'openalex');assert.match(f.imports[0][0].sourceLabel,/OpenAlex.*未读取全文/);assert.equal(f.imports[0][0].scope,'metadata');assert.equal(f.imports[0][0].text,'');assert.equal(f.imports[0][0].fullTextRead,false);f.close();
 });
+const arxivPaper=(extra={})=>paper({source:'arxiv',sourceId:'2610.12345',arxivId:'2610.12345v2',title:'A current arXiv preprint',doi:'',url:'https://arxiv.org/abs/2610.12345v2',fullTextUrl:'https://arxiv.org/pdf/2610.12345v2',pdfUrl:'https://arxiv.org/pdf/2610.12345v2',type:'preprint',publishedDate:'2026-10-18T09:30:00Z',updatedDate:'2026-10-19T10:00:00Z',categories:['cs.AI','cs.LG'],openAccess:true,...extra});
+test('arXiv is discoverable, defaults to latest submission, and keeps chronology filters scoped to arXiv',async()=>{
+ const f=fixture({availableSources:['crossref','arxiv'],fetcher:async(url,init)=>{f.calls.push({url,init});return reply(results([arxivPaper()],{sources:[{id:'arxiv',status:'ok'}]}));}}),stop=f.setup();
+ try{
+  await stop.ready;assert.equal(f.$('[data-ref-arxiv]').hidden,false);assert.equal(f.$('[name=source]').closest('details'),null);assert.equal(f.$('[data-ref-arxiv-controls]').hidden,true);assert.match(f.$('[data-ref-arxiv-attribution]').textContent,/Thank you to arXiv for use of its open access interoperability\./);
+  input(f,'[name=q]','language models');f.$('[data-ref-arxiv]').click();await settle();let query=new URL(f.calls[0].url,'https://example.test').searchParams;
+  assert.equal(query.get('source'),'arxiv');assert.equal(query.get('sort'),'submittedDate');assert.equal(f.$('[data-ref-arxiv-controls]').hidden,false);assert.match(f.$('.wrs-result-heading').textContent,/最新提交/);
+  assert.match(f.$('.wrs-result').textContent,/预印本.*首次提交 2026-10-18（UTC）.*最近更新 2026-10-19（UTC）/);assert.match(f.$('.wrs-preprint-note').textContent,/未必经过同行评审/);
+  assert.deepEqual([...f.$('.wrs-result-links').querySelectorAll('a')].map(link=>link.href),['https://arxiv.org/abs/2610.12345v2','https://arxiv.org/pdf/2610.12345v2']);
+  input(f,'[name=sort]','lastUpdatedDate');input(f,'[name=dateRange]','7');submit(f);await settle();query=new URL(f.calls[1].url,'https://example.test').searchParams;
+  assert.equal(query.get('sort'),'lastUpdatedDate');assert.match(query.get('dateFrom'),/^\d{4}-\d{2}-\d{2}$/);assert.equal((Date.parse(query.get('dateTo'))-Date.parse(query.get('dateFrom')))/86400000,6);
+  input(f,'[name=source]','all');f.$('[name=source]').dispatchEvent(new window.Event('change',{bubbles:true}));submit(f);await settle();query=new URL(f.calls[2].url,'https://example.test').searchParams;
+  assert.equal(query.get('sort'),null);assert.equal(query.get('dateFrom'),null);assert.equal(f.$('[data-ref-arxiv-controls]').hidden,true);assert.match(f.$('.wrs-result-heading').textContent,/按数据库返回顺序/);
+ }finally{f.close();}
+});
+test('arXiv metadata canonicalizes public links, validates dates and deduplicates different versions',()=>{
+ const value=normalizeReferenceSearchItem(arxivPaper({url:'https://evil.test/fake',fullTextUrl:'javascript:bad',pdfUrl:'https://user:secret@example.test/',categories:['cs.AI','<img>','cs.AI'],updatedDate:'2026-02-31T10:00:00Z',text:'not imported',confirmed:true}));
+ assert.equal(value.url,'https://arxiv.org/abs/2610.12345v2');assert.equal(value.pdfUrl,'https://arxiv.org/pdf/2610.12345v2');assert.equal(value.fullTextUrl,value.pdfUrl);assert.equal(value.sourceId,'2610.12345');assert.equal(value.publishedDate,'2026-10-18T09:30:00.000Z');assert.equal(value.updatedDate,'');assert.deepEqual(value.categories,['cs.AI']);assert.equal(value.text,'');assert.equal(value.confirmed,false);assert.equal(value.fullTextRead,false);
+ assert.equal(newReferenceSearchItems([arxivPaper({title:'Changed title',arxivId:'2610.12345v3'})],[value]).length,0);
+ const old=normalizeReferenceSearchItem(arxivPaper({sourceId:'hep-th/9901001',arxivId:'hep-th/9901001v1'}));assert.equal(old.url,'https://arxiv.org/abs/hep-th/9901001v1');
+ const invalid=normalizeReferenceSearchItem(arxivPaper({arxivId:'../../admin'}));assert.equal(invalid.url,'');assert.equal(invalid.pdfUrl,'');
+});
+test('arXiv import preserves searchable metadata and dates in the local library without claiming full text',async()=>{
+ const f=fixture(),previousFetch=globalThis.fetch;let stop;
+ try{
+  globalThis.localStorage=f.dom.window.localStorage;globalThis.fetch=async url=>reply(url==='/api/capabilities'?{academicSearchSources:['arxiv']}:results([arxivPaper()],{sources:[{id:'arxiv',status:'ok'}]}));
+  stop=openLiteratureSearch({modal:(_,html)=>{f.$('#workspace-dialog-body').innerHTML=html;},notify:()=>{}});await stop.ready;input(f,'[name=q]','language models');f.$('[data-ref-arxiv]').click();await settle();choose(f);f.$('[data-ref-import]').click();await settle();
+  const saved=JSON.parse(localStorage.getItem(literatureKey))[0];assert.equal(saved.source,'arxiv');assert.equal(saved.arxivId,'2610.12345v2');assert.equal(saved.sourceId,'2610.12345');assert.equal(saved.pdfUrl,'https://arxiv.org/pdf/2610.12345v2');assert.equal(saved.publishedDate,'2026-10-18T09:30:00.000Z');assert.equal(saved.updatedDate,'2026-10-19T10:00:00.000Z');assert.deepEqual(saved.categories,['cs.AI','cs.LG']);assert.equal(saved.type,'preprint');assert.equal(saved.scope,'metadata');assert.equal(saved.text,'');assert.equal(saved.abstract,'Database abstract only.');assert.equal(saved.status,'unread');assert.equal(saved.confirmed,false);assert.equal(saved.fullTextRead,false);
+ }finally{stop?.();globalThis.fetch=previousFetch;f.close();}
+});
+test('closing an arXiv request cancels its signal and late results cannot paint or import',async()=>{
+ let complete,signal;const f=fixture({availableSources:['arxiv'],fetcher:(_url,init)=>new Promise(resolve=>{complete=resolve;signal=init.signal;})}),stop=f.setup();
+ try{await stop.ready;input(f,'[name=q]','language models');f.$('[data-ref-arxiv]').click();assert.equal(f.$('[data-ref-results]').getAttribute('aria-busy'),'true');stop();assert.equal(signal.aborted,true);f.$('#workspace-dialog-body').innerHTML='<p>Another screen</p>';complete(reply(results([arxivPaper()])));await settle();assert.equal(f.$('#workspace-dialog-body').textContent,'Another screen');assert.equal(f.imports.length,0);}finally{f.close();}
+});
 test('configured AMiner follows capabilities and imports academic metadata without claiming full-text access',async()=>{
  const f=fixture({availableSources:['crossref','aminer','aminer','unknown'],fetcher:async(url,init)=>{f.calls.push({url,init});return reply(results([paper({source:'aminer',sourceId:'507f1f77bcf86cd799439011',url:'https://www.aminer.cn/pub/507f1f77bcf86cd799439011',sourceLabel:'CNKI synchronized full text',text:'Unrequested text',confirmed:true,fullTextRead:true})],{sources:[{id:'aminer',status:'ok',reason:'private provider details'}]}));}}),stop=f.setup();
  try{

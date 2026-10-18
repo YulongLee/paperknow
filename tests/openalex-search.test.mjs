@@ -6,7 +6,7 @@ const work=(extra={})=>({id:'https://openalex.org/W123456',title:'Graph neural n
 const response=(results=[work()],headers={})=>new Response(JSON.stringify({results,meta:{count:100}}),{headers:{'content-type':'application/json',...headers}});
 test('OpenAlex is opt-in with server credentials; unconfigured direct requests never spend keyless budget',async()=>{
  let calls=0;const service=createLiteratureSearch({fetchImpl:async()=>{calls++;return response();}});
- assert.deepEqual(service.listSources(),['crossref','europepmc']);assert.deepEqual(service.sourceStatus().at(-1),{id:'openalex',label:'OpenAlex',configured:false});
+ assert.deepEqual(service.listSources(),['crossref','europepmc','arxiv']);assert.deepEqual(service.sourceStatus().find(row=>row.id==='openalex'),{id:'openalex',label:'OpenAlex',configured:false});
  assert.equal(parseLiteratureQuery(params()).source,'openalex');
  await assert.rejects(service.search(params()),error=>error.status===503&&error.response.sources[0].status==='not_configured');assert.equal(calls,0);
  await assert.rejects(service.search(params({api_key:'client-injected-key'})),{status:400});assert.equal(calls,0);
@@ -42,11 +42,12 @@ test('OpenAlex filters untrusted year and OA metadata again after retrieval',asy
 test('aggregate searches retain existing providers, deduplicate DOI variants and send keys only to OpenAlex',async()=>{
  const requests=[];const service=createLiteratureSearch({openAlexApiKey:'test-key',fetchImpl:async(url,options)=>{
   const host=new URL(url).hostname;requests.push({host,authorization:options.headers.Authorization});
+  if(host==='export.arxiv.org')return new Response('<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"><opensearch:totalResults>0</opensearch:totalResults></feed>',{headers:{'content-type':'application/atom+xml'}});
   if(host==='api.crossref.org')return new Response(JSON.stringify({message:{items:[{DOI:'10.1234/graph',title:['Crossref graph'],published:{'date-parts':[[2024]]}}]}}),{headers:{'content-type':'application/json'}});
   if(host==='www.ebi.ac.uk')return new Response(JSON.stringify({resultList:{result:[]}}),{headers:{'content-type':'application/json'}});
   return response([work(),work({id:'https://openalex.org/W2',doi:null})]);
  }});
- const result=await service.search(params({source:'all'}));assert.equal(result.items.length,2);assert.deepEqual(result.sources.map(value=>value.id),['crossref','europepmc','openalex']);assert.equal(result.items[0].source,'crossref');assert.equal(result.items[1].sourceId,'W2');assert.equal(result.total,undefined);assert.equal(requests.find(value=>value.host==='api.openalex.org').authorization,'Bearer test-key');assert.ok(requests.filter(value=>value.host!=='api.openalex.org').every(value=>value.authorization===undefined));
+ const result=await service.search(params({source:'all'}));assert.equal(result.items.length,2);assert.deepEqual(result.sources.map(value=>value.id),['crossref','europepmc','openalex','arxiv']);assert.equal(result.items[0].source,'crossref');assert.equal(result.items[1].sourceId,'W2');assert.equal(result.total,undefined);assert.equal(requests.find(value=>value.host==='api.openalex.org').authorization,'Bearer test-key');assert.ok(requests.filter(value=>value.host!=='api.openalex.org').every(value=>value.authorization===undefined));
 });
 test('OpenAlex auth and upstream failures never echo provider bodies, credentials or remote exceptions',async()=>{
  for(const status of [401,403,500]){

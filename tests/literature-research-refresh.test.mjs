@@ -76,6 +76,13 @@ test('saved AMiner records show their source and abstract while keeping AI readi
   const saved=JSON.parse(localStorage.getItem(literatureKey))[0];assert.equal(saved.source,'aminer');assert.equal(saved.status,'unread');assert.equal(saved.scope,'metadata');assert.equal(saved.text,'');assert.equal(saved.confirmed,false);assert.equal(saved.fullTextRead,false);
  }finally{clearEditor();dom.window.close();}
 });
+test('saved arXiv metadata shows submission and update dates, preprint scope and canonical PDF without auto-reading',()=>{
+ const {dom,ctx}=setup(),paper=validatePaper({id:'arxiv-metadata',title:'An arXiv preprint',authors:'A. Author',source:'arxiv',arxivId:'2610.12345v2',sourceId:'2610.12345',publishedDate:'2026-10-18T09:30:00Z',updatedDate:'2026-10-19T10:00:00Z',categories:['cs.AI'],abstract:'Actual abstract <script>unsafe()</script>',scope:'metadata',text:'',tags:[],notes:[],status:'unread',confirmed:false,fullTextRead:false});
+ try{
+  localStorage.setItem(literatureKey,JSON.stringify([paper]));mountLiteratureReader(paper.id,ctx);assert.match($('.lit-source-info').textContent,/arXiv.*在线题录，未读取全文/);assert.match($('.lit-arxiv-metadata').textContent,/预印本.*未必经过同行评审.*2610.12345v2.*首次提交：2026-10-18（UTC）.*最近更新：2026-10-19（UTC）.*cs.AI/);assert.equal($('.lit-public-fulltext').href,'https://arxiv.org/pdf/2610.12345v2');assert.equal($('.lit-public-fulltext').rel,'noopener noreferrer');assert.match($('.lit-database-abstract p').textContent,/Actual abstract <script>/);assert.equal($('.lit-source-info script'),null);assert.match($('.lit-source-info').textContent,/Thank you to arXiv for use of its open access interoperability\./);assert.match($('.lit-read-notice').textContent,/尚未选定 AI 研读材料/);
+  const saved=JSON.parse(localStorage.getItem(literatureKey))[0];assert.equal(saved.scope,'metadata');assert.equal(saved.status,'unread');assert.equal(saved.text,'');assert.equal(saved.confirmed,false);assert.equal(saved.fullTextRead,false);assert.equal(saved.lastReadAt,undefined);
+ }finally{clearEditor();dom.window.close();}
+});
 
 test('saved database abstracts and public original links remain viewable without turning metadata into AI reading material',()=>{
  const {dom,ctx}=setup(),paper=validatePaper({id:'openalex-abstract',title:'题录与摘要',source:'openalex',sourceId:'W123457',url:'https://openalex.org/W123457',fullTextUrl:'https://repository.example.test/paper.pdf',abstract:'Database abstract <img src=x onerror=alert(1)>\nSecond paragraph.',scope:'metadata',text:'',tags:[],notes:[{id:'own-note',text:'自己的笔记'}],status:'unread'});

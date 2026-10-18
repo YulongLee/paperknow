@@ -1,4 +1,5 @@
 import {createHmac} from 'node:crypto';
+import {createArxivClient} from './arxiv-client.mjs';
 
 // Public bibliographic metadata only. Provider credentials stay in server-owned headers.
 const providers = Object.freeze({
@@ -6,6 +7,7 @@ const providers = Object.freeze({
   europepmc: {id:'europepmc',label:'Europe PMC',endpoint:'https://www.ebi.ac.uk/europepmc/webservices/rest/search'},
   aminer: {id:'aminer',label:'AMiner',endpoint:'https://datacenter.aminer.cn/gateway/open_platform/api/paper/search'},
   openalex: {id:'openalex',label:'OpenAlex',endpoint:'https://api.openalex.org/works'},
+  arxiv: {id:'arxiv',label:'arXiv',endpoint:'https://export.arxiv.org/api/query'},
 });
 const namedEntities={amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:' ',ndash:'–',mdash:'—',hellip:'…',times:'×',plusmn:'±',alpha:'α',beta:'β',gamma:'γ',Delta:'Δ',pi:'π',mu:'μ',le:'≤',ge:'≥',rsquo:'’',lsquo:'‘',rdquo:'”',ldquo:'“'};
 class SearchError extends Error {
@@ -101,7 +103,7 @@ function aminerTokenExpiry(token){
 }
 export function parseLiteratureQuery(input){
   const p=input instanceof URLSearchParams?input:new URLSearchParams(input);
-  const allowed=new Set(['q','source','yearFrom','yearTo','openAccess','limit']);
+  const allowed=new Set(['q','source','yearFrom','yearTo','openAccess','limit','sort','dateFrom','dateTo']);
   for(const key of p.keys())if(!allowed.has(key)||p.getAll(key).length!==1)invalid('检索参数不正确');
   const raw=p.get('q')??'',q=raw.trim().replace(/\s+/g,' ');
   if(raw.length>300||q.length<2||q.length>200||/[\u0000-\u001f\u007f-\u009f]/.test(raw)||!/[\p{L}\p{N}]/u.test(q))invalid('请输入 2～200 字符的公开标题或关键词');
@@ -110,7 +112,11 @@ export function parseLiteratureQuery(input){
   const yearFrom=parseYear('yearFrom'),yearTo=parseYear('yearTo');if(yearFrom&&yearTo&&yearFrom>yearTo)invalid('起始年份不能晚于结束年份');
   const oa=p.get('openAccess');if(oa!==null&&oa!==''&&!['true','false'].includes(oa))invalid('开放获取筛选参数不正确');
   const rawLimit=p.get('limit'),limit=rawLimit===null||rawLimit===''?10:Number(rawLimit);if(!Number.isInteger(limit)||limit<1||limit>20||rawLimit&&!/^\d+$/.test(rawLimit))invalid('每次检索数量应为 1～20 条');
-  return {q,source,yearFrom,yearTo,openAccess:oa==='true',limit};
+  const sort=p.get('sort');if(sort!==null&&!['relevance','submittedDate','lastUpdatedDate'].includes(sort))invalid('请选择有效的文献排序方式');if(sort&&sort!=='relevance'&&source!=='arxiv')invalid('最新提交及更新时间排序仅适用于 arXiv 来源');
+  const date=key=>{const value=p.get(key);if(value===null||value==='')return '';if(!/^\d{4}-\d{2}-\d{2}$/.test(value)||Number(value.slice(0,4))<1000||Number(value.slice(0,4))>2100)invalid('日期应为 1000～2100 年的有效日期');const stamp=Date.parse(value+'T00:00:00Z');if(!Number.isFinite(stamp)||new Date(stamp).toISOString().slice(0,10)!==value)invalid('请输入有效的日期');return value;};
+  const dateFrom=date('dateFrom'),dateTo=date('dateTo');if((dateFrom||dateTo)&&source!=='arxiv')invalid('提交日期筛选仅适用于 arXiv 来源');
+  const effectiveFrom=[yearFrom?yearFrom+'-01-01':'',dateFrom].filter(Boolean).sort().at(-1),effectiveTo=[yearTo?yearTo+'-12-31':'',dateTo].filter(Boolean).sort()[0];if(effectiveFrom&&effectiveTo&&effectiveFrom>effectiveTo)invalid('起始日期不能晚于结束日期');
+  return {q,source,yearFrom,yearTo,openAccess:oa==='true',limit,...(sort!==null?{sort}:{}),...(dateFrom?{dateFrom}:{}),...(dateTo?{dateTo}:{})};
 }
 function providerURL(id,query){
   const u=new URL(providers[id].endpoint);
@@ -147,12 +153,16 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
   // Process-local request caps reset on restart and are not a persistent financial safeguard.
   let openAlexDay=-1,openAlexCount=0,aminerDay=-1,aminerCount=0;
   const cache=new Map(),inflight=new Map(),clients=new Map(),providerState=new Map(Object.keys(providers).map(id=>[id,{active:0,minuteAt:0,minuteCount:0,secondAt:0,secondCount:0,cooldownUntil:0}]));let active=0;
+  const arxiv=createArxivClient({fetchImpl,clock,timeoutMs,maxResponseBytes});
   function clientRate(clientKey){
     const time=clock(),key=String(clientKey||'unknown').slice(0,100);let bucket=clients.get(key);
     if(!bucket||bucket.until<=time)bucket={until:time+60000,count:0};bucket.count++;boundedSet(clients,key,bucket,10000);
     if(bucket.count>clientLimit)throw new SearchError(429,'文献检索较频繁，请稍后再试',undefined,Math.max(1,Math.ceil((bucket.until-time)/1000)));
   }
   async function retrieve(id,query){
+    // arXiv has its own process-wide serialized transport and bounded queue, independent
+    // of the four existing providers' slots. Their credentials never enter its request.
+    if(id==='arxiv')return arxiv.search(query);
     const state=providerState.get(id),time=clock();
     if(id==='openalex'){
       const day=Math.floor(time/86400000);if(openAlexDay!==day){openAlexDay=day;openAlexCount=0;}

@@ -10,6 +10,7 @@ const ep=(extra={})=>({id:'1234',source:'MED',title:'Graph neural networks in bi
 const json=value=>new Response(JSON.stringify(value),{headers:{'content-type':'application/json'}});
 const crResponse=(items=[cr()],total=42)=>json({message:{items,'total-results':total}});
 const epResponse=(result=[ep()],hitCount=34)=>json({resultList:{result},hitCount});
+const emptyArxiv=()=>new Response('<feed xmlns="http://www.w3.org/2005/Atom"/>',{headers:{'content-type':'application/atom+xml'}});
 test('query validation bounds every parameter before any provider call',async()=>{
  let calls=0;const service=createLiteratureSearch({fetchImpl:async()=>{calls++;return crResponse();}});
  for(const p of [params({q:'a'}),params({q:'x'.repeat(201)}),params({q:'hello\nworld'}),params({q:'!!'}),params({source:'http://127.0.0.1'}),params({yearFrom:'2025',yearTo:'2024'}),params({yearFrom:'999'}),params({openAccess:'yes'}),params({limit:'1000'}),params({limit:'1.2'}),params({url:'https://evil.test'})])await assert.rejects(service.search(p),{status:400});
@@ -27,12 +28,12 @@ test('Europe PMC queries literal terms and applies dates/OA while linking only v
  assert.equal(target.origin,'https://www.ebi.ac.uk');assert.equal(target.searchParams.get('query'),'"graph" AND "OR" AND "OPEN_ACCESS:N" AND FIRST_PDATE:[2020-01-01 TO 2026-12-31] AND OPEN_ACCESS:Y');assert.equal(target.searchParams.get('resultType'),'core');assert.equal(result.items.length,2);assert.equal(result.items[0].fullTextUrl,'https://europepmc.org/articles/PMC1234');assert.equal(result.items[0].url,'https://europepmc.org/article/MED/1234');assert.equal(result.items[0].abstract,'Data β α');assert.equal(result.items[1].fullTextUrl,undefined);assert.equal(result.items[0].sourceId,'MED:1234');
 });
 test('aggregate search deduplicates DOIs and bounds results without inventing a global total or metadata provenance',async()=>{
- const service=createLiteratureSearch({fetchImpl:async url=>new URL(url).hostname==='api.crossref.org'?crResponse([cr(),cr({DOI:'10.1234/second'})]):epResponse([ep({doi:'10.1234/GRAPH'}),ep({id:'other',doi:'10.1234/third'})])});
+ const service=createLiteratureSearch({fetchImpl:async url=>new URL(url).hostname==='export.arxiv.org'?emptyArxiv():new URL(url).hostname==='api.crossref.org'?crResponse([cr(),cr({DOI:'10.1234/second'})]):epResponse([ep({doi:'10.1234/GRAPH'}),ep({id:'other',doi:'10.1234/third'})])});
  const result=await service.search(params({limit:'3'}));assert.equal(result.items.length,3);assert.equal(new Set(result.items.map(item=>item.doi)).size,3);assert.equal(result.items[0].source,'crossref');assert.equal(result.items[0].openAccess,undefined);assert.equal(result.total,undefined);assert.ok(result.sources.every(source=>source.status==='ok'));
 });
 test('OA filtering honestly excludes unsupported Crossref rather than treating deposited licences as access proof',async()=>{
- const calls=[];const service=createLiteratureSearch({fetchImpl:async url=>{calls.push(new URL(url).hostname);return epResponse();}});
- const result=await service.search(params({openAccess:'true'}));assert.deepEqual(calls,['www.ebi.ac.uk']);assert.equal(result.sources[0].status,'unsupported_filter');assert.equal(result.partial,true);assert.equal(result.items[0].openAccess,true);await service.search(params({openAccess:'true'}));assert.equal(calls.length,1,'stable unsupported-filter results still cache');
+ const calls=[];const service=createLiteratureSearch({fetchImpl:async url=>{calls.push(new URL(url).hostname);return new URL(url).hostname==='export.arxiv.org'?emptyArxiv():epResponse();}});
+ const result=await service.search(params({openAccess:'true'}));assert.deepEqual(calls,['www.ebi.ac.uk','export.arxiv.org']);assert.equal(result.sources[0].status,'unsupported_filter');assert.equal(result.partial,true);assert.equal(result.items[0].openAccess,true);await service.search(params({openAccess:'true'}));assert.equal(calls.length,2,'stable unsupported-filter results still cache');
  const only=await service.search(params({source:'crossref',openAccess:'true'}));assert.equal(only.items.length,0);assert.equal(only.sources[0].status,'unsupported_filter');
 });
 test('provider failures return visible partial results or explicit 503 and never reflect remote exceptions/secrets',async()=>{
@@ -63,5 +64,5 @@ test('HTTP public metadata endpoint works without login while private routes and
  const response=await fetch(base+'/api/literature/search?'+params({source:'crossref'}));assert.equal(response.status,200);assert.equal((await response.json()).items[0].doi,'10.1234/graph');assert.equal(response.headers.get('cache-control'),'no-store');assert.equal((await fetch(base+'/api/projects')).status,401);
  const post=await fetch(base+'/api/literature/search',{method:'POST',headers:{Origin:'https://evil.test','content-type':'application/json'},body:'{}'});assert.equal(post.status,403);assert.equal((await fetch(base+'/api/literature/search?q=a')).status,400);
  for(let i=0;i<19;i++)assert.equal((await fetch(base+'/api/literature/search?'+params({source:'crossref'}))).status,200);
- const limited=await fetch(base+'/api/literature/search?'+params({source:'crossref'}));assert.equal(limited.status,429);assert.ok(Number(limited.headers.get('retry-after'))>0);assert.equal(calls,1);const cap=await(await fetch(base+'/api/capabilities')).json();assert.equal(cap.academicSearch,true);assert.deepEqual(cap.academicSearchSources,['crossref','europepmc']);
+ const limited=await fetch(base+'/api/literature/search?'+params({source:'crossref'}));assert.equal(limited.status,429);assert.ok(Number(limited.headers.get('retry-after'))>0);assert.equal(calls,1);const cap=await(await fetch(base+'/api/capabilities')).json();assert.equal(cap.academicSearch,true);assert.deepEqual(cap.academicSearchSources,['crossref','europepmc','arxiv']);
 });

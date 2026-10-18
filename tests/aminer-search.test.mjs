@@ -16,7 +16,7 @@ const tokenFor=(payload,header={alg:'HS256',sign_type:'SIGN'})=>{
 test('AMiner requires complete valid server configuration and rejects client credentials before any upstream call',async()=>{
  let calls=0;const fetchImpl=async()=>{calls++;return response();};
  const unconfigured=createLiteratureSearch({aminerEnabled:true,fetchImpl});
- assert.deepEqual(unconfigured.listSources(),['crossref','europepmc']);
+ assert.deepEqual(unconfigured.listSources(),['crossref','europepmc','arxiv']);
  assert.deepEqual(unconfigured.sourceStatus().find(row=>row.id==='aminer'),{id:'aminer',label:'AMiner',configured:false});
  assert.equal(parseLiteratureQuery(params()).source,'aminer');
  for(const config of [{},{aminerApiKey:apiKey},{aminerUserId:userId},{aminerApiKey:'bad\nsecret',aminerUserId:userId},{aminerApiKey:'bad secret',aminerUserId:userId},{aminerApiKey:'x'.repeat(501),aminerUserId:userId},{aminerApiKey:apiKey,aminerUserId:'bad user'},{aminerApiKey:apiKey,aminerUserId:'x'.repeat(101)}]){
@@ -35,17 +35,19 @@ test('AMiner stays disabled by default despite valid credentials and never joins
  for(const setting of [{},{aminerEnabled:false},{aminerEnabled:'true'},{aminerEnabled:1}]){
   let calls=0;const search=createLiteratureSearch({aminerToken:token,aminerApiKey:apiKey,aminerUserId:userId,clock:()=>time,...setting,fetchImpl:async url=>{
    calls++;const host=new URL(url).hostname;assert.notEqual(host,'datacenter.aminer.cn');
+   if(host==='export.arxiv.org')return new Response('<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"><opensearch:totalResults>0</opensearch:totalResults></feed>',{headers:{'content-type':'application/atom+xml'}});
    return host==='api.crossref.org'?new Response(JSON.stringify({message:{items:[]}}),{headers:{'content-type':'application/json'}}):new Response(JSON.stringify({resultList:{result:[]}}),{headers:{'content-type':'application/json'}});
   }});
   assert.equal(search.listSources().includes('aminer'),false);assert.equal(search.sourceStatus().find(row=>row.id==='aminer').configured,false);
   await assert.rejects(search.search(params()),error=>error.status===503&&error.response.sources[0].status==='not_configured');assert.equal(calls,0);
-  const result=await search.search(params({source:'all'}));assert.equal(result.sources.some(row=>row.id==='aminer'),false);assert.equal(calls,2);
+  const result=await search.search(params({source:'all'}));assert.equal(result.sources.some(row=>row.id==='aminer'),false);assert.equal(calls,3);
  }
 });
 
 test('AMiner request scopes isolate aggregate caches and cannot expose a cached administrator-only result',async()=>{
  const calls=[];const search=service({aminerDailyLimit:1,fetchImpl:async url=>{
   const host=new URL(url).hostname;calls.push(host);
+  if(host==='export.arxiv.org')return new Response('<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"><opensearch:totalResults>0</opensearch:totalResults></feed>',{headers:{'content-type':'application/atom+xml'}});
   if(host==='api.crossref.org')return new Response(JSON.stringify({message:{items:[{DOI:'10.1234/public',title:['Public provider record']}]}}),{headers:{'content-type':'application/json'}});
   if(host==='www.ebi.ac.uk')return new Response(JSON.stringify({resultList:{result:[]}}),{headers:{'content-type':'application/json'}});
   return response();
@@ -141,13 +143,14 @@ test('AMiner OA filtering is explicitly unsupported and never spends an upstream
 test('AMiner aggregate searches deduplicate DOIs and isolate JWT and OpenAlex credentials by host',async()=>{
  const requests=[];const search=service({openAlexApiKey:'synthetic-openalex-key',fetchImpl:async(url,options)=>{
   const host=new URL(url).hostname;requests.push({host,authorization:options.headers.Authorization});
+  if(host==='export.arxiv.org')return new Response('<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"><opensearch:totalResults>0</opensearch:totalResults></feed>',{headers:{'content-type':'application/atom+xml'}});
   if(host==='api.crossref.org')return new Response(JSON.stringify({message:{items:[{DOI:'10.1234/education',title:['Crossref record']}]}}),{headers:{'content-type':'application/json'}});
   if(host==='www.ebi.ac.uk')return new Response(JSON.stringify({resultList:{result:[]}}),{headers:{'content-type':'application/json'}});
   if(host==='api.openalex.org')return new Response(JSON.stringify({meta:{count:0},results:[]}),{headers:{'content-type':'application/json'}});
   assert.equal(host,'datacenter.aminer.cn');return response([paper(),paper({id:'507f1f77bcf86cd799439012',doi:null})]);
  }});
- const result=await search.search(params({source:'all'}));assert.deepEqual(result.sources.map(row=>row.id),['crossref','europepmc','aminer','openalex']);assert.equal(result.items.length,2);assert.equal(result.items[0].source,'crossref');assert.equal(result.items[1].source,'aminer');assert.equal(result.total,undefined);
- assert.equal(requests.length,4);assert.match(requests.find(row=>row.host==='datacenter.aminer.cn').authorization,/^[\w-]+\.[\w-]+\.[\w-]+$/);assert.equal(requests.find(row=>row.host==='api.openalex.org').authorization,'Bearer synthetic-openalex-key');assert.ok(requests.filter(row=>['api.crossref.org','www.ebi.ac.uk'].includes(row.host)).every(row=>row.authorization===undefined));
+ const result=await search.search(params({source:'all'}));assert.deepEqual(result.sources.map(row=>row.id),['crossref','europepmc','aminer','openalex','arxiv']);assert.equal(result.items.length,2);assert.equal(result.items[0].source,'crossref');assert.equal(result.items[1].source,'aminer');assert.equal(result.total,undefined);
+ assert.equal(requests.length,5);assert.match(requests.find(row=>row.host==='datacenter.aminer.cn').authorization,/^[\w-]+\.[\w-]+\.[\w-]+$/);assert.equal(requests.find(row=>row.host==='api.openalex.org').authorization,'Bearer synthetic-openalex-key');assert.ok(requests.filter(row=>['api.crossref.org','www.ebi.ac.uk','export.arxiv.org'].includes(row.host)).every(row=>row.authorization===undefined));
 });
 
 test('AMiner HTTP-200 business failures are errors with bounded cooldowns and sanitized messages',async()=>{
@@ -163,6 +166,7 @@ test('AMiner HTTP-200 business failures are errors with bounded cooldowns and sa
 test('AMiner business and quota failures keep successful aggregate results visible',async()=>{
  const search=service({fetchImpl:async url=>{
   const host=new URL(url).hostname;
+  if(host==='export.arxiv.org')return new Response('<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"><opensearch:totalResults>0</opensearch:totalResults></feed>',{headers:{'content-type':'application/atom+xml'}});
   if(host==='api.crossref.org')return new Response(JSON.stringify({message:{items:[]}}),{headers:{'content-type':'application/json'}});
   if(host==='www.ebi.ac.uk')return new Response(JSON.stringify({resultList:{result:[{id:'123',source:'MED',title:'Remaining useful record',pubYear:'2024'}]}}),{headers:{'content-type':'application/json'}});
   return response([],{code:40306,success:false,message:'private diagnostics'});
@@ -170,6 +174,7 @@ test('AMiner business and quota failures keep successful aggregate results visib
  const result=await search.search(params({source:'all'}));assert.equal(result.partial,true);assert.equal(result.items[0].title,'Remaining useful record');assert.equal(result.sources.find(row=>row.id==='aminer').status,'rate_limited');
  const disabled=service({aminerDailyLimit:0,fetchImpl:async url=>{
   assert.notEqual(new URL(url).hostname,'datacenter.aminer.cn');
+  if(new URL(url).hostname==='export.arxiv.org')return new Response('<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"><opensearch:totalResults>0</opensearch:totalResults></feed>',{headers:{'content-type':'application/atom+xml'}});
   return new URL(url).hostname==='api.crossref.org'?new Response(JSON.stringify({message:{items:[]}}),{headers:{'content-type':'application/json'}}):new Response(JSON.stringify({resultList:{result:[]}}),{headers:{'content-type':'application/json'}});
  }});
  const exhausted=await disabled.search(params({source:'all'}));assert.equal(exhausted.partial,true);assert.equal(exhausted.sources.find(row=>row.id==='aminer').status,'budget_exhausted');

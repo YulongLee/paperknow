@@ -1,3 +1,4 @@
+import {arxivMetadata} from './arxiv-metadata.mjs';
 import {importWorkspaceDocument,documentImportContinuesInBackground} from './document-import.mjs';
 import {download as exportFile} from './ui.mjs';
 import {withStableView} from './view-stability.mjs';
@@ -118,7 +119,7 @@ function advanceWritingStep(stage){workflowUnlockedStage=Math.max(workflowUnlock
 let referenceMode='selected',referenceSearchDispose=null;
 const literatureRows=()=>{try{const rows=JSON.parse(localStorage.getItem('paperknow-literature')||'[]');return Array.isArray(rows)?rows:[];}catch{return[];}};
 const referenceId=()=>`writing-ref-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const normalizeReference=row=>({id:String(row?.id||referenceId()),title:String(row?.title||row?.name||'未命名文献').trim(),authors:String(row?.authors||row?.author||'作者待补充').trim(),year:String(row?.year||'年份待补充'),doi:String(row?.doi||''),url:safeReferenceURL(row?.url),tags:Array.isArray(row?.tags)?row.tags:[],scope:String(row?.scope||'本地文献库'),text:String(row?.text||''),fileName:String(row?.fileName||''),source:row?.source||'local',sourceId:String(row?.sourceId||''),sourceLabel:String(row?.sourceLabel||''),abstract:String(row?.abstract||''),fullTextUrl:safeReferenceURL(row?.fullTextUrl),fullTextRead:row?.fullTextRead===true,confirmed:row?.confirmed===true,...(typeof row?.openAccess==='boolean'?{openAccess:row.openAccess}:{})});
+const normalizeReference=row=>({id:String(row?.id||referenceId()),title:String(row?.title||row?.name||'未命名文献').trim(),authors:String(row?.authors||row?.author||'作者待补充').trim(),year:String(row?.year||'年份待补充'),doi:String(row?.doi||''),url:safeReferenceURL(row?.url),tags:Array.isArray(row?.tags)?row.tags:[],scope:String(row?.scope||'本地文献库'),text:String(row?.text||''),fileName:String(row?.fileName||''),source:row?.source||'local',sourceId:String(row?.sourceId||''),sourceLabel:String(row?.sourceLabel||''),abstract:String(row?.abstract||''),fullTextUrl:safeReferenceURL(row?.fullTextUrl),fullTextRead:row?.fullTextRead===true,confirmed:row?.confirmed===true,...(typeof row?.openAccess==='boolean'?{openAccess:row.openAccess}:{}),...arxivMetadata(row)});
 const referenceKey=row=>{const doi=String(row?.doi||'').trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').toLowerCase();return doi?'doi:'+doi:String(row?.title||row?.name||'').normalize('NFKC').toLowerCase().replace(/[\p{P}\p{S}\s]+/gu,'')+'|'+String(row?.year||'');};
 function referenceCandidates(){const selected=writingReferences.map(normalizeReference),papers=literatureRows().map(normalizeReference);const seen=new Set();return [...selected,...papers].filter(row=>{const key=referenceKey(row);if(seen.has(key))return false;seen.add(key);return true;});}
 function renderWritingReferences(){
