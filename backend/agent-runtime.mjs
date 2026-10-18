@@ -7,7 +7,7 @@ import {request as httpsRequest} from 'node:https';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {query,tool,createSdkMcpServer} from '@anthropic-ai/claude-agent-sdk';
 import {z} from 'zod';
-import {agentBaseURL,agentSettingsReady} from './agent-settings.mjs';
+import {agentBaseURL,agentSettingsReady,agentWorkspaceId} from './agent-settings.mjs';
 import {loadAgentSkill} from './skills/index.mjs';
 import {paperknowAIIdentityPolicy} from './ai-service-policy.mjs';
 import {normalizeTextLengthBudget,checkTextLength} from './text-length.mjs';
@@ -20,6 +20,7 @@ export async function validateAgentEndpoint(baseURL,resolver=lookup){
   if(!addresses.length||addresses.some(value=>!publicAddress(value.address)))fail(400,'Agent 接口不能连接本机或私有网络');return {url,addresses};
 }
 export async function createAgentRelay(settings,{signal,resolver=lookup,requestImpl=httpsRequest,writingToolPolicy}={}){
+  const workspaceId=agentWorkspaceId(settings.workspaceId,settings.baseURL);
   const {url,addresses}=await validateAgentEndpoint(settings.baseURL,resolver),token=randomBytes(32).toString('hex'),active=new Set();let requests=0,totalRequests=0,reservedTokens=0,budgetExceeded=false;
   const server=createServer(async(req,res)=>{
     const deny=(status,message)=>{if(res.destroyed||res.writableEnded)return;res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify({type:'error',error:{type:'api_error',message}}));};
@@ -43,7 +44,7 @@ export async function createAgentRelay(settings,{signal,resolver=lookup,requestI
     }
     if(isMessage&&settings.maxTotalTokens!==undefined){const reserve=Buffer.byteLength(JSON.stringify(body))+body.max_tokens;if(reservedTokens+reserve>settings.maxTotalTokens){budgetExceeded=true;return deny(429,'Agent token budget reached');}reservedTokens+=reserve;}
     const prefix=url.pathname.replace(/\/$/,'').replace(/\/v1$/,'');
-    let upstream;try{upstream=requestImpl({protocol:'https:',hostname:url.hostname,port:443,path:prefix+target.pathname+(target.search==='?beta=true'?'?beta=true':''),method:'POST',servername:url.hostname,agent:false,lookup:(_host,options,callback)=>{const address=addresses[0];if(options?.all)callback(null,[address]);else callback(null,address.address,address.family|| (address.address.includes(':')?6:4));},headers:{'Content-Type':'application/json','x-api-key':settings.apiKey,'anthropic-version':'2023-06-01',...(typeof req.headers['anthropic-beta']==='string'?{'anthropic-beta':req.headers['anthropic-beta']}:{}),Accept:'application/json, text/event-stream'},signal},response=>{
+    let upstream;try{upstream=requestImpl({protocol:'https:',hostname:url.hostname,port:443,path:prefix+target.pathname+(target.search==='?beta=true'?'?beta=true':''),method:'POST',servername:url.hostname,agent:false,lookup:(_host,options,callback)=>{const address=addresses[0];if(options?.all)callback(null,[address]);else callback(null,address.address,address.family|| (address.address.includes(':')?6:4));},headers:{'Content-Type':'application/json','x-api-key':settings.apiKey,'anthropic-version':'2023-06-01',...(workspaceId?{'X-DashScope-WorkSpace':workspaceId}:{}),...(typeof req.headers['anthropic-beta']==='string'?{'anthropic-beta':req.headers['anthropic-beta']}:{}),Accept:'application/json, text/event-stream'},signal},response=>{
       if(res.destroyed){response.resume();return;}
       if(response.statusCode<200||response.statusCode>=300){response.resume();return deny(response.statusCode>=300&&response.statusCode<400?502:response.statusCode,'Upstream model request failed');}
       res.writeHead(response.statusCode,{'Content-Type':response.headers['content-type']||'application/json','Cache-Control':'no-store'});let responseBytes=0;response.on('data',part=>{responseBytes+=part.length;if(responseBytes>2000000){upstream.destroy();res.destroy();return;}res.write(part);});response.on('end',()=>res.end());response.on('error',()=>res.destroy());
@@ -126,7 +127,7 @@ export async function runAgentTask({settings,task,signal,onStage,maxTotalTokens,
 
 // A protocol-only probe: never claim that SDK tools or multi-turn execution were verified.
 export async function testAgentConnection(settings,{fetchImpl=fetch,lookupImpl=lookup,signal}={}){
-  if(!settings?.baseURL||!settings.model||!settings.apiKey)fail(400,'请先保存完整 Agent 连接配置');const {url}=await validateAgentEndpoint(settings.baseURL,lookupImpl);const base=url.toString().replace(/\/$/,'').replace(/\/v1$/,'');
-  let response;try{response=await fetchImpl(base+'/v1/messages',{method:'POST',redirect:'error',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(20000)]):AbortSignal.timeout(20000),headers:{'Content-Type':'application/json','x-api-key':settings.apiKey,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:settings.model,max_tokens:32,thinking:{type:'disabled'},messages:[{role:'user',content:'Return only OK.'}]})});}catch{fail(502,'基础连接测试失败或超时，请检查渠道地址');}
+  if(!settings?.baseURL||!settings.model||!settings.apiKey)fail(400,'请先保存完整 Agent 连接配置');const workspaceId=agentWorkspaceId(settings.workspaceId,settings.baseURL);const {url}=await validateAgentEndpoint(settings.baseURL,lookupImpl);const base=url.toString().replace(/\/$/,'').replace(/\/v1$/,'');
+  let response;try{response=await fetchImpl(base+'/v1/messages',{method:'POST',redirect:'error',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(20000)]):AbortSignal.timeout(20000),headers:{'Content-Type':'application/json','x-api-key':settings.apiKey,'anthropic-version':'2023-06-01',...(workspaceId?{'X-DashScope-WorkSpace':workspaceId}:{})},body:JSON.stringify({model:settings.model,max_tokens:32,thinking:{type:'disabled'},messages:[{role:'user',content:'Return only OK.'}]})});}catch{fail(502,'基础连接测试失败或超时，请检查渠道地址');}
   if(!response.ok)fail(502,`基础连接测试失败（HTTP ${response.status}），请检查协议、权限与模型`);const reader=response.body?.getReader();let bytes=0,parts=[];if(!reader)fail(502,'模型服务返回格式无效');try{while(true){const {done,value}=await reader.read();if(done)break;bytes+=value.length;if(bytes>64000)fail(502,'模型测试返回内容超限');parts.push(Buffer.from(value));}}finally{await reader.cancel().catch(()=>{});}let body;try{body=JSON.parse(Buffer.concat(parts).toString());}catch{fail(502,'模型服务未返回 Anthropic JSON 消息');}const text=Array.isArray(body.content)?body.content.filter(item=>item?.type==='text'&&typeof item.text==='string').map(item=>item.text).join('').trim():'';if(!text||body.type!=='message'||body.stop_reason!=='end_turn')fail(502,'模型未完成 32 Token 短回复，尚不能确认基础连接');return {ok:true,test:'anthropic_messages',sdkVerified:false,model:settings.model,usage:{input:token(body.usage?.input_tokens),output:token(body.usage?.output_tokens)},message:'基础连接已通过；Agent 工具执行兼容性仍需单独验收'};
 }

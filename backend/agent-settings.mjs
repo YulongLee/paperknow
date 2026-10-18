@@ -3,8 +3,17 @@ import {isIP} from 'node:net';
 
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const engine='claude-agent-sdk';
-const defaults={enabled:false,engine,baseURL:'',model:'',apiKey:'',maxTurns:6,timeoutMs:180000,maxOutputTokens:4096,maxCostUsd:0.5};
+const defaults={enabled:false,engine,baseURL:'',workspaceId:'',model:'',apiKey:'',maxTurns:6,timeoutMs:180000,maxOutputTokens:4096,maxCostUsd:0.5};
 const limits={maxTurns:[1,12],timeoutMs:[5000,300000],maxOutputTokens:[32,16384],maxCostUsd:[0.01,5]};
+// Workspace headers are provider-specific. Never forward them to compatible
+// third-party endpoints, even when their API happens to use the same protocol.
+export function agentWorkspaceId(value,baseURL){
+  if(value===undefined||value==='')return '';
+  if(typeof value!=='string'||!/^(?:ws|llm)-[A-Za-z0-9]{1,64}$/.test(value))fail(400,'业务空间 ID 格式无效，请填写 ws- 或 llm- 开头的字母数字标识');
+  let url;try{url=new URL(baseURL);}catch{fail(400,'业务空间仅支持阿里云官方共享接口');}
+  if(url.protocol!=='https:'||url.hostname!=='dashscope.aliyuncs.com'||url.username||url.password||url.search||url.hash||url.port&&url.port!=='443')fail(400,'业务空间仅支持阿里云官方共享接口 dashscope.aliyuncs.com');
+  return value;
+}
 export function agentBaseURL(value){
   if(value==='')return '';
   if(typeof value!=='string'||value.length>500)fail(400,'Agent 接口地址格式或长度无效');
@@ -19,6 +28,11 @@ function inheritedBase(config){
   try{const u=new URL(config.aiURL);if(u.hostname==='dashscope.aliyuncs.com'&&u.protocol==='https:'&&/^\/compatible-mode\/v1(?:\/chat\/completions)?\/?$/.test(u.pathname)&&!u.username&&!u.password)return 'https://dashscope.aliyuncs.com/apps/anthropic';}catch{}
   return '';
 }
+function inheritedWorkspace(config,baseURL){
+  if(config.agentWorkspaceId!==undefined)return config.agentWorkspaceId;
+  try{if(new URL(baseURL).hostname==='dashscope.aliyuncs.com')return config.aiWorkspaceId??'';}catch{}
+  return '';
+}
 export const agentSettingsReady=value=>Boolean(value?.enabled===true&&value.engine===engine&&value.baseURL&&value.model&&value.apiKey);
 export function createAgentSettings(db,config={},hooks={}){
   let key;try{const raw=config.agentConfigKey||config.paymentConfigKey;if(typeof raw==='string'&&/^[A-Za-z0-9+/]{43}=$/.test(raw)){const parsed=Buffer.from(raw,'base64');if(parsed.length===32&&parsed.toString('base64')===raw)key=parsed;}}catch{}
@@ -29,11 +43,12 @@ export function createAgentSettings(db,config={},hooks={}){
   const validate=value=>{
     if(typeof value.enabled!=='boolean'||value.engine!==engine||typeof value.model!=='string'||value.model.length>120||value.model&&!/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$/.test(value.model)||typeof value.apiKey!=='string'||value.apiKey.length>4096||/[\x00-\x20\x7f]/.test(value.apiKey))fail(400,'Agent 模型或密钥格式无效');
     value.baseURL=agentBaseURL(value.baseURL);
+    value.workspaceId=agentWorkspaceId(value.workspaceId,value.baseURL);
     for(const [name,[min,max]] of Object.entries(limits))if(typeof value[name]!=='number'||!Number.isFinite(value[name])||value[name]<min||value[name]>max||name!=='maxCostUsd'&&!Number.isSafeInteger(value[name]))fail(400,`Agent ${name} 超出允许范围`);
     if(value.enabled&&!agentSettingsReady(value))fail(400,'启用前请补齐 Anthropic 兼容接口、模型和密钥');
     return value;
   };
-  const initial=()=>{const current=config.getAI?.()||config;let baseURL='';try{baseURL=inheritedBase({...config,...current});}catch{}const value={...defaults,baseURL,model:config.agentModel||current.aiModel||'',apiKey:config.agentKey||current.aiKey||'',...Object.fromEntries(Object.keys(limits).filter(name=>Number.isFinite(config['agent'+name[0].toUpperCase()+name.slice(1)])).map(name=>[name,config['agent'+name[0].toUpperCase()+name.slice(1)]])),version:null};try{validate(value);}catch{return {...defaults,version:null};}value.enabled=config.agentRuntimeEnabled===true&&Boolean(value.baseURL&&value.model&&value.apiKey);return value;};
+  const initial=()=>{const current=config.getAI?.()||config;let baseURL='';try{baseURL=inheritedBase({...config,...current});}catch{}const value={...defaults,baseURL,workspaceId:inheritedWorkspace({...config,...current},baseURL),model:config.agentModel||current.aiModel||'',apiKey:config.agentKey||current.aiKey||'',...Object.fromEntries(Object.keys(limits).filter(name=>Number.isFinite(config['agent'+name[0].toUpperCase()+name.slice(1)])).map(name=>[name,config['agent'+name[0].toUpperCase()+name.slice(1)]])),version:null};try{validate(value);}catch{return {...defaults,version:null};}value.enabled=config.agentRuntimeEnabled===true&&Boolean(value.baseURL&&value.model&&value.apiKey);return value;};
   function seal(value,id){const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);cipher.setAAD(Buffer.from('paperknow-agent:'+id));const data=Buffer.concat([cipher.update(JSON.stringify(value)),cipher.final()]);return JSON.stringify({v:1,iv:iv.toString('base64'),tag:cipher.getAuthTag().toString('base64'),data:data.toString('base64')});}
   function version(id){const row=db.prepare('SELECT * FROM agent_config_versions WHERE id=?').get(id);if(!row)fail(409,'原 Agent 配置版本不存在，请重新确认任务');if(!key)fail(503,'Agent 配置加密密钥未就绪，无法恢复原配置');try{const payload=JSON.parse(row.sealed_settings);if(payload.v!==1)throw 0;const decipher=createDecipheriv('aes-256-gcm',key,Buffer.from(payload.iv,'base64'));decipher.setAAD(Buffer.from('paperknow-agent:'+id));decipher.setAuthTag(Buffer.from(payload.tag,'base64'));const value=JSON.parse(Buffer.concat([decipher.update(Buffer.from(payload.data,'base64')),decipher.final()]).toString());return {...validate(value),version:id};}catch{fail(503,'原 Agent 配置无法解密或校验，请管理员检查后重新确认任务');}}
   function get(){const row=db.prepare('SELECT version_id FROM agent_config_current WHERE singleton=1').get();return row?version(row.version_id):initial();}
