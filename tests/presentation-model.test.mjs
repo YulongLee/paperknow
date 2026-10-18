@@ -21,3 +21,22 @@ test('AI presentation snapshots require real report material, preserve user cont
 test('two-column and closing slides export editable contents into actual independent text boxes',async()=>{
  const {createPresentation}=await import('../src/presentation-export.js'),{default:JSZip}=await import('jszip');const deck={...base,theme:'academic',slides:buildSlides({...base,pages:6})};deck.slides[1]={...deck.slides[1],layout:'twoColumn',body:'左栏真实资料\n左栏补充\n右栏真实资料\n右栏补充'};deck.slides[5].layout='closing';const zip=await JSZip.loadAsync(await createPresentation(deck).write({outputType:'nodebuffer'}));const xml=await zip.file('ppt/slides/slide2.xml').async('string');assert.match(xml,/左栏真实资料/);assert.match(xml,/右栏真实资料/);assert.ok((xml.match(/<p:txBody>/g)||[]).length>=5);
 });
+
+
+test('generated presentation references allow only owned API downloads and omit storage or provider data',async()=>{
+ const {presentationArtifact,presentationDownloads,restorePresentationSnapshot,presentationSnapshot,presentationProgress,presentationPublicError}=await import('../dist/workspace/presentation-model.mjs');
+ const result=presentationArtifact({presentation:{artifactId:'file_123',downloadUrl:'/api/artifacts/file_123/download',fileName:'研究汇报.pptx',pageCount:12,storageKey:'private/hidden',engineVersion:'private-engine'}});assert.deepEqual(result,{artifactId:'file_123',downloadUrl:'/api/artifacts/file_123/download',fileName:'研究汇报.pptx',pageCount:12});
+ assert.equal(presentationArtifact({presentation:{artifactId:'file_123',downloadUrl:'https://untrusted.example/file.pptx'}}),null);assert.equal(presentationArtifact({artifacts:[{id:'x',kind:'pptx',downloadUrl:'/api/artifacts/another/download'}]}),null);assert.equal(presentationArtifact({presentation:{artifactId:'../secret'}}),null);assert.equal(presentationArtifact({artifactIds:['owned-id']}).downloadUrl,'/api/artifacts/owned-id/download');const files=presentationDownloads({presentation:{artifactId:'deck',previewArtifactId:'preview',sourcesArtifactId:'sources'}});assert.deepEqual(files.map(file=>file.role),['deck','preview','sources']);assert.deepEqual(files.map(file=>file.downloadUrl),['/api/artifacts/deck/download','/api/artifacts/preview/download','/api/artifacts/sources/download']);assert.equal(presentationDownloads({presentation:{artifactId:'deck'},artifacts:[{id:'preview',role:'preview',downloadUrl:'https://untrusted.example'}]}).length,1);
+ const snapshot=presentationSnapshot({...base,prompt:'说明研究计划'},'proposal','premium'),restored=restorePresentationSnapshot(snapshot,{theme:'academic'});assert.deepEqual(presentationSnapshot(restored,'proposal',restored.pptTier),snapshot);assert.equal(restored.pptTier,'premium');
+ assert.deepEqual(presentationProgress({stage:'authoring',progress:{currentPage:3,totalPages:12}}),{stage:'authoring',index:1,label:'制作演示页面',pageText:'3 / 12 页'});assert.equal(presentationProgress({progress:{stage:'internal-worker',currentPage:100,totalPages:12}}).stage,null);assert.equal(presentationProgress({progress:{currentPage:100,totalPages:12}}).pageText,'');assert.doesNotMatch(presentationPublicError('PPTMaster provider failed in /tmp/private'),/PPTMaster|provider|\/tmp/);
+});
+
+
+test('completed presentation progress uses delivered page counts after transient design checkpoints are removed',async()=>{
+ const {presentationProgress}=await import('../dist/workspace/presentation-model.mjs');
+ const completed={status:'completed',stage:'completed',progress:{stage:'planning',currentPage:1,completedPages:6,totalPages:6},output:{presentation:{artifactId:'completed-deck',pageCount:6}}};
+ assert.equal(presentationProgress(completed).pageText,'6 / 6 页');
+ assert.equal(presentationProgress({...completed,progress:undefined}).pageText,'6 / 6 页');
+ assert.equal(presentationProgress({...completed,status:'running'}).pageText,'1 / 6 页');
+ assert.equal(presentationProgress({status:'completed',progress:{currentPage:1,totalPages:12}}).pageText,'12 / 12 页');
+});

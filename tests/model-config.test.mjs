@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {environmentConfig,modelRequestLimits} from '../backend/config.mjs';
+import {environmentConfig,modelRequestLimits,toolRunTokenLimit} from '../backend/config.mjs';
 import {modelLimits} from '../backend/model-budget.mjs';
 
 test('model request limits accept bounded settings and reject malformed or excessive overrides',()=>{
@@ -17,4 +17,14 @@ test('environment model controls parse valid settings while malformed values fal
  for(const env of [{},{PK_AI_MAX_TOKENS:'invalid',PK_AI_TIMEOUT_MS:'Infinity',PK_AI_USER_DAILY_LIMIT:'0',PK_AI_GLOBAL_DAILY_LIMIT:'10001'},{PK_AI_MAX_TOKENS:'',PK_AI_TIMEOUT_MS:'',PK_AI_USER_DAILY_LIMIT:'',PK_AI_GLOBAL_DAILY_LIMIT:''}]){
   const config=environmentConfig(env);assert.deepEqual(modelRequestLimits(config),{maxTokens:2400,timeoutMs:45000});assert.deepEqual(modelLimits(config),{userDailyLimit:30,globalDailyLimit:300});
  }
+});
+
+test('PPT multi-call token limits have a dedicated bounded configuration without raising ordinary tool limits',()=>{
+ assert.equal(toolRunTokenLimit('ppt'),1000000);assert.equal(toolRunTokenLimit('rewrite'),200000);
+ for(const pptMasterMaxTokens of [1000,400000,1500000,2000000])assert.equal(toolRunTokenLimit('ppt',{pptMasterMaxTokens}),pptMasterMaxTokens);
+ for(const pptMasterMaxTokens of [undefined,null,0,999,2000001,-1,1000.5,NaN,Infinity,'1500000',true])assert.equal(toolRunTokenLimit('ppt',{pptMasterMaxTokens}),1000000);
+ assert.equal(toolRunTokenLimit('ppt',{toolMaxTokens:1000}),1000000);assert.equal(toolRunTokenLimit('rewrite',{pptMasterMaxTokens:2000000}),200000);
+ assert.equal(toolRunTokenLimit('rewrite',{toolMaxTokens:400000,pptMasterMaxTokens:2000000}),400000);assert.equal(toolRunTokenLimit('rewrite',{toolMaxTokens:400001}),200000);
+ assert.equal(toolRunTokenLimit('ppt',environmentConfig({PK_PPT_MASTER_MAX_TOKENS:'1500000'})),1500000);
+ for(const value of [undefined,'','invalid','0','2000001'])assert.equal(toolRunTokenLimit('ppt',environmentConfig({PK_PPT_MASTER_MAX_TOKENS:value})),1000000);
 });

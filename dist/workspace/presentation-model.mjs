@@ -20,3 +20,42 @@ export function adoptPresentationOutput(output,deck){
  const slides=output.slides.map((s,i)=>({id:crypto.randomUUID(),title:String(s.title||'').trim(),body:Array.isArray(s.body)?s.body.map(String).join('\n'):String(s.body||''),notes:String(s.notes||''),layout:['cover','content','twoColumn','closing'].includes(s.layout)?s.layout:i===0?'cover':'content'}));
  validateDeck({...deck,slides});return slides;
 }
+
+// Store only an account artifact reference. Storage keys and signed URLs are never used by the editor.
+export function presentationArtifact(output){
+ const primary=output?.presentation,rows=Array.isArray(output?.artifacts)?output.artifacts:[];
+ const candidates=[...(primary?[{id:primary.artifactId||primary.id,name:primary.fileName||primary.name,kind:'pptx',downloadUrl:primary.downloadUrl,pageCount:primary.pageCount}]:[]),...rows.filter(row=>row?.kind==='pptx'||/\.pptx$/i.test(row?.name||'')),...(Array.isArray(output?.artifactIds)?output.artifactIds.map(id=>({id,kind:'pptx'})):[])];
+ for(const row of candidates){
+  const id=String(row?.id||''),downloadUrl='/api/artifacts/'+id+'/download';
+  if(!/^[A-Za-z0-9_-]{1,160}$/.test(id)||row.downloadUrl&&row.downloadUrl!==downloadUrl)continue;
+  const name=String(row.name||'演示文稿.pptx').replace(/[\\/:*?"<>|\u0000-\u001f]/g,'_').slice(0,180);
+  const extras={};for(const [role,key]of [['preview','previewArtifactId'],['sources','sourcesArtifactId']]){const candidate=primary?.[key]||rows.find(value=>value?.role===role)?.id;if(typeof candidate==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(candidate))extras[key]=candidate;}
+  return {artifactId:id,downloadUrl,fileName:/\.pptx$/i.test(name)?name:name+'.pptx',...(Number.isSafeInteger(row.pageCount)&&row.pageCount>0?{pageCount:row.pageCount}:{}),...extras};
+ }
+ return null;
+}
+export function presentationDownloads(output){
+ const deck=presentationArtifact(output);if(!deck)return [];
+ const files=[{...deck,role:'deck',label:'下载生成版 PPTX'}],rows=Array.isArray(output?.artifacts)?output.artifacts:[];
+ for(const [role,key,label,name]of [['preview','previewArtifactId','下载版式预览','演示文稿-版式预览.html'],['sources','sourcesArtifactId','下载页面源稿','演示文稿-页面源稿.zip']]){
+  const id=deck[key];if(!id)continue;const downloadUrl='/api/artifacts/'+id+'/download',row=rows.find(value=>value?.id===id);
+  if(row?.downloadUrl&&row.downloadUrl!==downloadUrl)continue;
+  files.push({artifactId:id,downloadUrl,fileName:String(row?.name||name).replace(/[\\/:*?"<>|\u0000-\u001f]/g,'_').slice(0,180),role,label});
+ }
+ return files;
+}
+export const presentationStages=Object.freeze([['planning','整理演示结构'],['authoring','制作演示页面'],['validating','核对页面与内容'],['exporting','导出 PPTX'],['storing','保存到账户']]);
+export function presentationProgress(item){
+ const progress=item?.progress||{},stage=progress.stage||item?.stage,index=presentationStages.findIndex(([id])=>id===stage),completed=item?.status==='completed',total=Number(completed?presentationArtifact(item.output)?.pageCount??progress.totalPages??item.output?.slides?.length:progress.totalPages),current=completed?total:Number(progress.currentPage??progress.completedPages);
+ return {index,stage:index<0?null:stage,label:index<0?'':presentationStages[index][1],pageText:Number.isSafeInteger(current)&&current>=0&&Number.isSafeInteger(total)&&total>0&&current<=total?`${current} / ${total} 页`:''};
+}
+export function presentationPublicError(value){
+ const message=String(value||'');
+ return /ppt.?master|anthropic|claude|codex|openai|gemini|provider|api[ _-]?key|access[ _-]?token|oss[.:/ _-]|\/Users\/|\/tmp\/|traceback|stack trace|pptxgen/i.test(message)?'演示文稿暂未完成，原稿与任务仍保留。请读取最新状态后重试。':message;
+}
+export function restorePresentationSnapshot(snapshot,base={}){
+ if(!snapshot||!['ai','proposal','thesis'].includes(snapshot.mode))throw Error('原任务资料暂不可恢复，请在任务中心查看结果。');
+ const context=snapshot.context||{},premium='请为每页编写详细演讲备注，备注必须与页面和提供的材料一致。',basic='请提供简洁的演讲备注。',requirements=String(snapshot.requirements||''),suffix=requirements.endsWith(premium)?premium:requirements.endsWith(basic)?basic:'';
+ const deck={...base,...Object.fromEntries(['pages','minutes','author','school','advisor','theme','degree','scenario'].filter(key=>context[key]!==undefined).map(key=>[key,context[key]])),title:String(snapshot.title||''),material:String(snapshot.text||''),prompt:suffix?requirements.slice(0,-suffix.length).trim():requirements,fileName:snapshot.materials?.[0]?.name||'',language:snapshot.language||'中文',slides:[],serviceMode:snapshot.mode,pptTier:suffix===premium?'premium':'basic'};
+ presentationSnapshot(deck,deck.serviceMode,deck.pptTier);return deck;
+}

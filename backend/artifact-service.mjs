@@ -34,6 +34,8 @@ export function createArtifactService(db,config={}){
  const storageReady=()=>config.storage?.provider==='aliyun_oss'&&typeof config.storage.putArtifact==='function'&&typeof config.storage.readArtifact==='function'&&typeof config.storage.removeArtifact==='function'&&typeof config.storage.bucket==='string'&&typeof config.storage.prefix==='string';
  const requireStorage=()=>{if(!storageReady())fail(503,'成果云存储暂不可用，请稍后重试；文件不会写入服务器');return config.storage;};
  const own=(id,user)=>{const row=db.prepare('SELECT * FROM artifacts WHERE id=? AND user_id=?').get(id,user.id);if(!row)fail(404,'成果文件不存在');return row;};
+ const hasToolRuns=()=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tool_runs'").get());
+ const pendingPresentation=row=>row.source_type==='presentation'&&hasToolRuns()&&Boolean(db.prepare("SELECT 1 FROM tool_runs WHERE id=? AND user_id=? AND operation='ppt' AND status!='completed'").get(row.source_id,row.user_id));
  const serialize=row=>({id:row.id,name:row.name,kind:row.kind,bytes:row.bytes,sha256:row.sha256,sourceType:row.source_type,sourceId:row.source_id,projectId:row.project_id,status:row.status,createdAt:row.created_at,source_type:row.source_type,source_id:row.source_id,project_id:row.project_id,created_at:row.created_at,downloadUrl:row.status==='ready'?`/api/artifacts/${row.id}/download`:null});
  const usage=user=>{const row=db.prepare("SELECT coalesce(sum(bytes),0) bytes,count(*) count FROM artifacts WHERE user_id=? AND status!='deleted'").get(user.id);return {...row,maxBytes:limits.maxAccountBytes,maxFiles:limits.maxFiles,maxFileBytes:limits.maxFileBytes};};
  const checkAccount=(expected,user)=>{if(expected!==undefined&&expected!==user.id)fail(409,'登录账户已变化，请刷新后重新导出');};
@@ -59,6 +61,9 @@ export function createArtifactService(db,config={}){
    let cursor=null;
    if(query.has('cursor')){try{const encoded=query.get('cursor');if(!encoded||encoded.length>400||!/^[A-Za-z0-9_-]+$/.test(encoded))throw 0;cursor=JSON.parse(Buffer.from(encoded,'base64url').toString());if(!Array.isArray(cursor)||cursor.length!==2||typeof cursor[0]!=='string'||new Date(cursor[0]).toISOString()!==cursor[0]||!safeId(cursor[1]))throw 0;}catch{fail(400,'成果列表页码无效，请刷新列表');}}
    const params=[user.id],conditions=["user_id=?","status!='deleted'"];
+   // Generated delivery files publish atomically with successful settlement,
+   // rather than appearing during the multi-file upload/validation window.
+   if(hasToolRuns())conditions.push("NOT (source_type='presentation' AND EXISTS (SELECT 1 FROM tool_runs r WHERE r.id=artifacts.source_id AND r.user_id=artifacts.user_id AND r.operation='ppt' AND r.status!='completed'))");
    if(source){conditions.push('source_type=?');params.push(source);}
    if(search){conditions.push("name LIKE ? ESCAPE '\\'");params.push('%'+search.replace(/[\\%_]/g,'\\$&')+'%');}
    const total=db.prepare(`SELECT count(*) n FROM artifacts WHERE ${conditions.join(' AND ')}`).get(...params).n;
@@ -69,6 +74,7 @@ export function createArtifactService(db,config={}){
   if(download){
    if(method!=='GET')fail(405,'不支持的成果操作');
    const row=own(download[1],user);if(row.status==='deleted')fail(404,'成果文件不存在');if(row.status!=='ready')fail(409,'成果文件尚未就绪或正在删除，请刷新列表');
+   if(pendingPresentation(row))fail(409,'演示文件仍在生成与结算中，请等待任务完成后下载');
    const store=requireStorage();if(activeReads>=2)fail(429,'当前下载较多，请稍后重试');activeReads++;
    let released=false;const release=()=>{if(!released){released=true;activeReads--;}};
    try{
@@ -110,7 +116,7 @@ export function createArtifactService(db,config={}){
   const reservation=transaction(()=>{
    if(pid&&!db.prepare('SELECT 1 FROM projects WHERE id=? AND user_id=?').get(pid,user.id))fail(404,'所属项目不存在');
    const existing=db.prepare("SELECT * FROM artifacts WHERE user_id=? AND sha256=? AND kind=? AND status!='deleted'").get(user.id,sha256,kind);
-   if(existing?.status==='ready')return {row:existing,duplicate:true};
+   if(existing?.status==='ready'){if(pendingPresentation(existing))fail(409,'相同演示成果仍在生成或清理中，请等待任务状态更新后重试');return {row:existing,duplicate:true};}
    if(existing?.status==='deleting')fail(409,'相同成果正在删除，请完成删除后重新导出');
    if(existing?.status==='uploading'&&existing.lease_until>at)fail(409,'相同成果正在保存，请稍后刷新列表');
    const current=usage(user);if(!existing&&(current.bytes+buffer.length>limits.maxAccountBytes||current.count>=limits.maxFiles))fail(409,'成果云存储空间或文件数量已达上限，请删除不再需要的成果后继续');

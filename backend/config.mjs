@@ -12,6 +12,7 @@ export function environmentConfig(env=process.env){
     moderationEnabled:env.PK_MODERATION_ENABLED==='1',moderationAccessKeyId:env.PK_MODERATION_ACCESS_KEY_ID,moderationAccessKeySecret:env.PK_MODERATION_ACCESS_KEY_SECRET,moderationEndpoint:env.PK_MODERATION_ENDPOINT,moderationRegion:env.PK_MODERATION_REGION,
     documentTranslationEnabled:env.PK_DOCUMENT_TRANSLATION_ENABLED==='1',documentTranslationAccessKeyId:env.PK_DOCUMENT_TRANSLATION_ACCESS_KEY_ID,documentTranslationAccessKeySecret:env.PK_DOCUMENT_TRANSLATION_ACCESS_KEY_SECRET,documentTranslationRegion:env.PK_DOCUMENT_TRANSLATION_REGION||'cn-hangzhou',
     formulaOcrEnabled:env.PK_FORMULA_OCR_ENABLED==='1',formulaOcrAccessKeyId:env.PK_FORMULA_OCR_ACCESS_KEY_ID,formulaOcrAccessKeySecret:env.PK_FORMULA_OCR_ACCESS_KEY_SECRET,formulaOcrRegion:env.PK_FORMULA_OCR_REGION||'cn-hangzhou',
+    pptMasterEnabled:env.PK_PPT_MASTER_ENABLED==='1',pptMasterRuntimeRoot:env.PK_PPT_MASTER_RUNTIME_ROOT,pptMasterPython:env.PK_PPT_MASTER_PYTHON,pptMasterMaxTokens:Number(env.PK_PPT_MASTER_MAX_TOKENS),
     openAlexApiKey:env.PK_OPENALEX_API_KEY||'',openAlexDailyLimit:/^(?:0|[1-9]\d{0,4})$/.test(env.PK_OPENALEX_DAILY_LIMIT||'')&&Number(env.PK_OPENALEX_DAILY_LIMIT)<=10000?Number(env.PK_OPENALEX_DAILY_LIMIT):500,
     ownerEmail:String(env.PK_OWNER_EMAIL||'').trim().toLowerCase(),paymentConfigKey:env.PK_PAYMENT_CONFIG_KEY,
     authCodeSecret:env.PK_AUTH_CODE_SECRET,authDailyLimit:/^[1-9]\d{0,3}$/.test(env.PK_AUTH_DAILY_SEND_LIMIT||'')?Number(env.PK_AUTH_DAILY_SEND_LIMIT):100,
@@ -25,6 +26,13 @@ export function environmentConfig(env=process.env){
 export function modelRequestLimits(config={}){
   const limit=(value,fallback,min,max)=>Number.isSafeInteger(value)&&value>=min&&value<=max?value:fallback;
   return {maxTokens:limit(config.aiMaxTokens,2400,32,4096),timeoutMs:limit(config.aiTimeoutMs,45000,5000,90000)};
+}
+// SVG page authoring adds a bounded Agent task for each presentation page.
+// Keep its multi-call token ceiling separate from ordinary tool work; the
+// administrator's saved per-task dollar ceiling is enforced independently.
+export function toolRunTokenLimit(operation,config={}){
+ const presentation=operation==='ppt',value=presentation?config.pptMasterMaxTokens:config.toolMaxTokens,max=presentation?2000000:400000,fallback=presentation?1000000:200000;
+ return Number.isSafeInteger(value)&&value>=1000&&value<=max?value:fallback;
 }
 export function modelSettings(db,config){
   return {get(){

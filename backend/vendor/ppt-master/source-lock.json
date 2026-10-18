@@ -1,0 +1,1898 @@
+{
+  "repository": "https://github.com/hugohe3/ppt-master",
+  "commit": "b113d23720260c411ee47b2b05a73615f954deeb",
+  "upstreamRoot": "skills/ppt-master",
+  "scope": "Official compiler scripts and unmodified mandatory attribution bundle; excludes examples, source conversion dependencies, templates and AI providers.",
+  "files": [
+    {
+      "path": "LICENSE",
+      "bytes": 1069,
+      "sha256": "80cefc234c1ec12a8cece4344f16300c634fa03df7891686fcf979e3828f0921"
+    },
+    {
+      "path": "SKILL.md",
+      "bytes": 10327,
+      "sha256": "af0d9548adebc44af1d06225c19762974a22339db901eaa81648faf467b418a2"
+    },
+    {
+      "path": "SPONSORS.md",
+      "bytes": 4485,
+      "sha256": "1ecd9a8101f09e525a35cb3dfeb174473ebd7fa164099b692a1519acc77cdd2f"
+    },
+    {
+      "path": "SPONSORS_CN.md",
+      "bytes": 4223,
+      "sha256": "a6528570a32ca054649bfe87db12ef8700256e8f277f996b46e1d1ba47b6231b"
+    },
+    {
+      "path": "scripts/README.md",
+      "bytes": 35636,
+      "sha256": "1620af31e5d87c98eeb10b3b65de3827cdf2cd2cc0065603b1e7ebc93bb765dd"
+    },
+    {
+      "path": "scripts/analyze_images.py",
+      "bytes": 16924,
+      "sha256": "b45bb866da993306a59b259c81cbbc6c686490dfad22364aaef5348f84d9460d"
+    },
+    {
+      "path": "scripts/animation_config.py",
+      "bytes": 5542,
+      "sha256": "246b942e74b2ecbc4383bc1865f99052a31c4ea369b84689d68ab26cc9fbeb19"
+    },
+    {
+      "path": "scripts/apply_template.py",
+      "bytes": 26459,
+      "sha256": "d2b7cb8a4ffc15891d0d8d27dc62df6c15d4236e8ebf44ec03318bcb69b53610"
+    },
+    {
+      "path": "scripts/assets/bg_48.png",
+      "bytes": 1677,
+      "sha256": "4afc99afe0ef108d67acc45bf4dc5da867ddb793bebc89c9243bb121ce7f0f57"
+    },
+    {
+      "path": "scripts/assets/bg_96.png",
+      "bytes": 8165,
+      "sha256": "3e26f2233a12a5829acac174d8df1f3db40e07fef04ecdd0e035732154077911"
+    },
+    {
+      "path": "scripts/attribution_guard.py",
+      "bytes": 7652,
+      "sha256": "63d3e2f9075426f805dc4ab750d0151e100abdee42c90cc8d9640bb8fd380155"
+    },
+    {
+      "path": "scripts/authoring_roundtrip.py",
+      "bytes": 81716,
+      "sha256": "97a6d585d7456f3ac960ab2ccd0953fce75e9c7e1ae7401211a890c9f3af003d"
+    },
+    {
+      "path": "scripts/batch_validate.py",
+      "bytes": 10790,
+      "sha256": "f5028fdcf6f4f58570892edd3f73dd7428f0b8b0bdc45ef914f9cc272a6eb271"
+    },
+    {
+      "path": "scripts/beautify_identity.py",
+      "bytes": 12314,
+      "sha256": "c389c26f41c8e89475a03ea2c900adc0c60dbd53e879ec79c2c1644488b66ffb"
+    },
+    {
+      "path": "scripts/beautify_inventory.py",
+      "bytes": 18169,
+      "sha256": "1a5f6ef6bcdbe3dfda19e8fd119f5f4b6618127f035e3df75cf61bf83c381168"
+    },
+    {
+      "path": "scripts/chart_recall.py",
+      "bytes": 853,
+      "sha256": "5c51123400e63d087d159d3b07f3b97efa06df97d1bb3aa8131238de0c667116"
+    },
+    {
+      "path": "scripts/check_annotations.py",
+      "bytes": 4753,
+      "sha256": "d25222bab086dfc89e7e9c21e366d3911b7bd03695a16c0dc192775afcc87aea"
+    },
+    {
+      "path": "scripts/check_spec_annotations.py",
+      "bytes": 2067,
+      "sha256": "fd66535371f453558c8c8db97d167d236fcfc9eaab429badab449ccd9f4d0cdd"
+    },
+    {
+      "path": "scripts/compact_svg_coordinates.py",
+      "bytes": 10261,
+      "sha256": "7beeb6756e6e79d22f51d00d2319c7927465cfb750455de5144f067942e519e2"
+    },
+    {
+      "path": "scripts/compact_svg_styles.py",
+      "bytes": 20268,
+      "sha256": "2a8205a5176bf8b2b884e7510c67e9b53ec6d93fff869b3240a30caf4e1efe75"
+    },
+    {
+      "path": "scripts/config.py",
+      "bytes": 20089,
+      "sha256": "8b471e01346c9054a95dd1a2fb14f14e14ebf5e4b08fa2d544f59031e24e81d5"
+    },
+    {
+      "path": "scripts/confirm_ui/__init__.py",
+      "bytes": 74,
+      "sha256": "26a9e6572f6f0e1b9f25908bad54e5ac043aa722474dd42ec4cd9734e27cd01e"
+    },
+    {
+      "path": "scripts/confirm_ui/server.py",
+      "bytes": 115933,
+      "sha256": "7193cfcfe8b79cf99942dd5254a2c487ad3ed15c84fe3ce5ea312e0b3f02ab66"
+    },
+    {
+      "path": "scripts/confirm_ui/static/app.js",
+      "bytes": 240187,
+      "sha256": "6984b055a3edc2a676d5dcf67ff8543c6f4a1c0c9d486a2e687f0102eceb6f4b"
+    },
+    {
+      "path": "scripts/confirm_ui/static/catalogs.json",
+      "bytes": 58692,
+      "sha256": "44878ed36b0c905d498afac6ef804669bc256e8fbb8beb550ab7361a98692e88"
+    },
+    {
+      "path": "scripts/confirm_ui/static/index.html",
+      "bytes": 2889,
+      "sha256": "f905e0d24ed2abfaeb409215068375468bea526d6fe95ed8faa34a355a226b9a"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style.css",
+      "bytes": 28693,
+      "sha256": "03596a728440a186cb8d417dbbaa552e2e8f1983ead8de951dae2bb5701478ad"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/blueprint.svg",
+      "bytes": 2530,
+      "sha256": "840842b4fb812d343643df551eed315f4f84d3936d7b3bb5f17f085e6d18b8f8"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/brutalist.svg",
+      "bytes": 2940,
+      "sha256": "4f1a9e2bffa5b1173c83de082699551ba1b3e83b2ba0686c636374d59b945da2"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/chalkboard.svg",
+      "bytes": 1919,
+      "sha256": "5d989bbbd8ca60e32b34af7ebf8fdf4adca500912413e09c45f05a368966877a"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/dark-tech.svg",
+      "bytes": 2257,
+      "sha256": "6e14ef72192735ced47b10536c518d52b2a4e0807f3ccdf48b4d772773fa91f6"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/data-journalism.svg",
+      "bytes": 3475,
+      "sha256": "7bd4e9644e95a3456c0a46df671917d97269efe168e01bc85405ded34b2f002c"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/editorial.svg",
+      "bytes": 2767,
+      "sha256": "56cd8435d9b29688f8fba1c1b27e377318e17f38891034cc2577b5a76217bb4f"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/glassmorphism.svg",
+      "bytes": 2782,
+      "sha256": "d9a8633de30ca63fc21e89e35ef0caa380c935d8357fe8d67b78d8d96fddb902"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/ink-notes.svg",
+      "bytes": 1623,
+      "sha256": "d337f81da3330a59b14acc13a7cb7c32df0ed9e2cf5a115072a4874e7f7eaf5d"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/ink-wash.svg",
+      "bytes": 1848,
+      "sha256": "8d429878fe3e230ffecadd857d88821f35a06b0b16ad333bee9e87cbbbd8ef21"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/memphis.svg",
+      "bytes": 1899,
+      "sha256": "1c82b7dee41c7edfe7e3f21d5bbf6c55fc9d5167afb76058366bb8e4ce6eabe2"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/paper-cut.svg",
+      "bytes": 1400,
+      "sha256": "b2314c4c453c8713698849f8d7cd5cdcff57388d4ffea0bcb540ac125ce8d0a8"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/photo-editorial.svg",
+      "bytes": 2115,
+      "sha256": "5a6428c7003e380d5a5f616d66655993163dca295b37ceda3fc44b0b315a4fc1"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/pixel-art.svg",
+      "bytes": 1887,
+      "sha256": "ae4b3b465961fe920cc224d091272665a440e953d82370c52ef5bdacb2b53140"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/sketch-notes.svg",
+      "bytes": 2047,
+      "sha256": "7f16972aae8a6891e83e06b2cc22c335a94b0a5e1814540cc59ea690d465cce5"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/soft-rounded.svg",
+      "bytes": 2507,
+      "sha256": "288c3ba0fc9bddf3d0c0cd135e078ff7d43e0458f6edf93ee40a0325e2a56a53"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/swiss-minimal.svg",
+      "bytes": 1330,
+      "sha256": "31c231ed198e83801e5b87f5545b6655c1bf7fdda8d86a8808cf6d486d72dc24"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/vintage-poster.svg",
+      "bytes": 1352,
+      "sha256": "748e7cce18fea100d805bda72131fbaaae07a846881199656fa69e4956a3219e"
+    },
+    {
+      "path": "scripts/confirm_ui/static/style_previews/zine.svg",
+      "bytes": 2125,
+      "sha256": "ee4b65e7418f53ddf82ccd73880ff3e02b594dcb039284f722c4c9cbcc2084ce"
+    },
+    {
+      "path": "scripts/console_encoding.py",
+      "bytes": 3053,
+      "sha256": "45f47cb8d9b6f462bf0a1726c3b9664b733ec64f823002463dd1670b7541f42e"
+    },
+    {
+      "path": "scripts/docs/advanced-image-motion-smoke.md",
+      "bytes": 12647,
+      "sha256": "23acb3f87bb14916952f7a7cd126cba2043b03ae98465a3ad1918c297ad5d13a"
+    },
+    {
+      "path": "scripts/docs/chart-recall.md",
+      "bytes": 1183,
+      "sha256": "7d956b27da091f1900c89dc324074613321898bc8ff46e0da174a202aed687cd"
+    },
+    {
+      "path": "scripts/docs/confirm_ui.md",
+      "bytes": 56352,
+      "sha256": "6bad9c498cccaa6691a86d28ec12b83a058b3c79af48459b35c2ba6c4a4fe840"
+    },
+    {
+      "path": "scripts/docs/conversion.md",
+      "bytes": 35629,
+      "sha256": "c4e6a0ad833b616387c0263d897a5d7f245033e0b8b200202da9104d80404f8a"
+    },
+    {
+      "path": "scripts/docs/image.md",
+      "bytes": 29088,
+      "sha256": "9dfb5f57217bed12b9238690e42efd31ac9324c9f9d8e2d87f186afac0364b2d"
+    },
+    {
+      "path": "scripts/docs/mask-gradient-smoke.md",
+      "bytes": 9009,
+      "sha256": "6caaf140cc078af13b4d1400c7d77a36554de8e0c118a13f5e8bda8379857fdd"
+    },
+    {
+      "path": "scripts/docs/multilingual-text-smoke.md",
+      "bytes": 10649,
+      "sha256": "8e1fded2e02c7dd625b1243a19ed5dcd8b1b74f06ca80d62a1d01626cf352659"
+    },
+    {
+      "path": "scripts/docs/narration.md",
+      "bytes": 12535,
+      "sha256": "05553b88a170f270063fad3645c53dc691111966fcab656129a8ad50f89633fe"
+    },
+    {
+      "path": "scripts/docs/native-data.md",
+      "bytes": 21162,
+      "sha256": "aff1dfc97f8e17f031c2eb56bff54623f705178d4ab6b182690069d8f3b81a4e"
+    },
+    {
+      "path": "scripts/docs/pptx-animations.md",
+      "bytes": 19707,
+      "sha256": "ff2dc96b2444cb29d24653b21a863415c836b644da3da508376ba712d45b2497"
+    },
+    {
+      "path": "scripts/docs/pptx-transitions.md",
+      "bytes": 13150,
+      "sha256": "aafacaffdbdf345003909a8daeecabc35dbfd8c5facf1f672a81e5078adae5f2"
+    },
+    {
+      "path": "scripts/docs/project.md",
+      "bytes": 19058,
+      "sha256": "9bf8401a644e9b1dd5d83c110cadc9c4295ad189f58d9ff5640df62adff0ff07"
+    },
+    {
+      "path": "scripts/docs/prompt_audit.md",
+      "bytes": 6383,
+      "sha256": "e4f4aab53fc93e3eeb7d525a38f9bca2c893fbdb1d15f55fdaccd5a3eeb5b827"
+    },
+    {
+      "path": "scripts/docs/spec_review.md",
+      "bytes": 13871,
+      "sha256": "3cd5fce343aa95090ff4aaa7f6226c921e2b25becd0495f89f1510536a5fe518"
+    },
+    {
+      "path": "scripts/docs/svg-contract.md",
+      "bytes": 57858,
+      "sha256": "ba5eff5027d976c5fa295aa76bc4618fdcdc98649f36ce507e87e7a77a98f872"
+    },
+    {
+      "path": "scripts/docs/svg-pipeline.md",
+      "bytes": 98958,
+      "sha256": "9fa3b12f16ce54085709fd67916abd5f1769453f29693bc26f78d3efb072ad5c"
+    },
+    {
+      "path": "scripts/docs/svg_editor.md",
+      "bytes": 6396,
+      "sha256": "3d5f187c91d55c291f99f54b9f8f3a7e98768b130cef7d7d6ab96391e777f31a"
+    },
+    {
+      "path": "scripts/docs/template-tools.md",
+      "bytes": 18329,
+      "sha256": "3fd18d4ccb3c9c8fcf099a9bce2709e097a83482992fa258b0d893ee57ed1ebe"
+    },
+    {
+      "path": "scripts/docs/troubleshooting.md",
+      "bytes": 3028,
+      "sha256": "594deb5d69ec8007886a49a46bb1e28425f7fb807c68012472191b7d9d6bb78b"
+    },
+    {
+      "path": "scripts/docs/update_spec.md",
+      "bytes": 4354,
+      "sha256": "98bf787a10ce115399098722b76348f715388d1270876ea45cd6867eb5959465"
+    },
+    {
+      "path": "scripts/docs/video-motion-plan.md",
+      "bytes": 4027,
+      "sha256": "f6bb3a69fe57066cdcb3e3424644256b6af03659a3c663aa10bfd1d8bbbbb921"
+    },
+    {
+      "path": "scripts/docs/visualization-recall.md",
+      "bytes": 5385,
+      "sha256": "21a6085cb091e5f5ba26a959a6d20fe5e0b90eef74ca72b910e92fcb63eb0ec5"
+    },
+    {
+      "path": "scripts/error_helper.py",
+      "bytes": 16735,
+      "sha256": "27412562b0a1db541f794e6dbdb885735274c2ba034105368cb91a8fccab0262"
+    },
+    {
+      "path": "scripts/extract_svg_assets.py",
+      "bytes": 44968,
+      "sha256": "45dfcf1607feefde721a713af144f90509a508246f418a086ce811f8e09f5253"
+    },
+    {
+      "path": "scripts/extract_svg_pictures.py",
+      "bytes": 34553,
+      "sha256": "899e6b25cf1713c84c29c3ecceae0c883de8e939c8cd0122425edeef38cd0823"
+    },
+    {
+      "path": "scripts/finalize_svg.py",
+      "bytes": 18344,
+      "sha256": "742593683ace8f06ceaaaffc6e677969ce8ace4d96c31e64a83b92d6377c0003"
+    },
+    {
+      "path": "scripts/gemini_watermark_remover.py",
+      "bytes": 6966,
+      "sha256": "c2623ff427ac4c6c194ce5ed37f32a3dab079b1c1b7a0b3b4e1c2fb93fd5e23f"
+    },
+    {
+      "path": "scripts/generate_examples_index.py",
+      "bytes": 9658,
+      "sha256": "bb65798715ff1bcc0821ac688d6140ee1cac6164bc539bdc574e567824ec6414"
+    },
+    {
+      "path": "scripts/hyperlink_contract.py",
+      "bytes": 13681,
+      "sha256": "03a73fe47de091a6060b428f0430bf5bd8a1ceec1e86fda3c7a91157f0cdfe0c"
+    },
+    {
+      "path": "scripts/icon_sync.py",
+      "bytes": 4910,
+      "sha256": "ea571d8e6e9860d031a26c87bf49b9a38e8acd4408973c1d31567442e8255486"
+    },
+    {
+      "path": "scripts/image_backends/__init__.py",
+      "bytes": 57,
+      "sha256": "53ebab82234aa9457b3e9dec33110ce5ce3a595669a1a8b8fa29bc90d25650e8"
+    },
+    {
+      "path": "scripts/image_backends/backend_bfl.py",
+      "bytes": 6856,
+      "sha256": "ed25f2f46fd549919300fe28e8904a2cce46daaaa22c17cb54930377cf7d503c"
+    },
+    {
+      "path": "scripts/image_backends/backend_common.py",
+      "bytes": 16117,
+      "sha256": "1ca8974d5e262fbb35db8d5bc01e98dfdb7902d5ecf9ab3c02013e7cb79734a8"
+    },
+    {
+      "path": "scripts/image_backends/backend_fal.py",
+      "bytes": 6081,
+      "sha256": "4ef9475e952b9c9c575811c2e26fc37ed51eff7635596cb5519599ea0bd97e34"
+    },
+    {
+      "path": "scripts/image_backends/backend_gemini.py",
+      "bytes": 13024,
+      "sha256": "813eeeb9a7f400279871e7f73884cfde6c18db99b72f1400382cdb0482b5e897"
+    },
+    {
+      "path": "scripts/image_backends/backend_ideogram.py",
+      "bytes": 5899,
+      "sha256": "f7b1d87e599c0371e24cbf655401b77fca700237414617e021ff05bc9c21af70"
+    },
+    {
+      "path": "scripts/image_backends/backend_minimax.py",
+      "bytes": 8597,
+      "sha256": "d66309a02c8568f7cbac7839726548f231ab38e28d18bb9cef0e4de968a2c569"
+    },
+    {
+      "path": "scripts/image_backends/backend_modelscope.py",
+      "bytes": 6414,
+      "sha256": "0005af88e150de13198b77b3199000813f78be60f4d1ff33e754bde679de4181"
+    },
+    {
+      "path": "scripts/image_backends/backend_openai.py",
+      "bytes": 28943,
+      "sha256": "c27d0b69796f5c0f9e8dd30a08ea563a7c601238c2c426cb264d109b4bf7bf7e"
+    },
+    {
+      "path": "scripts/image_backends/backend_openrouter.py",
+      "bytes": 8411,
+      "sha256": "4ed50ed58555ac0cf7046223a5b3558950910011a4274f7ec6b179775850665a"
+    },
+    {
+      "path": "scripts/image_backends/backend_qwen.py",
+      "bytes": 7333,
+      "sha256": "e1eb4ca0db8787f58c2c334496fc81b7236f3dbd5c7f9a932a4911cdbf6f96dc"
+    },
+    {
+      "path": "scripts/image_backends/backend_replicate.py",
+      "bytes": 7113,
+      "sha256": "66f9474b0e19251fe6b5db70295d0a81f17199e9e3b036e4db236b82e88be87e"
+    },
+    {
+      "path": "scripts/image_backends/backend_siliconflow.py",
+      "bytes": 6073,
+      "sha256": "206c1aa8bf7b279a61cb9a94bed8b443f2a9988eeb3a99d149976e4eec3d2465"
+    },
+    {
+      "path": "scripts/image_backends/backend_stability.py",
+      "bytes": 5833,
+      "sha256": "0c995f98b04ebc745cd5ec42faf06476446cc6468999c07032402c236b5a88ab"
+    },
+    {
+      "path": "scripts/image_backends/backend_tencent.py",
+      "bytes": 9522,
+      "sha256": "868b45f51397ff2629136d7cc5da00426cf3487f8e4771ef90c7a2a43bcd3ff4"
+    },
+    {
+      "path": "scripts/image_backends/backend_volcengine.py",
+      "bytes": 6739,
+      "sha256": "b0c277ce4b99213d3df1429214cf97c467bace34f5873f3669267b88145fc69e"
+    },
+    {
+      "path": "scripts/image_backends/backend_zhipu.py",
+      "bytes": 6456,
+      "sha256": "e835c796754331b206143a25f7e22e64f8b921e1a6f256f944524c7c23fc3f8d"
+    },
+    {
+      "path": "scripts/image_gen.py",
+      "bytes": 54202,
+      "sha256": "1b62171ac14884d7c17ffde17963f9c7c8cf204a4cb55fad99d60cd72f143e1e"
+    },
+    {
+      "path": "scripts/image_search.py",
+      "bytes": 106557,
+      "sha256": "9be57531bfb208d2e184b98e67db3ef3dce5e78aaeca7093bb7d41a1a44158ea"
+    },
+    {
+      "path": "scripts/image_sources/__init__.py",
+      "bytes": 323,
+      "sha256": "6822313e6ad1b6449df817f85fbcad39d845c9be0c6f7a67fdbbd46f7deb21e9"
+    },
+    {
+      "path": "scripts/image_sources/provider_common.py",
+      "bytes": 21763,
+      "sha256": "bfe2ba43498cd5ebce2b11ce4ac7d407426cc9a08f13cb2de9252bf45ad918b5"
+    },
+    {
+      "path": "scripts/image_sources/provider_openverse.py",
+      "bytes": 4932,
+      "sha256": "f0ca502b6a876d2f1c3169610a6ed5562702a16b23e168254e7c77fd84c5e996"
+    },
+    {
+      "path": "scripts/image_sources/provider_pexels.py",
+      "bytes": 4226,
+      "sha256": "69f4f50bea414b2d08ac8333dc363dc7a08ad2baf7ca30ae4aa2e0c3461675f9"
+    },
+    {
+      "path": "scripts/image_sources/provider_pixabay.py",
+      "bytes": 4397,
+      "sha256": "93feda109716a7b64a05bbfec451666a07ac6614838c85d60566583a84eed3a4"
+    },
+    {
+      "path": "scripts/image_sources/provider_wikimedia.py",
+      "bytes": 6801,
+      "sha256": "087efcc665cb4aadff65b7191149dae61514a96216fa3bbd467b1f09105861b1"
+    },
+    {
+      "path": "scripts/image_treat.py",
+      "bytes": 22100,
+      "sha256": "f03d43de603d200ac7c49d672779f66a83c440fb80e02c305036c8de862db107"
+    },
+    {
+      "path": "scripts/language_tags.py",
+      "bytes": 8437,
+      "sha256": "ad3e1a913227b7e056717709fb49e0717d32a3f09aabc12bcf023ecb03702e7a"
+    },
+    {
+      "path": "scripts/latex_render.py",
+      "bytes": 20534,
+      "sha256": "f462cf8ad61cf5a13078f32a8ec18a88b133b1bf96be60a38ff65a0c9dd4e26b"
+    },
+    {
+      "path": "scripts/mirror_template_materialize.py",
+      "bytes": 128175,
+      "sha256": "2556b88a965d0748302c49e072552b87876c453826171e1dd85e0fe2be45ffeb"
+    },
+    {
+      "path": "scripts/narration_sync.py",
+      "bytes": 77447,
+      "sha256": "6d0f241a6a4b00d030aa71eb5603585b213ec6414854ada2ae3e2db6595f9de6"
+    },
+    {
+      "path": "scripts/native_payloads.py",
+      "bytes": 24870,
+      "sha256": "4d793b9ec17dc9fd9a43ca7df4f15a7ddeb2692424ac64a31dc72f59744d5443"
+    },
+    {
+      "path": "scripts/notes_to_audio.py",
+      "bytes": 36216,
+      "sha256": "1b35d62a6c948108e5bd3e702114ba2a0e55758a1c955882f9ec50ed25862e8e"
+    },
+    {
+      "path": "scripts/page_context.py",
+      "bytes": 1235,
+      "sha256": "5c91639abe1cb868f05cd77e271bad1ff4c489fb6782ba01c8afcf781018150b"
+    },
+    {
+      "path": "scripts/powerpoint_video.py",
+      "bytes": 11849,
+      "sha256": "26a1d5cc3378a29b1642224ead7b9f45a8927aba7cb2ee0e37b5c093b411467d"
+    },
+    {
+      "path": "scripts/pptx_animation_presets.json",
+      "bytes": 572130,
+      "sha256": "ddf7b0a0065d17e8acfe8eee021f13771b67d649d4ba9bf8d5eeeb59c5d15e4e"
+    },
+    {
+      "path": "scripts/pptx_animations.py",
+      "bytes": 143885,
+      "sha256": "e4695504eb571fc89e879e535ba4a430adb9abd270cdd5e1fb6ffd738e1cf53b"
+    },
+    {
+      "path": "scripts/pptx_delivery_check.py",
+      "bytes": 41878,
+      "sha256": "b3b526fbf824c59cb50c777d13ceaa6f8632465fa15b610d1bf820e89d20a4c4"
+    },
+    {
+      "path": "scripts/pptx_effects.py",
+      "bytes": 8488,
+      "sha256": "ec9341c82723d97ed9a583a98ef36ca7e4ebfe0496a845a2981c67d1a479a014"
+    },
+    {
+      "path": "scripts/pptx_embedded_fonts.py",
+      "bytes": 14102,
+      "sha256": "e5c6912654a97d6100103faa13a7263da022053f4792c7a78acf4d8fa064dbd2"
+    },
+    {
+      "path": "scripts/pptx_gradients.py",
+      "bytes": 4353,
+      "sha256": "3b1f2877007994ed60e4b0f77e5029eca624595180fd123dfcaadc3a7274debe"
+    },
+    {
+      "path": "scripts/pptx_intake.py",
+      "bytes": 13855,
+      "sha256": "12fb61fb8b30201f4113fa6292edcd95f56ffb27ed2fdad10da6362c83b4af08"
+    },
+    {
+      "path": "scripts/pptx_ooxml/__init__.py",
+      "bytes": 658,
+      "sha256": "a624656f7a4a28fe551a5ffd5925916c9e9cb092612ee9f12274331f00a88135"
+    },
+    {
+      "path": "scripts/pptx_ooxml/analyzer.py",
+      "bytes": 12099,
+      "sha256": "793e35f38674e46238a30c3ebd48061a32e878fbef5d941739b54a930236cd21"
+    },
+    {
+      "path": "scripts/pptx_ooxml/chart_read.py",
+      "bytes": 3455,
+      "sha256": "58b7c399df70dd96786ed5287b64f1d57c9a919995d151d0223d381eae064883"
+    },
+    {
+      "path": "scripts/pptx_ooxml/clone.py",
+      "bytes": 36689,
+      "sha256": "ea716ac677dfdb4d0b49f73328b0b33aa122e2f2b57f54165fc3519b4742b4e2"
+    },
+    {
+      "path": "scripts/pptx_ooxml/diagram_read.py",
+      "bytes": 19703,
+      "sha256": "6ad79a6836ad04558b85d8952a5606f6a3e32220d27f70800a557aade5f76998"
+    },
+    {
+      "path": "scripts/pptx_ooxml/edit_safety.py",
+      "bytes": 10449,
+      "sha256": "471c6fd4022c9d178a3c714a1490155596b9dc0bbadbd81c490a331aa2cbc569"
+    },
+    {
+      "path": "scripts/pptx_ooxml/ooxml.py",
+      "bytes": 11489,
+      "sha256": "07361fd673310a3e29b50f1c04c45a90fcbc0663582914bf24c9c95816ecf507"
+    },
+    {
+      "path": "scripts/pptx_ooxml/package.py",
+      "bytes": 9301,
+      "sha256": "acfbaf9f086e36f3f4ac014fee00d18f34a7db5f25c9b844b2f3ff79792cfe1c"
+    },
+    {
+      "path": "scripts/pptx_ooxml/slideshow.py",
+      "bytes": 3161,
+      "sha256": "75b9af5211afd3ccde628e8a176ce3a2cc5ca19563d8308177aa0d187821e8a6"
+    },
+    {
+      "path": "scripts/pptx_opc_validation.py",
+      "bytes": 12373,
+      "sha256": "4b209dc4741b35314ecc4b8279c92c734aac79e9aa25e96c2911d231c67d7e4c"
+    },
+    {
+      "path": "scripts/pptx_shapes/__init__.py",
+      "bytes": 3311,
+      "sha256": "dcb690214811cbcf5174b295391dfd020db654ae358fc83faeef67ec861d228b"
+    },
+    {
+      "path": "scripts/pptx_shapes/data/LICENSE-APACHE-2.0.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "scripts/pptx_shapes/data/LICENSE-OPEN-XML-SDK-MIT.txt",
+      "bytes": 1116,
+      "sha256": "cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310"
+    },
+    {
+      "path": "scripts/pptx_shapes/data/NOTICE.md",
+      "bytes": 2365,
+      "sha256": "57f3e499fbf289e2d03a3a494ea69a5cd1685a707ad8f2618e46144ea1ec88cb"
+    },
+    {
+      "path": "scripts/pptx_shapes/data/presetShapeDefinitions.xml",
+      "bytes": 538970,
+      "sha256": "4a762444d8d85876881c02a5b1dedf6f73006fcd8acb7b4e393435615b37c780"
+    },
+    {
+      "path": "scripts/pptx_shapes/data/presetShapeSemantics.json",
+      "bytes": 56073,
+      "sha256": "a39a29a669f06a5ec9b7afb081888026c8d8e3efbb54bc48d9088e1245734ceb"
+    },
+    {
+      "path": "scripts/pptx_shapes/data/shape_type_values.txt",
+      "bytes": 2527,
+      "sha256": "f2c3bdcda8569b358ce3196cfeb183849e33bfc7955fac961dc85fceb6b3b587"
+    },
+    {
+      "path": "scripts/pptx_shapes/errors.py",
+      "bytes": 1017,
+      "sha256": "ee3a22954c6c49eabeb76ae4a26bdea395d8b4318cfde8233758ccd9d28bab6b"
+    },
+    {
+      "path": "scripts/pptx_shapes/formula.py",
+      "bytes": 11046,
+      "sha256": "4e140cffb5413362746f20abbbdce107f8a4de8a79edcf4843093c662985259f"
+    },
+    {
+      "path": "scripts/pptx_shapes/loader.py",
+      "bytes": 12654,
+      "sha256": "81e04c63f65d39bcbec3b27322ba04e8706d062add4f85c8cfd8730b6104f422"
+    },
+    {
+      "path": "scripts/pptx_shapes/models.py",
+      "bytes": 4881,
+      "sha256": "6e1a6f38e8dde4f0a40abb3142e748a03e52ccced5e29684cdd69573527e5423"
+    },
+    {
+      "path": "scripts/pptx_shapes/registry.py",
+      "bytes": 8888,
+      "sha256": "1e2299877aa96f704deacd3216ed3add6d24226d0267941682de755b08dc9155"
+    },
+    {
+      "path": "scripts/pptx_shapes/semantic_hash.py",
+      "bytes": 14001,
+      "sha256": "e47096d88923df44e38185ada3b32fd1dc9789c04e20809bbabdb5f2d280a597"
+    },
+    {
+      "path": "scripts/pptx_shapes/semantics.py",
+      "bytes": 18810,
+      "sha256": "5d5911a12868982052ad21a74691a91c0ba369ca642f13bf0df66a096210aeff"
+    },
+    {
+      "path": "scripts/pptx_shapes/xml_safety.py",
+      "bytes": 634,
+      "sha256": "b411dc284fc176bee652de58ca27a93f293b952c8f804b2aaf44394c574dbc3c"
+    },
+    {
+      "path": "scripts/pptx_template_import.py",
+      "bytes": 14294,
+      "sha256": "2e073a4b871cf194b4a09673b374d53ebb7ef37384d6dfaf000f240c07057001"
+    },
+    {
+      "path": "scripts/pptx_to_svg.py",
+      "bytes": 9318,
+      "sha256": "1f5aa7627dd144f4b18a48c5ab628a1ff3c67ec80eb750cb2fd675ae186f5218"
+    },
+    {
+      "path": "scripts/pptx_to_svg/__init__.py",
+      "bytes": 684,
+      "sha256": "f09490f56d2a10631be6d849503312b9eb244a0db74e3906a284421aa3f65e3a"
+    },
+    {
+      "path": "scripts/pptx_to_svg/animation_import.py",
+      "bytes": 9394,
+      "sha256": "9ebf4699d532278b3901cea4c370b7cb2f762f6f83e0babd77518a133a2ebd6d"
+    },
+    {
+      "path": "scripts/pptx_to_svg/chart_to_svg.py",
+      "bytes": 109800,
+      "sha256": "d4e4ef06908389f7155b77c0c7a299a1132b7b083c678dc73523435809911742"
+    },
+    {
+      "path": "scripts/pptx_to_svg/chartex_to_svg.py",
+      "bytes": 15438,
+      "sha256": "e1edb143f314229ac0ccb8a2b4bdb3ea1584e986b722b9d3e406d522586df7a8"
+    },
+    {
+      "path": "scripts/pptx_to_svg/color_resolver.py",
+      "bytes": 31423,
+      "sha256": "654c2951e2a17789ed8008009133f0900539361c463e45785201f4563cdb1826"
+    },
+    {
+      "path": "scripts/pptx_to_svg/converter.py",
+      "bytes": 71190,
+      "sha256": "cdd395ca58daab9407cf1ae5c7c0ce55cf53ed53ae8a50c7891514b765468548"
+    },
+    {
+      "path": "scripts/pptx_to_svg/custgeom_to_svg.py",
+      "bytes": 4965,
+      "sha256": "15ae3847547b5add69b773ec2c827acc2f874bf4d26aebe559082838b80ae4c1"
+    },
+    {
+      "path": "scripts/pptx_to_svg/effect_to_svg.py",
+      "bytes": 13857,
+      "sha256": "cda22d754f365bd56f9fb635dec86ae2d489cd9bed54d3d1458242820ec017cc"
+    },
+    {
+      "path": "scripts/pptx_to_svg/emu_units.py",
+      "bytes": 8845,
+      "sha256": "877ce22705f1cc87ad645ae855d06b4e765b2e29ac9e0489c9a0a45edb0e5bf1"
+    },
+    {
+      "path": "scripts/pptx_to_svg/fill_to_svg.py",
+      "bytes": 30000,
+      "sha256": "937e4472944cde600ffed85ba30d8605054b7de4024311d7313e53aa2d3e9743"
+    },
+    {
+      "path": "scripts/pptx_to_svg/formula_import.py",
+      "bytes": 22547,
+      "sha256": "43a9a44be48373fc3cc3f4001d834ac18019898402b6c82bc0c4196329303d95"
+    },
+    {
+      "path": "scripts/pptx_to_svg/hyperlinks.py",
+      "bytes": 2938,
+      "sha256": "09dbebb7d0ca91afb1290724150589fc5e2a286c463635a019587056e80c36d8"
+    },
+    {
+      "path": "scripts/pptx_to_svg/import_diagnostics.py",
+      "bytes": 988,
+      "sha256": "e2afb669681d6c06a3b7ad6c7d026a4552ea779e6f492d04f952374c278551a5"
+    },
+    {
+      "path": "scripts/pptx_to_svg/ln_to_svg.py",
+      "bytes": 15187,
+      "sha256": "1d3ea95c0d8162cb1b426955bf9a2b15da940adde057f59b3654189d6a7c1f10"
+    },
+    {
+      "path": "scripts/pptx_to_svg/normalized_chart_svg.py",
+      "bytes": 50755,
+      "sha256": "20aa82af2ecd5fed20bff38035e0bc8731d41cb5af6f7baf05f618a90b5483ab"
+    },
+    {
+      "path": "scripts/pptx_to_svg/notes_import.py",
+      "bytes": 3374,
+      "sha256": "30e98d723c3f2484899a68c487c9a21f89e92175eeebcd521b1bc15518b271c6"
+    },
+    {
+      "path": "scripts/pptx_to_svg/ooxml_loader.py",
+      "bytes": 19491,
+      "sha256": "6a0139883fa2bbff0a70c2039d6103554eca5238102710b774108e90a4c9d8da"
+    },
+    {
+      "path": "scripts/pptx_to_svg/pic_to_svg.py",
+      "bytes": 22193,
+      "sha256": "f3bcc11f86d0cbeff9fd514ac3bb0788cf218c3bf7c1a6d9de44a12e12429c73"
+    },
+    {
+      "path": "scripts/pptx_to_svg/preset_authoring.py",
+      "bytes": 32084,
+      "sha256": "31d7eb7c2d5e40ce97906d094ef6304d8159ba4edbe8a1b9fee6e1e9bc497b07"
+    },
+    {
+      "path": "scripts/pptx_to_svg/preset_registry_to_svg.py",
+      "bytes": 6695,
+      "sha256": "41344cfe2cdcd42c88b2a716b7a56f8245be7a1f2076f6284a5075ed46012825"
+    },
+    {
+      "path": "scripts/pptx_to_svg/preset_svg_markup.py",
+      "bytes": 6284,
+      "sha256": "ee5bf97cd129c7623b92551d9a8a43a183e316ae030249f2196b54ee5adc8848"
+    },
+    {
+      "path": "scripts/pptx_to_svg/prstgeom_to_svg.py",
+      "bytes": 5409,
+      "sha256": "bd087aac7757430b8ea5742403865fddcbbb2b6721885ec78757cec2c2c75445"
+    },
+    {
+      "path": "scripts/pptx_to_svg/shape_walker.py",
+      "bytes": 20617,
+      "sha256": "2dfb088e7fb5605fabf9ef8ec1d6be0ccb44c4f8f95f6ac7b4247b93ae96c560"
+    },
+    {
+      "path": "scripts/pptx_to_svg/slide_to_svg.py",
+      "bytes": 92460,
+      "sha256": "a85609e0f83741baa9cb3d1b34242321597a9fd26862be3888f51e39d7056f44"
+    },
+    {
+      "path": "scripts/pptx_to_svg/tbl_to_svg.py",
+      "bytes": 69073,
+      "sha256": "e995eae578a71a61869b62b3ab0d17e043eb608a64fc2be2ae58822fdd993a36"
+    },
+    {
+      "path": "scripts/pptx_to_svg/transition_import.py",
+      "bytes": 6642,
+      "sha256": "ce6cc32b30ee19f0ab1382e41f65c66aff5ed1477b13bc829282247c59aaf313"
+    },
+    {
+      "path": "scripts/pptx_to_svg/txbody_to_svg.py",
+      "bytes": 62316,
+      "sha256": "33c95520071d26cdcdfda9f1b5ba01814b146f1bca95348d2faa2da595e66ce3"
+    },
+    {
+      "path": "scripts/pptx_transitions.py",
+      "bytes": 102764,
+      "sha256": "9c6a5746357e433079d4655914177910821c5e1aef6551a79b786a166fe670eb"
+    },
+    {
+      "path": "scripts/pptx_workspace.py",
+      "bytes": 33631,
+      "sha256": "27349b8b88b9837bb62723baac84862d10f7d82dfc8087d0700f61fc499504a4"
+    },
+    {
+      "path": "scripts/preset_shape_svg.py",
+      "bytes": 17695,
+      "sha256": "8b11f3d930df86734222546a2d20a4a95bbbd5518be8ce89466a2b49bca84917"
+    },
+    {
+      "path": "scripts/project_management/__init__.py",
+      "bytes": 466,
+      "sha256": "5c449a1823259bac1458910c288c139b722a279ca9ddf5f080ac374a3f9b670c"
+    },
+    {
+      "path": "scripts/project_management/cli.py",
+      "bytes": 64944,
+      "sha256": "3e049947b1c07f34603e41325202eb608e0c08321796e5de9d9b8ff2dc733cbf"
+    },
+    {
+      "path": "scripts/project_management/page_context.py",
+      "bytes": 33051,
+      "sha256": "ed386df727bc95ce2ed2049afa3e71ade7a77a9c9d2e836c7caaf66a5fb81bdc"
+    },
+    {
+      "path": "scripts/project_management/paths.py",
+      "bytes": 773,
+      "sha256": "dbc00a7af078f8aedc6eabe14d905a6651f472cd3938be87a08e19cf2753842e"
+    },
+    {
+      "path": "scripts/project_management/project_specs.py",
+      "bytes": 59307,
+      "sha256": "b19bcf54d5737fb8acba13a44fc60ed6f697a24ec69911f840e82f6f6a7c20d5"
+    },
+    {
+      "path": "scripts/project_management/spec_blocks.py",
+      "bytes": 6751,
+      "sha256": "4d1f55946cce774f07d9b9cba6cf4412c7c59974bda0936cdff800e61231465a"
+    },
+    {
+      "path": "scripts/project_manager.py",
+      "bytes": 1991,
+      "sha256": "22a2c0608dde43971f2243540b28bed29359ec9c8a7432b573f4a0db03b526c0"
+    },
+    {
+      "path": "scripts/project_specs.py",
+      "bytes": 1175,
+      "sha256": "7f9c33fd4c03a000ea1ec99e8ae402123f29978d37962ee122e6a5ff88267e14"
+    },
+    {
+      "path": "scripts/project_utils.py",
+      "bytes": 29626,
+      "sha256": "6778fb390a62a06139905639ce71b6c9df113d265f30e1fd4240a6a9be0ec807"
+    },
+    {
+      "path": "scripts/prompt_audit.py",
+      "bytes": 91792,
+      "sha256": "28d1e54e4b8563f107a406652de1297a09bdf92dca11d7061a84f9266704c3c1"
+    },
+    {
+      "path": "scripts/prompt_audit_manifest.json",
+      "bytes": 99782,
+      "sha256": "43266ccf19a7db79581ea96fec8fdfa876c0f17e110742ce6c10a6bbfa012cd4"
+    },
+    {
+      "path": "scripts/register_template.py",
+      "bytes": 51306,
+      "sha256": "4b2a2f1af16af897d7eee8d0f541338c3ac6f9cf8b0bde10690bdeaef224fee7"
+    },
+    {
+      "path": "scripts/resource_paths.py",
+      "bytes": 9638,
+      "sha256": "c8ee17e1a83e946201e5c2944c3b4ef30b05eddebc4b62995fe7a9b722ccda3e"
+    },
+    {
+      "path": "scripts/rotate_images.py",
+      "bytes": 29416,
+      "sha256": "f9659ccb53578e8e31318a3d576afeb74d4417fae742eb94c62973daf7cd4bd3"
+    },
+    {
+      "path": "scripts/semantic_table.py",
+      "bytes": 16371,
+      "sha256": "b7708ee74d519657b64985f25bd98f6dee2c7b97b42a9d1feea80828bd21e99e"
+    },
+    {
+      "path": "scripts/server_common.py",
+      "bytes": 11236,
+      "sha256": "34e7e6884c361218e3f2b94711061ce3c2b1f8a16a4421f2310e8b425a6117cd"
+    },
+    {
+      "path": "scripts/shape_boolean_svg.py",
+      "bytes": 6332,
+      "sha256": "0674cf29f3757323f774984d78040a98d7fa65c662102444e02897dd9d39da39"
+    },
+    {
+      "path": "scripts/slice_images.py",
+      "bytes": 51090,
+      "sha256": "4c093ed2940750c6405e3c54a565603355520e9c14f29dc3d0a8a6876817da33"
+    },
+    {
+      "path": "scripts/slide_roster.py",
+      "bytes": 1261,
+      "sha256": "8bdfb9e431eccb785a17a8f825fe82cde9d054a5b04ce122b23735b3e4cd0fa3"
+    },
+    {
+      "path": "scripts/sound_sync.py",
+      "bytes": 10956,
+      "sha256": "ad9b37987e60ea9734f4e923d6831e27528ae4310f384db3fe1e96cfd45b526c"
+    },
+    {
+      "path": "scripts/source_to_md.py",
+      "bytes": 20385,
+      "sha256": "5cefdc4224dfd57911713598de1e17b5b0c7442f0602f05c1a3f36f227703572"
+    },
+    {
+      "path": "scripts/source_to_md/_batch.py",
+      "bytes": 4841,
+      "sha256": "687ee55945c8d280e52978bb807ef0f32cf5360d909861df73dc4d128c196fd3"
+    },
+    {
+      "path": "scripts/source_to_md/_conversion_profile.py",
+      "bytes": 8002,
+      "sha256": "5645b1a6aa515aa6ff705ac2e42a783e586460c0836ba53f9f4201b336898650"
+    },
+    {
+      "path": "scripts/source_to_md/_dispatcher.py",
+      "bytes": 5683,
+      "sha256": "4ad499af8e5f9fe637a6fc1d46c7a45cb13eced2d7ec1b3e72eff1efbb23862d"
+    },
+    {
+      "path": "scripts/source_to_md/doc_to_md.py",
+      "bytes": 71468,
+      "sha256": "89be45af368ebbce86f8ad0424cac620043bc22a6ac1b73c8c77afeef8ada6a0"
+    },
+    {
+      "path": "scripts/source_to_md/excel_to_md.py",
+      "bytes": 21735,
+      "sha256": "3d6178b9fe9dff4773c5ce42101e054f8f89d57445d037ef9605882324cc6853"
+    },
+    {
+      "path": "scripts/source_to_md/pdf_to_md.py",
+      "bytes": 69916,
+      "sha256": "527832f922633b1596cf1b621a4459c035fa6a145d0636702f6fc191180a8c4d"
+    },
+    {
+      "path": "scripts/source_to_md/ppt_to_md.py",
+      "bytes": 55175,
+      "sha256": "eae22738b504efc71e82eac0eef07573e0e159b0130098434c9342e445e0dde6"
+    },
+    {
+      "path": "scripts/source_to_md/web_to_md.py",
+      "bytes": 63242,
+      "sha256": "f0a1dbda631c7d9f31e6859a7e026f35be7dfd9596249d74de819c5876619cdb"
+    },
+    {
+      "path": "scripts/spec_review/__init__.py",
+      "bytes": 357,
+      "sha256": "d5300b6895b3912f92adb948053a36a7d8ddf57805330365c6d1649964db46c6"
+    },
+    {
+      "path": "scripts/spec_review/server.py",
+      "bytes": 13969,
+      "sha256": "2a3698370576801275d8143120b51fa9daf350b8429a413848168012aa8d0399"
+    },
+    {
+      "path": "scripts/spec_review/static/app.js",
+      "bytes": 30472,
+      "sha256": "3aa6ae1f616f5a1a579bfdbf10d542717a2bee5a0f7c898aa93408ce0b8cf4db"
+    },
+    {
+      "path": "scripts/spec_review/static/index.html",
+      "bytes": 2926,
+      "sha256": "d66dc7d945fca6644b2b76f7b876cbeeba6d1c03efca8a20e303028b714b7e9a"
+    },
+    {
+      "path": "scripts/spec_review/static/style.css",
+      "bytes": 4221,
+      "sha256": "e5e9eab5112eab596174ce14d388be7d649e52d5cdd683017e79568d78619e11"
+    },
+    {
+      "path": "scripts/spec_review/store.py",
+      "bytes": 16132,
+      "sha256": "31b2b9c3292b58513dff6d7276a471e3eecad5fe0876b1fb1c4b42b05b97024f"
+    },
+    {
+      "path": "scripts/stamp_native_fallbacks.py",
+      "bytes": 11853,
+      "sha256": "ea68c1c4f108214d600faef96d7bd1793cb6aaf902893d4f137a900a887f34d0"
+    },
+    {
+      "path": "scripts/svg_authoring_contract.py",
+      "bytes": 12262,
+      "sha256": "28b4e40788d72a971a2b553f3b75f6cb5e63c9f09f037e3475303fe831f6615f"
+    },
+    {
+      "path": "scripts/svg_authoring_view.py",
+      "bytes": 97802,
+      "sha256": "c82138121bf92371aab19a0097341d2e7ff6d83e98992c695c5058e263036a94"
+    },
+    {
+      "path": "scripts/svg_compatibility.py",
+      "bytes": 1939,
+      "sha256": "4d5e886625df473752571b375e40da5e032ca175a9361946b13dc5a182d480f5"
+    },
+    {
+      "path": "scripts/svg_editor/__init__.py",
+      "bytes": 118,
+      "sha256": "b363ceeeba8e523d8b41c216001b9cf39dc784b045f8555ba00ea8dc0e6c5dd9"
+    },
+    {
+      "path": "scripts/svg_editor/annotations.py",
+      "bytes": 11608,
+      "sha256": "ca056c15492c0678161f39c37c2758b285e8234f09de75a5c27eb02c88d76f1a"
+    },
+    {
+      "path": "scripts/svg_editor/server.py",
+      "bytes": 62488,
+      "sha256": "aa67270f451053e06970d348bed74dd1653b5c2b43de2a7bce4a7339b9ec6549"
+    },
+    {
+      "path": "scripts/svg_editor/static/app.js",
+      "bytes": 151225,
+      "sha256": "53a3b9d68cae859495e7705b521baa57b6aaa54439de2da935fb6ce616aeeadc"
+    },
+    {
+      "path": "scripts/svg_editor/static/index.html",
+      "bytes": 4676,
+      "sha256": "be13f0015a061f5f52682b63bd47b10e18f5491d0d39c19d4576dd8f8323a99f"
+    },
+    {
+      "path": "scripts/svg_editor/static/style.css",
+      "bytes": 19140,
+      "sha256": "2f58500c79db389626a7c1961edc2fdca4178c72beac5ffb3833f1ce5d238449"
+    },
+    {
+      "path": "scripts/svg_finalize/__init__.py",
+      "bytes": 448,
+      "sha256": "7ea7a774c2df7d075e53e792c028953d9c0a9d3e963d6d733df09ce8a177415a"
+    },
+    {
+      "path": "scripts/svg_finalize/align_embed_images.py",
+      "bytes": 24205,
+      "sha256": "d39ce6013314b0b68f336e646dd25efb8ee898894815f1dc4254aa4372139e88"
+    },
+    {
+      "path": "scripts/svg_finalize/crop_images.py",
+      "bytes": 12307,
+      "sha256": "c9c579cb3c06a285bada0f1596eb1bef542176b1cef26bf75cf5ec8023ae9101"
+    },
+    {
+      "path": "scripts/svg_finalize/embed_icons.py",
+      "bytes": 23064,
+      "sha256": "d6feccbdd8700eaa904d653341149ea05e0a9474664f8a9ec999c16df00024e7"
+    },
+    {
+      "path": "scripts/svg_finalize/embed_images.py",
+      "bytes": 11043,
+      "sha256": "8fd306f8ae86270089f21aa06bf38b08aef6c2961d19fc36440a2b4f54473af4"
+    },
+    {
+      "path": "scripts/svg_finalize/fix_image_aspect.py",
+      "bytes": 13908,
+      "sha256": "4afeb5748275d9e1de608e257d1ea85f10c9dc2615d8ed33ec601515e713ac14"
+    },
+    {
+      "path": "scripts/svg_finalize/flatten_tspan.py",
+      "bytes": 35990,
+      "sha256": "a5e42b8394f3b0c342f179697114b6040830a0075ea0ec67e6892c34afa96096"
+    },
+    {
+      "path": "scripts/svg_finalize/svg_rect_to_path.py",
+      "bytes": 10998,
+      "sha256": "9ace65a07b8c80294706fc5e5a67b8771d555417213dc2067fc6b9449921d32a"
+    },
+    {
+      "path": "scripts/svg_position_calculator.py",
+      "bytes": 61914,
+      "sha256": "51d5b981820a7ca2048839a18222a03ba6171dc9832c817a89de9219b0933ed4"
+    },
+    {
+      "path": "scripts/svg_quality/__init__.py",
+      "bytes": 351,
+      "sha256": "309303e80c80758ccae1152c45e57cd968bea67c529648e690d0d209f1ee01cb"
+    },
+    {
+      "path": "scripts/svg_quality/checker.py",
+      "bytes": 409344,
+      "sha256": "21be2d4dd2b76bed800df54823256ba26ff8f00249f6fb6f40fa31de57db16a6"
+    },
+    {
+      "path": "scripts/svg_quality/cli.py",
+      "bytes": 15387,
+      "sha256": "d70019ec54bcb721106663e779767230e3993c41de2c1d7e641f96de226b0229"
+    },
+    {
+      "path": "scripts/svg_quality/slot_capacity.py",
+      "bytes": 10768,
+      "sha256": "7a07f3734358505af4ef60f3e1308dd13d06101817ef9f8af0649519e1f95da8"
+    },
+    {
+      "path": "scripts/svg_quality/svg_contracts.py",
+      "bytes": 44834,
+      "sha256": "e0924bed0d81ea256371daf981f04afd12f67df0e91dd3e6a74a89b1d94b037a"
+    },
+    {
+      "path": "scripts/svg_quality/xml_support.py",
+      "bytes": 948,
+      "sha256": "8199887d221c063b6f2334e5c8ccb780c2c5edef6553afae60dfd77677feb55a"
+    },
+    {
+      "path": "scripts/svg_quality_checker.py",
+      "bytes": 1682,
+      "sha256": "cf8f21be001a30c9f8212ad80c34f4e657741b9186a79213808f0bcef045a482"
+    },
+    {
+      "path": "scripts/svg_to_pptx.py",
+      "bytes": 1071,
+      "sha256": "030fac5181fffbbaee09f6af6b8fa93b7561ce08ba8d40ded3368900bcbefb01"
+    },
+    {
+      "path": "scripts/svg_to_pptx/__init__.py",
+      "bytes": 1043,
+      "sha256": "fa5a8ef67ceeee7b5b33b478639422f4e99c16eb430545059c171cc7727f2a47"
+    },
+    {
+      "path": "scripts/svg_to_pptx/animation_config.py",
+      "bytes": 69461,
+      "sha256": "c57629adf33bf51d01e09f15fb85d105c5425ac66e2772eeab28942a47a788e8"
+    },
+    {
+      "path": "scripts/svg_to_pptx/canvas_contract.py",
+      "bytes": 7507,
+      "sha256": "0ed1a4e45f8f4d5cd2d4896ac2c64322388a2d3be62ed281f2c8214235d3eabf"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/__init__.py",
+      "bytes": 59,
+      "sha256": "9313e6cb2ce93064d10a3f96f65252241a95300efcbfa3de3455fc5e2d1775dd"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/context.py",
+      "bytes": 12970,
+      "sha256": "71ceb395f3e80593fe0f7171a0f4895da407eb2eed952b68b868d014a9551e93"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/converter.py",
+      "bytes": 92724,
+      "sha256": "2eb6b203dfc375f5bed58bab48a382b71abec9abe8a3028f0300173fa0266eb8"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/elements.py",
+      "bytes": 198573,
+      "sha256": "d2b2f8a42023b8a174d76ebe1e2b0d386f25c05aebd792b420a80d1d50a49c21"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/font_advances.json",
+      "bytes": 111241,
+      "sha256": "8ea03925e43eae05dc1e03443e0245bbbd38c173d6c175fd4387429c8e97eeed"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/font_metrics.json",
+      "bytes": 38011,
+      "sha256": "2618fbebf57ade12f9c5bb3a20c6006ade95dd72d4301deff0c59557b05fd9d6"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/hyperlinks.py",
+      "bytes": 5001,
+      "sha256": "576e6a19e38fbe60952831b31ff19fba675d8bc14463e2130e09a06e6eaac21c"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/paths.py",
+      "bytes": 29381,
+      "sha256": "3d8599d6510c9ad32a4b8ef1079a7ae65f0f09abd240f245366e6384b6103b90"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/styles.py",
+      "bytes": 27332,
+      "sha256": "b9d186aa2b396b7cfbdba428f1c2d84e18afd12c2c4c83126aecf43c31a5ce60"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/text_baseline.py",
+      "bytes": 4707,
+      "sha256": "75d9528917f03223b03dace7d6b71707a219d3a58c2aefc0ec594688f3530f64"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/text_properties.py",
+      "bytes": 25881,
+      "sha256": "d8954b6916d7b3afb1c7f01e0d62f209dc9afd654b43ef71c53d4f2ebcd04662"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/theme_colors.py",
+      "bytes": 10018,
+      "sha256": "09c7ccce9c0839605d1c71fa400654ba71b3c4bb041c34ad1a99101369173e9c"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/theme_fonts.py",
+      "bytes": 17886,
+      "sha256": "3f731a1c0f13c387d8d211590c75f128c897767d0c8fd6cdcc4b499fd66236c6"
+    },
+    {
+      "path": "scripts/svg_to_pptx/drawingml/utils.py",
+      "bytes": 136040,
+      "sha256": "6e59401afef1f46e6769cb2c5ca320773eec4f680d74d8c49a38d20ad13ce85d"
+    },
+    {
+      "path": "scripts/svg_to_pptx/geometry_properties.py",
+      "bytes": 4894,
+      "sha256": "4408dbc0cc6b9b392ef1d97c613595a5f61b3b6107c79ea892b28365b874de0e"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/__init__.py",
+      "bytes": 28530,
+      "sha256": "b288049309adb39a6b9b30b3f66e43bc14182a3f7b81b16fad8b238e987fb0a5"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/chart_data.py",
+      "bytes": 67385,
+      "sha256": "15af37895c97f91cbb9ff6f61697107a6abc06efb72f5a73aeccd669948b31af"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/chart_style.py",
+      "bytes": 59485,
+      "sha256": "0822b6f19917e33601ca3d5482d7e966de35979fe9dd56228a5285ba6d3878c1"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/chart_xml.py",
+      "bytes": 62020,
+      "sha256": "eb27826c344eb9f6f89bedc414d180a5ee8e1306db91953acecb12b77ce23380"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/chartex.py",
+      "bytes": 22173,
+      "sha256": "dd1d76cbaa2068adf2e93df6e0840a01cd5361ecee6a4edebef1d89e86a62976"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/fallback_hash.py",
+      "bytes": 5831,
+      "sha256": "ffc5f50f2b790ad0a1cb890ba5315745a23fc803b3628b06bf27948dfafbc4ea"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/formula.py",
+      "bytes": 7732,
+      "sha256": "34bb4d29486fd947911e4cec91ec416cd4585ad9f66b1e4405d1cdad00ce0034"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/formula_ast.py",
+      "bytes": 17422,
+      "sha256": "67c65000fdf8682f9542fb03a39a75ccf9352a7a9efb53152dfe3383cbf17878"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/formula_compiler.py",
+      "bytes": 2897,
+      "sha256": "4b487806c1350f9f373bef8815206ba37dc02c5db158de72370c26d1b9ad92ba"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/formula_omml.py",
+      "bytes": 39999,
+      "sha256": "07e0db594546646b88772ab772820e959b0efdcc03b51bbaa9df0ce1b990ce6d"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/formula_parser.py",
+      "bytes": 86442,
+      "sha256": "4636546110b62a105f11b0554058ed8ccf6154db0bc631147777f9b3b9384088"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/formula_profile.py",
+      "bytes": 14976,
+      "sha256": "bedc1382bfc5f0c771f0137d75a3df246fd7d896f7610ff519b14c073b27bbd3"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/formula_run_properties.py",
+      "bytes": 7058,
+      "sha256": "eac4cb86857333fce0a84a0d91b7cfb817fca3821d1dd63a28193d977c979ed7"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/inline_formula.py",
+      "bytes": 11382,
+      "sha256": "da0b066c6b10d7cc69251febbbc4e7eb6d69511055b8631e92b32a419af688c1"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/marker_attributes.py",
+      "bytes": 6984,
+      "sha256": "9511e323278b7bc94179823e8629f71570c64699ec2d6bd2c6f0017993d6c44d"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/marker_common.py",
+      "bytes": 37142,
+      "sha256": "fe42741b3fe2b198eca0bdee9115ad655553cb346b0d5f1379e9aae0c2de43fb"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/marker_status.py",
+      "bytes": 8185,
+      "sha256": "3b9e5c134d3521d86bf7eb93f66c9eeee81278484090ba53cbacfec70c4aa9a0"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/table.py",
+      "bytes": 75083,
+      "sha256": "9d3b217f3260603c3456958fddbc418d130e71a30ebfe49a3f0c56400a49470e"
+    },
+    {
+      "path": "scripts/svg_to_pptx/native_objects/workbook.py",
+      "bytes": 9518,
+      "sha256": "f725bb2dc58aadc8ffc293bba994a91cf0477b871829fffbe965acaa36a5b3ea"
+    },
+    {
+      "path": "scripts/svg_to_pptx/pptx_package/__init__.py",
+      "bytes": 60,
+      "sha256": "78dce81eda479c89d16308e13a536bcd45de039778d80eb0f5a2184415c42f2d"
+    },
+    {
+      "path": "scripts/svg_to_pptx/pptx_package/builder.py",
+      "bytes": 335551,
+      "sha256": "638fa9727d811590b88c4503ec525a34c46b7f2f31f1486e2c80b8763a22a187"
+    },
+    {
+      "path": "scripts/svg_to_pptx/pptx_package/cli.py",
+      "bytes": 154688,
+      "sha256": "08c1485d0c3dcf818535f6ec2c7c14e1f453f89fc804b5aaa6a72930609aff14"
+    },
+    {
+      "path": "scripts/svg_to_pptx/pptx_package/dimensions.py",
+      "bytes": 5815,
+      "sha256": "fc46ea5db3dfb8a05aa40876f4773cfa16b0217ae227968bcf891624fbaef676"
+    },
+    {
+      "path": "scripts/svg_to_pptx/pptx_package/discovery.py",
+      "bytes": 4321,
+      "sha256": "fce6c111439116929d44119be452058c487dcd40c1ac6cb713ff8e87957a951f"
+    },
+    {
+      "path": "scripts/svg_to_pptx/pptx_package/media.py",
+      "bytes": 4534,
+      "sha256": "5d359bfc890d151160a980b46ebc3299efe89972fc5d3972956897c88eef87a3"
+    },
+    {
+      "path": "scripts/svg_to_pptx/pptx_package/narration.py",
+      "bytes": 29160,
+      "sha256": "99b09541fd7f1c87ba33e82b42deb5ae2e863516f45444bf6488834d1b17a41f"
+    },
+    {
+      "path": "scripts/svg_to_pptx/pptx_package/notes.py",
+      "bytes": 11228,
+      "sha256": "f0777d242cb36693ace7fc4e167e4bfb2178b9579b26dd7190ca25d36abd1676"
+    },
+    {
+      "path": "scripts/svg_to_pptx/pptx_package/slide_xml.py",
+      "bytes": 5017,
+      "sha256": "922e2a706b8fd510bf398554e98bd5fa2e896cbcaf56186d3717779c149f3dfb"
+    },
+    {
+      "path": "scripts/svg_to_pptx/pptx_package/template_structure.py",
+      "bytes": 144174,
+      "sha256": "64830de0a7a08ecddbc768edaeb6a96cf9b670937048ce9ecb07f1a8a7c945d2"
+    },
+    {
+      "path": "scripts/svg_to_pptx/pptx_package/template_validation.py",
+      "bytes": 59280,
+      "sha256": "4f7c1cce0a2c061eb65afe5f90ec38c14cf83f8dc4192e12b889e64c80aed176"
+    },
+    {
+      "path": "scripts/svg_to_pptx/semantic_markers.py",
+      "bytes": 7787,
+      "sha256": "fd8a59e49b9846c8f13424b1c73f27860c62a92d04b39883e2b2d7663af5d60e"
+    },
+    {
+      "path": "scripts/svg_to_pptx/shape_boolean.py",
+      "bytes": 42515,
+      "sha256": "a60c958ea93bec08a83da3ae0d2ea41a60df65248fabf2c59b54425876e00bed"
+    },
+    {
+      "path": "scripts/svg_to_pptx/text_outline.py",
+      "bytes": 34188,
+      "sha256": "9c5d73707391be3f219c2d99954fbda08db6d82d7f93f9bbff791d8f76550014"
+    },
+    {
+      "path": "scripts/svg_to_pptx/tspan_flattener.py",
+      "bytes": 3007,
+      "sha256": "3dfa78ef67e42e80b9ac06dba3985212fc5d4e7c56a039091d046e6de66f884d"
+    },
+    {
+      "path": "scripts/svg_to_pptx/use_expander.py",
+      "bytes": 22138,
+      "sha256": "6010bef6999264d175aab43c46f6b3df26f121f3a418772869c4a13e24eb761f"
+    },
+    {
+      "path": "scripts/template_import/__init__.py",
+      "bytes": 52,
+      "sha256": "251eb559dbf7f8684f9fc877884fe6b8859b7b854cf3db1bc2695e7c9dd9efa2"
+    },
+    {
+      "path": "scripts/template_import/manifest.py",
+      "bytes": 30204,
+      "sha256": "43067b5d5736fed3b1d37a166c708fc8a94db6c9c3f7683cce32f509e179ff87"
+    },
+    {
+      "path": "scripts/template_import/native_structure.py",
+      "bytes": 7492,
+      "sha256": "379806a30fc9f40dccd36c299e1fc733483ebd6efc22e1a0223851604a055487"
+    },
+    {
+      "path": "scripts/template_preview_pptx.py",
+      "bytes": 16716,
+      "sha256": "e27ea7efa52f5590fd8157c050bf1386e132d4ad5e6edf5d0d81b94119e33794"
+    },
+    {
+      "path": "scripts/template_text_slots.py",
+      "bytes": 5345,
+      "sha256": "d54ed3e596356635f82701e8c7d89b922d702f1c553c2bba8e27b05fc60b4822"
+    },
+    {
+      "path": "scripts/tests/fixtures/native_projection/06_1145_completion.svg",
+      "bytes": 7953,
+      "sha256": "4ee788714f4af6aae4054bbb86bf1a1295c8bd6c79e748e6d3102c1775311ead"
+    },
+    {
+      "path": "scripts/tests/fixtures/native_projection/07_segment_mix.svg",
+      "bytes": 4000,
+      "sha256": "2ba074c214e8f98d27db092ab6d107910e1ff7b426ec2dff391dc301c8786703"
+    },
+    {
+      "path": "scripts/tests/fixtures/native_projection/10_competitiveness.svg",
+      "bytes": 4300,
+      "sha256": "d22d3718dbae6aeab7c7bf05c0e2fa23b5c24b2b21b5d99953d16877ccf79287"
+    },
+    {
+      "path": "scripts/tests/fixtures/native_projection/11_market_space.svg",
+      "bytes": 4477,
+      "sha256": "95418103e572f2a7313fc582dc329ec0dd81b2a6e2a16aa606630419d6d817da"
+    },
+    {
+      "path": "scripts/tests/fixtures/native_projection/15_signing_target.svg",
+      "bytes": 9621,
+      "sha256": "262a921e7e8d1e8bb1ed43ccff066dfecd906b8cc3b81b07cb55ac05f890ad54"
+    },
+    {
+      "path": "scripts/tests/fixtures/native_projection/27_business_models.svg",
+      "bytes": 4803,
+      "sha256": "4ce3c8f69dfc9b6a461bd475a1dc1c78b114ae46425d505571f36516aa1763fb"
+    },
+    {
+      "path": "scripts/tests/fixtures/native_projection/30_risk_matrix.svg",
+      "bytes": 6552,
+      "sha256": "11c12ea684d2509ce845af2a0c7d53510b611a5ee3347a4422bd8f0d5e33b4e1"
+    },
+    {
+      "path": "scripts/tests/fixtures/native_projection/31_power_market.svg",
+      "bytes": 6025,
+      "sha256": "749bcb0c4ef3426cf8ea02fa1a28d6b1760dbb558accc7f761398ca4397df6d3"
+    },
+    {
+      "path": "scripts/tests/test_apply_template.py",
+      "bytes": 6595,
+      "sha256": "36a1b62aa71e49d18a2bc879cfb1f9fe3b7c31ce15a09ac946c6577afc3dbe2a"
+    },
+    {
+      "path": "scripts/tests/test_audit_r3_native_images.py",
+      "bytes": 27101,
+      "sha256": "05d79d848b8ab45dc36bebd8df24960107bbc5ec7a6c9e2a06c4ee349b9cbe53"
+    },
+    {
+      "path": "scripts/tests/test_audit_r3_sources.py",
+      "bytes": 43622,
+      "sha256": "4b34f09c83ef1f23be961a9756d11fc3f7db6d8c7ee494f96504134c3fb3494d"
+    },
+    {
+      "path": "scripts/tests/test_audit_r3_typography.py",
+      "bytes": 19378,
+      "sha256": "94f6e54767762fbb1c75052554276762a59e17153dfe1ecc59f5244fbd16def6"
+    },
+    {
+      "path": "scripts/tests/test_confirm_ui_design_spec_depth.py",
+      "bytes": 3262,
+      "sha256": "9a6904930443f51c59cc9873e9209748625fba224e17033de25be276d0e10efc"
+    },
+    {
+      "path": "scripts/tests/test_dogfood_edit_native_fixes.py",
+      "bytes": 4482,
+      "sha256": "ffe2a7e20e1e33f56af6d1932c815a5f888971ad380bfeee9c9ede05f816a1b5"
+    },
+    {
+      "path": "scripts/tests/test_dogfood_edit_native_p3_fixes.py",
+      "bytes": 8040,
+      "sha256": "7294f8ad798b60fe47eea42668f4cf946f6fbc5db0c299472898f4efd5b772ff"
+    },
+    {
+      "path": "scripts/tests/test_dogfood_fourier_fixes.py",
+      "bytes": 3255,
+      "sha256": "2b1dc0ba0159811c684a70927850e7492aeb074169f2cd21f507b2cc921b3abd"
+    },
+    {
+      "path": "scripts/tests/test_dogfood_hindi_fixes.py",
+      "bytes": 2555,
+      "sha256": "c00fee4bb74356019d49208a998a69d639159439afef8439e207fffaf8f7caa0"
+    },
+    {
+      "path": "scripts/tests/test_dogfood_leaves_fixes.py",
+      "bytes": 27164,
+      "sha256": "13733dd521cd82cd76c436f02d3267f15e8f0dc83b38b231cc80cb0077876b6c"
+    },
+    {
+      "path": "scripts/tests/test_dogfood_quick_language_fixes.py",
+      "bytes": 2875,
+      "sha256": "9d5263413b943eda3b9cbdbd48645b728dbd3ee30a9ba2b482843d14c4d34eaa"
+    },
+    {
+      "path": "scripts/tests/test_dogfood_revision_fixes.py",
+      "bytes": 2898,
+      "sha256": "bc73583e87f0b5b7f1c9af23ea53cebb038ad9f06cd0f9bc4dd08905ec193f80"
+    },
+    {
+      "path": "scripts/tests/test_dogfood_sparse_fixes.py",
+      "bytes": 3451,
+      "sha256": "e654c69b316c4f85a008a0b6cb786f90d810dae36ada1d531e614e03ad044baf"
+    },
+    {
+      "path": "scripts/tests/test_dogfood_template_material_fixes.py",
+      "bytes": 2964,
+      "sha256": "f7e7cff0ec74cd954d443651143b6f2168c038b49381be4b70b51faa376cebeb"
+    },
+    {
+      "path": "scripts/tests/test_dogfood_template_route_fixes.py",
+      "bytes": 4608,
+      "sha256": "b4c8ab74d362397566de1b2a0d1f72332fc83f3a1d807c0ecbe7ea5b43025b2a"
+    },
+    {
+      "path": "scripts/tests/test_dogfood_thai_fixes.py",
+      "bytes": 3005,
+      "sha256": "02231fbd93c4f5a5e2f2eb6281a2b1c3fc09d8bfcb4588249b3d5bce25206cb5"
+    },
+    {
+      "path": "scripts/tests/test_edit_native_batch_a.py",
+      "bytes": 21277,
+      "sha256": "8535863c85531b9c88751bd8454a1f410963765a1b2cc9113ab81aa14ab27c9b"
+    },
+    {
+      "path": "scripts/tests/test_edit_native_batch_b.py",
+      "bytes": 35735,
+      "sha256": "564c26d82ef3421b41d27d9427ef9f58506177d90fb22ad688824cd1207e1939"
+    },
+    {
+      "path": "scripts/tests/test_edit_native_batch_c.py",
+      "bytes": 14065,
+      "sha256": "bf3a30233b27fbc50aa6f7c2401842160471b149558f294f97e3c2f9a16330b4"
+    },
+    {
+      "path": "scripts/tests/test_embed_icons.py",
+      "bytes": 7429,
+      "sha256": "e1f844f69994e27f3b47a42c9ef4062544fbc849a3acd6f7ba53c3ea56d9f218"
+    },
+    {
+      "path": "scripts/tests/test_image_backend_tencent.py",
+      "bytes": 15526,
+      "sha256": "d22a69b906b7a2b6e515843d93922e8e866716a84bd8ebd7aa7cf2b71cb27618"
+    },
+    {
+      "path": "scripts/tests/test_image_gen_manifest.py",
+      "bytes": 2116,
+      "sha256": "dcd3e5a57a280deec575aeb13822c6155f3423b5779c339afb53eb4fae1df612"
+    },
+    {
+      "path": "scripts/tests/test_image_search.py",
+      "bytes": 10994,
+      "sha256": "614ace8432bf87be6cacbc5f6e25db16d23e27d2cc5439c37f0d281041f10385"
+    },
+    {
+      "path": "scripts/tests/test_local_server_security.py",
+      "bytes": 4295,
+      "sha256": "820dc8ce356f2af78e8351b2e1d1b4519e4d8e3a75cf25eccfceee2c0dfd08d2"
+    },
+    {
+      "path": "scripts/tests/test_minimax_subtitles.py",
+      "bytes": 4577,
+      "sha256": "a27b517fea0ccb22f9505c5dcf4fc8154569a2163deb89638c3dc23162831f5a"
+    },
+    {
+      "path": "scripts/tests/test_native_chart_fidelity.py",
+      "bytes": 25581,
+      "sha256": "676a9496d85aecc1877c8332da23f9cba8747158c97a69418907ed51dd4b7b6b"
+    },
+    {
+      "path": "scripts/tests/test_native_chart_grouping.py",
+      "bytes": 13866,
+      "sha256": "cc41dad95bc6217fe459e17c9045c9922b1b42a9642542263cd5ecbab9184a40"
+    },
+    {
+      "path": "scripts/tests/test_native_chart_table_parity.py",
+      "bytes": 27657,
+      "sha256": "2ba154f4e09d3160e1ec134a14e997bbdc9ea48eec66ac8e831c0348c7df1113"
+    },
+    {
+      "path": "scripts/tests/test_native_export_guards.py",
+      "bytes": 36243,
+      "sha256": "78ff8fa3515a58713c352f6f6e0735b9392b119eaec0079d61a69e93bd963d5a"
+    },
+    {
+      "path": "scripts/tests/test_pdf_content_preservation.py",
+      "bytes": 5140,
+      "sha256": "6639c3fe78b4468912fcdadb16091ffdeeb50db5eb3757c7879d4064c7ab3a46"
+    },
+    {
+      "path": "scripts/tests/test_pdf_header_footer_position.py",
+      "bytes": 3700,
+      "sha256": "f19090016826ac35ec32a1f1e011ed890192fce6cca044498321d677fb7786af"
+    },
+    {
+      "path": "scripts/tests/test_pdf_table_continuation.py",
+      "bytes": 2152,
+      "sha256": "7ec6d49e9c2d431a432dce51d90ec96cde287fe9feca303a5f83835dc5e76043"
+    },
+    {
+      "path": "scripts/tests/test_preview_browser.py",
+      "bytes": 5517,
+      "sha256": "f2b9e99ae65c75815baafb9e654b4a1b33316105933958cfde9b9999a5f06f57"
+    },
+    {
+      "path": "scripts/tests/test_rotate_images.py",
+      "bytes": 5271,
+      "sha256": "7bb93006a6c5f7e64e841f9caec2016fa8e1e5fc965393b450700eccea5575b5"
+    },
+    {
+      "path": "scripts/tests/test_slice_images.py",
+      "bytes": 23033,
+      "sha256": "acd4440be2ad1f6cea07426edc77f005850fbe3f0e040f39e8d336b8334f5dd0"
+    },
+    {
+      "path": "scripts/tests/test_slide_roster_first_page.py",
+      "bytes": 4447,
+      "sha256": "28697868bca6314e98ca2b168d436cd09a1837d05d7b1f3ec9364eaad8ebd4bf"
+    },
+    {
+      "path": "scripts/tests/test_source_table_recovery.py",
+      "bytes": 5260,
+      "sha256": "b98ae9c718e61b8e42b8a901c20f00c435a59d0e1e9f6523e8920de811ed6286"
+    },
+    {
+      "path": "scripts/tests/test_source_to_md_cli.py",
+      "bytes": 23964,
+      "sha256": "254313882b1db9af2f13c085edfd9e76f0308f9f45b219db36ad4972a2dd1dca"
+    },
+    {
+      "path": "scripts/tests/test_source_to_md_content_loss_docx.py",
+      "bytes": 13906,
+      "sha256": "e2c2691d64895e8b2cf4af01ce7bba0c97e20d94fcf62583240f87e4df7f8640"
+    },
+    {
+      "path": "scripts/tests/test_source_to_md_content_loss_excel.py",
+      "bytes": 10817,
+      "sha256": "c3ad4d71832e592b861c16c6ec11df0cca74a595964fc74b9410eaf58d202a5a"
+    },
+    {
+      "path": "scripts/tests/test_source_to_md_content_loss_pptx.py",
+      "bytes": 6996,
+      "sha256": "3113247c9f6e6976a64e049092c1956d33069fd8800060df8f6c3cbf474ea92c"
+    },
+    {
+      "path": "scripts/tests/test_source_to_md_content_loss_web.py",
+      "bytes": 7159,
+      "sha256": "077412ef739ef72ca595efa872a350fecd0463a4ff7375594f6d08c9b16ffb88"
+    },
+    {
+      "path": "scripts/tests/test_spec_lock_forbidden.py",
+      "bytes": 4397,
+      "sha256": "bf07352a333722f9521cdb4f333fefffaa65e0ea1f167f13c4d586e5dbcc28c4"
+    },
+    {
+      "path": "scripts/tests/test_spec_review.py",
+      "bytes": 31839,
+      "sha256": "0ca171f778f7244c2dd10bdbd2ff49c9b7eec46b4a91f4ce3021b3fe3781b3bc"
+    },
+    {
+      "path": "scripts/tests/test_svg_editor_server.py",
+      "bytes": 9581,
+      "sha256": "e4f550d9e4af80bf79f2510fb255c5f5f52062778429c5d6e4e016b081c56fd0"
+    },
+    {
+      "path": "scripts/tests/test_svg_quality_checker.py",
+      "bytes": 22178,
+      "sha256": "6641175feb7feabd17b9099939657ba16212b4e859fa82719812daa90133e6f7"
+    },
+    {
+      "path": "scripts/tests/test_template_flow_batch1.py",
+      "bytes": 19587,
+      "sha256": "ac1567016320323359d70243d9932c8649d554731ef80d241f18941657f89f07"
+    },
+    {
+      "path": "scripts/tests/test_template_flow_batch3.py",
+      "bytes": 22000,
+      "sha256": "fcff73fba3c9830d94da7570eb6aa396763cece27cb8fb36b8e0b4d5c97e31a2"
+    },
+    {
+      "path": "scripts/tests/test_template_flow_batch4.py",
+      "bytes": 12794,
+      "sha256": "96bfc3f4a803cf87a9075f994298dfc3e3df3a6743e37f91f2252848bf0e298c"
+    },
+    {
+      "path": "scripts/tests/test_text_baseline.py",
+      "bytes": 15225,
+      "sha256": "b6dba5d73d727aadf69c01fe86f0657532b64d1d81bb59f4d0bcb47eb3f86a76"
+    },
+    {
+      "path": "scripts/tests/test_text_baseline_metadata.py",
+      "bytes": 4229,
+      "sha256": "bce96dc6e2a925921bfc82185286b1db81fc9fb32ce5a37f29d4344521bc9877"
+    },
+    {
+      "path": "scripts/tests/test_text_baseline_roundtrip.py",
+      "bytes": 15666,
+      "sha256": "377eed2594a5a05c6d7583742d9ab78be40a15066473d74729a1edb9d686de7a"
+    },
+    {
+      "path": "scripts/tests/test_text_measure.py",
+      "bytes": 20039,
+      "sha256": "fae3d17fbba98cf23908ab649603d655bda8bc9adf374b881e669a37c5b62fa5"
+    },
+    {
+      "path": "scripts/tests/test_text_overflow_import.py",
+      "bytes": 9729,
+      "sha256": "49c69fc528e70d2073f24b26052113245119b4e12cb78d8c530d649b527efa16"
+    },
+    {
+      "path": "scripts/tests/test_update_spec.py",
+      "bytes": 5629,
+      "sha256": "b75dd22a131dbbe35a8e169a448cf714694090a07c9398150022dcacee1b6586"
+    },
+    {
+      "path": "scripts/tests/test_video_subtitles.py",
+      "bytes": 4255,
+      "sha256": "ea29914013a39dded545b3d2d9d60ae61158390215a0d7e170f5fe01e46ab8a8"
+    },
+    {
+      "path": "scripts/tests/test_web_to_md_security.py",
+      "bytes": 26103,
+      "sha256": "3d296d02abcf40cc7d9b614f665556d1fa813d9ed73be5229bebc259798df4ca"
+    },
+    {
+      "path": "scripts/text_measure.py",
+      "bytes": 39486,
+      "sha256": "6f1a7ca82ec16da8b6567c10108434d9435b5b714986ed5d391449ac9a58e519"
+    },
+    {
+      "path": "scripts/total_md_split.py",
+      "bytes": 11546,
+      "sha256": "2919361704f3f3a30922b0bd58d145b06073b6226c6478efcba42ef67d8defb8"
+    },
+    {
+      "path": "scripts/tts_backends/__init__.py",
+      "bytes": 70,
+      "sha256": "e09d09a820d361d0f6b9a257aeeabcd7ae7aa3f67c7fd4054985b2cb3c9c55ad"
+    },
+    {
+      "path": "scripts/tts_backends/backend_common.py",
+      "bytes": 6507,
+      "sha256": "132c1001f8ce5b6cb44278fe448a70e74e276a1a8015201f956d73b6bc4c3f2b"
+    },
+    {
+      "path": "scripts/tts_backends/backend_cosyvoice.py",
+      "bytes": 9674,
+      "sha256": "306c91e939f8ced756b7820eaec872e98a378e2b73164aac74e5ab3e4d46034f"
+    },
+    {
+      "path": "scripts/tts_backends/backend_edge.py",
+      "bytes": 18155,
+      "sha256": "1f60df88dde6213fb4eed068dba3c9f680df19550c928cf184f313c382dec656"
+    },
+    {
+      "path": "scripts/tts_backends/backend_elevenlabs.py",
+      "bytes": 8916,
+      "sha256": "fca0cd649e9b57a0eeda7adec03e14c9012be6d2d52d73f53d8df3d3f8366fb8"
+    },
+    {
+      "path": "scripts/tts_backends/backend_minimax.py",
+      "bytes": 7243,
+      "sha256": "3b734e1fed472523efa33269f926b24eeb646c63bdf868970d899a2100fa27da"
+    },
+    {
+      "path": "scripts/tts_backends/backend_qwen.py",
+      "bytes": 2295,
+      "sha256": "bb6a411462e59972ef8baabb2c3bd0f616039c53b1a34d71e996fbe68356af6a"
+    },
+    {
+      "path": "scripts/update_repo.py",
+      "bytes": 7928,
+      "sha256": "4322387e255b5f7f902231bb5b6d9462688dcbd620e8bf26618f78e5500522cd"
+    },
+    {
+      "path": "scripts/update_spec.py",
+      "bytes": 15867,
+      "sha256": "d9be670cdbcd69049b8050fa55a6326065f10beb963dd386972a911446fdbfac"
+    },
+    {
+      "path": "scripts/video_motion_plan.py",
+      "bytes": 23243,
+      "sha256": "169a7b1bd6331e3959a5b17d5601b8f71746a0d369b23b21a6b4ad3369002b66"
+    },
+    {
+      "path": "scripts/video_sound_mix.py",
+      "bytes": 58231,
+      "sha256": "27e55e226d84e729d63edccd2f104dbcd59b87000135489c36a834e002cf60b4"
+    },
+    {
+      "path": "scripts/video_subtitles.py",
+      "bytes": 13630,
+      "sha256": "602b3c22aa76da6191db0d4d538415d4348af1483a2c18bace1fc43044f1ed6c"
+    },
+    {
+      "path": "scripts/visual_review.py",
+      "bytes": 14561,
+      "sha256": "a0f0b8a2960559ac713780f56fdbccd73eed4ed39e842b2cf3677c9c847ed9d5"
+    },
+    {
+      "path": "scripts/visualization_catalog.py",
+      "bytes": 12758,
+      "sha256": "5541602d797d50d0673ab903bddc5fbd174fa898d54161c605cec7d9777be6e0"
+    },
+    {
+      "path": "scripts/visualization_recall.py",
+      "bytes": 14801,
+      "sha256": "61d4c6c587310a3e1e171f86fb0ad94eea2f3af4fb60b84e0b029e58167ef51c"
+    },
+    {
+      "path": "scripts/workflow_log.py",
+      "bytes": 3065,
+      "sha256": "ce5c5d56c33a323554f6bdc92dc40426d7a693841e76232bbbd82ee1a6d62e23"
+    },
+    {
+      "path": "scripts/workflow_transcript.py",
+      "bytes": 12089,
+      "sha256": "1746ee58418e2446534c72af063c68196d2650a08edf966e9fe30134a823ee5f"
+    }
+  ]
+}
