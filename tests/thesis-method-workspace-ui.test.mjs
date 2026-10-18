@@ -1,3 +1,4 @@
+import {workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel} from '../dist/workspace/workspace-job-model.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -17,11 +18,11 @@ async function fixture(t,{view='tasks',params='',jobs:initialJobs=[],results=[],
  w.URL.createObjectURL=blob=>{blobs.push(blob);return 'blob:method-result';};w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=function(){if(this.download)downloads.push(this.download);};
  w.localStorage.setItem('paperknow-drafts','[{"title":"本地论文不应被上传"}]');
  w.download=async(name,content,type)=>{const blob=new w.Blob([content],{type});w.URL.createObjectURL(blob);downloads.push(name);return{message:'已保存到账户云文件并发起下载。'};};
- Object.assign(w,{withStableView,esc,icon,keys:{drafts:'paperknow-drafts'},list:key=>JSON.parse(w.localStorage.getItem(key)||'[]')});
+ Object.assign(w,{workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel,withStableView,esc,icon,keys:{drafts:'paperknow-drafts'},list:key=>JSON.parse(w.localStorage.getItem(key)||'[]')});
  w.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({path,body});let value={};
   if(path==='/api/auth/me')value={user:{id:'owner',name:'论文用户',email:'owner@example.test'}};
   else if(path==='/api/capabilities')value={ai:false,agent:false,thesisMethod:{ready:true}};
-  else if(path==='/api/projects'||path==='/api/files'||path==='/api/workspace/drafts')value={items:[]};
+  else if(path==='/api/projects'||path==='/api/files'||path==='/api/workspace/drafts'||path==='/api/theses')value={items:[]};
   else if(path==='/api/jobs')value={items:jobs};
   else if(/^\/api\/jobs\/[^/]+\/cancel$/.test(path)){const id=path.split('/')[3];jobs=jobs.map(job=>job.id===id?{...job,status:'cancelled'}:job);}
   else if(path==='/api/results')value={items:results};

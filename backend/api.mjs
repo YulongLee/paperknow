@@ -106,6 +106,10 @@ if(method==='POST'&&Object.hasOwn(authRoutes,path)){
   return;
 }
 const user=adminUser||sessionUser(db,req,config.ownerEmail);if(!user)fail(401,'请先登录服务账户');
+// Bind an already-open account view to its owner before any private read or mutation.
+// Cookies can change in another tab while a form or a download is still pending.
+const expectedOwner=req.headers['x-paperknow-user'];
+if(expectedOwner!==undefined&&(typeof expectedOwner!=='string'||expectedOwner!==user.id)){send(409,{error:'登录账户已变化，请刷新页面后重试',code:'ACCOUNT_CHANGED'});return;}
 if(adminRequest){send(200,await admin({path,method,query:requestURL.searchParams,readBody:()=>body(req),user}));return;}
 if(path==='/api/aigc-detections'||path.startsWith('/api/aigc-detections/')){if(method==='POST')rate(req,30);const response=await aigcDetections.handle({path,method,user,readBody:()=>body(req)});if(!response)fail(404,'文本鉴别接口不存在');send(response.status||200,response.value);return;}
 if(path==='/api/web-similarity'||path.startsWith('/api/web-similarity/')){if(method==='POST')rate(req,20);const response=await webSimilarity.handle({path,method,user,query:requestURL.searchParams,readBody:()=>body(req)});if(!response)fail(404,'联网查重接口不存在');send(response.status||200,response.value);return;}
@@ -170,7 +174,13 @@ const action=path.match(/^\/api\/jobs\/([^/]+)\/(cancel|retry)$/);if(action&&met
   }
  });if(action[2]==='cancel')worker.cancel(job.id);send(200,{ok:true});return;
 }
-if(path==='/api/results'&&method==='GET'){send(200,{items:db.prepare('SELECT id,project_id,job_id,type,title,created_at FROM results WHERE user_id=? ORDER BY created_at DESC LIMIT 500').all(user.id)});return;}
+if(path==='/api/results'&&method==='GET'){send(200,{items:db.prepare(`SELECT id,project_id,job_id,type,title,created_at,
+ (SELECT thesis_id FROM thesis_runs WHERE thesis_runs.id=results.job_id AND thesis_runs.user_id=results.user_id) thesis_id,
+ (SELECT kind FROM writing_runs WHERE writing_runs.id=results.job_id AND writing_runs.user_id=results.user_id) writing_kind,
+ (SELECT operation FROM writing_runs WHERE writing_runs.id=results.job_id AND writing_runs.user_id=results.user_id) writing_operation,
+ (SELECT kind FROM tool_runs WHERE tool_runs.id=results.job_id AND tool_runs.user_id=results.user_id) tool_kind,
+ (SELECT operation FROM tool_runs WHERE tool_runs.id=results.job_id AND tool_runs.user_id=results.user_id) tool_operation
+ FROM results WHERE user_id=? ORDER BY created_at DESC LIMIT 500`).all(user.id)});return;}
 const revision=path.match(/^\/api\/results\/([^/]+)\/revisions$/);if(revision){const result=own('results',revision[1],user);if(method==='GET'){send(200,{items:db.prepare('SELECT id,body,created_at FROM result_revisions WHERE result_id=? AND user_id=? ORDER BY created_at DESC').all(result.id,user.id)});return;}const b=await body(req);const id=randomUUID();db.prepare('INSERT INTO result_revisions VALUES(?,?,?,?,?)').run(id,result.id,user.id,(text(b.text,100000),b.text),now());send(201,{id});return;}
 const result=path.match(/^\/api\/results\/([^/]+)$/);if(result&&method==='GET'){const row=own('results',result[1],user);send(200,{item:{...row,body:JSON.parse(row.body)}});return;}
 if(path==='/api/usage'&&method==='GET'){send(200,{items:db.prepare('SELECT * FROM usage WHERE user_id=? ORDER BY created_at DESC LIMIT 100').all(user.id),billingEnabled:billing.rules().services.some(item=>item.mode==='paid'&&item.available),modelBudget:modelBudget.summary(user.id),billing:{...billing.balance(user.id),...billing.entitlements(user.id)}});return;}

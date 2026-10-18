@@ -14,7 +14,7 @@ test('help searches and FAQ filters reserve the current viewport without moving 
   const tab=document.querySelector('[data-help-faq="detection"]');tab.focus({preventScroll:true});tab.click();assert.equal(document.activeElement,tab);assert.equal(document.querySelector('#help-feedback-content').value,'保留正在编辑的反馈');assert.equal(y,1400);assert.equal(scrolls.length,0);assert.equal(m.helpHasWork(),true);
  }finally{m.clearHelpWork();dom.window.close();}
 });
-test('search finds real scope instructions, supports combined keywords, category and empty results',()=>{assert.ok(searchHelp('PDF 扫描').some(a=>a.id==='upload-pdf'));assert.ok(searchHelp('知网').some(a=>a.id==='detection-meaning'));assert.deepEqual(searchHelp('PDF','writing').map(a=>a.id),['revision-boundary']);assert.equal(searchHelp('<img src=x>').length,0);assert.equal(searchHelp('', 'start').length,2);assert.equal(articles.length,16);assert.equal(searchHelp('新手').length,2);assert.match(articles.find(a=>a.id==='detection-meaning').note,/未接入全网/);});
+test('search finds real scope instructions, supports combined keywords, category and empty results',()=>{assert.ok(searchHelp('PDF 扫描').some(a=>a.id==='upload-pdf'));assert.ok(searchHelp('知网').some(a=>a.id==='detection-meaning'));assert.deepEqual(searchHelp('PDF','writing').map(a=>a.id),['revision-boundary']);assert.equal(searchHelp('<img src=x>').length,0);assert.equal(searchHelp('', 'start').length,2);assert.equal(articles.length,16);assert.equal(searchHelp('新手').length,2);assert.match(articles.find(a=>a.id==='detection-meaning').note,/抽样检索.*不覆盖全部互联网/);});
 test('support instructions use current commercial status and preserve old feedback feature names',()=>{
  assert.doesNotMatch(articles.find(a=>a.id==='account-service').note,/支付暂不开放/);
  assert.match(articles.find(a=>a.id==='account-service').note,/服务器确认付款后才发放/);
@@ -39,3 +39,5 @@ test('local help shares email and WeChat support while copy success or failure p
   assert.equal(document.querySelector('#help-feedback-content').value,'仍未保存或发送的问题描述');assert.equal(m.helpHasWork(),true);assert.equal(localStorage.getItem(feedbackKey),null);assert.equal(location.hash,'#help');
  }finally{m.clearHelpWork();dom.window.close();}
 });
+
+test('parseable but invalid feedback drafts are preserved and cannot be replaced by a normalized empty record',async()=>{for(const raw of [[],null,42,{content:42},{content:'x'.repeat(3001)}].map(value=>JSON.stringify(value))){const {dom,ctx}=setup(),m=await import('../dist/workspace/help.mjs');try{localStorage.setItem(feedbackKey,raw);m.mountHelp(ctx);input('#help-feedback-content','新填写但不可覆盖旧数据的描述');document.querySelector('#help-feedback-form').dispatchEvent(new window.Event('submit',{cancelable:true}));assert.equal(localStorage.getItem(feedbackKey),raw);assert.match(document.querySelector('#help-feedback-status').textContent,/停止覆盖/);}finally{m.clearHelpWork();dom.window.close();}}});

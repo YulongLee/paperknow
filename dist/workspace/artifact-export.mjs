@@ -23,25 +23,27 @@ export function artifactExportNotice(message,{error=false,documentObject=globalT
 async function json(response){return response.json().catch(()=>null);}
 async function owner(fetchImpl){const response=await fetchImpl('/api/auth/me',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(60000)});if(response.status===401)return null;const value=await json(response);if(!response.ok||!value||!Object.hasOwn(value,'user'))throw Error('无法确认当前账户，未保存云文件、未发起下载。请稍后重试。');if(value.user===null)return null;if(typeof value.user?.id!=='string'||!value.user.id)throw Error('当前账户状态无法确认，请重新登录后导出。');return value.user.id;}
 export async function artifactBase64(blob){const bytes=new Uint8Array(await blob.arrayBuffer());let binary='';for(let offset=0;offset<bytes.length;offset+=8192)binary+=String.fromCharCode(...bytes.subarray(offset,offset+8192));return btoa(binary);}
-export async function exportGeneratedFile({name,content,type='text/plain;charset=utf-8',sourceType=artifactSourceType(),sourceId='',projectId=''}={},dependencies={}){
+export async function exportGeneratedFile({name,content,type='text/plain;charset=utf-8',sourceType=artifactSourceType(),sourceId='',projectId='',expectedUserId}={},dependencies={}){
  const {fetchImpl=globalThis.fetch,documentObject=globalThis.document,urlAPI=globalThis.URL,notify=artifactExportNotice,setTimeoutImpl=globalThis.setTimeout}=dependencies;
  if(content===undefined||content===null)throw Error('文件内容为空，未保存也未发起下载。');
  const filename=String(name||'研究成果.txt').replace(/[\\/:*?"<>|\u0000-\u001f]/g,'_').slice(0,180),blob=content instanceof Blob?content:new Blob([content],{type});
  if(!blob.size)throw Error('文件内容为空，未保存也未发起下载。');
  if(blob.size>artifactExportLimit)throw Error('导出文件超过 20 MB，请拆分内容后重试；当前内容仍保留。');
  const userId=await owner(fetchImpl);let saved=null,output=blob;
+ if(expectedUserId!==undefined&&userId!==expectedUserId)throw Error('登录账户已变化，已停止导出；请切回原账户后重试。');
  if(userId){
   notify('正在保存到账户云文件，保存成功后开始下载…');
   const payload={name:filename,data:await artifactBase64(blob),sourceType:sourceTypes.has(sourceType)?sourceType:'other',expectedUserId:userId};
   if(sourceId)payload.sourceId=String(sourceId).slice(0,120);if(projectId)payload.projectId=projectId;
-  const response=await fetchImpl('/api/artifacts',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(120000)}),value=await json(response);
+  const response=await fetchImpl('/api/artifacts',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','X-PaperKnow-User':userId},body:JSON.stringify(payload),signal:AbortSignal.timeout(120000)}),value=await json(response);
   if(!response.ok)throw Error((value?.error||'云文件保存失败')+'；未发起下载，当前内容仍保留，请重试。');
   if(typeof value?.item?.id!=='string'||!value.item.id)throw Error('云文件保存结果无法核对，未发起下载。请到“我的成果”核对后重试。');
   saved=value.item;
   if(await owner(fetchImpl)!==userId)throw Error('文件已保存到原账户，但当前登录已变化；已停止下载，请切回原账户后在“我的成果”下载。');
-  const downloadResponse=await fetchImpl('/api/artifacts/'+encodeURIComponent(saved.id)+'/download?expectedUserId='+encodeURIComponent(userId),{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(60000)});
+  const downloadResponse=await fetchImpl('/api/artifacts/'+encodeURIComponent(saved.id)+'/download?expectedUserId='+encodeURIComponent(userId),{credentials:'same-origin',cache:'no-store',headers:{'X-PaperKnow-User':userId},signal:AbortSignal.timeout(60000)});
   if(!downloadResponse.ok){const failure=await json(downloadResponse);throw Error((failure?.error||'云文件下载暂时失败')+'；文件已保存，可在“我的成果”重试下载。');}
   output=await downloadResponse.blob();if(!output.size)throw Error('云文件返回为空；未发起下载，请在“我的成果”核对后重试。');if(Number.isSafeInteger(saved.bytes)&&output.size!==saved.bytes)throw Error('云文件大小与保存记录不一致，已停止下载；请在“我的成果”核对后重试。');
+  if(await owner(fetchImpl)!==userId)throw Error('文件已保存到原账户，但当前登录已变化；已停止下载，请切回原账户后在“我的成果”下载。');
  }
  const url=urlAPI.createObjectURL(output),anchor=documentObject.createElement('a');anchor.href=url;anchor.download=filename;documentObject.body.append(anchor);anchor.click();anchor.remove();setTimeoutImpl(()=>urlAPI.revokeObjectURL(url),10000);
  const message=saved?'已保存到账户云文件并发起下载，可在“我的成果”再次下载。':'已发起本地下载；当前未登录，文件未上传云端。';notify(message);return {saved:!!saved,item:saved,message};

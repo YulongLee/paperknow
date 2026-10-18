@@ -153,3 +153,33 @@ test('a stale feedback refresh cannot erase a newly confirmed submission',async(
  const env=setup(async(_,data)=>{if(data)return {id:item.id,item};if(++reads===2)return new Promise(resolve=>{finishRefresh=resolve;});return {items:reads===1?[]:[item]};});
  try{await renderOnlinePersonal('help',env.ctx);document.querySelector('#feedback').value=item.body;const refreshing=env.click('#feedback-refresh');await Promise.resolve();await Promise.resolve();assert.equal(document.querySelector('#feedback-refresh').disabled,true);const saving=env.submit();await Promise.resolve();await Promise.resolve();assert.match(document.querySelector('#feedback-records').textContent,/新的反馈应当保留/);finishRefresh({items:[]});await Promise.all([refreshing,saving]);assert.match(document.querySelector('#feedback-records').textContent,/新的反馈应当保留/);assert.equal(document.querySelectorAll('.account-feedback-record').length,1);assert.equal(reads,3);}finally{env.dom.window.close();}
 });
+
+test('runtime-backed writing and item quotas remain usable when the legacy generic agent flag is off',async()=>{
+ const quota=key=>({key,title:key,quantity:2,used:0,held:0,remaining:2});
+ const rules=[{key:'literature-read',title:'文献解读',effectiveMode:'paid',effectiveCreditCost:10,available:true},{key:'presentation-thesis',title:'毕业 PPT',effectiveMode:'disabled',available:true}];
+ const env=setup(async path=>path==='/payments/entitlements'?{items:[{order_id:'m',type:'membership',title:'真实会员',starts_at:'2020-01-01',expires_at:'2099-01-01',usage:[quota('agent'),quota('literature-read'),quota('presentation-thesis')]}]}:path==='/capabilities'?{ai:false,agent:false,thesis:{ready:true},tools:{ready:true},billing:{services:[{key:'agent',mode:'paid',available:true}]}}:path==='/payments/options'?{toolBilling:{services:rules}}:{counts:{}},'#membership?scope=account');
+ try{await renderOnlinePersonal('membership',env.ctx);assert.match(env.ctx.target.textContent,/AI 写作与科研工具已开放/);assert.match(env.ctx.target.textContent,/毕业 PPT已暂停/);const links=[...document.querySelectorAll('.member-quota-rows a')].map(node=>node.getAttribute('href'));assert.deepEqual(links,['#category/writing','#category/literature?view=reading']);assert.equal(document.querySelector('a[href*="view=agent"]'),null);assert.equal(document.querySelector('a[href="#literature/reading"]'),null);}finally{env.dom.window.close();}
+});
+
+test('missing token measurements never become a claimed zero consumption total',async()=>{
+ const env=setup(async path=>path==='/usage'?{items:[{input_tokens:null,output_tokens:null,created_at:'2026-10-19'}]}:{usage:{records:1,inputTokens:0,outputTokens:0,unknownRecords:1},storage:{}});
+ try{await renderOnlinePersonal('usage',env.ctx);const metric=[...document.querySelectorAll('.account-personal-metric')].find(node=>node.textContent.includes('Token 用量'));assert.equal(metric.querySelector('h2').textContent,'未知');assert.match(metric.textContent,/不代表实际全部消耗/);assert.deepEqual(onlineUsageSummary([{input_tokens:null,output_tokens:null}]),{records:1,inputTokens:null,outputTokens:null,unknownRecords:1});}finally{env.dom.window.close();}
+});
+
+test('partial known token totals are marked partial while a confirmed empty account may show zero',async()=>{
+ for(const partial of [true,false]){const env=setup(async path=>path==='/usage'?{items:partial?[{input_tokens:25,output_tokens:null}]:[]}:{usage:{records:partial?1:0,inputTokens:partial?25:0,outputTokens:0,unknownRecords:partial?1:0},storage:{}});try{await renderOnlinePersonal('usage',env.ctx);const metric=[...document.querySelectorAll('.account-personal-metric')].find(node=>node.textContent.includes('Token 用量'));assert.equal(metric.querySelector('h2').textContent,partial?'25（已知部分）':'0');}finally{env.dom.window.close();}}
+});
+
+test('credit and task tables keep all records but size their scroll window to the first five measured rows',async()=>{
+ const ledger=Array.from({length:7},(_,i)=>({title:'积分记录 '+i,amount:-10,kind:'settle',createdAt:'2026-10-19'})),reservations=Array.from({length:7},(_,i)=>({title:'任务 '+i,type:'agent',source:'credits',creditCost:10,status:'settled'}));
+ const env=setup(async path=>path==='/payments/entitlements'?{items:[],credits:{balance:100,available:100,held:0,ledger},billing:{reservations}}:path==='/capabilities'?{}:{counts:{}},'#membership?scope=account');let measure,disconnected=false;const disposers=[];
+ try{env.dom.window.ResizeObserver=class{constructor(callback){measure=callback;}observe(){}disconnect(){disconnected=true;}};env.ctx.onDispose=dispose=>disposers.push(dispose);await renderOnlinePersonal('membership',env.ctx);const lists=[...document.querySelectorAll('.member-record-scroll')];assert.equal(lists.length,2);for(const list of lists){const table=list.querySelector('table');assert.equal(table.tBodies[0].rows.length,7);table.getBoundingClientRect=()=>({top:40});table.tBodies[0].rows[4].getBoundingClientRect=()=>({bottom:260});Object.defineProperty(list,'offsetHeight',{value:12});Object.defineProperty(list,'clientHeight',{value:10});assert.equal(list.getAttribute('tabindex'),'0');}measure();for(const list of lists)assert.equal(list.style.maxHeight,'222px');disposers.forEach(dispose=>dispose());assert.equal(disconnected,true);}finally{env.dom.window.close();}
+});
+
+test('malformed local feedback is preserved and reported instead of silently imported as an empty draft',async()=>{
+ for(const raw of ['[]','null','{"content":55}','{"content":"'+('字'.repeat(3001))+'"}']){const env=setup(async()=>({items:[]}),'#help?scope=account&draft=local');try{localStorage.setItem(feedbackKey,raw);await renderOnlinePersonal('help',env.ctx);assert.equal(document.querySelector('#feedback').value,'');assert.match(document.querySelector('#feedback-submit-status').textContent,/草稿暂时无法读取/);assert.equal(localStorage.getItem(feedbackKey),raw);assert.equal(env.remembered(),0);}finally{env.dom.window.close();}}
+});
+
+test('an explicit account-change feedback error is propagated rather than shown as a transient list failure',async()=>{
+ const error=Object.assign(Error('account changed'),{status:409,code:'ACCOUNT_CHANGED'}),env=setup(async()=>{throw error;});try{await assert.rejects(renderOnlinePersonal('help',env.ctx),value=>value.code==='ACCOUNT_CHANGED');assert.equal(document.querySelector('#feedback-form'),null);}finally{env.dom.window.close();}
+});

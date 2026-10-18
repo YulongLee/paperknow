@@ -49,3 +49,10 @@ test('leaving settings during an account export aborts the request without downl
  const {dom,ctx}=settingsEnvironment(),m=await import('../dist/workspace/settings.mjs'),request=globalThis.fetch;let finish,signal;
  try{globalThis.fetch=async(_,options)=>{signal=options.signal;return new Promise(resolve=>{finish=resolve;});};m.mountSettings(ctx,'data');const pending=document.querySelector('#settings-account-export').onclick();assert.equal(m.settingsHasWork(),true);m.clearSettingsWork();assert.equal(signal.aborted,true);finish({ok:true,json:async()=>({})});await pending;assert.equal(m.settingsHasWork(),false);}finally{globalThis.fetch=request;m.clearSettingsWork();dom.window.close();}
 });
+
+test('a replaced settings page ignores late backup-file errors and stale reset confirmations',async()=>{
+ const {dom,ctx}=settingsEnvironment(),m=await import('../dist/workspace/settings.mjs');let finish;
+ try{ctx.modal=(_,html)=>document.querySelector('#workspace-dialog-body').innerHTML=html;m.mountSettings(ctx,'data');const file=document.querySelector('#settings-file');Object.defineProperty(file,'files',{value:[{name:'delayed.json',size:10,text:()=>new Promise((resolve,reject)=>finish=()=>reject(Error('old parse failure')))}]});const pending=file.onchange({target:file});m.mountSettings(ctx,'writing');const field=document.querySelector('#setting-major');field.value='保留新页面输入';field.dispatchEvent(new window.Event('input',{bubbles:true}));const message=document.querySelector('#settings-status').textContent;finish();await pending;assert.equal(document.querySelector('#setting-major').value,'保留新页面输入');assert.equal(document.querySelector('#settings-status').textContent,message);
+ m.mountSettings(ctx);document.querySelector('#settings-reset').click();const oldConfirmation=document.querySelector('#confirm-settings-reset');m.mountSettings(ctx,'writing');document.querySelector('#setting-major').value='新页面未保存专业';oldConfirmation.click();assert.equal(document.querySelector('#setting-major').value,'新页面未保存专业');assert.equal(localStorage.getItem('paperknow-preferences'),null);
+ }finally{m.clearSettingsWork();dom.window.close();}
+});

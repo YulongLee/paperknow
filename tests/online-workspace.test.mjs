@@ -1,3 +1,4 @@
+import {workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel} from '../dist/workspace/workspace-job-model.mjs';
 import {publicDraftCopy} from '../dist/workspace/public-draft.mjs';
 import {withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures} from '../dist/workspace/view-stability.mjs';
 import {membershipPurchaseTiles} from '../dist/workspace/membership-summary.mjs';
@@ -23,20 +24,21 @@ async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params=
  w.localStorage.setItem('paperknow-drafts','[{"title":"本地未上传成果"}]');
  w.download=async(name,content)=>{exportBodies.push(content);downloads.push(name);return {message:'已保存到账户云文件并发起下载。'};};
  const calls=[],navigations=[],downloads=[],notices=[];let saved=[],projects=[{id:'p1',title:'账户研究项目',degree:'本科',major:'教育学',updated_at:now}],files=[{id:'f1',name:'账户原件.txt',bytes:30,project_id:'p1'}],jobs=[{id:'pending',type:'parse',status:'queued',attempt:0,created_at:now},{id:'failed',type:'agent',status:'failed',attempt:1,created_at:now,error:'测试任务失败'}];
- Object.assign(w,{withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,thesisEditorPresentation,restoreThesisEditorText,presentThesisDocument});w.publicDraftCopy=publicDraftCopy;w.membershipPurchaseTiles=membershipPurchaseTiles;w.supportContactsMarkup=supportContactsMarkup;w.bindSupportContacts=bindSupportContacts;w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts'};w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
+ Object.assign(w,{workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,thesisEditorPresentation,restoreThesisEditorText,presentThesisDocument});w.publicDraftCopy=publicDraftCopy;w.membershipPurchaseTiles=membershipPurchaseTiles;w.supportContactsMarkup=supportContactsMarkup;w.bindSupportContacts=bindSupportContacts;w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts'};w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
  w.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({path,body,options});if(request){const custom=await request(path,options);if(custom)return custom;}
   let status=200,value={};
   if(path==='/api/capabilities')value={ai,agent,aiProvider:'test-provider',storage:'local'};
   else if(path==='/api/billing/quote')value={token:'quote-for-'+body.type,type:body.type,title:({polish:'学术润色',review:'导师意见修改',agent:'科研智能助手'})[body.type],source:'free',creditCost:0,expiresAt:new Date(Date.now()+60000).toISOString(),policyVersion:1};
   else if(path==='/api/auth/me'){status=guest?401:200;value=guest?{error:'请登录'}:{user:{id:'u1',name:'测试账户',email:'person@example.invalid'}};}
   else if(path==='/api/projects'){if(body){projects.push({...body,id:'p2',updated_at:now});value={id:'p2'};}else value={items:projects};}
+  else if(/^\/api\/projects\/[^/]+$/.test(path)&&!body){const id=path.split('/').at(-1),item=projects.find(row=>row.id===id);status=item?200:404;value=item?{item,files:files.filter(row=>row.project_id===id),jobs:jobs.filter(row=>row.project_id===id),results:[{id:'r1',type:'polish',title:'账户修改成果',created_at:now}].filter(row=>row.project_id===id),drafts:[],theses:[]}:{error:'记录不存在'};}
   else if(path==='/api/files'){if(body){files.push({...body,id:'f2',bytes:3});value={id:'f2'};}else value={items:files};}
   else if(path==='/api/jobs'){if(body){jobs.push({id:'new',type:body.type,status:'queued',attempt:0,created_at:now});value={id:'new'};}else value={items:jobs};}
   else if(/^\/api\/jobs\/.+\/(cancel|retry)$/.test(path)){const [,id,action]=path.match(/\/jobs\/([^/]+)\/([^/]+)$/);jobs=jobs.map(job=>job.id===id?{...job,status:action==='cancel'?'cancelled':'queued'}:job);}
   else if(path==='/api/results')value={items:[{id:'r1',type:'polish',title:'账户修改成果',created_at:now}]};
   else if(path==='/api/results/r1')value={item:{id:'r1',type:'polish',title:'账户修改成果',body:{original:'真实原文',suggestion:'原始建议',model:'test-model'}}};
   else if(path==='/api/results/r1/revisions'){if(body){saved.unshift({id:'v'+saved.length,body:body.text,created_at:now});value={id:'v1'};}else value={items:saved};}
-  else if(path==='/api/workspace/drafts')value={items:[]};
+  else if(path==='/api/workspace/drafts'||path==='/api/theses')value={items:[]};
   else if(path==='/api/workspace/summary')value={counts:{projects:projects.length,files:files.length,drafts:0,results:1},storage:{},usage:{records:1,inputTokens:12,outputTokens:0}};
   else if(path==='/api/usage')value={items:[{model:'test-model',input_tokens:12,output_tokens:null,created_at:now}]};
   else if(path==='/api/feedback')value={items:[{body:'此前已保存反馈',created_at:now}]};
@@ -297,7 +299,7 @@ test('result management preserves unsaved edits when changing panels or deleting
 
 test('account project scope keeps original files, result counts and task metrics aligned to that project',async t=>{
  const projects=[{id:'p1',title:'当前研究',status:'active',stage:'detection',version:1},{id:'p2',title:'其他研究',status:'active',version:1}],files=[{id:'f1',name:'当前原件.txt',project_id:'p1',bytes:5,sha256:'a'.repeat(64)},{id:'f2',name:'其他原件.txt',project_id:'p2',bytes:7,sha256:'b'.repeat(64)}],jobs=[{id:'j1',type:'parse',project_id:'p1',status:'queued',attempt:1,created_at:now},{id:'j2',type:'parse',project_id:'p2',status:'queued',attempt:1,created_at:now}],results=[{id:'r1',type:'parse',title:'当前成果',project_id:'p1',created_at:now},{id:'r2',type:'parse',title:'其他成果',project_id:'p2',created_at:now}];
- const request=async(path,options)=>!options.body&&({'/api/projects':projects,'/api/files':files,'/api/jobs':jobs,'/api/results':results}[path])?{ok:true,status:200,json:async()=>({items:({'/api/projects':projects,'/api/files':files,'/api/jobs':jobs,'/api/results':results}[path])})}:undefined;
+ const request=async(path,options)=>path==='/api/projects/p1'?{ok:true,status:200,json:async()=>({item:projects[0],files:files.filter(row=>row.project_id==='p1'),jobs:jobs.filter(row=>row.project_id==='p1'),results:results.filter(row=>row.project_id==='p1'),drafts:[],theses:[]})}:!options.body&&({'/api/projects':projects,'/api/files':files,'/api/jobs':jobs,'/api/results':results}[path])?{ok:true,status:200,json:async()=>({items:({'/api/projects':projects,'/api/files':files,'/api/jobs':jobs,'/api/results':results}[path])})}:undefined;
  const f=await fixture(t,{params:'project=p1',request});assert.match(f.doc.querySelector('.account-originals').textContent,/当前原件/);assert.doesNotMatch(f.doc.querySelector('.account-originals').textContent,/其他原件/);assert.equal(f.doc.querySelector('[data-management-stat="已保存原件"]').textContent,'1');assert.match(f.doc.querySelector('.account-project-card').textContent,/检测/);
  await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'tasks',f.ctx,new f.w.URLSearchParams('project=p1'));assert.equal(f.doc.querySelector('[data-management-stat="处理中 / 排队"]').textContent,'1');assert.equal(f.doc.querySelectorAll('.account-job-row').length,1);
  await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'results',f.ctx,new f.w.URLSearchParams('project=p1'));assert.equal(f.doc.querySelector('[data-management-stat="处理成果"]').textContent,'1');assert.match(f.doc.querySelector('.management-assets-search').textContent,/1 份内容/);assert.doesNotMatch(f.doc.querySelector('.management-result-rows').textContent,/其他成果/);
@@ -386,4 +388,51 @@ test('web similarity tasks return to their owned report and never offer generic 
  const request=async(path,options={})=>{if(path==='/api/jobs')return {ok:true,status:200,json:async()=>({items:[job]})};if(path==='/api/results')return {ok:true,status:200,json:async()=>({items:[{id:'web-result-1',type:'web_similarity',title:'公开来源核对',created_at:now}]})};if(path==='/api/results/web-result-1')return {ok:true,status:200,json:async()=>({item:{id:'web-result-1',job_id:'web-1',type:'web_similarity',title:'公开来源核对',body:{webSimilarityId:'web-1',characters:120,ratio:0,scope:'public-web-sources'}}})};return null;};
  const f=await fixture(t,{view:'tasks',request});assert.match(f.doc.querySelector('#job-list').textContent,/联网来源查重/);assert.ok([...f.doc.querySelectorAll('a')].some(a=>a.getAttribute('href')==='#category/detection?view=web&report=web-1'));assert.equal(f.doc.querySelector('[data-action="retry"]'),null);
  await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'results',f.ctx,new f.w.URLSearchParams('result=web-result-1'));const detail=f.doc.querySelector('#result-detail');assert.match(detail.textContent,/仅展示本次任务摘要/);assert.match(detail.textContent,/不等于不存在重复/);assert.equal(detail.querySelector('#revision-text'),null);assert.equal(detail.querySelector('#export-result').hidden,true);assert.ok([...detail.querySelectorAll('a')].some(a=>a.getAttribute('href')==='#category/detection?view=web&report=web-1'));assert.equal(f.calls.some(call=>call.path.includes('web-result-1/revisions')),false);
+});
+
+test('account project detail loads its own older task and result window and preserves preparing tasks during polling',async t=>{
+ const project={id:'p1',title:'历史研究',version:0,status:'active',counts:{files:0,drafts:0,theses:0,jobs:1,results:1}},job={id:'old-web-job',type:'web_similarity',project_id:'p1',status:'preparing',attempt:0,created_at:now},result={id:'old-report',type:'web_similarity',project_id:'p1',title:'历史来源比对',created_at:now};
+ const request=async(path,options)=>{if(options.body)return;const value=path==='/api/projects'?{items:[project]}:path==='/api/jobs'||path==='/api/results'?{items:[]}:path==='/api/projects/p1'?{item:project,files:[],drafts:[],theses:[],jobs:[job],results:[result]}:null;if(value)return{ok:true,status:200,json:async()=>value};};
+ const f=await fixture(t,{view:'tasks',params:'project=p1',pollTimers:true,request});
+ assert.match(f.doc.querySelector('#job-list').textContent,/联网来源查重/);assert.match(f.doc.querySelector('.tag.preparing').textContent,/保存中/);assert.equal(f.doc.querySelector('[data-management-stat="处理中 / 排队"]').textContent,'1');
+ await f.scheduledPolls[0]();assert.ok([...f.doc.querySelectorAll('#job-list a')].some(a=>a.getAttribute('href')==='#category/detection?view=web&report=old-web-job'));
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'results',f.ctx,new f.w.URLSearchParams('project=p1'));
+ assert.match(f.doc.querySelector('.management-result-rows').textContent,/历史来源比对/);
+});
+
+test('account thesis drafts and in-progress documents remain accessible independently of completed results',async t=>{
+ const theses=[{id:'working-thesis',title:'分章节研究论文',projectId:'p1',status:'running',updatedAt:now},{id:'draft-thesis',title:'待完善的账户论文',projectId:null,status:'draft',updatedAt:now}];
+ const f=await fixture(t,{view:'results',request:async path=>path==='/api/theses'?{ok:true,status:200,json:async()=>({items:theses})}:undefined});
+ assert.equal(f.doc.querySelectorAll('.account-thesis-library a[href^="#thesis/"]').length,2);
+ assert.match(f.doc.querySelector('a[href="#thesis/working-thesis"]').textContent,/查看生成进度/);
+ assert.match(f.doc.querySelector('a[href="#thesis/draft-thesis"]').textContent,/继续编辑/);
+ assert.equal(f.calls.some(call=>call.body),false);
+});
+
+test('account-bound workspace requests stop stale account mutations and preserve unrelated version conflicts',async t=>{
+ let changed=false;
+ const f=await fixture(t,{request:async(path,options)=>{if(path==='/api/projects'&&options.body&&changed)return{ok:false,status:409,json:async()=>({error:'登录账户已变化',code:'ACCOUNT_CHANGED'})};}});
+ input(f,'#project-title','旧账户未提交项目');changed=true;submit(f,'#project-form');await settle(()=>f.doc.querySelector('#account-session-refresh'));
+ const create=f.calls.find(call=>call.path==='/api/projects'&&call.body);assert.equal(create.options.headers['X-PaperKnow-User'],'u1');
+ assert.equal(f.doc.querySelector('#project-title'),null);assert.match(f.doc.querySelector('#online').textContent,/登录账户已变化/);await new Promise(resolve=>setTimeout(resolve,10));assert.equal(f.calls.filter(call=>call.path==='/api/auth/me').length,1);
+ const same=await fixture(t,{request:async(path,options)=>path==='/api/projects'&&options.body?{ok:false,status:409,json:async()=>({error:'版本已变化'})}:undefined});
+ input(same,'#project-title','需要保留的当前账户输入');submit(same,'#project-form');await settle(()=>same.notices.includes('版本已变化'));
+ assert.equal(same.doc.querySelector('#project-title').value,'需要保留的当前账户输入');assert.equal(same.calls.filter(call=>call.path==='/api/auth/me').length,1);
+});
+
+test('a stale cached workspace session cannot trigger an automatic ACCOUNT_CHANGED remount loop',async t=>{
+ const f=await fixture(t);let sessionReads=0,privateReads=0;
+ f.w.fetch=async(path)=>{if(path==='/api/capabilities')return{ok:true,status:200,json:async()=>({ai:false})};privateReads++;return{ok:false,status:409,json:async()=>({error:'当前账户已变化',code:'ACCOUNT_CHANGED'})};};
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'projects',{...f.ctx,session:async()=>{sessionReads++;return{user:{id:'stale-owner'}};}});
+ await new Promise(resolve=>setTimeout(resolve,20));
+ assert.equal(sessionReads,1);assert.ok(privateReads>0&&privateReads<=6);assert.ok(f.doc.querySelector('#account-session-refresh'));assert.equal(f.doc.querySelector('.account-project-card'),null);
+ const readsAfterStop=privateReads;await new Promise(resolve=>setTimeout(resolve,20));assert.equal(privateReads,readsAfterStop,'only an explicit full-page refresh can establish the new owner');
+});
+
+test('unavailable legacy agent does not expose a dead creation shortcut while its saved task history stays visible',async t=>{
+ const f=await fixture(t,{view:'tasks',ai:true,agent:false}),navigation=f.doc.querySelector('.account-task-modes');
+ assert.equal([...navigation.querySelectorAll('a')].some(a=>a.getAttribute('href')==='#tasks?scope=account&view=agent'),false);
+ assert.equal(navigation.querySelector('a[href="#category/writing"]').textContent.trim(),'AI 写作');
+ assert.match(f.doc.querySelector('#job-list').textContent,/科研智能助手/);assert.ok(f.doc.querySelector('[data-job="failed"][data-action="retry"]').disabled);
+ assert.equal(f.calls.some(call=>call.body),false);
 });

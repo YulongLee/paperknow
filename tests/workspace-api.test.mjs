@@ -128,8 +128,8 @@ test('account summary counts persisted records and model usage without mixing lo
  const f=await fixture(t),p=await f.project();await f.request('/projects/'+p.id,{version:0,status:'archived'});await f.save({projectId:p.id});await f.request('/files',{name:'内容.txt',projectId:p.id,data:Buffer.from('账户正文').toString('base64')});
  const at=new Date().toISOString();f.db.prepare('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)').run('use-1','alice',null,'fixture','test-model',12,7,0,at);
  f.db.prepare('INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run('job-1','alice','parse','completed','completed','{}','summary','hash',at,at);
- const response=await f.request('/workspace/summary');assert.equal(response.status,200);assert.deepEqual(response.value.counts,{projects:1,activeProjects:0,archivedProjects:1,files:1,drafts:1,results:0,jobs:1,queuedJobs:0,runningJobs:0,completedJobs:1,failedJobs:0,cancelledJobs:0});
- assert.equal(response.value.storage.fileBytes,Buffer.byteLength('账户正文'));assert.ok(response.value.storage.draftBytes>0);assert.deepEqual(response.value.usage,{records:1,inputTokens:12,outputTokens:7,billableRecords:0,billingEnabled:false});
+ const response=await f.request('/workspace/summary');assert.equal(response.status,200);assert.deepEqual(response.value.counts,{projects:1,activeProjects:0,archivedProjects:1,files:1,drafts:1,results:0,jobs:1,queuedJobs:0,preparingJobs:0,runningJobs:0,completedJobs:1,failedJobs:0,cancelledJobs:0});
+ assert.equal(response.value.storage.fileBytes,Buffer.byteLength('账户正文'));assert.ok(response.value.storage.draftBytes>0);assert.deepEqual(response.value.usage,{records:1,inputTokens:12,outputTokens:7,billableRecords:0,unknownUsageRecords:0,knownUsageRecords:1,unknownRecords:0,usageIncomplete:false,billingEnabled:false});
  const other=(await f.request('/workspace/summary',undefined,f.users.bob)).value;assert.equal(other.counts.projects,0);assert.equal(other.storage.fileBytes,0);assert.equal(other.usage.records,0);
 });
 
@@ -194,4 +194,39 @@ test('feedback limits a daily burst rather than permanently locking out long-sta
 
 test('account archive download is rate limited independently for each signed-in account',async t=>{
  const f=await fixture(t);for(let i=0;i<5;i++)assert.equal((await f.request('/account/export')).status,200);assert.equal((await f.request('/account/export')).status,429);assert.equal((await f.request('/account/export',undefined,f.users.bob)).status,200);assert.equal((await f.request('/account/profile')).status,200);
+});
+
+test('project-owned counts and detail remain complete when newer work fills the account recent-list window',async t=>{
+ const f=await fixture(t),project=await f.project('旧研究项目'),other=await f.project('其他近期研究'),old='2020-01-01T00:00:00.000Z',recent=new Date().toISOString();
+ const addJob=(id,pid,date)=>f.db.prepare('INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,'alice',pid,'web_similarity','completed','completed','{}',id,'hash',date,date);
+ addJob('old-project-job',project.id,old);for(let n=0;n<105;n++)addJob('new-project-job-'+n,other.id,recent);
+ f.db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run('old-project-result','alice',project.id,'old-project-job','web_similarity','旧项目报告','{}',old);
+ for(let n=0;n<505;n++)f.db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run('new-project-result-'+n,'alice',other.id,null,'parse','近期内容','{}',recent);
+ const listed=(await f.request('/projects')).value.items.find(row=>row.id===project.id);assert.equal(listed.counts.jobs,1);assert.equal(listed.counts.results,1);
+ assert.equal((await f.request('/jobs')).value.items.some(row=>row.id==='old-project-job'),false);assert.equal((await f.request('/results')).value.items.some(row=>row.id==='old-project-result'),false);
+ const detail=(await f.request('/projects/'+project.id)).value;assert.equal(detail.jobs[0].id,'old-project-job');assert.equal(detail.results[0].id,'old-project-result');assert.equal(detail.item.counts.jobs,1);assert.equal(detail.jobs[0].input,undefined);
+ assert.equal((await f.request('/projects/'+project.id,undefined,f.users.bob)).status,404);
+});
+
+test('workspace summary does not turn unknown usage into zero and counts saving tasks as pending',async t=>{
+ const f=await fixture(t),stamp=new Date().toISOString();
+ f.db.prepare('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)').run('known-usage','alice',null,'fixture','fixture',12,0,0,stamp);
+ f.db.prepare('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)').run('unknown-usage','alice',null,'fixture','fixture',null,null,0,stamp);
+ f.db.prepare('INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run('saving-web','alice','web_similarity','preparing','saving_input','{}','saving-web','hash',stamp,stamp);
+ const value=(await f.request('/workspace/summary')).value;
+ assert.equal(value.usage.inputTokens,null);assert.equal(value.usage.outputTokens,null);assert.equal(value.usage.unknownUsageRecords,1);assert.equal(value.usage.knownUsageRecords,1);assert.equal(value.usage.unknownRecords,1);assert.equal(value.usage.usageIncomplete,true);
+ assert.equal(value.counts.preparingJobs,1);assert.equal(value.counts.queuedJobs,1);
+});
+
+test('account archive includes owned AI and web checking records without upstream request identifiers',async t=>{
+ const f=await fixture(t),stamp=new Date().toISOString();
+ for(const user of ['alice','bob']){
+  f.db.prepare("INSERT INTO aigc_detections(id,user_id,input_hash,status,characters,part_count,reserved_calls,reserved_billing_units,parts,request_ids,created_at,updated_at) VALUES(?,?,?,'completed',40,1,1,1,?,?,?,?)").run('aigc-'+user,user,'hash-'+user,JSON.stringify([{index:0,start:0,end:40,label:'ugc',confidence:90}]),'["upstream-secret-id"]',stamp,stamp);
+  f.db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,'web_similarity','completed','completed','{}',?,?,?,?)").run('web-'+user,user,'key-'+user,'hash-'+user,stamp,stamp);
+  f.db.prepare('INSERT INTO web_similarity_runs(id,user_id,title,characters,queries_reserved,coverage,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run('web-'+user,user,'自有公开来源报告',40,1,'{"fetchedSources":1}',stamp,stamp);
+ }
+ const archive=(await f.request('/account/export')).value;
+ assert.deepEqual(archive.aigcDetections.map(row=>row.id),['aigc-alice']);assert.equal(archive.aigcDetections[0].parts[0].label,'ugc');
+ assert.deepEqual(archive.webSimilarityRuns.map(row=>row.id),['web-alice']);assert.equal(archive.webSimilarityRuns[0].coverage.fetchedSources,1);
+ assert.doesNotMatch(JSON.stringify(archive),/aigc-bob|web-bob|upstream-secret-id/);
 });

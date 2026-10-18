@@ -1,11 +1,11 @@
 import {withStableView} from './view-stability.mjs';
 import {membershipPurchaseTiles} from './membership-summary.mjs';
-import {feedbackKey,normalizeFeedback} from './help-model.mjs';
+import {feedbackKey,parseFeedbackDraft} from './help-model.mjs';
 import {supportContactsMarkup,bindSupportContacts} from './support-contacts.mjs';
 const statuses={open:'待处理',processing:'处理中',resolved:'已处理'};
 const usageNumber=value=>Number.isSafeInteger(value)&&value>=0?value.toLocaleString('zh-CN'):'未知';
 export function onlineUsageSummary(items=[]){
- const sum=key=>items.reduce((total,item)=>total+(Number.isSafeInteger(item[key])&&item[key]>=0?item[key]:0),0);
+ const sum=key=>{const values=items.map(item=>item[key]).filter(value=>Number.isSafeInteger(value)&&value>=0);return items.length&&!values.length?null:values.reduce((total,value)=>total+value,0);};
  return {records:items.length,inputTokens:sum('input_tokens'),outputTokens:sum('output_tokens'),unknownRecords:items.filter(item=>!Number.isSafeInteger(item.input_tokens)||item.input_tokens<0||!Number.isSafeInteger(item.output_tokens)||item.output_tokens<0).length};
 }
 export function publicFeedbackStatus(value){return statuses[value]||statuses.open;}
@@ -26,18 +26,29 @@ function sizeMemberRecordLists(target,onDispose){
  if(win.ResizeObserver){const observer=new win.ResizeObserver(resize);for(const list of lists)observer.observe(list.querySelector('table'));onDispose(()=>observer.disconnect());}
  else{win.addEventListener('resize',resize);onDispose(()=>win.removeEventListener('resize',resize));}
 }
-function personalServiceState(cap,key){
- const configured=cap.ai===true&&(key!=='agent'||cap.agent===true),rules=cap.billing?.services;
+const serviceRoutes={
+ polish:'#tasks?scope=account&type=polish',review:'#tasks?scope=account&type=review',
+ 'literature-read':'#category/literature?view=reading','literature-answer':'#category/literature?view=reading','literature-translate':'#category/literature?view=translation',
+ 'revision-reduce':'#category/reduce','revision-aigc':'#category/aigc','revision-dual':'#category/reduce',
+ 'presentation-ai':'#tool/ppt','presentation-proposal':'#tool/ppt?mode=proposal','presentation-thesis':'#tool/ppt?mode=thesis',
+ 'research-chart':'#category/research','research-diagram':'#category/research','research-formula':'#category/research','format-advice':'#category/format'
+};
+const runtimeReady=cap=>cap.thesis?.ready===true||cap.writing?.ready===true||cap.tools?.ready===true;
+export function personalServiceState(cap,key){
+ if(key==='agent'&&runtimeReady(cap)&&Array.isArray(cap.toolBilling?.services)&&cap.toolBilling.services.some(item=>personalServiceState(cap,item.key).ready))return {ready:true,label:'已开放'};
+ const child=Object.hasOwn(serviceRoutes,key)&&!['polish','review'].includes(key);
+ const configured=child?cap.tools?.ready===true:key==='agent'?(runtimeReady(cap)||cap.ai===true&&cap.agent===true):cap.ai===true;
+ const rules=child?cap.toolBilling?.services:cap.billing?.services;
  if(!Array.isArray(rules))return {ready:configured,label:configured?'已开放':'未配置'};
- const rule=rules.find(item=>item?.key===key);
- if(rule?.mode==='disabled')return {ready:false,label:'已暂停'};
- const ready=configured&&['free','paid'].includes(rule?.mode)&&rule.available===true;
+ const rule=rules.find(item=>item?.key===key),mode=rule?.effectiveMode??rule?.mode;
+ if(mode==='disabled')return {ready:false,label:'已暂停'};
+ const ready=configured&&['free','paid'].includes(mode)&&rule.available===true;
  return {ready,label:ready?'已开放':'待配置'};
 }
-const taskLink=key=>key==='agent'?'#tasks?scope=account&view=agent':['polish','review'].includes(key)?'#tasks?scope=account&type='+encodeURIComponent(key):'';
+const taskLink=(key,cap={})=>key==='agent'?(runtimeReady(cap)?'#category/writing':cap.agent===true?'#tasks?scope=account&view=agent':''):serviceRoutes[key]||'';
 function quotaRows(items,esc,{usable=true,cap={}}={}){
  const rows=Array.isArray(items)?items:[];
- return rows.length?`<ul class="member-quota-rows">${rows.map(item=>`<li><span>${esc(item?.title||'服务项目')}</span><span>包含 ${countValue(item?.quantity)} 次 · 已用 ${countValue(item?.used)} · 预占 ${countValue(item?.held)} · 剩余 ${countValue(item?.remaining)}</span>${usable&&personalServiceState(cap,item?.key).ready&&Number.isSafeInteger(item?.remaining)&&item.remaining>0&&taskLink(item?.key)?`<a href="${taskLink(item.key)}">使用服务 →</a>`:''}</li>`).join('')}</ul>`:'<p class="muted">次数使用记录暂不可用，请稍后刷新核对。</p>';
+ return rows.length?`<ul class="member-quota-rows">${rows.map(item=>`<li><span>${esc(item?.title||'服务项目')}</span><span>包含 ${countValue(item?.quantity)} 次 · 已用 ${countValue(item?.used)} · 预占 ${countValue(item?.held)} · 剩余 ${countValue(item?.remaining)}</span>${usable&&personalServiceState(cap,item?.key).ready&&Number.isSafeInteger(item?.remaining)&&item.remaining>0&&taskLink(item?.key,cap)?`<a href="${taskLink(item.key,cap)}">使用服务 →</a>`:''}</li>`).join('')}</ul>`:'<p class="muted">次数使用记录暂不可用，请稍后刷新核对。</p>';
 }
 function billingActivity(billing,esc,date){
  const rows=Array.isArray(billing?.reservations)?billing.reservations:[];
@@ -64,20 +75,23 @@ export async function renderOnlinePersonal(view,ctx){
  const heading=(title,text,actions='')=>`<div class="account-personal-heading"><div><h2>${title}</h2><p class="muted">${text}</p></div>${actions?`<div class="actions">${actions}</div>`:''}</div>`;
  if(view==='usage'){
   const [data,summary]=await Promise.all([api('/usage'),api('/workspace/summary')]);
-  const rows=Array.isArray(data.items)?data.items:[],known=onlineUsageSummary(rows),usage=summary.usage||{},storage=summary.storage||{};
+  const rows=Array.isArray(data.items)?data.items:[],known=onlineUsageSummary(rows),usage=summary.usage||{},storage=summary.storage||{},incomplete=usage.usageIncomplete===true||usage.unknownRecords>0||known.unknownRecords>0||!Number.isSafeInteger(usage.unknownRecords)&&usage.records>rows.length;
+  const tokenTotal=Number.isSafeInteger(usage.inputTokens)&&Number.isSafeInteger(usage.outputTokens)?usage.inputTokens+usage.outputTokens:null;
+  const tokenValue=incomplete?(tokenTotal>0?number(tokenTotal)+'（已知部分）':'未知'):number(tokenTotal);
   withStableView(target.closest('.dashboard')||target,()=>{target.innerHTML=heading('用量概况','来自当前登录账户的服务记录；本地草稿和材料比对不计入 AI 服务用量。','<a href="#membership?scope=account">账户服务与权益 →</a>')+
-   `<div class="grid account-personal-metrics">${metric('成功 AI 服务调用',number(usage.records),'账户累计记录')}${metric('已知 Token 合计',number(Number.isSafeInteger(usage.inputTokens)&&Number.isSafeInteger(usage.outputTokens)?usage.inputTokens+usage.outputTokens:null),`输入 ${number(usage.inputTokens)} · 输出 ${number(usage.outputTokens)}`)}${metric('原件存储',size(storage.fileBytes),`上限 ${size(storage.maxAccountFileBytes)}`)}${metric('账户草稿存储',size(storage.draftBytes),`上限 ${size(storage.maxAccountDraftBytes)}`)}</div>`+
-   `<section class="card personal-detail-card"><h2>AI 服务调用明细</h2><p class="muted">显示最近 ${rows.length} 条记录，最多 100 条。${known.unknownRecords?`${known.unknownRecords} 条记录未提供完整 Token 数。`:''}${data.billingEnabled?'账户 AI 任务已启用费用核验。':'当前未启用积分扣减。'}Token 用量不直接等于积分费用；本次费用以提交前报价及任务结算记录为准。</p><div class="account-personal-table"><table><thead><tr><th>服务</th><th>输入 Token</th><th>输出 Token</th><th>调用时间</th></tr></thead><tbody>${rows.map(row=>`<tr><td>AI 服务</td><td>${number(row.input_tokens)}</td><td>${number(row.output_tokens)}</td><td>${date(row.created_at)}</td></tr>`).join('')||'<tr><td colspan="4"><div class="account-empty"><b>还没有 AI 服务使用记录</b><p>成功调用并返回用量后，会在这里记录；保存草稿不会产生 Token 消耗。</p><a href="#tasks?scope=account">查看账户任务 →</a></div></td></tr>'}</tbody></table></div></section>`+billingActivity(data.billing,esc,date);sizeMemberRecordLists(target,ctx.onDispose);});
+   `<div class="grid account-personal-metrics">${metric('AI 服务用量记录',number(usage.records),'账户累计记录')}${metric('Token 用量',tokenValue,`输入 ${number(usage.inputTokens)} · 输出 ${number(usage.outputTokens)}${incomplete?'；部分调用未返回完整用量，合计不代表实际全部消耗':''}`)}${metric('原件存储',size(storage.fileBytes),`上限 ${size(storage.maxAccountFileBytes)}`)}${metric('账户草稿存储',size(storage.draftBytes),`普通草稿上限 ${size(storage.maxAccountDraftBytes)}；不含论文章节历史与生成云文件`)}</div>`+
+   `<section class="card personal-detail-card"><h2>AI 服务调用明细</h2><p class="muted">显示最近 ${rows.length} 条记录，最多 100 条。${known.unknownRecords?`${known.unknownRecords} 条记录未提供完整 Token 数。`:''}${data.billingEnabled?'账户 AI 任务已启用费用核验。':'当前未启用积分扣减。'}Token 用量不直接等于积分费用；本次费用以提交前报价及任务结算记录为准。</p><div class="account-personal-table"><table><thead><tr><th>服务</th><th>输入 Token</th><th>输出 Token</th><th>调用时间</th></tr></thead><tbody>${rows.map(row=>`<tr><td>AI 服务</td><td>${number(row.input_tokens)}</td><td>${number(row.output_tokens)}</td><td>${esc(date(row.created_at))}</td></tr>`).join('')||'<tr><td colspan="4"><div class="account-empty"><b>还没有 AI 服务使用记录</b><p>服务用量会在这里记录；未返回完整用量的项目单独标注，保存草稿不会产生 Token 消耗。</p><a href="#tasks?scope=account">查看账户任务 →</a></div></td></tr>'}</tbody></table></div></section>`+billingActivity(data.billing,esc,date);sizeMemberRecordLists(target,ctx.onDispose);});
   return true;
  }
  if(view==='membership'){
-  const [entitlements,summary,cap]=await Promise.all([api('/payments/entitlements'),api('/workspace/summary'),api('/capabilities')]);
+  const [entitlements,summary,cap,options]=await Promise.all([api('/payments/entitlements'),api('/workspace/summary'),api('/capabilities'),api('/payments/options').catch(error=>{if(error.status===401||error.code==='ACCOUNT_CHANGED'||error.name==='AbortError')throw error;return null;})]);
+  cap.toolBilling=options?.toolBilling||cap.toolBilling||{services:[]};
   const billing=entitlements.billing||{},counts=summary.counts||{},items=Array.isArray(entitlements.items)?entitlements.items.filter(item=>item&&(item.type||item.entitlementType)==='membership'):[],bundles=Array.isArray(entitlements.bundles)?entitlements.bundles:[];
   withStableView(target.closest('.dashboard')||target,()=>{target.innerHTML=heading('我的权益与用量','会员、科研积分与已购套餐分别记录，按你的研究节奏选择。','<a href="#account?view=usage">查看真实用量 →</a>')+membershipPurchaseTiles({account:true,credits:entitlements.credits,items,bundles})+
-   `<div class="grid account-personal-metrics">${metric('账户项目',number(counts.projects),'独立于浏览器本地项目')}${metric('账户草稿',number(counts.drafts),'已保存的可编辑内容')}${metric('处理成果',number(counts.results),'真实任务产出的记录')}${metric('上传原件',number(counts.files),'仅你主动上传的文件')}</div><div class="grid personal-service-columns"><section class="card personal-detail-card"><h2>当前可用服务</h2><div class="row"><span>账户项目、草稿与原件</span><span class="tag completed">已开放</span></div><div class="row"><span>正文解析与自备材料比对</span><span class="tag completed">已开放</span></div>${[['polish','学术润色'],['review','导师意见修改'],['agent','科研智能助手']].map(([key,title])=>`<div class="row"><span>${title}</span><span class="tag">${personalServiceState(cap,key).label}</span></div>`).join('')}<p class="muted">本地草稿不会自动上传。在线服务仅在提交相应任务后处理选定材料；各论文工具的能力以对应页面为准。</p><div class="actions"><a href="#projects?scope=account">管理账户内容 →</a><a href="#tasks?scope=account">查看任务 →</a></div></section><section class="card personal-detail-card"><h2>会员权益记录</h2><p class="muted">配额为每笔订单有效期内的总次数，不按月自动重置。</p>${items.length?items.map(item=>`<article class="account-entitlement"><div class="row"><b>${esc(item.title)}</b><span class="tag">${Date.parse(item.expires_at)>Date.now()?(Date.parse(item.starts_at)>Date.now()?'待生效':'有效'):'已到期'}</span></div><p>${esc(item.description||'')}</p><small class="muted">生效：${date(item.starts_at)}<br>到期：${date(item.expires_at)}</small>${quotaRows(item.usage||billing.membershipUsage?.[item.order_id]||item.membershipItems,esc,{usable:Date.parse(item.starts_at)<=Date.now()&&Date.parse(item.expires_at)>Date.now(),cap})}</article>`).join(''):'<div class="account-empty"><b>暂无已生效的会员权益</b><p>现有免费功能可以继续使用，不显示模拟余额或虚构额度。</p></div>'}<a href="#help?scope=account">联系支持与反馈 →</a></section></div>${purchasedBundleRecords(bundles,esc,date,billing,cap)}${creditLedger(entitlements.credits,esc,date)}${billingActivity(billing,esc,date)}<section class="card personal-storage-note"><h2>${icon('shield',20)} 资料保存说明</h2><p class="muted">本地备份只包含当前浏览器保存的记录，不覆盖或恢复账户内容。重要原件与账户成果请分别下载保管。</p><div class="actions"><a href="#membership?scope=local">查看本地保存统计 →</a><a href="#settings/data">本地数据与备份 →</a></div></section>`;sizeMemberRecordLists(target,ctx.onDispose);});
+   `<div class="grid account-personal-metrics">${metric('账户项目',number(counts.projects),'独立于浏览器本地项目')}${metric('账户草稿',number(counts.drafts),'已保存的可编辑内容')}${metric('处理成果',number(counts.results),'真实任务产出的记录')}${metric('上传原件',number(counts.files),'仅你主动上传的文件')}</div><div class="grid personal-service-columns"><section class="card personal-detail-card"><h2>当前可用服务</h2><div class="row"><span>账户项目、草稿与原件</span><span class="tag completed">已开放</span></div><div class="row"><span>正文解析与自备材料比对</span><span class="tag completed">已开放</span></div>${[['polish','学术润色'],['review','导师意见修改'],['agent',runtimeReady(cap)?'AI 写作与科研工具':'科研智能助手']].map(([key,title])=>`<div class="row"><span>${title}</span><span class="tag">${personalServiceState(cap,key).label}</span></div>`).join('')}${Array.isArray(cap.toolBilling?.services)?`<details><summary>查看分项工具服务状态</summary>${cap.toolBilling.services.map(item=>`<div class="row"><span>${esc(item.title||'工具服务')}</span><span class="tag">${personalServiceState(cap,item.key).label}</span></div>`).join('')}</details>`:''}<p class="muted">本地草稿不会自动上传。在线服务仅在提交相应任务后处理选定材料；各论文工具的能力以对应页面为准。</p><div class="actions"><a href="#projects?scope=account">管理账户内容 →</a><a href="#tasks?scope=account">查看任务 →</a></div></section><section class="card personal-detail-card"><h2>会员权益记录</h2><p class="muted">配额为每笔订单有效期内的总次数，不按月自动重置。</p>${items.length?items.map(item=>`<article class="account-entitlement"><div class="row"><b>${esc(item.title)}</b><span class="tag">${Date.parse(item.expires_at)>Date.now()?(Date.parse(item.starts_at)>Date.now()?'待生效':'有效'):'已到期'}</span></div><p>${esc(item.description||'')}</p><small class="muted">生效：${date(item.starts_at)}<br>到期：${date(item.expires_at)}</small>${quotaRows(item.usage||billing.membershipUsage?.[item.order_id]||item.membershipItems,esc,{usable:Date.parse(item.starts_at)<=Date.now()&&Date.parse(item.expires_at)>Date.now(),cap})}</article>`).join(''):'<div class="account-empty"><b>暂无已生效的会员权益</b><p>现有免费功能可以继续使用，不显示模拟余额或虚构额度。</p></div>'}<a href="#help?scope=account">联系支持与反馈 →</a></section></div>${purchasedBundleRecords(bundles,esc,date,billing,cap)}${creditLedger(entitlements.credits,esc,date)}${billingActivity(billing,esc,date)}<section class="card personal-storage-note"><h2>${icon('shield',20)} 资料保存说明</h2><p class="muted">本地备份只包含当前浏览器保存的记录，不覆盖或恢复账户内容。重要原件与账户成果请分别下载保管。</p><div class="actions"><a href="#membership?scope=local">查看本地保存统计 →</a><a href="#settings/data">本地数据与备份 →</a></div></section>`;sizeMemberRecordLists(target,ctx.onDispose);});
   return true;
  }
- let records=[],listError='';try{const data=await api('/feedback');if(!Array.isArray(data.items))throw Error('invalid_feedback_list');records=data.items;}catch(error){if(error.status===401||error.name==='AbortError')throw error;listError='反馈记录暂时无法读取，仍可填写问题或联系支持；点击刷新重新读取。';}
+ let records=[],listError='';try{const data=await api('/feedback');if(!Array.isArray(data.items))throw Error('invalid_feedback_list');records=data.items;}catch(error){if(error.status===401||error.code==='ACCOUNT_CHANGED'||error.name==='AbortError')throw error;listError='反馈记录暂时无法读取，仍可填写问题或联系支持；点击刷新重新读取。';}
  withStableView(target.closest('.dashboard')||target,()=>{target.innerHTML=heading('问题支持','反馈会提交到当前登录账户，后台可查看并更新处理状态。','<a href="#help?scope=local">查看使用指南与本地反馈草稿 →</a>')+
   `<div class="grid personal-feedback-columns"><section class="card personal-detail-card personal-feedback-form"><h2>提交问题或建议</h2><form id="feedback-form"><label for="feedback-category">反馈类型</label><select id="feedback-category"><option>功能问题</option><option>使用咨询</option><option>体验建议</option><option>其他</option></select><label for="feedback">问题描述</label><textarea id="feedback" required minlength="2" maxlength="3000" rows="7" placeholder="请说明所在页面、操作步骤、问题现象及期望结果"></textarea><p class="muted">请勿填写密码、验证码、支付密钥或私人研究正文。提交后可以在右侧核对状态。</p><div class="actions"><button class="primary" type="submit">提交反馈</button></div><p id="feedback-submit-status" role="status" aria-live="polite"></p></form><section class="personal-feedback-support" aria-label="人工支持"><h3>人工支持</h3><p class="muted">也可以通过邮箱或微信联系我们。</p>${supportContactsMarkup()}</section></section><section class="card personal-detail-card personal-feedback-history"><div class="account-personal-heading"><h2>我的反馈记录</h2><button type="button" id="feedback-refresh">刷新状态</button></div><p class="muted">显示最近 100 条记录；“已处理”表示后台已结束本次处理，可通过客服邮箱或微信补充情况。</p><div id="feedback-records" aria-live="polite"></div><p id="feedback-list-status" role="status"></p></section></div>`;});
  bindSupportContacts(target);
@@ -85,7 +99,7 @@ export async function renderOnlinePersonal(view,ctx){
  renderRecords();
  if(listError){$('#feedback-records').innerHTML='<div class="account-empty"><b>反馈记录暂时无法读取</b><p>这不代表没有已提交的反馈，请刷新重试。</p></div>';$('#feedback-list-status').textContent=listError;}
  let refreshPromise=null,recordsRevision=0;
- const refresh=()=>{if(refreshPromise)return refreshPromise;const button=$('#feedback-refresh'),revision=recordsRevision;button.disabled=true;refreshPromise=(async()=>{try{const data=await api('/feedback');if(!Array.isArray(data.items))throw Error('invalid_feedback_list');if(revision!==recordsRevision)return;records=data.items;renderRecords();$('#feedback-list-status').textContent='状态已更新';}catch(error){if(error.status===401||error.name==='AbortError')throw error;$('#feedback-list-status').textContent='暂时无法刷新，已保留当前记录，请稍后重试。';}finally{refreshPromise=null;if(button.isConnected)button.disabled=false;}})();return refreshPromise;};
+ const refresh=()=>{if(refreshPromise)return refreshPromise;const button=$('#feedback-refresh'),revision=recordsRevision;button.disabled=true;refreshPromise=(async()=>{try{const data=await api('/feedback');if(!Array.isArray(data.items))throw Error('invalid_feedback_list');if(revision!==recordsRevision)return;records=data.items;renderRecords();$('#feedback-list-status').textContent='状态已更新';}catch(error){if(error.status===401||error.code==='ACCOUNT_CHANGED'||error.name==='AbortError')throw error;$('#feedback-list-status').textContent='暂时无法刷新，已保留当前记录，请稍后重试。';}finally{refreshPromise=null;if(button.isConnected)button.disabled=false;}})();return refreshPromise;};
  $('#feedback-refresh').onclick=event=>submit(event,refresh);
  $('#feedback-form').onsubmit=event=>submit(event,async()=>{
   const form=$('#feedback-form'),text=$('#feedback').value.trim(),category=$('#feedback-category').value;
@@ -103,7 +117,7 @@ export async function renderOnlinePersonal(view,ctx){
  });
  if(new URLSearchParams(globalThis.location?.hash?.split('?')[1]||'').get('draft')==='local'){
   try{
-   const raw=localStorage.getItem(feedbackKey),draft=normalizeFeedback(raw?JSON.parse(raw):{});
+   const raw=localStorage.getItem(feedbackKey),draft=parseFeedbackDraft(raw);
    if(draft.content.trim()){
     $('#feedback').value=draft.content;
     if([...$('#feedback-category').options].some(option=>option.value===draft.type))$('#feedback-category').value=draft.type;

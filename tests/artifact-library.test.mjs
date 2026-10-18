@@ -30,3 +30,17 @@ test('a disposed cloud file view cannot paint a late response on another page',a
  const pending=new Promise(r=>finish=r),view=mountArtifactLibrary(root,{session:async()=>({user:{id:'alice'}}),fetchImpl:async()=>{await pending;return Response.json({items:[item],total:1});}});
  try{await flush();view.dispose();root.innerHTML='新页面';finish();await flush();assert.equal(root.textContent,'新页面');}finally{view.dispose();dom.window.close();}
 });
+
+test('switching accounts while cloud bytes arrive cannot trigger the old account download',async()=>{
+ const dom=new JSDOM('<main class="dashboard"><section id="files"></section></main>'),root=dom.window.document.querySelector('#files'),notices=[];let account='alice';
+ const view=mountArtifactLibrary(root,{session:async()=>({user:{id:account}}),notify:value=>notices.push(value),fetchImpl:async(path,options)=>{assert.equal(options.headers['X-PaperKnow-User'],'alice');if(path.includes('/download'))return {ok:true,async blob(){account='bob';return new Blob([new Uint8Array(item.bytes)]);}};return Response.json({items:[item],total:1});}});
+ try{await flush();root.querySelector('[data-cloud-download]').click();await flush();await flush();assert.match(notices.join(''),/账户已变化.*停止下载/);assert.doesNotMatch(notices.join(''),/已发起云文件下载/);assert.equal(root.querySelector('[data-cloud-download]'),null);assert.doesNotMatch(root.textContent,/生成文件<测试>/);}finally{view.dispose();dom.window.close();}
+});
+
+test('a late list response is not painted after its owner changes',async()=>{
+ const dom=new JSDOM('<main class="dashboard"><section id="files"></section></main>'),root=dom.window.document.querySelector('#files');let checks=0;
+ const view=mountArtifactLibrary(root,{session:async()=>({user:{id:++checks===1?'alice':'bob'}}),fetchImpl:async()=>Response.json({items:[item],total:1})});
+ try{await flush();assert.match(root.textContent,/账户已变化/);assert.equal(root.querySelector('[data-cloud-download]'),null);assert.doesNotMatch(root.textContent,/生成文件<测试>/);}finally{view.dispose();dom.window.close();}
+});
+
+test('disposing a download aborts the body stream after response headers have arrived',async()=>{const dom=new JSDOM('<main class="dashboard"><section id="files"></section></main>'),root=dom.window.document.querySelector('#files');let bodySignal;const view=mountArtifactLibrary(root,{session:async()=>({user:{id:'alice'}}),fetchImpl:async(path,options)=>path.includes('/download')?{ok:true,blob:()=>new Promise((resolve,reject)=>{bodySignal=options.signal;bodySignal.addEventListener('abort',()=>reject(Object.assign(new Error('aborted'),{name:'AbortError'})),{once:true});})}:Response.json({items:[item],total:1})});try{await flush();root.querySelector('[data-cloud-download]').click();await flush();assert.equal(bodySignal.aborted,false);view.dispose();await flush();assert.equal(bodySignal.aborted,true);}finally{view.dispose();dom.window.close();}});

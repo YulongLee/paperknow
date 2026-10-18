@@ -320,3 +320,22 @@ test('order filters and search use only fetched records and preserve selection w
  click(f,'[data-orders-refresh]');await settle(()=>f.calls.filter(call=>call.path==='/api/orders'&&!call.body).length===2&&f.doc.querySelector('[data-orders-refresh]').disabled===false);assert.equal(f.doc.querySelector('[data-orders-search]').value,'pk-pending');assert.equal(f.doc.querySelectorAll('.payment-history-item').length,1);assert.match(f.doc.querySelector('[data-orders-count]').textContent,/显示 1 条 \/ 最近 3 条/);
  click(f,'[data-order-status="ended"]');assert.equal(f.doc.querySelectorAll('.payment-history-item').length,0);assert.match(f.doc.querySelector('[data-order-list]').textContent,/没有符合条件的订单/);click(f,'[data-orders-clear]');assert.equal(f.doc.querySelectorAll('.payment-history-item').length,3);assert.equal(f.doc.querySelector('[data-orders-search]').value,'');assert.equal(f.doc.querySelector('[data-order-status="all"]').getAttribute('aria-pressed'),'true');assert.equal(f.calls.some(call=>call.body),false);assert.equal(f.w.localStorage.length,0);
 });
+
+test('checkout pins the account in request headers and blocks an account change before an order can be created',async t=>{
+ let owner='u1',posts=0;const f=await fixture(t,{onRequest:(path,options,body)=>{
+  if(path==='/api/auth/me')return response({user:{id:owner}});
+  if(path==='/api/orders'&&body){posts++;assert.equal(options.headers['X-PaperKnow-User'],'u1');return response({error:'登录账户已变化',code:'ACCOUNT_CHANGED'},409);}
+ }});owner='u2';click(f,'[data-payment-create]');await settle(()=>f.doc.body.textContent.includes('账户已变化'));assert.equal(posts,1);assert.equal(f.created.length,0);assert.equal(f.doc.querySelector('[data-payment-qr]'),null);assert.equal(f.doc.querySelector('[data-payment-create]'),null);assert.equal(f.timers.size,0);
+});
+
+test('an owner change while an order response arrives cannot paint its QR or a private order snapshot',async t=>{
+ let owner='u1',finish;const f=await fixture(t,{onRequest:(path,_options,body)=>path==='/api/auth/me'?response({user:{id:owner}}):path==='/api/orders'&&body?new Promise(resolve=>{finish=resolve;}):null});click(f,'[data-payment-create]');await settle(()=>typeof finish==='function');owner='u2';finish(response({item:{...f.order,title:'原账户私人订单'}}));await settle(()=>f.doc.body.textContent.includes('账户已变化'));assert.equal(f.doc.querySelector('[data-payment-qr]'),null);assert.doesNotMatch(f.doc.body.textContent,/原账户私人订单/);assert.deepEqual(f.qrInputs,[]);assert.equal(f.timers.size,0);
+});
+
+test('ordinary business conflicts remain retryable and do not masquerade as account changes',async t=>{
+ let posts=0;const f=await fixture(t,{onRequest:(path,_options,body)=>path==='/api/orders'&&body&&++posts===1?response({error:'商品信息已更新，请重新确认',code:'PRODUCT_CHANGED'},409):null});click(f,'[data-payment-create]');await settle(()=>f.doc.querySelector('[data-payment-notice]')?.textContent.includes('商品信息已更新'));assert.ok(f.doc.querySelector('[data-payment-create]'));assert.doesNotMatch(f.doc.body.textContent,/账户已变化/);click(f,'[data-payment-create]');await settle(()=>f.doc.querySelector('[data-payment-qr] img'));assert.equal(f.created.length,1);
+});
+
+test('refreshing order history after an account switch removes the original account records',async t=>{
+ let owner='u1';const f=await fixture(t,{items:[{id:'secret-order',title:'原账户订单私有标题',status:'paid',amountCents:2000}],onRequest:path=>path==='/api/auth/me'?response({user:{id:owner}}):null});await f.orders();assert.match(f.doc.body.textContent,/原账户订单私有标题/);owner='u2';click(f,'[data-orders-refresh]');await settle(()=>f.doc.body.textContent.includes('账户已变化'));assert.doesNotMatch(f.doc.body.textContent,/原账户订单私有标题/);assert.equal(f.doc.querySelector('[data-payment-order]'),null);assert.equal(f.calls.filter(call=>call.path==='/api/orders'&&!call.body).length,1);
+});

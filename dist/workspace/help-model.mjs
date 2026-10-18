@@ -44,7 +44,7 @@ export const articles=[
       "准备实际材料与参考文献，确认本次费用后生成提纲；生成结构会映射到可编辑内容与字数分配，也可导入或自行修改。",
       "核对后继续生成正文，审核采纳并保存；导出前检查研究事实、引用、章节和实际格式。"
     ],
-    "note": "AI 写作 11 项流程已接通相应能力，在线任务以当前服务状态为准。没有提供的实验、问卷和数据不得补造为研究结论；本地草稿与账户成果分别管理。",
+    "note": "各写作工具按对应页面流程处理，在线任务以当前服务状态为准。没有提供的实验、问卷和数据不得补造为研究结论；本地草稿与账户成果分别管理。",
     "action": "#category/writing",
     "actionLabel": "前往 AI 写作"
   },
@@ -59,7 +59,7 @@ export const articles=[
       "选择当前段落或全部原文，每次最多 32,000 字符、单段最多 3,500 字符；核对并确认本次 AI 处理与费用。",
       "生成候选后逐段查看差异，核对数字、术语和引用，采纳后进入导出稿。草稿自动保存，主动保存版本可保留历史。"
     ],
-    "note": "AI 候选不直接覆盖原稿；未采纳保留原文。可导出 DOCX、PDF、TXT 与备份。AI 率检测与学校数据库未接入，不承诺分数下降或审核通过。",
+    "note": "AI 候选不直接覆盖原稿；未采纳保留原文。可导出 DOCX、PDF、TXT 与备份。AI 文本鉴别为独立功能，只展示分段标签与置信分，不提供学校指定的全篇论文 AI 率，也不承诺检测分数下降或审核通过。",
     "action": "#category/reduce",
     "actionLabel": "前往降重复率"
   },
@@ -70,7 +70,7 @@ export const articles=[
     "tags": "文献 阅读 翻译 笔记 来源 DOI",
     "summary": "用实际原文进行解读、问答与逐段翻译，保留可定位的来源。",
     "steps": [
-      "在我的文献导入有权使用的正文或摘要，也可从 Crossref 与 Europe PMC 检索题录后补充原文。",
+      "在我的文献导入有权使用的正文或摘要，也可从已开放的检索来源查找题录后补充原文。检索来源的实际开放状态以页面为准。",
       "进入文献，选择实际段落，使用 AI 研读、原文问答或文献翻译。生成前确认范围、目标语言与费用。",
       "核对解读的原文摘录或按段对应译文，采纳后保存，可继续修改并导出 TXT、DOCX 或 PDF。"
     ],
@@ -83,13 +83,13 @@ export const articles=[
     "category": "detection",
     "title": "论文查重结果代表什么？",
     "tags": "重复率 相似度 查重 知网 万方 维普 报告",
-    "summary": "当前结果仅来自用户提供的本地对照材料。",
+    "summary": "可选择公开来源联网查重，或与你提供的本地材料比对；两种范围分别说明。",
     "steps": [
-      "上传或输入待比对正文，并提供有权使用的来源材料。",
-      "核对解析正文与章节范围，再执行本地文本比对。",
-      "阅读标记段落、实际来源和引用排除区间；没有来源不能判定与外部论文重复。"
+      "联网来源查重：登录后导入或粘贴正文，确认将有限文本片段用于联网检索；只有实际取得的来源正文参与逐字比对。",
+      "查看报告中的抽样段落数、取得和失败的来源数，再核对正文高亮、实际来源链接与匹配片段。无可用来源时不生成相似占比。",
+      "已有对照材料时，可切换本地材料比对，添加有权使用的来源正文并确认章节。两种模式的结果均只覆盖本次实际使用的材料。"
     ],
-    "note": "当前未接入全网学术检索；结果不等同于知网、万方或维普。语义相似度与 AI 率检测未启用。",
+    "note": "联网查重为有限片段抽样检索，不覆盖全部互联网、封闭学术库或付费全文；未发现匹配不代表不存在重复。不等同于知网、万方或维普；语义相似度和全篇 AI 率不纳入本报告。",
     "action": "#category/detection",
     "actionLabel": "前往免费查重"
   },
@@ -98,13 +98,13 @@ export const articles=[
     "category": "detection",
     "title": "为什么去除引用后的相似度仍需人工核对？",
     "tags": "引用 排除 相似字数 来源",
-    "summary": "核对引用位置和原始来源，再理解比对结果。",
+    "summary": "先确认报告类型，再核对引用位置和真实来源。",
     "steps": [
-      "打开报告，查看相似来源和正文逐段标记。",
-      "检查系统标记的引用排除范围，确认引文确实对应真实来源。",
-      "结合报告说明核对分母、章节范围和重复区间，必要时回到原文修改。"
+      "打开报告，查看本次比对范围、相似来源和正文逐段标记。",
+      "本地材料报告使用有限的引用识别规则，需人工核对；公开来源联网报告不自动扣除引用，不把规范引用直接认定为不当使用。",
+      "结合报告说明核对分母、章节范围和重复区间，必要时修改正文后重新提交检测。原报告数值保持不变。"
     ],
-    "note": "文本相似不直接构成学术不端结论；报告仅覆盖列出的对照材料。",
+    "note": "文本相似不直接构成学术不端结论；列出参考文献不表示整段文字可以自动排除，报告仅覆盖实际取得或提供的来源材料。",
     "action": "#assets?category=detection",
     "actionLabel": "查看已保存报告"
   },
@@ -112,15 +112,15 @@ export const articles=[
     "id": "upload-pdf",
     "category": "files",
     "faq": "upload",
-    "title": "为什么扫描版 PDF 无法解析？",
+    "title": "扫描版 PDF 应该如何解析？",
     "tags": "上传失败 文件 PDF OCR 扫描 空白 文字层",
-    "summary": "当前支持含文字层的 PDF；扫描件需要先转换为可提取文字的文档。",
+    "summary": "支持云解析的入口可识别扫描 PDF；本地材料比对模式仍需要含文字层的 PDF。",
     "steps": [
-      "尝试在 PDF 阅读器中选中并复制一段正文。无法复制的扫描件通常缺少文字层。",
-      "使用你有权使用的工具先做 OCR，或准备包含正文文字的 Word / TXT 文档。",
-      "重新导入后核对错字、章节和符号，再开始下一步处理。"
+      "先查看当前入口提示：TXT / DOCX 通常在浏览器本地提取；支持云端 PDF 解析的入口会另外说明文件大小、页数与处理授权。",
+      "使用云端解析时，先确认原件将提交云端，再等待任务完成；离开页面不代表任务取消，已提交任务可在任务中心核对。",
+      "解析后检查错字、阅读顺序、表格、公式与章节。无法解析的文件可转换为可复制文字的 DOCX / TXT 后重新导入。"
     ],
-    "note": "当前 PaperKnow 不提供扫描件 OCR，图片不会被当作已解析正文。"
+    "note": "云端解析的实际开放状态与限制以入口为准；本地比对入口不会自动把扫描图片当作已解析正文。解析文件和之后的 AI 处理或联网检索分别确认。"
   },
   {
     "id": "upload-retry",
@@ -161,7 +161,7 @@ export const articles=[
     "steps": [
       "本地体验中的项目、草稿、笔记与报告，需在同一设备、浏览器及网站地址下重新打开。",
       "账户项目、主动上传的原件、后台任务和成果由服务端保存，登录同一账户后在「账户内容」中查看。",
-      "更换设备或清理网站数据前，导出本地工作空间备份。账户资料可从设置中心另行导出资料包，原件文件需另外下载；未保存输入不包含在备份中。"
+      "更换设备或清理网站数据前，导出本地工作空间备份。账户资料可从设置中心另行导出资料包，原件及生成云文件需另外下载；未保存输入不包含在备份中。"
     ],
     "note": "在线账户已开放，本地草稿不会自动跨设备同步；本地反馈草稿单独保存，请通过反馈区导出文本。",
     "action": "#settings/data",
@@ -175,7 +175,7 @@ export const articles=[
     "tags": "备份 恢复 JSON 导入 数据",
     "summary": "先导出本地工作空间备份，恢复时预览并合并新增记录。",
     "steps": [
-      "在设置中心「数据与隐私」按范围导出：账户资料包用于查阅与保管，原件另行下载；本地工作空间备份 JSON 用于下方合并恢复。",
+      "在设置中心「数据与隐私」按范围导出：账户资料包仅下载到本机，用于查阅与保管，不含原件或生成云文件的二进制内容，这些文件需分别下载；本地工作空间备份 JSON 用于下方合并恢复。",
       "恢复时选择 PaperKnow 版本 1 备份文件（最大 50 MB），核对新增与重复记录预览。",
       "确认合并后只新增不存在的编号，重复记录保留当前版本；个人资料与偏好需主动勾选才恢复。"
     ],
@@ -247,3 +247,5 @@ export const articles=[
 export function searchHelp(query='',category='all'){const tokens=query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);return articles.filter(a=>(category==='all'||a.category===category)&&tokens.every(t=>[a.title,helpCategories.find(c=>c.id===a.category)?.title||'',a.tags,a.summary,...a.steps,a.note].join(' ').toLocaleLowerCase().includes(t)));}
 export function normalizeFeedback(raw={}){if(!raw||typeof raw!=='object'||Array.isArray(raw))raw={};const oldFeatures={'文献与研读':'AI 研读','修改与润色':'降重复率','论文检测':'免费查重'};return {type:feedbackTypes.includes(raw.type)?raw.type:feedbackTypes[0],feature:relatedFeatures.includes(raw.feature)?raw.feature:(Object.hasOwn(oldFeatures,raw.feature)?oldFeatures[raw.feature]:relatedFeatures[0]),content:typeof raw.content==='string'?raw.content.slice(0,3000):'',savedAt:typeof raw.savedAt==='string'?raw.savedAt:''};}
 export function feedbackText(value){const v=normalizeFeedback(value);if(!v.content.trim())throw Error('请先填写问题描述。');return `PaperKnow 反馈草稿（本地，尚未发送）\n反馈类型：${v.type}\n相关功能：${v.feature}\n\n问题描述：\n${v.content.trim()}\n\n此文本由用户本地导出，不代表已向 PaperKnow 提交。`;} 
+
+export function parseFeedbackDraft(raw){if(raw===null||raw===undefined||raw==='')return normalizeFeedback();const value=typeof raw==='string'?JSON.parse(raw):raw;if(!value||typeof value!=='object'||Array.isArray(value)||['type','feature','content','savedAt'].some(key=>value[key]!==undefined&&typeof value[key]!=='string')||typeof value.content==='string'&&value.content.length>3000)throw Error('反馈草稿结构异常，已停止覆盖。');return normalizeFeedback(value);}
