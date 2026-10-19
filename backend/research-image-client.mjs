@@ -8,6 +8,9 @@ const endpoint='https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-g
 const maximum=20*1024*1024;
 const models=new Set(['qwen-image-2.0','qwen-image-2.0-pro','qwen-image-2.0-turbo','qwen-image-2.1','qwen-image-2.1-pro','qwen-image-2.1-turbo','qwen-image-3.0','qwen-image-3.0-pro']);
 const sizes=Object.freeze({'16:9':'1536*864','4:3':'1536*1152','1:1':'1280*1280','3:4':'1152*1536'});
+// Use the flagship's 2048² pixel budget with exact UI aspect ratios.
+// Older configured models retain their existing resolution profile.
+const highResolutionSizes=Object.freeze({'16:9':'2688*1512','4:3':'2304*1728','1:1':'2048*2048','3:4':'1728*2304'});
 const palettes=Object.freeze({academic:'白色背景，克制的蓝灰色学术配色',blue:'蓝色与青色，清晰的白底科技风格',nature:'绿色与蓝绿色，干净自然的学术配色',warm:'橙色与暖红色，柔和白底配色'});
 const failure=(code,message,status=502)=>Object.assign(new Error(message),{code:'research_image_'+code,status,researchImageSafe:true});
 const fail=(code,message,status)=>{throw failure(code,message,status);};
@@ -69,7 +72,8 @@ export function createResearchImageClient(settings,{requestImpl=httpsRequest,loo
  }
  return{async generate(snapshot,{signal}={}){
   if(!sizes[snapshot.context?.aspectRatio])fail('input_invalid','请选择支持的图片比例',400);
-  const body=JSON.stringify({model:runtime.model,input:{messages:[{role:'user',content:[{text:researchImagePrompt(snapshot)}]}]},parameters:{size:sizes[snapshot.context.aspectRatio],n:1,prompt_extend:false,enable_thinking:false,watermark:false}});
+  const size=(runtime.model==='qwen-image-3.0-pro'?highResolutionSizes:sizes)[snapshot.context.aspectRatio];
+  const body=JSON.stringify({model:runtime.model,input:{messages:[{role:'user',content:[{text:researchImagePrompt(snapshot)}]}]},parameters:{size,n:1,prompt_extend:false,enable_thinking:false,watermark:false}});
   const bytes=await request(new URL(endpoint),{body,signal,api:true});let result;try{result=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{fail('response_invalid','绘图服务未返回完整结果');}
   const choices=result?.output?.choices,content=choices?.[0]?.message?.content;
   if(result.code||!Array.isArray(choices)||choices.length!==1||!Array.isArray(content)||content.length!==1||!plain(content[0])||Object.keys(content[0]).some(k=>!['image','type'].includes(k))||content[0].type!==undefined&&content[0].type!=='image'||typeof content[0].image!=='string')fail('response_invalid','绘图服务未返回可采用的图片，请调整描述后重试');
