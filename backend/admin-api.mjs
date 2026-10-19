@@ -1,3 +1,4 @@
+import {createResearchImageSettings} from './research-image-settings.mjs';
 import {randomUUID} from 'node:crypto';
 import {aiReady,publicModelSettings} from './config.mjs';
 import {paymentCatalog,savePaymentProduct} from './payment-settings.mjs';
@@ -73,6 +74,7 @@ export function createAdminAPI(db,worker,config,auth){
     catch(cause){db.exec('ROLLBACK;');throw cause;}
   };
   const agentSettings=config.agentSettings||createAgentSettings(db,config,{audit});
+  const researchImageSettings=config.researchImageSettings||createResearchImageSettings(db,config,{audit});
   let agentTestRunning=false,agentTestAt=0;
 
   function list(name,query){
@@ -96,7 +98,7 @@ export function createAdminAPI(db,worker,config,auth){
 
   function settings(){
     const available=auth.options();
-    return {ai:publicModelSettings(modelConfig()),agent:agentSettings.public(),auth:{emailCode:available.emailCode,phoneCode:available.phoneCode},storage:{provider:config.storage?.provider||'local_server_sqlite'},payment:config.payments?.options().enabled||false};
+    return {ai:publicModelSettings(modelConfig()),agent:agentSettings.public(),researchImages:researchImageSettings.public(),auth:{emailCode:available.emailCode,phoneCode:available.phoneCode},storage:{provider:config.storage?.provider||'local_server_sqlite'},payment:config.payments?.options().enabled||false};
   }
 
   function overview(query){
@@ -143,6 +145,7 @@ export function createAdminAPI(db,worker,config,auth){
       }
       fail(404,'监控接口不存在');
     }
+    if(path==='/api/admin/research-images/settings'&&['GET','POST'].includes(method)){parameters(query,[]);return {researchImages:method==='POST'?researchImageSettings.save(actor,await readBody()):researchImageSettings.public()};}
     if(path==='/api/admin/agent-settings'&&['GET','POST'].includes(method)){parameters(query,[]);if(method==='POST')return {agent:agentSettings.save(actor,await readBody())};return {agent:agentSettings.public()};}
     if(path==='/api/admin/agent-settings/test'&&method==='POST'){
       parameters(query,[]);const input=await readBody();if(!input||Object.keys(input).some(name=>name!=='version'))fail(400,'测试仅使用已保存配置');const snapshot=agentSettings.get();if(!snapshot.version||input.version!==snapshot.version)fail(409,'请先保存当前配置后再测试');if(agentTestRunning||Date.now()-agentTestAt<30000)fail(429,'请等待 30 秒后再测试');agentTestRunning=true;agentTestAt=Date.now();

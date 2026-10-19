@@ -436,3 +436,14 @@ test('unavailable legacy agent does not expose a dead creation shortcut while it
  assert.match(f.doc.querySelector('#job-list').textContent,/科研智能助手/);assert.ok(f.doc.querySelector('[data-job="failed"][data-action="retry"]').disabled);
  assert.equal(f.calls.some(call=>call.body),false);
 });
+
+test('AI research image results reopen the owned generation task without showing a text revision editor or provider data',async t=>{
+ const item={id:'image-result',job_id:'owned-image-job',type:'tool_run',title:'研究技术路线',created_at:now,body:{kind:'research',operation:'image',toolJobId:'owned-image-job',text:'科研图片已生成',image:{fileName:'研究技术路线.png',width:1536,height:864,artifactId:'private-image',downloadUrl:'/api/artifacts/private-image/download'},sourceIds:[]}};
+ const f=await fixture(t,{view:'results',params:'result=image-result',request:async path=>path==='/api/results'?{ok:true,status:200,json:async()=>({items:[item]})}:path==='/api/results/image-result'?{ok:true,status:200,json:async()=>({item})}:undefined});
+ assert.equal(f.doc.querySelector('#revision-form'),null);assert.equal(f.doc.querySelector('#export-result').hidden,true);assert.match(f.doc.querySelector('#result-detail').textContent,/1536 × 864 px/);assert.match(f.doc.querySelector('#result-detail').textContent,/账户私有云文件/);assert.equal(f.doc.querySelector('#result-detail a').getAttribute('href'),'#category/research?mode=basic&job=owned-image-job');assert.equal(f.calls.some(call=>/revisions|\/artifacts\//.test(call.path)),false);assert.doesNotMatch(f.doc.querySelector('#result-detail').innerHTML,/dashscope|model|data:image|base64/);
+});
+
+test('research image task links retain their job identity without exposing raw inputs',async t=>{
+ const f=await fixture(t,{view:'tasks',request:async path=>path==='/api/jobs'?{ok:true,status:200,json:async()=>({items:[{id:'recover-image',type:'tool_run',tool_kind:'research',tool_operation:'image',title:'待处理科研图',status:'running',created_at:now}]})}:undefined});
+ assert.match(f.doc.querySelector('#job-list').textContent,/AI 科研绘图/);assert.ok([...f.doc.querySelectorAll('#job-list a')].some(link=>link.getAttribute('href')==='#category/research?mode=basic&job=recover-image'));assert.equal(f.calls.some(call=>call.body),false);
+});

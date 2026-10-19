@@ -6,7 +6,7 @@ import {createBillingService,billingServiceTypes,toolBillingServiceTypes} from '
 import {productDelivery} from '../backend/commerce-readiness.mjs';
 
 function fixture(t,{available=true,beforeBilling}={}){
- const db=database(':memory:');let time=Date.parse('2026-10-18T00:00:00Z');const user={id:'tool-owner'},other={id:'tool-other'},config={billingNow:()=>new Date(time),aiURL:available?'https://example.invalid/v1/chat':'',aiKey:available?'local-fixture-only':'',aiModel:'fixture-model',agentEnabled:true,getAgentSettings:()=>available?{enabled:true,engine:'claude-agent-sdk',baseURL:'https://fixture.example.com/anthropic',model:'fixture-model',apiKey:'fixture-only-key',version:'fixture-version'}:{enabled:false}};
+ const db=database(':memory:');let time=Date.parse('2026-10-18T00:00:00Z');const user={id:'tool-owner'},other={id:'tool-other'},config={billingNow:()=>new Date(time),aiURL:available?'https://example.invalid/v1/chat':'',aiKey:available?'local-fixture-only':'',aiModel:'fixture-model',agentEnabled:true,storage:{provider:'aliyun_oss'},moderation:{ready:available},getResearchImageSettings:()=>available?{enabled:true,apiKey:'fixture-image-only',version:'image-version'}:{enabled:false},getAgentSettings:()=>available?{enabled:true,engine:'claude-agent-sdk',baseURL:'https://fixture.example.com/anthropic',model:'fixture-model',apiKey:'fixture-only-key',version:'fixture-version'}:{enabled:false}};
  for(const owner of [user,other])db.prepare('INSERT INTO users(id,name,role,created_at) VALUES(?,?,?,?)').run(owner.id,'合成计价测试','user',new Date(time).toISOString());
  const job=(owner=user,id=randomUUID())=>{const at=new Date(time).toISOString();db.prepare('INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id,owner.id,'tool_run','queued','queued','{}',id,id,at,at);return id;};
  beforeBilling?.({db,user,other,job,at:new Date(time).toISOString()});const billing=createBillingService(db,config);
@@ -23,8 +23,8 @@ function fixture(t,{available=true,beforeBilling}={}){
  t.after(()=>db.close());return {db,billing,config,user,other,job,base,configure,order,quote,reserve,tx,advance:n=>time+=n};
 }
 
-test('all thirteen tool prices inherit the existing agent rule without changing old services or amounts',t=>{
- const f=fixture(t);f.base('paid',10);f.order('credits');const rules=f.billing.toolRules();assert.equal(rules.version,1);assert.equal(rules.services.length,13);assert.ok(rules.services.every(s=>s.mode==='inherit'&&s.creditCost===null&&s.effectiveMode==='paid'&&s.effectiveCreditCost===10&&s.available));assert.deepEqual(f.billing.rules().services.map(s=>s.key),['polish','review','agent']);
+test('all fourteen tool prices inherit the existing agent rule without changing old services or amounts',t=>{
+ const f=fixture(t);f.base('paid',10);f.order('credits');const rules=f.billing.toolRules();assert.equal(rules.version,1);assert.equal(rules.services.length,14);assert.ok(rules.services.every(s=>s.mode==='inherit'&&s.creditCost===null&&s.effectiveMode==='paid'&&s.effectiveCreditCost===10&&s.available));assert.deepEqual(f.billing.rules().services.map(s=>s.key),['polish','review','agent']);
  for(const {key}of toolBillingServiceTypes){const q=f.quote(key);assert.equal(q.type,'agent');assert.equal(q.serviceKey,key);assert.equal(q.creditCost,10);assert.equal(q.toolPolicyVersion,1);}assert.equal(f.billing.balance(f.user.id).held,0);
 });
 
@@ -108,6 +108,6 @@ test('changing tool-only pricing leaves an unconsumed legacy agent quote valid w
 
 test('dedicated tool sales and quotes require a saved live Agent runtime even while legacy HTTP AI remains available',t=>{
  const f=fixture(t);f.base();f.order('credits');f.configure({'presentation-ai':{mode:'paid',creditCost:15}});const valid=f.config.getAgentSettings();
- for(const runtime of [{...valid,enabled:false},{...valid,version:null},{...valid,version:''},null]){f.config.getAgentSettings=()=>runtime;assert.equal(f.billing.rules().services.find(s=>s.key==='agent').available,true);assert.ok(f.billing.toolRules().services.every(s=>s.available===false));assert.equal(productDelivery({entitlementType:'bundle',bundleItems:[{key:'presentation-ai',quantity:1}]},f.billing).purchasable,false);assert.throws(()=>f.quote('presentation-ai'),{status:503});assert.equal(f.quote().creditCost,10);}
+ for(const runtime of [{...valid,enabled:false},{...valid,version:null},{...valid,version:''},null]){f.config.getAgentSettings=()=>runtime;assert.equal(f.billing.rules().services.find(s=>s.key==='agent').available,true);assert.ok(f.billing.toolRules().services.filter(s=>s.key!=='research-image').every(s=>s.available===false));assert.equal(f.billing.toolRules().services.find(s=>s.key==='research-image').available,true);assert.equal(productDelivery({entitlementType:'bundle',bundleItems:[{key:'presentation-ai',quantity:1}]},f.billing).purchasable,false);assert.throws(()=>f.quote('presentation-ai'),{status:503});assert.equal(f.quote().creditCost,10);}
  f.config.getAgentSettings=()=>valid;assert.equal(f.billing.toolRules().services.find(s=>s.key==='presentation-ai').available,true);assert.equal(productDelivery({entitlementType:'bundle',bundleItems:[{key:'presentation-ai',quantity:1}]},f.billing).purchasable,true);assert.equal(f.quote('presentation-ai').creditCost,15);
 });

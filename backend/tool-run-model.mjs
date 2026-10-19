@@ -1,7 +1,7 @@
 import {formulaSvgMarkup} from '../src/research-formula-core.js';
 import {thesisError,thesisHash} from './thesis-model.mjs';
-export const toolOperations=Object.freeze({literature:['read','answer','translate'],revision:['rewrite'],presentation:['ppt'],research:['chart','diagram','formula'],format:['format']});
-export const toolOperationNames=Object.freeze({read:'文献解读',answer:'原文问答',translate:'文献翻译',rewrite:'学术表达优化',ppt:'演示文稿创作',chart:'科研图表配置',diagram:'科研结构示意图',formula:'公式辅助',format:'格式建议'});
+export const toolOperations=Object.freeze({literature:['read','answer','translate'],revision:['rewrite'],presentation:['ppt'],research:['chart','diagram','formula','image'],format:['format']});
+export const toolOperationNames=Object.freeze({read:'文献解读',answer:'原文问答',translate:'文献翻译',rewrite:'学术表达优化',ppt:'演示文稿创作',chart:'科研图表配置',diagram:'科研结构示意图',formula:'公式辅助',image:'AI科研绘图',format:'格式建议'});
 export function toolBillingKey({kind,operation,snapshot}){if(kind==='revision')return snapshot.context.plan==='dual'?'revision-dual':['reduce','aigc'].includes(snapshot.mode)?'revision-aigc':'revision-reduce';if(kind==='presentation')return'presentation-'+snapshot.mode;if(kind==='format')return'format-advice';return kind+'-'+operation;}
 const fail=(message,status=400)=>{throw thesisError(status,message);};
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
@@ -23,11 +23,20 @@ export function normalizeToolRequest(input){
   const pages=Number(snapshot.context.pages??12);if(!Number.isSafeInteger(pages)||pages<6||pages>30)fail('演示页数应为6～30页');snapshot.context.pages=pages;
   if(snapshot.mode!=='ai'&&!snapshot.text&&!snapshot.materials.length)fail('开题与毕业演示需要真实报告或论文正文');
  }
+ if(input.operation==='image'){
+  if(!snapshot.text||snapshot.text.length>6000)fail('请用1～6000字符描述需要生成的科研图片');
+  if(!['basic','professional'].includes(snapshot.mode))fail('请选择基础绘图或专业绘图');
+  if(!['中文','English','英文'].includes(snapshot.language))fail('请选择中文或英文标注');
+  if(snapshot.materials.length||snapshot.question)fail('科研绘图只接收本次描述，请勿附加正文材料或问答');
+  const c=snapshot.context;if(Object.keys(c).some(k=>!['categoryId','figureType','aspectRatio','palette'].includes(k)))fail('科研绘图选项包含不支持的字段');
+  for(const key of ['categoryId','figureType'])if(typeof c[key]!=='string'||!/^[A-Za-z0-9_-]{1,80}$/.test(c[key]))fail('请选择有效的科研绘图类别');
+  if(!['16:9','4:3','1:1','3:4'].includes(c.aspectRatio)||!['academic','blue','nature','warm'].includes(c.palette))fail('请选择支持的图片比例与配色');
+ }
  if(input.operation==='chart'){
   const t=snapshot.context.table;if(!plain(t)||!Array.isArray(t.headers)||t.headers.length<2||t.headers.length>6||t.headers.some(h=>typeof h!=='string'||!h.trim()||h.length>40)||new Set(t.headers).size!==t.headers.length||!Array.isArray(t.rows)||!t.rows.length||t.rows.length>200)fail('请先提供1～200行、含表头的真实图表数据');
   for(const row of t.rows)if(!Array.isArray(row)||row.length!==t.headers.length||!String(row[0]).trim()||String(row[0]).length>40||row.slice(1).some(v=>!/^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(String(v).trim())||!Number.isFinite(Number(v))||Math.abs(Number(v))>1e12))fail('图表数据包含空值、非数值或超范围值，请先核对');
  }
- if(snapshot.text&&snapshot.text!==joined&&!snapshot.materials.some(s=>s.text===snapshot.text)){let id='original',n=0;while(ids.has(id))id='original-input-'+(++n);snapshot.materials.push({id,name:'用户提供的原文',text:snapshot.text});}
+ if(input.operation!=='image'&&snapshot.text&&snapshot.text!==joined&&!snapshot.materials.some(s=>s.text===snapshot.text)){let id='original',n=0;while(ids.has(id))id='original-input-'+(++n);snapshot.materials.push({id,name:'用户提供的原文',text:snapshot.text});}
  if(snapshot.materials.length>20)fail('每次最多使用20份授权材料');
  const paragraphs=toolParagraphs(snapshot.text);
  if(['rewrite','translate'].includes(input.operation)){

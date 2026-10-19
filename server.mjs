@@ -1,3 +1,4 @@
+import {createResearchImageSettings} from './backend/research-image-settings.mjs';
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {readFileSync} from 'node:fs';
@@ -33,6 +34,7 @@ const productionTree=process.cwd().startsWith('/opt/paperknow/');
 const monitoring=createMonitoring(db,config,{databasePath:dbPath===':memory:'?null:dbPath,volumePath:dbPath===':memory:'?process.cwd():dirname(resolve(dbPath)),directorySummaryFile:productionTree?'/run/paperknow-ops/storage.json':null,directoryTargets:productionTree?{releases:'/opt/paperknow/releases',backups:'/opt/paperknow/backups',cache:'/opt/paperknow/build-home/npm-cache'}:{}});
 config={...config,monitoring};
 const agentSettings=createAgentSettings(db,config);config={...config,agentSettings,getAgentSettings:id=>id?agentSettings.version(id):agentSettings.get(),agentTaskRunner:createModeratedAgentRunner(config.agentTaskRunner||runAgentTask,config)};
+const researchImageSettings=createResearchImageSettings(db,config);config={...config,researchImageSettings,getResearchImageSettings:version=>researchImageSettings.get(version)};
 const legacyWorker=startWorker(db,config),thesisWorker=startThesisWorker(db,config),outlineWorker=startThesisOutlineWorker(db,config),methodWorker=startThesisMethodWorker(db,config),writingWorker=startWritingWorker(db,config),toolWorker=startToolRunWorker(db,config),documentWorker=startDocumentParseWorker(db,config),translationWorker=startDocumentTranslationWorker(db,config),webSimilarityWorker=startWebSimilarityWorker(db,config);
 const worker={async tick(){await legacyWorker.tick();await thesisWorker.tick();await outlineWorker.tick();await methodWorker.tick();await writingWorker.tick();await toolWorker.tick();await documentWorker.tick();await translationWorker.tick();await webSimilarityWorker.tick();},cancel(id){legacyWorker.cancel(id);thesisWorker.cancel(id);outlineWorker.cancel(id);methodWorker.cancel(id);writingWorker.cancel(id);toolWorker.cancel(id);documentWorker.cancel(id);translationWorker.cancel(id);webSimilarityWorker.cancel(id);},async stop(){await Promise.all([legacyWorker.stop(),thesisWorker.stop(),outlineWorker.stop(),methodWorker.stop(),writingWorker.stop(),toolWorker.stop(),documentWorker.stop(),translationWorker.stop(),webSimilarityWorker.stop()]);}};
 const api=createAPI(db,worker,config),root=resolve('dist');

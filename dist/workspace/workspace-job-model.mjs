@@ -1,6 +1,6 @@
 const writingNames={writing:'毕业论文',proposal:'开题报告',summary:'文献综述',taskbook:'任务书',article:'期刊文章',course:'课程作业',practice:'实践报告',idea:'课题思路',topic:'课题思路',questionnaire:'问卷设计',analysis:'数据分析',quick:'快速写作'};
 const writingOperations={method:'方法建议',outline:'提纲生成',draft:'正文生成',abstract:'摘要生成',ideas:'题目及研究思路',questionnaire:'问卷草稿'};
-const toolNames={read:'文献解读',answer:'原文问答',translate:'文献翻译',rewrite:'学术表达优化',ppt:'演示文稿创作',chart:'图表配置',diagram:'科研结构示意图',formula:'公式辅助',format:'格式建议'};
+const toolNames={image:'AI 科研绘图',read:'文献解读',answer:'原文问答',translate:'文献翻译',rewrite:'学术表达优化',ppt:'演示文稿创作',chart:'图表配置',diagram:'科研结构示意图',formula:'公式辅助',format:'格式建议'};
 const jobNames={document_translation:'整篇文档翻译',document_parse:'PDF 云解析',parse:'正文解析',polish:'学术润色',review:'导师意见修改',web_similarity:'联网来源查重',compare:'材料查重',agent:'科研智能助手',thesis:'毕业论文撰写',thesis_outline:'论文提纲生成',thesis_method:'研究方法建议'};
 export function workspaceJobLabel(row){
  if(row?.type==='writing')return[writingNames[row.writing_kind||row.kind]||'AI 写作',writingOperations[row.writing_operation||row.operation]||'写作任务'].join(' · ');

@@ -51,8 +51,8 @@
     {
       "slug": "/features/research-tools/",
       "file": "features/research-tools/index.html",
-      "modifiedAt": "2026-10-18",
-      "title": "科研绘图工具｜基础图表、数据导出与公式编辑"
+      "modifiedAt": "2026-10-19",
+      "title": "AI 科研绘图与公式编辑｜描述生成图片、LaTeX 实时预览"
     },
     {
       "slug": "/guides/",
@@ -93,7 +93,7 @@
     {
       "slug": "/about/",
       "file": "about/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-10-19",
       "title": "关于 PaperKnow｜论文写作与科研辅助工作台"
     },
     {
@@ -105,7 +105,7 @@
     {
       "slug": "/privacy/",
       "file": "privacy/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-10-19",
       "title": "PaperKnow 数据与隐私说明｜本地资料、账户文件与处理范围"
     },
     {
@@ -123,7 +123,7 @@
     {
       "slug": "/status/",
       "file": "status/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-10-19",
       "title": "PaperKnow 功能开放状态｜账户、AI、检索与导出范围"
     }
   ]

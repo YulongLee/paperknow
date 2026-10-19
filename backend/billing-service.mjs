@@ -71,6 +71,12 @@ export function createBillingService(db,config={}){
  WHEN NEW.service_key IS NOT OLD.service_key OR NEW.entitlement_key IS NOT OLD.entitlement_key
  BEGIN SELECT RAISE(ABORT,'科研工具预占身份不可修改'); END;`);
  db.prepare('INSERT OR IGNORE INTO tool_pricing_policy(id,rules,version,updated_at) VALUES(1,?,1,?)').run(JSON.stringify(toolBillingServiceTypes.map(({key})=>({key,mode:'inherit',creditCost:null}))),clock());
+ // Extend the previous validated catalogue without changing existing prices or reservations.
+ const previousToolPolicy=db.prepare('SELECT rules,version FROM tool_pricing_policy WHERE id=1').get();
+ try{const old=JSON.parse(previousToolPolicy.rules),legacy=toolBillingServiceTypes.filter(item=>item.key!=='research-image').map(item=>item.key);
+  if(Array.isArray(old)&&old.length===legacy.length&&new Set(old.map(item=>item?.key)).size===legacy.length&&old.every(item=>legacy.includes(item?.key)&&['inherit','free','paid','disabled'].includes(item.mode)&&(item.mode==='paid'?Number.isSafeInteger(item.creditCost)&&item.creditCost>=1&&item.creditCost<=100000:item.creditCost===null)))
+   db.prepare('UPDATE tool_pricing_policy SET rules=?,version=version+1,updated_at=? WHERE id=1 AND version=?').run(JSON.stringify([...old,{key:'research-image',mode:'inherit',creditCost:null}]),clock(),previousToolPolicy.version);
+ }catch{/* Corrupt/unknown policy remains closed instead of silently resetting prices. */}
  db.prepare('INSERT OR IGNORE INTO billing_policy(id,rules,version,updated_at) VALUES(1,?,1,?)').run(JSON.stringify(billingServiceTypes.map(({key})=>({key,mode:'free',creditCost:null}))),clock());
  const available=key=>{if(key==='agent'&&config.getAgentSettings){try{if(agentSettingsReady(config.getAgentSettings()))return true;}catch{/* A failed new runtime configuration never enables paid work. */}}return Boolean(aiReady(config.getAI?.()||config)&&(key!=='agent'||config.agentEnabled));};
  function rules(){
@@ -95,6 +101,7 @@ export function createBillingService(db,config={}){
   if(!result.changes)fail(409,'计费规则已变化，请刷新后重新保存');
   return rules();
  }
+ const imageAvailable=()=>{try{const value=config.getResearchImageSettings?.();return Boolean(value?.enabled&&value.apiKey&&typeof value.version==='string'&&value.version&&config.storage?.provider==='aliyun_oss'&&config.moderation?.ready);}catch{return false;}};
  const toolAvailable=()=>{try{const runtime=config.getAgentSettings?.();return agentSettingsReady(runtime)&&typeof runtime.version==='string'&&runtime.version.length>0;}catch{return false;}};
  function toolRules(){
   const row=db.prepare('SELECT rules,version FROM tool_pricing_policy WHERE id=1').get();let stored;try{stored=JSON.parse(row.rules);}catch{fail(503,'科研工具计价规则暂时无法读取');}
@@ -103,7 +110,7 @@ export function createBillingService(db,config={}){
   const services=toolBillingServiceTypes.map(({key,title,group})=>{const values=stored.filter(item=>item?.key===key),item=values[0];
    if(values.length!==1||!['inherit','free','paid','disabled'].includes(item?.mode)||(item.mode==='paid'?(!Number.isSafeInteger(item.creditCost)||item.creditCost<1||item.creditCost>100000):item.creditCost!==null))fail(503,'科研工具计价规则暂时无法读取');
    const effectiveMode=item.mode==='inherit'?parent.mode:item.mode,effectiveCreditCost=effectiveMode==='paid'?(item.mode==='inherit'?parent.creditCost:item.creditCost):null;
-   return {key,title,group,mode:item.mode,creditCost:item.creditCost,effectiveMode,effectiveCreditCost,available:ready};
+   return {key,title,group,mode:item.mode,creditCost:item.creditCost,effectiveMode,effectiveCreditCost,available:key==='research-image'?imageAvailable():ready};
   });return {version:row.version,services};
  }
  function saveToolRules(input){

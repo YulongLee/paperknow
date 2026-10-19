@@ -5,7 +5,7 @@ import {JSDOM} from 'jsdom';
 import {validatePaper,literatureKey} from '../dist/workspace/literature-model.mjs';
 function setup(){
  const dom=new JSDOM('<main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'https://example.test/workspace.html#category/research'});
- for(const key of ['window','document','localStorage','FormData','location','AbortController'])globalThis[key]=dom.window[key];
+ for(const key of ['window','document','localStorage','FormData','location','AbortController','DOMParser','XMLSerializer'])globalThis[key]=dom.window[key];
  Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true,writable:true});
  dom.window.HTMLElement.prototype.scrollIntoView=()=>{};document.querySelector('dialog').close=()=>{};
  const notices=[],ctx={notify:value=>notices.push(value),modal:(_,html)=>{document.querySelector('#workspace-dialog-body').innerHTML=html;}};
@@ -32,26 +32,26 @@ test('AI reading keeps exactly four task entries, local search, reader notes and
 test('research preserves chart save and professional descriptions across its three honest workflows',async()=>{
  const {dom,ctx,notices}=setup(),restoreExport=installGuestExportSession(),create=URL.createObjectURL,revoke=URL.revokeObjectURL,click=window.HTMLAnchorElement.prototype.click;let blob;
  try{
-  mountResearch(ctx);assert.equal(document.querySelectorAll('.research-mode-cards [data-mode]').length,3);assert.equal(document.querySelectorAll('.research-workflow-strip li').length,3);
+  mountResearch(ctx);assert.equal(document.querySelectorAll('.research-mode-cards [data-mode]').length,3);assert.equal(document.querySelectorAll('.research-workflow-strip li').length,0);$('[data-mode="data"]').click();assert.equal(document.querySelectorAll('.research-workflow-strip li').length,3);
   input('[data-option="title"]','用户真实图表');$('[data-action="save"]').click();assert.equal(JSON.parse(localStorage.getItem('paperknow-drafts'))[0].title,'用户真实图表');
-  $('[data-mode="pro"]').click();$('[data-pro-type="9"]').click();input('[data-pro-description]','绘制电源、开关与电阻串联关系，并标注电流方向。');assert.equal(researchHasWork(),true);
-  $('[data-mode="formula"]').click();$('[data-mode="pro"]').click();assert.match($('[data-pro-description]').value,/电源、开关与电阻/);assert.equal($('[data-pro-type="9"]').getAttribute('aria-pressed'),'true');assert.match($('[data-action="pro-generate"]').textContent,/AI 生成结构图/);assert.match($('.research-credit').textContent,/确认用量/);
+  $('[data-mode="structure"]').click();$('[data-pro-type="9"]').click();input('[data-pro-description]','绘制电源、开关与电阻串联关系，并标注电流方向。');assert.equal(researchHasWork(),true);
+  $('[data-mode="formula"]').click();$('[data-mode="structure"]').click();assert.match($('[data-pro-description]').value,/电源、开关与电阻/);assert.equal($('[data-pro-type="9"]').getAttribute('aria-pressed'),'true');assert.match($('[data-action="pro-generate"]').textContent,/AI 生成结构图/);assert.match($('.research-credit').textContent,/确认用量/);
   URL.createObjectURL=value=>{blob=value;return 'blob:research';};URL.revokeObjectURL=()=>{};window.HTMLAnchorElement.prototype.click=()=>{};
   $('[data-action="pro-export"]').click();await waitForExport(()=>blob);assert.match(await blob.text(),/电子电路/);await waitForExport(()=>blob);assert.match(await blob.text(),/电流方向/);assert.equal(JSON.parse(localStorage.getItem('paperknow-drafts')).length,1);assert.doesNotMatch(notices.join(' '),/图表已生成|已扣费/);
   globalThis.confirm=()=>{throw Error('不应弹出离开确认');};assert.equal(researchRouteGuard(),true);
  }finally{URL.createObjectURL=create;URL.revokeObjectURL=revoke;window.HTMLAnchorElement.prototype.click=click;disposeResearch();restoreExport();delete globalThis.confirm;dom.window.close();}
 });
 
-test('formula workflow keeps editable text and never claims a copy succeeded when clipboard fails',async()=>{
+test('formula workbench keeps editable text and never claims a copy succeeded when clipboard fails',async()=>{
  const {dom,ctx,notices}=setup();
- try{mountResearch(ctx);$('[data-mode="formula"]').click();input('[data-formula]','\\alpha + \\beta');assert.equal($('[data-formula]').value,'\\alpha + \\beta');$('[data-formula-token="0"]').click();assert.equal($('[data-formula]').value,'\\alpha + \\beta \\frac{a}{b}');assert.equal(document.querySelector('[data-formula-token="0"]').textContent,'分式');$('[data-action="formula-copy"]').click();await Promise.resolve();assert.match(notices.at(-1),/无法自动复制/);assert.doesNotMatch(notices.join(' '),/公式已复制/);Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw Error('denied');}},configurable:true});$('[data-action="formula-copy"]').click();await new Promise(resolve=>setTimeout(resolve,0));assert.match(notices.at(-1),/复制未成功/);assert.doesNotMatch(notices.join(' '),/公式已复制/);$('[data-mode="basic"]').click();$('[data-mode="formula"]').click();assert.equal($('[data-formula]').value,'\\alpha + \\beta \\frac{a}{b}');}finally{disposeResearch();dom.window.close();}
+ try{mountResearch(ctx);$('[data-mode="formula"]').click();input('[data-fs-editor]','\\alpha + \\beta');const editor=$('[data-fs-editor]');editor.setSelectionRange(editor.value.length,editor.value.length);$('[data-fs-token="0"]').click();const inserted='\\alpha + \\beta\\frac{}{}';assert.equal(editor.value,inserted);assert.match($('[data-fs-token="0"]').textContent,/分数/);$('[data-fs-action="copy"]').click();await Promise.resolve();assert.match($('[data-fs-status]').textContent,/无法自动复制/);assert.doesNotMatch(notices.join(' '),/已复制/);Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw Error('denied');}},configurable:true});$('[data-fs-action="copy"]').click();await new Promise(resolve=>setTimeout(resolve,0));assert.match($('[data-fs-status]').textContent,/复制未成功/);assert.doesNotMatch(notices.join(' '),/已复制/);$('[data-mode="data"]').click();$('[data-mode="formula"]').click();assert.equal($('[data-fs-editor]').value,inserted);}finally{disposeResearch();dom.window.close();}
 });
 
-test('research mode, chart type, input tabs and formula insertion preserve the selected keyboard control',()=>{
+test('research mode and data controls preserve focus, while formula insertions focus the unchanged editor without scrolling',()=>{
  const {dom,ctx}=setup();
  try{
   mountResearch(ctx);const activate=selector=>{const node=$(selector);assert.ok(node,selector);node.focus({preventScroll:true});node.click();assert.equal(document.activeElement,$(selector),'Focus lost after '+selector);};
-  activate('[data-mode="formula"]');activate('[data-formula-preset="1"]');activate('[data-formula-token="0"]');assert.match($('[data-formula]').value,/frac/);activate('[data-mode="basic"]');activate('[data-tab="paste"]');activate('[data-tab="manual"]');activate('[data-type="line"]');activate('[data-mode="pro"]');assert.ok($('.dashboard').style.minHeight);
+  activate('[data-mode="formula"]');const editor=$('[data-fs-editor]'),focusCalls=[],original=editor.focus;editor.focus=function(options){focusCalls.push(options);return original.call(this,options);};$('[data-fs-template="triangle"]').click();assert.equal(document.activeElement,editor);assert.equal($('[data-fs-editor]'),editor);$('[data-fs-token="0"]').click();assert.match(editor.value,/frac/);assert.deepEqual(focusCalls,[{preventScroll:true},{preventScroll:true}]);activate('[data-mode="data"]');activate('[data-tab="paste"]');activate('[data-tab="manual"]');activate('[data-type="line"]');activate('[data-mode="structure"]');assert.ok($('.dashboard').style.minHeight);
  }finally{disposeResearch();dom.window.close();}
 });
 

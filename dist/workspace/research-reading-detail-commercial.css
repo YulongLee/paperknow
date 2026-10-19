@@ -385,3 +385,58 @@
   #app .dashboard .rdc-research-space .research-workflow-strip{gap:8px;padding:12px 14px}
   #app .dashboard .rdc-research-space .research-workflow-strip small{display:none}
 }
+
+/* These are continuous workbenches. Keep their shared identity visible without
+   using the landing-page-sized hero and cards above the actual editor. */
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category]{min-height:144px;padding:19px 25px;margin:0 0 12px;border-radius:15px}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category]>.tool-banner-copy{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:22px;align-items:center;width:calc(100% - 170px);max-width:none}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] .tool-banner-label{grid-column:1;width:max-content;font-size:10px;padding:4px 7px;line-height:1.5}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] h1{grid-column:1;margin:7px 0 5px;font-size:25px;line-height:1.3;letter-spacing:-.5px}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] p{grid-column:1;margin:0;max-width:680px;font-size:12px;line-height:1.8}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] .tool-banner-actions{grid-column:2;grid-row:1/4;margin:0;align-self:center;justify-content:flex-end;gap:7px}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] .tool-banner-actions>.btn{font-size:11px;min-height:33px;padding:8px 12px;border-radius:8px;white-space:nowrap}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category]::after{width:155px;height:141px;right:22px;top:50%;bottom:auto;transform:translateY(-50%);background-size:contain;animation:none}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] .tool-banner-scene{width:160px;height:135px;right:18px;top:50%;bottom:auto;transform:translateY(-50%);opacity:.35}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>.research-mode-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 10px;align-items:stretch}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>.research-mode-cards>button{display:grid;grid-template-columns:36px minmax(0,1fr);grid-template-rows:auto auto;column-gap:12px;align-content:center;align-items:center;min-height:92px;padding:15px 18px;border-radius:12px;text-align:left;box-shadow:0 3px 14px #233e6604}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page) .research-mode-card-top{display:contents;margin:0}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page) .research-mode-icon{grid-column:1;grid-row:1/3;align-self:center;width:36px;height:36px;border-radius:10px}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page) .research-mode-icon svg{width:21px;height:21px}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>.research-mode-cards>button>b{grid-column:2;grid-row:1;font-size:15px;line-height:1.5}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page) .research-mode-description{grid-column:2;grid-row:2;margin:4px 0 0;font-size:10px;line-height:1.7;max-width:none}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page) :is(.research-mode-art,.research-mode-bottom,.research-mode-card-top small){display:none}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>.research-advanced-links{margin:0 0 8px!important;gap:10px!important;min-height:30px;align-items:center}
+#app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>.research-advanced-links>.btn{min-height:28px;font-size:10px;padding:6px 10px;line-height:1.5;border-radius:7px}
+#app .dashboard .research-ai-first .research-drawing-studio{margin-top:0}
+@container research-tools-page (max-width:900px){
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category]{min-height:136px;padding:17px 20px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category]>.tool-banner-copy{width:calc(100% - 130px);column-gap:12px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category]::after{width:120px;height:126px;right:13px;top:50%;bottom:auto;transform:translateY(-50%)}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] .tool-banner-scene{display:none}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] h1{font-size:23px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] p{font-size:11px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>.research-mode-cards{gap:10px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>.research-mode-cards>button{min-height:88px;padding:13px 12px;column-gap:8px;grid-template-columns:31px minmax(0,1fr)}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page) .research-mode-icon{width:31px;height:31px;border-radius:8px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>.research-mode-cards>button>b{font-size:13px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page) .research-mode-description{font-size:9px}
+}
+@media(max-width:600px){
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category]{min-height:136px;padding:17px 16px;margin-bottom:10px;display:block;border-radius:13px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category]>.tool-banner-copy{display:block;width:100%;position:relative}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] :is(.tool-banner-scene)::after{display:none}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category]::after{display:none}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] .tool-banner-label{font-size:9px;padding:3px 5px;max-width:calc(100% - 98px)}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] h1{font-size:22px;margin:9px 0 5px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] p{font-size:10px;line-height:1.8;max-width:none}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] .tool-banner-actions{position:absolute;top:-1px;right:0;margin:0}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] .tool-banner-actions>.btn{min-height:29px;padding:6px 8px;font-size:9px;gap:4px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>header.tool-banner[data-tool-category] .tool-banner-actions>.btn svg{width:13px;height:13px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>.research-mode-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:8px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>.research-mode-cards>button{display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:78px;padding:11px 6px;gap:7px;text-align:center;border-radius:10px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page) .research-mode-icon{width:27px;height:27px;border-radius:7px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page) .research-mode-icon svg{width:17px;height:17px}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>.research-mode-cards>button>b{font-size:12px;line-height:1.5}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page) .research-mode-description{display:none}
+ #app .dashboard .research-space:is(.research-ai-first,.research-formula-workbench,.research-formula-page)>.research-advanced-links{margin-bottom:8px!important;min-height:28px}
+}
