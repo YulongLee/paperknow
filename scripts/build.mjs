@@ -7,6 +7,9 @@ await build({entryPoints:['src/precheck/parsers.js'],bundle:true,platform:'brows
 await copyFile('node_modules/pdfjs-dist/build/pdf.worker.min.mjs','dist/precheck/assets/pdf.worker.min.mjs');
 console.log('PaperKnow document parser built.');
 await mkdir('dist/workspace/assets',{recursive:true});
+await build({entryPoints:['src/analysis-workbook.js'],bundle:true,platform:'browser',format:'esm',minify:true,target:'es2022',outfile:'dist/workspace/assets/analysis-workbook.js',legalComments:'eof'});
+await build({entryPoints:['src/analysis-statistics.js'],bundle:true,platform:'browser',format:'esm',minify:true,target:'es2022',outfile:'dist/workspace/assets/analysis-statistics.js',legalComments:'eof'});
+for(const name of ['exceljs','jstat','fflate'])await copyFile('node_modules/'+name+'/LICENSE','dist/workspace/assets/'+name+'-LICENSE.txt');
 await build({entryPoints:['src/presentation-export.js'],bundle:true,platform:'browser',format:'esm',minify:true,target:'es2022',outfile:'dist/workspace/assets/presentation-export.js',legalComments:'eof'});
 await build({entryPoints:['src/format-document.js'],bundle:true,platform:'browser',format:'esm',minify:true,target:'es2022',outfile:'dist/workspace/assets/format-document.js',legalComments:'eof'});
 await build({entryPoints:['src/writing-document.js'],bundle:true,platform:'browser',format:'esm',minify:true,target:'es2022',outfile:'dist/workspace/assets/writing-document.js',legalComments:'eof'});

@@ -63,13 +63,19 @@ test('DOCX exports the same readable source inventory and keeps academic formula
 });
 
 const draft=formula=>({title:'用户主题',degree:'硕士',targetWords:500,...(formula===undefined?{}:{formula}),knowledgeFiles:[{id:'uploaded',name:'真实研究记录',text:'真实资料'}],outlineRows:[{id:'one',title:'分析',level:1,words:500}]});
-test('selected content form survives draft snapshot normalization into the actual chapter task',()=>{
+test('content form survives normalization while only explicit leaf preferences authorize chapter formats',()=>{
  for(const contentMode of ['text','rich']){
   const value=normalizeThesisSnapshot(thesisSnapshotFromDraft(draft(contentMode))),task=thesisAgentTask(value,{chapterTitle:'分析',title:'论证',sourceIds:[],targetWords:500},[]);
   assert.equal(value.requirements.contentMode,contentMode);assert.equal(task.context.requirements.contentMode,contentMode);
-  if(contentMode==='rich'){assert.match(task.instructions,/纯文本表格、LaTeX 公式源码或代码示例/);assert.match(task.instructions,/图表数值必须来自已读取的用户资料/);assert.match(task.instructions,/不声称生成嵌入图表、渲染公式或可运行附件/);}
+  assert.deepEqual(task.context.unit.presentation,{table:false,formula:false,code:false});
+  if(contentMode==='rich'){assert.match(task.instructions,/本节未开启任何扩展项目/);assert.match(task.instructions,/不主动添加表格、公式块或代码块/);assert.match(task.instructions,/全局扩展形式都不能代替本节授权/);}
   else assert.match(task.instructions,/不主动添加图表、公式块或代码块/);
  }
+ const selected=draft('rich');selected.outlineRows[0].presentation={formula:true};
+ const value=normalizeThesisSnapshot(thesisSnapshotFromDraft(selected)),task=thesisAgentTask(value,{id:'one',chapterId:'one',sectionId:'one',chapterTitle:'分析',title:'论证',sourceIds:[],targetWords:500},[]);
+ assert.deepEqual(task.context.unit.presentation,{table:false,formula:true,code:false});
+ assert.match(task.instructions,/按本节已开启的 公式 服务当前论证/);
+ assert.match(task.instructions,/公式使用 LaTeX 并解释变量、适用条件和依据/);
 });
 
 test('legacy snapshots keep their absent content form and unsupported modes cannot enter the execution contract',()=>{

@@ -68,8 +68,8 @@ test('numbered reference chapters are excluded consistently on both snapshot pat
  }
 });
 
-test('snapshot default is 8,000 only for an empty budget, not an explicit invalid value',()=>{
+test('a missing master budget uses 20,000 while an explicit invalid value remains invalid',()=>{
  const draft=draftWithBudget(8000);
- for(const targetWords of ['',undefined,null])assert.equal(thesisSnapshotFromDraft({...draft,targetWords}).profile.targetWords,8000);
+ for(const targetWords of ['',undefined,null])assert.equal(thesisSnapshotFromDraft({...draft,targetWords}).profile.targetWords,20000);
  for(const targetWords of [0,-1,499,80001,'not-a-number'])assert.throws(()=>thesisSnapshotFromDraft({...draft,targetWords}),/500–80,000/);
 });

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {runAgentTask} from '../backend/agent-runtime.mjs';
+import {providerFixture,primeProvider} from './fixtures/agent-provider.mjs';
 import {normalizeToolRequest,toolRunPlan,toolRunTask,validateToolCandidate,parseToolOutput} from '../backend/tool-run-model.mjs';
 
 const settings={enabled:true,engine:'claude-agent-sdk',baseURL:'https://provider.example.com/anthropic',model:'tool-runtime-fixture',apiKey:'test-only-tool-runtime-secret',version:'tool-runtime-v1',maxTurns:10,maxOutputTokens:256,maxCostUsd:.1,timeoutMs:5000};
@@ -13,9 +14,9 @@ function fixture(){
  const candidate=(excerpt=quote,sourceId='paper-1')=>({complete:true,text:'原文明确说明这是一份合成研究资料。',sourceIds:[sourceId],citations:[{sourceId,quote:excerpt}]}),validator=result=>validateToolCandidate(result,value,unit);
  return {value,unit,task,prefix,quote,suffix,text,candidate,validator};
 }
-async function execute(script,{task,validateToolOutput=true,validateWritingOutput,signal,runtime=settings}={}){
+async function execute(script,{task,validateToolOutput=true,validateWritingOutput,signal,runtime=settings,providerUsage}={}){
  const f=fixture(),validator=validateToolOutput===true?f.validator:validateToolOutput;
- return runAgentTask({settings:runtime,task:task||f.task,signal,...(validator!==false?{validateToolOutput:validator}:{}),...(validateWritingOutput?{validateWritingOutput}:{}),dependencies:{lookup,query:({options})=>(async function*(){yield*script(options,f);})()}});
+ return runAgentTask({settings:runtime,task:task||f.task,signal,...(validator!==false?{validateToolOutput:validator}:{}),...(validateWritingOutput?{validateWritingOutput}:{}),dependencies:{lookup,httpsRequest:providerFixture({usage:providerUsage}).requestImpl,query:({options})=>(async function*(){await primeProvider(options);yield*script(options,f);})()}});
 }
 
 // The query double never contacts a model provider; it only invokes registered
@@ -76,13 +77,12 @@ test('only an accepted full tool candidate can survive SDK max-turns acknowledge
  await assert.rejects(()=>execute(async function*(options,f){const tools=options.mcpServers.paperknow.instance._registeredTools;assert.equal(decode(await tools.submit_writing_output.handler({candidate:f.candidate()})).accepted,false);yield{...success,subtype:'error_max_turns',is_error:true,result:JSON.stringify(f.candidate())};}),/回合上限/);
 });
 
-for(const [label,amend,pattern]of [
- ['unknown usage',{modelUsage:{},usage:undefined},/真实用量/],
- ['zero usage',{modelUsage:{fixture:{inputTokens:0,outputTokens:0}}},/真实用量/],
- ['unknown cost',{total_cost_usd:undefined},/真实用量/],
+for(const [label,amend,pattern,providerUsage]of [
+ ['unknown usage',{modelUsage:{},usage:undefined},/真实用量/,{input_tokens:10}],
+ ['zero usage',{modelUsage:{fixture:{inputTokens:0,outputTokens:0}}},/真实用量/,{input_tokens:0,output_tokens:0}],
  ['output truncation',{stop_reason:'max_tokens'},/截断/],
  ['budget violation',{total_cost_usd:.2},/执行预算/],
  ['permission denial',{permission_denials:[{tool_name:'Bash'}]},/未授权工具/]
 ])test('accepted tool candidate still rejects '+label,async()=>{
- await assert.rejects(()=>execute(async function*(options,f){const tools=options.mcpServers.paperknow.instance._registeredTools;await tools.read_material.handler({id:'paper-1'});await tools.submit_writing_output.handler({candidate:f.candidate()});yield{...success,result:'ACK',...amend};}),pattern);
+ await assert.rejects(()=>execute(async function*(options,f){const tools=options.mcpServers.paperknow.instance._registeredTools;await tools.read_material.handler({id:'paper-1'});await tools.submit_writing_output.handler({candidate:f.candidate()});yield{...success,result:'ACK',...amend};},{providerUsage}),pattern);
 });
