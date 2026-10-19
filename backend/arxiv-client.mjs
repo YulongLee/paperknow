@@ -25,7 +25,7 @@ export function arxivQueryURL(query){
   let expression=terms.join(' AND ');
   const from=[query.yearFrom?String(query.yearFrom)+'-01-01':'',query.dateFrom||''].filter(Boolean).sort().at(-1),to=[query.yearTo?String(query.yearTo)+'-12-31':'',query.dateTo||''].filter(Boolean).sort()[0];
   if(from||to)expression+=' AND submittedDate:['+(from||'1000-01-01').replaceAll('-','')+'0000 TO '+(to||'2100-12-31').replaceAll('-','')+'2359]';
-  url.searchParams.set('search_query',expression);url.searchParams.set('start','0');url.searchParams.set('max_results',String(query.limit));url.searchParams.set('sortBy',query.sort||'relevance');url.searchParams.set('sortOrder','descending');
+  url.searchParams.set('search_query',expression);url.searchParams.set('start',String(((query.page||1)-1)*query.limit));url.searchParams.set('max_results',String(query.limit));url.searchParams.set('sortBy',query.sort==='year'?'submittedDate':query.sort||'relevance');url.searchParams.set('sortOrder','descending');
   return url;
 }
 
@@ -45,18 +45,18 @@ export function parseArxivFeed(xml,query){
     const date=publishedDate.slice(0,10),year=Number(date.slice(0,4));
     if(query.yearFrom&&year<query.yearFrom||query.yearTo&&year>query.yearTo||query.dateFrom&&date<query.dateFrom||query.dateTo&&date>query.dateTo)continue;
     const abstract=text(childText(entry,ATOM,'summary'),6000),doi=doiValue(childText(entry,ARXIV,'doi'));
-    const authors=children(entry,ATOM,'author').slice(0,30).map(author=>text(childText(author,ATOM,'name'),150)).filter(Boolean).join(', ');
+    const authorNames=children(entry,ATOM,'author').slice(0,30).map(author=>text(childText(author,ATOM,'name'),150)).filter(Boolean),authors=authorNames.join(', ');
     const categories=children(entry,ATOM,'category').slice(0,30).map(category=>category.getAttribute('term')||'').filter(value=>/^[a-z][a-z\d.\-]{0,50}$/i.test(value));
     // Always construct external original links from validated arXiv IDs. Never trust feed URLs.
     const url='https://arxiv.org/abs/'+arxivId,pdfUrl='https://arxiv.org/pdf/'+arxivId;
-    const item={id:'arxiv:'+baseId,source:'arxiv',sourceId:baseId,arxivId,title,authors,year,doi,url,pdfUrl,fullTextUrl:pdfUrl,publishedDate,updatedDate,type:'preprint',openAccess:true,categories,...(abstract?{abstract}:{})};
+    const item={id:'arxiv:'+baseId,source:'arxiv',sourceId:baseId,arxivId,title,authors,authorNames,year,doi,url,pdfUrl,fullTextUrl:pdfUrl,publishedDate,updatedDate,type:'preprint',documentType:'preprint',openAccess:true,categories,...(abstract?{abstract}:{})};
     if(seen.has(baseId)){const at=seen.get(baseId);if(updatedDate>items[at].updatedDate)items[at]=item;}else{seen.set(baseId,items.length);items.push(item);}
   }
   // The provider owns relevance ordering; dates can additionally be sorted deterministically.
-  if(query.sort==='submittedDate')items.sort((a,b)=>b.publishedDate.localeCompare(a.publishedDate));
+  if(query.sort==='submittedDate'||query.sort==='year')items.sort((a,b)=>b.publishedDate.localeCompare(a.publishedDate));
   if(query.sort==='lastUpdatedDate')items.sort((a,b)=>b.updatedDate.localeCompare(a.updatedDate));
   const rawTotal=childText(feed,OPEN_SEARCH,'totalResults').trim(),total=/^\d{1,15}$/.test(rawTotal)?Number(rawTotal):undefined;
-  return {items:items.slice(0,query.limit),...(Number.isSafeInteger(total)&&total>=0?{total}:{})};
+  return {items:items.slice(0,query.limit),hasMore:(query.page||1)<5&&(Number.isSafeInteger(total)&&total>=0?total>(query.page||1)*query.limit:entries.length>=query.limit),...(Number.isSafeInteger(total)&&total>=0?{total}:{})};
 }
 
 // Share the production fetch transport's gate across service instances in this process.

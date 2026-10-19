@@ -1,4 +1,13 @@
+import {readingModes} from './literature-reading-modes.mjs';
 export const literatureAiLimit=32000;
+// Match the server's read/answer unit grouping before preparing a paid task.
+// Each unit needs at least one continuous, nonblank quote of five characters.
+export function requireReadingCitationCoverage(materials){
+ let ranges=0,size=0,quotable=false;
+ const check=()=>{if(ranges&&!quotable)throw Error('本次原文范围中有一组片段不足以提供至少 5 字符的连续原文依据，请补充完整段落或调整范围后再研读。');};
+ for(const material of materials)for(let start=0,text=String(material.text||'').trim();start<text.length;start+=5000){const end=Math.min(text.length,start+5000);if(ranges&&(size+end-start>6000||ranges>=6)){check();ranges=0;size=0;quotable=false;}ranges++;size+=end-start;quotable ||= text.slice(start,end).trim().length>=5;}
+ check();
+}
 export function literatureParagraphs(text){
  const output=[];for(const block of String(text||'').replace(/\r\n?/g,'\n').split(/\n[ \t]*\n/).map(part=>part.trim()).filter(Boolean)){let rest=block;const split=block.length>3200;while(rest.length>3200){const prefix=rest.slice(0,3200);let cut=0;for(const match of prefix.matchAll(/[。！？.!?;；]\s*|\n/g))if(match.index+match[0].length>=1600)cut=match.index+match[0].length;if(!cut)cut=3200;if(/[\uD800-\uDBFF]/.test(rest[cut-1]))cut--;output.push({text:rest.slice(0,cut).trim(),split});rest=rest.slice(cut).trimStart();}if(rest.trim())output.push({text:rest.trim(),split});}
  return output.map((part,index)=>({...part,id:'p'+(index+1),index:index+1}));
@@ -34,5 +43,5 @@ export function literatureAiExport(paper,result){
 export function validateSavedLiteratureAiResults(value){
  if(value===undefined)return [];
  if(!Array.isArray(value)||value.length>30)throw Error('每篇文献最多保留 30 份研读与翻译结果。');
- return value.map(record=>{if(!record||typeof record.id!=='string'||!['read','answer','translate'].includes(record.operation)||!Array.isArray(record.materials)||!record.materials.length||record.materials.length>20||!['full','abstract'].includes(record.sourceScope))throw Error('研读备份中的来源或结果格式无效。');const materials=record.materials.map(m=>{if(!m||typeof m.id!=='string'||typeof m.text!=='string'||!m.text.trim()||m.text.length>32000)throw Error('研读备份中的原文段落无效。');return {id:m.id,name:String(m.name||'').slice(0,500),text:m.text};});if(materials.reduce((n,m)=>n+m.text.length,0)>32000)throw Error('研读备份中的原文超过单次范围。');const output=validateLiteratureAiOutput(record.output,{materials,language:record.language},record.operation);return {id:record.id.slice(0,200),jobId:String(record.jobId||'').slice(0,200),operation:record.operation,sourceScope:record.sourceScope,question:String(record.question||'').slice(0,2000),language:record.operation==='translate'?String(record.language||'').slice(0,30):'',materials,output,createdAt:String(record.createdAt||'').slice(0,100)};});
+ return value.map(record=>{if(!record||typeof record.id!=='string'||!['read','answer','translate'].includes(record.operation)||!Array.isArray(record.materials)||!record.materials.length||record.materials.length>20||!['full','abstract'].includes(record.sourceScope))throw Error('研读备份中的来源或结果格式无效。');const materials=record.materials.map(m=>{if(!m||typeof m.id!=='string'||typeof m.text!=='string'||!m.text.trim()||m.text.length>32000)throw Error('研读备份中的原文段落无效。');return {id:m.id,name:String(m.name||'').slice(0,500),text:m.text};});if(materials.reduce((n,m)=>n+m.text.length,0)>32000)throw Error('研读备份中的原文超过单次范围。');if(record.mode!==undefined&&(record.operation!=='read'||!Object.hasOwn(readingModes,record.mode)))throw Error('研读模式格式无效。');const output=validateLiteratureAiOutput(record.output,{materials,language:record.language},record.operation);return {...(record.mode!==undefined?{mode:record.mode}:{}),...(Object.hasOwn(record,'editedAt')?{editedAt:String(record.editedAt||'').slice(0,100)}:{}),id:record.id.slice(0,200),jobId:String(record.jobId||'').slice(0,200),operation:record.operation,sourceScope:record.sourceScope,question:String(record.question||'').slice(0,2000),language:record.operation==='translate'?String(record.language||'').slice(0,30):'',materials,output,createdAt:String(record.createdAt||'').slice(0,100)};});
 }

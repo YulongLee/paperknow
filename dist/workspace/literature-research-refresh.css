@@ -142,3 +142,22 @@
 #app .dashboard .research-commerce:has(>.research-commerce-side)>.research-commerce-main{grid-row:4;grid-column:1}
 #app .dashboard .research-commerce:has(>.research-commerce-side)>.research-commerce-side{grid-row:4;grid-column:2}
 @container research-tools-page (max-width:1050px){#app .dashboard .research-commerce:has(>.research-commerce-side){grid-template-columns:minmax(0,1fr)!important}#app .dashboard .research-commerce:has(>.research-commerce-side)>.research-commerce-side{grid-row:5;grid-column:1}}
+/* Five-column selection tables must supersede the older four-column percentage widths. */
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable{display:table;width:100%;min-width:980px;table-layout:fixed}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable thead{display:table-header-group}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable tbody{display:table-row-group}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable tr{display:table-row}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable :is(th,td){display:table-cell;width:auto;box-sizing:border-box;margin:0;word-break:normal;overflow-wrap:normal}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable th{white-space:nowrap}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable th:first-child{width:52px}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable th:nth-child(2){width:auto}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable th:nth-child(3){width:132px}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable th:nth-child(4){width:116px}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable th:last-child{width:244px}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable td:nth-child(2){overflow-wrap:anywhere}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable :is(.lit-scope,.lit-state,.lit-actions){white-space:nowrap}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable .lit-actions{flex-wrap:nowrap;gap:8px}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable .lit-actions>button{flex-shrink:0}
+.dashboard .lit-workspace-refresh .lit-table.lit-table-selectable [data-lit-citation]{width:auto;min-width:76px;padding:6px 8px;font-size:12px;white-space:nowrap}
+.lit-library .lit-toolbar{grid-template-columns:minmax(220px,2fr) repeat(4,minmax(110px,1fr))}.lit-library footer{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.lit-library footer [data-lit-citations]{margin-left:auto}@media(max-width:1100px){.lit-library .lit-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.lit-library .lit-toolbar .asset-search{grid-column:1/-1}}@media(max-width:620px){.lit-library .lit-toolbar{grid-template-columns:minmax(0,1fr)}.lit-library footer [data-lit-citations]{margin-left:0}}
+.dashboard .lit-workspace-refresh .lit-review-entry{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:16px;padding:20px}.lit-review-entry h2{font-size:18px;margin:0 0 6px}.lit-review-entry p{margin:0;color:var(--pk-muted,#71819d);font-size:13px;line-height:1.7}.lit-review-entry>.btn{flex-shrink:0}@media(max-width:700px){.dashboard .lit-workspace-refresh .lit-review-entry{align-items:flex-start;flex-direction:column;padding:16px}}

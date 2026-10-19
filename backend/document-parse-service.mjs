@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {digest} from './auth.mjs';
 import {initializeArtifactSchema} from './artifact-service.mjs';
+import {isMineruConfigurationValid} from './mineru-client.mjs';
 
 export const documentParseLimits=Object.freeze({maxFileBytes:20*1024*1024,maxPages:100,maxCharacters:200000,userDaily:10,globalDaily:100});
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
@@ -17,8 +18,8 @@ export function initializeDocumentParseSchema(db){
  );CREATE INDEX IF NOT EXISTS document_parse_owner ON document_parse_runs(user_id,created_at);
  CREATE INDEX IF NOT EXISTS document_parse_poll ON document_parse_runs(next_poll_at);`);
 }
-export const documentParsingReady=config=>Boolean(config.mineruEnabled===true&&typeof config.mineruToken==='string'&&config.mineruToken.length>=20&&config.storage?.provider==='aliyun_oss'&&typeof config.storage.read==='function'&&typeof config.storage.putArtifact==='function'&&typeof config.storage.readArtifact==='function'&&typeof config.storage.removeArtifact==='function');
-export function documentParsingCapabilities(config){return{ready:documentParsingReady(config),maxFileBytes:documentParseLimits.maxFileBytes,maxPages:documentParseLimits.maxPages,maxCharacters:documentParseLimits.maxCharacters,userDailyLimit:documentParseLimits.userDaily,consentRequired:true,storage:'private_account',reason:documentParsingReady(config)?'':'云端 PDF 解析暂未开放，可使用文本型文档或粘贴正文。'};}
+export const documentParsingReady=(config={})=>Boolean(config.mineruEnabled===true&&isMineruConfigurationValid({token:config.mineruToken,baseURL:config.mineruBaseURL})&&config.storage?.provider==='aliyun_oss'&&typeof config.storage.read==='function'&&typeof config.storage.putArtifact==='function'&&typeof config.storage.readArtifact==='function'&&typeof config.storage.removeArtifact==='function');
+export function documentParsingCapabilities(config={}){return{ready:documentParsingReady(config),maxFileBytes:documentParseLimits.maxFileBytes,maxPages:documentParseLimits.maxPages,maxCharacters:documentParseLimits.maxCharacters,userDailyLimit:documentParseLimits.userDaily,consentRequired:true,storage:'private_account',reason:documentParsingReady(config)?'':'云端 PDF 解析暂未开放，可使用文本型文档或粘贴正文。'};}
 export function createDocumentParseService(db,config={}){
  initializeDocumentParseSchema(db);
  const tx=fn=>{db.exec('BEGIN IMMEDIATE');try{const value=fn();db.exec('COMMIT');return value;}catch(e){db.exec('ROLLBACK');throw e;}};

@@ -24,7 +24,7 @@ test('AMiner requires complete valid server configuration and rejects client cre
   assert.equal(search.listSources().includes('aminer'),false);
   await assert.rejects(search.search(params()),error=>error.status===503&&error.response.sources[0].status==='not_configured');
  }
- for(const extra of [{api_key:'client-secret'},{user_id:'client-user'},{page:'2'},{endpoint:'https://evil.example'}])await assert.rejects(service({fetchImpl}).search(params(extra)),{status:400});
+ for(const extra of [{api_key:'client-secret'},{user_id:'client-user'},{page:'6'},{endpoint:'https://evil.example'}])await assert.rejects(service({fetchImpl}).search(params(extra)),{status:400});
  assert.equal(calls,0);
  const configured=service({fetchImpl}),ids=configured.listSources();ids.push('evil');assert.equal(configured.listSources().includes('evil'),false);
  assert.equal(configured.sourceStatus().find(row=>row.id==='aminer').configured,true);

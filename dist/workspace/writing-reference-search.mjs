@@ -37,7 +37,20 @@ export function normalizeReferenceSearchItem(input={}){
   title,authors:clip(input.authors,1000),year,doi,url:safeReferenceURL(input.url)||(doi?'https://doi.org/'+encodeURI(doi):''),
   source,sourceId,sourceLabel:label+' · 在线题录，未读取全文',scope:'metadata',text:'',abstract:clip(input.abstract,12000),
   ...(typeof input.openAccess==='boolean'?{openAccess:input.openAccess}:{}),fullTextUrl:safeReferenceURL(input.fullTextUrl),type:clip(input.type,80),tags:[],
-  ...arxiv,confirmed:false,fullTextRead:false};
+  ...referenceBibliography(input),...arxiv,confirmed:false,fullTextRead:false};
+}
+
+// Keep only provider-supplied bibliographic fields; metadata never becomes read material.
+function referenceBibliography(input){
+ const result={},types=['generic','thesis','journal','conference','book','patent','standard','yearbook','newspaper','report','chapter','preprint','other'];
+ if(types.includes(input.documentType))result.documentType=input.documentType==='other'?'generic':input.documentType;
+ for(const [key,max] of [['journal',500],['publisher',500],['publicationSource',300],['volume',100],['issue',100],['pages',100],['venue',500]])if(typeof input[key]==='string'&&clip(input[key],max))result[key]=clip(input[key],max);
+ if(typeof input.citationBucket==='string'&&/^(?:0|1-10|11-50|51-200|200-1000|201-1000|1000-5000|1001-5000|5000\+)$/.test(input.citationBucket))result.citationBucket=input.citationBucket;
+ if(Number.isSafeInteger(input.citationCount)&&input.citationCount>=0){result.citationCount=input.citationCount;if(Object.hasOwn(sources,input.citationCountSource)&&input.citationCountSource!=='all')result.citationCountSource=input.citationCountSource;}
+ if(Array.isArray(input.keywords))result.keywords=[...new Set(input.keywords.filter(v=>typeof v==='string').map(v=>clip(v,80)).filter(Boolean))].slice(0,20);
+ if(Array.isArray(input.authorNames))result.authorNames=input.authorNames.slice(0,100).map(v=>typeof v==='string'?{literal:clip(v,200)}:v).filter(v=>v&&typeof v==='object'&&!Array.isArray(v)).map(v=>Object.fromEntries(['family','given','literal'].filter(k=>typeof v[k]==='string'&&clip(v[k],200)).map(k=>[k,clip(v[k],200)]))).filter(v=>Object.keys(v).length);
+ if(Array.isArray(input.sourceProvenance))result.sourceProvenance=input.sourceProvenance.slice(0,5).filter(v=>v&&Object.hasOwn(sources,v.source)&&v.source!=='all').map(v=>({source:v.source,sourceId:clip(v.sourceId,200),...Object.fromEntries(['journal','publisher','volume','issue','pages','venue'].filter(k=>typeof v[k]==='string').map(k=>[k,clip(v[k],k==='journal'||k==='publisher'||k==='venue'?500:100)])),...(/^(?:0|1-10|11-50|51-200|200-1000|201-1000|1000-5000|1001-5000|5000\+)$/.test(v.citationBucket||'')?{citationBucket:v.citationBucket}:{}),...(types.includes(v.documentType)?{documentType:v.documentType}:{}),...(validDoi(doiOf(v.doi))?{doi:validDoi(doiOf(v.doi))}:{}),...(/^\d{4}$/.test(String(v.year??''))?{year:String(v.year)}:{}),url:safeReferenceURL(v.url),...(typeof v.openAccess==='boolean'?{openAccess:v.openAccess}:{}),...(safeReferenceURL(v.fullTextUrl)?{fullTextUrl:safeReferenceURL(v.fullTextUrl)}:{}),...(Number.isSafeInteger(v.citationCount)&&v.citationCount>=0?{citationCount:v.citationCount}:{})}));
+ return result;
 }
 
 function identities(row){

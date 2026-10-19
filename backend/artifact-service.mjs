@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {digest} from './auth.mjs';
 import {artifactKinds,artifactMimeType} from './artifact-formats.mjs';
 import {validateFormulaArtifact} from './artifact-formula-validation.mjs';
+import {validateCitationArtifact} from './artifact-citation-validation.mjs';
 
 export const artifactLimits=Object.freeze({maxFileBytes:20*1024*1024,maxAccountBytes:500*1024*1024,maxFiles:2000});
 export {artifactKinds} from './artifact-formats.mjs';
@@ -44,6 +45,7 @@ export function createArtifactService(db,config={}){
  const checkAccount=(expected,user)=>{if(expected!==undefined&&expected!==user.id)fail(409,'登录账户已变化，请刷新后重新导出');};
  const checkSignature=(kind,buffer)=>{
   validateFormulaArtifact(kind,buffer);
+  validateCitationArtifact(kind,buffer);
   if(kind==='pdf'&&!buffer.subarray(0,5).equals(Buffer.from('%PDF-')))fail(400,'PDF 文件格式无效');
   if(['docx','pptx','xlsx','zip'].includes(kind)&&!buffer.subarray(0,2).equals(Buffer.from('PK')))fail(400,'压缩文档格式无效');
   if(kind==='png'&&!buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))fail(400,'PNG 文件格式无效');

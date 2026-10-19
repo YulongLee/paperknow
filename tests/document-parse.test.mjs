@@ -38,6 +38,17 @@ test('cloud PDF admission requires authentication, explicit consent, account mat
  f.db.prepare("UPDATE files SET storage_provider='local_server_sqlite' WHERE id=?").run(file);assert.equal((await f.submit(file)).status,409);
 });
 
+test('invalid enabled MinerU configuration keeps the server available and rejects new parsing before provider work',async t=>{
+ for(const [name,config]of [['blank token',{mineruToken:' '.repeat(20)}],['unsupported base URL',{mineruBaseURL:'https://invalid.example/api/v4'}]])await t.test(name,async t=>{
+  const f=await fixture(t,{config:{...config,documentParseClient:undefined}}),file=await f.upload();
+  const capabilities=await f.request('/capabilities',undefined,null);assert.equal(capabilities.status,200);assert.equal(capabilities.value.documentParsing.ready,false);assert.match(capabilities.value.documentParsing.reason,/暂未开放/);
+  assert.doesNotMatch(JSON.stringify(capabilities.value.documentParsing),/invalid\.example|mineru_configuration/);
+  const denied=await f.submit(file);assert.equal(denied.status,503);assert.equal(f.db.prepare('SELECT count(*) n FROM document_parse_runs').get().n,0);
+  await f.tick();assert.deepEqual({create:f.calls.create,upload:f.calls.upload,poll:f.calls.poll,download:f.calls.download},{create:0,upload:0,poll:0,download:0});
+  assert.equal((await f.request('/files')).value.items.length,1);
+ });
+});
+
 test('idempotent creation and concurrent deduplication create one task and block deleting an active original',async t=>{
  const f=await fixture(t),file=await f.upload(),key=crypto.randomUUID();
  const one=await f.submit(file,{idempotencyKey:key}),same=await f.submit(file,{idempotencyKey:key}),active=await f.submit(file);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
 import JSZip from 'jszip';
-import {createMineruClient} from '../backend/mineru-client.mjs';
+import {createMineruClient,isMineruConfigurationValid} from '../backend/mineru-client.mjs';
 
 const token='unit-only-mineru-secret',uploadURL='https://mineru-upload.oss-cn-shanghai.aliyuncs.com/source.pdf?signature=secret-upload',zipURL='https://cdn-mineru.openxlab.org.cn/result.zip?signature=secret-result';
 const lookupImpl=async()=>[{address:'8.8.8.8',family:4}];
@@ -13,6 +13,15 @@ const safe=code=>err=>err.mineruSafe===true&&(!code||err.code===code)&&!err.mess
 async function zipFixture({pages=[0,1],markdown='# 合成文档\n共24项服务，其中6项远程服务。\n<table><tr><td>24</td><td>6</td></tr></table>\n![](images/figure.png)',extra={},invalidJson=false}={}){
  const zip=new JSZip();zip.file('full.md',markdown);zip.file('sample_content_list.json',invalidJson?'{invalid':JSON.stringify(pages.map((page_idx,i)=>({type:'text',page_idx,text:'合成第'+(i+1)+'页，24项服务'}))));zip.file('sample_middle.json',JSON.stringify({pdf_info:pages.map(page_idx=>({page_idx,para_blocks:[]}))}));for(const [name,value]of Object.entries(extra))zip.file(name,value);return zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'});
 }
+
+test('configuration readiness and client construction share strict token and official HTTPS rules',()=>{
+ for(const config of [{token},{token,baseURL:'https://mineru.net/api/v4'},{token,baseURL:'https://mineru.net/api/v4/'}]){
+  assert.equal(isMineruConfigurationValid(config),true);assert.doesNotThrow(()=>createMineruClient(config));
+ }
+ for(const config of [{},{token:' '.repeat(20)},{token:'x'.repeat(19)},{token:'x'.repeat(16385)},{token:token+'\n'},{token,baseURL:''},{token,baseURL:null},{token,baseURL:'http://mineru.net/api/v4'},{token,baseURL:'https://evil.example.com/api/v4'},{token,baseURL:'https://user:pass@mineru.net/api/v4'},{token,baseURL:'https://mineru.net:444/api/v4'},{token,baseURL:'https://mineru.net/api/v4?key=secret'},{token,baseURL:'https://mineru.net/api/v5'}]){
+  assert.equal(isMineruConfigurationValid(config),false);assert.throws(()=>createMineruClient(config),safe('mineru_configuration'));
+ }
+});
 
 test('single PDF submission uses the official API, exact business success, VLM and bounded page ranges',async()=>{
  let captured;const service=client(async(url,init)=>{captured={url,init};return api({batch_id:'batch-123',file_urls:[uploadURL]});});

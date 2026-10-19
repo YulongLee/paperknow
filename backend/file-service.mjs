@@ -18,13 +18,18 @@ export function createFileService(db,config={}){
   const reserved=db.prepare('SELECT coalesce(sum(bytes),0) n FROM workspace_file_uploads WHERE user_id=? AND id!=? AND expires_at>?').get(user.id,exclude,new Date().toISOString()).n;
   if(stored+reserved+bytes>maxAccountBytes)fail(409,'账户原件总量最多 50MB，请下载备份后删除不再需要的原件，或等待正在上传的文件完成');
  };
- return async({path,method,user,readBody})=>{
+ return async({path,method,user,readBody,query})=>{
   const deletion=path.match(/^\/api\/files\/([^/]+)\/delete$/),download=path.match(/^\/api\/files\/([^/]+)\/download$/);
   if(path!=='/api/files'&&!deletion&&!download)return null;
   db.prepare('DELETE FROM workspace_file_uploads WHERE expires_at<=?').run(new Date().toISOString());
   if(path==='/api/files'&&method==='GET')return {value:{items:db.prepare("SELECT f.id,f.project_id,f.name,f.kind,f.bytes,f.sha256,f.created_at,CASE WHEN d.status='pending' THEN 'pending' ELSE NULL END AS deletionStatus FROM files f LEFT JOIN workspace_file_deletions d ON d.file_id=f.id WHERE f.user_id=? ORDER BY f.created_at DESC,f.id DESC").all(user.id)}};
   if(download){
    if(method!=='GET')fail(405,'不支持的文件操作');
+   if(query!==undefined){
+    if(!(query instanceof URLSearchParams)||query.getAll('expectedUserId').length>1)fail(400,'下载账户核验参数不正确');
+    const expected=query.get('expectedUserId');
+    if(expected!==null){if(!/^[A-Za-z0-9_-]{1,160}$/.test(expected))fail(400,'下载账户核验参数不正确');if(expected!==user.id)fail(409,'登录账户已变化，请重新核验原件所属账户后下载');}
+   }
    const row=file(download[1],user);if(pending(row.id))fail(409,'原件正在删除，请完成删除或刷新文件列表');
    return {body:await fileBytes(row,config.storage),headers:{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename="document.'+row.kind+'"; filename*=UTF-8\'\''+encodeURIComponent(row.name)}};
   }

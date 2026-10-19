@@ -12,7 +12,7 @@ export function startDocumentParseWorker(db,config={}){
  initializeDocumentParseSchema(db);
  const clock=()=>new Date().toISOString(),tx=fn=>{db.exec('BEGIN IMMEDIATE');try{const v=fn();db.exec('COMMIT');return v;}catch(e){db.exec('ROLLBACK');throw e;}};
  const artifacts=createArtifactService(db,config),controllers=new Map(),cleanups=new Set();let busy=false,stopped=false;
- const client=config.documentParseClient||(documentParsingReady(config)?createMineruClient({token:config.mineruToken,baseURL:config.mineruBaseURL||'https://mineru.net/api/v4'}):null);
+ const client=documentParsingReady(config)?config.documentParseClient||createMineruClient({token:config.mineruToken,baseURL:config.mineruBaseURL}):null;
  const stillActive=id=>!stopped&&db.prepare("SELECT 1 FROM jobs WHERE id=? AND type='document_parse' AND status='running'").get(id);
  const stage=(id,value)=>db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(value,clock(),id);
  const schedule=id=>db.prepare('UPDATE document_parse_runs SET next_poll_at=?,updated_at=? WHERE id=?').run(new Date(Date.now()+(config.documentParsePollDelayMs??6000)).toISOString(),clock(),id);

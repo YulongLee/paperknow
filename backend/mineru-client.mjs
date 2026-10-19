@@ -5,12 +5,19 @@ import {Readable} from 'node:stream';
 import JSZip from 'jszip';
 
 const MiB=1024*1024;
+const defaultBaseURL='https://mineru.net/api/v4';
 const defaults=Object.freeze({timeoutMs:30000,uploadTimeoutMs:60000,dnsTimeoutMs:5000,maxApiBytes:256*1024,maxZipBytes:20*MiB,maxEntries:400,maxUncompressedBytes:40*MiB,maxEntryBytes:10*MiB,maxMarkdownBytes:2*MiB,maxJsonBytes:5*MiB,maxTextCharacters:200000});
 const error=(code,message,status=502)=>Object.assign(new Error(message),{code,status,mineruSafe:true});
 const reject=(code='mineru_response_invalid',message='文档解析服务返回了无效结果',status=502)=>{throw error(code,message,status);};
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const id=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(value);
 const safePath=value=>typeof value==='string'&&value.length>0&&value.length<=512&&!/^[\/\\]|^[A-Za-z]:|[\\\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(value)&&!value.split('/').some(part=>part==='..'||part==='.')&&value.split('/').length<=16;
+function configurationIssue({token,baseURL=defaultBaseURL}={}){
+ if(typeof token!=='string'||token.length<20||token.length>16384||/[\x00-\x20\x7f]/.test(token))return 'token';
+ if(baseURL!==defaultBaseURL&&baseURL!==defaultBaseURL+'/')return 'baseURL';
+ return null;
+}
+export const isMineruConfigurationValid=config=>configurationIssue(config)===null;
 
 function publicIP(address){
  if(isIP(address)===4){
@@ -76,9 +83,9 @@ function structuredText(value){
 
 // fetchImpl is an explicitly trusted test transport. Production defaults to
 // node:https with pinned public DNS, TLS SNI and no redirect following.
-export function createMineruClient({token,baseURL='https://mineru.net/api/v4',fetchImpl,lookupImpl=lookup,requestImpl=httpsRequest,...overrides}={}){
- if(typeof token!=='string'||!token||token.length>16384||/[\x00-\x20\x7f]/.test(token))reject('mineru_configuration','文档解析服务尚未配置',503);
- if(baseURL!=='https://mineru.net/api/v4'&&baseURL!=='https://mineru.net/api/v4/')reject('mineru_configuration','文档解析接口配置不受支持',503);
+export function createMineruClient({token,baseURL=defaultBaseURL,fetchImpl,lookupImpl=lookup,requestImpl=httpsRequest,...overrides}={}){
+ const issue=configurationIssue({token,baseURL});
+ if(issue)reject('mineru_configuration',issue==='baseURL'?'文档解析接口配置不受支持':'文档解析服务尚未配置',503);
  const base=baseURL.replace(/\/$/,''),limits={...defaults};
  for(const [key,value]of Object.entries(overrides)){if(!Object.hasOwn(defaults,key)||!Number.isSafeInteger(value)||value<1||value>defaults[key])reject('mineru_configuration','文档解析安全限制配置无效',503);limits[key]=value;}
  // The 20 MiB PUT needs over 30 seconds on a 5 Mbps connection. Keep API and

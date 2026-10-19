@@ -4,7 +4,7 @@ import {createModelBudget} from './model-budget.mjs';
 import {thesisTransaction,thesisError,thesisPublicError} from './thesis-model.mjs';
 import {assertThesisSettings} from './thesis-service.mjs';
 import {initializeToolRunSchema,toolStorageCheck} from './tool-run-service.mjs';
-import {toolRunTask,parseToolOutput,validateToolCandidate,joinToolOutputs,toolOperationNames} from './tool-run-model.mjs';
+import {toolRunTask,parseToolOutput,validateToolCandidate,joinToolOutputs,restoreReadingCheckpoint,toolOperationNames} from './tool-run-model.mjs';
 import {runAgentTask} from './agent-runtime.mjs';
 import {publicAIError} from './public-ai-metadata.mjs';
 import {generatePptMasterPresentation} from './presentation-generation.mjs';
@@ -44,7 +44,7 @@ export function startToolRunWorker(db,config={}){
   try{
    const claimed=transaction(()=>{if(db.prepare("SELECT 1 FROM tool_runs WHERE status='running' AND id!=?").get(row.id))return false;if(!db.prepare("UPDATE tool_runs SET status='running',stage='preparing',updated_at=? WHERE id=? AND status='queued'").run(clock(),row.id).changes)return false;db.prepare("UPDATE jobs SET status='running',stage='preparing',attempt=1,updated_at=? WHERE id=? AND status='queued'").run(clock(),row.id);budget.start(row.id,1);return true;});if(!claimed)return;
    if(row.operation==='image'){assertResearchImageSettings(await config.getResearchImageSettings?.());runtime=assertResearchImageSettings(await config.getResearchImageSettings?.(row.settings_version));}else{assertThesisSettings(await config.getAgentSettings?.());runtime=assertThesisSettings(await config.getAgentSettings?.(row.settings_version));}if(runtime.version!==row.settings_version)throw thesisError(503,'原处理配置版本不可用');
-   const value={kind:row.kind,operation:row.operation,snapshot:JSON.parse(row.snapshot)},plan=JSON.parse(row.plan),completed=db.prepare('SELECT output FROM tool_checkpoints WHERE run_id=? AND position<1000 ORDER BY position').all(row.id).map(c=>JSON.parse(c.output)),limit=toolRunTokenLimit(row.operation,config);
+   const value={kind:row.kind,operation:row.operation,snapshot:JSON.parse(row.snapshot)},plan=JSON.parse(row.plan),completed=db.prepare('SELECT unit_id,position,output FROM tool_checkpoints WHERE run_id=? AND position<1000 ORDER BY position').all(row.id).map(c=>['read','answer'].includes(row.operation)?restoreReadingCheckpoint(JSON.parse(c.output),value,plan.find(unit=>unit.id===c.unit_id),c.position):JSON.parse(c.output)),limit=toolRunTokenLimit(row.operation,config);
    const stage=value=>{if(!running())return;db.prepare('UPDATE tool_runs SET stage=?,updated_at=? WHERE id=?').run(value,clock(),row.id);db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(value,clock(),row.id);};
    async function runTask(task,validator,phase){
     if(inputTokens+outputTokens>=limit||cost>=runtime.maxCostUsd-.01)throw thesisError(429,'本次处理达到执行预算，已完成部分仍保留，请核对后继续');
@@ -60,9 +60,9 @@ export function startToolRunWorker(db,config={}){
     if(controller.signal.aborted||!running())return;if(db.prepare('SELECT 1 FROM tool_checkpoints WHERE run_id=? AND unit_id=?').get(row.id,unit.id))continue;
     if(inputTokens+outputTokens>=limit||cost>=runtime.maxCostUsd-.01)throw thesisError(429,'本次处理达到执行预算，已完成部分仍保留，请核对后继续');
     const task=toolRunTask(value,unit,completed),generated=await runTask(task,candidate=>validateToolCandidate(candidate,value,unit),row.operation==='ppt'?'planning':null);
-    const parsed=parseToolOutput(generated,value,unit);transaction(()=>{if(!running())return;const json=JSON.stringify(parsed);toolStorageCheck(db,row.user_id,Buffer.byteLength(json),config);db.prepare('INSERT INTO tool_checkpoints VALUES(?,?,?,?,?)').run(row.id,unit.id,position,json,clock());});completed.push(parsed);
+    const parsed=parseToolOutput(generated,value,unit);if(['read','answer'].includes(row.operation)){parsed.unitId=unit.id;parsed.unitPosition=position;}transaction(()=>{if(!running())return;const json=JSON.stringify(parsed);toolStorageCheck(db,row.user_id,Buffer.byteLength(json),config);db.prepare('INSERT INTO tool_checkpoints VALUES(?,?,?,?,?)').run(row.id,unit.id,position,json,clock());});completed.push(parsed);
    }
-   output=joinToolOutputs(row.operation,completed);
+   output=joinToolOutputs(row.operation,completed,plan);
    if(row.operation==='ppt')output=await generatePptMasterPresentation(db,config,{row,value,output,signal:controller.signal,isActive:running,onStage:stage,runAuthor:(task,validator)=>runTask(task,validator,'authoring')});
    }
    transaction(()=>{
