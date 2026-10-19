@@ -12,6 +12,7 @@ function setup(){
  return {dom,ctx,notices};
 }
 const $=s=>document.querySelector(s);
+const until=async check=>{for(let i=0;i<120;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}assert.ok(check(),'界面未达到预期状态');};
 const input=(s,value)=>{const el=$(s);el.value=value;el.dispatchEvent(new window.Event('input',{bubbles:true}));};
 setup();
 const {mountLiterature,mountLiteratureReader}=await import('../dist/workspace/literature.mjs');
@@ -32,7 +33,7 @@ test('AI reading keeps exactly four task entries, local search, reader notes and
 test('research preserves chart save and professional descriptions across its three honest workflows',async()=>{
  const {dom,ctx,notices}=setup(),restoreExport=installGuestExportSession(),create=URL.createObjectURL,revoke=URL.revokeObjectURL,click=window.HTMLAnchorElement.prototype.click;let blob;
  try{
-  mountResearch(ctx);assert.equal(document.querySelectorAll('.research-mode-cards [data-mode]').length,3);assert.equal(document.querySelectorAll('.research-workflow-strip li').length,0);$('[data-mode="data"]').click();assert.equal(document.querySelectorAll('.research-workflow-strip li').length,3);
+  await mountResearch(ctx);assert.equal(document.querySelectorAll('.research-mode-cards [data-mode]').length,3);assert.equal(document.querySelectorAll('.research-workflow-strip li').length,0);$('[data-mode="data"]').click();assert.equal(document.querySelectorAll('.research-workflow-strip li').length,3);
   input('[data-option="title"]','用户真实图表');$('[data-action="save"]').click();assert.equal(JSON.parse(localStorage.getItem('paperknow-drafts'))[0].title,'用户真实图表');
   $('[data-mode="structure"]').click();$('[data-pro-type="9"]').click();input('[data-pro-description]','绘制电源、开关与电阻串联关系，并标注电流方向。');assert.equal(researchHasWork(),true);
   $('[data-mode="formula"]').click();$('[data-mode="structure"]').click();assert.match($('[data-pro-description]').value,/电源、开关与电阻/);assert.equal($('[data-pro-type="9"]').getAttribute('aria-pressed'),'true');assert.match($('[data-action="pro-generate"]').textContent,/AI 生成结构图/);assert.match($('.research-credit').textContent,/确认用量/);
@@ -44,14 +45,14 @@ test('research preserves chart save and professional descriptions across its thr
 
 test('formula workbench keeps editable text and never claims a copy succeeded when clipboard fails',async()=>{
  const {dom,ctx,notices}=setup();
- try{mountResearch(ctx);$('[data-mode="formula"]').click();input('[data-fs-editor]','\\alpha + \\beta');const editor=$('[data-fs-editor]');editor.setSelectionRange(editor.value.length,editor.value.length);$('[data-fs-token="0"]').click();const inserted='\\alpha + \\beta\\frac{}{}';assert.equal(editor.value,inserted);assert.match($('[data-fs-token="0"]').textContent,/分数/);$('[data-fs-action="copy"]').click();await Promise.resolve();assert.match($('[data-fs-status]').textContent,/无法自动复制/);assert.doesNotMatch(notices.join(' '),/已复制/);Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw Error('denied');}},configurable:true});$('[data-fs-action="copy"]').click();await new Promise(resolve=>setTimeout(resolve,0));assert.match($('[data-fs-status]').textContent,/复制未成功/);assert.doesNotMatch(notices.join(' '),/已复制/);$('[data-mode="data"]').click();$('[data-mode="formula"]').click();assert.equal($('[data-fs-editor]').value,inserted);}finally{disposeResearch();dom.window.close();}
+ try{await mountResearch(ctx);$('[data-mode="formula"]').click();await until(()=>!!$('[data-fs-editor]'));input('[data-fs-editor]','\\alpha + \\beta');const editor=$('[data-fs-editor]');editor.setSelectionRange(editor.value.length,editor.value.length);$('[data-fs-token="0"]').click();const inserted='\\alpha + \\beta\\frac{}{}';assert.equal(editor.value,inserted);assert.match($('[data-fs-token="0"]').textContent,/分数/);$('[data-fs-action="copy"]').click();await Promise.resolve();assert.match($('[data-fs-status]').textContent,/无法自动复制/);assert.doesNotMatch(notices.join(' '),/已复制/);Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw Error('denied');}},configurable:true});$('[data-fs-action="copy"]').click();await new Promise(resolve=>setTimeout(resolve,0));assert.match($('[data-fs-status]').textContent,/复制未成功/);assert.doesNotMatch(notices.join(' '),/已复制/);$('[data-mode="data"]').click();$('[data-mode="formula"]').click();assert.equal($('[data-fs-editor]').value,inserted);}finally{disposeResearch();dom.window.close();}
 });
 
-test('research mode and data controls preserve focus, while formula insertions focus the unchanged editor without scrolling',()=>{
+test('research mode and data controls preserve focus, while formula insertions focus the unchanged editor without scrolling',async()=>{
  const {dom,ctx}=setup();
  try{
-  mountResearch(ctx);const activate=selector=>{const node=$(selector);assert.ok(node,selector);node.focus({preventScroll:true});node.click();assert.equal(document.activeElement,$(selector),'Focus lost after '+selector);};
-  activate('[data-mode="formula"]');const editor=$('[data-fs-editor]'),focusCalls=[],original=editor.focus;editor.focus=function(options){focusCalls.push(options);return original.call(this,options);};$('[data-fs-template="triangle"]').click();assert.equal(document.activeElement,editor);assert.equal($('[data-fs-editor]'),editor);$('[data-fs-token="0"]').click();assert.match(editor.value,/frac/);assert.deepEqual(focusCalls,[{preventScroll:true},{preventScroll:true}]);activate('[data-mode="data"]');activate('[data-tab="paste"]');activate('[data-tab="manual"]');activate('[data-type="line"]');activate('[data-mode="structure"]');assert.ok($('.dashboard').style.minHeight);
+  await mountResearch(ctx);const activate=selector=>{const node=$(selector);assert.ok(node,selector);node.focus({preventScroll:true});node.click();assert.equal(document.activeElement,$(selector),'Focus lost after '+selector);};
+  activate('[data-mode="formula"]');await until(()=>!!$('[data-fs-editor]'));const editor=$('[data-fs-editor]'),focusCalls=[],original=editor.focus;editor.focus=function(options){focusCalls.push(options);return original.call(this,options);};$('[data-fs-template="triangle"]').click();assert.equal(document.activeElement,editor);assert.equal($('[data-fs-editor]'),editor);$('[data-fs-token="0"]').click();assert.match(editor.value,/frac/);assert.deepEqual(focusCalls,[{preventScroll:true},{preventScroll:true}]);activate('[data-mode="data"]');activate('[data-tab="paste"]');activate('[data-tab="manual"]');activate('[data-type="line"]');activate('[data-mode="structure"]');assert.ok($('.dashboard').style.minHeight);
  }finally{disposeResearch();dom.window.close();}
 });
 

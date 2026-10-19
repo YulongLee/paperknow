@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {JSDOM} from 'jsdom';
-import {esc,icon,empty} from '../dist/workspace/ui.mjs';
+import {esc,icon,empty,formatDate} from '../dist/workspace/ui.mjs';
 import {toolBanner} from '../dist/workspace/tool-banner.mjs';
 import {mountAigcDetection,ensureAigcStyle} from '../dist/workspace/aigc-detection.mjs';
 import {workspaceLinks} from '../dist/workspace/interface.mjs';
@@ -19,6 +19,8 @@ import * as revisionModel from '../dist/workspace/revision-model.mjs';
 import * as taskModel from '../dist/workspace/task-model.mjs';
 import * as projectModel from '../dist/workspace/project-model.mjs';
 import * as assetModel from '../dist/workspace/asset-model.mjs';
+import * as overviewModel from '../dist/workspace/overview-model.mjs';
+import {homeLayout,fitHomeRows,continuationAssets} from '../dist/workspace/home-layout.mjs';
 
 const source=(await readFile(new URL('../dist/workspace/app.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
 const homeSource=await readFile(new URL('../dist/index.html',import.meta.url),'utf8');
@@ -30,26 +32,181 @@ const keys={profile:'paperknow-local-profile',preferences:'paperknow-preferences
 const response=(status,user)=>({status,ok:status>=200&&status<300,json:async()=>({user})});
 const signedIn={id:'researcher-1',name:'服务账户',email:null,phone:'+8613800000000',phoneVerifiedAt:'2026-10-15T00:00:00Z',hasPassword:false};
 
-async function fixture(fetcher){
- const dom=new JSDOM('<div id="app"></div>',{url:'https://paperknow.cn/workspace.html#account',runScripts:'outside-only'});
+async function fixture(fetcher,{hash='#account',allReports=async()=>[],setup}={}){
+ const dom=new JSDOM('<div id="app"></div>',{url:'https://paperknow.cn/workspace.html'+hash,runScripts:'outside-only'});
  const paymentCalls=[];
  const timers=new Set();const setTimer=(callback,delay)=>{const timer=setTimeout(()=>{timers.delete(timer);callback();},delay);timers.add(timer);return timer;};
  const storage=dom.window.localStorage;
  storage.setItem(keys.profile,JSON.stringify({name:'本地昵称',degree:'硕士',major:'教育学'}));
  storage.setItem(keys.drafts,JSON.stringify([{id:'draft-one',title:'未上传的研究草稿'}]));
- const read=(key,fallback)=>JSON.parse(storage.getItem(key)||'null')??fallback;
+ const reads=[];const read=(key,fallback)=>{reads.push(key);return JSON.parse(storage.getItem(key)||'null')??fallback;};
  Object.assign(dom.window,{captureDraftScope,workspaceJobLabel,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
-  preferences:()=>({degree:'本科',...read(keys.preferences,{})}),profile:()=>({name:'研究者',...read(keys.profile,{})}),read,list:key=>read(key,[]),write:(key,value)=>storage.setItem(key,JSON.stringify(value)),projects:()=>read(keys.projects,[]),repository:{all:async()=>[]},formatDate:()=>'',mountNavigation:()=>({close(){}}),
+  ...taskModel,...projectModel,...assetModel,...overviewModel,homeLayout,fitHomeRows,continuationAssets,readHomeService:async()=>({cap:{},user:null}),preferences:()=>({degree:'本科',...read(keys.preferences,{})}),profile:()=>({name:'研究者',...read(keys.profile,{})}),read,list:key=>read(key,[]),write:(key,value)=>storage.setItem(key,JSON.stringify(value)),projects:()=>read(keys.projects,[]),repository:{all:allReports},formatDate:()=>'',mountNavigation:()=>({close(){}}),
   disposeWritingFlows:()=>{},disposeDataAnalysis:()=>{},disposeQuestionnaire:()=>{},questionnaireRouteGuard:async()=>true,questionnaireSessionChanged:()=>{},disposeFormat:()=>{},disposeResearch:()=>{},disposePresentation:()=>{},disposeRevision:()=>{},disposeAccountDraft:()=>{},accountDraftEditing:()=>false,accountDraftHasWork:()=>false,accountDraftConfirmLeave:async()=>true,accountDraftSessionChanged:()=>{},accountDraftRouteGuard:()=>true,
   disposePayment:()=>{paymentCalls.push({type:'dispose'});},renderPaymentOrders:async()=>{paymentCalls.push({type:'orders'});},renderPaymentCheckout:async options=>{paymentCalls.push({type:'checkout',productId:options.productId,orderId:options.orderId});},clearEditor:()=>{},clearHelpWork:()=>{},clearSettingsWork:()=>{},clearMoreWork:()=>{},trackDialogForm:()=>()=>{},retainWritingCatalog:()=>{},isCurrentRouteChange:()=>false,
-  editorIsActive:()=>false,editorRouteGuard:()=>true,helpRouteGuard:()=>true,settingsRouteGuard:()=>true,moreRouteGuard:()=>true,formatRouteGuard:()=>true,researchRouteGuard:()=>true,presentationRouteGuard:()=>true,revisionRouteGuard:()=>true,detectionRouteGuard:()=>true,
+  editorIsActive:()=>false,editorRouteGuard:()=>true,helpHasWork:()=>false,helpRouteGuard:()=>true,settingsHasWork:()=>false,settingsRouteGuard:()=>true,moreHasWork:()=>false,moreRouteGuard:()=>true,formatHasWork:()=>false,formatRouteGuard:()=>true,researchHasWork:()=>false,researchRouteGuard:()=>true,presentationHasWork:()=>false,presentationRouteGuard:()=>true,revisionHasWork:()=>false,revisionRouteGuard:()=>true,detectionRouteGuard:()=>true,
  });
  vm.runInContext('(function(){'+documentExportSource+'\nObject.assign(globalThis,{documentExportButtons,bindDocumentExports});})()',dom.getInternalVMContext());
  vm.runInContext('(function(){'+thesisSource+'\nObject.assign(globalThis,{mountOnlineThesis,mountThesisLibrary,disposeOnlineThesis,thesisOnlineHasWork,thesisOnlineRouteGuard,thesisOnlineSessionChanged});})()',dom.getInternalVMContext());
  vm.runInContext('(function(){'+onlineSource+'\nObject.assign(globalThis,{mountOnlineWorkspace,disposeOnlineWorkspace,onlineWorkspaceRouteGuard,onlineWorkspaceHasWork,onlineWorkspaceSessionChanged,onlineWorkspaceConfirmLeave,onlineWorkspaceHref});})()',dom.getInternalVMContext());
+ setup?.(dom.window);
  await vm.runInContext('(async()=>{'+source+'\nglobalThis.workspaceAuthTest={loadWorkspaceSession,workspaceServiceFetch,signOutWorkspace,renderAccount,authHref,render};})()',dom.getInternalVMContext());
- return {dom,document:dom.window.document,storage,paymentCalls,api:dom.window.workspaceAuthTest,close(){dom.window.disposeOnlineThesis();timers.forEach(clearTimeout);dom.window.close();}};
+ for(let i=0;i<8;i++)await Promise.resolve();
+ return {dom,document:dom.window.document,storage,paymentCalls,reads,api:dom.window.workspaceAuthTest,close(){dom.window.disposeOnlineThesis();timers.forEach(clearTimeout);dom.window.close();}};
 }
+
+test('tool and account navigation avoids local asset summaries while lists still read newly saved drafts',async()=>{
+ const f=await fixture(async()=>response(401));
+ try{
+  await f.api.loadWorkspaceSession();
+  Object.assign(f.dom.window,{...assetModel,mountResearch:()=>{f.document.querySelector('.dashboard').innerHTML='<p>科研工具</p>';},mountTool:()=>true});
+  for(const hash of ['#category/research','#tool/writing','#account']){
+   f.reads.length=0;f.dom.window.history.replaceState(null,'','/workspace.html'+hash);f.api.render();
+   assert.equal(f.reads.filter(key=>key===keys.drafts).length,0,hash+' should not parse unrelated local drafts');
+  }
+  f.storage.setItem(keys.drafts,JSON.stringify([{id:'new-draft',title:'新保存的本地研究',tool:'writing',updatedAt:'2026-10-19T04:00:00Z',stage:'draft'}]));
+  f.reads.length=0;f.dom.window.history.replaceState(null,'','/workspace.html#assets?scope=local');f.api.render();
+  assert.equal(f.reads.filter(key=>key===keys.drafts).length,1);assert.match(f.document.querySelector('#asset-table-body').textContent,/新保存的本地研究/);
+  f.storage.setItem(keys.drafts,JSON.stringify([{id:'newer-draft',title:'搜索前刚保存的研究',tool:'writing',updatedAt:'2026-10-19T05:00:00Z',stage:'draft'}]));
+  f.dom.window.history.replaceState(null,'','/workspace.html#search/研究');f.api.render();
+  assert.match(f.document.querySelector('.dashboard').textContent,/搜索前刚保存的研究/);assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/新保存的本地研究/);
+ }finally{f.close();}
+});
+
+function deferredReports(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
+const lateReport={id:'late-report',title:'稍后读取的比对报告',createdAt:'2026-10-19T04:00:00Z',totalChars:120,sourceCount:1};
+const settleReports=async()=>{for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));};
+
+async function assetPageFixture({draftCount=45,reportRows=[]}={}){
+ const drafts=Array.from({length:draftCount},(_,index)=>({id:'page-'+String(index+1).padStart(2,'0'),title:'分页成果 '+String(index+1).padStart(2,'0'),tool:index===44?'ppt':'writing',stage:'draft',text:'第 '+(index+1)+' 份完整正文',updatedAt:new Date(Date.UTC(2026,9,19,4,draftCount-index)).toISOString()})),downloads=[];
+ let reports=structuredClone(reportRows);
+ const f=await fixture(async()=>response(401),{hash:'#assets?scope=local',allReports:async()=>structuredClone(reports),setup:w=>{
+  w.localStorage.setItem(keys.drafts,JSON.stringify(drafts));w.localStorage.setItem(keys.projects,JSON.stringify([{id:'page-project',name:'分页归属项目'}]));w.formatDate=formatDate;
+  w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new w.Event('close'));};
+  w.download=async(...args)=>{downloads.push(args);return {message:'已下载'};};w.repository.save=async(store,item)=>{assert.equal(store,'reports');reports=reports.map(row=>row.id===item.id?structuredClone(item):row);};
+ }});
+ return {...f,drafts,downloads,getReports:()=>reports,q:selector=>f.document.querySelector(selector),click:selector=>{const button=f.document.querySelector(selector);assert.ok(button,selector);button.click();},change:(selector,value,type='change')=>{const field=f.document.querySelector(selector);field.value=value;field.dispatchEvent(new f.dom.window.Event(type,{bubbles:true}));}};
+}
+
+test('local assets paginate twenty rows while totals, full-library filters, bounds and keyboard focus remain accurate',async()=>{
+ const f=await assetPageFixture();
+ try{
+  assert.equal(f.q('#asset-count').textContent,'共 45 份成果');assert.equal(f.document.querySelectorAll('[data-asset-select]').length,20);assert.equal(f.q('[data-asset-select-all]').getAttribute('aria-label'),'全选本页 20 份成果');assert.equal(f.q('[data-asset-page="previous"]').disabled,true);assert.match(f.q('#asset-table-body .asset-time').textContent,/10\/19 12:45/);
+  const all=f.q('[data-asset-select-all]');all.checked=true;all.dispatchEvent(new f.dom.window.Event('change'));assert.equal(f.document.querySelectorAll('[data-asset-select]:checked').length,20);
+  f.q('[data-asset-page="next"]').focus();f.click('[data-asset-page="next"]');assert.match(f.q('#asset-pagination').textContent,/第 2 \/ 3 页/);assert.equal(f.q('[data-asset-select]').dataset.assetSelect,'draft:page-21');assert.equal(f.document.querySelectorAll('[data-asset-select]:checked').length,0);assert.equal(f.document.activeElement,f.q('[data-asset-page="next"]'));
+  f.click('[data-asset-page="next"]');assert.equal(f.document.querySelectorAll('[data-asset-select]').length,5);assert.equal(f.q('[data-asset-page="next"]').disabled,true);assert.equal(f.document.activeElement,f.q('[data-asset-page="previous"]'));f.click('[data-asset-page="next"]');assert.match(f.q('#asset-pagination').textContent,/第 3 \/ 3 页/);
+  f.change('#asset-query','分页成果 45','input');assert.equal(f.q('#asset-count').textContent,'共 1 份成果');assert.equal(f.q('[data-asset-select]').dataset.assetSelect,'draft:page-45');assert.equal(f.q('#asset-pagination').hidden,true);
+  f.change('#asset-query','','input');f.click('[data-asset-page="next"]');f.change('#asset-type-filter','presentation');assert.equal(f.q('#asset-count').textContent,'共 1 份成果');assert.equal(f.q('[data-asset-select]').dataset.assetSelect,'draft:page-45');
+  f.change('#asset-type-filter','all');f.click('[data-asset-page="next"]');f.change('#asset-sort','name');assert.match(f.q('#asset-pagination').textContent,/第 1 \/ 3 页/);assert.equal(f.q('#asset-count').textContent,'共 45 份成果');assert.deepEqual(JSON.parse(f.storage.getItem(keys.drafts)),f.drafts);
+ }finally{f.close();}
+});
+
+test('page-two archive and individual export act on the clicked record and preserve all other saved content',async()=>{
+ const f=await assetPageFixture();
+ try{
+  f.click('[data-asset-page="next"]');f.click('[data-asset-archive="draft:page-25"]');assert.match(f.q('#asset-pagination').textContent,/第 2 \/ 3 页/);assert.equal(f.q('#asset-count').textContent,'共 45 份成果');
+  const changed=JSON.parse(f.storage.getItem(keys.drafts));assert.equal(changed.find(row=>row.id==='page-25').archived,true);assert.deepEqual(changed.filter(row=>row.id!=='page-25'),f.drafts.filter(row=>row.id!=='page-25'));
+  f.click('[data-asset-export="draft:page-25"]');f.click('[data-export-draft="page-25"]');await settleReports();assert.equal(f.downloads.length,1);assert.match(f.downloads[0][0],/分页成果 25/);assert.equal(f.downloads[0][1],'第 25 份完整正文');
+  f.click('[data-asset-filter="archived"]');assert.equal(f.q('#asset-count').textContent,'共 1 份成果');assert.equal(f.q('[data-asset-select]').dataset.assetSelect,'draft:page-25');assert.equal(f.q('#asset-pagination').hidden,true);
+  f.click('[data-asset-archive="draft:page-25"]');assert.equal(f.q('#asset-count').textContent,'共 0 份成果');assert.equal(f.q('[data-asset-select-all]').disabled,true);assert.equal(f.document.querySelectorAll('[data-asset-select]').length,0);assert.equal(JSON.parse(f.storage.getItem(keys.drafts)).length,45);
+ }finally{f.close();}
+});
+
+test('page-two mixed draft/report bulk export and move touch only selected visible rows and clear selection on paging',async()=>{
+ const reportRows=Array.from({length:5},(_,index)=>({...lateReport,id:'page-report-'+(index+1),title:'分页报告 '+(index+1),createdAt:'2026-10-18T04:00:00Z'})),f=await assetPageFixture({draftCount:26,reportRows});
+ try{
+  f.click('[data-asset-page="next"]');assert.equal(f.q('#asset-count').textContent,'共 31 份成果');assert.equal(f.document.querySelectorAll('[data-asset-select]').length,11);
+  for(const token of ['draft:page-21','report:page-report-1'])f.q('[data-asset-select="'+token+'"]').checked=true;
+  f.click('[data-asset-bulk]');assert.match(f.q('#workspace-dialog-body').textContent,/已选择 2 份成果/);f.click('#asset-export-selected');await settleReports();const backup=JSON.parse(f.downloads[0][1]);assert.deepEqual(backup.drafts.map(row=>row.id),['page-21']);assert.deepEqual(backup.reports.map(row=>row.id),['page-report-1']);
+  f.change('#asset-batch-project','page-project');const form=f.q('#asset-batch-move'),button=form.querySelector('button');form.dispatchEvent(new f.dom.window.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:button}));await settleReports();
+  const saved=JSON.parse(f.storage.getItem(keys.drafts));assert.equal(saved.find(row=>row.id==='page-21').projectId,'page-project');assert.deepEqual(saved.filter(row=>row.id!=='page-21'),f.drafts.filter(row=>row.id!=='page-21'));assert.equal(f.getReports().find(row=>row.id==='page-report-1').projectId,'page-project');assert.deepEqual(f.getReports().filter(row=>row.id!=='page-report-1'),reportRows.filter(row=>row.id!=='page-report-1'));assert.match(f.q('#asset-pagination').textContent,/第 2 \/ 2 页/);
+  f.q('[data-asset-select]').checked=true;f.click('[data-asset-page="previous"]');assert.equal(f.document.querySelectorAll('[data-asset-select]:checked').length,0);f.click('[data-asset-bulk]');assert.equal(f.q('#workspace-dialog').open,false);assert.match(f.q('#hub-toast').textContent,/请先选择/);
+  f.change('#asset-type-filter','detection');assert.equal(f.q('#asset-count').textContent,'共 5 份成果');assert.equal(f.document.querySelectorAll('[data-asset-select]').length,5);assert.equal(f.q('#asset-pagination').hidden,true);
+ }finally{f.close();}
+});
+
+test('a category renders while report history is pending and its active editor survives report completion',async()=>{
+ const pending=deferredReports();let mounts=0;
+ const f=await fixture(async()=>response(401),{hash:'#category/research',allReports:()=>pending.promise,setup:w=>{w.mountResearch=()=>{mounts++;w.document.querySelector('.dashboard').innerHTML='<input id="early-research" value="">';};}});
+ try{
+  const input=f.document.querySelector('#early-research');assert.ok(input,'the initial category must render before the report read resolves');input.value='正在编辑的科研需求';input.focus();input.setSelectionRange(2,5);
+  pending.resolve([lateReport]);await settleReports();
+  assert.equal(mounts,1);assert.equal(f.document.querySelector('#early-research'),input);assert.equal(input.value,'正在编辑的科研需求');assert.equal(input.selectionStart,2);assert.equal(f.document.activeElement,input);
+ }finally{f.close();}
+});
+
+test('home renders immediately and late reports update its local panels without restarting service loading or moving the viewport',async()=>{
+ const pending=deferredReports();let serviceReads=0;
+ const f=await fixture(async()=>response(401),{hash:'#home?scope=local',allReports:()=>pending.promise,setup:w=>{w.readHomeService=async()=>{serviceReads++;return {cap:{},user:null};};}});
+ try{
+  assert.ok(f.document.querySelector('.home-refresh'));assert.ok(f.document.querySelector('[data-local-reports-status]'));assert.match(f.document.querySelector('#home-result-list').textContent,/未上传的研究草稿/);
+  await settleReports();const readsBefore=serviceReads;let y=320;const scrolls=[];Object.defineProperty(f.dom.window,'scrollY',{configurable:true,get:()=>y});f.dom.window.scrollTo=options=>{scrolls.push(options);y=options.top;};
+  const home=f.document.querySelector('.home-refresh');pending.resolve([lateReport]);await settleReports();
+  assert.equal(f.document.querySelector('.home-refresh'),home);assert.match(f.document.querySelector('#home-result-list').textContent,/稍后读取的比对报告/);assert.equal(f.document.querySelector('[data-local-reports-status]'),null);assert.equal(serviceReads,readsBefore);assert.equal(y,320);assert.equal(scrolls.length,0);
+ }finally{f.close();}
+});
+
+test('local assets and search populate delayed report rows and accurate counts',async()=>{
+ for(const hash of ['#assets?scope=local','#search/比对报告']){
+  const pending=deferredReports(),f=await fixture(async()=>response(401),{hash,allReports:()=>pending.promise});
+  try{
+   assert.ok(f.document.querySelector('[data-local-reports-status]'));assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
+   pending.resolve([lateReport]);await settleReports();
+   assert.match(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);assert.equal(f.document.querySelector('[data-local-reports-status]'),null);
+   if(hash.startsWith('#assets'))assert.equal(f.document.querySelector('#asset-count').textContent,'共 2 份成果');
+  }finally{f.close();}
+ }
+});
+
+test('late local reports update account scope counts without remounting the account workspace',async()=>{
+ const pending=deferredReports(),f=await fixture(async path=>path==='/api/auth/me'?response(200,signedIn):{ok:true,status:200,json:async()=>({items:[]})},{hash:'#assets?scope=account',allReports:()=>pending.promise});
+ try{
+  await settleReports();const workspace=f.document.querySelector('#online-workspace'),content=workspace.firstElementChild;assert.ok(content);assert.match(f.document.querySelector('.workspace-scope-tabs').textContent,/本地内容 · 1/);
+  pending.resolve([lateReport]);await settleReports();
+  assert.equal(f.document.querySelector('#online-workspace'),workspace);assert.equal(workspace.firstElementChild,content);assert.match(f.document.querySelector('.workspace-scope-tabs').textContent,/本地内容 · 2/);assert.equal(f.document.querySelector('.workspace-scope-tabs a.active').getAttribute('href'),'#assets?scope=account');assert.equal(f.document.querySelector('[data-local-reports-status]'),null);
+ }finally{f.close();}
+});
+
+test('a late report read cannot replace an editor opened after the initial list or act on a queued destination URL',async()=>{
+ for(const changeRenderedRoute of [true,false]){
+  const pending=deferredReports();let active=false;
+  const f=await fixture(async()=>response(401),{hash:'#assets?scope=local',allReports:()=>pending.promise,setup:w=>{w.editorIsActive=()=>active;w.clearEditor=()=>{active=false;};w.mountTool=()=>{active=true;w.document.querySelector('.dashboard').innerHTML='<input id="late-report-editor" value="">';return true;};}});
+  try{
+   f.dom.window.history.replaceState(null,'','/workspace.html#tool/writing');f.api.render();const editor=f.document.querySelector('#late-report-editor');editor.value='待保存的正文';editor.focus();
+   if(!changeRenderedRoute)f.dom.window.history.replaceState(null,'','/workspace.html#search/比对报告');
+   pending.resolve([lateReport]);await settleReports();
+   assert.equal(f.document.querySelector('#late-report-editor'),editor);assert.equal(editor.value,'待保存的正文');assert.equal(f.document.activeElement,editor);assert.equal(active,true);
+   f.dom.window.history.replaceState(null,'','/workspace.html#assets?scope=local');f.api.render();assert.match(f.document.querySelector('#asset-table-body').textContent,/稍后读取的比对报告/);
+  }finally{f.close();}
+ }
+});
+
+test('report completion preserves an open project dialog and updates its list after the dialog closes',async()=>{
+ const pending=deferredReports(),f=await fixture(async()=>response(401),{hash:'#assets?scope=local',allReports:()=>pending.promise});
+ try{
+  const dialog=f.document.querySelector('#workspace-dialog');f.document.querySelector('#workspace-dialog-body').innerHTML='<input id="pending-project-name" value="研究项目草稿">';dialog.setAttribute('open','');const input=f.document.querySelector('#pending-project-name');input.focus();
+  pending.resolve([lateReport]);await settleReports();
+  assert.equal(dialog.open,true);assert.equal(f.document.querySelector('#pending-project-name'),input);assert.equal(input.value,'研究项目草稿');assert.doesNotMatch(f.document.querySelector('#asset-table-body').textContent,/稍后读取的比对报告/);
+  dialog.removeAttribute('open');dialog.dispatchEvent(new f.dom.window.Event('close'));await settleReports();assert.match(f.document.querySelector('#asset-table-body').textContent,/稍后读取的比对报告/);
+ }finally{f.close();}
+});
+
+test('an initial report failure keeps local drafts available and displays the existing recoverable report error',async()=>{
+ const pending=deferredReports(),f=await fixture(async()=>response(401),{hash:'#assets?scope=local',allReports:()=>pending.promise});
+ try{
+  assert.match(f.document.querySelector('#asset-table-body').textContent,/未上传的研究草稿/);pending.reject(new Error('IndexedDB unavailable'));await settleReports();
+  assert.match(f.document.querySelector('.hub-error').textContent,/查重报告读取失败/);assert.match(f.document.querySelector('#asset-table-body').textContent,/未上传的研究草稿/);assert.equal(f.document.querySelector('#asset-count').textContent,'共 1 份成果');assert.equal(f.document.querySelector('[data-local-reports-status]'),null);
+ }finally{f.close();}
+});
+
+test('a late initial report snapshot cannot overwrite a newer explicit report reload',async()=>{
+ const pending=deferredReports();let reads=0,restored;
+ const f=await fixture(async()=>response(401),{allReports:()=>++reads===1?pending.promise:Promise.resolve([lateReport]),setup:w=>{w.mountSettings=context=>{restored=context.restored;w.document.querySelector('.dashboard').innerHTML='<p>备份已恢复</p>';};}});
+ try{
+  f.dom.window.history.replaceState(null,'','/workspace.html#settings');f.api.render();await restored();pending.resolve([]);await settleReports();
+  f.dom.window.history.replaceState(null,'','/workspace.html#assets?scope=local');f.api.render();assert.match(f.document.querySelector('#asset-table-body').textContent,/稍后读取的比对报告/);
+ }finally{f.close();}
+});
 
 test('main workspace thesis routes autosave chapter text before navigation and restore it on return',async()=>{
  const seen=[],item={id:'cloud-thesis',version:2,title:'跨设备账户论文',profile:{level:'硕士',discipline:'社会学',method:'案例研究'},snapshot:{title:'跨设备账户论文',profile:{level:'硕士',discipline:'社会学',method:'案例研究'},materials:[],references:[],outline:[]},status:'completed',chapters:[{id:'chapter-1',title:'第一章',text:'已保存账户正文',version:1,status:'saved'}],job:null};

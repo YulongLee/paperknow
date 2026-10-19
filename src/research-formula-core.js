@@ -43,7 +43,14 @@ function addContourIntegralGlyphs(font){
   font.defineChars(variant,chars);
  }
 }
-function formulaDocument(){const input=new TeX({packages:['base','ams','mhchem','cancel','gensymb','boldsymbol','paperknow-contour-integrals'],maxBuffer:4000,maxMacros:100,formatError:(_jax,error)=>{throw Error(error.message||'公式语法有误。');}}),output=new SVG({fontCache:'local'});addContourIntegralGlyphs(output.font);return mathjax.document('',{InputJax:input,OutputJax:output});}
+let formulaFont,formulaSvgSequence=0;
+function formulaDocument(){
+ // Font construction dominates small previews. Reuse only the trusted glyph
+ // data; fresh parsers, output caches and documents keep each conversion isolated.
+ const input=new TeX({packages:['base','ams','mhchem','cancel','gensymb','boldsymbol','paperknow-contour-integrals'],maxBuffer:4000,maxMacros:100,formatError:(_jax,error)=>{throw Error(error.message||'公式语法有误。');}}),output=new SVG({fontCache:'local',localID:'paperknow-'+(++formulaSvgSequence),...(formulaFont?{font:formulaFont}:{})});
+ if(!formulaFont){addContourIntegralGlyphs(output.font);formulaFont=output.font;}
+ return mathjax.document('',{InputJax:input,OutputJax:output});
+}
 export function unwrapFormulaDelimiters(value){
  const latex=validateFormulaCode(value),pairs=[['$$','$$'],['\\[','\\]'],['\\(','\\)'],['$','$']];
  for(const character of latex){const point=character.codePointAt(0);if(point>=0xD800&&point<=0xDFFF||point===0xFFFE||point===0xFFFF)throw Error('公式包含无法安全排版的字符。');}
