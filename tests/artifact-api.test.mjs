@@ -27,6 +27,16 @@ test('artifact API applies sessions and origin policy, then delivers owned verif
  const archive=await (await f.request('/api/account/export')).json();assert.equal(archive.artifacts?.length,1);assert.equal(archive.artifacts[0].id,item.id);assert.equal(JSON.stringify(archive.artifacts).includes('storage_key'),false);
  assert.equal((await f.request('/api/artifacts/'+item.id+'/delete',{expectedSha256:item.sha256,expectedUserId:'alice'})).status,200);assert.equal(f.objects.size,0);
 });
+test('authenticated TeX and MathML HTTP exports retain their exact type, owner and inert attachment delivery',async t=>{
+ const f=await fixture(t),cases=[['科研公式.tex',String.raw`\frac{x_1}{y^2}`,'tex','text/plain;charset=utf-8'],['科研公式.mml','<math xmlns="http://www.w3.org/1998/Math/MathML"><mfrac><mi>x</mi><mi>y</mi></mfrac></math>','mml','application/mathml+xml;charset=utf-8']];
+ for(const [name,text,kind,mimeType]of cases){const input={name,data:Buffer.from(text).toString('base64'),sourceType:'research',expectedUserId:'alice'};
+  assert.equal((await f.request('/api/artifacts',{...input,expectedUserId:'bob'})).status,409);assert.equal((await f.request('/api/artifacts',input,'bob')).status,409);
+  const created=await f.request('/api/artifacts',input);assert.equal(created.status,201);const {item}=await created.json();assert.equal(item.kind,kind);assert.equal(item.mimeType,mimeType);
+  const downloaded=await f.request(item.downloadUrl+'?expectedUserId=alice');assert.equal(downloaded.status,200);assert.equal(await downloaded.text(),text);assert.equal(downloaded.headers.get('content-type'),'application/octet-stream');assert.match(downloaded.headers.get('content-disposition'),/^attachment;/);assert.equal(downloaded.headers.get('x-content-type-options'),'nosniff');assert.match(downloaded.headers.get('content-security-policy'),/sandbox/);
+  assert.equal((await f.request(item.downloadUrl,undefined,'bob')).status,404);assert.equal((await f.request(item.downloadUrl+'?expectedUserId=alice',undefined,'bob')).status,409);
+ }
+ const before=f.objects.size;assert.equal((await f.request('/api/artifacts',{name:'危险.mml',data:Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>x</script></svg>').toString('base64'),sourceType:'research',expectedUserId:'alice'})).status,400);assert.equal(f.objects.size,before);assert.equal((await(await f.request('/api/artifacts',undefined,'bob')).json()).total,0);
+});
 test('only artifact uploads receive the larger request-body allowance',async t=>{
  const f=await fixture(t),input={name:'data.txt',data:Buffer.alloc(2500000,97).toString('base64'),sourceType:'other'};
  const response=await f.request('/api/artifacts',input);assert.equal(response.status,201);assert.equal((await response.json()).item.bytes,2500000);

@@ -11,6 +11,7 @@ export const basicResearchFigures=[
  figure('tree','树图','层级、分类与组织结构','画一张研究框架树图：学习效果分为认知、行为和情感三个维度，每个维度列出两个观察指标。使用圆角节点，层级自上而下。'),
  figure('treemap','矩形树图','层级与面积占比示意','画一张研究资源分配矩形树图，示例数据为：文献整理30、实验40、数据分析20、写作10。面积对应给定数值，明确标注示例。'),
  figure('horizontal-bar','条形图','横向展示类别差异','绘制横向条形图，给定满意度分数：教学内容4.5、互动反馈4.1、资源支持3.8、评价方式4.0，横轴范围0至5。'),
+ figure('pictorial-bar','象形柱图','用图形符号表达类别与数量','绘制一张象形柱图，以书本形状表示文献阅读数量。使用给定示例数据：第一组12篇、第二组18篇、第三组15篇，每个书本图标表示3篇，保留清晰图例并注明示例数据。'),
  figure('radar','雷达图','多维度能力或指标对比','画一张五维雷达图，维度为准确性、效率、稳定性、易用性、可扩展性。方案A的示例评分依次为4、5、4、3、4，使用单一蓝色。'),
  figure('chord','和弦图','群组之间的联系示意','画一张跨学科合作关系和弦示意图，包含计算机、教育、心理学、设计四个学科，强调计算机与教育的合作，不虚构统计数值。'),
  figure('heatmap','热力图','矩阵中的高低分布','画一张3×3热力图，行是方法A/B/C，列是指标1/2/3，给定矩阵为0.8,0.6,0.7；0.5,0.9,0.6；0.7,0.8,0.9，标出原始数值。'),
@@ -23,28 +24,29 @@ export const basicResearchFigures=[
  figure('matrix','矩阵坐标系','二维定位与四象限表达','画一张科研任务优先级四象限图，横轴为紧迫程度，纵轴为重要程度，四个象限分别标注立即执行、计划安排、委派协作、减少投入。'),
  figure('calendar','日历坐标系','按日期组织研究活动','绘制一个示意性研究日历热力图，展示文献阅读、实验记录和写作三个活动类别，仅用深浅表达活动分布，不标注虚构统计。'),
  figure('parallel','平行坐标系','多个变量的模式对照','绘制平行坐标系教学示意图，设置准确率、耗时、内存、稳定性四条纵轴，以三条不同颜色的线示意三种方法，标注为示意。'),
+ figure('mindmap-network','思维导图(非树状)','用自由布局组织概念、交叉联系与研究思路','画一张非树状思维导图，中心主题为大学生学习投入，围绕学习动机、学习环境、教师支持、同伴互动和学习效果自由布局。用交叉连线表达相互影响，不强制为树状层级。'),
  figure('network','关系图','对象、连接与网络结构','画一张研究合作关系图，中心节点为课题组，连接导师、研究生、实验平台和合作机构，标注指导、研究、技术支持和合作关系。'),
  figure('funnel','漏斗图','筛选、转化与阶段收敛','画一张文献筛选漏斗示意图，阶段为数据库检索、去除重复、摘要筛选、全文阅读、纳入研究，只标阶段，不添加样本数。'),
  figure('path','路径图','作用路径与假设关系','画一张研究假设路径图：学习支持→学习动机→学习投入→学习效果；学习支持也直接指向学习效果，路径标为H1至H4，不添加估计系数。'),
  figure('river','主题河流图','主题随时间的演变','画一张科研主题河流概念示意图，三条河流分别为人工智能、在线学习、个性化反馈，时间轴为2019年至2025年，注明趋势示意而非统计结果。'),
  figure('journey','用户旅程图','阶段、行为与体验触点','画一张研究生使用文献工具的用户旅程图：发现选题、检索文献、阅读标注、整理笔记、写作引用。每阶段列出行为、痛点和机会。'),
  figure('requirement','需求图','目标、需求与依赖关系','画一张科研资料管理系统需求图，顶层目标为高效管理研究资料，下分文献检索、分类收藏、笔记整理和引用导出，标明需求依赖。'),
- figure('zenuml','ZenUML示意图','交互调用与控制逻辑','画一张系统交互示意图：用户输入检索词，前端请求检索服务，服务查询文献源并返回结果，用户收藏题录。清楚区分参与者，不生成可执行代码。'),
+ figure('zenuml','ZenUML','交互调用与控制逻辑','画一张系统交互示意图：用户输入检索词，前端请求检索服务，服务查询文献源并返回结果，用户收藏题录。清楚区分参与者，不生成可执行代码。'),
  figure('sequence','时序图','参与者之间的消息顺序','画一张文献导入时序图，参与者为用户、网页、解析服务、存储服务。依次展示选择文件、确认处理、解析、保存、返回结果，标注失败分支。'),
  figure('class','类图','类型、属性与关联关系','画一张文献管理类图示意，包含Paper、Collection、Note三个类。Paper有title、authors、year属性，Collection包含多个Paper，每个Paper有多条Note。'),
  figure('architecture','架构图','系统分层与模块关系','画一张科研辅助平台架构图，上层为网页工作台，中层为文献、写作、绘图服务，下层为任务队列、数据库与对象存储，区分数据流和调用关系。'),
  figure('state','状态图','状态转换与触发条件','画一张研究任务状态图：草稿→等待处理→处理中→完成；处理中可进入失败或取消，失败后由用户确认重试。每个转换标明触发条件。'),
- figure('timeline','时间线','里程碑与研究安排','画一张毕业论文计划时间线：第1月选题、第2月文献与设计、第3至4月资料收集、第5月分析与写作、第6月修改与答辩，蓝白配色。')
+ figure('timeline','时间线图(不带数值)','里程碑与研究安排','画一张毕业论文计划时间线：第1月选题、第2月文献与设计、第3至4月资料收集、第5月分析与写作、第6月修改与答辩，蓝白配色。')
 ];
 
 const professionalGroup=(id,label,icon,items)=>({id,label,icon,items:items.map(([key,name,description,example])=>figure(key,name,description,example))});
 export const professionalResearchFigures=[
- professionalGroup('rendering','3D建模与渲染','grid',[
+ professionalGroup('rendering','3D建模渲染','grid',[
   ['3d-structure','三维结构示意','物体结构与空间关系','生成一张三维科研装置概念示意图：透明实验腔体、样本台、光源与传感器，使用蓝灰色，白色背景，清晰标注组件。'],
   ['product-render','产品与材料渲染','产品外观与材质表达','生成一张实验室便携传感器外观概念图，展示主视角和局部剖面，磨砂金属外壳、透明观察窗，标注为概念设计。'],
   ['exploded','部件爆炸示意','组件拆分与装配关系','绘制一个光学检测模块的三维爆炸示意图，镜头、滤光片、传感器、电路板依次分离，使用虚线表示装配方向。']
  ]),
- professionalGroup('simulation','仿真分析示意','chart',[
+ professionalGroup('simulation','仿真分析','chart',[
   ['simulation-structure','结构与边界条件','受力、约束与网格表达','画一张悬臂梁仿真设置教学示意图，左端固定，右端施加向下载荷，标注约束和力的方向，不生成应力数值或仿真结论。'],
   ['simulation-field','多物理场概念','场分布的概念表达','绘制散热片与空气之间传热路径概念图，用颜色梯度示意冷热区域，箭头表示热量流动，注明非实际仿真结果。'],
   ['simulation-signal','信号处理流程','信号与系统框架','绘制振动信号分析流程示意图：传感器采样→滤波→时频变换→特征提取→状态识别，配上简洁波形图标。']
@@ -101,7 +103,553 @@ export const professionalResearchFigures=[
  ])
 ];
 
+// Software names describe familiar visual conventions. They are not claims
+// that these proprietary applications, simulators, or their file formats run here.
+const professionalFamilyScenes=[
+ [
+  "rendering",
+  "blender",
+  "Blender",
+  "动画制作",
+  "渲染输出",
+  "三维建模",
+  "材质贴图"
+ ],
+ [
+  "rendering",
+  "cinema-4d",
+  "Cinema 4D",
+  "运动图形",
+  "动态设计",
+  "产品渲染",
+  "视觉特效"
+ ],
+ [
+  "rendering",
+  "maya",
+  "Maya",
+  "特效制作",
+  "角色建模",
+  "动画绑定",
+  "渲染合成"
+ ],
+ [
+  "rendering",
+  "zbrush",
+  "ZBrush",
+  "高模制作",
+  "雕刻建模",
+  "贴图烘焙",
+  "细节雕刻"
+ ],
+ [
+  "simulation",
+  "abaqus",
+  "ABAQUS",
+  "显式动力学",
+  "非线性分析",
+  "有限元分析",
+  "疲劳分析"
+ ],
+ [
+  "simulation",
+  "ansys",
+  "ANSYS",
+  "多物理场",
+  "热分析",
+  "结构仿真",
+  "电磁仿真",
+  "流体仿真"
+ ],
+ [
+  "simulation",
+  "comsol",
+  "COMSOL",
+  "传热分析",
+  "电磁分析",
+  "流体力学",
+  "多物理场"
+ ],
+ [
+  "simulation",
+  "matlab",
+  "MATLAB",
+  "信号处理",
+  "图像处理",
+  "数学仿真",
+  "控制系统",
+  "深度学习"
+ ],
+ [
+  "simulation",
+  "simulink",
+  "Simulink",
+  "系统仿真",
+  "信号处理",
+  "控制设计",
+  "动态建模"
+ ],
+ [
+  "optics",
+  "fdtd",
+  "FDTD",
+  "电磁仿真",
+  "等离激元",
+  "纳米光学",
+  "光子学"
+ ],
+ [
+  "optics",
+  "tracepro",
+  "TracePro",
+  "照明设计",
+  "光学仿真",
+  "杂散光分析",
+  "LED设计"
+ ],
+ [
+  "optics",
+  "zemax",
+  "Zemax",
+  "透镜设计",
+  "光学设计",
+  "光线追迹",
+  "成像系统"
+ ],
+ [
+  "chemistry",
+  "chemoffice",
+  "ChemOffice",
+  "光谱分析",
+  "化学绘图",
+  "NMR预测",
+  "结构式"
+ ],
+ [
+  "chemistry",
+  "gaussian",
+  "Gaussian",
+  "量子化学",
+  "分子轨道",
+  "能量计算",
+  "光谱计算"
+ ],
+ [
+  "chemistry",
+  "materials-studio",
+  "Materials Studio",
+  "分子动力学",
+  "表面吸附",
+  "晶体结构",
+  "材料模拟"
+ ],
+ [
+  "chemistry",
+  "origin",
+  "Origin",
+  "曲线拟合",
+  "科研绘图",
+  "数据分析",
+  "峰拟合"
+ ],
+ [
+  "chemistry",
+  "vasp",
+  "VASP",
+  "能带计算",
+  "电子结构",
+  "第一性原理",
+  "态密度"
+ ],
+ [
+  "geography",
+  "arcgis",
+  "ArcGIS",
+  "地图制作",
+  "地理可视化",
+  "遥感影像",
+  "空间分析"
+ ],
+ [
+  "geography",
+  "envi",
+  "ENVI",
+  "分类制图",
+  "影像处理",
+  "变化检测",
+  "遥感图像"
+ ],
+ [
+  "geography",
+  "google-earth",
+  "Google Earth",
+  "卫星图像",
+  "三维地图",
+  "时序影像",
+  "地形图"
+ ],
+ [
+  "geography",
+  "qgis",
+  "QGIS",
+  "矢量分析",
+  "空间数据",
+  "地形分析",
+  "开源地图"
+ ],
+ [
+  "engineering",
+  "autocad",
+  "AutoCAD",
+  "机械图",
+  "建筑图",
+  "工程图纸",
+  "剖面图",
+  "电路图",
+  "结构图"
+ ],
+ [
+  "engineering",
+  "catia",
+  "CATIA",
+  "模具设计",
+  "曲面建模",
+  "航空设计",
+  "汽车设计"
+ ],
+ [
+  "engineering",
+  "creo",
+  "ProE/Creo",
+  "钣金设计",
+  "模具设计",
+  "管道设计",
+  "产品设计"
+ ],
+ [
+  "engineering",
+  "solidworks",
+  "SolidWorks",
+  "3D建模",
+  "爆炸图",
+  "装配图",
+  "运动仿真",
+  "工程图",
+  "零件图"
+ ],
+ [
+  "engineering",
+  "ug-nx",
+  "UG/NX",
+  "装配设计",
+  "曲面造型",
+  "模具设计",
+  "CAM编程"
+ ],
+ [
+  "architecture-planning",
+  "3ds-max",
+  "3ds Max",
+  "动画制作",
+  "建筑渲染",
+  "效果图",
+  "场景建模"
+ ],
+ [
+  "architecture-planning",
+  "lumion",
+  "Lumion",
+  "景观可视化",
+  "虚拟现实",
+  "建筑动画",
+  "实时渲染"
+ ],
+ [
+  "architecture-planning",
+  "revit",
+  "Revit",
+  "BIM设计",
+  "族库建模",
+  "漫游动画",
+  "建筑渲染"
+ ],
+ [
+  "architecture-planning",
+  "sketchup",
+  "SketchUp",
+  "景观设计",
+  "三维建模",
+  "建筑草图",
+  "室内设计"
+ ],
+ [
+  "architecture-planning",
+  "tangent",
+  "天正建筑",
+  "建筑施工图",
+  "立面图",
+  "剖面图",
+  "平面图"
+ ],
+ [
+  "machine-learning",
+  "keras",
+  "Keras",
+  "训练监控",
+  "模型可视化",
+  "迁移学习",
+  "模型评估"
+ ],
+ [
+  "machine-learning",
+  "pytorch",
+  "PyTorch",
+  "网络结构",
+  "深度学习",
+  "性能可视化",
+  "梯度分析"
+ ],
+ [
+  "machine-learning",
+  "scikit-learn",
+  "Scikit-learn",
+  "混淆矩阵",
+  "算法对比",
+  "ROC曲线",
+  "特征重要性"
+ ],
+ [
+  "machine-learning",
+  "tensorflow",
+  "TensorFlow",
+  "神经网络",
+  "损失函数",
+  "训练曲线",
+  "模型架构"
+ ],
+ [
+  "biomedicine",
+  "biorender",
+  "BioRender",
+  "器官示意图",
+  "分子互作图",
+  "信号通路图",
+  "细胞机制图"
+ ],
+ [
+  "biomedicine",
+  "chemdraw",
+  "ChemDraw",
+  "合成路线",
+  "化学结构",
+  "反应机理",
+  "分子式"
+ ],
+ [
+  "biomedicine",
+  "cytoscape",
+  "Cytoscape",
+  "信号网络",
+  "基因网络",
+  "代谢网络",
+  "蛋白互作"
+ ],
+ [
+  "biomedicine",
+  "graphpad",
+  "GraphPad",
+  "曲线拟合",
+  "生存曲线",
+  "生物统计",
+  "实验数据"
+ ],
+ [
+  "biomedicine",
+  "imagej",
+  "ImageJ",
+  "显微图像",
+  "图像处理",
+  "细胞分析",
+  "荧光成像"
+ ],
+ [
+  "biomedicine",
+  "pathway-studio",
+  "Pathway Studio",
+  "代谢通路",
+  "基因调控",
+  "疾病机制",
+  "信号通路"
+ ],
+ [
+  "biomedicine",
+  "pymol",
+  "PyMOL",
+  "三维结构",
+  "蛋白质结构",
+  "蛋白互作",
+  "分子对接"
+ ],
+ [
+  "electronics",
+  "altium-designer",
+  "Altium Designer",
+  "3D PCB",
+  "PCB布局",
+  "信号完整性",
+  "原理图设计"
+ ],
+ [
+  "electronics",
+  "cadence",
+  "Cadence",
+  "PCB设计",
+  "IC设计",
+  "信号完整性",
+  "电源完整性"
+ ],
+ [
+  "electronics",
+  "multisim",
+  "Multisim",
+  "模拟电路",
+  "数字电路",
+  "混合信号",
+  "电路仿真"
+ ],
+ [
+  "electronics",
+  "proteus",
+  "Proteus",
+  "PCB设计",
+  "电路设计",
+  "单片机仿真",
+  "3D可视化"
+ ],
+ [
+  "electronics",
+  "pspice",
+  "PSPICE",
+  "信号分析",
+  "频率响应",
+  "电路分析",
+  "瞬态分析"
+ ],
+ [
+  "statistics",
+  "minitab",
+  "Minitab",
+  "质量管理",
+  "过程能力",
+  "实验设计",
+  "六西格玛"
+ ],
+ [
+  "statistics",
+  "nvivo",
+  "NVivo",
+  "关系图谱",
+  "质性分析",
+  "编码分析",
+  "文本挖掘"
+ ],
+ [
+  "statistics",
+  "sas",
+  "SAS",
+  "质量控制",
+  "统计建模",
+  "数据挖掘",
+  "预测分析"
+ ],
+ [
+  "statistics",
+  "stata",
+  "Stata",
+  "生存分析",
+  "计量经济",
+  "面板数据",
+  "回归分析"
+ ],
+ [
+  "automation",
+  "codesys",
+  "CoDeSys",
+  "功能块图",
+  "结构化文本",
+  "IEC 61131-3",
+  "梯形图"
+ ],
+ [
+  "automation",
+  "labview",
+  "LabVIEW",
+  "虚拟仪器",
+  "数据采集",
+  "控制系统",
+  "测试系统"
+ ],
+ [
+  "automation",
+  "rslogix",
+  "RSLogix",
+  "AB PLC",
+  "梯形图",
+  "顺序功能图",
+  "功能块"
+ ],
+ [
+  "automation",
+  "step-7",
+  "Step 7",
+  "西门子PLC",
+  "SCL编程",
+  "控制逻辑",
+  "梯形图编程"
+ ],
+ [
+  "automation",
+  "tia-portal",
+  "TIA Portal",
+  "功能块图",
+  "PLC梯形图",
+  "SCADA界面",
+  "博图编程"
+ ]
+];
+const professionalDomainDirections={
+ rendering:'清楚表达对象、部件、材质、镜头与空间关系；动画类需求用单张分镜、关键帧或制作流程示意表达。',
+ simulation:'清楚表达研究对象、载荷、约束、网格、场域或处理流程；没有用户提供的计算数据时只作概念示意，不编造求解结果、云图标尺或物理量。',
+ optics:'清楚表达光源、元件、光路、传播方向与观察位置；没有给定数据时不编造波长、效率或模拟光谱。',
+ chemistry:'依据用户明确给出的分子、材料、反应步骤或结构来绘制；没有实验或计算数据时只作概念示意，不编造化学键、能量或谱峰。',
+ geography:'清楚表达图层、空间要素、区域关系或分析流程；未经用户提供真实资料时不虚构地图边界、遥感影像或测量结果。',
+ engineering:'清楚表达部件、装配、剖面、接口或设计流程；不将图片视为可制造图纸，不编造公差、尺寸、刀路或工程计算结果。',
+ 'architecture-planning':'清楚表达空间、楼层、功能分区、场景或动线；缺少用户给定尺寸时只作概念示意，不当作实际施工图。',
+ 'machine-learning':'清楚表达网络模块、数据流、训练过程、评价指标或分析对象；统计曲线与性能数值只采用用户提供的数据，不编造训练结果。',
+ biomedicine:'清楚表达器官、细胞、分子、通路或实验关系；只采用用户指定或可核对的结构，不虚构显微影像、临床数据或实验结论。',
+ electronics:'清楚表达器件、连接、层级、供电与信号路径；生成供人工核对的示意图片，不承诺可运行电路、可制造PCB或经过仿真的波形。',
+ statistics:'清楚表达变量、研究设计、样本关系、分析方法或统计图形；数值、区间、显著性和曲线只采用用户提供的实际数据。',
+ automation:'清楚表达设备、输入输出、控制状态、条件、反馈与通信关系；程序相关需求用逻辑或流程示意表达，不声称生成可直接执行的控制程序。'
+};
+for(const group of professionalResearchFigures){
+ const legacy={id:group.id+'-general',label:'通用科研场景',items:group.items.map(item=>({...item,familyId:group.id+'-general',familyLabel:'通用科研场景'}))};
+ const families=professionalFamilyScenes.filter(([categoryId])=>categoryId===group.id).map(([,id,label,...scenes])=>({id,label,items:scenes.map((scene,index)=>({
+  ...figure(id+'-'+String(index+1).padStart(2,'0'),label+' - '+scene,scene+'的科研示意表达','请生成一张'+scene+'科研示意图片，使用'+label+'类图形常见的清晰表达方式。请先根据我的研究内容确定具体对象、元素、连接关系、布局和标注。'+professionalDomainDirections[group.id]+'使用简洁白色背景，说明性的文字保持清楚。'),
+  familyId:id,familyLabel:label,sceneLabel:scene,aliases:[label.replace(/\s/g,''),scene],guidance:professionalDomainDirections[group.id]
+ }))}));
+ group.families=[legacy,...families];
+ group.items=group.families.flatMap(family=>family.items);
+}
+
 export const researchImageAspectRatios=['16:9','4:3','1:1','3:4'];
 export const researchImagePalettes=[{id:'academic',label:'学术简洁',colors:['#486ac8','#9caed8','#d6e1f6']},{id:'blue',label:'科技蓝',colors:['#2365ed','#55a5ed','#c7e8fa']},{id:'nature',label:'自然青绿',colors:['#227c76','#66b7a4','#d5e8bf']},{id:'warm',label:'柔和暖色',colors:['#a86c49','#d4a477','#ecd9c4']}];
 export function researchFigureChoices(mode='basic'){return mode==='professional'||mode==='pro'?professionalResearchFigures.flatMap(group=>group.items.map(item=>({...item,categoryId:group.id,categoryLabel:group.label}))):basicResearchFigures.map(item=>({...item,categoryId:'basic',categoryLabel:'基础图表'}));}
 export function researchFigureChoice(mode,id){const choices=researchFigureChoices(mode);return choices.find(item=>item.id===id)||choices[0];}
+
+// Search combines the visible scene, family and domain, including mixed queries
+// such as “PyTorch 网络”. It is a local catalog search and never calls a provider.
+export function researchFigureMatches(item,query=''){
+ const normalized=value=>String(value||'').normalize('NFKC').toLocaleLowerCase().replace(/[‐‑–—_-]/g,' ').replace(/\s+/g,' ').trim();
+ const tokens=normalized(query).split(' ').filter(Boolean),haystack=normalized([item?.label,item?.familyLabel,item?.categoryLabel,item?.description,...(item?.aliases||[])].join(' '));
+ return tokens.every(token=>haystack.includes(token));
+}

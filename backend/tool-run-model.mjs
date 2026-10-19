@@ -1,5 +1,6 @@
 import {formulaSvgMarkup} from '../src/research-formula-core.js';
 import {thesisError,thesisHash} from './thesis-model.mjs';
+import {researchFigureSelection} from './research-figure-selection.mjs';
 export const toolOperations=Object.freeze({literature:['read','answer','translate'],revision:['rewrite'],presentation:['ppt'],research:['chart','diagram','formula','image'],format:['format']});
 export const toolOperationNames=Object.freeze({read:'文献解读',answer:'原文问答',translate:'文献翻译',rewrite:'学术表达优化',ppt:'演示文稿创作',chart:'科研图表配置',diagram:'科研结构示意图',formula:'公式辅助',image:'AI科研绘图',format:'格式建议'});
 export function toolBillingKey({kind,operation,snapshot}){if(kind==='revision')return snapshot.context.plan==='dual'?'revision-dual':['reduce','aigc'].includes(snapshot.mode)?'revision-aigc':'revision-reduce';if(kind==='presentation')return'presentation-'+snapshot.mode;if(kind==='format')return'format-advice';return kind+'-'+operation;}
@@ -30,6 +31,7 @@ export function normalizeToolRequest(input){
   if(snapshot.materials.length||snapshot.question)fail('科研绘图只接收本次描述，请勿附加正文材料或问答');
   const c=snapshot.context;if(Object.keys(c).some(k=>!['categoryId','figureType','aspectRatio','palette'].includes(k)))fail('科研绘图选项包含不支持的字段');
   for(const key of ['categoryId','figureType'])if(typeof c[key]!=='string'||!/^[A-Za-z0-9_-]{1,80}$/.test(c[key]))fail('请选择有效的科研绘图类别');
+  if(!researchFigureSelection(snapshot))fail('科研绘图类别与所选领域不匹配，请重新选择图表类型');
   if(!['16:9','4:3','1:1','3:4'].includes(c.aspectRatio)||!['academic','blue','nature','warm'].includes(c.palette))fail('请选择支持的图片比例与配色');
  }
  if(input.operation==='chart'){

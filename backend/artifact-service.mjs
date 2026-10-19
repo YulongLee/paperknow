@@ -1,8 +1,10 @@
 import {randomUUID} from 'node:crypto';
 import {digest} from './auth.mjs';
+import {artifactKinds,artifactMimeType} from './artifact-formats.mjs';
+import {validateFormulaArtifact} from './artifact-formula-validation.mjs';
 
 export const artifactLimits=Object.freeze({maxFileBytes:20*1024*1024,maxAccountBytes:500*1024*1024,maxFiles:2000});
-export const artifactKinds=Object.freeze(['txt','md','csv','json','html','svg','png','jpg','jpeg','pdf','docx','pptx','xlsx','zip']);
+export {artifactKinds} from './artifact-formats.mjs';
 const sourceTypes=['writing','thesis','literature','revision','detection','presentation','format','research','backup','other'];
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const fields=(input,allowed)=>{if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!allowed.includes(k)))fail(400,'成果请求包含不支持的字段');};
@@ -37,10 +39,11 @@ export function createArtifactService(db,config={}){
  const hasToolRuns=()=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tool_runs'").get());
  const hasWebRuns=()=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='web_similarity_runs'").get());
  const pendingPresentation=row=>row.source_type==='research'&&hasToolRuns()&&Boolean(db.prepare("SELECT 1 FROM tool_runs WHERE id=? AND user_id=? AND operation='image' AND status!='completed'").get(row.source_id,row.user_id))||row.source_type==='presentation'&&hasToolRuns()&&Boolean(db.prepare("SELECT 1 FROM tool_runs WHERE id=? AND user_id=? AND operation='ppt' AND status!='completed'").get(row.source_id,row.user_id))||row.source_type==='detection'&&hasWebRuns()&&Boolean(db.prepare("SELECT 1 FROM web_similarity_runs r JOIN jobs j ON j.id=r.id WHERE r.id=? AND r.user_id=? AND (j.status!='completed' OR r.input_artifact_id=?)").get(row.source_id,row.user_id,row.id));
- const serialize=row=>({id:row.id,name:row.name,kind:row.kind,bytes:row.bytes,sha256:row.sha256,sourceType:row.source_type,sourceId:row.source_id,projectId:row.project_id,status:row.status,createdAt:row.created_at,source_type:row.source_type,source_id:row.source_id,project_id:row.project_id,created_at:row.created_at,downloadUrl:row.status==='ready'?`/api/artifacts/${row.id}/download`:null});
+ const serialize=row=>({id:row.id,name:row.name,kind:row.kind,mimeType:artifactMimeType(row.kind),bytes:row.bytes,sha256:row.sha256,sourceType:row.source_type,sourceId:row.source_id,projectId:row.project_id,status:row.status,createdAt:row.created_at,source_type:row.source_type,source_id:row.source_id,project_id:row.project_id,created_at:row.created_at,downloadUrl:row.status==='ready'?`/api/artifacts/${row.id}/download`:null});
  const usage=user=>{const row=db.prepare("SELECT coalesce(sum(bytes),0) bytes,count(*) count FROM artifacts WHERE user_id=? AND status!='deleted'").get(user.id);return {...row,maxBytes:limits.maxAccountBytes,maxFiles:limits.maxFiles,maxFileBytes:limits.maxFileBytes};};
  const checkAccount=(expected,user)=>{if(expected!==undefined&&expected!==user.id)fail(409,'登录账户已变化，请刷新后重新导出');};
  const checkSignature=(kind,buffer)=>{
+  validateFormulaArtifact(kind,buffer);
   if(kind==='pdf'&&!buffer.subarray(0,5).equals(Buffer.from('%PDF-')))fail(400,'PDF 文件格式无效');
   if(['docx','pptx','xlsx','zip'].includes(kind)&&!buffer.subarray(0,2).equals(Buffer.from('PK')))fail(400,'压缩文档格式无效');
   if(kind==='png'&&!buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))fail(400,'PNG 文件格式无效');

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {mountResearchDrawing,researchDrawingSnapshot,researchDrawingArtifact,validateResearchDrawingBlob,normalizeResearchDrawingDraft,researchDrawingDraftKey} from '../dist/workspace/research-drawing-studio.mjs';
-import {basicResearchFigures,professionalResearchFigures,researchFigureChoices} from '../dist/workspace/research-figure-catalog.mjs';
+import {basicResearchFigures,professionalResearchFigures,researchFigureChoices,researchFigureMatches} from '../dist/workspace/research-figure-catalog.mjs';
 import {beginDraftScope,endDraftScope} from '../dist/workspace/state.mjs';
 import {pngFixture} from './fixtures/research-image.mjs';
 
@@ -119,4 +119,37 @@ test('private account draft scopes neither read nor write the shared drawing rec
 test('local drawing normalization omits arbitrary task output and rejects image payloads inside snapshots',()=>{
  const value=normalizeResearchDrawingDraft({version:1,form:baseForm(),jobState:{itemId:'job-alice',ownerId:'alice',output:{imageBase64:'secret'},image:'https://provider.example/private'}});assert.equal(value.jobState.output,undefined);assert.equal(value.jobState.image,undefined);
  const snapshot={...researchDrawingSnapshot(baseForm()),image:'https://provider.example/private'};assert.throws(()=>normalizeResearchDrawingDraft({version:1,form:baseForm(),jobState:{snapshot}}),/恢复信息/);
+});
+
+
+test('basic drawing covers every observed competitor type while retaining legacy horizontal charts and smart choice',()=>{
+ const labels=new Set(basicResearchFigures.map(item=>item.label));
+ for(const label of ['流程图','实体关系图','饼图','柱状图','折线图','树图','矩形树图','象形柱图','雷达图','和弦图','热力图','盒须图','仪表盘','散点图','K线图','桑基图','旭日图','矩阵坐标系','日历坐标系','平行坐标系','关系图','漏斗图','路径图','主题河流图','用户旅程图','需求图','ZenUML','时序图','类图','架构图','状态图','时间线图(不带数值)','思维导图(非树状)'])assert.ok(labels.has(label),'缺少基础类型：'+label);
+ assert.ok(labels.has('条形图'));assert.ok(labels.has('智能选择'));
+});
+
+test('all observed professional software families expose independent scenes and preserve every original draft identifier',()=>{
+ const groups=professionalResearchFigures,choices=researchFigureChoices('professional');
+ for(const family of ['Blender','Cinema 4D','Maya','ZBrush','ABAQUS','ANSYS','COMSOL','MATLAB','Simulink','FDTD','TracePro','Zemax','ChemOffice','Gaussian','Materials Studio','Origin','VASP','ArcGIS','ENVI','Google Earth','QGIS','AutoCAD','CATIA','ProE/Creo','SolidWorks','UG/NX','3ds Max','Lumion','Revit','SketchUp','天正建筑','Keras','PyTorch','Scikit-learn','TensorFlow','BioRender','ChemDraw','Cytoscape','GraphPad','ImageJ','Pathway Studio','PyMOL','Altium Designer','Cadence','Multisim','Proteus','PSPICE','Minitab','NVivo','SAS','Stata','CoDeSys','LabVIEW','RSLogix','Step 7','TIA Portal'])assert.ok(choices.some(item=>item.familyLabel===family),'缺少专业家族：'+family);
+ for(const id of ['3d-structure','product-render','exploded','simulation-structure','simulation-field','simulation-signal','optical-path','optical-system','optical-device','reaction-mechanism','material-structure','molecular-concept','geo-workflow','geo-layers','terrain-concept','engineering-section','engineering-assembly','engineering-system','building-concept','landscape-plan','building-layers','network-architecture','ml-workflow','attention-mechanism','cell-mechanism','experimental-protocol','biomolecule-network','circuit-block','circuit-concept','pcb-structure','stat-study-design','stat-distribution','stat-causal','control-loop','industrial-process','automation-sequence'])assert.ok(choices.some(item=>item.id===id),'旧草稿类型丢失：'+id);
+ assert.equal(new Set(choices.map(item=>item.id)).size,choices.length);assert.ok(choices.length>=266);
+ for(const group of groups){assert.ok(group.families.length>=4);assert.deepEqual(group.families.flatMap(family=>family.items).map(item=>item.id),group.items.map(item=>item.id));}
+});
+
+test('every professional scene can be submitted and recovered with its own immutable category/type selection',()=>{
+ for(const choice of researchFigureChoices('professional')){
+  const form={...baseForm(),title:'用户自定义作品名',figureType:choice.id},snapshot=researchDrawingSnapshot(form,'professional');
+  assert.equal(snapshot.context.categoryId,choice.categoryId);assert.equal(snapshot.context.figureType,choice.id);assert.equal(snapshot.title,'用户自定义作品名');
+  const recovered=normalizeResearchDrawingDraft({version:1,form,jobState:{snapshot}},'professional');assert.equal(recovered.form.figureType,choice.id);assert.equal(recovered.jobState.snapshot.context.categoryId,choice.categoryId);
+ }
+ assert.throws(()=>researchDrawingSnapshot({...baseForm(),figureType:'unknown-software-scene'},'professional'),/有效/);
+});
+
+test('professional search understands software/domain/scene combinations and clears without expanding the full catalog',async t=>{
+ const f=fixture(t,{mode:'professional'});await f.mount.ready;const visible=()=>[...f.container.querySelectorAll('[data-rd-figure]')].filter(button=>!button.hidden);
+ f.enter('[data-rd-type-search]','PyTorch 网络');assert.equal(visible().length,1);assert.match(visible()[0].textContent,/PyTorch - 网络结构/);assert.ok(f.container.querySelector('[data-rd-group="machine-learning"]').open);assert.ok(f.container.querySelector('[data-rd-family="pytorch"]').open);
+ visible()[0].click();f.enter('[data-rd-type-search]','');assert.equal(visible().length,researchFigureChoices('professional').length);assert.equal(f.container.querySelector('[data-rd-search-result]').hidden,true);assert.ok(f.container.querySelector('[data-rd-family="pytorch"]').open);assert.equal(f.container.querySelector('[data-rd-family="biorender"]').open,false);// Selection needs no generation or quote.
+ f.click('[data-rd-example]');assert.equal(f.mount.getSnapshot().context.figureType,'pytorch-01');assert.match(f.mount.getSnapshot().text,/网络结构/);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,0);
+ f.enter('[data-rd-type-search]','not-a-real-figure');assert.equal(visible().length,0);assert.match(f.container.querySelector('[data-rd-search-result]').textContent,/没有匹配/);assert.equal(f.container.querySelectorAll('[data-rd-group]:not([hidden])').length,0);
+ const imagej=researchFigureChoices('professional').find(item=>item.familyLabel==='ImageJ');assert.equal(researchFigureMatches(imagej,'生物医学 ImageJ'),true);assert.equal(researchFigureMatches(imagej,'材料'),false);
 });

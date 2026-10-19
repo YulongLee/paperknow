@@ -2,6 +2,7 @@ import {lookup} from 'node:dns/promises';
 import {request as httpsRequest} from 'node:https';
 import {isIP} from 'node:net';
 import {inflateSync} from 'node:zlib';
+import {researchFigureSelection} from './research-figure-selection.mjs';
 
 const endpoint='https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
 const maximum=20*1024*1024;
@@ -46,7 +47,8 @@ export function validateResearchImage(buffer){
  return{buffer,width,height,kind,mimeType:kind==='png'?'image/png':'image/jpeg'};
 }
 export function researchImagePrompt(snapshot){
- const c=snapshot.context;return['请生成一张可用于科研论文或学术报告的高质量插图。',`图类型：${snapshot.title}（${c.figureType}）；领域：${c.categoryId}；${snapshot.mode==='professional'?'专业科研示意图':'基础科研图表'}。`,`文字标注语言：${snapshot.language==='中文'?'简体中文':'English'}。${palettes[c.palette]||palettes.academic}。`,`用户描述：\n${snapshot.text}`,snapshot.requirements?`补充要求：${snapshot.requirements}`:'','只生成一张完整静态图片，清晰排版，合理留白。图中文字优先逐字采用用户明确提供的标注，字号足够大；用户未要求时不要增加主标题、细小副标题、说明段落、脚注、随机数字或装饰性文字。中文使用清晰规范的简体黑体。不得声称真实执行任何仿真、工程设计或实验；没有明确数据时用概念示意，不编造实验测量值。不绘制界面、按钮、网页水印。'].filter(Boolean).join('\n');
+ const choice=researchFigureSelection(snapshot);if(!choice)fail('input_invalid','科研绘图类别与所选领域不匹配，请重新选择图表类型',400);
+ const c=snapshot.context;return['请生成一张可用于科研论文或学术报告的高质量插图。',`图表类型：${choice.label}；科研领域：${choice.categoryLabel}；${snapshot.mode==='professional'?'专业科研示意图':'基础科研图表'}。`,choice.familyLabel?`采用 ${choice.familyLabel} 常见的视觉表达习惯；应用场景：${choice.sceneLabel||choice.label}。仅生成静态示意图片，不调用或运行该软件，不声称与该软件官方合作或已完成计算。`:'',`类型要求：${choice.description}。`,choice.guidance?`领域要求：${choice.guidance}`:'',`作品名称（仅用于保存，不代替图表类型）：${snapshot.title}。`,`文字标注语言：${snapshot.language==='中文'?'简体中文':'English'}。${palettes[c.palette]||palettes.academic}。`,`用户描述：\n${snapshot.text}`,snapshot.requirements?`补充要求：${snapshot.requirements}`:'','只生成一张完整静态图片，清晰排版，合理留白。图中文字优先逐字采用用户明确提供的标注，字号足够大；用户未要求时不要增加主标题、细小副标题、说明段落、脚注、随机数字或装饰性文字。中文使用清晰规范的简体黑体。不得声称真实执行任何仿真、工程设计或实验；没有明确数据时用概念示意，不编造实验测量值。不绘制界面、按钮、网页水印。'].filter(Boolean).join('\n');
 }
 export function createResearchImageClient(settings,{requestImpl=httpsRequest,lookupImpl=lookup}={}){
  const runtime=assertResearchImageSettings(settings);

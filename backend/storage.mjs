@@ -1,9 +1,9 @@
 import OSS from 'ali-oss';
 import {randomUUID} from 'node:crypto';
 import {digest} from './auth.mjs';
+import {artifactKinds} from './artifact-formats.mjs';
 const safeId=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,120}$/.test(value);
 const originalKinds=['txt','docx','pdf'];
-const artifactKinds=['txt','md','csv','json','html','svg','png','jpg','jpeg','pdf','docx','pptx','xlsx','zip'];
 export function createStorage(config,client){
   const values=[config.ossBucket,config.ossEndpoint,config.ossRegion,config.ossAccessKeyId,config.ossAccessKeySecret];
   if(!client&&!values.some(Boolean))return null;
