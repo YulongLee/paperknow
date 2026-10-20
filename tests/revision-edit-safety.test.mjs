@@ -8,8 +8,6 @@ import {withStableView} from '../dist/workspace/view-stability.mjs';
 import {documentExportButtons,bindDocumentExports} from '../dist/workspace/document-export.mjs';
 import {mountRevisionAi} from '../dist/workspace/revision-ai.mjs';
 import {revisionStrategy} from '../dist/workspace/revision-strategy.mjs';
-import {revisionBundleOffersMarkup,mountRevisionBundleOffers as mountBundleOffers} from '../dist/workspace/revision-bundle-offers.mjs';
-const mountRevisionBundleOffers=options=>mountBundleOffers({...options,fetchOptions:async()=>({ok:true,json:async()=>({products:[],channels:[]})})});
 import {openRevisionReport} from '../dist/workspace/revision-report.mjs';
 import {normalizeConfirmedRevisionReport,reportSources} from '../dist/workspace/revision-report-model.mjs';
 import {validateRevisionProtection} from '../dist/workspace/revision-protection.mjs';
@@ -26,7 +24,7 @@ function fixture(t,{entry=true,extract=async()=>({text:'Parsed source.',warnings
  globalThis.document=w.document;
  const originalSet=w.Storage.prototype.setItem;
  w.Storage.prototype.setItem=function(key,value){if(entryFail&&key==='paperknow-revision-entry')throw Error('Synthetic entry quota');return originalSet.call(this,key,value);};
- Object.assign(w,{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,revisionStrategy,revisionBundleOffersMarkup,mountRevisionBundleOffers,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports,...model,importWorkspaceDocument:extract,documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[],list:key=>JSON.parse(w.localStorage.getItem(key)||'[]'),write:(key,rows)=>{if(fail)throw Error('Synthetic storage failure');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:()=>{},download:(...args)=>downloads.push(args)});
+ Object.assign(w,{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports,...model,importWorkspaceDocument:extract,documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[],list:key=>JSON.parse(w.localStorage.getItem(key)||'[]'),write:(key,rows)=>{if(fail)throw Error('Synthetic storage failure');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:()=>{},download:(...args)=>downloads.push(args)});
  w.confirm=()=>false;
  const closeDialog=()=>{$('dialog').removeAttribute('open');$('dialog').dispatchEvent(new w.Event('close'));};$('dialog').close=closeDialog;
  const ctx={mode:entry?'reduce':'rewrite',notify:text=>notices.push(text),modal:(_title,html)=>{$('#workspace-dialog-body').innerHTML=html;$('dialog').setAttribute('open','');},api:async(...args)=>{requests.push(args);throw Error('Unexpected API request');}};

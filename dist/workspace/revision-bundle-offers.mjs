@@ -15,8 +15,8 @@ function placeholder(plan,state='loading'){
  return `<span class="revision-bundle-status" data-revision-bundle-state="${state}">${stateCopy[state]}</span><h3>${esc(plan.title)}</h3><p class="revision-bundle-description">${esc(plan.description)}</p><div class="revision-bundle-detail"><span class="revision-bundle-focus">${esc(plan.focus)} · 方案规划</span><p>${hintCopy[state]}</p></div><div class="revision-bundle-actions"><button class="btn secondary" type="button" data-revision-bundle-details="${plan.id}">查看方案 ${icon('arrow',14)}</button><small>未发布前不提供付款入口</small></div>`;
 }
 export function revisionBundleOffersMarkup(kind='reduce'){
- const context=kind==='aigc'?'aigc':'reduce';
- return `<section class="revision-bundle-offers" data-revision-bundle-offers data-revision-bundle-context="${context}" aria-label="查降组合套餐"><header class="revision-bundle-heading"><div><span class="revision-bundle-eyebrow">PAPERKNOW BUNDLES</span><h2>你的查降组合套餐</h2><p>套餐单独购买；下方修改方案按任务选择。</p></div><span class="revision-bundle-catalogue-status" data-revision-bundle-catalogue-status role="status">正在核对商品与权益</span></header><div class="revision-bundle-grid">${plans.map(plan=>`<article class="revision-bundle-card revision-bundle-${plan.tone}" data-revision-bundle="${plan.id}" data-revision-bundle-id="${plan.id}"><span class="revision-bundle-art" aria-hidden="true">${icon(plan.symbol,27)}<i></i><i></i></span><div class="revision-bundle-card-content" data-revision-bundle-content>${placeholder(plan)}</div></article>`).join('')}</div><footer class="revision-bundle-footer"><p>规划方案不含已开放的数据库检测承诺；实际服务以发布的商品说明为准。</p><div><a href="#membership/recharge">按次使用，购买积分 ${icon('arrow',13)}</a><a href="#membership?scope=account">查看已购权益 ${icon('arrow',13)}</a></div></footer></section>`;
+ const context=kind==='membership'?'membership':kind==='aigc'?'aigc':'reduce';
+ return `<section class="revision-bundle-offers" data-revision-bundle-offers data-revision-bundle-context="${context}" aria-label="查降专项套餐"><header class="revision-bundle-heading"><div><span class="revision-bundle-eyebrow">PAPERKNOW BUNDLES</span><h2>查降专项套餐</h2><p>在会员与用量中统一选择，按已发布的服务与次数购买。</p></div><span class="revision-bundle-catalogue-status" data-revision-bundle-catalogue-status role="status">正在核对商品与权益</span></header><div class="revision-bundle-grid">${plans.map(plan=>`<article class="revision-bundle-card revision-bundle-${plan.tone}" data-revision-bundle="${plan.id}" data-revision-bundle-id="${plan.id}"><span class="revision-bundle-art" aria-hidden="true">${icon(plan.symbol,27)}<i></i><i></i></span><div class="revision-bundle-card-content" data-revision-bundle-content>${placeholder(plan)}</div></article>`).join('')}</div><footer class="revision-bundle-footer"><p>未上架方案不开放购买；实际服务以发布的商品说明为准。</p><div><a href="#membership/recharge">按次使用，购买积分 ${icon('arrow',13)}</a><a href="#membership?scope=account">查看已购权益 ${icon('arrow',13)}</a></div></footer></section>`;
 }
 const nonempty=(value,max)=>typeof value==='string'&&Boolean(value.trim())&&value.length<=max;
 function publishedProduct(plan,products){
@@ -49,6 +49,7 @@ export function mountRevisionBundleOffers({container,signal,modal,timeoutMs=1200
   const card=root.querySelector(`[data-revision-bundle-id="${plan.id}"]`),content=card?.querySelector('[data-revision-bundle-content]');
   if(!content)return;
   card.classList.toggle('is-published',state==='published');
+  if(state==='published')card.dataset.bundleProduct=plan.id;else delete card.dataset.bundleProduct;
   content.innerHTML=product?liveMarkup(product):placeholder(plan,state);
  }
  function paintAll(state){update(()=>{for(const plan of plans)paint(plan,state);root.querySelector('[data-revision-bundle-catalogue-status]').textContent=state==='failed'?'商品信息暂未取得 · 可继续按次使用':'正在核对商品与权益';});}

@@ -15,8 +15,6 @@ import {esc,icon,empty,formatDate} from '../dist/workspace/ui.mjs';
 import {toolBanner} from '../dist/workspace/tool-banner.mjs';
 import {mountAigcDetection,ensureAigcStyle} from '../dist/workspace/aigc-detection.mjs';
 import {revisionStrategy} from '../dist/workspace/revision-strategy.mjs';
-import {revisionBundleOffersMarkup,mountRevisionBundleOffers as mountBundleOffers} from '../dist/workspace/revision-bundle-offers.mjs';
-const mountRevisionBundleOffers=options=>mountBundleOffers({...options,fetchOptions:async()=>({ok:true,json:async()=>({products:[],channels:[]})})});
 import {openRevisionReport} from '../dist/workspace/revision-report.mjs';
 import {normalizeConfirmedRevisionReport,reportSources} from '../dist/workspace/revision-report-model.mjs';
 import {validateRevisionProtection} from '../dist/workspace/revision-protection.mjs';
@@ -322,7 +320,7 @@ test('direct AI-rate navigation mounts the AI reduction service and updates the 
 
 test('real AI reduction entry keeps its own heading, theme and selection across shared revision routes',()=>{
  const dom=new JSDOM('<div class="breadcrumb"><strong></strong></div><main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#category/aigc',runScripts:'outside-only'});
- Object.assign(dom.window,{captureDraftScope,workspaceJobLabel,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),mountAigcDetection,ensureAigcStyle,revisionStrategy,revisionBundleOffersMarkup,mountRevisionBundleOffers,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
+ Object.assign(dom.window,{captureDraftScope,workspaceJobLabel,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),mountAigcDetection,ensureAigcStyle,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
  try{
   vm.runInContext('(function(){'+revisionSource+'\nglobalThis.mountActualRevision=mountRevision;})()',dom.getInternalVMContext());
   const query=selector=>dom.window.document.querySelector(selector);
@@ -335,7 +333,7 @@ test('real AI reduction entry keeps its own heading, theme and selection across 
    assert.equal(query('.revision-entry-summary [data-revision-selection-title]').textContent,'自然学术表达精修');
    assert.equal(query('.revision-plan-card[aria-pressed="true"]').dataset.revisionPlan,'strong');
    assert.match(query('[data-revision-plan-status]').textContent,/可生成逐段候选修改.*不预测或承诺/);
-   assert.ok(query('#revision-entry-form'));assert.equal(query('#revision-space'),null);
+   assert.ok(query('#revision-entry-form'));assert.equal(query('#revision-space'),null);assert.equal(query('[data-revision-bundle-offers]'),null);
   };
   mount('#category/aigc');assertAIPage();
   mount('#category/reduce');
@@ -350,7 +348,7 @@ test('real AI reduction entry keeps its own heading, theme and selection across 
   assert.equal(query('.revision-entry-summary [data-revision-selection-title]').textContent,'表达与引用综合优化');
   assert.match(query('[data-revision-plan-status]').textContent,/生成逐段候选/);
   assert.match(query('[data-revision-plan-status]').textContent,/审核后采纳/);
-  assert.ok(query('#revision-entry-form'));assert.equal(query('#revision-space'),null);
+  assert.ok(query('#revision-entry-form'));assert.equal(query('#revision-space'),null);assert.equal(query('[data-revision-bundle-offers]'),null);
   mount('#category/aigc');assertAIPage();
   assert.equal(query('[data-revision-plan="dual"]').getAttribute('aria-pressed'),'false');
  }finally{dom.window.close();}

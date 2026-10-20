@@ -2,10 +2,12 @@ import {commercialMemberOffers,commercialBundleOffers} from './commercial-offers
 import {withStableView} from './view-stability.mjs';
 import {toolBanner} from './tool-banner.mjs';
 import {icon} from './ui.mjs';
+import {revisionBundleOffersMarkup,mountRevisionBundleOffers} from './revision-bundle-offers.mjs';
 const $=s=>document.querySelector(s);
 const escapeHTML=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 let disposeCreditPage=null;
 function clearCreditPage(){const dispose=disposeCreditPage;disposeCreditPage=null;dispose?.();}
+function ownCommercePages(...pages){let disposed=false;const dispose=()=>{if(disposed)return;disposed=true;for(const page of pages)page?.dispose?.();if(disposeCreditPage===dispose)disposeCreditPage=null;};disposeCreditPage=dispose;return {dispose};}
 // Screenshot benchmark values are preview data, not a live billing catalogue.
 const planFromOffer=offer=>({id:offer.id.replace(/^bundle-/,''),name:offer.title,price:offer.priceCents/100,priceCents:offer.priceCents,durationDays:offer.durationDays,totalUses:offer.totalUses,audience:offer.audience,description:offer.description,featured:offer.featured,features:(offer.membershipItems||offer.bundleItems).map(item=>`${item.title} × ${item.quantity} 次`),available:false});
 export const memberPlans=[
@@ -32,7 +34,7 @@ export function purchaseSelection(plan,quantity=1,kind='member'){
 const commerceOptions=[
  {id:'plans',title:'会员订阅',icon:'diamond',scene:'为持续写作与研究而准备',caption:'限期分项次数，手动续购',label:'持续研究',art:'member'},
  {id:'recharge',title:'积分购买',icon:'plus',scene:'按需补充，你的科研积分',caption:'三个面额，清晰计价',label:'灵活补充',art:'credits'},
- {id:'bundles',title:'套餐购买',icon:'grid',scene:'围绕论文阶段，组合服务',caption:'研读、润色与科研演示组合',label:'阶段任务',art:'bundles'}
+ {id:'bundles',title:'专项套餐',icon:'grid',scene:'围绕论文阶段，组合服务',caption:'查降修改、研读与科研演示组合',label:'阶段任务',art:'bundles'}
 ];
 function navigation(tab){return `<div class="commerce-center-navigation"><nav class="commerce-tabs commerce-center-tabs" aria-label="购买方式">${commerceOptions.map(o=>`<a class="commerce-center-tab commerce-center-tab-${o.id}" href="#membership/${o.id}" data-commerce-tab="${o.id}" ${tab===o.id?'aria-current="page"':''}><span class="commerce-center-tab-art" aria-hidden="true"><img src="/workspace/assets/commerce-${o.art}-v2.webp" alt="" width="480" height="360"></span><span class="commerce-center-tab-copy"><span class="commerce-center-tab-label">${icon(o.icon,15)} ${o.label}</span><strong>${o.title}</strong><span>${o.scene}</span><small>${o.caption}</small></span><span class="commerce-center-tab-state">${tab===o.id?`${icon('check',13)} 已选择`:`查看 ${icon('arrow',14)}`}</span></a>`).join('')}</nav><div class="commerce-center-subnav"><span>账户权益、科研积分与购买记录，在这里统一管理。</span><a href="#orders">查看购买记录 ${icon('arrow',14)}</a></div></div>`;}
 function heading(tab){const credits=tab==='recharge';return `${toolBanner('membership',{title:'会员与购买中心',description:'持续研究选会员，按需使用选积分，阶段任务选套餐。',actions:`<a class="btn secondary" href="#membership?scope=account">账户权益 ${icon('arrow',16)}</a><a class="btn secondary" href="#orders">订单记录</a>`})}${navigation(tab)}<div class="commerce-center-availability ${credits?'commerce-center-availability-credits':''}" role="note"><span>${icon(credits?'shield':'clock',16)}${credits?'充值前请确认':'购买须知'}</span><p>${credits?'积分用于后台已开放的计费任务。提交前确认用量，成功扣减；失败或取消释放预占。未开放消费服务时暂停充值。':'确认商品后进入收银台，再选择可用的支付方式。付款前请核对金额、有效期及交付说明。'}</p></div>`;}
@@ -83,15 +85,23 @@ export function mountMemberPlans(){
  },()=>{section.querySelector('[data-member-status]').textContent='正式会员信息暂未取得 · 当前仅展示参考方案';});
 }
 
-export function mountCommerce(tab){
+export function mountCommerce(tab,{modal}={}){
  clearCreditPage();
  if(tab==='bundles'){
   const requestedMode=new URLSearchParams(location.hash.split('?')[1]||'').get('mode')||'research',legacy=['detect','writing'].includes(requestedMode),mode=legacy?requestedMode:'research';
+  if(mode==='detect'){
+   const dashboard=$('.dashboard');dashboard.innerHTML=heading(tab)+`<nav class="purchase-kind-tabs commerce-center-kind-tabs" aria-label="套餐类型"><a href="#membership/bundles" data-bundle-mode="research">返回全部专项套餐</a><a href="#membership/bundles?mode=detect" data-bundle-mode="detect" aria-current="page">查降专项套餐</a></nav>`+revisionBundleOffersMarkup('membership')+purchaseFAQ();
+   return ownCommercePages(mountRevisionBundleOffers({container:dashboard.querySelector('[data-revision-bundle-offers]'),modal}));
+  }
   const plans=mode==='writing'?writingBundles:mode==='detect'?serviceBundles:launchBundles;
   const title=legacy?(mode==='writing'?'历史写作方案':'历史检测套餐'):'按任务选择，在有效期内灵活使用';
   const explanation=mode==='detect'?'该入口仅用于兼容历史链接；本站查重可从免费查重进入，无需购买未开放的检测套餐。':legacy?'这些历史方案仍未开放。按学历整篇交付等服务，不因购买会员而解锁。':'每个套餐写清服务、次数和有效期，适合一段时间内集中使用。';
   $('.dashboard').innerHTML=heading(tab)+`<section class="commerce-center-section" data-bundle-offers><div class="purchase-section-head commerce-center-section-title"><div><span class="commerce-center-eyebrow">RESEARCH BUNDLES</span><h2>为当前任务，准备一份刚好的支持</h2><p>文献研读、论文润色与科研演示，按场景组合。</p></div><nav class="purchase-kind-tabs commerce-center-kind-tabs" data-bundle-navigation aria-label="套餐类型"><a href="#membership/bundles" data-bundle-mode="research" ${mode==='research'?'aria-current="page"':''}>科研辅助套餐</a></nav></div><p class="commerce-center-unit-note" data-bundle-status role="status">正在核对套餐商品与支付状态</p><div class="commerce-center-bundle-caption"><h3>${title}</h3><p>${explanation}</p></div><div class="purchase-plans commerce-center-plan-grid ${mode==='writing'?'commerce-writing-plans':''}" data-bundle-plan-grid>${mode==='detect'?'':plans.map(p=>card(p,'bundle')).join('')}</div><p class="commerce-center-fineprint" data-bundle-fineprint>所列次数为有效期内总次数；整篇论文生成、通用智能助手与正式检测不包含在首发方案内。</p></section>`+purchaseFAQ();
-  return loadPublishedBundles($('.dashboard'),plans);
+  const dashboard=$('.dashboard');
+  if(mode==='writing')return loadPublishedBundles(dashboard,plans);
+  dashboard.querySelector('[data-bundle-offers]').insertAdjacentHTML('beforebegin',revisionBundleOffersMarkup('membership'));
+  const researchCatalogue=loadPublishedBundles(dashboard,plans),specialCatalogue=mountRevisionBundleOffers({container:dashboard.querySelector('[data-revision-bundle-offers]'),modal});
+  return ownCommercePages(researchCatalogue,specialCatalogue);
  }
  if(tab==='recharge'){
  const rechargeParams=new URLSearchParams(location.hash.split('?')[1]||''),returnTarget=rechargeParams.get('return')||'',returnToWriting=['writing','proposal','summary','taskbook','article','course','practice','topic','questionnaire','analysis','quick'].includes(returnTarget),returnDraft=rechargeParams.get('draft'),returnHref=returnDraft?`#draft/${encodeURIComponent(returnDraft)}`:`#tool/${returnToWriting?returnTarget:'writing'}`;

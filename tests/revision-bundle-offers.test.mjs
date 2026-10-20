@@ -18,14 +18,15 @@ function setup(kind='reduce'){
 }
 const noPayment=root=>{assert.equal(root.querySelector('[data-revision-bundle-checkout]'),null);assert.equal(root.querySelector('a[href*="membership/pay"]'),null);assert.doesNotMatch(root.textContent,/¥|￥|99 元|129 元|159 元|旗舰版查重 ×|AIGC 检测 ×/);};
 
-test('revision pages preserve all three original bundle names separately from the modification strategy form',()=>{
- for(const kind of ['reduce','aigc','invalid']){
+test('the specialist catalogue preserves three original names without coupling to a modification form',()=>{
+ for(const kind of ['reduce','aigc','membership','invalid']){
   const s=setup(kind);try{
    assert.deepEqual([...s.root.querySelectorAll('[data-revision-bundle]')].map(card=>card.dataset.revisionBundle),ids);
    assert.deepEqual([...s.root.querySelectorAll('h3')].map(node=>node.textContent),['强力查降套餐','超值降 AI 套餐','AIGC+重复率双降套餐']);
-   assert.equal(s.root.dataset.revisionBundleContext,kind==='aigc'?'aigc':'reduce');
+   assert.equal(s.root.dataset.revisionBundleContext,kind==='membership'?'membership':kind==='aigc'?'aigc':'reduce');
    assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="loading"]').length,3);noPayment(s.root);
    assert.ok(s.root.querySelector('a[href="#membership?scope=account"]'));
+   assert.match(s.root.querySelector('h2').textContent,/查降专项套餐/);assert.doesNotMatch(s.root.textContent,/下方修改方案/);
    assert.ok(s.root.querySelector('a[href="#membership/recharge"]'));
    assert.ok([...s.root.querySelectorAll('button')].every(button=>button.type==='button'));
   }finally{s.close();}
