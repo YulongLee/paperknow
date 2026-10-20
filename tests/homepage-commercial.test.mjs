@@ -46,6 +46,43 @@ test('homepage dependencies and media are local files shipped with the site',asy
  }
 });
 
+test('responsive homepage artwork is shipped locally within a bounded image budget and loads by priority',async t=>{
+ const document=documentFor(t),hero=document.querySelector('.hp-hero-art img');
+ const supporting=[...document.querySelectorAll('.hp-section-art img,.hp-closing-art img')];
+ assert.ok(hero,'the main illustration is present in initial HTML');
+ assert.equal(supporting.length,2,'supporting artwork has two distinct page placements');
+ assert.equal(hero.getAttribute('fetchpriority'),'high','the visible hero image is prioritized');
+ assert.notEqual(hero.getAttribute('loading'),'lazy','the hero is not delayed until lazy loading');
+ const paths=new Set();
+ for(const image of [hero,...supporting]){
+  assert.equal(image.getAttribute('alt'),'','decorative artwork does not replace readable page content');
+  assert.equal(image.closest('picture')?.getAttribute('aria-hidden'),'true');
+  assert.ok(image.width>0&&image.height>0,'artwork reserves its aspect ratio before loading');
+  assert.equal(image.getAttribute('decoding'),'async');
+  assert.ok(image.getAttribute('sizes')?.trim(),'responsive candidates have a layout size hint');
+  paths.add(image.getAttribute('src'));
+  const candidates=image.getAttribute('srcset')?.split(',').map(value=>value.trim());
+  assert.ok(candidates?.length>=2,'small screens can choose a smaller asset');
+  for(const candidate of candidates){
+   const [path,width,...extra]=candidate.split(/\s+/);
+   assert.equal(extra.length,0,'each source candidate has one width descriptor');
+   assert.match(width,/^[1-9]\d*w$/);
+   paths.add(path);
+  }
+ }
+ for(const image of supporting)assert.equal(image.getAttribute('loading'),'lazy','below-fold art is not eagerly downloaded');
+ let total=0;
+ for(const path of paths){
+  assert.match(path,/^\/brand\/homepage\/[a-z0-9-]+\.webp$/,'artwork is a versioned local WebP asset');
+  const bytes=await readFile(new URL('../dist'+path,import.meta.url));
+  assert.equal(bytes.toString('ascii',0,4),'RIFF');
+  assert.equal(bytes.toString('ascii',8,12),'WEBP');
+  assert.ok(bytes.length<=120*1024,`individual artwork should stay lightweight: ${path}`);
+  total+=bytes.length;
+ }
+ assert.ok(total<=350*1024,'all responsive artwork variants combined stay under the delivery budget');
+});
+
 test('every homepage capability keeps the corresponding workspace and public explanation reachable',t=>{
  const document=documentFor(t);
  assert.deepEqual([...document.querySelectorAll('[data-feature-tab]')].map(node=>node.dataset.featureTab),categories);
