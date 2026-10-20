@@ -18,6 +18,7 @@ export function createPresentation(deck){
     slide.addText(text,{...textOpts,x:.95+column*6.05,y:2.57,w:5.25,h:3.56});
    }
   }else slide.addText(s.body,{...textOpts,x:.75,y:cover?4:2.38,w:11.7,h:cover?2:3.95,align:closing?'center':'left'});
+  if(cover&&deck.author)slide.addText('作者：'+deck.author,{x:.75,y:6.35,w:11.2,h:.35,fontSize:14,color:'E2EAF5',fit:'shrink',margin:0});
   slide.addText(`${i+1} / ${deck.slides.length}`,{x:11.6,y:7,w:1,h:.2,fontSize:10,color:cover?'DCE6F5':'7C8BA3',align:'right'});
   if(s.notes)slide.addNotes(s.notes);
  }

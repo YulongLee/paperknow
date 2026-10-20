@@ -36,5 +36,5 @@ export async function generatePptMasterPresentation(db,config,{row,value,output,
  onStage('exporting');const rendered=await renderer({slides,signal,title:value.snapshot.title});check();
  if(!Buffer.isBuffer(rendered?.pptx))throw Object.assign(new Error('演示文件未通过导出校验，未结算本次费用'),{status:502});
  const delivery=await savePresentationDelivery(db,config,{runId:row.id,userId:row.user_id,title:value.snapshot.title,slides,pptx:rendered.pptx,revision:PPT_MASTER_REVISION,isActive,signal,onStage});check();
- return{...output,...delivery};
+ return{...output,...delivery,presentationMetadata:{author:plan.metadata.author}};
 }

@@ -1,3 +1,5 @@
+import {formatPresets,presetRules,ruleSummary,importFormatRules,exportFormatRules,suggestedFormatExclusions} from '../dist/workspace/format-presets.mjs';
+import {createFormatReport,formatReportHtml} from '../dist/workspace/format-report.mjs';
 import {captureDraftScope} from '../dist/workspace/state.mjs';
 import {thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount} from '../dist/workspace/thesis-editor-presentation.mjs';
 import {isOutlineReferenceChapter} from '../dist/workspace/outline-word-budget.mjs';
@@ -13,7 +15,7 @@ const thesisSource=(await readFile(new URL('../dist/workspace/thesis-online.mjs'
 const documentExportSource=(await readFile(new URL('../dist/workspace/document-export.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 test('a document parse that finishes after disposal cannot redraw another account page',async()=>{
  const dom=new JSDOM('<main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#account-draft/a',runScripts:'outside-only'}),w=dom.window;let resolveExample,parsed=false;
- Object.assign(w,{hasDraftScope:()=>false,withStableView,keys:{drafts:'d'},list:()=>[],defaultRules:()=>({}),loadFormatDocumentModule:async()=>({exampleDocx:()=>new Promise(resolve=>resolveExample=resolve),parseDocx:async()=>{parsed=true;return {paragraphs:[]};}}),esc:v=>String(v),toolBanner});
+ Object.assign(w,{formatPresets,presetRules,ruleSummary,importFormatRules,exportFormatRules,suggestedFormatExclusions,createFormatReport,formatReportHtml,hasDraftScope:()=>false,withStableView,keys:{drafts:'d'},list:()=>[],defaultRules:()=>({}),loadFormatDocumentModule:async()=>({exampleDocx:()=>new Promise(resolve=>resolveExample=resolve),parseDocx:async()=>{parsed=true;return {paragraphs:[]};}}),esc:v=>String(v),toolBanner});
  w.eval(source.replace("import('./assets/format-document.js')",'loadFormatDocumentModule()')+'\nwindow.lifecycle={mountFormat,disposeFormat};');const pending=w.lifecycle.mountFormat({notify(){}});await new Promise(resolve=>setImmediate(resolve));w.lifecycle.disposeFormat();w.document.querySelector('.dashboard').innerHTML='<h1>另一账户的项目</h1>';resolveExample(new Uint8Array([1,2]));await pending;assert.equal(parsed,false);assert.equal(w.document.querySelector('h1').textContent,'另一账户的项目');dom.window.close();
 });
 

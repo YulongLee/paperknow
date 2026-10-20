@@ -1,4 +1,5 @@
 import {parseDocument,countChars} from '../dist/precheck/engine.mjs';
+import {publicWebQueryPlan} from '../dist/precheck/web-query-plan.mjs';
 
 export const webSimilarityLimits=Object.freeze({maxCharacters:20000,maxQueries:3,maxSources:8,userDailyLimit:3,globalDailyLimit:40,maxQueued:10});
 export const webSimilarityVersion='public-web-exact-1.0';
@@ -22,24 +23,9 @@ export function webSimilarityInput(input,user){
 // Search selection is deterministic and auditable. It is sampling, never a
 // claim that every sentence or every public page was searched.
 export function planWebQueries(parsed){
- const paragraphs=parsed.sections.filter(s=>!s.excluded).flatMap(s=>s.paragraphs),windows=[];
- for(const p of paragraphs){
-  const chars=Array.from(p.text);
-  if(countChars(p.text)<32)continue;
-  const size=Math.min(100,chars.length),starts=[0];
-  if(chars.length>200)starts.push(Math.floor((chars.length-size)/2),chars.length-size);
-  for(const start of [...new Set(starts)]){
-   const excerpt=chars.slice(start,start+size).join('').replace(/[\x00-\x1f\x7f]/g,' ').trim();
-   if(countChars(excerpt)>=24)windows.push({paragraphId:p.id,start,end:start+size,excerpt});
-  }
- }
- const chosen=[],seen=new Set(),count=Math.min(webSimilarityLimits.maxQueries,windows.length);
- for(let i=0;i<count;i++){
-  const window=windows[count===1?0:Math.round(i*(windows.length-1)/(count-1))],key=window.excerpt.normalize('NFKC').toLowerCase();
-  if(!seen.has(key)){chosen.push(window);seen.add(key);}
- }
- if(!chosen.length)fail(400,'正文片段过短，暂不能进行联网检索，请合并为完整段落。');
- return{queries:chosen,totalParagraphs:paragraphs.length,sampledParagraphs:new Set(chosen.map(x=>x.paragraphId)).size};
+ const plan=publicWebQueryPlan(parsed,webSimilarityLimits.maxQueries);
+ if(!plan.queries.length)fail(400,'正文片段过短，暂不能进行联网检索，请合并为完整段落。');
+ return plan;
 }
 
 export function webSimilarityDay(at=Date.now()){

@@ -1,0 +1,54 @@
+/* Self-hosted format workflow. Shared presentation styles remain untouched. */
+:is(#app,.dashboard) .format-commercial[data-format-step] .format-mode-panel{background:linear-gradient(130deg,#ffffff 62%,#f3f7ff);box-shadow:0 6px 26px #243d6e06}
+:is(#app,.dashboard) .format-commercial .format-template-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+:is(#app,.dashboard) .format-commercial .format-template-card{position:relative;min-height:158px;flex-direction:row;align-items:flex-start;gap:17px;padding:23px 19px;overflow:hidden;border-radius:14px;background:linear-gradient(140deg,#fff,var(--format-preset-soft,#f2f6ff));border-color:var(--format-preset-border,#d9e4f7)}
+:is(#app,.dashboard) .format-commercial .format-template-card::after{content:'';position:absolute;width:100px;height:100px;border-radius:50%;background:var(--format-preset-ink,#356bdb);opacity:.035;right:-24px;bottom:-38px;pointer-events:none}
+:is(#app,.dashboard) .format-commercial .format-template-card.active{border-color:var(--format-preset-ink,#356bdb);box-shadow:0 0 0 2px color-mix(in srgb,var(--format-preset-ink,#356bdb) 10%,transparent)}
+:is(#app,.dashboard) .format-commercial .format-template-sheet{color:var(--format-preset-ink,#356bdb);border-color:var(--format-preset-border,#d9e4f7);background:#fff;flex-shrink:0;box-shadow:0 6px 15px #273d6c09}
+:is(#app,.dashboard) .format-commercial .format-template-copy>small:first-child{font-size:10px;min-height:0;color:var(--format-preset-ink,#356bdb);margin-bottom:6px;font-weight:700}
+:is(#app,.dashboard) .format-commercial .format-template-copy>strong{font-size:15px;color:#243755;line-height:1.5;margin-bottom:5px}
+:is(#app,.dashboard) .format-commercial .format-template-copy>small{font-size:11px;line-height:1.8;color:#70829e}
+:is(#app,.dashboard) .format-commercial .format-template-copy>em{display:block;color:var(--format-preset-ink,#356bdb);margin-top:10px;font-size:11px}
+:is(#app,.dashboard) .format-commercial .format-preset-purple{--format-preset-ink:#7955ce;--format-preset-soft:#f5f1ff;--format-preset-border:#e4daf7}
+:is(#app,.dashboard) .format-commercial .format-preset-teal{--format-preset-ink:#238b81;--format-preset-soft:#edf9f7;--format-preset-border:#d5eeea}
+:is(#app,.dashboard) .format-commercial .format-preset-amber{--format-preset-ink:#ac7928;--format-preset-soft:#fff9ed;--format-preset-border:#f1e5cb}
+:is(#app,.dashboard) .format-commercial .format-preset-cyan{--format-preset-ink:#3188aa;--format-preset-soft:#eef9fe;--format-preset-border:#d9edf6}
+:is(#app,.dashboard) .format-commercial .format-preset-slate{--format-preset-ink:#5d708f;--format-preset-soft:#f1f5fa;--format-preset-border:#dfe6f0}
+:is(#app,.dashboard) .format-commercial .format-rule-import{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px;padding:20px;margin-top:22px;background:#f7f9fd;border:1px solid #e2e8f3;border-radius:12px}
+:is(#app,.dashboard) .format-commercial .format-rule-import>div:first-child{flex:1;min-width:200px}
+:is(#app,.dashboard) .format-commercial .format-rule-import>div:last-child{display:flex;gap:8px;flex-wrap:wrap}
+:is(#app,.dashboard) .format-commercial .format-rule-import strong{color:#344d70;font-size:13px}
+:is(#app,.dashboard) .format-commercial .format-rule-import p,:is(#app,.dashboard) .format-commercial .format-rule-import small{font-size:11px;line-height:1.8;color:#7486a2;margin:5px 0 0}
+:is(#app,.dashboard) .format-commercial .format-selected-rules{font-size:12px;color:#577094;margin:16px 0 0;padding:12px 14px;background:#edf3ff;border-radius:8px;overflow-wrap:anywhere}
+:is(#app,.dashboard) .format-commercial[data-format-step="1"] .format-grid{grid-template-columns:minmax(0,1fr);display:grid}
+:is(#app,.dashboard) .format-commercial[data-format-step="1"] .format-review-column,:is(#app,.dashboard) .format-commercial[data-format-step="1"] .format-settings>.format-file,:is(#app,.dashboard) .format-commercial[data-format-step="1"] .format-settings>.research-field,:is(#app,.dashboard) .format-commercial[data-format-step="1"] .format-settings>.research-actions,:is(#app,.dashboard) .format-commercial[data-format-step="1"] .format-settings>[data-action="example"],:is(#app,.dashboard) .format-commercial[data-format-step="1"] .format-warnings{display:none}
+:is(#app,.dashboard) .format-commercial[data-format-step="1"] .format-rule-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+:is(#app,.dashboard) .format-commercial[data-format-step="2"] .format-grid{display:none}
+:is(#app,.dashboard) .format-commercial .format-source-panel,:is(#app,.dashboard) .format-commercial .format-delivery-panel{grid-column:1/-1;width:100%;min-width:0;border-top:1px solid #dce6f5;padding-top:24px}
+:is(#app,.dashboard) .format-commercial .format-source-panel{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:24px}
+:is(#app,.dashboard) .format-commercial .format-source-drop{display:flex;position:relative;min-width:0;min-height:220px;align-items:center;justify-content:center;flex-direction:column;gap:14px;border:1.5px dashed #a9c1ed;border-radius:13px;background:linear-gradient(135deg,#f6f9ff,#fff);color:#376fe5;padding:24px;text-align:center;cursor:pointer}
+:is(#app,.dashboard) .format-commercial .format-source-drop:focus-within{outline:2px solid #4e7fff;outline-offset:3px}
+:is(#app,.dashboard) .format-commercial .format-source-drop>strong{font-size:17px;color:#324d77}
+:is(#app,.dashboard) .format-commercial .format-source-drop>span{font-size:12px;color:#8091ac}
+:is(#app,.dashboard) .format-commercial .format-source-state{align-self:center;min-width:0;padding:20px;overflow-wrap:anywhere}
+:is(#app,.dashboard) .format-commercial .format-source-state>strong{font-size:16px;color:#314967}
+:is(#app,.dashboard) .format-commercial .format-source-state p,:is(#app,.dashboard) .format-commercial .format-source-state>span{font-size:12px;line-height:1.9;color:#7b8da8}
+:is(#app,.dashboard) .format-commercial .format-delivery-panel>div:first-child>strong{font-size:19px;color:#263d60}
+:is(#app,.dashboard) .format-commercial .format-delivery-panel>div:first-child>p{font-size:12px;color:#7b8ca4;overflow-wrap:anywhere}
+:is(#app,.dashboard) .format-commercial .format-delivery-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:18px 0}
+:is(#app,.dashboard) .format-commercial .format-delivery-stats>span{display:flex;flex-direction:column;gap:7px;padding:18px;border:1px solid #dfe7f4;background:#fff;border-radius:10px;font-size:11px;color:#8291aa}
+:is(#app,.dashboard) .format-commercial .format-delivery-stats b{font-size:25px;color:#3c65ad}
+:is(#app,.dashboard) .format-commercial .format-excluded{background:#f6f7fa;border-left:3px solid #c4cddd;padding:8px 12px}
+:is(#app,.dashboard) .format-commercial .format-excluded::before{content:'保留原样';font:10px/1.5 system-ui,sans-serif;color:#8b98ad}
+:is(#app,.dashboard) .format-commercial .format-role select{width:170px;max-width:75%}
+:is(#app,.dashboard) .format-commercial .format-preview-pages{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:15px;font-size:11px;color:#7588a6;position:sticky;top:0;z-index:1;background:#edf2f9;padding:8px;border-radius:9px}
+.hub-theme-dark :is(#app,.dashboard) .format-commercial .format-mode-panel,.hub-theme-dark :is(#app,.dashboard) .format-commercial .format-template-card,.hub-theme-dark :is(#app,.dashboard) .format-commercial .format-rule-import,.hub-theme-dark :is(#app,.dashboard) .format-commercial .format-source-drop,.hub-theme-dark :is(#app,.dashboard) .format-commercial .format-delivery-stats>span{background:#1c2c43;border-color:#354862}
+.hub-theme-dark :is(#app,.dashboard) .format-commercial :is(.format-template-copy>strong,.format-source-drop>strong,.format-source-state>strong,.format-delivery-panel>div:first-child>strong){color:#d6e1f4}
+.hub-theme-dark :is(#app,.dashboard) .format-commercial :is(.format-selected-rules,.format-preview-pages,.format-excluded){background:#263954;color:#afc1df}
+@media(min-width:1800px){:is(#app,.dashboard) .format-commercial .format-template-grid{grid-template-columns:repeat(3,minmax(0,1fr))}:is(#app,.dashboard) .format-commercial .format-template-card{min-height:180px;padding:27px}}
+@media(max-width:1100px){:is(#app,.dashboard) .format-commercial .format-template-grid{grid-template-columns:repeat(2,minmax(0,1fr))}:is(#app,.dashboard) .format-commercial[data-format-step="1"] .format-rule-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){:is(#app,.dashboard) .format-commercial .format-template-grid,:is(#app,.dashboard) .format-commercial .format-source-panel{grid-template-columns:minmax(0,1fr)}:is(#app,.dashboard) .format-commercial .format-source-state{padding:8px 0}:is(#app,.dashboard) .format-commercial .format-delivery-stats{grid-template-columns:repeat(2,minmax(0,1fr))}:is(#app,.dashboard) .format-commercial .format-rule-import{padding:16px}:is(#app,.dashboard) .format-commercial .format-rule-import .btn{font-size:12px;min-height:40px}:is(#app,.dashboard) .format-commercial .format-template-card{min-height:144px}:is(#app,.dashboard) .format-commercial .format-source-drop{min-height:200px}}
+@media(prefers-reduced-motion:reduce){:is(#app,.dashboard) .format-commercial *{scroll-behavior:auto;transition:none}}
+:is(#app,.dashboard) .format-commercial .format-section-consent{display:flex;align-items:flex-start;gap:9px;padding:13px;background:#fff8e9;border:1px solid #f2dfb5;border-radius:9px;font-size:12px;line-height:1.8;color:#8f6d30;margin:15px 0}
+:is(#app,.dashboard) .format-commercial .format-section-consent input{flex:0 0 auto;margin-top:5px}
+:is(#app,.dashboard) .format-commercial .format-scope-note{font-size:11px;line-height:1.9;color:#7b8da8;margin:15px 0}
