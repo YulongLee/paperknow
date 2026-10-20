@@ -48,8 +48,8 @@ const artifacts=createArtifactService(db,config);
 const documentParses=createDocumentParseService(db,{...config,cancelDocumentParse:id=>worker.cancel(id)});
 const documentTranslations=createDocumentTranslationService(db,{...config,cancelDocumentTranslation:id=>worker.cancel(id)});
 const formulaRecognitions=createFormulaOcrService(db,config);
-const aigcDetections=createAigcDetectionService(db,config);
-const webSimilarity=createWebSimilarityService(db,{...config,cancelWebSimilarity:id=>worker.cancel(id)});
+const aigcDetections=createAigcDetectionService(db,{...config,billing});
+const webSimilarity=createWebSimilarityService(db,{...config,billing,cancelWebSimilarity:id=>worker.cancel(id)});
 const literatureSearch=createLiteratureSearch({fetchImpl:config.literatureFetch,openAlexApiKey:config.openAlexApiKey,openAlexDailyLimit:config.openAlexDailyLimit,aminerEnabled:config.aminerEnabled,aminerApiKey:config.aminerApiKey,aminerUserId:config.aminerUserId,aminerToken:config.aminerToken,aminerDailyLimit:config.aminerDailyLimit});
 const literatureScope=req=>({allowAminer:config.aminerAccess==='public'||sessionUser(db,req,config.ownerEmail)?.role==='admin'});
 const desktopReleases=createDesktopReleaseService(db,config);
@@ -149,6 +149,7 @@ else{input={text:(text(b.text,type==='compare'?8000:6000),b.text),requirements:t
 const key=text(b.idempotencyKey,100);const hash=digest(JSON.stringify({type,input,projectId}));const existing=db.prepare('SELECT id,input_hash FROM jobs WHERE user_id=? AND idempotency_key=?').get(user.id,key);if(existing){if(existing.input_hash!==hash)fail(409,'重复请求标识已用于其他内容');send(200,{id:existing.id});return;}if(db.prepare("SELECT count(*) n FROM jobs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=3)fail(409,'最多同时提交 3 个待处理任务');const id=randomUUID(),t=now();transaction(()=>{if(['polish','review','agent'].includes(type))modelBudget.check(user.id);db.prepare('INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,user.id,projectId,type,'queued','queued',JSON.stringify(input),key,hash,t,t);if(['polish','review','agent'].includes(type))billing.reserve(user,id,1,type,b.billingQuote);});send(201,{id});return;}
 const action=path.match(/^\/api\/jobs\/([^/]+)\/(cancel|retry)$/);if(action&&method==='POST'){
  if(action[2]==='retry')rate(req,60);const input=await body(req);const job=own('jobs',action[1],user);
+ if(job.type==='aigc_detection'){if(action[2]==='retry')fail(409,'请返回 AI 文本鉴别核对原记录；本站不会自动重复鉴别同一文本。');const response=await aigcDetections.handle({path:'/api/aigc-detections/'+job.id+'/cancel',method:'POST',user,readBody:async()=>({expectedUserId:user.id})});send(response.status||200,response.value);return;}
  if(job.type==='web_similarity'){if(action[2]==='retry')fail(409,'请返回联网来源查重核对原任务；本站不会通过通用重试重复联网检索。');const response=await webSimilarity.handle({path:'/api/web-similarity/'+job.id+'/cancel',method:'POST',user,readBody:async()=>input});send(response.status||200,response.value);return;}
  if(job.type==='document_translation'){if(action[2]==='retry')fail(409,'请返回文献翻译，核对原件与处理状态后重新确认提交；本站不会自动重复翻译。');const response=await documentTranslations.handle({path:'/api/document-translations/'+job.id+'/cancel',method:'POST',user,readBody:async()=>({})});send(response.status||200,response.value);return;}
  if(job.type==='document_parse'){if(action[2]==='retry')fail(409,'请从 PDF 原件重新确认云端解析，本站不会自动重复提交。');const response=await documentParses.handle({path:'/api/document-parses/'+job.id+'/cancel',method:'POST',user,readBody:async()=>({})});send(response.status||200,response.value);return;}

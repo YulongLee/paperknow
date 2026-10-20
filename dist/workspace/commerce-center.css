@@ -260,3 +260,9 @@
 }
 @media(prefers-reduced-motion:reduce){#app .dashboard .commerce-center-tab,#app .dashboard .commerce-center-tab-art,#app .dashboard .commerce-center-plan,#app .dashboard .commerce-center-form .commerce-credit-pack{transition:none}#app .dashboard .commerce-center-tab:hover,#app .dashboard .commerce-center-tab:hover .commerce-center-tab-art,#app .dashboard .commerce-center-plan:hover,#app .dashboard .commerce-center-form .commerce-credit-pack:hover{transform:none}}
 .commerce-service-prices{margin-top:20px;padding:18px;border:1px solid #dbe7fa;border-radius:14px;background:#f7faff}.commerce-service-prices:empty{display:none}.commerce-service-prices h4{margin:0 0 10px;font-size:14px;color:#244165}.commerce-service-prices>div{display:flex;justify-content:space-between;gap:14px;padding:8px 0;color:#61718a;font-size:12px}.commerce-service-prices b{color:#2761cf;white-space:nowrap}.commerce-service-prices small{display:block;margin-top:10px;color:#7b89a0;line-height:1.8}
+
+/* Both specialist families share one frame and the same card rhythm. */
+#app .dashboard .commerce-bundle-family>.commerce-center-kind-tabs{margin:0 0 24px}
+#app .dashboard [data-specialist-panel] .commerce-center-section-title{min-height:84px;align-items:flex-start}
+#app .dashboard [data-specialist-panel] .commerce-center-plan ul{min-height:238px}
+#app .dashboard [data-specialist-panel] .commerce-member-description{flex:0;min-height:62px;max-height:62px;margin:10px 0 18px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}

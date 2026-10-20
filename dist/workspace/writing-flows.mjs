@@ -22,6 +22,8 @@ export function mountWritingFlow({kind,container=document.querySelector('.dashbo
  const query=new URLSearchParams((location.hash||'').split('?')[1]||''),fresh=query.has('new');
  const rows=list(keys.drafts),old=draftId?rows.find(row=>String(row.id)===String(draftId)):!fresh?rows.filter(row=>writingFlowKind(row.tool)===kind&&row.writingResume&&!row.archived&&(!projectId||String(row.projectId)===String(projectId))).sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')))[0]:null;
  let data=migrateWritingFlow(kind,old||{}),savedId=old?.id||null,live=true,parsing=false,parseRevision=0,jobPanel=null,refDispose=null,error='',notice='',citationDraft='',citationPreview=null;
+ const packageLevel=({junior:'专科',bachelor:'本科',master:'硕士',doctor:'博士'})[query.get('level')];
+ if(!old&&packageLevel){data.level=packageLevel;if(data.targetWordsMode==='suggested')data.targetWords=flowDefaultWords(kind,data);}
  data.materials??=[];data.references??=[];data.outline??=[];
  if(!data.presentation&&data.canonicalBody&&data.sourceSnapshot)data.presentation=thesisEditorPresentation(data.sourceSnapshot,data.canonicalBody);
  data.projectId??=old?.projectId||projectId||'';data.jobs??={};data.completed??=[];data.versions??=[];data.stage=Math.max(0,Math.min(spec.steps.length-1,Number(data.stage)||0));data.unlocked=Math.max(data.stage,Number(data.unlocked)||0);

@@ -19,8 +19,8 @@ async function fixture(t,extra={}){
  t.after(async()=>{await thesis.stop();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();});
  async function request(path,data,user=users.alice,origin=base){const response=await fetch(base+'/api'+path,{method:data===undefined?'GET':'POST',headers:{...(user?{Cookie:user.cookie}:{}),...(data===undefined?{}:{Origin:origin,'Content-Type':'application/json'})},body:data===undefined?undefined:JSON.stringify(data)});return{status:response.status,value:await response.json()};}
  async function create(title='账户研究题目',user=users.alice,projectId){const r=await request('/theses',{snapshot:snapshot(title),clientKey:randomUUID(),...(projectId?{projectId}:{})},user);assert.equal(r.status,201,JSON.stringify(r.value));return r.value.item;}
- async function quote(user=users.alice){const r=await request('/billing/quote',{type:'agent'},user);assert.equal(r.status,200);return r.value.token;}
- async function generate(item,extra={},user=users.alice){return request('/theses/'+item.id+'/generate',{version:item.version,clientKey:randomUUID(),consent:true,billingToken:await quote(user),...extra},user);}
+ async function quote(item,action='generate',user=users.alice){const r=await request('/theses/'+item.id+'/quote',{version:item.version,action},user);assert.equal(r.status,200);return r.value.token;}
+ async function generate(item,extra={},user=users.alice){return request('/theses/'+item.id+'/generate',{version:item.version,clientKey:randomUUID(),consent:true,billingToken:await quote(item,'generate',user),...extra},user);}
  function pay(){billing.saveRules({version:billing.rules().version,services:billingServiceTypes.map(({key})=>({key,mode:'paid',creditCost:10}))});const order=randomUUID(),at=new Date().toISOString();db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run(order,users.alice.id,'credits-200','paid',at);db.prepare('INSERT INTO payment_credit_ledger VALUES(?,?,?,?,?,?)').run(order,users.alice.id,'credits-200',200,'purchase',at);}
  return{db,users,config,billing,thesis,request,create,quote,generate,pay,cancelled};
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
-import {renderOnlinePersonal,onlineUsageSummary,publicFeedbackStatus} from '../dist/workspace/online-personal-services.mjs';
+import {renderOnlinePersonal,onlineUsageSummary,publicFeedbackStatus,personalServiceState} from '../dist/workspace/online-personal-services.mjs';
 import {feedbackKey} from '../dist/workspace/help-model.mjs';
 import {membershipPurchaseTiles} from '../dist/workspace/membership-summary.mjs';
 const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -182,4 +182,28 @@ test('malformed local feedback is preserved and reported instead of silently imp
 
 test('an explicit account-change feedback error is propagated rather than shown as a transient list failure',async()=>{
  const error=Object.assign(Error('account changed'),{status:409,code:'ACCOUNT_CHANGED'}),env=setup(async()=>{throw error;});try{await assert.rejects(renderOnlinePersonal('help',env.ctx),value=>value.code==='ACCOUNT_CHANGED');assert.equal(document.querySelector('#feedback-form'),null);}finally{env.dom.window.close();}
+});
+
+
+const degreeQuotaRoutes=['junior','bachelor','master','doctor'].flatMap(level=>[['thesis','writing'],['proposal','proposal'],['taskbook','taskbook'],['literature-review','summary']].map(([service,tool])=>({key:service+'-'+level,href:'#tool/'+tool+'?level='+level+'&new=package-'+service+'-'+level,runtime:service==='thesis'?'thesis':'writing'})));
+test('all sixteen degree quotas require their own real runtime and exact service rule',()=>{
+ assert.equal(degreeQuotaRoutes.length,16);assert.equal(new Set(degreeQuotaRoutes.map(item=>item.key)).size,16);
+ for(const item of degreeQuotaRoutes){
+  const rule={key:item.key,effectiveMode:'paid',available:true},cap={ai:true,agent:true,tools:{ready:true},thesis:{ready:true},writing:{ready:true},toolBilling:{services:[rule]}};
+  assert.deepEqual(personalServiceState(cap,item.key),{ready:true,label:'已开放'});
+  assert.equal(personalServiceState({...cap,[item.runtime]:{ready:false}},item.key).ready,false);
+  assert.equal(personalServiceState({...cap,toolBilling:{services:[{...rule,effectiveMode:'disabled'}]}},item.key).label,'已暂停');
+  assert.equal(personalServiceState({...cap,toolBilling:{services:[{...rule,available:false}]}},item.key).ready,false);
+  assert.equal(personalServiceState({...cap,toolBilling:{services:[]}},item.key).ready,false);
+ }
+});
+
+test('purchased degree and detection quotas link to all exact services only when ready with available quota',async()=>{
+ const routes=[...degreeQuotaRoutes,{key:'detection-similarity',href:'#category/detection?view=web',runtime:'webSimilarity'},{key:'detection-aigc',href:'#category/aigc?view=detection',runtime:'aigcDetection'}],items=routes.map(item=>({key:item.key,title:item.key,quantity:2,used:0,held:0,remaining:2}));
+ for(const scenario of ['ready','runtime-off','paused','unavailable','exhausted','expired','future']){
+  const capabilities={ai:false,agent:false,tools:{ready:false},...Object.fromEntries(['thesis','writing','webSimilarity','aigcDetection'].map(key=>[key,{ready:scenario!=='runtime-off'}])),toolBilling:{services:routes.map(item=>({key:item.key,effectiveMode:scenario==='paused'?'disabled':item.key.startsWith('detection-')?'free':'paid',available:scenario!=='unavailable'}))}};
+  const bundle={orderId:'degree-quota-'+scenario,title:'已购真实学位与检测服务',startsAt:scenario==='future'?'2098-01-01':'2020-01-01',expiresAt:scenario==='expired'?'2021-01-01':'2099-01-01',items:items.map(item=>({...item,remaining:scenario==='exhausted'?0:2}))},calls=[];
+  const env=setup(async(path,data)=>{calls.push({path,data});return path==='/payments/entitlements'?{items:[],bundles:[bundle]}:path==='/capabilities'?capabilities:path==='/payments/options'?{toolBilling:capabilities.toolBilling}:{counts:{}};},'#membership?scope=account');
+  try{await renderOnlinePersonal('membership',env.ctx);const links=[...document.querySelectorAll('.member-bundle-record .member-quota-rows a')].map(link=>link.getAttribute('href'));assert.deepEqual(links,scenario==='ready'?routes.map(item=>item.href):[],scenario);assert.equal(document.querySelectorAll('.member-bundle-record .member-quota-rows li').length,18);assert.ok(calls.every(call=>call.data===undefined));assert.equal(localStorage.length,0);}finally{env.dom.window.close();}
+ }
 });

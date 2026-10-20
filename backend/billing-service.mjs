@@ -3,6 +3,7 @@ export {toolBillingServiceTypes};
 import {randomBytes,randomUUID} from 'node:crypto';
 import {aiReady} from './config.mjs';
 import {agentSettingsReady} from './agent-settings.mjs';
+import {detectionBillingReady} from './detection-billing-readiness.mjs';
 
 export const billingServiceTypes=Object.freeze([
  Object.freeze({key:'polish',title:'学术润色'}),
@@ -12,6 +13,8 @@ export const billingServiceTypes=Object.freeze([
 const keys=new Set(billingServiceTypes.map(item=>item.key)),toolKeys=new Set(toolBillingServiceTypes.map(item=>item.key)),entitlementKeys=new Set([...keys,...toolKeys]);
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const isObject=value=>value&&typeof value==='object'&&!Array.isArray(value);
+const detectionKeys=new Set(['detection-similarity','detection-aigc']);
+const defaultToolRule=key=>({key,mode:detectionKeys.has(key)?'free':'inherit',creditCost:null});
 const validItems=value=>{
  if(!Array.isArray(value)||value.length>20)return [];
  const seen=new Set();
@@ -70,12 +73,17 @@ export function createBillingService(db,config={}){
  CREATE TRIGGER IF NOT EXISTS billing_reservations_tool_identity_protect BEFORE UPDATE ON billing_reservations
  WHEN NEW.service_key IS NOT OLD.service_key OR NEW.entitlement_key IS NOT OLD.entitlement_key
  BEGIN SELECT RAISE(ABORT,'科研工具预占身份不可修改'); END;`);
- db.prepare('INSERT OR IGNORE INTO tool_pricing_policy(id,rules,version,updated_at) VALUES(1,?,1,?)').run(JSON.stringify(toolBillingServiceTypes.map(({key})=>({key,mode:'inherit',creditCost:null}))),clock());
- // Extend the previous validated catalogue without changing existing prices or reservations.
+ db.prepare('INSERT OR IGNORE INTO tool_pricing_policy(id,rules,version,updated_at) VALUES(1,?,1,?)').run(JSON.stringify(toolBillingServiceTypes.map(({key})=>defaultToolRule(key))),clock());
+ // Only the two exact, validated historic catalogues are extended. Unknown keys,
+ // duplicate/missing old entries and malformed modes remain closed for inspection.
  const previousToolPolicy=db.prepare('SELECT rules,version FROM tool_pricing_policy WHERE id=1').get();
- try{const old=JSON.parse(previousToolPolicy.rules),legacy=toolBillingServiceTypes.filter(item=>item.key!=='research-image').map(item=>item.key);
-  if(Array.isArray(old)&&old.length===legacy.length&&new Set(old.map(item=>item?.key)).size===legacy.length&&old.every(item=>legacy.includes(item?.key)&&['inherit','free','paid','disabled'].includes(item.mode)&&(item.mode==='paid'?Number.isSafeInteger(item.creditCost)&&item.creditCost>=1&&item.creditCost<=100000:item.creditCost===null)))
-   db.prepare('UPDATE tool_pricing_policy SET rules=?,version=version+1,updated_at=? WHERE id=1 AND version=?').run(JSON.stringify([...old,{key:'research-image',mode:'inherit',creditCost:null}]),clock(),previousToolPolicy.version);
+ try{
+  const old=JSON.parse(previousToolPolicy.rules),base=toolBillingServiceTypes.filter(item=>!['AI 写作','免费检测'].includes(item.group)).map(item=>item.key),known=[base,base.filter(key=>key!=='research-image')];
+  const shape=Array.isArray(old)&&old.every(item=>isObject(item)&&Object.keys(item).length===3&&Object.keys(item).every(key=>['key','mode','creditCost'].includes(key))&&['inherit','free','paid','disabled'].includes(item.mode)&&(item.mode==='paid'?Number.isSafeInteger(item.creditCost)&&item.creditCost>=1&&item.creditCost<=100000:item.creditCost===null));
+  const legacy=shape&&known.some(version=>old.length===version.length&&new Set(old.map(item=>item.key)).size===version.length&&old.every(item=>version.includes(item.key)));
+  if(legacy){const present=new Set(old.map(item=>item.key)),added=toolBillingServiceTypes.filter(item=>!present.has(item.key)).map(({key})=>defaultToolRule(key));
+   if(added.length)db.prepare('UPDATE tool_pricing_policy SET rules=?,version=version+1,updated_at=? WHERE id=1 AND version=?').run(JSON.stringify([...old,...added]),clock(),previousToolPolicy.version);
+  }
  }catch{/* Corrupt/unknown policy remains closed instead of silently resetting prices. */}
  db.prepare('INSERT OR IGNORE INTO billing_policy(id,rules,version,updated_at) VALUES(1,?,1,?)').run(JSON.stringify(billingServiceTypes.map(({key})=>({key,mode:'free',creditCost:null}))),clock());
  const available=key=>{if(key==='agent'&&config.getAgentSettings){try{if(agentSettingsReady(config.getAgentSettings()))return true;}catch{/* A failed new runtime configuration never enables paid work. */}}return Boolean(aiReady(config.getAI?.()||config)&&(key!=='agent'||config.agentEnabled));};
@@ -110,7 +118,7 @@ export function createBillingService(db,config={}){
   const services=toolBillingServiceTypes.map(({key,title,group})=>{const values=stored.filter(item=>item?.key===key),item=values[0];
    if(values.length!==1||!['inherit','free','paid','disabled'].includes(item?.mode)||(item.mode==='paid'?(!Number.isSafeInteger(item.creditCost)||item.creditCost<1||item.creditCost>100000):item.creditCost!==null))fail(503,'科研工具计价规则暂时无法读取');
    const effectiveMode=item.mode==='inherit'?parent.mode:item.mode,effectiveCreditCost=effectiveMode==='paid'?(item.mode==='inherit'?parent.creditCost:item.creditCost):null;
-   return {key,title,group,mode:item.mode,creditCost:item.creditCost,effectiveMode,effectiveCreditCost,available:key==='research-image'?imageAvailable():ready};
+   return {key,title,group,mode:item.mode,creditCost:item.creditCost,effectiveMode,effectiveCreditCost,available:key==='research-image'?imageAvailable():detectionKeys.has(key)?detectionBillingReady(key,config):ready};
   });return {version:row.version,services};
  }
  function saveToolRules(input){
@@ -153,10 +161,10 @@ export function createBillingService(db,config={}){
  function quote(user,input){
   if(!isObject(input)||Object.keys(input).some(key=>!['type','serviceKey'].includes(key)))fail(400,'请选择有效的服务');
   const item=service(input.type,input.serviceKey),now=clock();let source='free',sourceOrderId=null,creditCost=0,entitlementKey=null;
-  if(item.mode==='paid'){
-   source='credits';creditCost=item.creditCost;
+  if(item.mode==='paid'||detectionKeys.has(item.serviceKey)&&item.mode==='free'){
+   if(item.mode==='paid'){source='credits';creditCost=item.creditCost;}
    for(const candidate of ['membership','bundle']){
-    const availableGrants=grants(user.id,candidate),options=item.serviceKey?[item.serviceKey,item.key]:[item.key];let chosen;for(const key of options){const grant=availableGrants.find(grant=>grantQuota(grant,key,now)?.remaining>0);if(grant){chosen={grant,key};break;}}
+    const availableGrants=grants(user.id,candidate),options=item.serviceKey?(item.mode==='free'?[item.serviceKey]:[item.serviceKey,item.key]):[item.key];let chosen;for(const key of options){const grant=availableGrants.find(grant=>grantQuota(grant,key,now)?.remaining>0);if(grant){chosen={grant,key};break;}}
     if(chosen){source=candidate;sourceOrderId=chosen.grant.orderId;entitlementKey=chosen.key;creditCost=0;break;}
    }
    if(source==='credits'&&totals(user.id).available<creditCost)fail(402,'可用积分不足，请充值或选择有效权益');
@@ -173,7 +181,7 @@ export function createBillingService(db,config={}){
  function reserve(user,jobId,attempt,type,token,serviceKey){
   serviceKey=subservice(type,serviceKey);
   if(!Number.isSafeInteger(attempt)||attempt<1||typeof jobId!=='string')fail(400,'任务执行次数无效');
-  const job=db.prepare('SELECT id,user_id,type FROM jobs WHERE id=? AND user_id=?').get(jobId,user.id);if(!job)fail(404,'任务不存在');if(job.type!==type&&!(['thesis','thesis_outline','thesis_method','writing','tool_run'].includes(job.type)&&type==='agent'))fail(409,'任务类型与计费服务不一致');
+  const job=db.prepare('SELECT id,user_id,type FROM jobs WHERE id=? AND user_id=?').get(jobId,user.id);if(!job)fail(404,'任务不存在');const detectionJob=({'web_similarity':'detection-similarity','aigc_detection':'detection-aigc'})[job.type];if(detectionJob?(type!=='agent'||serviceKey!==detectionJob):detectionKeys.has(serviceKey)||job.type!==type&&!(['thesis','thesis_outline','thesis_method','writing','tool_run'].includes(job.type)&&type==='agent'))fail(409,'任务类型与计费服务不一致');
   const existing=db.prepare('SELECT * FROM billing_reservations WHERE job_id=? AND attempt=?').get(jobId,attempt);
   if(existing){if(existing.user_id!==user.id||existing.type!==type||(existing.service_key??null)!==serviceKey)fail(409,'任务预占信息不一致');return reservation(existing);}
   if(db.prepare("SELECT 1 FROM billing_reservations WHERE job_id=? AND status='held'").get(jobId))fail(409,'任务已有未结算预占');
@@ -183,7 +191,7 @@ export function createBillingService(db,config={}){
    quoted=db.prepare('SELECT * FROM billing_quotes WHERE token=? AND user_id=?').get(token,user.id);
    if(!quoted||quoted.type!==type||quoted.used||quoted.expires_at<=now||quoted.policy_version!==item.version||(quoted.service_key??null)!==serviceKey||(quoted.tool_policy_version??null)!==item.toolVersion)fail(409,'计费确认已失效，请重新确认后提交');
    ({source,source_order:sourceOrderId,credits:creditCost,entitlement_key:entitlementKey}=quoted);
-   if(item.mode==='free'&&source!=='free'||item.mode==='paid'&&source==='free')fail(409,'计费方式已变化，请重新确认');
+   if(item.mode==='free'&&source!=='free'&&!(detectionKeys.has(serviceKey)&&['membership','bundle'].includes(source))||item.mode==='paid'&&source==='free')fail(409,'计费方式已变化，请重新确认');
   }else if(item.mode==='paid'||serviceKey)fail(409,'请先确认本次使用的权益或积分');
   if(source==='credits'){
    if(creditCost!==item.creditCost||totals(user.id).available<creditCost)fail(402,'可用积分不足，请重新确认');

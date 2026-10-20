@@ -3,6 +3,7 @@ import {parseDocument} from '../dist/precheck/engine.mjs';
 import {reportHtml} from '../dist/precheck/export.mjs';
 import {compute} from './compute.mjs';
 import {moderateTextOrFail} from './moderated-agent.mjs';
+import {createBillingService} from './billing-service.mjs';
 import {createWebSimilaritySearch} from './web-similarity-search.mjs';
 import {createWebSourceReader} from './web-similarity-source.mjs';
 import {initializeWebSimilaritySchema,webSimilarityReady,readWebSimilarityArtifact,saveWebSimilarityArtifact,removeWebSimilarityArtifacts} from './web-similarity-service.mjs';
@@ -11,10 +12,11 @@ import {webSimilarityLimits,webSimilarityVersion,planWebQueries,webSimilarityDay
 const safeError=message=>Object.assign(new Error(message),{webSimilaritySafe:true});
 export function startWebSimilarityWorker(db,config={}){
  initializeWebSimilaritySchema(db);
+ const billing=config.billing||createBillingService(db,config);
  const clock=()=>new Date().toISOString(),tx=fn=>{db.exec('BEGIN IMMEDIATE');try{const v=fn();db.exec('COMMIT');return v;}catch(e){db.exec('ROLLBACK');throw e;}};
  let busy=false,stopped=false;const controllers=new Map();
  // An interrupted search may already be billable upstream. Never replay it.
- db.prepare("UPDATE jobs SET status='failed',stage='interrupted',error='服务切换中断了本次查重，未自动重复检索，也未生成完整相似度。请查看记录后联系支持。',updated_at=? WHERE type='web_similarity' AND status IN ('preparing','running')").run(clock());
+ tx(()=>{const interrupted=db.prepare("SELECT id FROM jobs WHERE type='web_similarity' AND status IN ('preparing','running')").all();db.prepare("UPDATE jobs SET status='failed',stage='interrupted',error='服务切换中断了本次查重，未自动重复检索，也未生成完整相似度。请查看记录后联系支持。',updated_at=? WHERE type='web_similarity' AND status IN ('preparing','running')").run(clock());for(const job of interrupted)billing.release(job.id);});
  const active=id=>!stopped&&db.prepare("SELECT 1 FROM jobs WHERE id=? AND type='web_similarity' AND status='running'").get(id);
  const stage=(id,value)=>db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(value,clock(),id);
  const saveCoverage=(id,value)=>db.prepare('UPDATE web_similarity_runs SET coverage=?,updated_at=? WHERE id=?').run(JSON.stringify(value),clock(),id);
@@ -101,13 +103,14 @@ export function startWebSimilarityWorker(db,config={}){
     const id=randomUUID(),at=clock();
     db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(id,job.user_id,null,job.id,'web_similarity',job.title+' · 联网来源查重',JSON.stringify({webSimilarityId:job.id,reportId:job.id,characters:report.totalChars,ratio:report.ratio,matchedCharacters:report.similarChars,sourceCount:report.sourceCount,coverage,scope:'本次检索取得的公开网页正文；非全网或学校数据库覆盖'}),at);
     db.prepare("UPDATE jobs SET status='completed',stage='completed',result_id=?,updated_at=? WHERE id=? AND status='running'").run(id,at,job.id);
+    billing.settle(job.id);
    });
   }catch(error){
    const message=signal.aborted?'本次查重处理超时或被中断，未保存不完整报告，也未自动重新检索。':error?.webSimilaritySafe||error?.moderationSafe?error.message:'联网来源查重未能完成，请稍后查看记录或联系支持；未生成不完整相似度。';
-   db.prepare("UPDATE jobs SET status='failed',stage='failed',error=?,updated_at=? WHERE id=? AND status='running'").run(message.slice(0,240),clock(),job.id);
+   tx(()=>{db.prepare("UPDATE jobs SET status='failed',stage='failed',error=?,updated_at=? WHERE id=? AND status='running'").run(message.slice(0,240),clock(),job.id);billing.release(job.id);});
   }finally{
    clearTimeout(timer);
-   if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status==='running')db.prepare("UPDATE jobs SET status='failed',stage='interrupted',error='查重被中断，未自动重复联网请求，也未生成完整报告。',updated_at=? WHERE id=?").run(clock(),job.id);
+   tx(()=>{if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status==='running')db.prepare("UPDATE jobs SET status='failed',stage='interrupted',error='查重被中断，未自动重复联网请求，也未生成完整报告。',updated_at=? WHERE id=?").run(clock(),job.id);if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status!=='completed')billing.release(job.id);});
    if(attempted){
     db.prepare('UPDATE web_similarity_runs SET usage=?,updated_at=? WHERE id=?').run(JSON.stringify(usages),clock(),job.id);
     const tokens=key=>usages.length===attempted&&usages.every(u=>Number.isSafeInteger(u?.[key])&&u[key]>=0)?usages.reduce((n,u)=>n+u[key],0):null;

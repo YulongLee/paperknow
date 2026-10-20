@@ -2,6 +2,7 @@ import {withStableView} from './view-stability.mjs';
 import {membershipPurchaseTiles} from './membership-summary.mjs';
 import {feedbackKey,parseFeedbackDraft} from './help-model.mjs';
 import {supportContactsMarkup,bindSupportContacts} from './support-contacts.mjs';
+import {toolBillingServiceTypes} from './tool-pricing-catalog.mjs';
 const statuses={open:'待处理',processing:'处理中',resolved:'已处理'};
 const usageNumber=value=>Number.isSafeInteger(value)&&value>=0?value.toLocaleString('zh-CN'):'未知';
 export function onlineUsageSummary(items=[]){
@@ -31,13 +32,15 @@ const serviceRoutes={
  'literature-read':'#category/literature?view=reading','literature-answer':'#category/literature?view=reading','literature-translate':'#category/literature?view=translation',
  'revision-reduce':'#category/reduce','revision-aigc':'#category/aigc','revision-dual':'#category/reduce',
  'presentation-ai':'#tool/ppt','presentation-proposal':'#tool/ppt?mode=proposal','presentation-thesis':'#tool/ppt?mode=thesis',
- 'research-chart':'#category/research','research-diagram':'#category/research','research-formula':'#category/research','format-advice':'#category/format'
+ 'research-chart':'#category/research','research-diagram':'#category/research','research-formula':'#category/research','research-image':'#category/research?mode=professional','format-advice':'#category/format',
+ 'detection-similarity':'#category/detection?view=web','detection-aigc':'#category/aigc?view=detection'
 };
+for(const degree of ['junior','bachelor','master','doctor'])for(const [key,tool] of [['thesis','writing'],['proposal','proposal'],['taskbook','taskbook'],['literature-review','summary']])serviceRoutes[key+'-'+degree]=`#tool/${tool}?level=${degree}&new=package-${key}-${degree}`;
 const runtimeReady=cap=>cap.thesis?.ready===true||cap.writing?.ready===true||cap.tools?.ready===true;
 export function personalServiceState(cap,key){
  if(key==='agent'&&runtimeReady(cap)&&Array.isArray(cap.toolBilling?.services)&&cap.toolBilling.services.some(item=>personalServiceState(cap,item.key).ready))return {ready:true,label:'已开放'};
  const child=Object.hasOwn(serviceRoutes,key)&&!['polish','review'].includes(key);
- const configured=child?cap.tools?.ready===true:key==='agent'?(runtimeReady(cap)||cap.ai===true&&cap.agent===true):cap.ai===true;
+ const configured=key==='detection-similarity'?cap.webSimilarity?.ready===true:key==='detection-aigc'?cap.aigcDetection?.ready===true:/^thesis-(junior|bachelor|master|doctor)$/.test(key)?cap.thesis?.ready===true:/^(proposal|taskbook|literature-review)-(junior|bachelor|master|doctor)$/.test(key)?cap.writing?.ready===true:child?cap.tools?.ready===true:key==='agent'?(runtimeReady(cap)||cap.ai===true&&cap.agent===true):cap.ai===true;
  const rules=child?cap.toolBilling?.services:cap.billing?.services;
  if(!Array.isArray(rules))return {ready:configured,label:configured?'已开放':'未配置'};
  const rule=rules.find(item=>item?.key===key),mode=rule?.effectiveMode??rule?.mode;
@@ -54,7 +57,7 @@ function billingActivity(billing,esc,date){
  const rows=Array.isArray(billing?.reservations)?billing.reservations:[];
  const states={held:'预占中',reserved:'预占中',settled:'已结算',consumed:'已结算',committed:'已结算',released:'已释放'};
  const sources={free:'免费任务',membership:'会员次数',bundle:'套餐次数',credits:'科研积分'};
- return `<section class="card personal-detail-card member-billing-activity"><header><div><h2>任务结算记录</h2><p class="muted">提交时先预占，成功后结算；失败或取消释放预占。重试会重新报价，未确认不会再次提交。</p></div><a href="#tasks?scope=account">查看账户任务 →</a></header>${rows.length?`<div class="account-personal-table${rows.length>5?' member-record-scroll':''}"${rows.length>5?' tabindex="0" role="region" aria-label="任务结算记录，上下滚动查看更多" data-scroll-key="member-billing-records"':''}><table><thead><tr><th>任务服务</th><th>结算来源</th><th>本次额度</th><th>状态</th><th>时间</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${esc(row.title||({polish:'学术润色',review:'导师意见修改',agent:'科研智能助手'}[row.type||row.service_key]||'账户任务'))}</td><td>${esc(sources[row.source]||'来源待核对')}</td><td>${row.source==='credits'?`${countValue(row.creditCost??row.credit_cost)} 积分`:['membership','bundle'].includes(row.source)?'1 次':row.source==='free'?'免费':'—'}</td><td>${esc(states[row.status]||'状态待核对')}</td><td>${esc(date(row.updatedAt||row.updated_at||row.createdAt||row.created_at))}</td></tr>`).join('')}</tbody></table></div>`:'<div class="account-empty"><b>暂无任务结算记录</b><p>使用已开放的账户 AI 服务并确认费用后，可在这里核对预占与结算。</p></div>'}</section>`;
+ return `<section class="card personal-detail-card member-billing-activity"><header><div><h2>任务结算记录</h2><p class="muted">提交时先预占，成功后结算；失败或取消释放预占。重试会重新报价，未确认不会再次提交。</p></div><a href="#tasks?scope=account">查看账户任务 →</a></header>${rows.length?`<div class="account-personal-table${rows.length>5?' member-record-scroll':''}"${rows.length>5?' tabindex="0" role="region" aria-label="任务结算记录，上下滚动查看更多" data-scroll-key="member-billing-records"':''}><table><thead><tr><th>任务服务</th><th>结算来源</th><th>本次额度</th><th>状态</th><th>时间</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${esc(row.title||toolBillingServiceTypes.find(item=>item.key===(row.serviceKey||row.service_key))?.title||({polish:'学术润色',review:'导师意见修改',agent:'科研智能助手'}[row.type||row.service_key]||'账户任务'))}</td><td>${esc(sources[row.source]||'来源待核对')}</td><td>${row.source==='credits'?`${countValue(row.creditCost??row.credit_cost)} 积分`:['membership','bundle'].includes(row.source)?'1 次':row.source==='free'?'免费':'—'}</td><td>${esc(states[row.status]||'状态待核对')}</td><td>${esc(date(row.updatedAt||row.updated_at||row.createdAt||row.created_at))}</td></tr>`).join('')}</tbody></table></div>`:'<div class="account-empty"><b>暂无任务结算记录</b><p>使用已开放的账户 AI 服务并确认费用后，可在这里核对预占与结算。</p></div>'}</section>`;
 }
 function creditLedger(credits,esc,date){
  const ledger=Array.isArray(credits?.ledger)?credits.ledger:[];

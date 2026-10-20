@@ -20,7 +20,7 @@ function setup(kind='reduce'){
 const noPayment=root=>{assert.equal(root.querySelector('[data-revision-bundle-checkout]'),null);assert.equal(root.querySelector('a[href*="membership/pay"]'),null);};
 const referencePrices=root=>{
  assert.deepEqual([...root.querySelectorAll('.purchase-price b')].map(node=>node.textContent),['¥99','¥129','¥159']);
- assert.ok([...root.querySelectorAll('.purchase-price span')].every(node=>node.textContent==='方案价 / 套 · 未上架'));
+ assert.ok([...root.querySelectorAll('.purchase-price span')].every(node=>node.textContent==='建议价 / 180 天 · 未上架'));
 };
 
 test('the specialist catalogue preserves three original names without coupling to a modification form',()=>{
@@ -31,7 +31,7 @@ test('the specialist catalogue preserves three original names without coupling t
    assert.equal(s.root.dataset.revisionBundleContext,kind==='membership'?'membership':kind==='aigc'?'aigc':'reduce');
    assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="loading"]').length,3);noPayment(s.root);
    assert.ok(s.root.querySelector('a[href="#membership?scope=account"]'));
-   assert.match(s.root.querySelector('h2').textContent,/查降专项套餐/);assert.doesNotMatch(s.root.textContent,/下方修改方案/);
+   assert.equal(s.root.querySelector('h2').textContent,'查降套餐');assert.equal(s.root.dataset.revisionBundleFamily,'detect');assert.doesNotMatch(s.root.textContent,/下方修改方案/);
    assert.ok(s.root.querySelector('a[href="#membership/recharge"]'));
    assert.ok([...s.root.querySelectorAll('button')].every(button=>button.type==='button'));
   }finally{s.close();}
@@ -45,8 +45,8 @@ test('empty server catalogue retains owner-approved plan prices and exact servic
   for(const card of s.root.querySelectorAll('[data-revision-bundle]')){
    assert.equal(card.querySelectorAll('ul li').length,4);
    assert.ok([...card.querySelectorAll('ul li')].every(node=>node.textContent.includes('× 2 次')));
-   assert.match(card.textContent,/旗舰版查重 × 2 次（待开放）/);assert.match(card.textContent,/AIGC 检测 × 2 次（待开放）/);
-   assert.match(card.textContent,/修改建议 × 2 次/);assert.doesNotMatch(card.textContent,/规划：|售价待确认|保证|官方报告/);
+   assert.match(card.textContent,/PaperKnow 来源比对 × 2 次/);assert.match(card.textContent,/AI 文本鉴别 × 2 次/);
+   assert.match(card.textContent,/修改建议与表达修改 × 2 次/);assert.doesNotMatch(card.textContent,/规划：|售价待确认|保证|官方报告|旗舰|待开放/);
   }
   assert.match(s.root.querySelector('[role="status"]').textContent,/原有套餐方案仍在/);
   assert.deepEqual(s.requests.map(({url,method,credentials,cache})=>({url,method,credentials,cache})),[{url:'/api/payments/options',method:'GET',credentials:'same-origin',cache:'no-store'}]);
@@ -200,7 +200,7 @@ test('specialist and research bundles use the same card structure, grid classes 
   assert.equal(s.root.querySelector('.revision-bundle-card,.revision-bundle-card-content,.revision-bundle-art,.revision-bundle-price'),null);
   const css=await readFile(new URL('../dist/workspace/commerce-center.css',import.meta.url),'utf8');assert.match(css,/commerce-center-plan-grid\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);assert.match(css,/@(?:media|container)[\s\S]*commerce-center-plan-grid[\s\S]*grid-template-columns:minmax\(0,1fr\)/);
   assert.ok(Object.isFrozen(revisionBundlePlans));assert.deepEqual(revisionBundlePlans.map(plan=>plan.id),['rewrite','reduce','dual']);
-  assert.ok(revisionBundlePlans.every(plan=>plan.features.length===4&&Object.isFrozen(plan.features)&&Number.isSafeInteger(plan.priceCents)&&!('durationDays' in plan)));
+  assert.ok(revisionBundlePlans.every(plan=>plan.features.length===4&&Object.isFrozen(plan.features)&&Number.isSafeInteger(plan.priceCents)&&plan.durationDays===180&&plan.totalUses===8));
   assert.deepEqual(revisionBundlePlans.map(plan=>plan.priceCents),[9900,12900,15900]);
   assert.doesNotMatch(revisionBundlePlans.flatMap(plan=>plan.features).join(' '),/自动复测|保证|官方报告/);
  }finally{s.close();}

@@ -1,21 +1,18 @@
 import {icon} from './ui.mjs';
 import {bundlePreviewCard,publishedBundleCard} from './commerce-bundle-card.mjs';
 import {withStableView} from './view-stability.mjs';
+import {specialistRevisionOffers} from './specialist-commercial-offers.mjs';
 
 // The owner-approved reference prices and service counts are display-only.
 // Only a validated published server product can expose payment and usable quotas.
-export const revisionBundlePlans=Object.freeze([
- Object.freeze({id:'rewrite',name:'强力查降套餐',priceCents:9900,audience:'围绕已有正文，整理重复表达',description:'查重、AIGC 检测、修改建议与强力降重的组合方案；套餐服务与有效期待开放。',featured:false,features:Object.freeze(['旗舰版查重 × 2 次（待开放）','AIGC 检测 × 2 次（待开放）','修改建议 × 2 次','一键强力降重 × 2 次'])}),
- Object.freeze({id:'reduce',name:'超值降 AI 套餐',priceCents:12900,audience:'完善自然、连贯的学术表达',description:'查重、AIGC 检测、修改建议与降 AIGC 的组合方案；套餐服务与有效期待开放。',featured:true,features:Object.freeze(['旗舰版查重 × 2 次（待开放）','AIGC 检测 × 2 次（待开放）','修改建议 × 2 次','一键降 AIGC × 2 次'])}),
- Object.freeze({id:'dual',name:'AIGC+重复率双降套餐',priceCents:15900,audience:'兼顾重复表达与语言自然度',description:'查重、AIGC 检测、修改建议与双降的组合方案；套餐服务与有效期待开放。',featured:false,features:Object.freeze(['旗舰版查重 × 2 次（待开放）','AIGC 检测 × 2 次（待开放）','修改建议 × 2 次','AIGC+重复率双降 × 2 次'])})
-]);
-const plans=revisionBundlePlans,mounts=new WeakMap();
+export const revisionBundlePlans=Object.freeze(specialistRevisionOffers.map(offer=>Object.freeze({id:offer.id.replace(/^bundle-/,''),name:offer.title,priceCents:offer.priceCents,durationDays:offer.durationDays,totalUses:offer.totalUses,audience:offer.audience,description:offer.description,featured:offer.featured,features:Object.freeze(offer.bundleItems.map(item=>`${item.title} × ${item.quantity} 次`))})));
+const mounts=new WeakMap();
 const sku=plan=>'bundle-'+plan.id;
 const cardAttributes=plan=>({'data-revision-bundle':sku(plan),'data-revision-bundle-id':sku(plan)});
 const placeholder=(plan,state='loading')=>bundlePreviewCard(plan,{state,attributes:cardAttributes(plan)});
-export function revisionBundleOffersMarkup(kind='membership'){
- const context=kind==='membership'?'membership':kind==='aigc'?'aigc':'reduce';
- return `<section class="commerce-center-section" data-revision-bundle-offers data-revision-bundle-context="${context}" aria-label="查降专项套餐"><div class="purchase-section-head commerce-center-section-title"><div><span class="commerce-center-eyebrow">RESEARCH BUNDLES</span><h2>查降专项套餐</h2><p>在会员与用量中统一选择，按已发布的服务与次数购买。</p></div><span class="commerce-center-unit-note" data-revision-bundle-catalogue-status role="status">正在核对商品与权益</span></div><div class="purchase-plans commerce-center-plan-grid" data-revision-bundle-grid>${plans.map(plan=>placeholder(plan)).join('')}</div><p class="commerce-center-fineprint">未上架方案不开放购买；实际服务以发布的商品说明为准。</p><div class="actions"><a href="#membership/recharge">按次使用，购买积分 ${icon('arrow',13)}</a><a href="#membership?scope=account">查看已购权益 ${icon('arrow',13)}</a></div></section>`;
+export function revisionBundleOffersMarkup(kind='membership',{plans=revisionBundlePlans,family='detect'}={}){
+ const context=kind==='membership'?'membership':kind==='aigc'?'aigc':'reduce',writing=family==='writing',title=writing?'写作套餐':'查降套餐',description=writing?'按学位组合论文、报告、修改与答辩服务。':'按需组合来源比对、文本鉴别与学术表达修改。';
+ return `<section class="commerce-center-section" data-revision-bundle-offers data-revision-bundle-context="${context}" data-revision-bundle-family="${writing?'writing':'detect'}" aria-label="${title}" data-specialist-panel="${writing?'writing':'detect'}"><div class="purchase-section-head commerce-center-section-title"><div><span class="commerce-center-eyebrow">RESEARCH BUNDLES</span><h2>${title}</h2><p>${description}</p></div><span class="commerce-center-unit-note" data-revision-bundle-catalogue-status role="status">正在核对商品与权益</span></div><div class="purchase-plans commerce-center-plan-grid ${writing?'commerce-writing-plans':''}" data-revision-bundle-grid>${plans.map(plan=>placeholder(plan)).join('')}</div><p class="commerce-center-fineprint">付款前核对服务次数与有效期，价格和权益以收银台确认内容为准。</p><div class="actions"><a href="#membership/recharge">按次使用，购买积分 ${icon('arrow',13)}</a><a href="#membership?scope=account">查看已购权益 ${icon('arrow',13)}</a></div></section>`;
 }
 const nonempty=(value,max)=>typeof value==='string'&&Boolean(value.trim())&&value.length<=max;
 function publishedProduct(plan,products){
@@ -29,7 +26,7 @@ function publishedProduct(plan,products){
  if(product.bundleItems!==undefined&&entitlement?.bundleItems!==undefined&&JSON.stringify(product.bundleItems)!==JSON.stringify(entitlement.bundleItems))return null;
  return {id:sku(plan),title:product.title,description:product.description,priceCents:product.priceCents,durationDays:days,bundleItems:items.map(item=>({key:item.key,title:item.title,quantity:item.quantity}))};
 }
-export function mountRevisionBundleOffers({container,signal,timeoutMs=12000,fetchOptions}={}){
+export function mountRevisionBundleOffers({container,signal,timeoutMs=12000,fetchOptions,plans=revisionBundlePlans}={}){
  const root=container?.matches?.('[data-revision-bundle-offers]')?container:container?.querySelector?.('[data-revision-bundle-offers]');
  if(!root)return {dispose(){}};
  mounts.get(root)?.dispose();

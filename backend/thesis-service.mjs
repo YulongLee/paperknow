@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {createBillingService} from './billing-service.mjs';
+import {writingBillingKey} from '../dist/workspace/writing-billing-catalog.mjs';
 import {createModelBudget} from './model-budget.mjs';
 import {agentSettingsReady} from './agent-settings.mjs';
 import {initializeThesisSchema,normalizeThesisSnapshot,thesisPlan,thesisHash,thesisLimits,thesisFullText,thesisError,thesisTransaction,assertThesisAccountQuota,assertThesisChapterCapacity,isThesisReferenceChapter,thesisManualSourceIds} from './thesis-model.mjs';
@@ -14,6 +15,7 @@ export function assertThesisSettings(settings){if(!agentSettingsReady(settings))
 export function createThesisService(db,config={}){
  initializeThesisSchema(db);
  const billing=config.billing||createBillingService(db,config),modelBudget=config.modelBudget||createModelBudget(db,config);
+ db.exec(`CREATE TABLE IF NOT EXISTS thesis_generation_quotes(token TEXT PRIMARY KEY REFERENCES billing_quotes(token) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id),thesis_id TEXT NOT NULL REFERENCES theses(id),version INTEGER NOT NULL,snapshot_hash TEXT NOT NULL,action TEXT NOT NULL CHECK(action IN ('generate','resume')),created_at TEXT NOT NULL);`);
  const clock=()=>new Date(config.thesisNow?.()??Date.now()).toISOString();
  const own=(id,user)=>{if(!user?.id)fail(401,'请先登录');const row=db.prepare('SELECT * FROM theses WHERE id=? AND user_id=?').get(id,user.id);if(!row)fail(404,'论文不存在');return row;};
  const project=(value,user)=>{if(value===undefined||value===null||value==='')return null;if(typeof value!=='string'||!db.prepare('SELECT id FROM projects WHERE id=? AND user_id=?').get(value,user.id))fail(404,'项目不存在');return value;};
@@ -54,12 +56,18 @@ export function createThesisService(db,config={}){
   }
   const history=path.match(/^\/api\/theses\/([^/]+)\/chapters\/([^/]+)\/versions(?:\/(\d+))?$/);
   if(history){const [,id,chapterId,version]=history,current=own(id,user),isReferences=JSON.parse(current.snapshot).outline.some(row=>row.id===chapterId&&isThesisReferenceChapter(row)),source=value=>isReferences&&value==='generated'?'compiled_references':value;if(method!=='GET')fail(405,'章节历史仅支持读取');if(version){const row=db.prepare('SELECT * FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? AND version=?').get(id,chapterId,Number(version));if(!row)fail(404,'章节历史版本不存在');return response({item:{id:row.id,chapterId:row.chapter_id,version:row.version,source:source(row.source),text:row.text,sourceIds:JSON.parse(row.source_ids),createdAt:row.created_at}});}return response({items:db.prepare('SELECT id,version,source,created_at AS createdAt FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? ORDER BY version DESC LIMIT 50').all(id,chapterId).map(row=>({...row,source:source(row.source)})),limit:50});}
-  const match=path.match(/^\/api\/theses\/([^/]+)(?:\/(generate|cancel|resume)|\/chapters\/([^/]+))?$/);
+  const match=path.match(/^\/api\/theses\/([^/]+)(?:\/(generate|cancel|resume|quote)|\/chapters\/([^/]+))?$/);
   if(!match)return null;
   const [,id,action,chapterId]=match,row=own(id,user);
   if(method==='GET'&&!action&&!chapterId)return response({item:serialize(row)});
   if(method!=='POST')fail(405,'不支持的论文操作');
   const input=await readBody();
+  if(action==='quote'){
+   fields(input,['version','action']);const quotedAction=input.action??'generate';if(!['generate','resume'].includes(quotedAction))fail(400,'请选择生成或恢复操作');
+   expected(input,row);if(active.has(row.status))fail(409,'论文已经在生成中');const snapshot=JSON.parse(row.snapshot);thesisPlan(snapshot,config);await settings();admission(user);
+   if(quotedAction==='resume'){const run=row.current_run_id?db.prepare('SELECT snapshot_hash,status FROM thesis_runs WHERE id=? AND user_id=?').get(row.current_run_id,user.id):null;if(!run||!['failed','interrupted','cancelled','needs_materials'].includes(run.status))fail(409,'当前没有可续跑的中断任务');if(run.snapshot_hash!==row.snapshot_hash)fail(409,'研究资料或提纲已变化，请确认后重新生成；旧章节仍然保留');}
+   return response(thesisTransaction(db,()=>{const current=own(id,user);expected(input,current);if(active.has(current.status))fail(409,'论文已经在生成中');const quote=billing.quote(user,{type:'agent',serviceKey:writingBillingKey('thesis','draft',snapshot)});db.prepare('INSERT INTO thesis_generation_quotes VALUES(?,?,?,?,?,?,?)').run(quote.token,user.id,id,current.version,current.snapshot_hash,quotedAction,clock());return{...quote,thesisId:id,thesisVersion:current.version,snapshotHash:current.snapshot_hash,action:quotedAction};}));
+  }
   if(!action&&!chapterId){
    fields(input,['version','snapshot','projectId']);const snapshot=normalizeThesisSnapshot(input.snapshot,config),pid=input.projectId===undefined?row.project_id:project(input.projectId,user);
    return response(thesisTransaction(db,()=>{const current=own(id,user);expected(input,current);if(active.has(current.status))fail(409,'生成过程中不能修改研究资料或提纲，请先取消任务');assertThesisAccountQuota(db,user.id,Buffer.byteLength(JSON.stringify(snapshot))-Buffer.byteLength(current.snapshot),config);const changed=thesisHash(snapshot)!==current.snapshot_hash;db.prepare('UPDATE theses SET title=?,project_id=?,snapshot=?,snapshot_hash=?,version=version+1,status=?,updated_at=? WHERE id=? AND user_id=?').run(snapshot.title,pid,JSON.stringify(snapshot),thesisHash(snapshot),changed?'draft':current.status,clock(),id,user.id);return {item:serialize(own(id,user))};}));
@@ -81,6 +89,8 @@ export function createThesisService(db,config={}){
   const snapshot=JSON.parse(row.snapshot),plan=action==='generate'?thesisPlan(snapshot,config):null;
   const enabled=await settings(),runtime=action==='resume'?await settings(currentRun?.settings_version):enabled;
   return response(thesisTransaction(db,()=>{const current=own(id,user),existing=command(user,input,hash);if(existing)return {item:serialize(current)};expected(input,current);if(active.has(current.status))fail(409,'论文已经在生成中');admission(user);
+   const confirmed=db.prepare('SELECT * FROM thesis_generation_quotes WHERE token=? AND user_id=?').get(typeof input.billingToken==='string'?input.billingToken:'',user.id);
+   if(!confirmed||confirmed.thesis_id!==id||confirmed.version!==current.version||confirmed.snapshot_hash!==current.snapshot_hash||confirmed.action!==action)fail(409,'论文信息或生成操作与费用确认不一致，请重新确认');
    const at=clock();let runId;
    for(const chapter of snapshot.outline)assertThesisChapterCapacity(db,id,chapter.id);
    if(action==='resume'){
@@ -93,7 +103,7 @@ export function createThesisService(db,config={}){
     db.prepare("UPDATE thesis_runs SET status='queued',stage='queued',error=NULL,attempt=?,updated_at=? WHERE id=?").run(nextAttempt,at,runId);
     db.prepare("UPDATE thesis_checkpoints SET status='pending',error=NULL,missing_evidence='[]',updated_at=? WHERE run_id=? AND status!='completed'").run(at,runId);
     db.prepare("UPDATE jobs SET status='queued',stage='queued',error=NULL,updated_at=? WHERE id=?").run(at,runId);
-    billing.reserve(user,runId,nextAttempt,'agent',input.billingToken);
+    billing.reserve(user,runId,nextAttempt,'agent',input.billingToken,writingBillingKey('thesis','draft',snapshot));
    }else{
     assertThesisAccountQuota(db,user.id,Math.max(512,Buffer.byteLength(current.snapshot)+Buffer.byteLength(JSON.stringify(plan)))+plan.length*512+512,config);
     runId=randomUUID();
@@ -101,7 +111,7 @@ export function createThesisService(db,config={}){
     db.prepare('INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(runId,user.id,current.project_id,'thesis','queued','queued',JSON.stringify({thesisId:id,settingsVersion:runtime.version}),`thesis:${input.clientKey}`,hash,at,at);
     db.prepare('INSERT INTO thesis_runs(id,thesis_id,user_id,snapshot,snapshot_hash,plan,settings_version,settings_meta,status,stage,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(runId,id,user.id,current.snapshot,current.snapshot_hash,JSON.stringify(plan),runtime.version,JSON.stringify(safeMeta),'queued','queued',at,at);
     for(const unit of plan)db.prepare('INSERT INTO thesis_checkpoints(run_id,unit_id,chapter_id,position,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(runId,unit.id,unit.chapterId,unit.position,at,at);
-    billing.reserve(user,runId,1,'agent',input.billingToken);
+    billing.reserve(user,runId,1,'agent',input.billingToken,writingBillingKey('thesis','draft',snapshot));
    }
    saveCommand(user,input,hash,id,runId);db.prepare("UPDATE theses SET current_run_id=?,status='queued',version=version+1,updated_at=? WHERE id=?").run(runId,at,id);return {item:serialize(own(id,user))};}),202);
  }

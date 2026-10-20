@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {digest} from './auth.mjs';
 import {createArtifactService,initializeArtifactSchema} from './artifact-service.mjs';
 import {webSearchConfigured} from './web-similarity-search.mjs';
+import {detectionFreeEntryReady,reserveIncludedDetection} from './detection-entitlements.mjs';
 import {webSimilarityLimits,webSimilarityVersion,webSimilarityInput,planWebQueries,webSimilarityDay,webSimilarityFileName,webSimilarityFail as fail} from './web-similarity-model.mjs';
 
 export function initializeWebSimilaritySchema(db){
@@ -19,9 +20,9 @@ export function initializeWebSimilaritySchema(db){
   PRIMARY KEY(job_id,query_index)
  );CREATE INDEX IF NOT EXISTS web_similarity_attempt_day ON web_similarity_attempts(created_at,user_id);`);
 }
-const storageReady=config=>config.storage?.provider==='aliyun_oss'&&typeof config.storage.putArtifact==='function'&&typeof config.storage.readArtifact==='function'&&typeof config.storage.removeArtifact==='function';
+const storageReady=config=>config.storage?.provider==='aliyun_oss'&&typeof config.storage.bucket==='string'&&typeof config.storage.prefix==='string'&&typeof config.storage.putArtifact==='function'&&typeof config.storage.readArtifact==='function'&&typeof config.storage.removeArtifact==='function';
 export const webSimilarityReady=config=>webSearchConfigured(config)&&storageReady(config);
-export function webSimilarityCapabilities(config){const ready=webSimilarityReady(config);return{ready,...webSimilarityLimits,pointsCharged:false,consentRequired:true,reason:ready?'':'联网来源查重暂未开放，可先使用本地材料比对。'};}
+export function webSimilarityCapabilities(config){const ready=webSimilarityReady(config)&&detectionFreeEntryReady(config.billing,'detection-similarity');return{ready,...webSimilarityLimits,pointsCharged:false,bundleUsageSupported:Boolean(config.billing),consentRequired:true,reason:ready?'':'联网来源查重暂未开放，可先使用本地材料比对。'};}
 const safeId=value=>typeof value==='string'&&/^[-A-Za-z0-9_]{1,120}$/.test(value);
 const readingByStorage=new WeakMap();
 export async function readWebSimilarityArtifact(db,config,id,userId){
@@ -86,7 +87,7 @@ export function createWebSimilarityService(db,config={}){
    if(method==='GET'&&!match[2])return{value:{ownerId:user.id,item:summary(row)}};
    if(method!=='POST'||match[2]!=='/cancel')fail(405,'不支持的查重操作。');
    const input=await readBody();if(!input||Object.keys(input).some(k=>k!=='expectedUserId')||input.expectedUserId!==user.id)fail(409,'登录账户已变化，请刷新后操作。');
-   tx(()=>{const current=own(row.id,user);if(!['preparing','queued','running'].includes(current.status))fail(409,'本次查重已经结束。');db.prepare("UPDATE jobs SET status='cancelled',stage='cancelled',error=NULL,updated_at=? WHERE id=?").run(new Date().toISOString(),row.id);});
+   tx(()=>{const current=own(row.id,user);if(!['preparing','queued','running'].includes(current.status))fail(409,'本次查重已经结束。');db.prepare("UPDATE jobs SET status='cancelled',stage='cancelled',error=NULL,updated_at=? WHERE id=?").run(new Date().toISOString(),row.id);config.billing?.release(row.id);});
    config.cancelWebSimilarity?.(row.id);
    return{value:{ownerId:user.id,item:summary(own(row.id,user))}};
   }
@@ -108,6 +109,7 @@ export function createWebSimilarityService(db,config={}){
    db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,'web_similarity','preparing','saving_input','{}',?,?,?,?)").run(id,user.id,input.idempotencyKey,hash,at,at);
    const coverage={sampledParagraphs:plan.sampledParagraphs,totalParagraphs:plan.totalParagraphs,queries:plan.queries.length,candidateSources:0,fetchedSources:0,failedSources:0,searchComplete:false};
    db.prepare('INSERT INTO web_similarity_runs(id,user_id,title,characters,queries_reserved,coverage,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(id,user.id,input.title,input.characters,plan.queries.length,JSON.stringify(coverage),at,at);
+   reserveIncludedDetection(config.billing,user,id,'detection-similarity');
    return{id,existing:false};
   });
   if(!reserved.existing){
@@ -118,7 +120,7 @@ export function createWebSimilarityService(db,config={}){
     db.prepare("UPDATE jobs SET status='queued',stage='queued',updated_at=? WHERE id=? AND status='preparing'").run(new Date().toISOString(),reserved.id);
     if(own(reserved.id,user).status==='cancelled')await removeWebSimilarityArtifacts(db,config,job);
    }catch{
-    db.prepare("UPDATE jobs SET status='failed',stage='input_failed',error='正文保存未完成，未执行联网检索，请稍后重新确认。',updated_at=? WHERE id=? AND status='preparing'").run(new Date().toISOString(),reserved.id);
+    tx(()=>{db.prepare("UPDATE jobs SET status='failed',stage='input_failed',error='正文保存未完成，未执行联网检索，请稍后重新确认。',updated_at=? WHERE id=? AND status='preparing'").run(new Date().toISOString(),reserved.id);config.billing?.release(reserved.id);});
     await removeWebSimilarityArtifacts(db,config,job);
    }
   }

@@ -360,6 +360,17 @@ test('writing jobs have concrete task labels and return links, expose cancellati
  input(f,'#account-job-query','开题报告');assert.equal(f.doc.querySelectorAll('.account-job-row').length,1);assert.equal(f.calls.some(call=>/writing-failed\/retry/.test(call.path)),false);
 });
 
+test('metered AI text detection tasks return to the owned result, cancel through the detector and never expose generic retry',async t=>{
+ let rows=[{id:'aigc-running',type:'aigc_detection',status:'running',attempt:1,created_at:now},{id:'aigc-failed',type:'aigc_detection',status:'failed',attempt:1,created_at:now,error:'鉴别未完成'}];
+ const f=await fixture(t,{view:'tasks',request:async(path,options)=>{
+  if(path==='/api/jobs')return{ok:true,status:200,json:async()=>({items:rows})};
+  if(path==='/api/aigc-detections/aigc-running/cancel'){assert.deepEqual(JSON.parse(options.body),{expectedUserId:'u1'});rows=rows.map(row=>row.id==='aigc-running'?{...row,status:'cancelled'}:row);return{ok:true,status:200,json:async()=>({id:'aigc-running',status:'failed'})};}
+  return undefined;
+ }});
+ assert.match(f.doc.querySelector('#job-list').textContent,/AI 文本鉴别/);assert.ok([...f.doc.querySelectorAll('a')].some(link=>link.getAttribute('href')==='#category/aigc?view=detection&report=aigc-running'));assert.equal(f.doc.querySelector('[data-job="aigc-failed"][data-action="retry"]'),null);
+ f.doc.querySelector('[data-job="aigc-running"][data-action="cancel"]').click();await settle(()=>f.doc.querySelector('.tag.cancelled'));assert.equal(f.calls.some(call=>call.path==='/api/jobs/aigc-running/cancel'),false);
+});
+
 test('writing result editing preserves canonical citation bindings and original text while exporting a readable traceable document',async t=>{
  const original='基于合成研究材料讨论服务入口。[source:material-private-id]结合文献比较。[source:reference-long-id]旧引用待核对。[source:missing-legacy-id]';
  const item={id:'writing-result',type:'writing',title:'开题报告合成验收稿',created_at:now,body:{text:original,kind:'proposal',operation:'draft',writingJobId:'writing-task',model:'must-not-show-model',sourceIds:['material-private-id','reference-long-id','missing-legacy-id'],sourceSnapshot:{materials:[{id:'material-private-id',name:'合成服务观察材料',confirmed:true}],references:[{id:'reference-long-id',title:'Reading services <script>bad()</script>',authors:'合成作者',year:'2026',doi:'10.1234/synthetic',url:'https://research.example.test/paper',confirmed:true}]}}};

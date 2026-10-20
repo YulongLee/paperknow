@@ -19,8 +19,8 @@ function fixture(t,extra={}){
  function start(){worker=startThesisWorker(db,config);config.cancelThesisRun=id=>worker.cancel(id);return worker;}
  async function request(path,method='GET',body,userOverride=user){return (await service.handle({path,method,user:userOverride,readBody:async()=>body}))?.value;}
  async function create(body=snapshot()){return (await request('/api/theses','POST',{snapshot:body,clientKey:randomUUID()})).item;}
- async function generate(item,extra={}){return (await request(`/api/theses/${item.id}/generate`,'POST',{version:item.version,clientKey:randomUUID(),consent:true,billingToken:billing.quote(user,{type:'agent'}).token,...extra})).item;}
- async function resume(item,extra={}){return (await request(`/api/theses/${item.id}/resume`,'POST',{version:item.version,clientKey:randomUUID(),consent:true,billingToken:billing.quote(user,{type:'agent'}).token,...extra})).item;}
+ async function generate(item,extra={}){return (await request(`/api/theses/${item.id}/generate`,'POST',{version:item.version,clientKey:randomUUID(),consent:true,billingToken:(await request(`/api/theses/${item.id}/quote`,'POST',{version:item.version,action:'generate'})).token,...extra})).item;}
+ async function resume(item,extra={}){return (await request(`/api/theses/${item.id}/resume`,'POST',{version:item.version,clientKey:randomUUID(),consent:true,billingToken:(await request(`/api/theses/${item.id}/quote`,'POST',{version:item.version,action:'resume'})).token,...extra})).item;}
  function pay(){billing.saveRules({version:billing.rules().version,services:billingServiceTypes.map(({key})=>({key,mode:'paid',creditCost:10}))});const at=new Date().toISOString(),order=randomUUID();db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run(order,user.id,'credits-200','paid',at);db.prepare('INSERT INTO payment_credit_ledger VALUES(?,?,?,?,?,?)').run(order,user.id,'credits-200',200,'purchase',at);}
  t.after(async()=>{if(worker)await worker.stop();db.close();});return {db,config,billing,service,user,other,request,create,generate,resume,start,pay,get:id=>service.get(id,user)};
 }
@@ -128,7 +128,7 @@ test('cloud CRUD is owner-isolated, optimistic, idempotent and preserves importe
 test('generate freezes credits atomically, blocks active snapshot edits and completes full result once',async t=>{
  const f=fixture(t);f.pay();const item=await f.create(),key=randomUUID(),queued=await f.generate(item,{clientKey:key});
  assert.equal(f.billing.balance(f.user.id).held,10);assert.equal(queued.billingService,'agent');
- const again=await f.generate(item,{clientKey:key});assert.equal(again.job.id,queued.job.id);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_runs').get().n,1);
+ const again=(await f.request(`/api/theses/${item.id}/generate`,'POST',{version:item.version,clientKey:key,consent:true,billingToken:'already-confirmed-idempotent-request'})).item;assert.equal(again.job.id,queued.job.id);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_runs').get().n,1);
  await assert.rejects(f.request('/api/theses/'+item.id,'POST',{version:queued.version,snapshot:snapshot()}),{status:409});
  const worker=f.start();await Promise.all([worker.tick(),worker.tick()]);const done=f.get(item.id);
  assert.equal(done.status,'completed');assert.equal(done.job.completedSections,2);assert.equal(done.chapters.length,2);assert.ok(done.fullText.includes('[材料1]'));assert.doesNotMatch(done.fullText,/\[source:/);assert.ok(done.chapters.every(chapter=>chapter.text.includes('[source:source-1]')));
@@ -140,7 +140,7 @@ test('failed later sections preserve checkpoints, release charges and resume onl
  let calls=0,failOnce=true;const f=fixture(t,{agentTaskRunner:async({task})=>{calls++;if(task.context.unit.chapterId==='chapter-2'&&failOnce){failOnce=false;throw Object.assign(new Error('temporary failure'),{usage:{input:50,output:0}});}return output(task);}});f.pay();const queued=await f.generate(await f.create()),worker=f.start();await worker.tick();const failed=f.get(queued.id);
  assert.equal(failed.status,'failed');assert.equal(failed.job.completedSections,1);assert.ok(failed.chapters[0].text);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.billing.balance(f.user.id).held,0);
  const resumed=await f.resume(failed),key=f.db.prepare('SELECT client_key FROM thesis_commands WHERE run_id=? ORDER BY rowid DESC LIMIT 1').get(resumed.job.id).client_key;assert.equal(resumed.job.id,failed.job.id);await worker.tick();assert.equal(calls,3);assert.equal(f.get(queued.id).status,'completed');assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.db.prepare('SELECT input_tokens FROM usage').get().input_tokens,250);
- const retry=await f.resume(failed,{clientKey:key});assert.equal(retry.status,'completed');assert.equal(f.billing.balance(f.user.id).balance,190);
+ const retry=(await f.request(`/api/theses/${failed.id}/resume`,'POST',{version:failed.version,clientKey:key,consent:true,billingToken:'already-confirmed-idempotent-request'})).item;assert.equal(retry.status,'completed');assert.equal(f.billing.balance(f.user.id).balance,190);
 });
 
 test('cancel aborts an in-flight call, retains completed sections and cannot settle after cancellation',async t=>{

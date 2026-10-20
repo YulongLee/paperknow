@@ -293,7 +293,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,onSaved,o
    if(!cap?.ready||running(item)||dirty())throw Error('请先保存修改并确认服务可用。');
    const binding=requireCurrentSnapshot();
    if(![...(item.snapshot?.materials||[]),...(item.snapshot?.references||[])].some(row=>row.confirmed===true&&String(row.text||'').trim()))throw Error('请先确认至少一份含正文的真实研究材料；仅有文献题录不足以生成论文。');
-   const value=await api('/billing/quote',{type:'agent'});if(!validThesisQuote(value))throw Error('报价不完整或已过期，请重新获取费用。');if(requireCurrentSnapshot().token!==binding.token)throw Error('论文信息已变化，请重新核对资料并确认费用。');quote={...value,version:item.version,snapshotBinding:binding.token};quoteAction=button.dataset.thesisQuote;commandKey=crypto.randomUUID();notice('请确认费用与选中资料用途；尚未开始生成。');
+   const value=await api('/theses/'+encodeURIComponent(id)+'/quote',{version:item.version,action:button.dataset.thesisQuote});if(!validThesisQuote(value))throw Error('报价不完整或已过期，请重新获取费用。');if(requireCurrentSnapshot().token!==binding.token)throw Error('论文信息已变化，请重新核对资料并确认费用。');quote={...value,version:item.version,snapshotBinding:binding.token};quoteAction=button.dataset.thesisQuote;commandKey=crypto.randomUUID();notice('请确认费用与选中资料用途；尚未开始生成。');
   })));
   $('[data-thesis-consent]')?.addEventListener('change',event=>{const start=$('[data-thesis-start]');if(start)start.disabled=!event.target.checked||busy||dirty()||snapshotBinding().blocked;});
   $('[data-thesis-dismiss]')?.addEventListener('click',()=>{quote=null;render();});
