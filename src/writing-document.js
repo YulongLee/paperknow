@@ -65,7 +65,23 @@ export async function createWritingPdf(text,fontBytes){
  const blocks=documentBlocks(text),pdf=await PDFDocument.create();pdf.registerFontkit(fontkit);const font=await pdf.embedFont(fontBytes,{features:{locl:false,liga:false,clig:false}}),supported=new Set(font.getCharacterSet());for(const line of documentLines(text))for(const char of line.text){if(!/[\s]/u.test(char)&&!supported.has(char.codePointAt(0)))throw Error(`PDF 字体暂不支持“${char}”，请先使用 DOCX 导出或替换该字符。`);}
  const pages=[];let page,y;const bottom=64,width=469,padding=6,tableSize=10,tableStep=15;
  function addPage(){page=pdf.addPage([595.28,841.89]);pages.push(page);y=778;}
- function wrap(text,size,maxWidth){const wrapped=[];let line='';for(const char of text.replace(/\t/g,'    ')){if(char==='\n'){wrapped.push(line);line='';continue;}if(line&&font.widthOfTextAtSize(line+char,size)>maxWidth){wrapped.push(line);line=char;}else line+=char;}wrapped.push(line);return wrapped;}
+ const wordSegmenter=typeof Intl.Segmenter==='function'?new Intl.Segmenter(undefined,{granularity:'word'}):null,cjk=/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+ function wrap(text,size,maxWidth){
+  const wrapped=[],measure=value=>font.widthOfTextAtSize(value,size);
+  for(const paragraph of text.replace(/\t/g,'    ').split('\n')){
+   let line='';const segments=wordSegmenter?Array.from(wordSegmenter.segment(paragraph),part=>part.segment):paragraph.match(/\s+|[^\s\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+|[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)||[];
+   for(const segment of segments)for(const token of cjk.test(segment)?Array.from(segment):[segment]){
+    if(/^\s+$/u.test(token)){if(measure(line+token)<=maxWidth)line+=token;else if(line){wrapped.push(line);line='';}continue;}
+    // Keep complete words on a fresh line whenever possible. Only a token
+    // wider than the entire column may fall back to codepoint-sized breaks.
+    if(measure(token)<=maxWidth){if(line&&measure(line+token)>maxWidth){wrapped.push(line);line='';}line+=token;continue;}
+    if(line){wrapped.push(line);line='';}
+    for(const char of token){if(measure(char)>maxWidth)throw Error('PDF 栏宽不足以显示原文字符，请先使用 DOCX 导出。');if(line&&measure(line+char)>maxWidth){wrapped.push(line);line='';}line+=char;}
+   }
+   wrapped.push(line);
+  }
+  return wrapped;
+ }
  function drawLines(lines,size,level=3){const step=size*1.65;if(level<3&&y-step*2<bottom)addPage();for(const row of lines){if(y-step<bottom)addPage();if(row)page.drawText(row,{x:level===0?Math.max(63,(595.28-font.widthOfTextAtSize(row,size))/2):63,y,size,font,color:rgb(.12,.15,.2)});y-=step;}y-=6;}
  addPage();for(const block of blocks){
   if(block.type!=='table'){const size=block.level===0?18:block.level===1?15:block.level===2?13:12;drawLines(wrap(block.text,size,width),size,block.level);continue;}

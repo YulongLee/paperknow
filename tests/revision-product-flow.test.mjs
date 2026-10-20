@@ -13,15 +13,17 @@ import {normalizeConfirmedRevisionReport,reportSources} from '../dist/workspace/
 import {validateRevisionProtection} from '../dist/workspace/revision-protection.mjs';
 import {mountAigcDetection,ensureAigcStyle} from '../dist/workspace/aigc-detection.mjs';
 import * as model from '../dist/workspace/revision-model.mjs';
+import JSZip from 'jszip';
+import {createWritingDocx,documentLines} from '../src/writing-document.js';
 const source=(await readFile(new URL('../dist/workspace/revision.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const paragraphs=['本合成研究纳入 24 名参与者[1]，只描述给定材料中的现象，不构成普遍因果结论。','第二部分说明授权材料的整理步骤与证据边界，所有记录均用于功能验收，仍须人工核对。','第三部分保留 3.5 mg/mL 与公式 $x=2y$，讨论只限于本次给定材料[2]，不补造未知结果。'];
 const revised=original=>original+' 本次调整仅改善表述衔接，证据范围保持原样。';
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 const until=async check=>{for(let i=0;i<100;i++){if(check())return;await tick();}assert.ok(check(),'UI did not settle');};
-function fixture(t,{aigc=false,outputTransform=value=>value}={}){
+function fixture(t,{aigc=false,outputTransform=value=>value,exportDependencies}={}){
  const dom=new JSDOM('<main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'https://paperknow.test/workspace.html#category/'+(aigc?'aigc':'reduce'),runScripts:'outside-only'}),w=dom.window,$=selector=>w.document.querySelector(selector),notices=[],calls=[],downloads=[],jobs=new Map();let fail=false;
  globalThis.document=w.document;
- Object.assign(w,{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports,...model,importWorkspaceDocument:async()=>{throw Error('No parsing expected');},documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[],list:key=>JSON.parse(w.localStorage.getItem(key)||'[]'),write:(key,rows)=>{if(fail)throw Error('Synthetic save failure');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:()=>{},download:(...args)=>downloads.push(args)});
+ Object.assign(w,{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports:(...args)=>bindDocumentExports(...args,exportDependencies),...model,importWorkspaceDocument:async()=>{throw Error('No parsing expected');},documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[],list:key=>JSON.parse(w.localStorage.getItem(key)||'[]'),write:(key,rows)=>{if(fail)throw Error('Synthetic save failure');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:()=>{},download:(...args)=>downloads.push(args)});
  $('dialog').close=()=>{$('dialog').removeAttribute('open');$('dialog').dispatchEvent(new w.Event('close'));};w.confirm=()=>false;
  const ctx={mode:'reduce',notify:value=>notices.push(value),modal:(_title,html)=>{$('#workspace-dialog-body').innerHTML=html;$('dialog').setAttribute('open','');},api:async(path,data)=>{calls.push({path,data:data?structuredClone(data):data});if(path==='/auth/me')return{user:{id:'owner'}};if(path==='/tool-runs/capabilities')return{ready:true};if(path==='/tool-runs/quote')return{type:'agent',source:'credits',creditCost:10,title:'Synthetic quote',token:'quote',expiresAt:new Date(Date.now()+600000).toISOString()};if(path==='/tool-runs/jobs'){const parts=data.snapshot.text.split('\n\n'),output=outputTransform({text:'完整候选预览',paragraphs:data.snapshot.context.paragraphIds.map((id,i)=>({id,original:parts[i],revised:revised(parts[i]),action:'revise',reason:'调整段落衔接，并保留原有证据边界。'}))}),item={id:'job-'+(jobs.size+1),kind:'revision',operation:'rewrite',status:'completed',output,completedUnits:1,totalUnits:1};jobs.set(item.id,item);return{item};}if(jobs.has(path.split('/').at(-1)))return{item:jobs.get(path.split('/').at(-1))};throw Error('Unexpected API '+path);}};
  w.eval(source+'\nwindow.revisionProduct={mountRevision,disposeRevision};');w.revisionProduct.mountRevision(ctx);
@@ -46,6 +48,22 @@ test('the English entry plan persists through document creation and reaches the 
 
 test('selected generation sends only the checked complete original, preserves others, and still requires paragraph acceptance for export',async t=>{
  const f=fixture(t);f.create();f.click('[data-rev-ai-select]');f.click('[data-rev-select-paragraph="p1"]');await f.generate();const start=f.calls.find(c=>c.path==='/tool-runs/jobs');assert.equal(start.data.snapshot.context.scope,'selected');assert.deepEqual(start.data.snapshot.context.paragraphIds,['p1']);assert.equal(start.data.snapshot.text,paragraphs[1]);await f.apply();assert.equal(f.draft().paragraphs[0].suggestion,paragraphs[0]);assert.equal(f.draft().paragraphs[2].suggestion,paragraphs[2]);assert.equal(f.draft().paragraphs[1].accepted,false);assert.equal(model.revisedText(f.draft()),paragraphs.join('\n\n'));f.pickParagraph(1);assert.match(f.$('.rev-candidate-status').textContent,/调整段落衔接/);assert.equal(f.$('.rev-candidate-status b').textContent,'候选已进入编辑区 · 尚需人工核对');f.click('[data-rev-action="accept"]');assert.equal(f.$('.rev-candidate-status b').textContent,'本段修改已采纳');assert.doesNotMatch(f.$('.rev-candidate-status').textContent,/尚需人工核对/);f.click('[data-rev-action="export"]');f.click('#rev-export-confirm');assert.equal(f.downloads[0][1],[paragraphs[0],revised(paragraphs[1]),paragraphs[2]].join('\n\n'));
+});
+
+test('single-paragraph revision DOCX and PDF receive a separate single-line title while TXT remains accepted body only',async t=>{
+ for(const format of ['docx','pdf']){
+  const generated=[],files=[],body='The study describes the supplied observations without making an unsupported causal claim.',accepted=body+' The evidence boundary remains unchanged.';
+  const f=fixture(t,{exportDependencies:{loadDocument:async()=>({createWritingDocx:async text=>{generated.push({format:'docx',text});return createWritingDocx(text);},createWritingPdf:async(text,font)=>{generated.push({format:'pdf',text,font});return new Uint8Array([1]);}}),loadFont:async()=>new Uint8Array([2]),downloadFile:async(...args)=>{files.push(args);return {message:'Saved'};}}});
+  const doc=model.createRevision({title:'Actual study\r\nEnglish revision\u2028final',text:body,mode:'reduce'},'single-export','2026-10-20T00:00:00Z');
+  f.create();f.w.localStorage.setItem('test-drafts',JSON.stringify([doc]));f.w.revisionProduct.mountRevision(f.ctx,doc.id);f.input('#rev-suggestion',accepted);f.click('[data-rev-action="accept"]');f.click('[data-rev-action="export"]');f.click('#rev-result-'+format);await until(()=>files.length===1);
+  assert.equal(generated.length,1);assert.equal(generated[0].format,format);assert.equal(generated[0].text,'Actual study English revision final\n\n'+accepted);
+  const lines=documentLines(generated[0].text);assert.deepEqual(lines.map(line=>line.level),[0,3,3]);assert.equal(lines[2].text,accepted);
+  if(format==='docx'){
+   const zip=await JSZip.loadAsync(files[0][1]),xml=await zip.file('word/document.xml').async('string'),document=new JSDOM(xml,{contentType:'application/xml'}).window.document,paragraphs=[...document.getElementsByTagName('w:p')];
+   assert.equal(paragraphs[0].textContent,'Actual study English revision final');assert.match(paragraphs[0].innerHTML,/w:jc w:val="center"/);assert.equal(paragraphs[2].textContent,accepted);assert.doesNotMatch(paragraphs[2].innerHTML,/w:jc|<w:b\b|w:val="36"/);
+  }else assert.deepEqual(generated[0].font,new Uint8Array([2]));
+  f.click('#rev-export-confirm');assert.equal(f.downloads.length,1);assert.equal(f.downloads[0][1],accepted);assert.equal(f.draft().original,body);
+ }
 });
 
 test('empty or invalid ranges never create a quote and failed selection persistence preserves its prior visible scope',t=>{
