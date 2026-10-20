@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
-import {revisionBundleOffersMarkup,mountRevisionBundleOffers} from '../dist/workspace/revision-bundle-offers.mjs';
+import {revisionBundleOffersMarkup,mountRevisionBundleOffers,revisionBundlePlans} from '../dist/workspace/revision-bundle-offers.mjs';
+import {bundlePreviewCard} from '../dist/workspace/commerce-bundle-card.mjs';
 
 const ids=['bundle-rewrite','bundle-reduce','bundle-dual'];
 const settle=async()=>{for(let i=0;i<3;i++)await new Promise(resolve=>setImmediate(resolve));};
@@ -51,7 +52,7 @@ test('one exact deliverable SKU upgrades only its card with actual amount, perio
   const mounted=mountRevisionBundleOffers({container:s.root});await settle();
   const card=s.root.querySelector('[data-revision-bundle="bundle-dual"]');
   assert.equal(card.querySelector('h3').textContent,'已发布的组合修改套餐');
-  assert.match(card.textContent,/¥21\.88/);assert.match(card.textContent,/60 天/);assert.match(card.textContent,/综合表达修改× 8 次/);
+  assert.match(card.textContent,/¥21\.88/);assert.match(card.textContent,/60 天/);assert.match(card.textContent,/综合表达修改\s*× 8/);
   assert.equal(card.querySelector('a').getAttribute('href'),'#membership/pay?product=bundle-dual');
   assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="published"]').length,1);
   assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="unpublished"]').length,2);
@@ -67,7 +68,7 @@ test('published nested frozen entitlements are accepted while channel choice sta
   const p=product('bundle-rewrite',{bundleItems:undefined,durationDays:undefined,entitlement:{type:'bundle',durationDays:45,bundleItems:[{key:'revision-reduce',title:'重复表达整理',quantity:3}]}});
   const options=catalogue([p]);options.enabled=false;options.channels.forEach(channel=>channel.ready=false);
   const mounted=mountRevisionBundleOffers({container:s.root,fetchOptions:async()=>response(options)});await settle();
-  const card=s.root.querySelector('[data-revision-bundle="bundle-rewrite"]');assert.match(card.textContent,/45 天/);assert.match(card.textContent,/重复表达整理× 3 次/);
+  const card=s.root.querySelector('[data-revision-bundle="bundle-rewrite"]');assert.match(card.textContent,/45 天/);assert.match(card.textContent,/重复表达整理\s*× 3/);
   assert.equal(card.querySelector('a').getAttribute('href'),'#membership/pay?product=bundle-rewrite');assert.doesNotMatch(s.root.textContent,/微信|支付宝|渠道已开通/);mounted.dispose();
  }finally{s.close();}
 });
@@ -94,7 +95,7 @@ test('invalid, duplicated, unpublished or undeliverable offers cannot inherit pr
  }finally{s.close();}
 });
 
-test('catalogue text is escaped in cards and modal and never becomes arbitrary markup or a redirect',async()=>{
+test('catalogue text is escaped in shared cards and never becomes arbitrary markup or a redirect',async()=>{
  const s=setup();try{
   const p=product('bundle-reduce',{title:'套餐 <img src=x onerror=alert(1)>',description:'<script>执行代码</script> & 真实说明',bundleItems:[{key:'revision-aigc',title:'额度 <svg onload=alert(1)>',quantity:5}]});
   const mounted=mountRevisionBundleOffers({container:s.root,fetchOptions:async()=>response(catalogue([p]))});await settle();
@@ -103,11 +104,12 @@ test('catalogue text is escaped in cards and modal and never becomes arbitrary m
  }finally{s.close();}
 });
 
-test('preview details explain planning without submitting the form or creating a payment',async()=>{
- const s=setup();try{
-  let calls=0,submitted=0,body='';s.w.document.querySelector('form').addEventListener('submit',event=>{event.preventDefault();submitted++;});
-  const mounted=mountRevisionBundleOffers({container:s.root,modal:(title,html)=>{assert.equal(title,'强力查降套餐');calls++;body=html;}});await settle();
-  s.root.querySelector('[data-revision-bundle-details="bundle-rewrite"]').click();assert.equal(calls,1);assert.equal(submitted,0);assert.match(body,/尚未上架/);assert.match(body,/不创建订单、不扣款/);assert.doesNotMatch(body,/membership\/pay|¥/);assert.equal(s.requests.length,1);assert.equal(s.w.localStorage.length,0);mounted.dispose();
+test('unpublished specialist cards use the shared detail route rather than a separate modal or a payment action',async()=>{
+ const s=setup('membership');try{
+  let calls=0;const mounted=mountRevisionBundleOffers({container:s.root,modal:()=>calls++});await settle();
+  const links=[...s.root.querySelectorAll('[data-revision-bundle] a.btn')];
+  assert.deepEqual(links.map(link=>link.getAttribute('href')),['#membership/checkout?kind=bundle&plan=rewrite&quantity=1','#membership/checkout?kind=bundle&plan=reduce&quantity=1','#membership/checkout?kind=bundle&plan=dual&quantity=1']);
+  assert.ok(links.every(link=>link.textContent.includes('查看套餐详情')));assert.equal(s.root.querySelector('button[data-revision-bundle-details]'),null);assert.equal(calls,0);assert.equal(s.requests.length,1);assert.equal(s.w.localStorage.length,0);noPayment(s.root);mounted.dispose();
  }finally{s.close();}
 });
 
@@ -141,6 +143,15 @@ test('a new mount of the same root replaces the previous request and owns the pu
  }finally{s.close();}
 });
 
+test('replacing an entire specialist article preserves focus on its matching shared offer without touching a neighbouring form',async()=>{
+ const s=setup('membership');try{
+  let finish;const mounted=mountRevisionBundleOffers({container:s.root,fetchOptions:async()=>new Promise(resolve=>finish=resolve)});await settle();
+  const original=s.root.querySelector('[data-commerce-offer="bundle:bundle-dual"]');original.focus();assert.equal(s.w.document.activeElement,original);
+  finish(response(catalogue([product()])));await settle();
+  const updated=s.root.querySelector('[data-commerce-offer="bundle:bundle-dual"]');assert.notEqual(updated,original);assert.equal(s.w.document.activeElement,updated);assert.equal(updated.getAttribute('href'),'#membership/pay?product=bundle-dual');assert.equal(s.w.document.querySelector('textarea').value,'用户手工正文');mounted.dispose();
+ }finally{s.close();}
+});
+
 test('external abort and detached roots prevent late JSON results from exposing checkout',async()=>{
  for(const mode of ['abort','detached']){
   const s=setup();try{
@@ -166,10 +177,19 @@ test('an already aborted view starts no catalogue read and an absent root is a s
  }finally{s.close();}
 });
 
-test('bundle styling stays scoped, contains no external artwork and collapses cards on mobile',async()=>{
- const css=await readFile(new URL('../dist/workspace/revision-bundle-offers.css',import.meta.url),'utf8');
- assert.doesNotMatch(css,/url\(|@import|animation:|position:fixed/);
- assert.match(css,/grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
- assert.match(css,/@media\(max-width:720px\)[\s\S]*\.revision-bundle-offers \.revision-bundle-grid\{grid-template-columns:1fr/);
- for(const selector of css.replace(/@media[^{}]+\{/g,'').split('}').map(rule=>rule.split('{')[0].trim()).filter(Boolean))assert.ok(selector.split(',').every(part=>part.trim().startsWith('.revision-bundle-offers')),selector);
+test('specialist and research bundles use the same card structure, grid classes and responsive purchase styles',async()=>{
+ const s=setup('membership');try{
+  const rendererRoot=s.w.document.createElement('div');rendererRoot.innerHTML=bundlePreviewCard({id:'reading',name:'文献研读套餐',audience:'研读资料',features:['文献解读'],description:'科研辅助规划',priceCents:990,price:9.9,durationDays:90,totalUses:1});
+  const researchCard=rendererRoot.querySelector('article'),specialCard=s.root.querySelector('[data-revision-bundle]');
+  for(const card of [researchCard,specialCard]){
+   assert.ok(card.classList.contains('purchase-plan'));assert.ok(card.classList.contains('commerce-center-plan'));assert.ok(card.classList.contains('commerce-center-plan-bundle'));
+   for(const selector of ['.commerce-center-plan-cover','.purchase-plan-top','.purchase-status','.purchase-price','.commerce-center-plan-body','.commerce-center-feature-label','ul','.btn.full','.commerce-center-plan-footnote'])assert.ok(card.querySelector(selector),selector);
+  }
+  assert.ok(s.root.classList.contains('commerce-center-section'));assert.ok(s.root.querySelector('.purchase-plans.commerce-center-plan-grid'));
+  assert.equal(s.root.querySelector('.revision-bundle-card,.revision-bundle-card-content,.revision-bundle-art,.revision-bundle-price'),null);
+  const css=await readFile(new URL('../dist/workspace/commerce-center.css',import.meta.url),'utf8');assert.match(css,/commerce-center-plan-grid\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);assert.match(css,/@(?:media|container)[\s\S]*commerce-center-plan-grid[\s\S]*grid-template-columns:minmax\(0,1fr\)/);
+  assert.ok(Object.isFrozen(revisionBundlePlans));assert.deepEqual(revisionBundlePlans.map(plan=>plan.id),['rewrite','reduce','dual']);
+  assert.ok(revisionBundlePlans.every(plan=>plan.features.length&&Object.isFrozen(plan.features)&&!('price' in plan)&&!('priceCents' in plan)));
+  assert.doesNotMatch(revisionBundlePlans.flatMap(plan=>plan.features).join(' '),/旗舰版查重|AIGC 检测|自动复测|保证|\d+ 次/);
+ }finally{s.close();}
 });
