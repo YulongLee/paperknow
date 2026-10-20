@@ -17,7 +17,11 @@ function setup(kind='reduce'){
  w.scrollTo=()=>{};
  return {dom,w,root,requests,close:()=>dom.window.close()};
 }
-const noPayment=root=>{assert.equal(root.querySelector('[data-revision-bundle-checkout]'),null);assert.equal(root.querySelector('a[href*="membership/pay"]'),null);assert.doesNotMatch(root.textContent,/¥|￥|99 元|129 元|159 元|旗舰版查重 ×|AIGC 检测 ×/);};
+const noPayment=root=>{assert.equal(root.querySelector('[data-revision-bundle-checkout]'),null);assert.equal(root.querySelector('a[href*="membership/pay"]'),null);};
+const referencePrices=root=>{
+ assert.deepEqual([...root.querySelectorAll('.purchase-price b')].map(node=>node.textContent),['¥99','¥129','¥159']);
+ assert.ok([...root.querySelectorAll('.purchase-price span')].every(node=>node.textContent==='方案价 / 套 · 未上架'));
+};
 
 test('the specialist catalogue preserves three original names without coupling to a modification form',()=>{
  for(const kind of ['reduce','aigc','membership','invalid']){
@@ -34,10 +38,16 @@ test('the specialist catalogue preserves three original names without coupling t
  }
 });
 
-test('empty server catalogue labels the retained bundle cards unpublished without prices or checkout',async()=>{
+test('empty server catalogue retains owner-approved plan prices and exact service counts without opening checkout',async()=>{
  const s=setup();try{
   const mounted=mountRevisionBundleOffers({container:s.root});await settle();
-  assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="unpublished"]').length,3);noPayment(s.root);
+  assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="unpublished"]').length,3);noPayment(s.root);referencePrices(s.root);
+  for(const card of s.root.querySelectorAll('[data-revision-bundle]')){
+   assert.equal(card.querySelectorAll('ul li').length,4);
+   assert.ok([...card.querySelectorAll('ul li')].every(node=>node.textContent.includes('× 2 次')));
+   assert.match(card.textContent,/旗舰版查重 × 2 次（待开放）/);assert.match(card.textContent,/AIGC 检测 × 2 次（待开放）/);
+   assert.match(card.textContent,/修改建议 × 2 次/);assert.doesNotMatch(card.textContent,/规划：|售价待确认|保证|官方报告/);
+  }
   assert.match(s.root.querySelector('[role="status"]').textContent,/原有套餐方案仍在/);
   assert.deepEqual(s.requests.map(({url,method,credentials,cache})=>({url,method,credentials,cache})),[{url:'/api/payments/options',method:'GET',credentials:'same-origin',cache:'no-store'}]);
   mounted.dispose();
@@ -53,6 +63,7 @@ test('one exact deliverable SKU upgrades only its card with actual amount, perio
   const card=s.root.querySelector('[data-revision-bundle="bundle-dual"]');
   assert.equal(card.querySelector('h3').textContent,'已发布的组合修改套餐');
   assert.match(card.textContent,/¥21\.88/);assert.match(card.textContent,/60 天/);assert.match(card.textContent,/综合表达修改\s*× 8/);
+  assert.doesNotMatch(card.textContent,/¥159|方案价|旗舰版查重|待开放/);
   assert.equal(card.querySelector('a').getAttribute('href'),'#membership/pay?product=bundle-dual');
   assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="published"]').length,1);
   assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="unpublished"]').length,2);
@@ -115,7 +126,7 @@ test('unpublished specialist cards use the shared detail route rather than a sep
 
 test('network and malformed catalogue failures keep three cards with an honest unavailable-information state',async()=>{
  const cases=[async()=>{throw Error('Offline');},async()=>({ok:false}),async()=>response({products:[]}),async()=>response({products:'bad',channels:[]}),async()=>({ok:true,json:async()=>{throw Error('Invalid JSON');}})];
- for(const fetchOptions of cases){const s=setup();try{const mounted=mountRevisionBundleOffers({container:s.root,fetchOptions});await settle();assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="failed"]').length,3);assert.match(s.root.querySelector('[role="status"]').textContent,/商品信息暂未取得/);noPayment(s.root);mounted.dispose();}finally{s.close();}}
+ for(const fetchOptions of cases){const s=setup();try{const mounted=mountRevisionBundleOffers({container:s.root,fetchOptions});await settle();assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="failed"]').length,3);assert.match(s.root.querySelector('[role="status"]').textContent,/商品信息暂未取得/);noPayment(s.root);referencePrices(s.root);assert.match(s.root.textContent,/所列为方案价/);mounted.dispose();}finally{s.close();}}
 });
 
 test('dispose aborts and prevents a late catalogue from repainting a new route',async()=>{
@@ -167,7 +178,7 @@ test('timeout is bounded, aborts the read and prevents late success from overwri
   let timeout,finish,requestSignal,seenDelay;
   s.w.setTimeout=(callback,delay)=>{timeout=callback;seenDelay=delay;return 712;};s.w.clearTimeout=()=>{};
   const mounted=mountRevisionBundleOffers({container:s.root,timeoutMs:25,fetchOptions:async(_url,request)=>{requestSignal=request.signal;return new Promise(resolve=>finish=resolve);}});await settle();assert.equal(seenDelay,25);timeout();
-  assert.equal(requestSignal.aborted,true);assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="failed"]').length,3);finish(response(catalogue([product()])));await settle();noPayment(s.root);assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="failed"]').length,3);mounted.dispose();
+  assert.equal(requestSignal.aborted,true);assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="failed"]').length,3);finish(response(catalogue([product()])));await settle();noPayment(s.root);referencePrices(s.root);assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="failed"]').length,3);mounted.dispose();
  }finally{s.close();}
 });
 
@@ -189,7 +200,15 @@ test('specialist and research bundles use the same card structure, grid classes 
   assert.equal(s.root.querySelector('.revision-bundle-card,.revision-bundle-card-content,.revision-bundle-art,.revision-bundle-price'),null);
   const css=await readFile(new URL('../dist/workspace/commerce-center.css',import.meta.url),'utf8');assert.match(css,/commerce-center-plan-grid\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);assert.match(css,/@(?:media|container)[\s\S]*commerce-center-plan-grid[\s\S]*grid-template-columns:minmax\(0,1fr\)/);
   assert.ok(Object.isFrozen(revisionBundlePlans));assert.deepEqual(revisionBundlePlans.map(plan=>plan.id),['rewrite','reduce','dual']);
-  assert.ok(revisionBundlePlans.every(plan=>plan.features.length&&Object.isFrozen(plan.features)&&!('price' in plan)&&!('priceCents' in plan)));
-  assert.doesNotMatch(revisionBundlePlans.flatMap(plan=>plan.features).join(' '),/旗舰版查重|AIGC 检测|自动复测|保证|\d+ 次/);
+  assert.ok(revisionBundlePlans.every(plan=>plan.features.length===4&&Object.isFrozen(plan.features)&&Number.isSafeInteger(plan.priceCents)&&!('durationDays' in plan)));
+  assert.deepEqual(revisionBundlePlans.map(plan=>plan.priceCents),[9900,12900,15900]);
+  assert.doesNotMatch(revisionBundlePlans.flatMap(plan=>plan.features).join(' '),/自动复测|保证|官方报告/);
  }finally{s.close();}
+});
+
+test('reference prices accept only bounded integer cents and cannot inject markup or create payment actions',()=>{
+ for(const priceCents of [0,-1,1.5,10000001,Number.MAX_SAFE_INTEGER,'<img src=x onerror=alert(1)>']){
+  const dom=new JSDOM(bundlePreviewCard({id:'rewrite',name:'参考套餐',priceCents,features:['内容']},{state:'unpublished',attributes:{'data-revision-bundle':'bundle-rewrite'}}));
+  try{const root=dom.window.document;assert.equal(root.querySelector('.purchase-price b').textContent,'待发布');assert.equal(root.querySelector('img,[onerror]'),null);noPayment(root);}finally{dom.window.close();}
+ }
 });

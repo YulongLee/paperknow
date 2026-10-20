@@ -2,12 +2,12 @@ import {icon} from './ui.mjs';
 import {bundlePreviewCard,publishedBundleCard} from './commerce-bundle-card.mjs';
 import {withStableView} from './view-stability.mjs';
 
-// These identities preserve the owner's original catalogue. Pricing and usable
-// quotas are read only from the current server catalogue, never from previews.
+// The owner-approved reference prices and service counts are display-only.
+// Only a validated published server product can expose payment and usable quotas.
 export const revisionBundlePlans=Object.freeze([
- Object.freeze({id:'rewrite',name:'强力查降套餐',audience:'围绕已有正文，整理重复表达',description:'规划围绕重复表达整理、逐段改写与复核组织服务。',featured:false,features:Object.freeze(['规划：重复表达整理与逐段改写','规划：原稿对照、修改记录与复核','服务项、次数与有效期待发布'])}),
- Object.freeze({id:'reduce',name:'超值降 AI 套餐',audience:'完善自然、连贯的学术表达',description:'规划围绕句式调整、表达精修与逐段审核组织服务。',featured:true,features:Object.freeze(['规划：自然学术表达与句式精修','规划：逐段审核与修改记录','服务项、次数与有效期待发布'])}),
- Object.freeze({id:'dual',name:'AIGC+重复率双降套餐',audience:'兼顾重复表达与语言自然度',description:'规划兼顾重复表达与语言自然度的组合修改服务。',featured:false,features:Object.freeze(['规划：重复表达与语言风格综合修改','规划：原稿对照、版本保存与复核','服务项、次数与有效期待发布'])})
+ Object.freeze({id:'rewrite',name:'强力查降套餐',priceCents:9900,audience:'围绕已有正文，整理重复表达',description:'查重、AIGC 检测、修改建议与强力降重的组合方案；套餐服务与有效期待开放。',featured:false,features:Object.freeze(['旗舰版查重 × 2 次（待开放）','AIGC 检测 × 2 次（待开放）','修改建议 × 2 次','一键强力降重 × 2 次'])}),
+ Object.freeze({id:'reduce',name:'超值降 AI 套餐',priceCents:12900,audience:'完善自然、连贯的学术表达',description:'查重、AIGC 检测、修改建议与降 AIGC 的组合方案；套餐服务与有效期待开放。',featured:true,features:Object.freeze(['旗舰版查重 × 2 次（待开放）','AIGC 检测 × 2 次（待开放）','修改建议 × 2 次','一键降 AIGC × 2 次'])}),
+ Object.freeze({id:'dual',name:'AIGC+重复率双降套餐',priceCents:15900,audience:'兼顾重复表达与语言自然度',description:'查重、AIGC 检测、修改建议与双降的组合方案；套餐服务与有效期待开放。',featured:false,features:Object.freeze(['旗舰版查重 × 2 次（待开放）','AIGC 检测 × 2 次（待开放）','修改建议 × 2 次','AIGC+重复率双降 × 2 次'])})
 ]);
 const plans=revisionBundlePlans,mounts=new WeakMap();
 const sku=plan=>'bundle-'+plan.id;
