@@ -57,10 +57,12 @@ html:has(.product-header){scroll-padding-top:96px}
 .product-header #main-nav>a:hover .nav-link-label{transform:translateY(-1px)}
 .nav-motion-line{position:absolute;left:0;bottom:14px;width:var(--nav-line-width,0px);height:2px;border-radius:2px;background:#2d6df3;transform:translate3d(var(--nav-line-x,0px),0,0);transition:transform .25s cubic-bezier(.22,.68,0,1),width .25s cubic-bezier(.22,.68,0,1);pointer-events:none}
 .product-header .nav-actions{display:flex;flex:none;align-items:center;gap:18px;margin-left:0;white-space:nowrap}
-.product-header .header-utilities{display:flex;align-items:center;gap:3px;padding:3px;border:1px solid #e5eaf2;border-radius:12px;background:#f6f8fc}
+.product-header .header-utilities{display:flex;align-items:center;gap:12px;padding:0;border:0;border-radius:0;background:transparent}
 .product-header .header-account-actions{display:flex;align-items:center;gap:18px;margin-left:0}
-.product-header .header-download,.product-header .header-plans{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 11px;border:1px solid transparent;border-radius:8px;color:#43536b;font-size:13px;font-weight:500;line-height:1.5;transition:color .18s,background .18s,border-color .18s,box-shadow .18s}
-.product-header .header-download:hover,.product-header .header-plans:hover{color:#2467ef;background:#fff;border-color:#e2e8f2;box-shadow:0 2px 5px #253c5d06}
+.product-header .header-download,.product-header .header-plans{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 11px;border:1px solid #dfe7f2;border-radius:9px;background:#fff;color:#43536b;font-size:13px;font-weight:500;line-height:1.5;transition:color .18s,background .18s,border-color .18s,box-shadow .18s}
+.product-header .header-download:hover{color:#2467ef;background:#f7faff;border-color:#b9cee8;box-shadow:0 2px 5px #253c5d06}
+.product-header .header-plans{color:#735a36;background:#fffaf3;border-color:#eedfc9}
+.product-header .header-plans:hover{color:#805d25;background:#fff6e5;border-color:#ddc396;box-shadow:0 2px 5px #6e4e1a06}
 .product-header .header-download>span[data-icon],.product-header .header-plans>span[data-icon]{display:inline-flex;align-items:center}
 .product-header .header-download svg,.product-header .header-plans svg{width:16px;height:16px;stroke-width:1.7}
 .product-header .header-download svg{color:#5b79a8}
@@ -108,7 +110,7 @@ html:has(.product-header){scroll-padding-top:96px}
  .product-header .nav-actions,.product-header .header-account-actions{display:contents}
  .product-header .header-account-actions{border:0;padding:0}
  .product-header .header-account-actions:before{display:none}
- .product-header .header-utilities{order:5;flex:0 0 100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:3px;border-radius:11px}
+ .product-header .header-utilities{order:5;flex:0 0 100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
  .product-header #account-button{margin-left:auto;min-width:32px;font-size:12px;padding:7px 2px}
  .product-header .header-download,.product-header .header-plans{min-height:44px;padding:9px 12px;font-size:12px}
  .product-header .nav-wrap #main-nav{padding:12px 16px 16px;max-height:calc(100dvh - 124px)}
