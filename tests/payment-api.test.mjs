@@ -6,7 +6,7 @@ import {database} from '../backend/database.mjs';
 import {createAPI} from '../backend/api.mjs';
 import {createSession} from '../backend/auth.mjs';
 import {validateProvider,createProviderPayment,validateAlipayPaymentURL,validateAlipayQRPaymentURL} from '../backend/payment-providers.mjs';
-import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
+import {createBillingService,billingServiceTypes,toolBillingServiceTypes} from '../backend/billing-service.mjs';
 
 const rsa=generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});
 const wechat={appId:'wx1234567890abcdef',merchantId:'1234567890',merchantSerial:'1234567890ABCDEF1234567890ABCDEF',privateKey:rsa.privateKey,apiV3Key:'a'.repeat(32),platformPublicKeyId:'PUB_KEY_ID_1234567890',platformPublicKey:rsa.publicKey};
@@ -112,7 +112,7 @@ test('public catalogue contains approved credit tiers and only fully priced publ
 test('public payment options expose scoped service prices without runtime or merchant settings',async t=>{
  const f=await fixture(t);await f.channel();
  const response=await f.request('/api/payments/options',{cookie:''});
- assert.equal(response.status,200);assert.equal(response.value.toolBilling.services.length,14);
+ assert.equal(response.status,200);assert.equal(response.value.toolBilling.services.length,32);assert.deepEqual(response.value.toolBilling.services.map(service=>service.key),toolBillingServiceTypes.map(service=>service.key));assert.equal(new Set(response.value.toolBilling.services.map(service=>service.key)).size,32);
  for(const service of response.value.toolBilling.services){
   assert.deepEqual(Object.keys(service).sort(),['available','creditCost','effectiveCreditCost','effectiveMode','group','key','mode','title']);
  }
