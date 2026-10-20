@@ -13,7 +13,7 @@ const runtime={enabled:true,engine:'claude-agent-sdk',baseURL:'https://tools.exa
 const original='这是功能验收的合成资料，记录了20名参与者，引用保留[1]。';
 const input=(operation='rewrite',snapshot={})=>({kind:operation==='rewrite'?'revision':['read','answer','translate'].includes(operation)?'literature':operation==='ppt'?'presentation':'research',operation,snapshot:{title:'【合成验收】研究材料',text:original,language:'en',question:'原文提供了什么信息？',...snapshot}});
 const result=(body,trace=[])=>({text:JSON.stringify({complete:true,sourceIds:[],...body}),trace,usage:{input:100,output:100},costUsd:.001});
-const revised=task=>result({paragraphs:task.context.unit.paragraphs.map(p=>({id:p.id,original:p.original,revised:p.original.replace('这是','这份')}))});
+const revised=task=>result({paragraphs:task.context.unit.paragraphs.map(p=>({id:p.id,original:p.original,revised:p.original.includes('这是')?p.original.replace('这是','这份'):'表达调整：'+p.original}))});
 async function fixture(t,extra={}){
  const db=database(':memory:'),users={};for(const id of ['alice','bob']){db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run(id,id+'@example.test',id,null,'user',new Date().toISOString());users[id]={id,cookie:'pk_session='+createSession(db,id)};}
  const config={getAI:()=>({aiEnabled:false}),getAgentSettings:version=>!version||version===runtime.version?{...runtime}:null,agentTaskRunner:async({task})=>revised(task),toolPollMs:60000,...extra};const billing=createBillingService(db,config);config.billing=billing;let worker;

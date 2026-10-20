@@ -14,6 +14,10 @@ import {JSDOM} from 'jsdom';
 import {esc,icon,empty,formatDate} from '../dist/workspace/ui.mjs';
 import {toolBanner} from '../dist/workspace/tool-banner.mjs';
 import {mountAigcDetection,ensureAigcStyle} from '../dist/workspace/aigc-detection.mjs';
+import {revisionStrategy} from '../dist/workspace/revision-strategy.mjs';
+import {openRevisionReport} from '../dist/workspace/revision-report.mjs';
+import {normalizeConfirmedRevisionReport,reportSources} from '../dist/workspace/revision-report-model.mjs';
+import {validateRevisionProtection} from '../dist/workspace/revision-protection.mjs';
 import {workspaceLinks} from '../dist/workspace/interface.mjs';
 import * as revisionModel from '../dist/workspace/revision-model.mjs';
 import * as taskModel from '../dist/workspace/task-model.mjs';
@@ -316,7 +320,7 @@ test('direct AI-rate navigation mounts the AI reduction service and updates the 
 
 test('real AI reduction entry keeps its own heading, theme and selection across shared revision routes',()=>{
  const dom=new JSDOM('<div class="breadcrumb"><strong></strong></div><main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#category/aigc',runScripts:'outside-only'});
- Object.assign(dom.window,{captureDraftScope,workspaceJobLabel,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),mountAigcDetection,ensureAigcStyle,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
+ Object.assign(dom.window,{captureDraftScope,workspaceJobLabel,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),mountAigcDetection,ensureAigcStyle,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
  try{
   vm.runInContext('(function(){'+revisionSource+'\nglobalThis.mountActualRevision=mountRevision;})()',dom.getInternalVMContext());
   const query=selector=>dom.window.document.querySelector(selector);
@@ -326,7 +330,7 @@ test('real AI reduction entry keeps its own heading, theme and selection across 
    assert.equal(query('#revision-service').dataset.revisionKind,'aigc');
    assert.equal(query('.dashboard').dataset.revisionTheme,'aigc');
    assert.equal(query('.tool-banner h1').textContent,'降 AI 率');
-   assert.equal(query('.revision-entry-summary [data-revision-selection-title]').textContent,'中文表达精修');
+   assert.equal(query('.revision-entry-summary [data-revision-selection-title]').textContent,'自然学术表达精修');
    assert.equal(query('.revision-plan-card[aria-pressed="true"]').dataset.revisionPlan,'strong');
    assert.match(query('[data-revision-plan-status]').textContent,/可生成逐段候选修改.*不预测或承诺/);
    assert.ok(query('#revision-entry-form'));assert.equal(query('#revision-space'),null);
@@ -337,7 +341,7 @@ test('real AI reduction entry keeps its own heading, theme and selection across 
   assert.equal(query('#revision-service').dataset.revisionKind,'reduce');
   assert.equal(query('.dashboard').dataset.revisionTheme,'reduce');
   assert.equal(query('.tool-banner h1').textContent,'降重复率');
-  assert.equal(query('.revision-entry-summary [data-revision-selection-title]').textContent,'降重精修');
+  assert.equal(query('.revision-entry-summary [data-revision-selection-title]').textContent,'重复表达精修');
   query('[data-revision-plan="dual"]').click();
   assert.equal(query('.tool-banner h1').textContent,'降重复率');
   assert.equal(query('.revision-plan-card[aria-pressed="true"]').dataset.revisionPlan,'dual');

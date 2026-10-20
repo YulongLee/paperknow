@@ -7,6 +7,10 @@ import {toolBanner} from '../dist/workspace/tool-banner.mjs';
 import {withStableView} from '../dist/workspace/view-stability.mjs';
 import {documentExportButtons,bindDocumentExports} from '../dist/workspace/document-export.mjs';
 import {mountRevisionAi} from '../dist/workspace/revision-ai.mjs';
+import {revisionStrategy} from '../dist/workspace/revision-strategy.mjs';
+import {openRevisionReport} from '../dist/workspace/revision-report.mjs';
+import {normalizeConfirmedRevisionReport,reportSources} from '../dist/workspace/revision-report-model.mjs';
+import {validateRevisionProtection} from '../dist/workspace/revision-protection.mjs';
 import {mountAigcDetection,ensureAigcStyle} from '../dist/workspace/aigc-detection.mjs';
 import * as revisionModel from '../dist/workspace/revision-model.mjs';
 import * as detectionModel from '../dist/workspace/detection-model.mjs';
@@ -17,7 +21,7 @@ const detectionSource=clean(await readFile(new URL('../dist/workspace/detection.
 function fixture(t,{hash='#category/reduce',failSave=false,extractFile=async()=>({text:'真正提取的第一段正文。\n\n真正提取的第二段正文。',warnings:[]})}={}){
  const dom=new JSDOM('<nav class="sidebar"><a class="nav-link" href="#category/reduce">降重</a><a class="nav-link" href="#category/aigc">表达</a></nav><div class="breadcrumb"><strong></strong></div><main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'https://paperknow.cn/workspace.html'+hash,runScripts:'outside-only'}),w=dom.window,notices=[],downloads=[],requests=[];
  globalThis.document=w.document;const qs=selector=>w.document.querySelector(selector);qs('dialog').close=()=>{};
- Object.assign(w,{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports,...revisionModel,...detectionModel,...detectionEngine,__extractFile:extractFile,importWorkspaceDocument:extractFile,documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[{id:'p1',name:'真实项目'}],list:key=>JSON.parse(w.localStorage.getItem(key)||'[]'),write:(key,rows)=>{if(failSave)throw Error('模拟保存空间不足');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:record=>requests.push(record),download:(...args)=>downloads.push(args)});
+ Object.assign(w,{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports,...revisionModel,...detectionModel,...detectionEngine,__extractFile:extractFile,importWorkspaceDocument:extractFile,documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[{id:'p1',name:'真实项目'}],list:key=>JSON.parse(w.localStorage.getItem(key)||'[]'),write:(key,rows)=>{if(failSave)throw Error('模拟保存空间不足');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:record=>requests.push(record),download:(...args)=>downloads.push(args)});
  w.confirm=()=>false;
  const ctx={mode:'reduce',notify:text=>notices.push(text),modal:(_title,html)=>{qs('#workspace-dialog-body').innerHTML=html;}};
  const click=selector=>{const target=qs(selector);assert.ok(target,'Missing '+selector);target.click();};
