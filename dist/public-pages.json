@@ -9,13 +9,13 @@
     {
       "slug": "/features/ai-writing/",
       "file": "features/ai-writing/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-10-21",
       "title": "AI 论文写作工具｜毕业论文五步确认与分章生成"
     },
     {
       "slug": "/features/ai-reading/",
       "file": "features/ai-reading/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-10-21",
       "title": "AI 文献研读与翻译｜真实原文问答、引用定位与文献检索"
     },
     {
@@ -27,19 +27,19 @@
     {
       "slug": "/features/reduce-ai/",
       "file": "features/reduce-ai/index.html",
-      "modifiedAt": "2026-10-18",
-      "title": "降 AI 率功能说明｜论文表达核对与原稿管理"
+      "modifiedAt": "2026-10-21",
+      "title": "论文表达优化与 AI 文本鉴别｜原稿对照、逐段修改"
     },
     {
       "slug": "/features/similarity-check/",
       "file": "features/similarity-check/index.html",
-      "modifiedAt": "2026-10-18",
-      "title": "论文文本比对工具｜本地材料与相似片段核对"
+      "modifiedAt": "2026-10-21",
+      "title": "论文文本比对｜本地材料与公开网络来源核对"
     },
     {
       "slug": "/features/ppt/",
       "file": "features/ppt/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-10-21",
       "title": "答辩 PPT 制作｜开题、毕业与可编辑 PPTX"
     },
     {
@@ -63,7 +63,7 @@
     {
       "slug": "/guides/paper-outline/",
       "file": "guides/paper-outline/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-10-21",
       "title": "论文大纲生成与编辑指南｜AI 提纲、字数分配与核对"
     },
     {
@@ -81,25 +81,25 @@
     {
       "slug": "/guides/research-ppt/",
       "file": "guides/research-ppt/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-10-21",
       "title": "开题与毕业 PPT 制作步骤｜结构、页面与 PPTX 导出"
     },
     {
       "slug": "/guides/research-charts/",
       "file": "guides/research-charts/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-10-21",
       "title": "科研基础图表制作步骤｜CSV 输入与 SVG、PNG 导出"
     },
     {
       "slug": "/about/",
       "file": "about/index.html",
-      "modifiedAt": "2026-10-19",
+      "modifiedAt": "2026-10-21",
       "title": "关于 PaperKnow｜论文写作与科研辅助工作台"
     },
     {
       "slug": "/help/",
       "file": "help/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-10-21",
       "title": "PaperKnow 使用帮助｜登录、保存、上传与成果导出"
     },
     {
@@ -123,7 +123,7 @@
     {
       "slug": "/status/",
       "file": "status/index.html",
-      "modifiedAt": "2026-10-19",
+      "modifiedAt": "2026-10-21",
       "title": "PaperKnow 功能开放状态｜账户、AI、检索与导出范围"
     }
   ]

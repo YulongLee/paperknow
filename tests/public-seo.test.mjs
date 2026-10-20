@@ -8,7 +8,8 @@ import {buildPublicSite} from '../scripts/build-public-site.mjs';
 import {createServer} from '../server.mjs';
 
 const origin='https://paperknow.cn';
-const expectedModifiedAt=slug=>['/features/research-tools/','/about/','/privacy/','/status/'].includes(slug)?'2026-10-19':['/','/features/','/guides/'].includes(slug)?'2026-10-15':'2026-10-18';
+const refreshedPages=new Set(['/','/features/ai-writing/','/features/ai-reading/','/features/reduce-ai/','/features/similarity-check/','/features/ppt/','/guides/paper-outline/','/guides/research-ppt/','/guides/research-charts/','/about/','/help/','/status/']);
+const expectedModifiedAt=slug=>refreshedPages.has(slug)?'2026-10-21':['/features/research-tools/','/privacy/'].includes(slug)?'2026-10-19':['/features/','/guides/'].includes(slug)?'2026-10-15':'2026-10-18';
 const features={
   'ai-writing':'writing','ai-reading':'literature','reduce-similarity':'reduce',
   'reduce-ai':'aigc','similarity-check':'detection','ppt':'ppt',
@@ -67,6 +68,8 @@ test('every public page exposes its own readable title, description, H1 and cano
   const titles=new Set(),descriptions=new Set();
   for(const [slug,{html,document}] of pages){
     assert.equal(document.documentElement.lang,'zh-CN',slug);
+    assert.equal(document.querySelectorAll('#header-start').length,1,`header CTA survives public rendering: ${slug}`);
+    assert.doesNotMatch(html,/id="header-start"=/,`service-only attributes are removed as a whole: ${slug}`);
     const title=document.title.trim(),description=meta(document,'description')?.trim();
     assert.ok(title.includes('PaperKnow'),slug);
     assert.ok(title.length>=12,`specific title: ${slug}`);
@@ -103,6 +106,18 @@ test('share metadata and structured data agree with canonical URLs without fabri
       assert.ok(!types.some(type=>['Offer','AggregateRating','Review','SearchAction'].includes(type)),`unsubstantiated schema: ${slug}`);
     }
   }
+});
+
+test('homepage metadata describes shipped research workflows and keeps its own modification date',()=>{
+  const {document}=pages.get('/'),description=meta(document,'description');
+  assert.match(document.title,/AI 论文写作.*文献研读/);
+  for(const capability of ['11 项','文献检索','翻译','改写','公开网络来源比对','通用 AI 文本鉴别','PPTX','科研绘图','公式'])assert.ok(description.includes(capability),capability);
+  assert.doesNotMatch(description,/待接入|尚未开放|在线 AI 与检索能力以实际开放状态为准/);
+  const data=JSON.parse(document.querySelector('script[type="application/ld+json"]').textContent)['@graph'];
+  assert.equal(data.find(node=>node['@type']==='WebPage').dateModified,'2026-10-21');
+  assert.match(data.find(node=>node['@type']==='WebApplication').description,/毕业论文五步确认与分章生成/);
+  assert.equal(pages.get('/privacy/').document.querySelector('.public-updated').textContent.includes('2026-10-19'),true);
+  assert.equal(pages.get('/terms/').document.querySelector('.public-updated').textContent.includes('2026-10-18'),true);
 });
 
 test('all eight feature pages connect to the correct existing tool and useful public documentation',()=>{
@@ -257,5 +272,9 @@ test('public capability copy reflects shipped AI workflows while retaining real 
  assert.match(text('/features/ppt/'),/确认.*费用/);assert.match(text('/features/research-tools/'),/不执行专业软件、仿真计算|结构示意.*不等于|不是电路仿真/);
  assert.match(text('/features/format/'),/人工.*尚未开放|尚未开放人工/);
  assert.match(text('/features/similarity-check/'),/不能替代学校|不可以/);
- assert.match(text('/status/'),/2026 年 10 月 19 日/);assert.match(text('/status/'),/AI 检测率与人工交付|AI 率检测.*学校数据库/);
+ assert.match(text('/status/'),/2026 年 10 月 21 日/);assert.match(text('/status/'),/学校指定.*AI 率.*未接入/);
+ assert.match(text('/features/ai-reading/'),/整篇.*中英互译/);
+ assert.match(text('/features/reduce-ai/'),/分段.*置信分/);assert.match(text('/features/reduce-ai/'),/不是论文 AI 字数占比|不代表论文 AI 字数占比/);
+ assert.match(text('/features/similarity-check/'),/本次.*公开网页正文/);assert.match(text('/features/similarity-check/'),/不等于全网覆盖/);
+ for(const slug of Object.keys(features).map(name=>`/features/${name}/`))assert.doesNotMatch(text(slug),/AMiner|MinerU|阿里云|GPT|Claude|Gemini/);
 });

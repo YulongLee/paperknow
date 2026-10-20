@@ -6,12 +6,16 @@ const html=await readFile(new URL('../dist/index.html',import.meta.url),'utf8');
 const code=await readFile(new URL('../dist/home-app.js',import.meta.url),'utf8');
 async function page(t,user,prepare){const dom=new JSDOM(html,{url:'http://localhost/',runScripts:'outside-only'});t.after(()=>dom.window.close());const w=dom.window;w.matchMedia=query=>({media:query,matches:false,addEventListener(){},removeEventListener(){}});w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};w.localStorage.setItem('paperknow-local-profile',JSON.stringify({name:'过期本地昵称'}));w.fetch=async path=>{if(user==='offline')throw new Error('offline');return {ok:path!='/api/auth/me'||!!user,status:user?200:401,json:async()=>path==='/api/auth/me'?{user}:path==='/api/desktop/releases'?{version:'0.1.0',releases:[]}:{ai:false}};};prepare?.(w);w.eval(code);for(let i=0;i<10;i++)await new Promise(r=>setTimeout(r,1));return w.document;}
 
-function carouselEnvironment({reducedMotion=false}={}){
+function carouselEnvironment({reducedMotion=false,compact=false}={}){
  const timers=new Map();
+ const mediaQueries=new Map();
  let observer,observed,hidden=false,nextId=0;
  return {
   prepare(w){
-   w.matchMedia=query=>({media:query,matches:reducedMotion,addEventListener(){},removeEventListener(){}});
+   w.matchMedia=query=>{
+    const listeners=new Set(),media={media:query,matches:query==='(prefers-reduced-motion: reduce)'?reducedMotion:query==='(max-width: 700px)'?compact:false,addEventListener(type,listener){if(type==='change')listeners.add(listener);},removeEventListener(type,listener){if(type==='change')listeners.delete(listener);}};
+    mediaQueries.set(query,{media,listeners});return media;
+   };
    Object.defineProperty(w.document,'hidden',{get:()=>hidden,configurable:true});
    const originalSetTimeout=w.setTimeout.bind(w),originalClearTimeout=w.clearTimeout.bind(w);
    w.setTimeout=(callback,delay,...args)=>{if(delay!==6000)return originalSetTimeout(callback,delay,...args);const id={carouselTimer:++nextId};timers.set(id,()=>callback(...args));return id;};
@@ -23,6 +27,7 @@ function carouselEnvironment({reducedMotion=false}={}){
    };
   },
   enter(ratio=1){assert.ok(observed,'the carousel observes its viewport');observer([{target:observed,isIntersecting:ratio>0,intersectionRatio:ratio}]);},
+  setCompact(value){const state=mediaQueries.get('(max-width: 700px)');assert.ok(state,'the carousel watches the mobile breakpoint');state.media.matches=value;state.listeners.forEach(listener=>listener({matches:value,media:state.media.media}));},
   hide(d,value){hidden=value;d.dispatchEvent(new d.defaultView.Event('visibilitychange'));},
   get pending(){return timers.size;},
   get timer(){return [...timers.keys()][0];},
@@ -32,7 +37,16 @@ function carouselEnvironment({reducedMotion=false}={}){
 test('guest homepage ignores local nickname and offers real registration plus local tools',async t=>{const d=await page(t,null);assert.equal(d.querySelector('#account-button').textContent,'登录');assert.equal(d.querySelector('#account-button').classList.contains('is-signed-in'),false);assert.equal(d.querySelector('#header-start').getAttribute('href'),'/auth.html?mode=register');assert.equal(d.querySelector('#header-start').textContent.trim(),'开始使用');const initial=new JSDOM(html);t.after(()=>initial.window.close());const originalLabels=Array.from(initial.window.document.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim());assert.deepEqual(Array.from(d.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim()),originalLabels,'guest CTA copy outside the header keeps its own context');assert.ok(d.querySelector('a[href="/workspace.html#category/writing"]'));assert.equal(d.querySelectorAll('#status-button').length,1);});
 test('authenticated homepage safely renders actual account name and shows admin entry only for administrator',async t=>{const name='管理员<script>';const d=await page(t,{name,email:'a@example.invalid',role:'admin'});const account=d.querySelector('#account-button');assert.equal(account.classList.contains('is-signed-in'),true);assert.equal(account.querySelector('.home-account-name').textContent,name);assert.equal(account.querySelector('.home-account-avatar').textContent,'管');assert.equal(account.title,name);assert.equal(account.getAttribute('aria-label'),`打开 ${name} 的账户`);assert.equal(account.querySelector('script'),null);assert.equal(d.querySelector('#header-start').getAttribute('href'),'/workspace.html#home');assert.equal(d.querySelector('#header-start').textContent.trim(),'进入工作台');account.click();assert.ok(d.querySelector('a[href="/admin.html"]'));assert.equal(d.querySelector('#home-dialog-body script'),null);assert.ok(d.querySelector('#home-dialog-body').textContent.includes(name));});
 test('account display truncates text while preserving full identity and email or phone fallback',async t=>{const name='Researcher<img src=x onerror=alert(1)>';const d=await page(t,{name,email:'u@example.invalid',role:'user'});const account=d.querySelector('#account-button');assert.equal(account.querySelector('.home-account-name').textContent,Array.from(name).slice(0,16).join(''));assert.equal(account.title,name);assert.equal(account.querySelector('img'),null);const email=await page(t,{email:'person@example.invalid',role:'user'});assert.equal(email.querySelector('.home-account-avatar').textContent,'P');assert.equal(email.querySelector('.home-account-name').textContent,'person@example.i');const phone=await page(t,{phone:'13800138000',role:'user'});assert.equal(phone.querySelector('.home-account-name').textContent,'13800138000');});
-test('ordinary user cannot see admin link; offline homepage retains usable local links and the guest header CTA',async t=>{const d=await page(t,{name:'用户',email:'u@example.invalid',role:'user'});assert.ok(Array.from(d.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim()).every(label=>label==='继续我的研究'));d.querySelector('#account-button').click();assert.equal(d.querySelector('a[href="/admin.html"]'),null);const offline=await page(t,'offline');assert.equal(offline.querySelector('#account-button').textContent,'登录');assert.equal(offline.querySelector('#header-start').textContent.trim(),'开始使用');assert.equal(offline.querySelector('#header-start').getAttribute('href'),'/auth.html?mode=register');const guest=await page(t,null);assert.deepEqual(Array.from(offline.querySelectorAll('[data-service-start]'),a=>[a.textContent.trim(),a.getAttribute('href')]),Array.from(guest.querySelectorAll('[data-service-start]'),a=>[a.textContent.trim(),a.getAttribute('href')]));assert.ok(offline.querySelector('a[href="/workspace.html#home"]'));});
+test('ordinary user keeps contextual CTA labels and offline homepage retains usable links and the guest header CTA',async t=>{const d=await page(t,{name:'用户',email:'u@example.invalid',role:'user'});const guest=await page(t,null);assert.deepEqual(Array.from(d.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim()),Array.from(guest.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim()),'account hydration preserves each section’s action label');assert.ok(Array.from(d.querySelectorAll('[data-service-start]'),a=>a.getAttribute('href')).every(href=>href==='/workspace.html#home'));d.querySelector('#account-button').click();assert.equal(d.querySelector('a[href="/admin.html"]'),null);const offline=await page(t,'offline');assert.equal(offline.querySelector('#account-button').textContent,'登录');assert.equal(offline.querySelector('#header-start').textContent.trim(),'开始使用');assert.equal(offline.querySelector('#header-start').getAttribute('href'),'/auth.html?mode=register');assert.deepEqual(Array.from(offline.querySelectorAll('[data-service-start]'),a=>[a.textContent.trim(),a.getAttribute('href')]),Array.from(guest.querySelectorAll('[data-service-start]'),a=>[a.textContent.trim(),a.getAttribute('href')]));assert.ok(offline.querySelector('a[href="/workspace.html#home"]'));});
+
+test('account hydration completes independently when capability discovery fails or remains pending',async t=>{
+ const user={name:'已登录研究员',email:'researcher@example.invalid',role:'user'};
+ for(const pending of [false,true]){
+  const d=await page(t,user,w=>{const fetch=w.fetch;w.fetch=path=>path==='/api/capabilities'?(pending?new Promise(()=>{}):Promise.reject(new Error('capabilities unavailable'))):fetch(path);});
+  assert.equal(d.querySelector('.home-account-name').textContent,user.name);
+  assert.equal(d.querySelector('#header-start').getAttribute('href'),'/workspace.html#home');
+ }
+});
 
 test('navigation indicator follows pointer and keyboard focus, restores the current page, and repositions after layout changes',async t=>{
  let finishFonts;
@@ -136,7 +150,8 @@ test('homepage keeps sample results and unpublished desktop files clearly identi
  const d=await page(t,null);
  d.querySelector('[data-example="report"]').click();
  assert.match(d.querySelector('#home-dialog-body').textContent,/不是一次实际检测结果/);
- assert.match(d.querySelector('#home-dialog-body').textContent,/未接入全网检索/);
+ assert.match(d.querySelector('#home-dialog-body').textContent,/本次检索取得的公开网页/);
+ assert.match(d.querySelector('#home-dialog-body').textContent,/不包含学校封闭数据库/);
  d.querySelector('#dialog-close').click();
  for(const card of d.querySelectorAll('[data-desktop-card]')){
   assert.equal(card.querySelector('[data-desktop-status]').textContent,'暂未提供');
@@ -147,8 +162,81 @@ test('homepage keeps sample results and unpublished desktop files clearly identi
  assert.ok(d.querySelector('a[href="/workspace.html#home"]'));
  assert.equal(d.querySelector('[data-download-platform]'),null,'old unavailable modal has been removed');
  d.querySelector('#status-button').click();
- assert.match(d.querySelector('#home-dialog-body').textContent,/尚未配置模型/);
- assert.match(d.querySelector('#home-dialog-body').textContent,/尚未接入在线数据库或检测服务/);
+ assert.match(d.querySelector('#home-dialog-body').textContent,/11 类写作流程/);
+ assert.match(d.querySelector('#home-dialog-body').textContent,/OpenAlex、arXiv/);
+ assert.match(d.querySelector('#home-dialog-body').textContent,/进入功能确认/);
+ assert.doesNotMatch(d.querySelector('#home-dialog-body').textContent,/尚未接入|AI 尚未接入|待开放/);
+});
+
+test('homepage describes real feature coverage and only reports service readiness from capability values',async t=>{
+ const d=await page(t,null,w=>{const fetch=w.fetch;w.fetch=path=>path==='/api/capabilities'?Promise.resolve({ok:true,json:async()=>({writing:{ready:true},thesis:{ready:false},academicSearch:true,aigcDetection:{ready:true},webSimilarity:{ready:true},tools:{ready:true,presentation:{ready:true},researchImages:{ready:true}},payment:true})}):fetch(path);});
+ d.querySelector('#status-button').click();
+ const rows=Array.from(d.querySelectorAll('.status-list > div'));
+ const status=title=>rows.find(row=>row.querySelector('b').textContent===title).querySelector('.status-tag').textContent;
+ assert.equal(status('AI 写作'),'当前可用');
+ assert.equal(status('毕业论文五步流程'),'暂不可用');
+ assert.equal(status('文献翻译'),'进入功能确认');
+ assert.equal(status('联网来源比对'),'当前可用');
+ assert.equal(status('会员、积分与套餐'),'当前可用');
+ d.querySelector('#dialog-close').click();d.querySelector('#about-button').click();
+ assert.match(d.querySelector('#home-dialog-body').textContent,/会员、科研积分与专项套餐/);
+ assert.doesNotMatch(d.querySelector('#home-dialog-body').textContent,/尚未开放|尚未接入/);
+});
+
+const planFixture=(type,extra={})=>({id:type+'-sample',title:{membership:'基础研究会员',credits:'科研积分包',bundle:'文献研读套餐'}[type],status:'active',purchasable:true,currency:'CNY',priceCents:{membership:1990,credits:1000,bundle:990}[type],entitlementType:type,durationDays:type==='credits'?null:type==='bundle'?90:30,creditAmount:type==='credits'?100:null,...extra});
+function withHomePlanResponse(result,calls=[]){return w=>{
+ if(!w.document.querySelector('[data-home-plan-summary]')){
+  const section=w.document.createElement('section');section.dataset.homePlanSummary='';
+  section.innerHTML=['membership','credits','bundle'].map(type=>`<article data-home-plan="${type}"><strong data-home-plan-price="${type}">查看当前方案</strong><small data-home-plan-detail="${type}">以工作台当前商品为准</small><a data-home-plan-link="${type}" href="/workspace.html#membership">查看方案</a></article>`).join('');
+  w.document.body.append(section);
+ }
+ const fetch=w.fetch;w.fetch=async(path,options)=>{calls.push({path,options});if(path!=='/api/payments/options')return fetch(path,options);if(result instanceof Error)throw result;return{ok:result?.ok!==false,json:async()=>result};};
+};}
+
+test('homepage prices use the lowest purchasable product in each type and link to plan selection without creating orders',async t=>{
+ const calls=[],d=await page(t,null,withHomePlanResponse({enabled:true,channels:[{provider:'wechat',ready:true}],products:[planFixture('membership',{priceCents:9900,durationDays:365}),planFixture('bundle',{priceCents:15900,durationDays:180}),planFixture('credits',{priceCents:5000,creditAmount:500}),planFixture('membership'),planFixture('credits'),planFixture('bundle')]},calls));
+ assert.equal(d.querySelector('[data-home-plan-price="membership"]').textContent,'¥19.9 起 / 30天');
+ assert.equal(d.querySelector('[data-home-plan-price="credits"]').textContent,'¥10 起');
+ assert.equal(d.querySelector('[data-home-plan-price="bundle"]').textContent,'¥9.9 起 / 90天');
+ assert.match(d.querySelector('[data-home-plan-detail="credits"]').textContent,/100 科研积分/);
+ assert.match(d.querySelector('[data-home-plan-detail="bundle"]').textContent,/文献研读套餐/);
+ for(const [type,route] of [['membership','plans'],['credits','recharge'],['bundle','bundles']])assert.equal(d.querySelector(`[data-home-plan-link="${type}"]`).getAttribute('href'),'/workspace.html#membership/'+route);
+ assert.equal(calls.filter(call=>call.path==='/api/payments/options').length,1);
+ assert.ok(calls.every(call=>!call.options?.body&&(!call.options?.method||call.options.method==='GET')));
+ assert.ok(calls.every(call=>!call.path.startsWith('/api/orders')));
+ assert.doesNotMatch(d.querySelector('[data-home-plan-summary]').textContent,/微信|支付宝/);
+});
+
+test('unavailable or malformed prices keep the original plan copy without inventing a fallback amount',async t=>{
+ const invalid=[
+  planFixture('membership',{purchasable:false,priceCents:1}),planFixture('membership',{status:'preview'}),planFixture('membership',{currency:'USD'}),planFixture('membership',{priceCents:'1990'}),planFixture('membership',{priceCents:0}),planFixture('membership',{priceCents:1990.1}),planFixture('membership',{durationDays:0}),planFixture('bundle',{durationDays:367}),planFixture('credits',{creditAmount:-1}),planFixture('credits',{purchasable:undefined}),planFixture('credits',{entitlementType:'storage'}),planFixture('credits',{entitlementType:'__proto__'})
+ ];
+ for(const response of [{enabled:true,products:invalid},{enabled:false,products:[planFixture('membership')]},{enabled:true,products:{}},{ok:false},new Error('offline')]){
+  let defaults;
+  const prepare=withHomePlanResponse(response),d=await page(t,null,w=>{prepare(w);defaults=Array.from(w.document.querySelectorAll('[data-home-plan-price],[data-home-plan-detail]'),el=>el.textContent);});
+  assert.deepEqual(Array.from(d.querySelectorAll('[data-home-plan-price],[data-home-plan-detail]'),el=>el.textContent),defaults);
+  assert.doesNotMatch(d.querySelector('[data-home-plan-summary]').textContent,/¥/);
+ }
+});
+
+test('homepage price product titles render as text and invalid cheaper entries do not hide a valid product',async t=>{
+ const d=await page(t,null,withHomePlanResponse({enabled:true,products:[planFixture('bundle',{priceCents:1,purchasable:false}),planFixture('bundle',{title:'研读 <img src=x onerror=alert(1)>',priceCents:990}),planFixture('membership',{priceCents:1,currency:'USD'}),planFixture('membership',{priceCents:1999,durationDays:45})]}));
+ assert.equal(d.querySelector('[data-home-plan-price="bundle"]').textContent,'¥9.9 起 / 90天');
+ assert.equal(d.querySelector('[data-home-plan-detail] img'),null);
+ assert.match(d.querySelector('[data-home-plan-detail="bundle"]').textContent,/<img src=x/);
+ assert.equal(d.querySelector('[data-home-plan-price="membership"]').textContent,'¥19.99 起 / 45天');
+ assert.equal(d.querySelector('[data-home-plan-price="credits"]').textContent,'查看当前方案');
+});
+
+test('homepage credit details avoid repeating quantity titles and preserve distinct product titles safely',async t=>{
+ for(const title of ['200 科研积分',' 200 积分 ','200科研积分','2,000 科研积分']){
+  const creditAmount=title.includes('2,000')?2000:200;
+  const d=await page(t,null,withHomePlanResponse({enabled:true,products:[planFixture('credits',{title,creditAmount})]}));
+  assert.equal(d.querySelector('[data-home-plan-detail="credits"]').textContent,`${creditAmount.toLocaleString('zh-CN')} 科研积分`);
+ }
+ const d=await page(t,null,withHomePlanResponse({enabled:true,products:[planFixture('credits',{title:'研究补给 <img src=x onerror=alert(1)>',creditAmount:200})]}));
+ assert.equal(d.querySelector('[data-home-plan-detail="credits"]').textContent,'研究补给 <img src=x onerror=alert(1)> · 200 科研积分');
+ assert.equal(d.querySelector('[data-home-plan-detail="credits"] img'),null);
 });
 
 test('desktop download cards use published API files, switch Mac architectures, and show honest metadata',async t=>{
@@ -252,4 +340,43 @@ test('capability carousel defaults to manual cards for reduced motion',async t=>
  reduced.querySelector('[data-feature-tab="ppt"]').click();
  assert.equal(reduced.querySelector('[data-feature-tab][aria-selected="true"]').dataset.featureTab,'ppt');
  assert.equal(reducedClock.pending,0,'manual preview selection remains available without autoplay');
+});
+
+test('touch interaction stops capability rotation while keeping manual tab selection available',async t=>{
+ const clock=carouselEnvironment(),d=await page(t,null,clock.prepare),w=d.defaultView;
+ clock.enter();assert.equal(clock.pending,1);
+ const touch=new w.Event('pointerdown',{bubbles:true});Object.defineProperty(touch,'pointerType',{value:'touch'});
+ d.querySelector('[data-feature-tab="literature"]').dispatchEvent(touch);
+ assert.equal(clock.pending,0,'touch grants uninterrupted reading time');
+ d.querySelector('[data-feature-tab="ppt"]').click();
+ assert.equal(d.querySelector('[data-feature-tab][aria-selected="true"]').dataset.featureTab,'ppt');
+ clock.enter(0);clock.enter();
+ assert.equal(clock.pending,0,'scrolling back to the preview does not resume rotation after touch');
+});
+
+test('mobile capability previews stay manual and react to the 700px media breakpoint',async t=>{
+ const clock=carouselEnvironment({compact:true}),d=await page(t,null,clock.prepare),w=d.defaultView;
+ clock.enter();assert.equal(clock.pending,0,'mobile previews never start an automatic timer');
+ assert.equal(d.querySelector('#capabilities').dataset.rotation,'paused');
+ const ppt=d.querySelector('[data-feature-tab="ppt"]');ppt.click();
+ assert.equal(d.querySelector('[data-feature-tab][aria-selected="true"]').dataset.featureTab,'ppt');
+ assert.equal(clock.pending,0,'tap selection remains manual');
+ ppt.focus();ppt.dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
+ assert.equal(d.querySelector('[data-feature-tab][aria-selected="true"]').dataset.featureTab,'format');
+ assert.equal(d.activeElement,d.querySelector('[data-feature-tab="format"]'));
+ d.querySelector('#account-button').focus();await Promise.resolve();
+ assert.equal(clock.pending,0,'leaving keyboard focus does not enable mobile autoplay');
+ clock.setCompact(false);assert.equal(clock.pending,1,'desktop resumes the existing rotation behavior');
+ clock.advance();assert.equal(d.querySelector('[data-feature-tab][aria-selected="true"]').dataset.featureTab,'research');
+ clock.setCompact(true);assert.equal(clock.pending,0,'returning to mobile cancels the scheduled desktop rotation');
+ assert.equal(d.querySelector('#capabilities').dataset.rotation,'paused');
+});
+
+test('media breakpoint changes preserve a manual touch pause on desktop',async t=>{
+ const clock=carouselEnvironment(),d=await page(t,null,clock.prepare),w=d.defaultView;
+ clock.enter();assert.equal(clock.pending,1);
+ const touch=new w.Event('pointerdown',{bubbles:true});Object.defineProperty(touch,'pointerType',{value:'touch'});
+ d.querySelector('#capabilities').dispatchEvent(touch);
+ clock.setCompact(true);clock.setCompact(false);
+ assert.equal(clock.pending,0,'resizing does not override an explicit touch pause');
 });

@@ -1,14 +1,14 @@
 # PaperKnow
 
-> 论文写作与科研辅助工作台。公开资料说明当前可用的本地工具、在线账户与待开放能力。
+> AI 论文写作与科研辅助工作台。公开资料说明写作、文献研读、修改、比对、演示与科研工具的实际使用范围。
 
 ## 产品与使用
 - [论文与科研功能介绍](https://paperknow.cn/features/): 查看 PaperKnow AI 写作、AI 研读、降重、材料比对、PPT、格式排版与科研工具的实际使用范围和流程。
-- [AI 论文写作工具｜毕业论文五步确认与分章生成](https://paperknow.cn/features/ai-writing/): PaperKnow AI 写作支持毕业论文、开题报告、文献综述、期刊文章、课程作业等 11 项流程，确认资料、提纲与本次费用后生成待核对草稿，可编辑、保存和导出；不编造研究数据。
-- [AI 文献研读与翻译｜真实原文问答、引用定位与文献检索](https://paperknow.cn/features/ai-reading/): PaperKnow AI 研读包含我的文献、多来源学术题录检索、原文解读问答和逐段翻译。确认实际正文与费用后处理，保留来源摘录、原文译文对照，可保存与导出。
+- [AI 论文写作工具｜毕业论文五步确认与分章生成](https://paperknow.cn/features/ai-writing/): PaperKnow 提供毕业论文、开题报告、文献综述、期刊文章、课程作业等 11 项 AI 写作流程，适用专科、本科、硕士、博士与研究工作者。毕业论文五步确认、分章生成，可编辑保存并导出。
+- [AI 文献研读与翻译｜真实原文问答、引用定位与文献检索](https://paperknow.cn/features/ai-reading/): PaperKnow 支持 OpenAlex、arXiv 等来源的文献题录检索，连接 PDF 解析、原文解读问答、逐段翻译与整篇中英文文档翻译。解读保留原文摘录，翻译和成果可核对、保存与导出。
 - [论文降重与表达优化｜AI 逐段候选、原文对照与版本保存](https://paperknow.cn/features/reduce-similarity/): PaperKnow 论文降重入口支持导入真实正文、确认费用后生成 AI 逐段候选，查看差异、核对引用并采纳，保留原稿和版本，可导出 DOCX、PDF、TXT。不保证重复率或检测结果。
-- [降 AI 率功能说明｜论文表达核对与原稿管理](https://paperknow.cn/features/reduce-ai/): PaperKnow 降 AI 率入口支持 AI 表达优化候选、原文对照、逐段采纳和版本保存。先确认费用，再生成修改，保留真实研究与引用；AI 率检测未接入，不承诺检测数值或通过。
-- [论文文本比对工具｜本地材料与相似片段核对](https://paperknow.cn/features/similarity-check/): 使用 PaperKnow 论文文本比对工具，将论文与自行导入的参考正文对照，查看相似片段和来源。当前免费查重入口仅提供本地材料比对，不查询全网数据库，也不替代学校正式检测。
+- [论文表达优化与 AI 文本鉴别｜原稿对照、逐段修改](https://paperknow.cn/features/reduce-ai/): PaperKnow 支持中文与英文 AI 表达优化、原稿对照、逐段采纳和版本保存，并提供通用 AI 文本鉴别的分段倾向与置信分。鉴别结果不代表论文 AI 字数占比，不替代学校指定报告。
+- [论文文本比对｜本地材料与公开网络来源核对](https://paperknow.cn/features/similarity-check/): PaperKnow 提供本地材料比对与联网来源比对，定位相似片段并保留来源证据。联网模式仅覆盖本次取得的公开网页正文，不覆盖封闭学术数据库，不替代学校指定查重报告。
 - [答辩 PPT 制作｜开题、毕业与可编辑 PPTX](https://paperknow.cn/features/ppt/): PaperKnow 支持 AI PPT、开题 PPT、毕业 PPT 三种创作流程。基于主题或真实报告生成页面及备注，确认费用后处理，核对采纳并逐页编辑，导出可编辑 PPTX；不编造研究结果。
 - [论文格式排版工具｜DOCX 检测与样式整理](https://paperknow.cn/features/format/): PaperKnow 支持 DOCX 格式检测、按规则智能排版与格式精细复核，检查字体、字号、行距、缩进和页边距，保留原稿并导出副本及清单。可选 AI 格式建议，学校授权模板与人工交付未开放。
 - [AI 科研绘图与公式编辑｜描述生成图片、LaTeX 实时预览](https://paperknow.cn/features/research-tools/): PaperKnow 科研工具支持描述生成基础图表和专业科研示意图片、账户私有云端保存，以及公式模板、符号、截图识别和 LaTeX 实时排版。保留真实数据绘图入口，图片内容需核对。
@@ -23,9 +23,11 @@
 - [PaperKnow 数据与隐私说明｜本地资料、账户文件与处理范围](https://paperknow.cn/privacy/): 了解 PaperKnow 本地与账户资料、MinerU 云端 PDF 解析、阿里云内容安全审核、文献检索及私有对象存储的处理范围、确认方式与备份删除边界。
 - [PaperKnow 服务规则｜使用范围、成果核对与费用状态](https://paperknow.cn/terms/): 了解 PaperKnow 工具当前开放范围、材料使用要求、研究成果核对、导出条件与账户购买规则。
 - [联系 PaperKnow｜产品支持与资料处理问题](https://paperknow.cn/contact/): 通过 contact@oneshowailab.com 联系 PaperKnow，反馈登录、上传、保存和导出问题，或咨询资料处理范围。运营名称：oneshowailab-paperknow。
-- [PaperKnow 功能开放状态｜账户、AI、检索与导出范围](https://paperknow.cn/status/): 查看 PaperKnow 八类论文与科研工具的实际开放范围：AI 写作、原文研读翻译、逐段表达优化、PPT、格式规则处理与科研辅助；2026 年 10 月 19 日更新，不代表实时系统监控。
+- [PaperKnow 功能开放状态｜账户、AI、检索与导出范围](https://paperknow.cn/status/): 查看 PaperKnow 11 项 AI 写作、文献检索研读与翻译、改写、通用 AI 文本鉴别、公开来源比对、可编辑 PPTX、格式排版与科研绘图公式工具的实际范围。2026 年 10 月 21 日更新。
 
 ## 数据与范围
 - 本地体验与在线账户分别保存，不会自动迁移浏览器草稿。
-- 在线 AI、支付、全网学术检索与正式 AI 率检测以功能状态页和工具内实际状态为准。
-- 公开说明不能替代学校指定的检测或用户对研究内容的复核。
+- 文献检索提供题录与可用摘要；研读与翻译使用实际提供的正文或摘要。
+- 联网来源比对仅覆盖本次取得的公开网页正文，通用 AI 文本鉴别提供表达倾向，均不能替代学校指定检测。
+- 商品、价格、有效期与支付渠道以账户收银台实时核验结果为准。
+- 研究事实、数据、引用与最终成果需要使用者复核。

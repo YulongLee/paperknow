@@ -9,8 +9,8 @@ function openDialog(title,html){previousFocus=document.activeElement;$('#home-di
 function closeDialog(){dialog.close();}
 dialog.addEventListener('close',()=>{document.body.classList.remove('home-modal-open');previousFocus?.focus();});$('#dialog-close').addEventListener('click',closeDialog);
 dialog.addEventListener('click',e=>{if(e.target!==dialog)return;const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();});
-const examples={outline:{title:'论文大纲 · 结构示例',selector:'.mini-outline',note:'这是本地模板的结构示例。请结合真实研究完善章节、证据与引用；当前未调用 AI 生成正文。',url:'/workspace.html#category/writing',action:'开始创建论文'},report:{title:'查重报告 · 界面示例',selector:'.mini-comparison',note:'这里展示的是相似片段与对照正文的呈现方式，不是一次实际检测结果。正式体验会根据当前本地材料计算文本匹配，未接入全网检索。',url:'/workspace.html#category/detection',action:'上传论文体验'},revision:{title:'修改任务 · 模板示例',selector:'.mini-revision',note:'这是通用修改清单示例，未解析导师批注或执行 AI 修改。你可以进入工作台填写导师意见，整理、编辑和保存任务模板。',url:'/workspace.html#tool/review',action:'整理修改任务'}};
-document.querySelectorAll('[data-example]').forEach(b=>b.addEventListener('click',()=>{const e=examples[b.dataset.example];openDialog(e.title,`<p>${e.note}</p><div class="example-modal-preview">${$(e.selector).outerHTML}</div><div class="home-dialog-actions"><a class="button" href="${e.url}">${e.action} ${svg('arrow')}</a></div>`);}));
+const examples={outline:{title:'论文大纲 · 结构示例',selector:'.mini-outline',note:'这里展示论文提纲的结构示例，当前未调用 AI 生成正文。正式写作可从研究信息、知识补充、参考文献到提纲与正文逐步确认；请核对研究证据与引用。',url:'/workspace.html#category/writing',action:'开始创建论文'},report:{title:'来源比对 · 界面示例',selector:'.mini-comparison',note:'这里展示相似片段与对照正文的呈现方式，不是一次实际检测结果。工作台支持材料比对与联网来源比对；联网来源仅覆盖本次检索取得的公开网页，不包含学校封闭数据库。',url:'/workspace.html#category/detection',action:'进入来源比对'},revision:{title:'表达调整 · 界面示例',selector:'.mini-revision',note:'这里展示同一段内容调整表达前后的呈现方式，当前未执行 AI 修改。正式任务可结合原文与修改要求生成建议，保留原意并逐段复核后保存成果。',url:'/workspace.html#category/reduce',action:'开始调整表达'}};
+document.querySelectorAll('[data-example]').forEach(b=>b.addEventListener('click',()=>{const e=examples[b.dataset.example];if(!e)return;const preview=$(e.selector);openDialog(e.title,`<p>${e.note}</p>${preview?`<div class="example-modal-preview">${preview.outerHTML}</div>`:''}<div class="home-dialog-actions"><a class="button" href="${e.url}">${e.action} ${svg('arrow')}</a></div>`);}));
 // The published release API is the only source of download links and file metadata.
 let desktopReleases=[],desktopReleaseState='loading',desktopReleaseVersion='';
 function desktopFileSize(bytes){const mb=bytes/1024/1024;return mb>=1024?(mb/1024).toFixed(2)+' GB':mb.toFixed(1)+' MB';}
@@ -67,8 +67,59 @@ async function loadDesktopReleases(){
 document.querySelectorAll('input[name="desktop-mac-arch"]').forEach(input=>input.addEventListener('change',renderDesktopDownloads));
 $('#desktop-download-retry')?.addEventListener('click',loadDesktopReleases);
 loadDesktopReleases();
-$('#status-button').addEventListener('click',()=>{openDialog('PaperKnow 功能状态',`<p>在同一工作台使用本地工具和账户内容，以下说明实际可用范围。</p><div class="status-list">${[['论文写作','大纲模板、编辑、保存与导出','本地可用'],['文档解析','DOCX、文本型 PDF、UTF-8 TXT；扫描 PDF 暂无 OCR','本地可用'],['论文查重','对照导入正文，比对片段并展示来源；不是全网正式查重','本地可用'],['科研绘图','根据实际数据生成多系列图表，导出 SVG / PNG / CSV','本地可用'],['修改、排版与 PPT','手动修改与版本保存、DOCX 排版副本、可编辑 PPTX 导出','本地可用'],['文献研读','正文阅读、手动笔记与译文整理；AI 尚未接入','本地可用'],['账户与任务','注册登录、项目文件、正文解析、材料比对、成果与版本保存','已可用'],['在线 AI 修改',serviceCapabilities?.ai?'服务已配置模型，任务页会说明正文发送范围；请人工核对结果。':'尚未配置模型，不生成模拟内容',serviceCapabilities?.ai?'已配置':'待开放'],['全网检索与 AI 率检测','尚未接入在线数据库或检测服务','待开放']].map(([t,d,s])=>`<div><div><b>${t}</b><small>${d}</small></div><span class="status-tag ${s==='待开放'?'neutral':''}">${s}</span></div>`).join('')}</div><div class="home-dialog-actions"><a class="button" href="/workspace.html">进入工作台 ${svg('arrow')}</a></div>`);});
-$('#about-button').addEventListener('click',()=>openDialog('关于 PaperKnow','<p>PaperKnow 面向专科、本科、硕士、博士及科研人员，帮助整理从选题、开题到写作、修改和成果输出的工作流程。</p><p>支持邮箱与手机号登录，账户可保存在线项目、文件和任务成果。本地体验数据单独保存在浏览器中；支付与全网学术检索尚未开放。</p><div class="home-dialog-actions"><a class="button outline" href="/about/">阅读产品介绍</a><a class="button outline" href="/help/">查看使用帮助</a><a class="button" href="/workspace.html">开始体验</a></div>'));
+function capabilityStatus(ready){return ready===true?'当前可用':ready===false?'暂不可用':'进入功能确认';}
+$('#status-button').addEventListener('click',()=>{openDialog('PaperKnow 功能与服务',`<p>从研究资料到论文与演示成果，在同一工作台完成。在线服务状态来自当前服务信息，具体额度与处理要求请在提交任务前确认。</p><div class="status-list">${[
+ ['AI 写作','11 类写作流程，覆盖论文、开题、综述与日常学术写作',serviceCapabilities?.writing?.ready],
+ ['毕业论文五步流程','研究信息、知识补充、参考文献、提纲与论文撰写逐步确认',serviceCapabilities?.thesis?.ready],
+ ['文献检索','检索 OpenAlex、arXiv 等学术来源，整理参考文献',serviceCapabilities?.academicSearch],
+ ['文献研读与改写','结合材料研读、整理摘要、润色与修改建议',serviceCapabilities?.tools?.ready],
+ ['文献翻译','提交文档后核对处理状态与译文成果',serviceCapabilities?.documentTranslation?.ready],
+ ['联网来源比对','覆盖本次检索取得的公开网页，不包含学校封闭数据库',serviceCapabilities?.webSimilarity?.ready],
+ ['AI 文本鉴别','提供文本鉴别参考，结果不能作为学术违规的单独判定依据',serviceCapabilities?.aigcDetection?.ready],
+ ['学术 PPT','生成并导出可编辑 PPTX，支持后续调整',serviceCapabilities?.tools?.presentation?.ready],
+ ['科研 AI 绘图','根据研究内容与参考图创建科研图像',serviceCapabilities?.tools?.researchImages?.ready],
+ ['公式识别','识别公式图像并在工作台核对结果',serviceCapabilities?.formulaOcr?.ready],
+ ['格式排版','根据格式要求编辑与导出文档',true],
+ ['项目、资料与成果','账户管理项目文件、任务与成果版本',serviceCapabilities?.account],
+ ['会员、积分与套餐','按研究需求选择当前已发布方案，购买前确认权益',serviceCapabilities?.payment]
+ ].map(([t,d,ready])=>`<div><div><b>${t}</b><small>${d}</small></div><span class="status-tag ${ready===true?'':'neutral'}">${capabilityStatus(ready)}</span></div>`).join('')}</div><div class="home-dialog-actions"><a class="button" href="/workspace.html">进入工作台 ${svg('arrow')}</a></div>`);});
+$('#about-button').addEventListener('click',()=>openDialog('关于 PaperKnow','<p>PaperKnow 面向学生与科研人员，连接文献检索、论文写作、修改检测、科研绘图、排版与学术演示，让研究过程和成果留在同一工作台。</p><p>支持邮箱与手机号登录，账户可管理项目、资料、任务与成果版本。会员、科研积分与专项套餐可在工作台查看当前价格及具体权益。</p><div class="home-dialog-actions"><a class="button outline" href="/about/">阅读产品介绍</a><a class="button outline" href="/help/">查看使用帮助</a><a class="button" href="/workspace.html">开始体验</a></div>'));
+// Public prices are a read-only summary of currently purchasable products.
+const homePlanRoutes={membership:'/workspace.html#membership/plans',credits:'/workspace.html#membership/recharge',bundle:'/workspace.html#membership/bundles'};
+function validHomePlan(product){
+ if(!product||product.status!=='active'||product.purchasable!==true||product.currency!=='CNY'||!Object.hasOwn(homePlanRoutes,product.entitlementType))return false;
+ if(!Number.isSafeInteger(product.priceCents)||product.priceCents<=0||product.priceCents>10000000)return false;
+ if(typeof product.title!=='string'||!product.title.trim()||product.title.length>80)return false;
+ if(product.entitlementType==='credits')return Number.isSafeInteger(product.creditAmount)&&product.creditAmount>0&&product.creditAmount<=1000000;
+ return Number.isSafeInteger(product.durationDays)&&product.durationDays>0&&product.durationDays<=366;
+}
+async function loadHomePlanSummary(){
+ const summary=$('[data-home-plan-summary]');if(!summary)return;
+ summary.querySelectorAll('[data-home-plan-link]').forEach(link=>{const type=link.dataset.homePlanLink;if(Object.hasOwn(homePlanRoutes,type))link.href=homePlanRoutes[type];});
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);
+ try{
+  const response=await fetch('/api/payments/options',{credentials:'same-origin',cache:'no-store',signal:controller.signal});
+  if(!response.ok)return;
+  const data=await response.json();
+  if(data?.enabled!==true||!Array.isArray(data.products)||data.products.length>500)return;
+  const products=data.products.filter(validHomePlan);
+  for(const type of Object.keys(homePlanRoutes)){
+   const product=products.filter(item=>item.entitlementType===type).sort((a,b)=>a.priceCents-b.priceCents)[0];if(!product)continue;
+   const price=summary.querySelector(`[data-home-plan-price="${type}"]`),detail=summary.querySelector(`[data-home-plan-detail="${type}"]`);
+   const amount=(product.priceCents/100).toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
+   if(price)price.textContent=`¥${amount} 起${type==='credits'?'':` / ${product.durationDays}天`}`;
+   if(detail){
+    const title=product.title.trim();
+    if(type==='credits'){
+     const credits=`${product.creditAmount.toLocaleString('zh-CN')} 科研积分`;
+     const quantityTitle=[`${product.creditAmount}积分`,`${product.creditAmount}科研积分`].includes(title.replace(/[\s,，]/g,''));
+     detail.textContent=quantityTitle?credits:`${title} · ${credits}`;
+    }else detail.textContent=`${title} · 按所选商品权益使用`;
+   }
+  }
+ }catch{}finally{clearTimeout(timeout);}
+}
+loadHomePlanSummary();
 let serviceUser=null,serviceCapabilities=null;
 function renderAccount(){
  const button=$('#account-button');
@@ -79,7 +130,7 @@ function renderAccount(){
  button.innerHTML=serviceUser?`<span class="home-account-avatar" aria-hidden="true">${esc(initial)}</span><span class="home-account-name">${esc(displayName)}</span><svg class="home-account-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>`:'登录';
  button.title=serviceUser?accountName:'登录 PaperKnow';
  button.setAttribute('aria-label',serviceUser?`打开 ${accountName} 的账户`:'登录 PaperKnow');
- document.querySelectorAll('[data-service-start]').forEach(a=>{a.href=serviceUser?'/workspace.html#home':'/auth.html?mode=register';const label=serviceUser?(a.id==='header-start'?'进入工作台':'继续我的研究'):'开始使用';if(serviceUser||a.id==='header-start')a.innerHTML=label+' '+svg('arrow');});
+ document.querySelectorAll('[data-service-start]').forEach(a=>{a.href=serviceUser?'/workspace.html#home':'/auth.html?mode=register';if(a.id==='header-start')a.innerHTML=(serviceUser?'进入工作台':'开始使用')+' '+svg('arrow');});
  refreshNavigationLine();
 }
 $('#account-button').addEventListener('click',()=>{
@@ -88,13 +139,17 @@ $('#account-button').addEventListener('click',()=>{
  $('#service-logout').onclick=async()=>{const b=$('#service-logout');b.disabled=true;try{const r=await fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(!r.ok)throw new Error();serviceUser=null;closeDialog();location.reload();}catch{toast('退出未完成，请重试。');b.disabled=false;}};
 });
 async function loadServiceState(){
- try{const [account,capabilities]=await Promise.all([fetch('/api/auth/me'),fetch('/api/capabilities')]);if(account.ok)serviceUser=(await account.json()).user;if(capabilities.ok)serviceCapabilities=await capabilities.json();renderAccount();}catch{renderAccount();}
+ await Promise.allSettled([
+  (async()=>{try{const response=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store'});if(response.ok){const data=await response.json();serviceUser=data?.user&&typeof data.user==='object'&&!Array.isArray(data.user)?data.user:null;}}finally{renderAccount();}})(),
+  (async()=>{const response=await fetch('/api/capabilities',{credentials:'same-origin',cache:'no-store'});if(response.ok)serviceCapabilities=await response.json();})()
+ ]);
 }
 // Keep all capabilities visible, with one focused preview and direct workspace links.
 const featureTabs=Array.from(document.querySelectorAll('[data-feature-tab]'));
 const featurePanels=Array.from(document.querySelectorAll('[data-feature-panel]'));
 const featureSection=$('#capabilities');
 const featureMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
+const featureCompact=window.matchMedia('(max-width: 700px)');
 let featureAutoplay=!featureMotion.matches,featureInView=false,featureHovered=false;
 let featureTimer=null;
 const featureDelay=6000;
@@ -119,7 +174,7 @@ function selectFeature(key,moveFocus=false){
 function syncFeatureRotation(){
  clearTimeout(featureTimer);featureTimer=null;
  const focused=featureSection.contains(document.activeElement);
- const rotating=featureAutoplay&&featureInView&&!featureHovered&&!focused&&!document.hidden&&!dialog.open;
+ const rotating=featureAutoplay&&!featureCompact.matches&&featureInView&&!featureHovered&&!focused&&!document.hidden&&!dialog.open;
  featureSection.dataset.rotation=rotating?'running':'paused';
  if(!rotating)return;
  featureTimer=setTimeout(()=>{
@@ -143,11 +198,13 @@ featureTabs.forEach((tab,index)=>{
 selectFeature(featureTabs.find(tab=>tab.getAttribute('aria-selected')==='true')?.dataset.featureTab||featureTabs[0]?.dataset.featureTab);
 featureSection.addEventListener('pointerenter',event=>{if(event.pointerType==='mouse'||event.pointerType==='pen'){featureHovered=true;syncFeatureRotation();}});
 featureSection.addEventListener('pointerleave',()=>{featureHovered=false;syncFeatureRotation();});
+featureSection.addEventListener('pointerdown',event=>{if(event.pointerType==='touch'){featureAutoplay=false;syncFeatureRotation();}});
 featureSection.addEventListener('focusin',syncFeatureRotation);
 featureSection.addEventListener('focusout',()=>queueMicrotask(syncFeatureRotation));
 document.addEventListener('visibilitychange',syncFeatureRotation);
 new MutationObserver(syncFeatureRotation).observe(dialog,{attributes:true,attributeFilter:['open']});
 featureMotion.addEventListener('change',()=>{featureAutoplay=!featureMotion.matches;syncFeatureRotation();});
+featureCompact.addEventListener('change',syncFeatureRotation);
 // Observe the card area rather than the full section, which is tall on mobile.
 if('IntersectionObserver' in window){
  new IntersectionObserver(entries=>{featureInView=entries[0].isIntersecting&&entries[0].intersectionRatio>=.25;syncFeatureRotation();},{threshold:.25}).observe($('#feature-panels'));

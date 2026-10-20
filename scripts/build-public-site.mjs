@@ -8,22 +8,23 @@ import {buildPublicSamples} from './build-public-samples.mjs';
 const projectRoot=fileURLToPath(new URL('../',import.meta.url));
 export const siteURL='https://paperknow.cn';
 export const updatedAt='2026-10-15';
+export const homeModifiedAt='2026-10-21';
 const operator='oneshowailab-paperknow';
 const email='contact@oneshowailab.com';
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const json=value=>JSON.stringify(value).replace(/</g,'\\u003c');
 const categoryNames={writing:'AI 写作',literature:'AI 研读',reduce:'降重复率',aigc:'降AI率',detection:'免费查重',ppt:'PPT 创作',format:'格式排版',research:'科研工具'};
 const titleFor=page=>page.title.includes('PaperKnow')?page.title:`${page.title}｜PaperKnow`;
-const homeTitle='PaperKnow｜论文写作工具与科研辅助工作台';
-const homeDescription='PaperKnow 论文写作工具，帮助学生与科研工作者整理论文大纲、章节、文献笔记与修改记录。支持本地材料比对、论文格式排版、答辩 PPT 制作和科研绘图；在线 AI 与检索能力以实际开放状态为准。';
+const homeTitle='PaperKnow｜AI 论文写作、文献研读与科研辅助工作台';
+const homeDescription='PaperKnow 为专科、本科、硕士、博士与研究工作者提供 11 项 AI 写作流程，连接文献检索、原文研读与翻译、逐段改写、公开网络来源比对和通用 AI 文本鉴别，支持可编辑 PPTX、论文排版、科研绘图与公式编辑。';
 
 function graphFor(page){
  const url=siteURL+page.slug;
  const graph=[
   {'@type':'Organization','@id':siteURL+'/#organization',name:operator,url:siteURL+'/',email,logo:siteURL+'/brand/paperknow-symbol.svg'},
   {'@type':'WebSite','@id':siteURL+'/#website',url:siteURL+'/',name:'PaperKnow',inLanguage:'zh-CN',publisher:{'@id':siteURL+'/#organization'}},
-  {'@type':'WebApplication','@id':siteURL+'/#application',name:'PaperKnow',url:siteURL+'/',applicationCategory:'EducationalApplication',browserRequirements:'需要支持 JavaScript 的现代浏览器',description:'论文大纲与章节编辑、文献资料管理、本地材料比对、DOCX 格式整理、可编辑 PPTX 和基础科研绘图工作台。',publisher:{'@id':siteURL+'/#organization'}},
-  {'@type':'WebPage','@id':url+'#webpage',url,name:page.slug==='/'?homeTitle:titleFor(page),description:page.description,inLanguage:'zh-CN',isPartOf:{'@id':siteURL+'/#website'},about:{'@id':siteURL+'/#application'},dateModified:page.modifiedAt||updatedAt}
+  {'@type':'WebApplication','@id':siteURL+'/#application',name:'PaperKnow',url:siteURL+'/',applicationCategory:'EducationalApplication',browserRequirements:'需要支持 JavaScript 的现代浏览器',description:'11 项 AI 写作流程、毕业论文五步确认与分章生成、文献检索研读与翻译、逐段改写、本地材料与公开网络来源比对、通用 AI 文本鉴别、可编辑 PPTX、DOCX 格式排版、科研绘图及 LaTeX 公式编辑。',publisher:{'@id':siteURL+'/#organization'}},
+  {'@type':'WebPage','@id':url+'#webpage',url,name:page.slug==='/'?homeTitle:titleFor(page),description:page.description,inLanguage:'zh-CN',isPartOf:{'@id':siteURL+'/#website'},about:{'@id':siteURL+'/#application'},dateModified:page.modifiedAt||(page.slug==='/'?homeModifiedAt:updatedAt)}
  ];
  if(page.slug!=='/'){
   const parent=page.slug.startsWith('/features/')&&page.slug!=='/features/'?{name:'功能介绍',url:siteURL+'/features/'}:page.slug.startsWith('/guides/')&&page.slug!=='/guides/'?{name:'使用指南',url:siteURL+'/guides/'}:null;
@@ -86,7 +87,7 @@ export async function buildPublicSite({outDir=resolve(projectRoot,'dist')}={}){
  const original=await readFile(resolve(projectRoot,'dist/index.html'),'utf8');
  const header=original.match(/<header class="header product-header">[\s\S]*?<\/header>/)?.[0];
  if(!header)throw new Error('Homepage header missing');
- const publicHeader=header.replace('class="nav-active" href="/" aria-current="page"','href="/"').replace('href="#download"','href="/#download"').replace(' data-service-start','');
+ const publicHeader=header.replace('class="nav-active" href="/" aria-current="page"','href="/"').replace('href="#download"','href="/#download"').replace(/\sdata-service-start(?:="[^"]*"|='[^']*')?/g,'');
  const pages=[
   {slug:'/features/',title:'论文与科研功能介绍',h1:'围绕你的论文，找到适合的工具',eyebrow:'PAPERKNOW · 功能介绍',description:'查看 PaperKnow AI 写作、AI 研读、降重、材料比对、PPT、格式排版与科研工具的实际使用范围和流程。',intro:'从研究问题、大纲和资料整理开始，到格式检查、图表与汇报准备。先了解每项能力的输入、输出与当前范围，再进入适合的工作流程。',directory:'features'},
   ...featurePages,
@@ -109,15 +110,15 @@ export async function buildPublicSite({outDir=resolve(projectRoot,'dist')}={}){
   manifest.pages.push({slug:page.slug,file,modifiedAt:page.modifiedAt||updatedAt,title:page.title});
  }
  let home=original;
- const meta=pageMetadata({slug:'/',description:homeDescription});
+ const meta=pageMetadata({slug:'/',description:homeDescription,modifiedAt:homeModifiedAt});
  if(home.includes('<!-- seo:start -->'))home=home.replace(/<!-- seo:start -->[\s\S]*?<!-- seo:end -->/,`<!-- seo:start -->\n${meta}\n<!-- seo:end -->`);
  else home=home.replace(/<title>[\s\S]*?<\/title>\s*<meta name="description"[^>]*>/,`<!-- seo:start -->\n${meta}\n<!-- seo:end -->`);
  await writeFile(resolve(outDir,'index.html'),home);
  await writeFile(resolve(outDir,'public-pages.json'),JSON.stringify(manifest,null,2)+'\n');
- const entries=[{slug:'/',modifiedAt:updatedAt},...manifest.pages];
+ const entries=[{slug:'/',modifiedAt:homeModifiedAt},...manifest.pages];
  await writeFile(resolve(outDir,'sitemap.xml'),`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.map(p=>`  <url><loc>${siteURL}${p.slug}</loc><lastmod>${p.modifiedAt}</lastmod></url>`).join('\n')}\n</urlset>\n`);
  await writeFile(resolve(outDir,'robots.txt'),`User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${siteURL}/sitemap.xml\n`);
- await writeFile(resolve(outDir,'llms.txt'),`# PaperKnow\n\n> 论文写作与科研辅助工作台。公开资料说明当前可用的本地工具、在线账户与待开放能力。\n\n## 产品与使用\n${pages.map(p=>`- [${p.title}](${siteURL}${p.slug}): ${p.description}`).join('\n')}\n\n## 数据与范围\n- 本地体验与在线账户分别保存，不会自动迁移浏览器草稿。\n- 在线 AI、支付、全网学术检索与正式 AI 率检测以功能状态页和工具内实际状态为准。\n- 公开说明不能替代学校指定的检测或用户对研究内容的复核。\n`);
+ await writeFile(resolve(outDir,'llms.txt'),`# PaperKnow\n\n> AI 论文写作与科研辅助工作台。公开资料说明写作、文献研读、修改、比对、演示与科研工具的实际使用范围。\n\n## 产品与使用\n${pages.map(p=>`- [${p.title}](${siteURL}${p.slug}): ${p.description}`).join('\n')}\n\n## 数据与范围\n- 本地体验与在线账户分别保存，不会自动迁移浏览器草稿。\n- 文献检索提供题录与可用摘要；研读与翻译使用实际提供的正文或摘要。\n- 联网来源比对仅覆盖本次取得的公开网页正文，通用 AI 文本鉴别提供表达倾向，均不能替代学校指定检测。\n- 商品、价格、有效期与支付渠道以账户收银台实时核验结果为准。\n- 研究事实、数据、引用与最终成果需要使用者复核。\n`);
  return manifest;
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
