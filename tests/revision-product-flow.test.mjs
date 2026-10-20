@@ -8,6 +8,8 @@ import {withStableView} from '../dist/workspace/view-stability.mjs';
 import {documentExportButtons,bindDocumentExports} from '../dist/workspace/document-export.mjs';
 import {mountRevisionAi} from '../dist/workspace/revision-ai.mjs';
 import {revisionStrategy} from '../dist/workspace/revision-strategy.mjs';
+import {revisionBundleOffersMarkup,mountRevisionBundleOffers as mountBundleOffers} from '../dist/workspace/revision-bundle-offers.mjs';
+const mountRevisionBundleOffers=options=>mountBundleOffers({...options,fetchOptions:async()=>({ok:true,json:async()=>({products:[],channels:[]})})});
 import {openRevisionReport} from '../dist/workspace/revision-report.mjs';
 import {normalizeConfirmedRevisionReport,reportSources} from '../dist/workspace/revision-report-model.mjs';
 import {validateRevisionProtection} from '../dist/workspace/revision-protection.mjs';
@@ -23,7 +25,7 @@ const until=async check=>{for(let i=0;i<100;i++){if(check())return;await tick();
 function fixture(t,{aigc=false,outputTransform=value=>value,exportDependencies}={}){
  const dom=new JSDOM('<main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'https://paperknow.test/workspace.html#category/'+(aigc?'aigc':'reduce'),runScripts:'outside-only'}),w=dom.window,$=selector=>w.document.querySelector(selector),notices=[],calls=[],downloads=[],jobs=new Map();let fail=false;
  globalThis.document=w.document;
- Object.assign(w,{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports:(...args)=>bindDocumentExports(...args,exportDependencies),...model,importWorkspaceDocument:async()=>{throw Error('No parsing expected');},documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[],list:key=>JSON.parse(w.localStorage.getItem(key)||'[]'),write:(key,rows)=>{if(fail)throw Error('Synthetic save failure');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:()=>{},download:(...args)=>downloads.push(args)});
+ Object.assign(w,{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,revisionStrategy,revisionBundleOffersMarkup,mountRevisionBundleOffers,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports:(...args)=>bindDocumentExports(...args,exportDependencies),...model,importWorkspaceDocument:async()=>{throw Error('No parsing expected');},documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[],list:key=>JSON.parse(w.localStorage.getItem(key)||'[]'),write:(key,rows)=>{if(fail)throw Error('Synthetic save failure');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:()=>{},download:(...args)=>downloads.push(args)});
  $('dialog').close=()=>{$('dialog').removeAttribute('open');$('dialog').dispatchEvent(new w.Event('close'));};w.confirm=()=>false;
  const ctx={mode:'reduce',notify:value=>notices.push(value),modal:(_title,html)=>{$('#workspace-dialog-body').innerHTML=html;$('dialog').setAttribute('open','');},api:async(path,data)=>{calls.push({path,data:data?structuredClone(data):data});if(path==='/auth/me')return{user:{id:'owner'}};if(path==='/tool-runs/capabilities')return{ready:true};if(path==='/tool-runs/quote')return{type:'agent',source:'credits',creditCost:10,title:'Synthetic quote',token:'quote',expiresAt:new Date(Date.now()+600000).toISOString()};if(path==='/tool-runs/jobs'){const parts=data.snapshot.text.split('\n\n'),output=outputTransform({text:'完整候选预览',paragraphs:data.snapshot.context.paragraphIds.map((id,i)=>({id,original:parts[i],revised:revised(parts[i]),action:'revise',reason:'调整段落衔接，并保留原有证据边界。'}))}),item={id:'job-'+(jobs.size+1),kind:'revision',operation:'rewrite',status:'completed',output,completedUnits:1,totalUnits:1};jobs.set(item.id,item);return{item};}if(jobs.has(path.split('/').at(-1)))return{item:jobs.get(path.split('/').at(-1))};throw Error('Unexpected API '+path);}};
  w.eval(source+'\nwindow.revisionProduct={mountRevision,disposeRevision};');w.revisionProduct.mountRevision(ctx);
@@ -33,6 +35,23 @@ function fixture(t,{aigc=false,outputTransform=value=>value,exportDependencies}=
 function prepareReport(f,{source='other'}={}){
  f.click('[data-rev-action="report"]');const select=f.$('[data-rr-source]');select.value=source;select.dispatchEvent(new f.w.Event('change',{bubbles:true}));f.input('[data-rr-text]','PRIVATE REPORT HEADER MUST NOT BE SAVED\n原文片段：'+paragraphs[1]);f.click('[data-rr-preview]');assert.ok(f.$('[data-rr-pick]'));f.click('[data-rr-pick]');
 }
+
+test('both revision pages show the three preserved bundle offers separately from the active editing strategies',async t=>{
+ for(const aigc of [false,true]){
+  const f=fixture(t,{aigc}),offers=f.$('[data-revision-bundle-offers]');
+  assert.ok(offers);
+  for(const name of ['强力查降套餐','超值降AI套餐','AIGC+重复率双降套餐'])assert.ok(offers.textContent.replaceAll(' ','').includes(name));
+  assert.equal(offers.querySelector('[data-revision-plan]'),null);
+  f.click('[data-revision-input="paste"]');f.input('#revision-service-title','保留的准备草稿');f.input('#revision-service-text',paragraphs[0]);f.click('[data-revision-plan="dual"]');
+  await tick();
+  assert.equal(f.$('#revision-service-title').value,'保留的准备草稿');assert.equal(f.$('#revision-service-text').value,paragraphs[0]);assert.equal(f.$('[data-revision-plan="dual"]').getAttribute('aria-pressed'),'true');
+  assert.equal(offers.querySelector('a[href^="#membership/pay?"]'),null);assert.equal(f.calls.length,0);
+  if(aigc){
+   f.click('[data-aigc-feature="detection"]');assert.equal(f.$('#aigc-expression-panel').hidden,true);assert.equal(offers.closest('[hidden]'),null);
+   f.click('[data-aigc-feature="expression"]');assert.equal(f.$('#revision-service-text').value,paragraphs[0]);
+  }
+ }
+});
 
 test('both product entries retain fixed plans and clearly separate creation, fee confirmation and generation',t=>{
  for(const aigc of [false,true]){const f=fixture(t,{aigc});assert.equal(f.$('.tool-banner h1').textContent,aigc?'降 AI 率':'降重复率');assert.deepEqual([...f.w.document.querySelectorAll('[data-revision-plan]')].map(n=>n.dataset.revisionPlan),aigc?['strong','english','dual']:['strong','dual','bundle']);assert.match(f.$('[data-revision-service-action="start"]').textContent,/继续确认范围/);f.create();assert.equal(f.calls.length,0);assert.ok(f.$('[data-rev-action="report"]'));assert.ok(f.$('[data-rev-ai-select]'));assert.match(f.$('[data-rev-ai-open]').textContent,/确认范围与费用/);assert.doesNotMatch(f.$('.dashboard').textContent,/qwen|deepseek|claude|降至\s*\d+\s*%|保证通过/i);}
