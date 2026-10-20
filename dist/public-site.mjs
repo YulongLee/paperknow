@@ -1,6 +1,6 @@
 const $=selector=>document.querySelector(selector);
 const nav=$('#main-nav'),menu=$('#mobile-menu'),header=$('.product-header');
-const icons={menu:'<path d="M3 6h18M3 12h18M3 18h18"/>',arrow:'<path d="M4 12h15m-5-5 5 5-5 5"/>',download:'<path d="M12 3v13m-5-5 5 5 5-5M4 16v5h16v-5"/>'};
+const icons={menu:'<path d="M3 6h18M3 12h18M3 18h18"/>',arrow:'<path d="M4 12h15m-5-5 5 5-5 5"/>',download:'<path d="M12 3v13m-5-5 5 5 5-5M4 16v5h16v-5"/>',crown:'<path d="m3 6 4 4 5-6 5 6 4-4-3 13H6zM7 22h10"/>'};
 document.querySelectorAll('[data-icon]').forEach(el=>{el.innerHTML=`<svg viewBox="0 0 24 24" aria-hidden="true">${icons[el.dataset.icon]||icons.arrow}</svg>`;});
 const category=document.body.dataset.category;
 if(category)nav.querySelector(`[data-research-category="${category}"]`)?.classList.add('nav-active');
