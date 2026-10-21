@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {thesisSnapshotFromDraft} from '../dist/workspace/writing-model.mjs';
+import {assessThesisEvidence} from '../dist/workspace/thesis-evidence.mjs';
 
 const settle=async()=>{for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));};
 function fixture(){
@@ -83,9 +84,13 @@ for(const action of ['remove','clear'])test(`Step 2 ${action} of its only record
  }finally{f.close();}
 });
 
-test('hidden legacy skip cannot advance and unsubmitted supplement remains a draft rather than evidence',async()=>{
- const f=fixture();
- try{mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','跳过补充说明');f.$('#writing-generate').click();f.input('#knowledge-ai-input','暂未确认的内容');assert.equal(f.$('#writing-material-skip').hidden,true);f.$('#writing-material-skip').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'2');const saved=f.save();assert.equal(saved.knowledgeFiles.length,0);assert.equal(saved.writingEditorState.inputs['knowledge-ai-input'],'暂未确认的内容');}finally{f.close();}
+test('the optional knowledge skip advances and records entered supplement without creating a generation or paid request',async()=>{
+ const f=fixture(),calls=[];f.ctx.api=async(path,data)=>{calls.push({path,data});throw Error('Skipping optional materials must not call a model or paid service');};
+ try{
+  mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','跳过可选研究资料');f.$('#writing-generate').click();const explanation='这里只比较公开的研究方法';f.input('#knowledge-ai-input',explanation);assert.equal(f.$('#writing-material-skip').hidden,false);f.$('#writing-material-skip').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'3');
+  const saved=f.save();assert.equal(saved.knowledgeFiles.length,1);assert.equal(saved.knowledgeFiles[0].text,explanation);assert.equal(saved.writingEditorState.inputs['knowledge-ai-input'],explanation);assert.equal(saved.workflowUnlockedStage,3);assert.deepEqual(calls,[]);
+  const snapshot=thesisSnapshotFromDraft({...saved,outlineRows:[{id:'c1',title:'研究设计',level:1,words:8000}]});assert.equal(snapshot.materials[0].text,explanation);assert.equal(assessThesisEvidence(snapshot).ready,false,'a short optional explanation cannot pass source validation before generation');
+ }finally{f.close();}
 });
 
 test('a reference file finishing after switching drafts never changes the replacement editor or its saved references',async()=>{

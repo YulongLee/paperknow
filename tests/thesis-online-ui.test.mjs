@@ -303,3 +303,12 @@ test('opening thesis fee details retains its state and opt-out across chapter re
 test('one-character placeholder evidence is rejected before a quote or generation request',async()=>{
  const value=snapshot();value.materials=[{id:'m1',name:'研究说明',text:'1',confirmed:true}];const f=fixture({item:thesis({snapshot:value})});try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.some(row=>row.path==='/theses/t1/quote'),false);assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);assert.match(f.$('[data-thesis-notice]').textContent,/100/);}finally{f.close();}
 });
+
+test('a confirmed reference abstract supports quoting when optional Step 2 research uploads are empty',async()=>{
+ const value=snapshot();value.materials=[];value.references=[{id:'abstract-only',title:'合成文献摘要',text:'【合成验收摘要】本文资料用于说明参考文献摘要可以成为有限的背景依据，不表示已读取全文。'.repeat(4),sourceLabel:'Crossref · 来源摘要，未读取全文',confirmed:true}];
+ const f=fixture({item:thesis({snapshot:value})});try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;assert.equal(f.$('.thesis-source-gap'),null);f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(row=>row.path==='/theses/t1/quote').length,1);assert.ok(f.$('[data-thesis-start]'));assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false,'reading quote does not execute the model');}finally{f.close();}
+});
+
+test('final source gap explains optional uploads and can return to reference confirmation without billing',async()=>{
+ const f=fixture({item:thesis({snapshot:{...snapshot(),materials:[]}})});let returned=0;try{const panel=mountThesisStage({id:'t1',ctx:f.ctx,container:f.$('.dashboard'),onReferences:()=>{returned++;}});await panel.ready;assert.match(f.$('.thesis-source-gap').textContent,/第二步.*上传可选/);assert.match(f.$('.thesis-source-gap').textContent,/第三步.*摘要/);f.$('[data-thesis-references]').click();assert.equal(returned,1);assert.equal(f.calls.some(row=>row.path.endsWith('/quote')||row.path.endsWith('/generate')),false);}finally{f.close();}
+});

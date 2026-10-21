@@ -159,19 +159,49 @@ test('completed-step colors remain green rather than being replaced by the task 
 });
 
 
-test('unmet thesis requirements cannot be bypassed through step cards, hidden actions or the legacy skip',async()=>{
- const f=fixture();let requests=0;f.ctx.api=async()=>{requests++;throw Error('Blocked steps must not submit online work');};
- try{mountWriting(undefined,undefined,f.ctx);f.$('[data-writing-step="5"]').click();f.$('#outline-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'1');
-  f.input('#writing-title','逐步确认的研究');f.$('#writing-generate').click();assert.equal(f.$('.dashboard').dataset.writingStage,'2');f.input('#knowledge-ai-input','1');f.$('#writing-material-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'2');assert.match(f.$('#writing-step-error').textContent,/100/);
-  for(const step of ['3','4','5']){f.$('[data-writing-step="'+step+'"]').click();assert.equal(f.$('.dashboard').dataset.writingStage,'2');}
-  assert.equal(f.$('#writing-material-skip').hidden,true);f.$('#writing-material-skip').click();f.$('#writing-reference-confirm').click();f.$('#outline-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'2');
-  confirmThesisMaterials();assert.equal(f.$('.dashboard').dataset.writingStage,'3');f.$('#writing-reference-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.match(f.$('#writing-reference-status').textContent,/至少.*1.*参考文献/);f.$('[data-writing-step="4"]').click();f.$('#outline-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.equal(requests,0);
-  confirmThesisReferences();assert.equal(f.$('.dashboard').dataset.writingStage,'4');f.$('#outline-confirm').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'5');assert.equal(requests,0);
+test('optional materials advance normally while required references and outline confirmation cannot be bypassed',async()=>{
+ const f=fixture();let requests=0;f.ctx.api=async()=>{requests++;throw Error('Unconfirmed steps must not submit online work');};
+ try{
+  mountWriting(undefined,undefined,f.ctx);f.$('[data-writing-step="5"]').click();f.$('#outline-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'1');
+  f.input('#writing-title','逐步确认的研究');f.$('#writing-generate').click();assert.equal(f.$('.dashboard').dataset.writingStage,'2');
+  f.input('#knowledge-ai-input','简短的补充说明');f.$('#writing-material-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.equal(f.$('#writing-step-error').hidden,true);
+  for(const step of ['4','5']){f.$('[data-writing-step="'+step+'"]').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');}
+  f.$('#writing-reference-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.match(f.$('#writing-reference-status').textContent,/至少.*1.*参考文献/);f.$('#outline-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.equal(requests,0);
+  confirmThesisReferences();assert.equal(f.$('.dashboard').dataset.writingStage,'4');f.$('[data-writing-step="5"]').click();assert.equal(f.$('.dashboard').dataset.writingStage,'4','a selected reference cannot bypass outline confirmation');
+  f.$('#outline-confirm').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'5');assert.equal(requests,0);
  }finally{f.close();}
 });
 
-test('restoring an incomplete later thesis draft returns to the earliest missing step without discarding body or proposal',()=>{
- const f=fixture();try{const row={id:'legacy-incomplete',tool:'writing',title:'恢复待补资料的研究',degree:'本科',language:'中文',targetWords:8000,workflowStage:5,workflowUnlockedStage:5,outlineConfirmed:true,outlineText:'第一章 已有提纲',outlineRows:[{id:'c1',level:1,title:'第一章 已有提纲',words:8000}],bodySections:[{id:'c1',title:'第一章 已有提纲',text:'之前手动撰写并保存的正文。'}],knowledgeFiles:[{id:'too-short',name:'旧版说明',text:'1',kind:'file'}],writingReferences:[{...thesisReference}],methodSuggestion:{text:thesisResearchText,jobId:'proposed-plan'}};localStorage.setItem('paperknow-drafts',JSON.stringify([row]));mountWriting(row.id,undefined,f.ctx);assert.equal(f.$('.dashboard').dataset.writingStage,'2');assert.match(f.$('#writing-step-error').textContent,/100/);assert.equal(f.$('[data-writing-step="5"]').getAttribute('aria-disabled'),'true');f.$('#writing-save').click();const saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.deepEqual(saved.bodySections,row.bodySections);assert.deepEqual(saved.outlineRows,row.outlineRows);assert.deepEqual(saved.methodSuggestion,row.methodSuggestion);assert.equal(saved.workflowStage,2);assert.equal(saved.outlineConfirmed,false);
+test('restoring an otherwise confirmed thesis keeps the final stage even with no substantive optional materials',async()=>{
+ const f=fixture();try{
+  const row={id:'legacy-optional-material',tool:'writing',title:'恢复未上传资料的研究',degree:'本科',language:'中文',targetWords:8000,workflowStage:5,workflowUnlockedStage:5,outlineConfirmed:true,outlineText:'第一章 已有提纲',outlineRows:[{id:'c1',level:1,title:'第一章 已有提纲',words:8000}],bodySections:[{id:'c1',title:'第一章 已有提纲',text:'之前手动撰写并保存的正文。'}],knowledgeFiles:[{id:'short-optional',name:'旧版补充说明',text:'1',kind:'file'}],writingReferences:[{...thesisReference}],methodSuggestion:{text:thesisResearchText,jobId:'proposed-plan'}};
+  localStorage.setItem('paperknow-drafts',JSON.stringify([row]));mountWriting(row.id,undefined,f.ctx);await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'5');assert.equal(f.$('#writing-step-error').hidden,true);assert.match(f.$('#thesis-online-stage').textContent,/登录后保存到账户/);
+  f.$('#writing-save').click();const saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.deepEqual(saved.bodySections,row.bodySections);assert.deepEqual(saved.outlineRows,row.outlineRows);assert.deepEqual(saved.methodSuggestion,row.methodSuggestion);assert.equal(saved.workflowStage,5);assert.equal(saved.outlineConfirmed,true);
+ }finally{f.close();}
+});
+
+for(const action of ['#writing-material-confirm','#writing-material-skip'])test('empty optional research materials can advance through '+action+' without creating evidence or submitting a paid job',async()=>{
+ const f=fixture();let requests=0;f.ctx.api=async()=>{requests++;throw Error('Optional knowledge navigation must not create an AI job');};
+ try{
+  mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','未上传研究资料的论文');f.$('#writing-generate').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'2');assert.equal(f.$('#knowledge-ai-input').value,'');assert.equal(f.$('#writing-material-skip').hidden,false);
+  const focus=f.$('#writing-process-next');focus.focus();const focusCount=f.focuses.length,scrollCount=f.scrolls.length;f.$(action).click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.equal(f.scrolls.length,scrollCount);assert.equal(f.focuses.length,focusCount);assert.equal(document.activeElement,focus);
+  f.$('#writing-save').click();const row=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.deepEqual(row.knowledgeFiles,[]);assert.equal(row.workflowStage,3);assert.equal(row.material,'');assert.equal(requests,0);
+  f.$('#writing-reference-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.match(f.$('#writing-reference-status').textContent,/参考文献/);
+ }finally{f.close();}
+});
+
+test('skipping optional research materials preserves a short manual explanation rather than deleting it',async()=>{
+ const f=fixture();try{
+  mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','保留可选研究说明');f.$('#writing-generate').click();f.input('#knowledge-ai-input','只分析公开文献，不开展问卷调查。');f.$('#writing-material-skip').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'3');
+  f.$('#writing-save').click();const row=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(row.knowledgeFiles.length,1);assert.equal(row.knowledgeFiles[0].text,'只分析公开文献，不开展问卷调查。');assert.equal(f.$('#knowledge-ai-input').value,'只分析公开文献，不开展问卷调查。');
+ }finally{f.close();}
+});
+
+test('an adopted AI method can continue from optional knowledge while remaining a proposed plan instead of evidence',async()=>{
+ const f=fixture();try{
+  const method='拟开展：先检索公开文献，再比较已披露的研究方法，不编造调查或实验结果。',block='【研究方法建议（拟开展，AI 生成）】\n'+method+'\n【研究方法建议结束】',row={id:'optional-method-only',tool:'writing',title:'仅采用方法建议的论文',degree:'本科',language:'中文',targetWords:8000,workflowStage:2,workflowUnlockedStage:2,knowledgeFiles:[],methodSuggestion:{text:method,jobId:'method-confirmed',inSupplement:true},writingEditorState:{inputs:{'knowledge-ai-input':block}}};
+  localStorage.setItem('paperknow-drafts',JSON.stringify([row]));mountWriting(row.id,undefined,f.ctx);assert.equal(f.$('#knowledge-ai-input').value,block);f.$('#writing-material-confirm').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'3');
+  f.$('#writing-save').click();const saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.deepEqual(saved.knowledgeFiles,[]);assert.equal(saved.methodSuggestion.text,method);assert.equal(saved.methodSuggestion.inSupplement,true);assert.equal(saved.writingEditorState.inputs['knowledge-ai-input'],block);
  }finally{f.close();}
 });
 

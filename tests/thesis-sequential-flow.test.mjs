@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
+import {assessThesisEvidence} from '../dist/workspace/thesis-evidence.mjs';
 import {thesisResearchText,confirmThesisMaterials,confirmThesisReferences} from './helpers/thesis-flow.mjs';
 
 const settle=async()=>{for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));};
@@ -72,13 +73,14 @@ test('the persistent next control completes all five steps without generating or
  }finally{f.close();}
 });
 
-test('insufficient knowledge cannot be skipped while its unconfirmed editor text remains a recoverable draft',async()=>{
+test('optional knowledge can be skipped while the latest short explanation is preserved as a recoverable draft',async()=>{
  const f=fixture();
  try{
   mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','可选补充步骤验收');f.$('#writing-process-next').click();await settle();
-  f.input('#knowledge-ai-input','尚未确认的研究想法');assert.equal(f.$('#writing-material-skip').hidden,true);f.$('#writing-material-skip').click();await settle();assertOnlyStage(f,2);assert.match(f.$('#writing-step-error').textContent,/100/);
-  const saved=f.save();assert.equal(saved.workflowUnlockedStage,2);assert.equal(saved.knowledgeFiles.length,0);assert.equal(saved.writingEditorState.inputs['knowledge-ai-input'],'尚未确认的研究想法');
-  clearEditor();mountWriting(saved.id,undefined,f.ctx);await settle();assertOnlyStage(f,2);assert.equal(f.$('#knowledge-ai-input').value,'尚未确认的研究想法');
+  const explanation='暂时只分析公开文献';f.input('#knowledge-ai-input',explanation);assert.equal(f.$('#writing-material-skip').hidden,false);f.$('#writing-material-skip').click();await settle();assertOnlyStage(f,3);assert.equal(f.$('#writing-step-error').hidden,true);
+  const saved=f.save();assert.equal(saved.workflowUnlockedStage,3);assert.equal(saved.knowledgeFiles.length,1);assert.equal(saved.knowledgeFiles[0].text,explanation);assert.equal(saved.writingEditorState.inputs['knowledge-ai-input'],explanation);
+  assert.equal(assessThesisEvidence({materials:saved.knowledgeFiles},{confirmedOnly:false}).ready,false,'optional-step navigation does not satisfy the final source threshold');assert.deepEqual(f.calls,[]);
+  clearEditor();mountWriting(saved.id,undefined,f.ctx);await settle();assertOnlyStage(f,3);assert.equal(f.$('#knowledge-ai-input').value,explanation);assert.deepEqual(f.calls,[]);
  }finally{f.close();}
 });
 
@@ -179,7 +181,16 @@ test('legacy drafts without an unlocked-stage field retain their saved place and
 
 
 test('legacy drafts with stale unlocked flags reopen at the earliest missing requirement without losing their manuscript',async()=>{
- for(const [overrides,stage] of [[{title:''},1],[{knowledgeFiles:[]},2],[{writingReferences:[]},3]]){
+ for(const [overrides,stage] of [[{title:''},1],[{writingReferences:[]},3]]){
   const f=fixture();try{const original=completedDraft(overrides);delete original.workflowUnlockedStage;localStorage.setItem('paperknow-drafts',JSON.stringify([original]));mountWriting(original.id,undefined,f.ctx);await settle();assertOnlyStage(f,stage);assert.equal(f.$('[data-writing-step="'+(stage+1)+'"]').getAttribute('aria-disabled'),'true');const saved=f.save();assert.deepEqual(saved.outlineRows,original.outlineRows);assert.deepEqual(saved.bodySections,original.bodySections);assert.deepEqual(f.calls,[]);assert.equal(f.scrolls.length,0);}finally{f.close();}
  }
+});
+
+
+for(const knowledgeFiles of [[],[{id:'short-note',name:'简短的可选研究说明',text:'1',kind:'file',state:'parsed'}]])test('an otherwise confirmed legacy thesis does not return to optional knowledge for '+(knowledgeFiles.length?'short':'empty')+' materials',async()=>{
+ const f=fixture();try{
+  const original=completedDraft({knowledgeFiles});delete original.workflowUnlockedStage;localStorage.setItem('paperknow-drafts',JSON.stringify([original]));mountWriting(original.id,undefined,f.ctx);await settle();assertOnlyStage(f,5);
+  f.$('#writing-save').click();const saved=f.save();assert.equal(saved.workflowUnlockedStage,5);assert.equal(saved.outlineConfirmed,true);assert.deepEqual(saved.knowledgeFiles,knowledgeFiles);assert.deepEqual(saved.outlineRows,original.outlineRows);assert.deepEqual(saved.bodySections,original.bodySections);assert.deepEqual(saved.writingReferences,original.writingReferences);assert.deepEqual(f.calls,[]);assert.equal(f.scrolls.length,0);
+  assert.equal(assessThesisEvidence({materials:knowledgeFiles,references:original.writingReferences},{confirmedOnly:false}).ready,false,'restoring progress does not manufacture readable source content');
+ }finally{f.close();}
 });
