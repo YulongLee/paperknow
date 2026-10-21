@@ -60,7 +60,7 @@ async function fixture(fetcher,{hash='#account',allReports=async()=>[],setup}={}
  return {dom,document:dom.window.document,storage,paymentCalls,reads,api:dom.window.workspaceAuthTest,close(){dom.window.disposeOnlineThesis();timers.forEach(clearTimeout);dom.window.close();}};
 }
 
-test('tool and account navigation avoids local asset summaries while lists still read newly saved drafts',async()=>{
+test('tool, account and cloud-asset navigation avoid local summaries while search still reads newly saved drafts',async()=>{
  const f=await fixture(async()=>response(401));
  try{
   await f.api.loadWorkspaceSession();
@@ -71,7 +71,7 @@ test('tool and account navigation avoids local asset summaries while lists still
   }
   f.storage.setItem(keys.drafts,JSON.stringify([{id:'new-draft',title:'新保存的本地研究',tool:'writing',updatedAt:'2026-10-19T04:00:00Z',stage:'draft'}]));
   f.reads.length=0;f.dom.window.history.replaceState(null,'','/workspace.html#assets?scope=local');f.api.render();
-  assert.equal(f.reads.filter(key=>key===keys.drafts).length,1);assert.match(f.document.querySelector('#asset-table-body').textContent,/新保存的本地研究/);
+  assert.equal(f.reads.filter(key=>key===keys.drafts).length,0);assert.equal(f.document.querySelector('#asset-table-body'),null);assert.ok(f.document.querySelector('#cloud-artifact-library'));assert.equal(f.dom.window.location.hash,'#assets');assert.match(f.storage.getItem(keys.drafts),/新保存的本地研究/);
   f.storage.setItem(keys.drafts,JSON.stringify([{id:'newer-draft',title:'搜索前刚保存的研究',tool:'writing',updatedAt:'2026-10-19T05:00:00Z',stage:'draft'}]));
   f.dom.window.history.replaceState(null,'','/workspace.html#search/研究');f.api.render();
   assert.match(f.document.querySelector('.dashboard').textContent,/搜索前刚保存的研究/);assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/新保存的本地研究/);
@@ -82,52 +82,16 @@ function deferredReports(){let resolve,reject;const promise=new Promise((yes,no)
 const lateReport={id:'late-report',title:'稍后读取的比对报告',createdAt:'2026-10-19T04:00:00Z',totalChars:120,sourceCount:1};
 const settleReports=async()=>{for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));};
 
-async function assetPageFixture({draftCount=45,reportRows=[]}={}){
- const drafts=Array.from({length:draftCount},(_,index)=>({id:'page-'+String(index+1).padStart(2,'0'),title:'分页成果 '+String(index+1).padStart(2,'0'),tool:index===44?'ppt':'writing',stage:'draft',text:'第 '+(index+1)+' 份完整正文',updatedAt:new Date(Date.UTC(2026,9,19,4,draftCount-index)).toISOString()})),downloads=[];
- let reports=structuredClone(reportRows);
- const f=await fixture(async()=>response(401),{hash:'#assets?scope=local',allReports:async()=>structuredClone(reports),setup:w=>{
-  w.localStorage.setItem(keys.drafts,JSON.stringify(drafts));w.localStorage.setItem(keys.projects,JSON.stringify([{id:'page-project',name:'分页归属项目'}]));w.formatDate=formatDate;
-  w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new w.Event('close'));};
-  w.download=async(...args)=>{downloads.push(args);return {message:'已下载'};};w.repository.save=async(store,item)=>{assert.equal(store,'reports');reports=reports.map(row=>row.id===item.id?structuredClone(item):row);};
- }});
- return {...f,drafts,downloads,getReports:()=>reports,q:selector=>f.document.querySelector(selector),click:selector=>{const button=f.document.querySelector(selector);assert.ok(button,selector);button.click();},change:(selector,value,type='change')=>{const field=f.document.querySelector(selector);field.value=value;field.dispatchEvent(new f.dom.window.Event(type,{bubbles:true}));}};
-}
-
-test('local assets paginate twenty rows while totals, full-library filters, bounds and keyboard focus remain accurate',async()=>{
- const f=await assetPageFixture();
- try{
-  assert.equal(f.q('#asset-count').textContent,'共 45 份成果');assert.equal(f.document.querySelectorAll('[data-asset-select]').length,20);assert.equal(f.q('[data-asset-select-all]').getAttribute('aria-label'),'全选本页 20 份成果');assert.equal(f.q('[data-asset-page="previous"]').disabled,true);assert.match(f.q('#asset-table-body .asset-time').textContent,/10\/19 12:45/);
-  const all=f.q('[data-asset-select-all]');all.checked=true;all.dispatchEvent(new f.dom.window.Event('change'));assert.equal(f.document.querySelectorAll('[data-asset-select]:checked').length,20);
-  f.q('[data-asset-page="next"]').focus();f.click('[data-asset-page="next"]');assert.match(f.q('#asset-pagination').textContent,/第 2 \/ 3 页/);assert.equal(f.q('[data-asset-select]').dataset.assetSelect,'draft:page-21');assert.equal(f.document.querySelectorAll('[data-asset-select]:checked').length,0);assert.equal(f.document.activeElement,f.q('[data-asset-page="next"]'));
-  f.click('[data-asset-page="next"]');assert.equal(f.document.querySelectorAll('[data-asset-select]').length,5);assert.equal(f.q('[data-asset-page="next"]').disabled,true);assert.equal(f.document.activeElement,f.q('[data-asset-page="previous"]'));f.click('[data-asset-page="next"]');assert.match(f.q('#asset-pagination').textContent,/第 3 \/ 3 页/);
-  f.change('#asset-query','分页成果 45','input');assert.equal(f.q('#asset-count').textContent,'共 1 份成果');assert.equal(f.q('[data-asset-select]').dataset.assetSelect,'draft:page-45');assert.equal(f.q('#asset-pagination').hidden,true);
-  f.change('#asset-query','','input');f.click('[data-asset-page="next"]');f.change('#asset-type-filter','presentation');assert.equal(f.q('#asset-count').textContent,'共 1 份成果');assert.equal(f.q('[data-asset-select]').dataset.assetSelect,'draft:page-45');
-  f.change('#asset-type-filter','all');f.click('[data-asset-page="next"]');f.change('#asset-sort','name');assert.match(f.q('#asset-pagination').textContent,/第 1 \/ 3 页/);assert.equal(f.q('#asset-count').textContent,'共 45 份成果');assert.deepEqual(JSON.parse(f.storage.getItem(keys.drafts)),f.drafts);
- }finally{f.close();}
-});
-
-test('page-two archive and individual export act on the clicked record and preserve all other saved content',async()=>{
- const f=await assetPageFixture();
- try{
-  f.click('[data-asset-page="next"]');f.click('[data-asset-archive="draft:page-25"]');assert.match(f.q('#asset-pagination').textContent,/第 2 \/ 3 页/);assert.equal(f.q('#asset-count').textContent,'共 45 份成果');
-  const changed=JSON.parse(f.storage.getItem(keys.drafts));assert.equal(changed.find(row=>row.id==='page-25').archived,true);assert.deepEqual(changed.filter(row=>row.id!=='page-25'),f.drafts.filter(row=>row.id!=='page-25'));
-  f.click('[data-asset-export="draft:page-25"]');f.click('[data-export-draft="page-25"]');await settleReports();assert.equal(f.downloads.length,1);assert.match(f.downloads[0][0],/分页成果 25/);assert.equal(f.downloads[0][1],'第 25 份完整正文');
-  f.click('[data-asset-filter="archived"]');assert.equal(f.q('#asset-count').textContent,'共 1 份成果');assert.equal(f.q('[data-asset-select]').dataset.assetSelect,'draft:page-25');assert.equal(f.q('#asset-pagination').hidden,true);
-  f.click('[data-asset-archive="draft:page-25"]');assert.equal(f.q('#asset-count').textContent,'共 0 份成果');assert.equal(f.q('[data-asset-select-all]').disabled,true);assert.equal(f.document.querySelectorAll('[data-asset-select]').length,0);assert.equal(JSON.parse(f.storage.getItem(keys.drafts)).length,45);
- }finally{f.close();}
-});
-
-test('page-two mixed draft/report bulk export and move touch only selected visible rows and clear selection on paging',async()=>{
- const reportRows=Array.from({length:5},(_,index)=>({...lateReport,id:'page-report-'+(index+1),title:'分页报告 '+(index+1),createdAt:'2026-10-18T04:00:00Z'})),f=await assetPageFixture({draftCount:26,reportRows});
- try{
-  f.click('[data-asset-page="next"]');assert.equal(f.q('#asset-count').textContent,'共 31 份成果');assert.equal(f.document.querySelectorAll('[data-asset-select]').length,11);
-  for(const token of ['draft:page-21','report:page-report-1'])f.q('[data-asset-select="'+token+'"]').checked=true;
-  f.click('[data-asset-bulk]');assert.match(f.q('#workspace-dialog-body').textContent,/已选择 2 份成果/);f.click('#asset-export-selected');await settleReports();const backup=JSON.parse(f.downloads[0][1]);assert.deepEqual(backup.drafts.map(row=>row.id),['page-21']);assert.deepEqual(backup.reports.map(row=>row.id),['page-report-1']);
-  f.change('#asset-batch-project','page-project');const form=f.q('#asset-batch-move'),button=form.querySelector('button');form.dispatchEvent(new f.dom.window.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:button}));await settleReports();
-  const saved=JSON.parse(f.storage.getItem(keys.drafts));assert.equal(saved.find(row=>row.id==='page-21').projectId,'page-project');assert.deepEqual(saved.filter(row=>row.id!=='page-21'),f.drafts.filter(row=>row.id!=='page-21'));assert.equal(f.getReports().find(row=>row.id==='page-report-1').projectId,'page-project');assert.deepEqual(f.getReports().filter(row=>row.id!=='page-report-1'),reportRows.filter(row=>row.id!=='page-report-1'));assert.match(f.q('#asset-pagination').textContent,/第 2 \/ 2 页/);
-  f.q('[data-asset-select]').checked=true;f.click('[data-asset-page="previous"]');assert.equal(f.document.querySelectorAll('[data-asset-select]:checked').length,0);f.click('[data-asset-bulk]');assert.equal(f.q('#workspace-dialog').open,false);assert.match(f.q('#hub-toast').textContent,/请先选择/);
-  f.change('#asset-type-filter','detection');assert.equal(f.q('#asset-count').textContent,'共 5 份成果');assert.equal(f.document.querySelectorAll('[data-asset-select]').length,5);assert.equal(f.q('#asset-pagination').hidden,true);
- }finally{f.close();}
+test('legacy asset scope and recent links resolve to one cloud route without losing deep-link parameters',async()=>{
+ for(const [hash,expected] of [['#assets?scope=local','#assets'],['#assets?scope=account&project=p1&result=r1','#assets?project=p1&result=r1'],['#recent?scope=local&import=draft-one','#assets?import=draft-one']]){
+  const f=await fixture(async()=>response(401),{hash});
+  try{
+   await settleReports();assert.equal(f.dom.window.location.hash,expected);
+   assert.ok(f.document.querySelector('#cloud-artifact-library'));assert.equal(f.document.querySelector('.workspace-content-scope'),null);
+   assert.equal(f.document.querySelector('#asset-table-body'),null);assert.match(f.storage.getItem(keys.drafts),/未上传的研究草稿/);
+   assert.equal(f.document.querySelector('#online-workspace .account-login-required'),null,'the main cloud-file library owns the single login prompt');
+  }finally{f.close();}
+ }
 });
 
 test('a category renders while report history is pending and its active editor survives report completion',async()=>{
@@ -151,8 +115,8 @@ test('home renders immediately and late reports update its local panels without 
  }finally{f.close();}
 });
 
-test('local assets and search populate delayed report rows and accurate counts',async()=>{
- for(const hash of ['#assets?scope=local','#search/比对报告']){
+test('local search still populates delayed report rows without reintroducing a local asset library',async()=>{
+ for(const hash of ['#search/比对报告']){
   const pending=deferredReports(),f=await fixture(async()=>response(401),{hash,allReports:()=>pending.promise});
   try{
    assert.ok(f.document.querySelector('[data-local-reports-status]'));assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
@@ -163,12 +127,12 @@ test('local assets and search populate delayed report rows and accurate counts',
  }
 });
 
-test('late local reports update account scope counts without remounting the account workspace',async()=>{
+test('late local reports cannot remount cloud assets or recreate the removed scope switch',async()=>{
  const pending=deferredReports(),f=await fixture(async path=>path==='/api/auth/me'?response(200,signedIn):{ok:true,status:200,json:async()=>({items:[]})},{hash:'#assets?scope=account',allReports:()=>pending.promise});
  try{
-  await settleReports();const workspace=f.document.querySelector('#online-workspace'),content=workspace.firstElementChild;assert.ok(content);assert.match(f.document.querySelector('.workspace-scope-tabs').textContent,/本地内容 · 1/);
+  await settleReports();const workspace=f.document.querySelector('#online-workspace'),content=workspace.firstElementChild;assert.ok(content);assert.equal(f.document.querySelector('.workspace-scope-tabs'),null);
   pending.resolve([lateReport]);await settleReports();
-  assert.equal(f.document.querySelector('#online-workspace'),workspace);assert.equal(workspace.firstElementChild,content);assert.match(f.document.querySelector('.workspace-scope-tabs').textContent,/本地内容 · 2/);assert.equal(f.document.querySelector('.workspace-scope-tabs a.active').getAttribute('href'),'#assets?scope=account');assert.equal(f.document.querySelector('[data-local-reports-status]'),null);
+  assert.equal(f.document.querySelector('#online-workspace'),workspace);assert.equal(workspace.firstElementChild,content);assert.equal(f.document.querySelector('.workspace-scope-tabs'),null);assert.equal(f.document.querySelector('#asset-table-body'),null);assert.equal(f.document.querySelector('[data-local-reports-status]'),null);
  }finally{f.close();}
 });
 
@@ -181,26 +145,26 @@ test('a late report read cannot replace an editor opened after the initial list 
    if(!changeRenderedRoute)f.dom.window.history.replaceState(null,'','/workspace.html#search/比对报告');
    pending.resolve([lateReport]);await settleReports();
    assert.equal(f.document.querySelector('#late-report-editor'),editor);assert.equal(editor.value,'待保存的正文');assert.equal(f.document.activeElement,editor);assert.equal(active,true);
-   f.dom.window.history.replaceState(null,'','/workspace.html#assets?scope=local');f.api.render();assert.match(f.document.querySelector('#asset-table-body').textContent,/稍后读取的比对报告/);
+   f.dom.window.history.replaceState(null,'','/workspace.html#search/比对报告');f.api.render();assert.match(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
   }finally{f.close();}
  }
 });
 
-test('report completion preserves an open project dialog and updates its list after the dialog closes',async()=>{
- const pending=deferredReports(),f=await fixture(async()=>response(401),{hash:'#assets?scope=local',allReports:()=>pending.promise});
+test('report completion preserves an open dialog and updates search only after it closes',async()=>{
+ const pending=deferredReports(),f=await fixture(async()=>response(401),{hash:'#search/比对报告',allReports:()=>pending.promise});
  try{
   const dialog=f.document.querySelector('#workspace-dialog');f.document.querySelector('#workspace-dialog-body').innerHTML='<input id="pending-project-name" value="研究项目草稿">';dialog.setAttribute('open','');const input=f.document.querySelector('#pending-project-name');input.focus();
   pending.resolve([lateReport]);await settleReports();
-  assert.equal(dialog.open,true);assert.equal(f.document.querySelector('#pending-project-name'),input);assert.equal(input.value,'研究项目草稿');assert.doesNotMatch(f.document.querySelector('#asset-table-body').textContent,/稍后读取的比对报告/);
-  dialog.removeAttribute('open');dialog.dispatchEvent(new f.dom.window.Event('close'));await settleReports();assert.match(f.document.querySelector('#asset-table-body').textContent,/稍后读取的比对报告/);
+  assert.equal(dialog.open,true);assert.equal(f.document.querySelector('#pending-project-name'),input);assert.equal(input.value,'研究项目草稿');assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
+  dialog.removeAttribute('open');dialog.dispatchEvent(new f.dom.window.Event('close'));await settleReports();assert.match(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
  }finally{f.close();}
 });
 
-test('an initial report failure keeps local drafts available and displays the existing recoverable report error',async()=>{
- const pending=deferredReports(),f=await fixture(async()=>response(401),{hash:'#assets?scope=local',allReports:()=>pending.promise});
+test('an initial report failure preserves browser drafts and displays a recoverable search warning',async()=>{
+ const pending=deferredReports(),f=await fixture(async()=>response(401),{hash:'#search/研究',allReports:()=>pending.promise});
  try{
-  assert.match(f.document.querySelector('#asset-table-body').textContent,/未上传的研究草稿/);pending.reject(new Error('IndexedDB unavailable'));await settleReports();
-  assert.match(f.document.querySelector('.hub-error').textContent,/查重报告读取失败/);assert.match(f.document.querySelector('#asset-table-body').textContent,/未上传的研究草稿/);assert.equal(f.document.querySelector('#asset-count').textContent,'共 1 份成果');assert.equal(f.document.querySelector('[data-local-reports-status]'),null);
+  assert.match(f.document.querySelector('.dashboard').textContent,/未上传的研究草稿/);pending.reject(new Error('IndexedDB unavailable'));await settleReports();
+  assert.match(f.document.querySelector('[data-local-reports-status]').textContent,/比对报告暂时无法读取/);assert.match(f.document.querySelector('.dashboard').textContent,/未上传的研究草稿/);assert.match(f.storage.getItem(keys.drafts),/未上传的研究草稿/);
  }finally{f.close();}
 });
 
@@ -209,7 +173,7 @@ test('a late initial report snapshot cannot overwrite a newer explicit report re
  const f=await fixture(async()=>response(401),{allReports:()=>++reads===1?pending.promise:Promise.resolve([lateReport]),setup:w=>{w.mountSettings=context=>{restored=context.restored;w.document.querySelector('.dashboard').innerHTML='<p>备份已恢复</p>';};}});
  try{
   f.dom.window.history.replaceState(null,'','/workspace.html#settings');f.api.render();await restored();pending.resolve([]);await settleReports();
-  f.dom.window.history.replaceState(null,'','/workspace.html#assets?scope=local');f.api.render();assert.match(f.document.querySelector('#asset-table-body').textContent,/稍后读取的比对报告/);
+  f.dom.window.history.replaceState(null,'','/workspace.html#search/比对报告');f.api.render();assert.match(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
  }finally{f.close();}
 });
 
@@ -483,7 +447,7 @@ test('logout preserves the local workspace and late session responses cannot res
 
 test('workspace search finds account projects, drafts, task results and originals with correct direct routes',async()=>{
  const f=await fixture(async path=>{if(path==='/api/auth/me')return response(200,signedIn);const items=path==='/api/projects'?[{id:'p1',title:'课堂研究项目'}]:path==='/api/workspace/drafts'?[{id:'d1',title:'课堂研究草稿'}]:path==='/api/results'?[{id:'r1',title:'课堂研究成果'}]:path==='/api/files'?[{id:'f1',name:'课堂研究原件.txt'}]:null;return {ok:true,status:200,json:async()=>({items})};});
- try{f.dom.window.location.hash='#search/'+encodeURIComponent('课堂');f.api.render();await new Promise(resolve=>setTimeout(resolve,15));const panel=f.document.querySelector('#account-search-panel');assert.match(panel.textContent,/课堂研究项目/);assert.match(panel.textContent,/课堂研究草稿/);assert.match(panel.textContent,/课堂研究成果/);assert.deepEqual([...panel.querySelectorAll('a')].map(a=>a.getAttribute('href')),['#projects?scope=account&project=p1','#account-draft/d1','#assets?scope=account&result=r1','/api/files/f1/download']);assert.ok(panel.querySelector('a[href="#account-draft/d1"]'));assert.ok(panel.querySelector('a[href="/api/files/f1/download"]'));}finally{f.close();}
+ try{f.dom.window.location.hash='#search/'+encodeURIComponent('课堂');f.api.render();await new Promise(resolve=>setTimeout(resolve,15));const panel=f.document.querySelector('#account-search-panel');assert.match(panel.textContent,/课堂研究项目/);assert.match(panel.textContent,/课堂研究草稿/);assert.match(panel.textContent,/课堂研究成果/);assert.deepEqual([...panel.querySelectorAll('a')].map(a=>a.getAttribute('href')),['#projects?scope=account&project=p1','#account-draft/d1','#assets?result=r1','/api/files/f1/download']);assert.ok(panel.querySelector('a[href="#account-draft/d1"]'));assert.ok(panel.querySelector('a[href="/api/files/f1/download"]'));}finally{f.close();}
 });
 
 test('a failed account search shows an unavailable state rather than claiming zero matches',async()=>{
@@ -537,10 +501,10 @@ test('questionnaire storage protection does not suppress account session updates
 });
 
 
-test('local assets show their encoded account project and account route without modifying the local project directory',async()=>{
- const encoded='account:'+encodeURIComponent(signedIn.id)+':remote-project',local=[{id:'local-project',name:'Local project'}],account={id:encoded,projectId:'remote-project',ownerId:signedIn.id,name:'Account research project',projectScope:'account'};
- const f=await fixture(async()=>response(200,signedIn),{hash:'#assets?scope=local',setup:w=>{w.localStorage.setItem(keys.projects,JSON.stringify(local));w.localStorage.setItem(keys.drafts,JSON.stringify([{id:'encoded-draft',title:'Linked account research draft',tool:'writing',stage:'draft',text:'Saved research content',projectId:encoded,updatedAt:'2026-10-21T00:00:00Z'}]));w.selectableProjects=()=>[structuredClone(account)];}});
- try{await settleReports();f.api.render();const link=f.document.querySelector('#asset-table-body .asset-project');assert.ok(link);assert.equal(link.textContent,account.name);assert.equal(link.getAttribute('href'),'#projects?scope=account&project=remote-project');const filter=f.document.querySelector('#asset-project-filter');assert.ok([...filter.options].some(option=>option.value===encoded&&option.textContent.includes(account.name)));filter.value=encoded;filter.dispatchEvent(new f.dom.window.Event('change',{bubbles:true}));const query=f.document.querySelector('#asset-query');query.value=account.name;query.dispatchEvent(new f.dom.window.Event('input',{bubbles:true}));assert.equal(f.document.querySelectorAll('#asset-table-body .asset-title').length,1);assert.equal(f.document.querySelector('#asset-table-body .asset-title').textContent,'Linked account research draft');assert.deepEqual(JSON.parse(f.storage.getItem(keys.projects)),local);assert.equal(JSON.parse(f.storage.getItem(keys.drafts))[0].projectId,encoded);}finally{f.close();}
+test('old local asset links preserve drafts and project associations while opening cloud management',async()=>{
+ const encoded='account:'+encodeURIComponent(signedIn.id)+':remote-project',local=[{id:'local-project',name:'Local project'}],draft={id:'encoded-draft',title:'Linked account research draft',tool:'writing',stage:'draft',text:'Saved research content',projectId:encoded,updatedAt:'2026-10-21T00:00:00Z'};
+ const calls=[],f=await fixture(async(path,options)=>{calls.push({path,options});return path==='/api/auth/me'?response(200,signedIn):{ok:true,status:200,json:async()=>({items:[]})};},{hash:'#assets?scope=local',setup:w=>{w.localStorage.setItem(keys.projects,JSON.stringify(local));w.localStorage.setItem(keys.drafts,JSON.stringify([draft]));}});
+ try{await settleReports();assert.equal(f.dom.window.location.hash,'#assets');assert.ok(f.document.querySelector('#cloud-artifact-library'));assert.equal(f.document.querySelector('.workspace-content-scope'),null);assert.equal(f.document.querySelector('#asset-table-body'),null);assert.deepEqual(JSON.parse(f.storage.getItem(keys.projects)),local);assert.deepEqual(JSON.parse(f.storage.getItem(keys.drafts)),[draft]);assert.equal(calls.some(call=>call.options?.body),false);}finally{f.close();}
 });
 
 function accountHomeData(owner,title){return {cap:{},user:owner,jobs:[],files:[],usage:[],projects:[],results:[],theses:[],drafts:[{id:'home-'+owner.id,title,tool:'writing',updated_at:'2026-10-21T00:00:00Z'}],summary:{counts:{projects:0,drafts:1,results:0,queuedJobs:0,runningJobs:0}}};}

@@ -22,7 +22,7 @@ async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params=
  const scheduledPolls=[],pollWarnings=[];if(pollTimers){const originalSetTimeout=w.setTimeout.bind(w);w.setTimeout=(callback,delay,...args)=>{if(delay===5000){scheduledPolls.push(()=>callback(...args));return 900000+scheduledPolls.length;}return originalSetTimeout(callback,delay,...args);};Object.defineProperty(w.document,'hidden',{configurable:true,value:false});w.console.warn=(...args)=>pollWarnings.push(args);}
  w.HTMLElement.prototype.scrollIntoView=()=>{};w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){const wasOpen=this.open;this.open=false;if(wasOpen)this.dispatchEvent(new w.Event('close'));};
  const exportBodies=[];const OriginalBlob=w.Blob;w.Blob=class extends OriginalBlob{constructor(parts,options){super(parts,options);this.testContent=parts.join('');}};w.URL.createObjectURL=blob=>{exportBodies.push(blob.testContent);return 'blob:test';};w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=function(){if(this.download)downloads.push(this.download);};
- w.localStorage.setItem('paperknow-drafts','[{"title":"本地未上传成果"}]');
+ w.localStorage.setItem('paperknow-drafts','[{"id":"legacy-local","tool":"writing","title":"本地未上传成果"}]');
  w.download=async(name,content)=>{exportBodies.push(content);downloads.push(name);return {message:'已保存到账户云文件并发起下载。'};};
  const calls=[],navigations=[],downloads=[],notices=[];let saved=[],projects=[{id:'p1',title:'账户研究项目',degree:'本科',major:'教育学',updated_at:now}],files=[{id:'f1',name:'账户原件.txt',bytes:30,project_id:'p1'}],jobs=[{id:'pending',type:'parse',status:'queued',attempt:0,created_at:now},{id:'failed',type:'agent',status:'failed',attempt:1,created_at:now,error:'测试任务失败'}];
  Object.assign(w,{updateAccountProjects,resolveAccountProjectId,workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,thesisEditorPresentation,restoreThesisEditorText,presentThesisDocument});w.publicDraftCopy=publicDraftCopy;w.membershipPurchaseTiles=membershipPurchaseTiles;w.supportContactsMarkup=supportContactsMarkup;w.bindSupportContacts=bindSupportContacts;w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts'};w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
@@ -47,7 +47,7 @@ async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params=
   else throw Error('Unexpected API '+path);
   return {ok:status<400,status,json:async()=>JSON.parse(JSON.stringify(value))};
  };
- w.eval(code+'\nwindow.onlineTest={mountOnlineWorkspace,disposeOnlineWorkspace,onlineWorkspaceRouteGuard,onlineWorkspaceHasWork,onlineWorkspaceConfirmLeave,onlineWorkspaceSessionChanged};');
+ w.eval(code+'\nwindow.onlineTest={onlineWorkspaceHref,mountOnlineWorkspace,disposeOnlineWorkspace,onlineWorkspaceRouteGuard,onlineWorkspaceHasWork,onlineWorkspaceConfirmLeave,onlineWorkspaceSessionChanged};');
  const ctx={navigate:hash=>navigations.push(hash),notify:message=>notices.push(message)};
  await w.onlineTest.mountOnlineWorkspace(w.document.querySelector('#online'),view,ctx,new w.URLSearchParams(params));
  return {w,doc:w.document,calls,navigations,downloads,notices,saved,ctx,exportBodies,scheduledPolls,pollWarnings};
@@ -268,7 +268,7 @@ test('account drafts are opened by account id while local copies upload only aft
 });
 
 test('an expired session with a non-JSON response clears account content instead of leaving private data on screen',async t=>{
- const f=await fixture(t,{view:'results',request:async path=>path==='/api/workspace/drafts'?{ok:false,status:401,json:async()=>{throw Error('HTML response');}}:undefined});assert.match(f.doc.querySelector('#view').textContent,/登录后查看账户内容/);assert.equal(f.doc.querySelector('[data-result]'),null);assert.equal(f.doc.querySelector('#import-local-draft'),null);
+ const f=await fixture(t,{view:'results',request:async path=>path==='/api/workspace/drafts'?{ok:false,status:401,json:async()=>{throw Error('HTML response');}}:undefined});assert.match(f.doc.querySelector('#view').textContent,/登录后管理云端成果/);assert.equal(f.doc.querySelector('[data-result]'),null);assert.equal(f.doc.querySelector('#import-local-draft'),null);
 });
 
 test('retrying a failed parse submission reuses the already uploaded original file',async t=>{
@@ -577,4 +577,78 @@ test('public capability and session reads overlap while private resources wait f
  confirmIdentity({status:'ready',user:{id:'verified-owner'}});await mounting;
  assert.ok(f.doc.querySelector('#task-form'));assert.equal(f.calls.some(call=>call.path==='/api/auth/me'),false);
  for(const call of f.calls.filter(call=>call.path!=='/api/capabilities'))assert.equal(call.options.headers['X-PaperKnow-User'],'verified-owner');
+});
+
+
+test('cloud assets keep editing history folded until requested and migration never uploads on open',async t=>{
+ const f=await fixture(t,{view:'results'}),records=f.doc.querySelector('#account-editing-records');
+ assert.ok(records);assert.equal(records.open,false);assert.match(records.querySelector('summary').textContent,/继续编辑与处理记录/);
+ assert.equal(f.doc.querySelector('.management-overview').closest('#account-editing-records'),records);
+ assert.equal(f.doc.querySelector('.workspace-scope-tabs'),null);assert.equal(f.calls.some(call=>call.body),false);
+ const original=f.w.localStorage.getItem('paperknow-drafts');f.doc.querySelector('#import-local-draft').click();
+ await settle(()=>f.doc.querySelector('#draft-import-form'));assert.equal(records.open,true);
+ assert.equal(f.doc.querySelector('#draft-import-id').value,'');assert.equal(f.calls.some(call=>call.body),false);
+ assert.equal(f.w.localStorage.getItem('paperknow-drafts'),original);
+});
+
+test('result and migration deep links open their folded editing destination while retaining separate cloud-file management',async t=>{
+ const f=await fixture(t,{view:'results',params:'result=r1'});
+ assert.equal(f.doc.querySelector('#account-editing-records').open,true);assert.ok(f.doc.querySelector('#revision-text'));
+ f.w.localStorage.setItem('paperknow-drafts',JSON.stringify([{id:'migrate-one',title:'历史开题稿',tool:'proposal',text:'保存的正文'}]));
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'results',f.ctx,new f.w.URLSearchParams('import=migrate-one'));
+ assert.equal(f.doc.querySelector('#account-editing-records').open,true);assert.equal(f.doc.querySelector('#draft-import-id').value,'migrate-one');
+ assert.equal(f.calls.some(call=>call.body),false);assert.match(f.w.localStorage.getItem('paperknow-drafts'),/保存的正文/);
+});
+
+test('cloud asset route links append queries correctly while project and task scope remains separate',async t=>{
+ const f=await fixture(t,{view:'results'});
+ assert.equal(f.w.onlineTest.onlineWorkspaceHref('results'),'#assets');
+ assert.equal(f.w.onlineTest.onlineWorkspaceHref('results',{result:'result one',project:'p1'}),'#assets?result=result+one&project=p1');
+ assert.equal(f.w.onlineTest.onlineWorkspaceHref('projects',{project:'p1'}),'#projects?scope=account&project=p1');
+ assert.equal(f.w.onlineTest.onlineWorkspaceHref('tasks'),'#tasks?scope=account');
+});
+
+
+test('new cloud accounts show no browser-content entry and an empty legacy import link stays harmless',async t=>{
+ const f=await fixture(t,{view:'results'});f.w.localStorage.removeItem('paperknow-drafts');
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'results',f.ctx);
+ assert.equal(f.doc.querySelector('.account-draft-migration'),null);assert.equal(f.doc.querySelector('#import-local-draft'),null);assert.equal(f.doc.querySelector('#account-editing-records').open,false);
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'results',f.ctx,new f.w.URLSearchParams('import=missing'));
+ assert.equal(f.doc.querySelector('#account-editing-records').open,true);assert.match(f.doc.querySelector('#draft-import').textContent,/没有可迁移/);assert.equal(f.doc.querySelector('#draft-import-form'),null);assert.equal(f.calls.some(call=>call.body),false);
+});
+
+test('browser drafts with an explicit different owner are never offered for migration',async t=>{
+ const f=await fixture(t,{view:'results'});f.w.localStorage.setItem('paperknow-drafts',JSON.stringify([{id:'other-user',ownerId:'u2',title:'其他账户的草稿',tool:'writing'}]));
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'results',f.ctx,new f.w.URLSearchParams('import=other-user'));
+ assert.equal(f.doc.querySelector('#import-local-draft'),null);assert.match(f.doc.querySelector('#draft-import').textContent,/没有可迁移/);assert.doesNotMatch(f.doc.querySelector('#view').textContent,/其他账户的草稿/);assert.equal(f.calls.some(call=>call.body),false);
+});
+
+
+test('unavailable browser storage never blocks the cloud editing and processing library',async t=>{
+ const f=await fixture(t,{view:'results'});f.w.list=()=>{throw Error('Browser storage blocked');};
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'results',f.ctx);
+ assert.ok(f.doc.querySelector('#account-editing-records'));assert.ok(f.doc.querySelector('[data-result="r1"]'));assert.equal(f.doc.querySelector('#import-local-draft'),null);assert.equal(f.calls.some(call=>call.body),false);
+});
+
+
+test('account project cloud-file entry uses its distinct server count and retains the original-file count',async t=>{
+ const project={id:'p1',title:'云端文件归属测试',counts:{files:1,drafts:2,theses:0,results:3,artifacts:7},updated_at:now};
+ const f=await fixture(t,{params:'project=p1',request:async(path,options)=>!options.body&&path==='/api/projects'?{ok:true,status:200,json:async()=>({items:[project]})}:!options.body&&path==='/api/projects/p1'?{ok:true,status:200,json:async()=>({item:project,files:[{id:'f1',name:'原始资料.txt',project_id:'p1',bytes:30}],jobs:[],results:[],drafts:[],theses:[],artifacts:[]})}:undefined});
+ const entry=f.doc.querySelector('[data-project-cloud-files="p1"]');assert.ok(entry);assert.equal(entry.textContent,'云端文件 7');assert.equal(entry.getAttribute('href'),'#assets?project=p1');
+ const originals=[...f.doc.querySelectorAll('.account-project-metrics>div')].find(node=>node.textContent.includes('原始资料'));assert.equal(originals.querySelector('b').textContent,'1');assert.equal(f.calls.some(call=>call.body),false);
+});
+
+
+test('editing-history disclosure retains the user choice when refreshing and opening a result',async t=>{
+ const f=await fixture(t,{view:'results'});f.doc.querySelector('#account-editing-records').open=true;
+ f.doc.querySelector('.account-refresh').click();await settle(()=>f.notices.includes('已读取最新账户内容'));
+ assert.equal(f.doc.querySelector('#account-editing-records').open,true);
+ f.doc.querySelector('[data-result="r1"]').click();await settle(()=>f.doc.querySelector('#revision-text'));
+ assert.equal(f.doc.querySelector('#account-editing-records').open,true);
+});
+
+test('a primary cloud-file manager owns the single guest login prompt',async t=>{
+ const f=await fixture(t,{guest:true,view:'results'});
+ await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'results',{...f.ctx,cloudFilesPrimary:true});
+ assert.equal(f.doc.querySelector('#online .account-login-required'),null);assert.equal(f.doc.querySelector('#view').textContent,'');assert.equal(f.calls.some(call=>call.body),false);
 });

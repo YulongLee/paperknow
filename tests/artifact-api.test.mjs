@@ -27,6 +27,19 @@ test('artifact API applies sessions and origin policy, then delivers owned verif
  const archive=await (await f.request('/api/account/export')).json();assert.equal(archive.artifacts?.length,1);assert.equal(archive.artifacts[0].id,item.id);assert.equal(JSON.stringify(archive.artifacts).includes('storage_key'),false);
  assert.equal((await f.request('/api/artifacts/'+item.id+'/delete',{expectedSha256:item.sha256,expectedUserId:'alice'})).status,200);assert.equal(f.objects.size,0);
 });
+test('artifact metadata API applies session, origin, owner and revision protection without changing cloud bytes',async t=>{
+ const f=await fixture(t),created=await f.request('/api/artifacts',{name:'原始成果.txt',data:Buffer.from('cloud original').toString('base64'),sourceType:'research'}),{item}=await created.json(),path=`/api/artifacts/${item.id}/metadata`,input={version:item.version,name:'重命名成果.txt',expectedUserId:'alice'},at=new Date().toISOString();
+ f.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run('cloud-project','alice','项目','本科','专业',at,at);
+ assert.equal(item.version,1);assert.ok(item.updatedAt);
+ assert.equal((await f.request(path,input,null)).status,401);assert.equal((await f.request(path,input,'alice','http://untrusted.invalid')).status,403);assert.equal((await f.request(path,{...input,expectedUserId:'bob'},'bob')).status,404);
+ assert.equal((await f.request(path,{...input,expectedUserId:'bob'})).status,409);assert.equal((await f.request(path)).status,405);
+ const updated=await f.request(path,{...input,projectId:'cloud-project'});assert.equal(updated.status,200);const changed=(await updated.json()).item;assert.equal(changed.name,input.name);assert.equal(changed.version,2);assert.equal(changed.projectId,'cloud-project');assert.equal(changed.sha256,item.sha256);assert.equal(f.objects.size,1);
+ assert.equal((await f.request(path,input)).status,409);assert.equal((await f.request(path,{version:2,name:'misleading.pdf'})).status,400);
+ const list=await(await f.request('/api/artifacts?kind=txt&projectId=cloud-project')).json();assert.equal(list.total,1);assert.equal(list.items[0].version,2);assert.equal(list.items[0].name,input.name);assert.ok(list.items[0].updatedAt);
+ assert.equal((await f.request('/api/artifacts?projectId=cloud-project',undefined,'bob')).status,404);
+ const download=await f.request(changed.downloadUrl);assert.equal(download.status,200);assert.equal(await download.text(),'cloud original');assert.ok(download.headers.get('content-disposition').includes(encodeURIComponent(input.name)));
+ assert.equal((await f.request(`/api/artifacts/${item.id}/delete`,{expectedSha256:item.sha256})).status,200);assert.equal(f.objects.size,0);assert.equal((await f.request(path,{version:2,name:'deleted.txt'})).status,404);
+});
 test('authenticated TeX and MathML HTTP exports retain their exact type, owner and inert attachment delivery',async t=>{
  const f=await fixture(t),cases=[['科研公式.tex',String.raw`\frac{x_1}{y^2}`,'tex','text/plain;charset=utf-8'],['科研公式.mml','<math xmlns="http://www.w3.org/1998/Math/MathML"><mfrac><mi>x</mi><mi>y</mi></mfrac></math>','mml','application/mathml+xml;charset=utf-8']];
  for(const [name,text,kind,mimeType]of cases){const input={name,data:Buffer.from(text).toString('base64'),sourceType:'research',expectedUserId:'alice'};

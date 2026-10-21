@@ -16,6 +16,11 @@ async function fixture(t){
  return {db,base,request,users,project,save};
 }
 
+function seedCloudArtifact(db,{id,projectId,user='alice',status='ready',sourceType='other',sourceId=null}){
+ const at=new Date().toISOString();
+ db.prepare("INSERT INTO artifacts(id,user_id,project_id,name,kind,bytes,sha256,source_type,source_id,storage_provider,storage_bucket,storage_key,status,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?,?,'aliyun_oss',?,?,?, ?,?)").run(id,user,projectId,id+'.txt','txt',id.padEnd(64,'0'),sourceType,sourceId,'private-project-bucket','private-oss-key/'+id,status,at,at);
+}
+
 test('workspace reads require login and every mutation requires same-origin',async t=>{
  const f=await fixture(t);
  for(const path of ['/projects','/workspace/drafts','/workspace/summary','/account/profile','/feedback'])assert.equal((await f.request(path,undefined,null)).status,401);
@@ -206,6 +211,50 @@ test('project-owned counts and detail remain complete when newer work fills the 
  assert.equal((await f.request('/jobs')).value.items.some(row=>row.id==='old-project-job'),false);assert.equal((await f.request('/results')).value.items.some(row=>row.id==='old-project-result'),false);
  const detail=(await f.request('/projects/'+project.id)).value;assert.equal(detail.jobs[0].id,'old-project-job');assert.equal(detail.results[0].id,'old-project-result');assert.equal(detail.item.counts.jobs,1);assert.equal(detail.jobs[0].input,undefined);
  assert.equal((await f.request('/projects/'+project.id,undefined,f.users.bob)).status,404);
+});
+
+test('project cloud file counts and details contain only owned published deliveries and keep originals separate',async t=>{
+ const f=await fixture(t),p=await f.project(),other=await f.project('另一个项目'),at=new Date().toISOString();
+ const job=(id,type,status='completed')=>f.db.prepare('INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,'alice',p.id,type,status,status,'{}',id,'hash',at,at);
+ const tool=(id,operation,status)=>{
+  job(id,'tool_run',status);
+  f.db.prepare('INSERT INTO tool_runs(id,user_id,kind,operation,snapshot,input_hash,client_key,settings_version,status,stage,plan,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,'alice',operation==='image'?'research':'ppt',operation,'{}','hash',id,'fixture',status,status,'[]',at,at);
+ };
+ seedCloudArtifact(f.db,{id:'plain-owned',projectId:p.id});
+ for(const status of ['uploading','deleting','failed','deleted'])seedCloudArtifact(f.db,{id:'not-delivered-'+status,projectId:p.id,status});
+ seedCloudArtifact(f.db,{id:'other-project',projectId:other.id});seedCloudArtifact(f.db,{id:'foreign-owner',projectId:p.id,user:'bob'});
+ for(const [id,operation,status]of [['image-complete','image','completed'],['image-running','image','running'],['ppt-complete','ppt','completed'],['ppt-running','ppt','running']]){
+  tool(id,operation,status);seedCloudArtifact(f.db,{id:'file-'+id,projectId:p.id,sourceType:operation==='image'?'research':'presentation',sourceId:id});
+ }
+ job('web-complete','web_similarity');job('web-running','web_similarity','running');
+ for(const [id,sourceId]of [['web-input','web-complete'],['web-report','web-complete'],['web-unfinished','web-running']])seedCloudArtifact(f.db,{id,projectId:p.id,sourceType:'detection',sourceId});
+ for(const [id,inputId]of [['web-complete','web-input'],['web-running',null]])f.db.prepare('INSERT INTO web_similarity_runs(id,user_id,title,characters,input_artifact_id,queries_reserved,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(id,'alice','联网来源检查',40,inputId,1,at,at);
+ f.db.prepare('INSERT INTO files(id,user_id,project_id,name,kind,bytes,sha256,body,created_at) VALUES(?,?,?,?,?,?,?,?,?)').run('original-file','alice',p.id,'原件.txt','txt',1,'hash',Buffer.from('x'),at);
+ const list=(await f.request('/projects')).value.items,project=list.find(item=>item.id===p.id),detail=(await f.request('/projects/'+p.id)).value;
+ assert.equal(project.counts.artifacts,4);assert.equal(project.counts.files,1);assert.equal(detail.item.counts.artifacts,4);assert.equal(detail.files.length,1);
+ assert.deepEqual(detail.artifacts.map(item=>item.id).sort(),['plain-owned','file-image-complete','file-ppt-complete','web-report'].sort());
+ for(const item of detail.artifacts){assert.equal(item.projectId,p.id);assert.equal(item.status,'ready');assert.equal(item.version,1);assert.ok(item.updatedAt);assert.equal(item.downloadUrl,'/api/artifacts/'+item.id+'/download');}
+ assert.doesNotMatch(JSON.stringify(detail.artifacts),/private-project-bucket|private-oss-key|storage_key|storage_bucket|foreign-owner|web-input|unfinished/);
+ assert.equal(list.find(item=>item.id===other.id).counts.artifacts,1);assert.equal((await f.request('/projects/'+p.id,undefined,f.users.bob)).status,404);
+});
+
+test('moving or deleting a cloud file immediately updates independent project counts and prevents orphaning live files',async t=>{
+ const f=await fixture(t),first=await f.project('原项目'),second=await f.project('目标项目');
+ seedCloudArtifact(f.db,{id:'movable-cloud',projectId:first.id});
+ assert.equal((await f.request('/projects/'+first.id+'/delete',{version:0})).status,409);
+ const move=await f.request('/artifacts/movable-cloud/metadata',{version:1,projectId:second.id,expectedUserId:'alice'});assert.equal(move.status,200);
+ const listed=(await f.request('/projects')).value.items;assert.equal(listed.find(item=>item.id===first.id).counts.artifacts,0);assert.equal(listed.find(item=>item.id===second.id).counts.artifacts,1);
+ assert.equal((await f.request('/projects/'+first.id+'/delete',{version:0})).status,200);assert.equal((await f.request('/projects/'+second.id+'/delete',{version:0})).status,409);
+ f.db.prepare("UPDATE artifacts SET status='deleting' WHERE id='movable-cloud'").run();assert.equal((await f.request('/projects/'+second.id)).value.item.counts.artifacts,0);assert.equal((await f.request('/projects/'+second.id+'/delete',{version:0})).status,409);
+ f.db.prepare("UPDATE artifacts SET status='deleted' WHERE id='movable-cloud'").run();assert.equal((await f.request('/projects/'+second.id)).value.artifacts.length,0);assert.equal((await f.request('/projects/'+second.id+'/delete',{version:0})).status,200);
+});
+
+test('project cloud file summaries tolerate legacy metadata and the artifact feature not being installed',async t=>{
+ const f=await fixture(t),p=await f.project();f.db.exec('ALTER TABLE artifacts DROP COLUMN version');seedCloudArtifact(f.db,{id:'legacy-cloud',projectId:p.id});
+ const detail=(await f.request('/projects/'+p.id)).value;assert.equal(detail.item.counts.artifacts,1);assert.equal(detail.artifacts[0].version,1);assert.equal(detail.artifacts[0].name,'legacy-cloud.txt');
+ f.db.exec('DELETE FROM artifacts; DROP TABLE artifacts');
+ const empty=(await f.request('/projects/'+p.id)).value;assert.equal(empty.item.counts.artifacts,0);assert.deepEqual(empty.artifacts,[]);assert.equal((await f.request('/projects')).value.items[0].counts.artifacts,0);
+ assert.equal((await f.request('/projects/'+p.id+'/delete',{version:0})).status,200);
 });
 
 test('workspace summary does not turn unknown usage into zero and counts saving tasks as pending',async t=>{

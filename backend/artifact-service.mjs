@@ -13,6 +13,21 @@ const safeId=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,120}$/.test(value
 const shaValid=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const downloadHeaders=row=>({'Content-Type':'application/octet-stream','Content-Disposition':`attachment; filename="artifact.${row.kind}"; filename*=UTF-8''${encodeURIComponent(row.name)}`,'Content-Length':String(row.bytes),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"sandbox; default-src 'none'"});
 
+export const serializeArtifact=row=>({id:row.id,name:row.name,kind:row.kind,mimeType:artifactMimeType(row.kind),bytes:row.bytes,sha256:row.sha256,sourceType:row.source_type,sourceId:row.source_id,projectId:row.project_id,status:row.status,createdAt:row.created_at,updatedAt:row.updated_at,version:row.version??1,source_type:row.source_type,source_id:row.source_id,project_id:row.project_id,created_at:row.created_at,updated_at:row.updated_at,downloadUrl:row.status==='ready'?`/api/artifacts/${row.id}/download`:null});
+
+// Both the cloud library and project summaries apply the same publication
+// boundary. Internal detection input and unfinished multi-file deliveries never
+// become account-visible merely because an individual OSS upload succeeded.
+export function artifactVisibilityConditions(db){
+ const exists=table=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table)),conditions=[];
+ if(exists('tool_runs')){
+  conditions.push("NOT (source_type='research' AND EXISTS (SELECT 1 FROM tool_runs r WHERE r.id=artifacts.source_id AND r.user_id=artifacts.user_id AND r.operation='image' AND r.status!='completed'))");
+  conditions.push("NOT (source_type='presentation' AND EXISTS (SELECT 1 FROM tool_runs r WHERE r.id=artifacts.source_id AND r.user_id=artifacts.user_id AND r.operation='ppt' AND r.status!='completed'))");
+ }
+ if(exists('web_similarity_runs'))conditions.push("NOT (source_type='detection' AND EXISTS (SELECT 1 FROM web_similarity_runs r JOIN jobs j ON j.id=r.id WHERE r.id=artifacts.source_id AND r.user_id=artifacts.user_id AND (j.status!='completed' OR r.input_artifact_id=artifacts.id)))");
+ return conditions;
+}
+
 export function initializeArtifactSchema(db){db.exec(`
  CREATE TABLE IF NOT EXISTS artifacts(
   id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
@@ -20,12 +35,17 @@ export function initializeArtifactSchema(db){db.exec(`
   source_type TEXT NOT NULL,source_id TEXT,storage_provider TEXT NOT NULL CHECK(storage_provider='aliyun_oss'),
   storage_bucket TEXT NOT NULL,storage_key TEXT NOT NULL,
   status TEXT NOT NULL CHECK(status IN ('uploading','ready','deleting','failed','deleted')),
-  lease_token TEXT,lease_until TEXT,last_error TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL
+  lease_token TEXT,lease_until TEXT,last_error TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1)
  );
  CREATE INDEX IF NOT EXISTS artifacts_owner ON artifacts(user_id,created_at DESC,id DESC);
  CREATE INDEX IF NOT EXISTS artifacts_state ON artifacts(status,updated_at);
  CREATE UNIQUE INDEX IF NOT EXISTS artifacts_owned_content ON artifacts(user_id,sha256,kind) WHERE status!='deleted';
- `);}
+ `);
+ // Existing exports keep their immutable object keys while gaining a revision
+ // for display metadata edits made from more than one browser or device.
+ if(!db.prepare('PRAGMA table_info(artifacts)').all().some(column=>column.name==='version'))db.exec('ALTER TABLE artifacts ADD COLUMN version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1)');
+}
 
 export function createArtifactService(db,config={}){
  initializeArtifactSchema(db);
@@ -40,7 +60,7 @@ export function createArtifactService(db,config={}){
  const hasToolRuns=()=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tool_runs'").get());
  const hasWebRuns=()=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='web_similarity_runs'").get());
  const pendingPresentation=row=>row.source_type==='research'&&hasToolRuns()&&Boolean(db.prepare("SELECT 1 FROM tool_runs WHERE id=? AND user_id=? AND operation='image' AND status!='completed'").get(row.source_id,row.user_id))||row.source_type==='presentation'&&hasToolRuns()&&Boolean(db.prepare("SELECT 1 FROM tool_runs WHERE id=? AND user_id=? AND operation='ppt' AND status!='completed'").get(row.source_id,row.user_id))||row.source_type==='detection'&&hasWebRuns()&&Boolean(db.prepare("SELECT 1 FROM web_similarity_runs r JOIN jobs j ON j.id=r.id WHERE r.id=? AND r.user_id=? AND (j.status!='completed' OR r.input_artifact_id=?)").get(row.source_id,row.user_id,row.id));
- const serialize=row=>({id:row.id,name:row.name,kind:row.kind,mimeType:artifactMimeType(row.kind),bytes:row.bytes,sha256:row.sha256,sourceType:row.source_type,sourceId:row.source_id,projectId:row.project_id,status:row.status,createdAt:row.created_at,source_type:row.source_type,source_id:row.source_id,project_id:row.project_id,created_at:row.created_at,downloadUrl:row.status==='ready'?`/api/artifacts/${row.id}/download`:null});
+ const serialize=serializeArtifact;
  const usage=user=>{const row=db.prepare("SELECT coalesce(sum(bytes),0) bytes,count(*) count FROM artifacts WHERE user_id=? AND status!='deleted'").get(user.id);return {...row,maxBytes:limits.maxAccountBytes,maxFiles:limits.maxFiles,maxFileBytes:limits.maxFileBytes};};
  const checkAccount=(expected,user)=>{if(expected!==undefined&&expected!==user.id)fail(409,'登录账户已变化，请刷新后重新导出');};
  const checkSignature=(kind,buffer)=>{
@@ -53,26 +73,32 @@ export function createArtifactService(db,config={}){
  };
 
  return async function artifacts({path,method,user,query=new URLSearchParams(),readBody}){
-  const download=path.match(/^\/api\/artifacts\/([A-Za-z0-9_-]{1,120})\/download$/),deletion=path.match(/^\/api\/artifacts\/([A-Za-z0-9_-]{1,120})\/delete$/);
-  if(path!=='/api/artifacts'&&!download&&!deletion)return null;
+  const download=path.match(/^\/api\/artifacts\/([A-Za-z0-9_-]{1,120})\/download$/),deletion=path.match(/^\/api\/artifacts\/([A-Za-z0-9_-]{1,120})\/delete$/),metadata=path.match(/^\/api\/artifacts\/([A-Za-z0-9_-]{1,120})\/metadata$/);
+  if(path!=='/api/artifacts'&&!download&&!deletion&&!metadata)return null;
   if(!safeId(user?.id))fail(401,'请先登录服务账户');
   if(method==='GET')checkAccount(query.get('expectedUserId')??undefined,user);
   if(path==='/api/artifacts'&&method==='GET'){
    const numbered=query.has('page')||query.has('pageSize'),rawLimit=numbered?(query.get('pageSize')??'20'):(query.get('limit')??'20'),rawPage=query.get('page')??'1';
    if(!/^[1-9]\d?$|^100$/.test(rawLimit)||numbered&&Number(rawLimit)>50)fail(400,numbered?'成果列表每页支持 1～50 条':'成果列表每页支持 1～100 条');
    if(!/^[1-9]\d{0,5}$/.test(rawPage)||numbered&&query.has('cursor'))fail(400,'成果列表页码无效');
-   const limit=Number(rawLimit),page=Number(rawPage),source=query.get('sourceType'),search=query.get('q')?.trim()??'';
+   const limit=Number(rawLimit),page=Number(rawPage),source=query.get('sourceType'),search=query.get('q')?.trim()??'',kind=query.get('kind'),project=query.get('projectId');
    if(search.length>120||/[\x00-\x1f\x7f]/.test(search))fail(400,'成果搜索内容无效');
    if(source&&!sourceTypes.includes(source))fail(400,'成果类型无效');
+   if(kind!==null&&!artifactKinds.includes(kind))fail(400,'成果文件格式无效');
+   if(project!==null&&project!=='none'){
+    if(!safeId(project))fail(400,'项目编号无效');
+    if(!db.prepare('SELECT 1 FROM projects WHERE id=? AND user_id=?').get(project,user.id))fail(404,'所属项目不存在');
+   }
    let cursor=null;
    if(query.has('cursor')){try{const encoded=query.get('cursor');if(!encoded||encoded.length>400||!/^[A-Za-z0-9_-]+$/.test(encoded))throw 0;cursor=JSON.parse(Buffer.from(encoded,'base64url').toString());if(!Array.isArray(cursor)||cursor.length!==2||typeof cursor[0]!=='string'||new Date(cursor[0]).toISOString()!==cursor[0]||!safeId(cursor[1]))throw 0;}catch{fail(400,'成果列表页码无效，请刷新列表');}}
    const params=[user.id],conditions=["user_id=?","status!='deleted'"];
    // Generated delivery files publish atomically with successful settlement,
    // rather than appearing during the multi-file upload/validation window.
-   if(hasToolRuns())conditions.push("NOT (source_type='research' AND EXISTS (SELECT 1 FROM tool_runs r WHERE r.id=artifacts.source_id AND r.user_id=artifacts.user_id AND r.operation='image' AND r.status!='completed'))");
-   if(hasToolRuns())conditions.push("NOT (source_type='presentation' AND EXISTS (SELECT 1 FROM tool_runs r WHERE r.id=artifacts.source_id AND r.user_id=artifacts.user_id AND r.operation='ppt' AND r.status!='completed'))");
-   if(hasWebRuns())conditions.push("NOT (source_type='detection' AND EXISTS (SELECT 1 FROM web_similarity_runs r JOIN jobs j ON j.id=r.id WHERE r.id=artifacts.source_id AND r.user_id=artifacts.user_id AND (j.status!='completed' OR r.input_artifact_id=artifacts.id)))");
+   conditions.push(...artifactVisibilityConditions(db));
    if(source){conditions.push('source_type=?');params.push(source);}
+   if(kind!==null){conditions.push('kind=?');params.push(kind);}
+   if(project==='none')conditions.push('project_id IS NULL');
+   else if(project!==null){conditions.push('project_id=?');params.push(project);}
    if(search){conditions.push("name LIKE ? ESCAPE '\\'");params.push('%'+search.replace(/[\\%_]/g,'\\$&')+'%');}
    const total=db.prepare(`SELECT count(*) n FROM artifacts WHERE ${conditions.join(' AND ')}`).get(...params).n;
    if(cursor){conditions.push('(created_at<? OR (created_at=? AND id<?))');params.push(cursor[0],cursor[0],cursor[1]);}
@@ -97,6 +123,33 @@ export function createArtifactService(db,config={}){
   const uploadSlot=path==='/api/artifacts';if(uploadSlot){if(activeWrites>=2)fail(429,'当前导出保存较多，请稍后重试');activeWrites++;}
   try{
   const input=await readBody();
+  if(metadata){
+   fields(input,['version','name','projectId','expectedUserId']);checkAccount(input.expectedUserId,user);
+   if(!Number.isSafeInteger(input.version)||input.version<1)fail(400,'请刷新成果列表后再修改');
+   const rename=Object.hasOwn(input,'name'),move=Object.hasOwn(input,'projectId');
+   if(!rename&&!move)fail(400,'请填写需要修改的成果信息');
+   const name=rename&&typeof input.name==='string'?input.name.trim():null,pid=move?input.projectId:null;
+   if(rename&&(!name||name.length>180||/[\x00-\x1f\x7f/\\\u202a-\u202e\u2066-\u2069]/.test(name)))fail(400,'成果文件名称无效');
+   if(move&&pid!==null&&!safeId(pid))fail(400,'项目编号无效');
+   const item=transaction(()=>{
+    const row=own(metadata[1],user);
+    if(row.status==='deleted')fail(404,'成果文件不存在');
+    if(row.status!=='ready')fail(409,'成果文件尚未就绪或正在删除，请刷新列表');
+    if(pendingPresentation(row))fail(409,'成果文件仍在生成与结算中，请等待任务完成后修改');
+    if(row.version!==input.version)fail(409,'成果信息已在其他页面修改，请刷新后重试');
+    if(rename&&(!name.includes('.')||name.split('.').at(-1).toLowerCase()!==row.kind))fail(400,'重命名时请保留原文件扩展名');
+    if(move&&pid!==null&&!db.prepare('SELECT 1 FROM projects WHERE id=? AND user_id=?').get(pid,user.id))fail(404,'所属项目不存在');
+    const nextName=rename?name:row.name,nextProject=move?pid:row.project_id;
+    if(nextName!==row.name||nextProject!==row.project_id){
+     // This changes the account library only: file bytes, content hash, source
+     // linkage, kind and private OSS key remain exactly as originally stored.
+     const result=db.prepare("UPDATE artifacts SET name=?,project_id=?,updated_at=?,version=version+1 WHERE id=? AND user_id=? AND version=? AND status='ready'").run(nextName,nextProject,clock(),row.id,user.id,input.version);
+     if(result.changes!==1)fail(409,'成果信息已变化，请刷新后重试');
+    }
+    return serialize(own(row.id,user));
+   });
+   return {value:{item}};
+  }
   if(deletion){
    fields(input,['expectedSha256','expectedUserId']);checkAccount(input.expectedUserId,user);if(!shaValid(input.expectedSha256))fail(400,'请确认需要删除的成果文件');
    const existing=own(deletion[1],user);if(existing.sha256!==input.expectedSha256)fail(409,'成果文件已变化，请刷新后删除');

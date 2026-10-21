@@ -1,57 +1,113 @@
 import {esc,icon} from './ui.mjs';
 import {withStableView} from './view-stability.mjs';
+import {artifactBase64} from './artifact-export.mjs';
 
+const kinds=['pdf','docx','pptx','xlsx','txt','md','csv','json','html','svg','png','jpg','jpeg','zip','tex','mml','bib','ris'];
 const size=value=>{const n=Number(value)||0;return n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':n+' B';};
 const states={ready:'已保存',uploading:'保存中',deleting:'删除待重试',failed:'保存待重试'};
-export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globalThis.fetch}={}){
- let disposed=false,request=0,page=1,query='',owner=null,data=null,armed=null,busy=false;
- const controllers=new Set(),alive=()=>!disposed&&root.isConnected;
- const paint=html=>{if(alive())withStableView(root.closest('.dashboard')||root,()=>{root.innerHTML=html;});};
- const heading='<div class="cloud-artifact-heading"><div><span class="cloud-artifact-icon">'+icon('file',22)+'</span><div><h2>生成文件</h2><p>已导出的文档、演示和图表，保存在你的私有云文件中。</p></div></div><button type="button" data-cloud-refresh>刷新</button></div>';
- function invalidate(message){request++;owner=null;data=null;armed=null;paint(heading+'<p class="cloud-artifact-error" role="alert">'+esc(message)+'</p>');}
- async function api(path,input,expectedOwner=owner,binary=false){const c=new AbortController();controllers.add(c);const timeout=setTimeout(()=>c.abort(),60000);try{const r=await fetchImpl('/api/artifacts'+path,{method:input?'POST':'GET',credentials:'same-origin',cache:'no-store',headers:{...(input?{'Content-Type':'application/json'}:{}),...(expectedOwner?{'X-PaperKnow-User':expectedOwner}:{})},body:input?JSON.stringify(input):undefined,signal:c.signal});if(!r.ok){const v=await r.json().catch(()=>({}));throw Object.assign(Error(v.error||'云文件暂时无法读取，请稍后重试'),{status:r.status,code:v.code});}return await (binary?r.blob():r.json());}catch(error){if(c.signal.aborted)throw Error('云文件读取超时或已中止，请重试');throw error;}finally{clearTimeout(timeout);controllers.delete(c);}}
+const date=value=>{const d=new Date(value);return Number.isFinite(d.getTime())?d.toLocaleDateString('zh-CN',{timeZone:'Asia/Shanghai'}):'时间未记录';};
 
+export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globalThis.fetch,projectId=''}={}){
+ let disposed=false,request=0,page=1,query='',kind='',project=String(projectId||''),owner=null,data=null,armed=null,editing=null,busy=false,uploadOpen=false,projects=[],projectError='';
+ const controllers=new Set(),alive=()=>!disposed&&root.isConnected,doc=root.ownerDocument;
+ const paint=html=>{if(alive())withStableView(root.closest('.dashboard')||root,()=>{root.innerHTML=html;});};
+ const heading=()=>`<div class="cloud-artifact-heading"><div><span class="cloud-artifact-icon">${icon('folder',22)}</span><div><h2>云端文件</h2><p>生成和上传的文件集中保存，登录后可跨设备管理。</p></div></div><div class="cloud-artifact-heading-actions"><button type="button" data-cloud-refresh aria-label="刷新云端文件"><span aria-hidden="true">↻</span>刷新</button>${data?`<button type="button" data-cloud-upload-open class="cloud-artifact-primary" aria-expanded="${uploadOpen}">${icon('plus',15)}上传文件</button>`:''}</div></div>`;
+ function invalidate(message){request++;owner=null;data=null;armed=null;editing=null;projects=[];paint(heading()+'<p class="cloud-artifact-error" role="alert">'+esc(message)+'</p>');}
+ async function api(path,input,expectedOwner=owner,binary=false,base='/api/artifacts'){
+  const c=new AbortController();controllers.add(c);const timeout=setTimeout(()=>c.abort(),60000);
+  try{
+   const r=await fetchImpl(base+path,{method:input?'POST':'GET',credentials:'same-origin',cache:'no-store',headers:{...(input?{'Content-Type':'application/json'}:{}),...(expectedOwner?{'X-PaperKnow-User':expectedOwner}:{})},body:input?JSON.stringify(input):undefined,signal:c.signal});
+   if(!r.ok){const v=await r.json().catch(()=>({}));throw Object.assign(Error(v.error||'云文件暂时无法读取，请稍后重试'),{status:r.status,code:v.code});}
+   return await (binary?r.blob():r.json());
+  }catch(error){if(c.signal.aborted)throw Error('云文件读取超时或已中止，请重试');throw error;}finally{clearTimeout(timeout);controllers.delete(c);}
+ }
+ const projectOptions=(selected='',filter=false)=>`${filter?'<option value="">所有项目</option><option value="none" '+(selected==='none'?'selected':'')+'>未归入项目</option>':'<option value="">未归入项目</option>'}${projects.map(p=>`<option value="${esc(p.id)}" ${selected===p.id?'selected':''}>${esc(p.title)}</option>`).join('')}`;
  function content(){
-  const rows=data.items||[],pages=Math.max(1,Math.ceil(data.total/10));
-  paint(heading+`<form class="cloud-artifact-search"><label for="cloud-artifact-query">查找文件</label><input id="cloud-artifact-query" name="q" maxlength="120" placeholder="按文件名称搜索" value="${esc(query)}"><button type="submit">搜索</button></form><p class="cloud-artifact-quota">已用 ${size(data.usedBytes)} / ${size(data.quotaBytes)} · 单文件最大 ${size(data.maxFileBytes)} · 仅当前账户可下载</p><div class="cloud-artifact-list">${rows.length?rows.map(row=>`<article class="cloud-artifact-row"><span class="cloud-artifact-kind">${esc(row.kind.toUpperCase())}</span><div class="cloud-artifact-copy"><b>${esc(row.name)}</b><small>${size(row.bytes)} · ${esc(new Date(row.createdAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}))} · ${esc(states[row.status]||'待核对')}</small>${armed===row.id?'<p>删除后无法从云端恢复，已下载的本地文件不受影响。</p>':''}</div><div class="cloud-artifact-actions">${armed===row.id?`<button type="button" data-cloud-remove-confirm="${esc(row.id)}" class="cloud-artifact-danger">确认删除</button><button type="button" data-cloud-remove-cancel>取消</button>`:`${row.status==='ready'?`<button type="button" data-cloud-download="${esc(row.id)}">下载</button>`:''}<button type="button" data-cloud-remove="${esc(row.id)}">${row.status==='deleting'?'重试删除':'删除'}</button>`}</div></article>`).join(''):'<div class="cloud-artifact-empty">'+icon('file',28)+'<h3>'+ (query?'没有匹配的文件':'还没有生成文件')+'</h3><p>登录状态下主动导出文件，成功保存后会出现在这里。本地草稿不会自动上传。</p></div>'}</div><div class="cloud-artifact-footer"><span>共 ${data.total} 个文件 · 第 ${page} / ${pages} 页</span><div><button type="button" data-cloud-page="${page-1}" ${page<=1?'disabled':''}>上一页</button><button type="button" data-cloud-page="${page+1}" ${page>=pages?'disabled':''}>下一页</button></div></div>`);
+  const rows=data.items||[],pages=Math.max(1,Math.ceil(data.total/10)),used=Number(data.usedBytes)||0,quota=Number(data.quotaBytes)||0;
+  const upload=uploadOpen?`<form class="cloud-artifact-upload"><div><h3>上传到云端</h3><p>文档、演示、图片与数据文件，单文件最大 ${size(data.maxFileBytes)}。</p></div><label for="cloud-upload-file">选择文件<input id="cloud-upload-file" type="file" required accept="${kinds.map(k=>'.'+k).join(',')}"></label><label for="cloud-upload-project">所属项目<select id="cloud-upload-project" ${projectError?'disabled':''}>${projectOptions()}</select></label><div><button class="cloud-artifact-primary" type="submit" ${data.storageReady===false?'disabled':''}>保存到云端</button><button type="button" data-cloud-upload-close>取消</button></div><p class="cloud-artifact-form-error" role="alert"></p></form>`:'';
+  paint(heading()+`<div class="cloud-artifact-overview"><div><span>当前文件</span><b>${data.total}<small> 个${query||kind||project?' · 已筛选':''}</small></b></div><div><span>云存储空间</span><b>${size(used)}<small> / ${size(quota)}</small></b><meter min="0" max="${quota||1}" value="${Math.min(used,quota||1)}" aria-label="已用云存储空间"></meter></div><div class="cloud-artifact-private">${icon('shield',22)}<span><b>私有存储</b><small>仅当前账户可访问和下载</small></span></div></div>${data.storageReady===false?'<p class="cloud-artifact-error" role="alert">云存储暂不可用，请稍后再上传。已有文件记录仍会保留。</p>':''}${upload}<form class="cloud-artifact-search"><label class="cloud-artifact-searchbox" for="cloud-artifact-query">${icon('search',16)}<input id="cloud-artifact-query" name="q" maxlength="120" aria-label="搜索云端文件" placeholder="搜索文件名称" value="${esc(query)}"></label><select name="kind" aria-label="筛选文件格式"><option value="">所有格式</option>${kinds.map(k=>`<option value="${k}" ${kind===k?'selected':''}>${k.toUpperCase()}</option>`).join('')}</select><select name="project" aria-label="筛选文件所属项目" ${projectError?'disabled':''}>${projectOptions(project,true)}</select><button type="submit">查找</button>${query||kind||project?'<button type="button" data-cloud-reset>重置</button>':''}</form>${projectError?'<p class="cloud-artifact-project-error" role="status">项目目录暂不可用，仍可管理文件；刷新后重试项目整理。</p>':''}<div class="cloud-artifact-list" aria-label="云端文件列表">${rows.length?rows.map(row=>{
+   const projectId=row.projectId||row.project_id||'',projectName=projects.find(p=>p.id===projectId)?.title;
+   const editor=editing===row.id?`<form class="cloud-artifact-metadata" data-cloud-metadata="${esc(row.id)}"><label for="cloud-name-${esc(row.id)}">文件名称<input id="cloud-name-${esc(row.id)}" name="name" maxlength="180" required value="${esc(row.name)}"></label>${!projectError?`<label>所属项目<select name="projectId">${projectId&&!projectName?`<option value="${esc(projectId)}" selected>保留原项目</option>`:''}${projectOptions(projectId)}</select></label>`:''}<div><button type="submit" class="cloud-artifact-primary">保存修改</button><button type="button" data-cloud-edit-cancel>取消</button></div><p class="cloud-artifact-form-error" role="alert"></p></form>`:'';
+   return `<article class="cloud-artifact-row" data-cloud-file="${esc(row.id)}"><div class="cloud-artifact-fileline"><span class="cloud-artifact-kind kind-${['png','jpg','jpeg','svg'].includes(row.kind)?'image':row.kind==='pptx'?'slides':['csv','xlsx','json'].includes(row.kind)?'data':'document'}">${esc(row.kind.toUpperCase())}</span><div class="cloud-artifact-copy"><b title="${esc(row.name)}">${esc(row.name)}</b><small>${size(row.bytes)}<i>·</i>${esc(date(row.createdAt))}<i>·</i><span class="cloud-artifact-status ${row.status==='ready'?'ready':''}">${esc(states[row.status]||'待核对')}</span></small><span class="cloud-artifact-project">${icon('folder',12)}${esc(projectName||(projectId?'已归入项目':'未归入项目'))}</span>${armed===row.id?'<p>删除后无法从云端恢复，已下载的本地文件不受影响。</p>':''}</div><div class="cloud-artifact-actions">${armed===row.id?`<button type="button" data-cloud-remove-confirm="${esc(row.id)}" class="cloud-artifact-danger">确认删除</button><button type="button" data-cloud-remove-cancel>取消</button>`:`${row.status==='ready'?`<button type="button" data-cloud-download="${esc(row.id)}">下载</button><button type="button" data-cloud-edit="${esc(row.id)}" aria-expanded="${editing===row.id}">管理</button>`:''}<button type="button" data-cloud-remove="${esc(row.id)}">${row.status==='deleting'?'重试删除':'删除'}</button>`}</div></div>${editor}</article>`;
+  }).join(''):`<div class="cloud-artifact-empty">${icon('folder',34)}<h3>${query||kind||project?'没有匹配的文件':'把你的研究成果保存到云端'}</h3><p>${query||kind||project?'尝试其他名称、格式或项目。':'上传已有文件，或在写作、绘图等功能中导出成果。保存成功后，即可在这里统一管理。'}</p></div>`}</div><div class="cloud-artifact-footer"><span>共 ${data.total} 个文件 · 第 ${page} / ${pages} 页</span><div><button type="button" data-cloud-page="${page-1}" ${page<=1?'disabled':''}>上一页</button><button type="button" data-cloud-page="${page+1}" ${page>=pages?'disabled':''}>下一页</button></div></div>`);
  }
  async function refresh(){
-  const version=++request;armed=null;data=null;paint(heading+'<p class="cloud-artifact-empty" role="status">正在读取云文件…</p>');
+  const version=++request;armed=null;editing=null;data=null;projects=[];projectError='';paint(heading()+'<p class="cloud-artifact-empty" role="status">正在读取云文件…</p>');
   try{
    const current=await session(true);if(!alive()||version!==request)return;
    owner=current?.user?.id||null;
-   if(!owner){paint(heading+'<p class="cloud-artifact-empty">登录后可查看自己的生成文件。</p>');return;}
-   const value=await api('?'+new URLSearchParams({page:String(page),pageSize:'10',q:query,expectedUserId:owner}));
+   if(!owner){paint(heading()+'<div class="cloud-artifact-empty"><h3>登录后管理云端成果</h3><p>你的文件只对自己的账户开放。</p><a class="btn primary" href="/auth.html?next='+encodeURIComponent('/workspace.html#assets')+'">登录账户</a></div>');return;}
+   const expectedOwner=owner,filters=new URLSearchParams({page:String(page),pageSize:'10',q:query,expectedUserId:owner});if(kind)filters.set('kind',kind);if(project)filters.set('projectId',project);
+   const [fileRead,projectRead]=await Promise.allSettled([api('?'+filters,undefined,expectedOwner),api('',undefined,expectedOwner,false,'/api/projects')]);
    const confirmed=await session(true);if(!alive()||version!==request)return;
-   if(confirmed?.user?.id!==owner){invalidate('登录账户已变化，请刷新后重试');return;}
+   if(confirmed?.user?.id!==expectedOwner){invalidate('登录账户已变化，请刷新后重试');return;}
+   if(fileRead.status==='rejected')throw fileRead.reason;
+   const value=fileRead.value;
    if(!Array.isArray(value.items)||!Number.isSafeInteger(value.total)||value.items.some(r=>!r||!/^[A-Za-z0-9_-]+$/.test(r.id)||typeof r.name!=='string'||typeof r.kind!=='string'))throw Error('云文件列表响应无法核对，请刷新重试');
-   data=value;content();
-  }catch(error){if(alive()&&version===request&&error.name!=='AbortError'){if(error.status===401||error.code==='ACCOUNT_CHANGED')invalidate(error.message);else paint(heading+'<p class="cloud-artifact-error" role="alert">'+esc(error.message)+'</p>');}}
+   if(projectRead.status==='rejected'&&(projectRead.reason.status===401||projectRead.reason.code==='ACCOUNT_CHANGED'))throw projectRead.reason;
+   if(projectRead.status==='fulfilled'&&Array.isArray(projectRead.value.items)&&projectRead.value.items.every(p=>typeof p.id==='string'&&typeof p.title==='string'))projects=projectRead.value.items;
+   else projectError='项目目录读取失败';
+   data=value;if(page>1&&rowsEmpty(value)){page=Math.max(1,Math.ceil(value.total/10));return refresh();}content();
+  }catch(error){if(alive()&&version===request&&error.name!=='AbortError'){if(error.status===401||error.code==='ACCOUNT_CHANGED')invalidate(error.message);else paint(heading()+'<p class="cloud-artifact-error" role="alert">'+esc(error.message)+'</p>'+((query||kind||project)?'<button type="button" data-cloud-reset>清除筛选并重试</button>':''));}}
  }
+ const rowsEmpty=value=>!value.items.length&&value.total<=(page-1)*10;
+ async function confirmOwner(expectedOwner,version){const current=await session(true);if(!alive()||version!==request)return false;if(current?.user?.id!==expectedOwner){invalidate('登录账户已变化，操作已停止；请切回原账户后重试');return false;}return true;}
  async function action(event){
   const button=event.target.closest('button');if(!button||!root.contains(button)||busy)return;
   if(button.hasAttribute('data-cloud-refresh')){void refresh();return;}
+  if(button.hasAttribute('data-cloud-reset')){query='';kind='';project='';page=1;void refresh();return;}
   if(button.hasAttribute('data-cloud-page')){page=Number(button.dataset.cloudPage);void refresh();return;}
+  if(button.hasAttribute('data-cloud-upload-open')||button.hasAttribute('data-cloud-upload-close')){uploadOpen=button.hasAttribute('data-cloud-upload-open')?!uploadOpen:false;content();if(uploadOpen)root.querySelector('#cloud-upload-file')?.focus({preventScroll:true});return;}
   if(button.hasAttribute('data-cloud-remove-cancel')){armed=null;content();return;}
-  if(button.hasAttribute('data-cloud-remove')){armed=button.dataset.cloudRemove;content();return;}
+  if(button.hasAttribute('data-cloud-edit-cancel')){editing=null;content();return;}
+  if(button.hasAttribute('data-cloud-edit')){editing=editing===button.dataset.cloudEdit?null:button.dataset.cloudEdit;armed=null;content();if(editing)root.querySelector('[data-cloud-metadata] input')?.focus({preventScroll:true});return;}
+  if(button.hasAttribute('data-cloud-remove')){armed=button.dataset.cloudRemove;editing=null;content();return;}
   const id=button.dataset.cloudDownload||button.dataset.cloudRemoveConfirm,row=data?.items.find(r=>r.id===id);if(!row||!owner)return;
-  const expectedOwner=owner,version=request;
-  busy=true;button.disabled=true;
+  const expectedOwner=owner,version=request;busy=true;button.disabled=true;
   try{
-   const current=await session(true);if(!alive()||version!==request)return;if(current?.user?.id!==expectedOwner){invalidate('登录账户已变化，请刷新后重试');return;}
+   if(!await confirmOwner(expectedOwner,version))return;
    if(button.hasAttribute('data-cloud-download')){
     const blob=await api('/'+encodeURIComponent(id)+'/download?'+new URLSearchParams({expectedUserId:expectedOwner}),undefined,expectedOwner,true);
     if(blob.size!==row.bytes)throw Error('文件大小校验未通过，未发起下载');
     const confirmed=await session(true);if(!alive()||version!==request)return;
     if(confirmed?.user?.id!==expectedOwner){invalidate('登录账户已变化，已停止下载；请切回原账户后重试');notify('登录账户已变化，已停止下载；请切回原账户后重试');return;}
-    const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=row.name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);notify('已发起云文件下载，请确认浏览器保存完成。');
+    const url=URL.createObjectURL(blob),a=doc.createElement('a');a.href=url;a.download=row.name;doc.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);notify('已发起云文件下载，请确认浏览器保存完成。');
    }else{
     await api('/'+encodeURIComponent(id)+'/delete',{expectedSha256:row.sha256,expectedUserId:expectedOwner},expectedOwner);if(!alive()||version!==request)return;notify('云文件已删除。');if(page>1&&data.items.length===1)page--;await refresh();
    }
   }catch(error){if(alive()&&version===request){if(error.status===401||error.code==='ACCOUNT_CHANGED')invalidate(error.message);notify(error.message||'操作未完成，请稍后重试');}}
   finally{busy=false;if(button.isConnected)button.disabled=false;}
  }
- function search(event){if(!event.target.matches('.cloud-artifact-search'))return;event.preventDefault();if(busy)return;query=event.target.querySelector('input').value.trim();page=1;void refresh();}
- root.classList.add('cloud-artifact-library','card');root.addEventListener('click',action);root.addEventListener('submit',search);void refresh();
- return {refresh,dispose(){disposed=true;request++;controllers.forEach(c=>c.abort());root.removeEventListener('click',action);root.removeEventListener('submit',search);}};
+ async function submit(event){
+  const form=event.target;if(!form.matches('.cloud-artifact-search,.cloud-artifact-upload,.cloud-artifact-metadata'))return;event.preventDefault();if(busy||!data)return;
+  if(form.matches('.cloud-artifact-search')){query=form.querySelector('input').value.trim();kind=form.querySelector('[name=kind]').value;project=form.querySelector('[name=project]').value;page=1;void refresh();return;}
+  const expectedOwner=owner,version=request,errorNode=form.querySelector('[role=alert]'),button=form.querySelector('[type=submit]');
+  errorNode.textContent='';busy=true;button.disabled=true;
+  try{
+   if(!await confirmOwner(expectedOwner,version))return;
+   if(form.matches('.cloud-artifact-metadata')){
+    const row=data.items.find(r=>r.id===form.dataset.cloudMetadata);if(!row)throw Error('文件列表已变化，请刷新后重试');
+    const name=form.querySelector('[name=name]').value.trim();
+    if(!name||name.split('.').at(-1).toLowerCase()!==row.kind)throw Error('请填写文件名称，并保留 .'+row.kind+' 扩展名');
+    const payload={version:row.version,name,expectedUserId:expectedOwner};
+    const projectInput=form.querySelector('[name=projectId]');if(projectInput)payload.projectId=projectInput.value||null;
+    await api('/'+encodeURIComponent(row.id)+'/metadata',payload,expectedOwner);
+    if(!await confirmOwner(expectedOwner,version))return;notify('文件名称和项目归属已保存。');await refresh();
+   }else{
+    const file=form.querySelector('input[type=file]').files?.[0];if(!file)throw Error('请先选择要上传的文件');
+    if(!kinds.includes(file.name.split('.').at(-1).toLowerCase()))throw Error('暂不支持此文件格式，请选择文档、图片、演示或数据文件');
+    if(!file.size||file.size>(data.maxFileBytes||20971520))throw Error('文件不能为空，且不能超过 '+size(data.maxFileBytes||20971520));
+    button.textContent='正在保存…';
+    const encoded=await artifactBase64(file);if(!await confirmOwner(expectedOwner,version))return;
+    const payload={name:file.name,data:encoded,sourceType:'other',expectedUserId:expectedOwner};
+    const projectId=form.querySelector('#cloud-upload-project').value;if(projectId)payload.projectId=projectId;
+    const value=await api('',payload,expectedOwner);
+    if(!value?.item?.id)throw Error('保存结果无法核对，请刷新列表确认后再重试');
+    if(!await confirmOwner(expectedOwner,version))return;uploadOpen=false;page=1;query='';kind='';project='';notify('文件已保存到云端，相同内容会自动合并。');await refresh();
+   }
+  }catch(error){if(alive()&&version===request){if(error.status===401||error.code==='ACCOUNT_CHANGED')invalidate(error.message);else if(errorNode.isConnected)errorNode.textContent=error.message||'保存未完成，请稍后重试';notify(error.message||'保存未完成，请稍后重试');}}
+  finally{busy=false;if(button.isConnected){button.disabled=false;button.textContent=form.matches('.cloud-artifact-upload')?'保存到云端':'保存修改';}}
+ }
+ root.classList.add('cloud-artifact-library','card');root.addEventListener('click',action);root.addEventListener('submit',submit);void refresh();
+ return {refresh,dispose(){disposed=true;request++;controllers.forEach(c=>c.abort());root.removeEventListener('click',action);root.removeEventListener('submit',submit);}};
 }

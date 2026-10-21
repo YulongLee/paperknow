@@ -146,6 +146,69 @@ test('pagination is stable, supports numbered library pages, and treats wildcard
  for(const query of [{limit:'101'},{page:'0'},{pageSize:'51'},{cursor:'invalid'},{q:'x'.repeat(121)}])await rejected(f.request('/api/artifacts',undefined,'alice',query),400);
 });
 
+test('legacy artifact metadata gains a revision without rewriting original OSS identity',async t=>{
+ const f=fixture(t),item=(await f.upload()).value.item,original=f.db.prepare('SELECT * FROM artifacts WHERE id=?').get(item.id);
+ f.db.exec('ALTER TABLE artifacts DROP COLUMN version');
+ createArtifactService(f.db,{storage:f.storage});createArtifactService(f.db,{storage:f.storage});
+ const migrated=f.db.prepare('SELECT * FROM artifacts WHERE id=?').get(item.id);
+ assert.deepEqual({...migrated},{...original,version:1});assert.equal(f.objects.size,1);assert.equal(f.calls.put,1);
+ const listed=(await f.request()).value.items[0];assert.equal(listed.version,1);assert.equal(listed.updatedAt,original.updated_at);assert.equal(listed.updated_at,listed.updatedAt);
+});
+
+test('rename and project moves update only display metadata and preserve download, deduplication and permanent deletion',async t=>{
+ let tick=0;const f=fixture(t,{artifactNow:()=>Date.UTC(2026,0,1,0,0,tick++)}),at=new Date().toISOString();
+ for(const id of ['project-a','project-b'])f.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(id,'alice',id,'本科','专业',at,at);
+ const original=(await f.upload({projectId:'project-a',sourceId:'draft-original'})).value.item,path=`/api/artifacts/${original.id}/metadata`,before=f.db.prepare('SELECT * FROM artifacts WHERE id=?').get(original.id),calls={...f.calls};
+ const renamed=(await f.request(path,{version:original.version,name:'最终研究成果.TXT',projectId:'project-b',expectedUserId:'alice'})).value.item;
+ assert.equal(renamed.name,'最终研究成果.TXT');assert.equal(renamed.projectId,'project-b');assert.equal(renamed.version,2);assert.notEqual(renamed.updatedAt,original.updatedAt);assert.equal(renamed.createdAt,original.createdAt);
+ const after=f.db.prepare('SELECT * FROM artifacts WHERE id=?').get(original.id);
+ assert.deepEqual({...after,name:before.name,project_id:before.project_id,updated_at:before.updated_at,version:before.version},{...before});assert.deepEqual(f.calls,calls);assert.equal(f.objects.size,1);
+ const noChange=(await f.request(path,{version:2,name:renamed.name,projectId:'project-b'})).value.item;assert.equal(noChange.version,2);assert.equal(noChange.updatedAt,renamed.updatedAt);
+ const unassigned=(await f.request(path,{version:2,projectId:null})).value.item;assert.equal(unassigned.projectId,null);assert.equal(unassigned.version,3);assert.equal(unassigned.name,renamed.name);
+ const duplicate=(await f.upload({name:'duplicate.txt'})).value.item;assert.equal(duplicate.id,original.id);assert.equal(duplicate.name,renamed.name);assert.equal(duplicate.version,3);assert.equal(f.calls.put,1);
+ const download=await f.request(original.downloadUrl);assert.equal(download.body.toString(),'research output');assert.ok(download.headers['Content-Disposition'].includes(encodeURIComponent(renamed.name)));download.release();
+ await f.request(`/api/artifacts/${original.id}/delete`,{expectedSha256:original.sha256});assert.equal(f.objects.size,0);await rejected(f.request(path,{version:3,name:'deleted.txt'}),404);
+});
+
+test('metadata edits enforce owner, project ownership, immutable extension and current revision',async t=>{
+ const f=fixture(t),at=new Date().toISOString();f.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run('bob-project','bob','private','本科','专业',at,at);
+ const item=(await f.upload()).value.item,path=`/api/artifacts/${item.id}/metadata`;
+ await rejected(f.request(path,{version:1,name:'foreign.txt'},'bob'),404);
+ await rejected(f.request(path,{version:1,name:'account.txt',expectedUserId:'bob'}),409);
+ await rejected(f.request(path,{version:1,projectId:'bob-project'}),404);await rejected(f.request(path,{version:1,projectId:'missing'}),404);
+ for(const input of [{name:'no-version.txt'},{version:0,name:'a.txt'},{version:1.1,name:'a.txt'},{version:'1',name:'a.txt'},{version:1},{version:1,name:'renamed.pdf'},{version:1,name:'txt'},{version:1,name:'../a.txt'},{version:1,name:'bad\r\n.txt'},{version:1,name:'bad\u202e.txt'},{version:1,projectId:''},{version:1,projectId:false},{version:1,storage_key:'private-other'}])await rejected(f.request(path,input),400);
+ await rejected(f.request(path),405);
+ const first=(await f.request(path,{version:1,name:'saved.txt'})).value.item;
+ await rejected(f.request(path,{version:1,name:'stale.txt',projectId:null}),409);await rejected(f.request(path,{version:8,name:'future.txt'}),409);
+ assert.equal((await f.request()).value.items[0].name,first.name);assert.equal(f.calls.put,1);assert.equal(f.calls.delete,0);
+ const competing=await Promise.allSettled([f.request(path,{version:2,name:'first-window.txt'}),f.request(path,{version:2,name:'second-window.txt'})]);
+ assert.equal(competing.filter(result=>result.status==='fulfilled').length,1);assert.equal(competing.find(result=>result.status==='rejected').reason.status,409);assert.equal((await f.request()).value.items[0].version,3);
+});
+
+test('metadata changes need no object I/O and are blocked until generated files are published',async t=>{
+ const f=fixture(t),item=(await f.upload({sourceType:'research',sourceId:'image-pending'})).value.item,path=`/api/artifacts/${item.id}/metadata`,offline=createArtifactService(f.db,{storage:null});
+ const edited=await offline({path,method:'POST',user:{id:'alice'},readBody:async()=>({version:1,name:'cloud-metadata.txt'})});assert.equal(edited.value.item.version,2);assert.equal(f.calls.put,1);assert.equal(f.calls.get,0);assert.equal(f.calls.delete,0);
+ for(const state of ['uploading','failed','deleting']){
+  f.db.prepare('UPDATE artifacts SET status=? WHERE id=?').run(state,item.id);await rejected(f.request(path,{version:2,name:'blocked.txt'}),409);
+ }
+ f.db.prepare("UPDATE artifacts SET status='ready' WHERE id=?").run(item.id);
+ f.db.exec('CREATE TABLE tool_runs(id TEXT,user_id TEXT,operation TEXT,status TEXT)');f.db.prepare('INSERT INTO tool_runs VALUES(?,?,?,?)').run('image-pending','alice','image','running');
+ await rejected(f.request(path,{version:2,name:'unsettled.txt'}),409);assert.equal((await f.request()).value.total,0);
+ f.db.prepare("UPDATE tool_runs SET status='completed' WHERE id='image-pending'").run();assert.equal((await f.request(path,{version:2,name:'published.txt'})).value.item.version,3);
+});
+
+test('library format and project filters compose with search and pagination without exposing other accounts',async t=>{
+ const f=fixture(t),at=new Date().toISOString();for(const [id,user] of [['alice-project','alice'],['bob-project','bob']])f.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(id,user,id,'本科','专业',at,at);
+ for(const [name,text,projectId] of [['匹配一.txt','one','alice-project'],['匹配二.txt','two','alice-project'],['匹配三.md','three','alice-project'],['未分配.txt','four',null]])await f.upload({name,data:Buffer.from(text).toString('base64'),projectId});
+ await f.upload({name:'bob.txt',data:Buffer.from('private').toString('base64'),projectId:'bob-project'},'bob');
+ const filtered=(await f.request('/api/artifacts',undefined,'alice',{kind:'txt',projectId:'alice-project',q:'匹配',page:'2',pageSize:'1'})).value;
+ assert.equal(filtered.total,2);assert.equal(filtered.items.length,1);assert.equal(filtered.items[0].projectId,'alice-project');assert.equal(filtered.items[0].kind,'txt');assert.equal(filtered.usage.count,4);
+ assert.equal((await f.request('/api/artifacts',undefined,'alice',{projectId:'none'})).value.items[0].name,'未分配.txt');
+ assert.equal((await f.request('/api/artifacts',undefined,'alice',{kind:'md'})).value.total,1);
+ for(const query of [{kind:'exe'},{kind:''},{projectId:''},{projectId:'../invalid'}])await rejected(f.request('/api/artifacts',undefined,'alice',query),400);
+ for(const projectId of ['bob-project','missing'])await rejected(f.request('/api/artifacts',undefined,'alice',{projectId}),404);
+});
+
 test('an expired upload can resume but its older lease must not erase the newer ready object',async t=>{
  let now=Date.UTC(2026,0,1),puts=0;const oldFinish=deferred(),started=deferred(),f=fixture(t,{artifactNow:()=>now},{async put(key,buffer){if(++puts===1){started.resolve();await oldFinish.promise;}f.objects.set(key,Buffer.from(buffer));}});
  const first=f.upload();await started.promise;now+=180000;const second=await f.upload();assert.equal(second.status,201);oldFinish.resolve();await rejected(first,409);
