@@ -30,8 +30,8 @@ test('snapshot supports all study levels and arbitrary/interdisciplinary domains
  const legacy=normalizeThesisSnapshot({title:'已有论文',degree:'硕士',major:'文学',targetWords:500,knowledgeFiles:[{id:'m-1',name:'旧资料',text:'正文'}],writingReferences:[],outlineRows:[{id:'c-1',title:'第一章',level:1,words:500},{id:'s-1',title:'1.1 背景',level:2,words:500}]});assert.equal(legacy.materials[0].confirmed,false);assert.equal(legacy.outline[0].sections[0].id,'s-1');
 });
 
-test('generation requires confirmed body evidence with bounded chapters and output plan',()=>{
- assert.throws(()=>thesisPlan(normalizeThesisSnapshot(snapshot({materials:[{...snapshot().materials[0],confirmed:false}]}))),/确认至少一份/);
+test('generation can plan an unsourced initial draft while retaining bounded chapters and output plan',()=>{
+ const unconfirmed=normalizeThesisSnapshot(snapshot({materials:[{...snapshot().materials[0],confirmed:false}]})),unconfirmedPlan=thesisPlan(unconfirmed);assert.equal(unconfirmedPlan.length,2);assert.deepEqual(thesisAgentTask(unconfirmed,unconfirmedPlan[0],[]).materials,[]);assert.deepEqual(thesisAgentTask(unconfirmed,unconfirmedPlan[0],[]).context.confirmedSources,[]);
  assert.throws(()=>normalizeThesisSnapshot(snapshot({outline:Array.from({length:31},(_,i)=>({id:'c-'+i,title:'章'}))})),/30/);
  const huge=normalizeThesisSnapshot(snapshot({profile:{...snapshot().profile,targetWords:80000},outline:[{id:'c-1',title:'文献分析'}]}));const plan=thesisPlan(huge);assert.ok(plan.length>30);assert.ok(plan.every(unit=>unit.targetWords<=1800));assert.ok(plan.reduce((n,row)=>n+row.targetWords,0)>=80000);
  assert.throws(()=>normalizeThesisSnapshot(snapshot({profile:{...snapshot().profile,targetWords:80001}})),/80000/);
@@ -43,7 +43,7 @@ test('all study levels can plan with optional discipline and research fields omi
   for(const key of ['discipline','major','direction','researchQuestion','method'])assert.equal(value.profile[key],'');
   assert.equal(plan.length,2);const task=thesisAgentTask(value,plan[0],[]);assert.deepEqual(task.context.profile,value.profile);assert.equal(task.materials[0].id,'source-1');
   assert.match(task.instructions,/学科专业、研究方向、核心研究问题和研究方法允许留空/);assert.match(task.instructions,/方法只可依据资料中明确记载的内容描述/);assert.match(task.instructions,/不能从题目或空字段假定已经采用某种方法/);assert.match(task.instructions,/不得编造文献、作者、DOI、访谈、实验、数据、结果或研究结论/);
-  assert.throws(()=>thesisPlan({...value,materials:[]}),/确认至少一份含正文/);
+  const withoutMaterials={...value,materials:[]},initialPlan=thesisPlan(withoutMaterials);assert.equal(initialPlan.length,2);assert.deepEqual(thesisAgentTask(withoutMaterials,initialPlan[0],[]).materials,[]);
   assert.throws(()=>thesisPlan({...value,outline:[]}),/确认至少一个论文章节/);
  }
  const legacy=normalizeThesisSnapshot(snapshot({profile:{...snapshot().profile,discipline:'人文学科',major:'比较文学',method:''}}));assert.equal(legacy.profile.discipline,'人文学科');assert.equal(legacy.profile.major,'比较文学');assert.equal(legacy.profile.method,'');assert.equal(thesisPlan(legacy).length,2);
@@ -236,23 +236,26 @@ test('a worker output with an unselected format is not completed or charged and 
  const f=fixture(t,{agentTaskRunner:async({task})=>({...output(task),text:JSON.stringify({text:'```js\nconst fabricated = 1;\n```\n'+'证'.repeat(220)+'[source:source-1]',complete:true,source_ids:['source-1'],missing_evidence:[]})})});f.pay();const worker=f.start(),item=await f.create(snapshot({requirements:{contentMode:'rich'},bodySections:[{id:'chapter-1',title:'研究背景',text:'生成前已经保存的用户原文。'}]}));await f.generate(item);await worker.tick();const failed=f.get(item.id);assert.equal(failed.job.status,'failed');assert.match(failed.job.error,/未开启/);assert.equal(failed.chapters[0].text,'生成前已经保存的用户原文。');assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);
 });
 
-test('incomplete evidence remains a saveable draft but cannot quote or create a charged generation',async t=>{
+test('optional short evidence allows a quote but an invalid billing token cannot create a charged generation',async t=>{
  let calls=0;const f=fixture(t,{agentTaskRunner:async()=>{calls++;throw Error('must not dispatch');}});f.pay();const worker=f.start();
  for(const text of ['', '研', '研'.repeat(99), ' \n\t'.repeat(100)]){
   const item=await f.create(snapshot({materials:[{...snapshot().materials[0],text}],references:[{id:'metadata-only',title:'已选题录',confirmed:true}]}));assert.equal(item.status,'draft');assert.equal(item.snapshot.materials[0].text,text.trim());
-  await assert.rejects(f.request(`/api/theses/${item.id}/quote`,'POST',{version:item.version,action:'generate'}),error=>error.status===400&&/100/.test(error.message));
-  await assert.rejects(f.request(`/api/theses/${item.id}/generate`,'POST',{version:item.version,clientKey:randomUUID(),consent:true,billingToken:'not-an-accepted-quote'}),error=>error.status===400&&/100/.test(error.message));
+  const quote=await f.request(`/api/theses/${item.id}/quote`,'POST',{version:item.version,action:'generate'});assert.equal(typeof quote.token,'string');assert.ok(quote.token.length>=8);assert.equal(f.billing.balance(f.user.id).held,0);
+  await assert.rejects(f.request(`/api/theses/${item.id}/generate`,'POST',{version:item.version,clientKey:randomUUID(),consent:true,billingToken:'not-an-accepted-quote'}),error=>error.status===409&&/费用确认不一致/.test(error.message));
  }
  await worker.tick();assert.equal(calls,0);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_runs').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.billing.balance(f.user.id).held,0);
 });
 
-test('a historical accepted short-evidence command remains readable but cannot start a new resume attempt',async t=>{
+test('a historical short-evidence command is idempotent and can resume only with a valid new billing quote',async t=>{
  let calls=0;const f=fixture(t,{agentTaskRunner:async()=>{calls++;throw Error('must not dispatch');}});f.pay();const item=await f.create(),queued=await f.generate(item);const cancelled=(await f.request(`/api/theses/${item.id}/cancel`,'POST',{version:queued.version})).item;
- // Simulate a pre-validation historical run; no public endpoint can create this state now.
+ // Simulate an existing short-source run while preserving its accepted command identity.
  const short=normalizeThesisSnapshot(snapshot({materials:[{...snapshot().materials[0],text:'研'}]})),hash=thesisHash(short),old=f.db.prepare('SELECT client_key FROM thesis_commands WHERE run_id=?').get(queued.job.id).client_key;
  f.db.prepare('UPDATE theses SET snapshot=?,snapshot_hash=? WHERE id=?').run(JSON.stringify(short),hash,item.id);f.db.prepare('UPDATE thesis_runs SET snapshot=?,snapshot_hash=? WHERE id=?').run(JSON.stringify(short),hash,queued.job.id);f.db.prepare('UPDATE thesis_commands SET input_hash=? WHERE user_id=? AND client_key=?').run(thesisHash({action:'generate',id:item.id,snapshotHash:hash}),f.user.id,old);
  const recovered=(await f.request(`/api/theses/${item.id}/generate`,'POST',{version:item.version,clientKey:old,consent:true,billingToken:'already-accepted-command'})).item;assert.equal(recovered.job.id,queued.job.id);assert.equal(recovered.status,'cancelled');
- await assert.rejects(f.request(`/api/theses/${item.id}/quote`,'POST',{version:cancelled.version,action:'resume'}),error=>error.status===400&&/100/.test(error.message));
- await assert.rejects(f.request(`/api/theses/${item.id}/resume`,'POST',{version:cancelled.version,clientKey:randomUUID(),consent:true,billingToken:'historical-quote'}),error=>error.status===400&&/100/.test(error.message));
+ const quote=await f.request(`/api/theses/${item.id}/quote`,'POST',{version:cancelled.version,action:'resume'});assert.equal(typeof quote.token,'string');
+ await assert.rejects(f.request(`/api/theses/${item.id}/resume`,'POST',{version:cancelled.version,clientKey:randomUUID(),consent:true,billingToken:'historical-quote'}),error=>error.status===409&&/费用确认不一致/.test(error.message));
  assert.equal(f.get(item.id).job.attempt,1);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,1);assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(calls,0);
+ const request={version:cancelled.version,clientKey:randomUUID(),consent:true,billingToken:quote.token},resumed=(await f.request(`/api/theses/${item.id}/resume`,'POST',request)).item;assert.equal(resumed.job.attempt,2);assert.equal(resumed.job.status,'queued');assert.equal(f.billing.balance(f.user.id).held,10);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,2);
+ const repeated=(await f.request(`/api/theses/${item.id}/resume`,'POST',request)).item;assert.equal(repeated.job.id,resumed.job.id);assert.equal(repeated.job.attempt,2);assert.equal(f.billing.balance(f.user.id).held,10);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,2);
+ await f.request(`/api/theses/${item.id}/cancel`,'POST',{version:repeated.version});assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(calls,0);
 });

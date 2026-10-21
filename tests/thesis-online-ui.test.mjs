@@ -49,9 +49,9 @@ test('cloud save does not generate; model generation requires a valid quote and 
  f.$('[data-thesis-start]').click();await settle();
  const request=f.calls.find(c=>c.path==='/theses/t1/generate');assert.deepEqual(Object.keys(request.data).sort(),['billingToken','clientKey','consent','version']);assert.equal(request.data.billingToken,'quote-token');assert.equal(request.data.consent,true);assert.match(f.$('.thesis-progress').textContent,/排队中/);assert.equal(f.$('[data-thesis-editor]').disabled,false);assert.equal(f.$('[data-thesis-editor]').readOnly,true);f.close();
 });
-test('missing research evidence blocks quoting and saving research materials creates an explicit new snapshot',async()=>{
+test('optional source content permits a draft quote and later material edits still create an explicit new snapshot',async()=>{
  const empty=thesis({profile:{...snapshot().profile,method:''},snapshot:{...snapshot(),profile:{...snapshot().profile,method:''},materials:[]}}),f=fixture({item:empty});const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
- f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(c=>c.path==='/theses/t1/quote').length,0);assert.match(f.$('[data-thesis-notice]').textContent,/含正文的研究材料/);
+ f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(c=>c.path==='/theses/t1/quote').length,1);assert.ok(f.$('[data-thesis-start]'));assert.equal(f.calls.some(c=>c.path.endsWith('/generate')),false);assert.match(f.$('.thesis-source-gap').textContent,/可生成待核对初稿/);
  input(f,'#thesis-research-method','文献分析');input(f,'#thesis-research-supplement','用户提供的原始证据');f.$('[data-thesis-save-research]').click();await settle();const write=f.calls.find(c=>c.path==='/theses/t1'&&c.data);assert.equal(write.data.snapshot.profile.method,'文献分析');assert.equal(write.data.snapshot.materials[0].confirmed,true);assert.equal(write.data.snapshot.materials[0].text,'用户提供的原始证据');f.close();
 });
 test('optional blank profile reaches the quote with the generation checkbox ready and still waits for an explicit start',async()=>{
@@ -65,8 +65,14 @@ test('invalid and expired quotes never enable a generation submission',async()=>
  assert.equal(validThesisQuote({...quote(),expiresAt:new Date(0).toISOString()}),false);assert.equal(validThesisQuote({...quote(),creditCost:0}),false);assert.equal(validThesisQuote({...quote(),source:'membership',creditCost:0}),true);
  const f=fixture({handler:path=>path==='/theses/t1/quote'?{...quote(),expiresAt:new Date(0).toISOString()}:undefined});const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote]').click();await settle();assert.equal(f.$('[data-thesis-start]'),null);assert.match(f.$('[data-thesis-notice]').textContent,/报价/);f.close();
 });
-test('metadata-only sources cannot request a billable generation quote even when research method is present',async()=>{
- const f=fixture({item:thesis({snapshot:{...snapshot(),materials:[]}})});const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.some(call=>call.path==='/theses/t1/quote'),false);assert.match(f.$('[data-thesis-notice]').textContent,/仅有文献题录不足以生成论文/);assert.ok(f.$('[data-thesis-save-research]'));f.close();
+test('metadata-only references can request and explicitly start a reviewable draft without being marked as read sources',async()=>{
+ const value={...snapshot(),materials:[],references:[{id:'metadata-only',title:'仅有题录的研究线索',sourceLabel:'Crossref · 在线题录，未读取全文',scope:'metadata',text:'',fullTextRead:false,confirmed:true}]},before=structuredClone(value),f=fixture({item:thesis({snapshot:value})});
+ try{
+  const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.match(f.$('.thesis-source-gap').textContent,/可生成待核对初稿/);assert.match(f.$('.thesis-sources').textContent,/仅元数据，不代表已读取原文/);
+  assert.doesNotMatch(f.$('.thesis-run-controls').textContent,/至少 100|不足以生成论文|必须.*补充/);f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(call=>call.path==='/theses/t1/quote').length,1);assert.ok(f.$('[data-thesis-start]'));assert.equal(f.$('[data-thesis-consent]').checked,true);assert.equal(f.calls.some(call=>call.path.endsWith('/generate')),false,'requesting a quote never starts generation');
+  assert.match(f.$('.thesis-generation-details').textContent,/只有题录也可.*待核对初稿/);assert.match(f.$('.thesis-generation-details').textContent,/不会虚构已完成的实验/);assert.match(f.$('.thesis-charge>strong').textContent,/10 科研积分/);
+  f.$('[data-thesis-start]').click();await settle();assert.equal(f.calls.filter(call=>call.path.endsWith('/generate')).length,1);assert.deepEqual(value,before);assert.match(f.$('.thesis-sources').textContent,/仅元数据，不代表已读取原文/);
+ }finally{f.close();}
 });
 test('a quote that expires after display still cannot start generation after the user consents',async()=>{
  const f=fixture(),now=Date.now;try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote]').click();await settle();const consent=f.$('[data-thesis-consent]');consent.checked=true;consent.dispatchEvent(new window.Event('change'));Date.now=()=>now()+120000;f.$('[data-thesis-start]').click();await settle();assert.equal(f.calls.some(call=>call.path.endsWith('/generate')),false);assert.match(f.$('[data-thesis-notice]').textContent,/重新确认费用/);assert.equal(f.$('.thesis-charge'),null);}finally{Date.now=now;f.close();}
@@ -217,7 +223,7 @@ test('a literal display-label collision keeps raw text intact and explains why t
 });
 
 test('a manually saved draft remains a saved draft rather than being labelled as needing generation',async()=>{
- const f=fixture({item:thesis({status:'draft',job:{status:'completed',completedSections:3,totalSections:3},chapters:[{id:'c1',title:'第一章',text:'已手动修订并保存的完整正文',version:2,status:'saved'}]})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.equal(f.$('.thesis-progress b').textContent,'草稿已保存');assert.equal(f.$('progress').value,100);assert.match(f.$('.thesis-progress').textContent,/下面为上次任务进度/);assert.equal(f.$('#thesis-online-docx').disabled,false);assert.equal(f.calls.some(call=>call.data),false);}finally{f.close();}
+ const f=fixture({item:thesis({status:'draft',job:{status:'completed',completedSections:3,totalSections:3},chapters:[{id:'c1',title:'第一章',text:'已手动修订并保存的完整正文',version:2,status:'saved'}]})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.equal(f.$('.thesis-progress b').textContent,'草稿已保存');assert.equal(f.$('progress').value,100);assert.match(f.$('.thesis-progress').textContent,/上次任务记录继续保留/);assert.equal(f.$('#thesis-online-docx').disabled,false);assert.equal(f.calls.some(call=>call.data),false);}finally{f.close();}
 });
 
 
@@ -300,8 +306,14 @@ test('opening thesis fee details retains its state and opt-out across chapter re
 });
 
 
-test('one-character placeholder evidence is rejected before a quote or generation request',async()=>{
- const value=snapshot();value.materials=[{id:'m1',name:'研究说明',text:'1',confirmed:true}];const f=fixture({item:thesis({snapshot:value})});try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.some(row=>row.path==='/theses/t1/quote'),false);assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);assert.match(f.$('[data-thesis-notice]').textContent,/100/);}finally{f.close();}
+test('a short optional explanation no longer blocks the quotation or promotes itself to read literature',async()=>{
+ const value=snapshot();value.materials=[{id:'m1',name:'研究说明',text:'1',confirmed:true}];const before=structuredClone(value),f=fixture({item:thesis({snapshot:value})});
+ try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;assert.match(f.$('.thesis-source-gap').textContent,/可生成待核对初稿/);f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(row=>row.path==='/theses/t1/quote').length,1);assert.ok(f.$('[data-thesis-start]'));assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);assert.deepEqual(value,before);assert.doesNotMatch(f.$('[data-thesis-notice]').textContent,/100|不足以生成/);}finally{f.close();}
+});
+
+for(const references of [[],[{id:'bibliography',title:'仅题录的可选文献',confirmed:true,text:'',scope:'metadata',fullTextRead:false}]])test('an empty source body '+(references.length?'with only bibliography':'without research uploads')+' reaches a quote while the paid action still requires the start button',async()=>{
+ const value=snapshot();value.materials=[];value.references=references;const f=fixture({item:thesis({snapshot:value})});
+ try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;assert.equal(f.$('[data-thesis-quote]').disabled,false);assert.match(f.$('.thesis-source-gap').textContent,/只有题录也可以继续生成/);assert.match(f.$('.thesis-source-gap').textContent,/待补充标记/);assert.doesNotMatch(f.$('.thesis-run-controls').textContent,/100.*字符|至少.*正文/);assert.equal(f.calls.some(row=>row.data),false);f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(row=>row.path.endsWith('/quote')).length,1);assert.equal(f.$('[data-thesis-start]').disabled,false);assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);}finally{f.close();}
 });
 
 test('a confirmed reference abstract supports quoting when optional Step 2 research uploads are empty',async()=>{
@@ -309,6 +321,17 @@ test('a confirmed reference abstract supports quoting when optional Step 2 resea
  const f=fixture({item:thesis({snapshot:value})});try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;assert.equal(f.$('.thesis-source-gap'),null);f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(row=>row.path==='/theses/t1/quote').length,1);assert.ok(f.$('[data-thesis-start]'));assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false,'reading quote does not execute the model');}finally{f.close();}
 });
 
-test('final source gap explains optional uploads and can return to reference confirmation without billing',async()=>{
- const f=fixture({item:thesis({snapshot:{...snapshot(),materials:[]}})});let returned=0;try{const panel=mountThesisStage({id:'t1',ctx:f.ctx,container:f.$('.dashboard'),onReferences:()=>{returned++;}});await panel.ready;assert.match(f.$('.thesis-source-gap').textContent,/第二步.*上传可选/);assert.match(f.$('.thesis-source-gap').textContent,/第三步.*摘要/);f.$('[data-thesis-references]').click();assert.equal(returned,1);assert.equal(f.calls.some(row=>row.path.endsWith('/quote')||row.path.endsWith('/generate')),false);}finally{f.close();}
+test('the draft source notice offers optional reference enrichment without forcing it or charging',async()=>{
+ const f=fixture({item:thesis({snapshot:{...snapshot(),materials:[]}})});let returned=0;try{const panel=mountThesisStage({id:'t1',ctx:f.ctx,container:f.$('.dashboard'),onReferences:()=>{returned++;}});await panel.ready;assert.match(f.$('.thesis-source-gap').textContent,/第二步.*上传可选/);assert.match(f.$('.thesis-source-gap').textContent,/第三步.*摘要/);assert.match(f.$('[data-thesis-references]').textContent,/可选/);assert.equal(f.$('[data-thesis-quote]').disabled,false);f.$('[data-thesis-references]').click();assert.equal(returned,1);assert.equal(f.calls.some(row=>row.path.endsWith('/quote')||row.path.endsWith('/generate')),false);}finally{f.close();}
+});
+
+
+test('completed reviewable drafts show an escaped non-blocking verification checklist rather than a source failure',async()=>{
+ const original=thesis({status:'completed',snapshot:{...snapshot(),materials:[],references:[]},job:{status:'completed',stage:'completed',completedSections:2,totalSections:2,missingEvidence:['待补充实际访谈记录','待核对来源 <img src=x onerror=1>','待补充实际访谈记录']},chapters:[{id:'c1',title:'第一章',text:'研究问题与方法初稿。\n【待补充：访谈实施记录与结果】',status:'saved',version:1,sourceIds:[]}]}),before=structuredClone(original),f=fixture({item:original});
+ try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;const list=f.$('.thesis-review-checklist');assert.ok(list);assert.match(list.textContent,/初稿已生成，请逐项核对/);assert.equal(list.querySelectorAll('li').length,2,'repeat deficiencies are shown once');assert.match(list.textContent,/待补充实际访谈记录/);assert.match(list.textContent,/待核对来源 <img src=x onerror=1>/);assert.equal(f.$('img'),null);assert.equal(f.$('.thesis-progress .thesis-error'),null);assert.equal(f.$('.thesis-source-gap'),null);assert.equal(f.$('[data-thesis-editor]').readOnly,false);assert.match(f.$('[data-thesis-editor]').value,/待补充/);assert.deepEqual(original,before);assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();}
+});
+
+for(const changed of [false,true])test((changed?'changed-snapshot':'updated draft')+' keeps old failed-run diagnostics in history instead of showing a current review requirement',async()=>{
+ const original=thesis({status:changed?'completed':'draft',job:{status:'needs_materials',stage:'needs_materials',snapshotChanged:changed,completedSections:0,totalSections:2,error:'旧任务：来源正文不足100字',missingEvidence:['旧任务：缺少访谈材料'],canResume:false},chapters:[{id:'c1',title:'当前保存的初稿',text:'当前正文与【待核对：研究背景】。',status:'saved',version:2,sourceIds:[]}]}),f=fixture({item:original});
+ try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;assert.match(f.$('.thesis-previous-run').textContent,/上次任务记录|此前任务/);assert.match(f.$('.thesis-previous-run').textContent,/旧任务：来源正文不足100字/);assert.equal(f.$('.thesis-previous-run').open,false);assert.equal(f.$('.thesis-progress .thesis-error'),null);assert.equal(f.$('.thesis-review-checklist'),null);assert.match(f.$('.thesis-progress>b')?.textContent||f.$('.thesis-progress').textContent,/草稿已保存|已完成/);assert.equal(f.calls.some(row=>row.data),false);assert.match(f.$('[data-thesis-editor]').value,/当前正文/);}finally{f.close();}
 });

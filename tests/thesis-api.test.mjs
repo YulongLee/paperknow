@@ -33,12 +33,12 @@ test('account backup includes only owned thesis sources and chapter versions and
 test('a thesis prevents deleting its linked project even before generation',async t=>{const f=await fixture(t),project=(await f.request('/projects',{title:'有论文的项目'})).value.item;await f.create('项目论文',f.users.alice,project.id);const deletion=await f.request('/projects/'+project.id+'/delete',{version:project.version});assert.equal(deletion.status,409);assert.match(deletion.value.error,/关联内容/);assert.equal((await f.request('/projects/'+project.id)).status,200);});
 test('the legacy worker neither claims queued thesis jobs nor marks running thesis jobs interrupted',async t=>{const f=await fixture(t),item=await f.create(),queued=(await f.generate(item)).value.item;const legacy=startWorker(f.db,f.config);t.after(()=>legacy.stop());await legacy.tick();assert.equal(f.db.prepare('SELECT status,attempt FROM jobs WHERE id=?').get(queued.job.id).status,'queued');assert.equal(f.db.prepare('SELECT attempt FROM jobs WHERE id=?').get(queued.job.id).attempt,0);f.db.prepare("UPDATE jobs SET status='running' WHERE id=?").run(queued.job.id);const restarted=startWorker(f.db,f.config);t.after(()=>restarted.stop());assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(queued.job.id).status,'running');});
 
-test('HTTP callers can save incomplete drafts but cannot bypass evidence checks to quote or generate',async t=>{
+test('HTTP callers can quote optional-material drafts but cannot bypass billing or resume ownership',async t=>{
  let calls=0;const f=await fixture(t,{agentTaskRunner:async()=>{calls++;throw Error('must not dispatch');}});f.pay();
  for(const text of ['', '研', '研'.repeat(99)]){
   const body=snapshot();body.materials[0].text=text;body.references=[{id:'metadata-only',title:'仅有题录的文献',confirmed:true}];const created=await f.request('/theses',{snapshot:body,clientKey:randomUUID()});assert.equal(created.status,201);const item=created.value.item;
-  const quote=await f.request(`/theses/${item.id}/quote`,{version:item.version,action:'generate'});assert.equal(quote.status,400);assert.match(quote.value.error,/100/);
-  for(const action of ['generate','resume']){const response=await f.request(`/theses/${item.id}/${action}`,{version:item.version,clientKey:randomUUID(),consent:true,billingToken:'forged-token'});assert.equal(response.status,400);assert.match(response.value.error,/100/);}
+  const quote=await f.request(`/theses/${item.id}/quote`,{version:item.version,action:'generate'});assert.equal(quote.status,200);assert.ok(quote.value.token);
+  for(const action of ['generate','resume']){const response=await f.request(`/theses/${item.id}/${action}`,{version:item.version,clientKey:randomUUID(),consent:true,billingToken:'forged-token'});assert.equal(response.status,409);assert.match(response.value.error,/费用确认|续跑/);}
  }
  await f.thesis.tick();assert.equal(calls,0);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_runs').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);assert.equal(f.billing.balance('alice').balance,200);assert.equal(f.billing.balance('alice').held,0);
 });

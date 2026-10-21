@@ -22,11 +22,11 @@ test('edited AI method advice stays a proposed requirement and never becomes a c
  assert.equal(value.references.length,0);
 });
 
-test('a method proposal alone cannot bootstrap real-evidence admission',()=>{
+test('a method proposal can guide an unsourced initial draft without becoming readable evidence',()=>{
  const value=snapshot();
  assert.equal(value.materials.length,0);
  assert.deepEqual(selectThesisEvidence(value,{chapterTitle:'研究方法',title:'拟开展的方法'}).sources,[]);
- assert.throws(()=>thesisPlan(value),/确认至少一份含正文/);
+ const plan=thesisPlan(value);assert.equal(plan.length,2);const section=thesisAgentTask(value,plan[0],[]);assert.deepEqual(section.materials,[]);assert.deepEqual(section.context.confirmedSources,[]);assert.deepEqual(section.context.requirements.researchPlan,value.requirements.researchPlan);
  const task=thesisOutlineTask(value);
  assert.deepEqual(task.context.requirements.researchPlan,value.requirements.researchPlan);
  assert.equal(task.materials.length,0);
@@ -39,7 +39,7 @@ test('a proposal informs method prose without entering source selection or citat
  assert.equal(task.context.requirements.researchPlan.text,proposal.text);
  assert.match(task.instructions,/requirements\.researchPlan.*拟开展研究方案/);
  assert.match(task.instructions,/不属于 confirmedSources/);
- assert.match(task.instructions,/结果、实验、访谈、统计章节若缺真实数据必须停止/);
+ assert.match(task.instructions,/结果、实验、访谈、统计章节若缺真实数据，撰写拟开展的验证步骤/);assert.match(task.instructions,/绝不能补造/);assert.match(task.instructions,/draft=true/);
  assert.equal(task.materials.length,1);
  assert.equal(task.materials.some(row=>row.id===proposal.jobId),false);
  assert.equal(task.context.confirmedSources.some(row=>row.id===proposal.jobId),false);
@@ -74,7 +74,7 @@ test('method histories count toward the owner storage quota while legacy schema 
  CREATE TABLE theses(id TEXT,user_id TEXT,snapshot TEXT);
  CREATE TABLE thesis_runs(id TEXT,user_id TEXT,snapshot TEXT,plan TEXT);
  CREATE TABLE thesis_chapter_versions(thesis_id TEXT,text TEXT);
- CREATE TABLE thesis_checkpoints(run_id TEXT,text TEXT,trace TEXT);
+ CREATE TABLE thesis_checkpoints(run_id TEXT,text TEXT,trace TEXT,missing_evidence TEXT NOT NULL DEFAULT '[]');
  CREATE TABLE thesis_commands(user_id TEXT);
  CREATE TABLE thesis_outline_runs(user_id TEXT,snapshot TEXT,output TEXT);
  `);
