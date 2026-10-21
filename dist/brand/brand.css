@@ -9,3 +9,5 @@
   .header .brand .brand-wordmark{font-size:19px}
   .header #account-button{max-width:48px}
 }
+
+.brand .brand-wordmark .brand-filing-name{font:11px/1.4 system-ui,"PingFang SC","Microsoft YaHei",sans-serif;letter-spacing:1px;margin-top:3px;color:#607593}

@@ -8,22 +8,23 @@ import {buildPublicSamples} from './build-public-samples.mjs';
 const projectRoot=fileURLToPath(new URL('../',import.meta.url));
 export const siteURL='https://paperknow.cn';
 export const updatedAt='2026-10-15';
-export const homeModifiedAt='2026-10-21';
+export const homeModifiedAt='2026-10-22';
+const siteName='PaperKnow科研助手';
 const operator='oneshowailab-paperknow';
 const email='contact@oneshowailab.com';
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const json=value=>JSON.stringify(value).replace(/</g,'\\u003c');
 const categoryNames={writing:'AI 写作',literature:'AI 研读',reduce:'降重复率',aigc:'降AI率',detection:'免费查重',ppt:'PPT 创作',format:'格式排版',research:'科研工具'};
 const titleFor=page=>page.title.includes('PaperKnow')?page.title:`${page.title}｜PaperKnow`;
-const homeTitle='PaperKnow｜AI 论文写作、文献研读与科研辅助工作台';
-const homeDescription='PaperKnow 为专科、本科、硕士、博士与研究工作者提供 11 项 AI 写作流程，连接文献检索、原文研读与翻译、逐段改写、公开网络来源比对和通用 AI 文本鉴别，支持可编辑 PPTX、论文排版、科研绘图与公式编辑。';
+const homeTitle=siteName;
+const homeDescription='PaperKnow科研助手为专科、本科、硕士、博士与研究工作者提供 11 项 AI 写作流程，连接文献检索、原文研读与翻译、逐段改写、公开网络来源比对和通用 AI 文本鉴别，支持可编辑 PPTX、论文排版、科研绘图与公式编辑。';
 
 function graphFor(page){
  const url=siteURL+page.slug;
  const graph=[
   {'@type':'Organization','@id':siteURL+'/#organization',name:operator,url:siteURL+'/',email,logo:siteURL+'/brand/paperknow-symbol.svg'},
-  {'@type':'WebSite','@id':siteURL+'/#website',url:siteURL+'/',name:'PaperKnow',inLanguage:'zh-CN',publisher:{'@id':siteURL+'/#organization'}},
-  {'@type':'WebApplication','@id':siteURL+'/#application',name:'PaperKnow',url:siteURL+'/',applicationCategory:'EducationalApplication',browserRequirements:'需要支持 JavaScript 的现代浏览器',description:'11 项 AI 写作流程、毕业论文五步确认与分章生成、文献检索研读与翻译、逐段改写、本地材料与公开网络来源比对、通用 AI 文本鉴别、可编辑 PPTX、DOCX 格式排版、科研绘图及 LaTeX 公式编辑。',publisher:{'@id':siteURL+'/#organization'}},
+  {'@type':'WebSite','@id':siteURL+'/#website',url:siteURL+'/',name:siteName,inLanguage:'zh-CN',publisher:{'@id':siteURL+'/#organization'}},
+  {'@type':'WebApplication','@id':siteURL+'/#application',name:siteName,url:siteURL+'/',applicationCategory:'EducationalApplication',browserRequirements:'需要支持 JavaScript 的现代浏览器',description:'11 项 AI 写作流程、毕业论文五步确认与分章生成、文献检索研读与翻译、逐段改写、本地材料与公开网络来源比对、通用 AI 文本鉴别、可编辑 PPTX、DOCX 格式排版、科研绘图及 LaTeX 公式编辑。',publisher:{'@id':siteURL+'/#organization'}},
   {'@type':'WebPage','@id':url+'#webpage',url,name:page.slug==='/'?homeTitle:titleFor(page),description:page.description,inLanguage:'zh-CN',isPartOf:{'@id':siteURL+'/#website'},about:{'@id':siteURL+'/#application'},dateModified:page.modifiedAt||(page.slug==='/'?homeModifiedAt:updatedAt)}
  ];
  if(page.slug!=='/'){
@@ -39,7 +40,7 @@ export function pageMetadata(page){
  return `<title>${escape(title)}</title>
 <meta name="description" content="${escape(page.description)}">
 <link rel="canonical" href="${url}">
-<meta property="og:type" content="website"><meta property="og:site_name" content="PaperKnow"><meta property="og:locale" content="zh_CN">
+<meta property="og:type" content="website"><meta property="og:site_name" content="${siteName}"><meta property="og:locale" content="zh_CN">
 <meta property="og:title" content="${escape(title)}"><meta property="og:description" content="${escape(page.description)}"><meta property="og:url" content="${url}">
 <meta property="og:image" content="${siteURL}/brand/paperknow-share.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="PaperKnow 论文写作与科研辅助工作台">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${escape(title)}"><meta name="twitter:description" content="${escape(page.description)}"><meta name="twitter:image" content="${siteURL}/brand/paperknow-share.png">
