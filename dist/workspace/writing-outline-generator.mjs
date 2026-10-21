@@ -1,3 +1,4 @@
+import {resolveAccountProjectId} from './project-directory.mjs';
 import {withStableView} from './view-stability.mjs';
 import {validThesisQuote} from './thesis-online.mjs';
 
@@ -8,15 +9,20 @@ const stages={queued:'等待 AI 服务处理',preparing:'整理主题与研究�
 const abortError=()=>Object.assign(new Error('页面已切换'),{name:'AbortError'});
 
 // The server owns the durable job and billing. This controller never replaces the local outline on submission or polling.
-export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getContextKey,onApply,onJobChange,onCommandChange,pendingJobId=null,pendingContextKey=null,pendingClientKey=null,isCurrent=()=>true}={}){
+export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getContextKey,getProjectRef=()=>'',onApply,onJobChange,onCommandChange,pendingJobId=null,pendingContextKey=null,pendingClientKey=null,isCurrent=()=>true}={}){
  if(!container)throw new TypeError('缺少提纲生成区域');
  const doc=container.ownerDocument,win=doc.defaultView;
  let alive=true,opened=false,epoch=0,timer=null,busy=false,user=null,accountId=null,cap=null,quote=null,item=null,snapshot=null,contextKey=pendingContextKey,jobId=pendingJobId||null,clientKey=pendingClientKey||null,commandPending=!!pendingClientKey,consent=false,ambiguous=!!pendingClientKey&&!pendingJobId,message='',error='',loadError=false,applied=false;
+ let projectRef='';try{const pending=JSON.parse(pendingContextKey);if(typeof pending?.projectRef==='string'&&typeof pending?.contextKey==='string'&&Object.keys(pending).length===2)projectRef=pending.projectRef;}catch{}
  const controllers=new Set();
  const current=()=>alive&&container.isConnected&&isCurrent();
  const usable=token=>current()&&opened&&epoch===token;
  const $=selector=>container.querySelector(selector);
- const contextMatches=()=>String(getContextKey?.()??'')===String(contextKey??'');
+ const currentContextKey=(ref=String(getProjectRef()||''))=>{const base=String(getContextKey?.()??'');return ref?JSON.stringify({contextKey:base,projectRef:ref}):base;};
+ const equivalentProjectRef=(before,current)=>{if(before===current){if(before)resolveAccountProjectId(before,accountId);return true;}if(!before||!current||!accountId)return false;const previousId=resolveAccountProjectId(before,accountId),currentId=resolveAccountProjectId(current,accountId);return !!previousId&&previousId===currentId;};
+ const contextMatches=()=>{try{return equivalentProjectRef(projectRef,String(getProjectRef()||''))&&currentContextKey(projectRef)===String(contextKey??'');}catch{return false;}};
+ const bindProject=()=>{projectRef=String(getProjectRef()||'');resolveAccountProjectId(projectRef,accountId);contextKey=currentContextKey();};
+ const projectPayload=()=>{const projectId=resolveAccountProjectId(projectRef,accountId);return projectId?{projectId}:{};};
  const clearPoll=()=>{if(timer!==null)win.clearTimeout(timer);timer=null;};
  const abortRequests=()=>{for(const controller of controllers)controller.abort();controllers.clear();};
  const notifyJob=()=>{if(current())onJobChange?.(jobId,{contextKey});};
@@ -110,6 +116,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
   finally{if(usable(token)){busy=false;render();schedule();}}
  }
  async function loadQuote(token,{preserveCommand=false}={}){
+  projectPayload();
   cap=await request('/theses/outlines/capabilities',undefined,token);
   if(!cap?.ready){quote=null;throw Error(cap?.reason||'提纲生成服务暂未开放，仍可上传提纲或自己编辑。');}
   const value=await request('/billing/quote',{type:'agent'},token);
@@ -121,7 +128,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
   return run(async token=>{
    await owner(token);const brief=getSnapshot?.();if(!brief||!String(brief.title||'').trim())throw Error('请先填写论文主题，再生成提纲。');
    if(commandPending){await onCommandChange?.(null,{contextKey});if(!usable(token))return;}
-   snapshot=structuredClone(brief);snapshot.outline=[];snapshot.bodySections=[];contextKey=String(getContextKey?.()??'');item=null;jobId=null;quote=null;clientKey=null;commandPending=false;ambiguous=false;applied=false;loadError=false;notifyJob();
+   snapshot=structuredClone(brief);snapshot.outline=[];snapshot.bodySections=[];bindProject();item=null;jobId=null;quote=null;clientKey=null;commandPending=false;ambiguous=false;applied=false;loadError=false;notifyJob();
    await loadQuote(token);
   });
  }
@@ -144,7 +151,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
    }
    else{
     const brief=getSnapshot?.();if(!brief||!String(brief.title||'').trim())throw Error('请先填写论文主题，再生成提纲。');
-    snapshot=structuredClone(brief);snapshot.outline=[];snapshot.bodySections=[];contextKey=String(getContextKey?.()??'');item=null;await loadQuote(token);
+    snapshot=structuredClone(brief);snapshot.outline=[];snapshot.bodySections=[];bindProject();item=null;await loadQuote(token);
    }
   }catch(failure){if(usable(token)&&failure.name!=='AbortError'){loadError=true;setError(failure);}}
   finally{if(usable(token)){busy=false;render();schedule();}}
@@ -157,7 +164,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
    if(!validThesisQuote(quote)&&!ambiguous){quote=null;throw Error('费用确认已过期，请重新获取费用。');}
    await onCommandChange?.(clientKey,{contextKey});if(!usable(token))return;commandPending=true;if(!contextMatches())throw Error('保存期间论文信息已变化，请重新核对后再生成。');
    try{
-    const value=await request('/theses/outlines',{snapshot,clientKey,billingToken:quote.token,consent:true},token);takeItem(value.item);quote=null;consent=false;ambiguous=false;message='已提交提纲生成，原有提纲保持不变。';
+    const value=await request('/theses/outlines',{snapshot,...projectPayload(),clientKey,billingToken:quote.token,consent:true},token);takeItem(value.item);quote=null;consent=false;ambiguous=false;message='已提交提纲生成，原有提纲保持不变。';
    }catch(failure){
     if(!failure.status||failure.status>=500){ambiguous=true;message='尚未确认提交结果。重试会使用同一个任务标识，不会主动新建第二个任务。';}
     else{ambiguous=false;quote=null;consent=false;}

@@ -1,15 +1,17 @@
+import {beginDraftScope,endDraftScope} from '../dist/workspace/state.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
+import {projectReference} from '../dist/workspace/project-directory.mjs';
 import {mountToolJobPanel} from '../dist/workspace/tool-job-panel.mjs';
 
 const originalSnapshot=()=>({title:'【合成验收】科研方法演示',text:'',requirements:'介绍研究问题与证据边界',language:'中文',mode:'ai',materials:[],context:{pages:6}});
 const quote=()=>({type:'agent',source:'credits',title:'演示文稿创作',token:'fixture-quote',creditCost:10,expiresAt:new Date(Date.now()+60000).toISOString()});
 const completedJob=(id='job-alice')=>({id,kind:'presentation',operation:'ppt',status:'completed',completedUnits:1,totalUnits:1,output:{text:'仅属于原账户的合成验收内容',slides:[],sourceIds:[]}});
 const until=async check=>{for(let i=0;i<100;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}assert.ok(check(),'异步界面未达到预期状态');};
-function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),initialOwner='alice',kind='presentation',operation='ppt'}={}){
+function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),initialOwner='alice',kind='presentation',operation='ppt',initialProjectRef=''}={}){
  const dom=new JSDOM('<main class="dashboard"><div id="job"></div></main>',{url:'https://paperknow.cn/workspace.html#category/ppt'}),w=dom.window,container=w.document.querySelector('#job');
- let ownerId=initialOwner,snapshot=originalSnapshot(),job=structuredClone(initialJob),applies=0;const requests=[],states=[],instances=[];
+ let ownerId=initialOwner,projectRef=initialProjectRef,snapshot=originalSnapshot(),job=structuredClone(initialJob),applies=0;const requests=[],states=[],instances=[];
  const api=async(path,data)=>{requests.push({path,data:data===undefined?undefined:structuredClone(data),ownerId});
   if(path==='/auth/me'){if(!ownerId)throw Object.assign(Error('登录已失效'),{status:401});return {user:{id:ownerId}};}
   if(path==='/tool-runs/capabilities')return {ready:true};
@@ -19,11 +21,11 @@ function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),ini
   if(path==='/tool-runs/jobs/'+job.id){if(!job.id.endsWith(ownerId))throw Object.assign(Error('任务不存在'),{status:404});return {item:structuredClone(job)};}
   throw Error('测试不允许的请求 '+path);
  };
- const options={container,kind,operation,getSnapshot:()=>snapshot,ctx:{api},onStateChange:state=>states.push(structuredClone(state)),onApply:async(output,item)=>{applies++;return onApply(output,item);}};
+ const options={container,kind,operation,getSnapshot:()=>snapshot,getProjectRef:()=>projectRef,ctx:{api},onStateChange:state=>states.push(structuredClone(state)),onApply:async(output,item)=>{applies++;return onApply(output,item);}};
  const mount=state=>{const panel=mountToolJobPanel({...options,initialState:state});instances.push(panel);return panel;};const panel=mount(initialState);
  t.after(()=>{for(const instance of instances)instance.dispose();w.close();});
  const stateFor=(value=originalSnapshot(),id='job-alice',owner='alice')=>({snapshot:structuredClone(value),contextKey:JSON.stringify(value),ownerId:owner,itemId:id,commandKey:'old-command-key'});
- return {w,container,requests,states,panel,mount,stateFor,applies:()=>applies,setOwner:value=>{ownerId=value;},setSnapshot:value=>{snapshot=value;},setJob:value=>{job=structuredClone(value);},getSnapshot:()=>snapshot,
+ return {w,container,requests,states,panel,mount,stateFor,applies:()=>applies,setProjectRef:value=>{projectRef=value;},setOwner:value=>{ownerId=value;},setSnapshot:value=>{snapshot=value;},setJob:value=>{job=structuredClone(value);},getSnapshot:()=>snapshot,
  click:selector=>{const button=container.querySelector(selector);assert.ok(button,'未找到控件 '+selector);button.click();},consent:()=>{const input=container.querySelector('[data-tj-consent]');assert.ok(input);input.checked=true;input.dispatchEvent(new w.Event('change',{bubbles:true}));}};
 }
 
@@ -89,4 +91,35 @@ test('presentation progress has visible stages, page counts and safe failures wi
 
 test('presentation rejects external file URLs and never turns them into download controls',async t=>{
  const job=completedJob();job.output.presentation={artifactId:'bad-url',downloadUrl:'https://untrusted.example/download'};const f=fixture(t,{initialJob:job}),panel=f.mount(f.stateFor());await panel.open();assert.equal(f.container.querySelector('[data-tj-download]'),null);assert.doesNotMatch(f.container.innerHTML,/untrusted.example/);
+});
+
+
+test('project selection is bound to tool quote and submission and never added to the content snapshot',async t=>{
+ const ref=projectReference('alice','project-a'),f=fixture(t,{initialProjectRef:ref});await f.panel.open();const fee=f.requests.find(row=>row.path==='/tool-runs/quote');assert.equal(fee.data.projectId,'project-a');assert.equal(fee.data.snapshot.projectId,undefined);assert.equal(f.panel.getState().projectRef,ref);f.consent();f.click('[data-tj-start]');await until(()=>f.panel.getState().itemId==='job-alice');const posted=f.requests.find(row=>row.path==='/tool-runs/jobs');assert.equal(posted.data.projectId,'project-a');assert.deepEqual(posted.data.snapshot,originalSnapshot());
+});
+
+test('changing only the selected tool project revokes consent and cannot submit against the old quote',async t=>{
+ const f=fixture(t,{initialProjectRef:projectReference('alice','project-a')});await f.panel.open();f.consent();f.setProjectRef(projectReference('alice','project-b'));f.panel.inputChanged();assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);assert.equal(f.container.querySelector('[data-tj-consent]').checked,false);assert.match(f.container.textContent,/输入已有修改/);assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);f.click('[data-tj-new]');await until(()=>f.requests.filter(row=>row.path==='/tool-runs/quote').length===2);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').at(-1).data.projectId,'project-b');
+});
+
+test('tool recovery reads the original project task and refuses to adopt it into a different selected project',async t=>{
+ const f=fixture(t,{initialProjectRef:projectReference('alice','project-a')});await f.panel.open();f.consent();f.click('[data-tj-start]');await until(()=>f.panel.getState().itemId==='job-alice');const saved=structuredClone(f.panel.getState());f.panel.dispose();f.setProjectRef(projectReference('alice','project-b'));const restored=f.mount(saved);await restored.open();assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs').length,1);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,1);assert.equal(restored.getState().projectRef,saved.projectRef);assert.equal(f.container.querySelector('[data-tj-apply]').disabled,true);
+});
+
+test('a project belonging to another account cannot request a tool fee or create a job',async t=>{
+ const f=fixture(t,{initialProjectRef:projectReference('bob','project-private')});await f.panel.open();assert.equal(f.requests.some(row=>row.path==='/tool-runs/quote'||row.path==='/tool-runs/jobs'),false);assert.ok(f.container.querySelector('[role="alert"]'));
+});
+
+
+test('resuming a failed tool task keeps its original project in both renewed quote and resumed submission',async t=>{
+ const ref=projectReference('alice','project-a'),f=fixture(t,{initialProjectRef:ref,initialJob:{...completedJob(),projectId:'project-a',status:'failed',completedUnits:1,totalUnits:2,output:null}}),snap=originalSnapshot(),panel=f.mount({...f.stateFor(),snapshot:snap,projectRef:ref,projectId:'project-a',contextKey:JSON.stringify({snapshot:snap,projectRef:ref})});await panel.open();f.click('[data-tj-resume]');await until(()=>f.requests.some(row=>row.path==='/tool-runs/quote'));assert.equal(f.requests.find(row=>row.path==='/tool-runs/quote').data.projectId,'project-a');f.consent();f.click('[data-tj-start]');await until(()=>f.requests.some(row=>row.path==='/tool-runs/jobs'));const posted=f.requests.find(row=>row.path==='/tool-runs/jobs').data;assert.equal(posted.projectId,'project-a');assert.equal(posted.resumeFromJobId,'job-alice');assert.notEqual(posted.clientKey,'old-command-key');
+});
+
+
+test('an imported tool result adopts from the equivalent raw account project without rewriting its frozen key or repeating payment',async t=>{
+ const encoded=projectReference('alice','project-a'),f=fixture(t,{initialProjectRef:encoded});await f.panel.open();f.consent();f.click('[data-tj-start]');await until(()=>f.panel.getState().itemId==='job-alice');const frozen=structuredClone(f.panel.getState());f.panel.dispose();beginDraftScope({ownerId:'alice',projectRows:[{id:'project-a',title:'Original project'},{id:'project-b',title:'Another project'}]});t.after(endDraftScope);f.setProjectRef('project-a');const restored=f.mount(frozen);await restored.open();assert.equal(f.container.querySelector('[data-tj-apply]').disabled,false);assert.equal(restored.getState().contextKey,frozen.contextKey);assert.deepEqual(restored.getState().snapshot,frozen.snapshot);assert.equal(restored.getState().projectRef,encoded);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,1);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs').length,1);f.setProjectRef(projectReference('bob','project-a'));restored.inputChanged();assert.equal(f.container.querySelector('[data-tj-apply]').disabled,true);f.setProjectRef('project-b');restored.inputChanged();assert.equal(f.container.querySelector('[data-tj-apply]').disabled,true);f.setProjectRef('project-a');restored.inputChanged();f.click('[data-tj-apply]');await until(()=>f.applies()===1);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs').length,1);
+});
+
+test('different local tool project refs are distinct even when both resolve to no account project',async t=>{
+ const f=fixture(t,{initialProjectRef:'local-a'});await f.panel.open();f.consent();f.setProjectRef('local-b');f.panel.inputChanged();assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);
 });

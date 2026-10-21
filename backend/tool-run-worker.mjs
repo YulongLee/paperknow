@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {taskProjectId} from './task-project-context.mjs';
 import {createBillingService} from './billing-service.mjs';
 import {createModelBudget} from './model-budget.mjs';
 import {thesisTransaction,thesisError,thesisPublicError} from './thesis-model.mjs';
@@ -68,7 +69,7 @@ export function startToolRunWorker(db,config={}){
    transaction(()=>{
     if(controller.signal.aborted||!running())return;const sourceSnapshot=value.snapshot.materials.filter(s=>output.sourceIds.includes(s.id)).map(({id,name})=>({id,name})),body=JSON.stringify({...output,toolJobId:row.id,kind:row.kind,operation:row.operation,sourceSnapshot}),json=JSON.stringify(output),id=randomUUID(),at=clock();toolStorageCheck(db,row.user_id,Buffer.byteLength(body)+Buffer.byteLength(json),config);
     if(['ppt','image'].includes(row.operation))for(const artifact of output.artifacts||[]){const saved=db.prepare("SELECT 1 FROM artifacts WHERE id=? AND user_id=? AND status='ready' AND sha256=? AND bytes=?").get(artifact.id,row.user_id,artifact.sha256,artifact.bytes);if(!saved)throw thesisError(409,'成果文件保存状态已变化，未结算本次费用，请核对后继续');}
-    billing.settle(row.id);db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(id,row.user_id,null,row.id,'tool_run',value.snapshot.title+' · '+toolOperationNames[row.operation],body,at);if(row.operation!=='image')db.prepare('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),row.user_id,row.id,runtime.engine||'claude-agent-sdk',runtime.model,inputTokens,outputTokens,billing.isBillable(row.id)?1:0,at);
+    billing.settle(row.id);db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(id,row.user_id,taskProjectId(db,row),row.id,'tool_run',value.snapshot.title+' · '+toolOperationNames[row.operation],body,at);if(row.operation!=='image')db.prepare('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),row.user_id,row.id,runtime.engine||'claude-agent-sdk',runtime.model,inputTokens,outputTokens,billing.isBillable(row.id)?1:0,at);
     db.prepare("UPDATE tool_runs SET status='completed',stage='completed',output=?,result_id=?,error=NULL,updated_at=? WHERE id=?").run(json,id,at,row.id);db.prepare("UPDATE jobs SET status='completed',stage='completed',result_id=?,error=NULL,updated_at=? WHERE id=?").run(id,at,row.id);
     if(row.operation==='image'){db.prepare('UPDATE research_image_usage SET delivered_images=1,updated_at=? WHERE job_id=?').run(at,row.id);db.prepare('DELETE FROM tool_checkpoints WHERE run_id=? AND unit_id=?').run(row.id,'research-image-delivery');}
     if(row.operation==='ppt')db.prepare('DELETE FROM tool_checkpoints WHERE run_id=? AND position>=1000 AND position<2000').run(row.id);

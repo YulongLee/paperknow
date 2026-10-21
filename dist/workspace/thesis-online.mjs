@@ -1,3 +1,4 @@
+import {resolveAccountProjectId} from './project-directory.mjs';
 import {download as exportFile} from './ui.mjs';
 import {withStableView} from './view-stability.mjs';
 import {documentExportButtons,bindDocumentExports} from './document-export.mjs';
@@ -37,11 +38,13 @@ export function mountOnlineThesis({id,ctx={},container=document.querySelector('.
 export function mountThesisLibrary({ctx={},container=document.querySelector('.dashboard')}={}){
  return mountThesisStage({ctx,container,standalone:true,library:true});
 }
-export function mountThesisStage({id=null,ctx={},container,getSnapshot,onSaved,onManual,standalone=false,library=false}={}){
+export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjectRef=()=>'',onSaved,onManual,standalone=false,library=false}={}){
  for(const previous of [...instances])if(previous.container===container)previous.dispose();
  let alive=true,user=null,item=null,cap=null,busy=false,timer=null,selected=null,quote=null,quoteAction='generate',message='',loadError='',items=[],editorError='',loaded=false,researchEdits=null,historyChapter=null,historyItems=null,historyPreview=null;
  const controllers=new Set(),edits=new Map();
- const saveKey=crypto.randomUUID();
+ const saveKey=crypto.randomUUID(),hasProjectSelector=typeof arguments[0]?.getProjectRef==='function';
+ const resolvedProjectId=()=>hasProjectSelector?resolveAccountProjectId(String(getProjectRef()||''),user?.id):item?.projectId||null;
+ const projectPayload=()=>{const projectId=resolvedProjectId();return projectId||hasProjectSelector?{projectId}:{};};
  let commandKey=null,pendingFocus=null,researchBaseVersion=null,draftRestored=false,draftRevision=null,draftStorageError='';
  const win=container.ownerDocument.defaultView||window;
  let accountSnapshotChoice=null,chapterPresentation=null;
@@ -159,11 +162,11 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,onSaved,o
   return normalized;
  }
  function snapshotBinding(){
-  if(!item||!getSnapshot)return {blocked:false,token:'account:'+String(item?.version??'')};
+  if(!item||!getSnapshot)return {blocked:false,token:JSON.stringify(['account',item?.version??'',item?.projectId||null,hasProjectSelector?String(getProjectRef()||''):''])};
   try{
-   const local=getSnapshot(),account=canonicalSnapshot(item.snapshot),current=canonicalSnapshot(local),localKey=JSON.stringify(current),accountKey=JSON.stringify(account),different=localKey!==accountKey;
+   const local=getSnapshot(),account=canonicalSnapshot(item.snapshot),current=canonicalSnapshot(local),projectId=resolvedProjectId(),projectRef=hasProjectSelector?String(getProjectRef()||''):'',localKey=JSON.stringify([current,projectId,projectRef]),accountKey=JSON.stringify([account,item.projectId||null]),different=JSON.stringify(current)!==JSON.stringify(account)||String(projectId||'')!==String(item.projectId||'');
    const acknowledged=accountSnapshotChoice?.version===item.version&&accountSnapshotChoice?.localKey===localKey&&accountSnapshotChoice?.accountKey===accountKey;
-   const names={title:'论文题目',profile:'基础研究信息',requirements:'写作要求',materials:'研究材料',references:'参考文献',outline:'论文提纲与字数分配'},differences=Object.keys(names).filter(key=>JSON.stringify(current[key])!==JSON.stringify(account[key])).map(key=>names[key]);
+   const names={title:'论文题目',profile:'基础研究信息',requirements:'写作要求',materials:'研究材料',references:'参考文献',outline:'论文提纲与字数分配'},differences=Object.keys(names).filter(key=>JSON.stringify(current[key])!==JSON.stringify(account[key])).map(key=>names[key]);if(String(projectId||'')!==String(item.projectId||''))differences.push('所属项目');
    return {blocked:different&&!acknowledged,different,acknowledged,local,current,account,localKey,accountKey,differences,token:JSON.stringify([item.id,item.version,localKey,accountKey])};
   }catch(error){return {blocked:true,error:error.message||'暂时无法读取前四步信息，请返回核对后重试。'};}
  }
@@ -267,7 +270,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,onSaved,o
   $('[data-thesis-reload]')?.addEventListener('click',()=>void load());
   $('[data-thesis-manual]')?.addEventListener('click',()=>{if(!busy&&persistDraft())onManual?.();});
   $('[data-thesis-create]')?.addEventListener('click',()=>void mutate(async()=>{
-   const snapshot=getSnapshot();const value=await api('/theses',{clientKey:saveKey,snapshot});takeItem(value.item);onSaved?.(item.id);notice('已保存到账户。生成前还需确认任务费用与资料用途。');
+   const snapshot=getSnapshot();const value=await api('/theses',{clientKey:saveKey,snapshot,...projectPayload()});takeItem(value.item);onSaved?.(item.id);notice('已保存到账户。生成前还需确认任务费用与资料用途。');
   }));
   $('[data-thesis-refresh]')?.addEventListener('click',()=>void mutate(async()=>{await refresh();quote=null;notice(dirty()?'已读取最新状态。未保存文字仍保留，请核对后保存。':'已读取最新账户状态。');}));
   container.querySelectorAll('[data-research-field]').forEach(input=>input.addEventListener('input',()=>{
@@ -287,7 +290,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,onSaved,o
   container.querySelectorAll('[data-thesis-sync],[data-thesis-sync-primary]').forEach(button=>button.addEventListener('click',()=>void mutate(async()=>{
    if(dirty()||running(item))throw Error('请先保存章节和研究信息。');
    const snapshot=getSnapshot();canonicalSnapshot(snapshot);if(!window.confirm('将使用前四步的信息替换账户的研究信息、资料与提纲，账户中独立补充的内容请先核对。已有章节历史版本会保留，新的生成需要重新确认费用。确认同步？'))return;
-   const value=await api('/theses/'+encodeURIComponent(id),{version:item.version,snapshot});takeItem(value.item);accountSnapshotChoice=null;quote=null;notice('已同步前四步确认资料与新提纲，原章节历史版本继续保留。请核对后重新确认生成费用。');
+   const value=await api('/theses/'+encodeURIComponent(id),{version:item.version,snapshot,...projectPayload()});takeItem(value.item);accountSnapshotChoice=null;quote=null;notice('已同步前四步确认资料与新提纲，原章节历史版本继续保留。请核对后重新确认生成费用。');
   })));
   container.querySelectorAll('[data-thesis-quote]').forEach(button=>button.addEventListener('click',()=>void mutate(async()=>{
    if(!cap?.ready||running(item)||dirty())throw Error('请先保存修改并确认服务可用。');

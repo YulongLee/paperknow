@@ -1,0 +1,4 @@
+.project-picker-status{display:block;margin-top:7px;color:#7d8da5;font-size:11px;line-height:1.8;font-weight:400}
+.project-picker-status[hidden]{display:none}
+.project-picker-status button{border:0;background:transparent;color:#2e6bf1;padding:0 0 0 8px;font-size:inherit;min-height:28px;cursor:pointer}
+select[data-project-picker][aria-invalid="true"]{border-color:#dc9e71}

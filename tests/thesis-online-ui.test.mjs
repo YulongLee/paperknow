@@ -1,3 +1,4 @@
+import {projectReference} from '../dist/workspace/project-directory.mjs';
 import {normalizeThesisSnapshot} from '../backend/thesis-model.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,11 +16,11 @@ function fixture({item=thesis(),user={id:'u1'},cap={ready:true},handler}={}){
  dom.window.confirm=()=>true;let record=structuredClone(item);const calls=[];
  const api=async(path,data)=>{calls.push({path,data});if(handler){const handled=await handler(path,data);if(handled!==undefined)return handled;}
   if(path==='/auth/me')return {user};if(path==='/capabilities')return {thesis:cap};if(path==='/theses/t1/quote')return quote();
-  if(path==='/theses'&&data){record=thesis({snapshot:data.snapshot,profile:data.snapshot.profile});return {item:structuredClone(record)};}
+  if(path==='/theses'&&data){record=thesis({snapshot:data.snapshot,profile:data.snapshot.profile,projectId:data.projectId||null});return {item:structuredClone(record)};}
   if(path==='/theses')return {items:[structuredClone(record)]};if(path==='/theses/t1'&&!data)return {item:structuredClone(record)};
   if(path==='/theses/t1/generate'||path==='/theses/t1/resume'){record={...record,version:record.version+1,status:'queued',job:{status:'queued',completedSections:0,totalSections:3}};return {item:structuredClone(record)};}
   if(path==='/theses/t1/cancel'){record={...record,version:record.version+1,status:'cancelled',job:{status:'cancelled',canResume:true,completedSections:1,totalSections:3}};return {item:structuredClone(record)};}
-  if(path==='/theses/t1'&&data){record={...record,version:record.version+1,status:'draft',snapshot:data.snapshot,profile:data.snapshot.profile};return {item:structuredClone(record)};}
+  if(path==='/theses/t1'&&data){record={...record,version:record.version+1,status:'draft',snapshot:data.snapshot,profile:data.snapshot.profile,...(Object.hasOwn(data,'projectId')?{projectId:data.projectId}:{})};return {item:structuredClone(record)};}
   if(path==='/theses/t1/chapters/c1'){record={...record,version:record.version+1,chapters:record.chapters.map(c=>c.id==='c1'?{...c,text:data.text,version:c.version+1,status:'saved'}:c)};return {item:structuredClone(record)};}
   throw Error('Unexpected request '+path);
  };
@@ -249,4 +250,17 @@ test('a focused ordinary library link cannot crash the next thesis mount during 
 
 test('view capture accepts plain focused elements without an ID or thesis data attribute',async()=>{
  for(const markup of ['<button type="button">普通按钮</button>','<input name="plain-field">','<div tabindex="0">普通可聚焦区域</div>']){const f=fixture();try{const control=document.createElement('div');control.innerHTML=markup;const focused=control.firstElementChild;f.$('.dashboard').append(focused);focused.focus();assert.equal(document.activeElement,focused);let next;assert.doesNotThrow(()=>{next=mountOnlineThesis({id:'t1',ctx:f.ctx});});await next.ready;assert.ok(f.$('[data-thesis-editor]'));}finally{f.close();}}
+});
+
+
+test('account thesis creation and explicit synchronization use the selected account project and protect quote binding',async()=>{
+ const f=fixture();let projectRef=projectReference('u1','project-a');try{const panel=mountThesisStage({container:f.$('.dashboard'),getSnapshot:snapshot,getProjectRef:()=>projectRef,ctx:f.ctx});await panel.ready;f.$('[data-thesis-create]').click();await settle();const created=f.calls.find(row=>row.path==='/theses'&&row.data);assert.equal(created.data.projectId,'project-a');assert.equal(created.data.snapshot.projectId,undefined);assert.equal(f.$('.thesis-snapshot-drift'),null);f.$('[data-thesis-quote]').click();await settle();assert.ok(f.$('[data-thesis-start]'));projectRef=projectReference('u1','project-b');const consent=f.$('[data-thesis-consent]');consent.checked=true;consent.dispatchEvent(new window.Event('change'));assert.equal(f.$('[data-thesis-start]').disabled,true);f.$('[data-thesis-refresh]').click();await settle();assert.match(f.$('.thesis-snapshot-drift').textContent,/所属项目/);f.$('[data-thesis-sync-primary]').click();await settle();assert.equal(f.calls.filter(row=>row.path==='/theses/t1'&&row.data).at(-1).data.projectId,'project-b');assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);}finally{f.close();}
+});
+
+test('standalone thesis research edits retain the saved account project when no project selector exists',async()=>{
+ const f=fixture({item:thesis({projectId:'already-associated'})});try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;input(f,'#thesis-research-method','调整后的真实方法');f.$('[data-thesis-save-research]').click();await settle();const updated=f.calls.find(row=>row.path==='/theses/t1'&&row.data);assert.equal(updated.data.projectId,undefined);assert.equal(f.$('.thesis-snapshot-drift'),null);f.$('[data-thesis-quote]').click();await settle();assert.ok(f.$('[data-thesis-start]'));}finally{f.close();}
+});
+
+test('a foreign account project prevents creating an account thesis',async()=>{
+ const f=fixture();try{const panel=mountThesisStage({container:f.$('.dashboard'),getSnapshot:snapshot,getProjectRef:()=>projectReference('other-user','foreign-project'),ctx:f.ctx});await panel.ready;f.$('[data-thesis-create]').click();await settle();assert.equal(f.calls.some(row=>row.path==='/theses'&&row.data),false);assert.match(f.$('[data-thesis-notice]').textContent,/项目|账户/);}finally{f.close();}
 });

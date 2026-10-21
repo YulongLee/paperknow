@@ -1,3 +1,4 @@
+import {updateAccountProjects,resolveAccountProjectId} from '../dist/workspace/project-directory.mjs';
 import {workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel} from '../dist/workspace/workspace-job-model.mjs';
 import {publicDraftCopy} from '../dist/workspace/public-draft.mjs';
 import {withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures} from '../dist/workspace/view-stability.mjs';
@@ -24,7 +25,7 @@ async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params=
  w.localStorage.setItem('paperknow-drafts','[{"title":"本地未上传成果"}]');
  w.download=async(name,content)=>{exportBodies.push(content);downloads.push(name);return {message:'已保存到账户云文件并发起下载。'};};
  const calls=[],navigations=[],downloads=[],notices=[];let saved=[],projects=[{id:'p1',title:'账户研究项目',degree:'本科',major:'教育学',updated_at:now}],files=[{id:'f1',name:'账户原件.txt',bytes:30,project_id:'p1'}],jobs=[{id:'pending',type:'parse',status:'queued',attempt:0,created_at:now},{id:'failed',type:'agent',status:'failed',attempt:1,created_at:now,error:'测试任务失败'}];
- Object.assign(w,{workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,thesisEditorPresentation,restoreThesisEditorText,presentThesisDocument});w.publicDraftCopy=publicDraftCopy;w.membershipPurchaseTiles=membershipPurchaseTiles;w.supportContactsMarkup=supportContactsMarkup;w.bindSupportContacts=bindSupportContacts;w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts'};w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
+ Object.assign(w,{updateAccountProjects,resolveAccountProjectId,workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,thesisEditorPresentation,restoreThesisEditorText,presentThesisDocument});w.publicDraftCopy=publicDraftCopy;w.membershipPurchaseTiles=membershipPurchaseTiles;w.supportContactsMarkup=supportContactsMarkup;w.bindSupportContacts=bindSupportContacts;w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts'};w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
  w.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({path,body,options});if(request){const custom=await request(path,options);if(custom)return custom;}
   let status=200,value={};
   if(path==='/api/capabilities')value={ai,agent,aiProvider:'test-provider',storage:'local'};

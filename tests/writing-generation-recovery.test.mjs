@@ -1,3 +1,4 @@
+import {resolveAccountProjectId} from '../dist/workspace/project-directory.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -14,7 +15,7 @@ function fixture(t,kind,{sessionFailure=false,pendingJobId=null,pendingClientKey
  const w=dom.window,doc=w.document,container=doc.querySelector('#panel'),route=`/theses/${kind==='method'?'methods':'outlines'}`,prefix=`data-${kind}-ai-`;
  const brief={title:'网络恢复后的真实论文主题',profile:{level:'本科'},materials:[],references:[],requirements:'保留用户原有要求',outline:[{title:'用户原有提纲'}],bodySections:[]},contextKey=JSON.stringify(brief);
  const calls=[],commands=[],previews=[],applied=[],timers=new Map();let online=false,user={id:'u1'},sessionCalls=0,timer=0;
- w.structuredClone=structuredClone;w.withStableView=withStableView;w.validThesisQuote=validThesisQuote;w.scrollTo=()=>{};
+ w.structuredClone=structuredClone;w.withStableView=withStableView;w.validThesisQuote=validThesisQuote;w.resolveAccountProjectId=resolveAccountProjectId;w.scrollTo=()=>{};
  w.setTimeout=(fn,delay)=>{const id=++timer;timers.set(id,{fn,delay});return id;};w.clearTimeout=id=>timers.delete(id);
  const item={id:'saved-job',userId:'u1',status:'completed',stage:'completed',output:{text:kind==='method'?'服务端方法建议':'第一章 研究背景\n1.1 研究问题'}};
  const api=async(path,data)=>{

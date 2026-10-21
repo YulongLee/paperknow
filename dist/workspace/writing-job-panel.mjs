@@ -1,16 +1,20 @@
+import {resolveAccountProjectId} from './project-directory.mjs';
 import {withStableView} from './view-stability.mjs';
 import {validThesisQuote} from './thesis-online.mjs';
 import {presentThesisDocument} from './thesis-document.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const active=item=>['queued','running','cancelling'].includes(item?.status);
 const names={method:'研究方法建议',outline:'提纲',draft:'正文',abstract:'摘要',ideas:'题目及研究思路',questionnaire:'问卷草稿'};
-export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapshot,onApply,onStateChange,initialState={},isCurrent=()=>true}={}){
+export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapshot,getProjectRef=()=>'',onApply,onStateChange,initialState={},isCurrent=()=>true}={}){
  if(!container)throw Error('缺少生成区域');
  const win=container.ownerDocument.defaultView;
  let live=true,opened=false,busy=false,identity=null,quote=null,item=null,message='',error='',consent=false,timer=null,revision=0,authLoading=false,authState='unknown';
  let state={...initialState},snapshot=state.snapshot?structuredClone(state.snapshot):null,key=state.contextKey||null;
  const controllers=new Set(),current=()=>live&&container.isConnected&&isCurrent();
- const same=()=>{try{return key===JSON.stringify(getSnapshot());}catch{return false;}};
+ const contextKey=(value,ref=String(getProjectRef()||''))=>ref?JSON.stringify({snapshot:value,projectRef:ref}):JSON.stringify(value);
+ const equivalentProjectRef=(before,current)=>{if(before===current){if(before)resolveAccountProjectId(before,identity?.id);return true;}if(!before||!current||!identity?.id)return false;const previousId=resolveAccountProjectId(before,identity.id),currentId=resolveAccountProjectId(current,identity.id);return !!previousId&&previousId===currentId;};
+ const same=()=>{try{const before=String(state.projectRef||''),selected=String(getProjectRef()||'');return equivalentProjectRef(before,selected)&&key===contextKey(getSnapshot(),before);}catch{return false;}};
+ const projectPayload=()=>{const projectId=resolveAccountProjectId(state.projectRef||'',identity?.id);return projectId?{projectId}:state.resumeFromJobId&&state.projectId?{projectId:state.projectId}:{};};
  const persist=async()=>{const saved=await onStateChange?.({...state,contextKey:key,snapshot,itemId:item?.id||state.itemId||null,ownerId:identity?.id||state.ownerId||null});if(saved===false)throw Error(item?.id?'任务恢复信息保存失败。原任务仍保留，请先重试保存或读取原任务，避免重复提交。':'生成任务恢复信息未能保存，请重试保存后再生成；尚未提交新的任务。');if(!current())throw Object.assign(Error('页面已切换'),{name:'AbortError'});};
  const stopPoll=()=>{if(timer!==null)win.clearTimeout(timer);timer=null;};
  async function api(path,data){
@@ -18,7 +22,7 @@ export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapsho
   try{let value;if(ctx.api)value=await ctx.api(path,data,{signal:controller.signal});else{const response=await win.fetch('/api'+path,{method:data===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',headers:data===undefined?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data),signal:controller.signal});value=await response.json().catch(()=>({error:'服务暂时不可用。'}));if(!response.ok)throw Object.assign(new Error(value.error||'请求未能完成。'),{status:response.status});}if(!current())throw Object.assign(new Error('页面已切换'),{name:'AbortError'});return value;}catch(e){if(controller.signal.aborted&&current())throw Error('连接超时。请读取原任务状态，避免重复提交。');throw e;}finally{win.clearTimeout(timeout);controllers.delete(controller);}
  }
  async function owner(){authLoading=true;try{const value=await api('/auth/me');if(!value.user?.id)throw Object.assign(Error('请先登录账户。'),{status:401});if(identity&&identity.id!==value.user.id||state.ownerId&&state.ownerId!==value.user.id){item=null;quote=null;identity=null;authState='changed';throw Error('登录账户已变化，请重新打开此功能。原任务仅属于原账户。');}identity=value.user;authState='authenticated';return identity;}catch(e){if(e.status===401){identity=null;item=null;quote=null;authState='guest';}else if(authState!=='changed')authState='error';throw e;}finally{authLoading=false;}}
- async function take(value){if(!value?.id||!['queued','running','cancelling','completed','failed','cancelled'].includes(value.status))throw Error('任务状态不完整，请重新读取。');item=value;state.itemId=value.id;await persist();}
+ async function take(value){if(!value?.id||!['queued','running','cancelling','completed','failed','cancelled'].includes(value.status))throw Error('任务状态不完整，请重新读取。');item=value;state.itemId=value.id;if(Object.hasOwn(value,'projectId'))state.projectId=value.projectId;await persist();}
  function cost(){return quote?.source==='credits'?`${quote.creditCost} 科研积分`:quote?.source==='membership'?'1 次会员权益':quote?.source==='bundle'?'1 次套餐权益':'本次免费';}
  function render(){if(!current()||!opened)return;withStableView(container.closest('.dashboard')||container,()=>{
   container.hidden=false;const drift=key&&!same(),output=item?.output?.text||'',preview=output?presentThesisDocument({...snapshot,outline:[]},[{title:'',text:output,sourceIds:item.output.sourceIds||[]}],{title:''}):'',status={queued:'正在排队',running:'正在生成',cancelling:'正在停止',completed:'已生成，等待核对',failed:'生成未完成',cancelled:'已停止'};
@@ -34,14 +38,14 @@ export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapsho
  function schedule(){stopPoll();if(current()&&active(item))timer=win.setTimeout(()=>void command(refresh),2500);}
  async function recover(){await owner();if(state.itemId)return refresh();if(state.commandKey){try{await take((await api('/writing/jobs/by-key/'+encodeURIComponent(state.commandKey))).item);schedule();return;}catch(e){if(e.status!==404)throw e;message='尚未找到原任务。没有自动重提或扣费，请重新读取费用后确认。';}}}
  async function prepare(newCommand=false,resumeFromJobId=null){
-  await owner();stopPoll();snapshot=structuredClone(getSnapshot());key=JSON.stringify(snapshot);item=null;quote=null;consent=false;
-  if(newCommand)state={ownerId:identity.id,...(resumeFromJobId?{resumeFromJobId}:{})};state.commandKey||=win.crypto.randomUUID();state.snapshot=snapshot;state.contextKey=key;await persist();await owner();if(!same())throw Error('保存期间输入已有变化，请重新确认后读取费用。');
+  await owner();if((resumeFromJobId||!newCommand&&state.commandKey&&key)&&!same())throw Error('资料或所属项目已变化，请重新确认当前信息后生成。');const projectRef=resumeFromJobId?state.projectRef||'':String(getProjectRef()||''),projectId=resolveAccountProjectId(projectRef,identity.id)||(resumeFromJobId?state.projectId:null);stopPoll();snapshot=structuredClone(getSnapshot());key=contextKey(snapshot,projectRef);item=null;quote=null;consent=false;
+  if(newCommand)state={ownerId:identity.id,...(resumeFromJobId?{resumeFromJobId}:{})};state.projectRef=projectRef;state.projectId=projectId;state.commandKey||=win.crypto.randomUUID();state.snapshot=snapshot;state.contextKey=key;await persist();await owner();if(!same())throw Error('保存期间输入已有变化，请重新确认后读取费用。');
   const cap=await api('/writing/capabilities');if(!cap.ready)throw Error(cap.reason||'生成服务暂未开放。');
-  quote=await api('/writing/quote',{kind,operation,snapshot});if(!validThesisQuote(quote))throw Error('费用信息不完整，请重试读取。');message='请核对资料用途与费用后再提交。';
+  quote=await api('/writing/quote',{kind,operation,snapshot,...projectPayload()});if(!validThesisQuote(quote))throw Error('费用信息不完整，请重试读取。');message='请核对资料用途与费用后再提交。';
  }
  async function start(){
   if(!quote||!consent||!same())throw Error('请先确认当前信息和费用。');const agreed=quote;await persist();await owner();if(!consent||!same()||quote!==agreed||!validThesisQuote(agreed))throw Error('保存期间输入、登录状态或费用已有变化，请重新确认。');
-  const response=await api('/writing/jobs',{kind,operation,snapshot,clientKey:state.commandKey,billingToken:quote.token,consent:true,...(state.resumeFromJobId?{resumeFromJobId:state.resumeFromJobId}:{})});quote=null;await take(response.item);schedule();
+  const response=await api('/writing/jobs',{kind,operation,snapshot,...projectPayload(),clientKey:state.commandKey,billingToken:quote.token,consent:true,...(state.resumeFromJobId?{resumeFromJobId:state.resumeFromJobId}:{})});quote=null;await take(response.item);schedule();
  }
  async function open(){if(busy||!current())return;authLoading=true;opened=true;container.hidden=false;const token=++revision;await command(async()=>{await owner();if(token!==revision)return;if(state.itemId||state.commandKey){await recover();if(item)return;}await prepare(false);});}
  function dispose(){if(!live)return;live=false;stopPoll();for(const controller of controllers)controller.abort();controllers.clear();}

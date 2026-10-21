@@ -1,7 +1,9 @@
+import {beginDraftScope,endDraftScope} from '../dist/workspace/state.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
+import {projectReference,resolveAccountProjectId} from '../dist/workspace/project-directory.mjs';
 import {withStableView} from '../dist/workspace/view-stability.mjs';
 import {validThesisQuote} from '../dist/workspace/thesis-online.mjs';
 
@@ -12,15 +14,15 @@ const completed={...queued,status:'completed',stage:'completed',model:'test-mode
 const settle=async check=>{for(let i=0;i<100;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,1));}throw Error('Outline controller did not settle');};
 function fixture(t,{guest=false,pendingJobId,pendingContextKey,pendingClientKey,onRequest,onApply,onCommandChange}={}){
  const dom=new JSDOM('<main class="dashboard"><input id="outside-entry" value="既有内容"><section id="panel" hidden></section></main>',{url:'https://paperknow.cn/workspace.html#tool/writing',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,doc=w.document,container=doc.querySelector('#panel');
- const calls=[],applies=[],jobs=[],commands=[],timers=new Map(),position={y:830};let timerId=0,current=true,user=guest?null:{id:'u1'},brief={title:'城市通勤行为的影响因素研究',profile:{level:'本科',discipline:'交通工程',researchQuestion:'',method:''},materials:[{id:'m1',name:'研究笔记',text:'真实研究说明',confirmed:true}],references:[{id:'r1',title:'参考来源',confirmed:true}],requirements:'采用学校提纲格式',outline:[{title:'原有章节'}],bodySections:[{text:'既有正文'}]},readItem=queued;
+ let projectRef='';const calls=[],applies=[],jobs=[],commands=[],timers=new Map(),position={y:830};let timerId=0,current=true,user=guest?null:{id:'u1'},brief={title:'城市通勤行为的影响因素研究',profile:{level:'本科',discipline:'交通工程',researchQuestion:'',method:''},materials:[{id:'m1',name:'研究笔记',text:'真实研究说明',confirmed:true}],references:[{id:'r1',title:'参考来源',confirmed:true}],requirements:'采用学校提纲格式',outline:[{title:'原有章节'}],bodySections:[{text:'既有正文'}]},readItem=queued;
  Object.defineProperties(w,{scrollY:{configurable:true,get:()=>position.y},scrollX:{configurable:true,get:()=>0}});w.scrollTo=opts=>{position.y=opts.top;};doc.querySelector('.dashboard').getBoundingClientRect=()=>({top:80-position.y,left:0,width:1200,height:2000,bottom:2080-position.y,right:1200});
  w.setTimeout=(fn,delay)=>{const id=++timerId;timers.set(id,{fn,delay});return id;};w.clearTimeout=id=>timers.delete(id);
- Object.defineProperty(doc,'hidden',{configurable:true,value:false});w.structuredClone=structuredClone;w.withStableView=withStableView;w.validThesisQuote=validThesisQuote;
+ Object.defineProperty(doc,'hidden',{configurable:true,value:false});w.structuredClone=structuredClone;w.withStableView=withStableView;w.validThesisQuote=validThesisQuote;w.resolveAccountProjectId=resolveAccountProjectId;
  const api=async(path,data,options)=>{calls.push({path,data,options});const custom=onRequest&&await onRequest(path,data,options);if(custom!==undefined)return custom;if(path==='/auth/me')return user?{user}:{status:'guest'};if(path==='/theses/outlines/capabilities')return {ready:true,billingService:'agent'};if(path==='/billing/quote')return quote();if(path==='/theses/outlines')return {item:queued};if(path.startsWith('/theses/outlines/by-key/'))throw Object.assign(new Error('任务尚未创建'),{status:404});if(path==='/theses/outlines/outline-1')return {item:readItem};if(path==='/theses/outlines/outline-1/cancel')return {item:{...queued,status:'cancelled',stage:'cancelled'}};throw Error('Unexpected path '+path);};
  w.eval(source+'\nwindow.outlineTest={mountWritingOutlineGenerator};');
- const options={container,ctx:{api,session:async()=>user?{user}:{status:'guest'}},getSnapshot:()=>structuredClone(brief),getContextKey:()=>JSON.stringify(brief),onApply:async(text,item)=>{applies.push({text,item});return onApply?onApply(text,item):true;},onJobChange:(id,meta)=>jobs.push({id,...meta}),onCommandChange:async(key,meta)=>{commands.push({key,...meta});await onCommandChange?.(key,meta);},pendingJobId,pendingContextKey,pendingClientKey,isCurrent:()=>current};
+ const options={container,ctx:{api,session:async()=>user?{user}:{status:'guest'}},getSnapshot:()=>structuredClone(brief),getContextKey:()=>JSON.stringify(brief),getProjectRef:()=>projectRef,onApply:async(text,item)=>{applies.push({text,item});return onApply?onApply(text,item):true;},onJobChange:(id,meta)=>jobs.push({id,...meta}),onCommandChange:async(key,meta)=>{commands.push({key,...meta});await onCommandChange?.(key,meta);},pendingJobId,pendingContextKey,pendingClientKey,isCurrent:()=>current};
  const controller=w.outlineTest.mountWritingOutlineGenerator(options);t.after(()=>{controller.dispose();w.close();});
- return {w,doc,container,controller,calls,applies,jobs,commands,timers,position,options,$:selector=>doc.querySelector(selector),setUser:value=>{user=value;},setCurrent:value=>{current=value;},getBrief:()=>brief,setBrief:value=>{brief=value;},setItem:value=>{readItem=value;},async tick(){const entry=[...timers].find(([,value])=>value.delay===2000);assert.ok(entry,'Missing poll timer');timers.delete(entry[0]);await entry[1].fn();},async charge(){const input=doc.querySelector('[data-outline-ai-consent]');assert.ok(input);input.checked=true;input.dispatchEvent(new w.Event('change',{bubbles:true}));doc.querySelector('[data-outline-ai-start]').click();await settle(()=>!controller.busy());}};
+ return {w,doc,container,controller,calls,applies,jobs,commands,timers,position,options,$:selector=>doc.querySelector(selector),setProjectRef:value=>{projectRef=value;},setUser:value=>{user=value;},setCurrent:value=>{current=value;},getBrief:()=>brief,setBrief:value=>{brief=value;},setItem:value=>{readItem=value;},async tick(){const entry=[...timers].find(([,value])=>value.delay===2000);assert.ok(entry,'Missing poll timer');timers.delete(entry[0]);await entry[1].fn();},async charge(){const input=doc.querySelector('[data-outline-ai-consent]');assert.ok(input);input.checked=true;input.dispatchEvent(new w.Event('change',{bubbles:true}));doc.querySelector('[data-outline-ai-start]').click();await settle(()=>!controller.busy());}};
 }
 
 const click=(f,selector)=>{const node=f.$(selector);assert.ok(node,'Missing '+selector);node.click();};
@@ -93,4 +95,31 @@ test('failed command persistence prevents the paid submission instead of risking
 test('legacy outline job metadata is hidden in queued and completed previews without changing research content',async t=>{
  const f=fixture(t);await f.controller.open();await f.charge();f.setItem({...queued,model:'private-model-id',engine:'codex_sdk',provider:'private-provider'});await f.tick();assert.doesNotMatch(f.container.textContent,/private-model-id|codex_sdk|private-provider|使用模型/);assert.match(f.container.textContent,/等待 AI 服务处理/);
  const text='第一章 机器学习模型研究\n1.1 公开研究中的 OpenAI 方法比较';f.setItem({...completed,model:'private-model-id',engine:'codex_sdk',provider:'private-provider',output:{text}});await f.tick();assert.doesNotMatch(f.container.textContent,/private-model-id|codex_sdk|private-provider|使用模型/);assert.equal(f.$('#writing-outline-ai-result').value,text);assert.equal(f.applies.length,0);
+});
+
+
+test('outline generation binds the chosen account project without putting project metadata into the model snapshot',async t=>{
+ const f=fixture(t),ref=projectReference('u1','project-a');f.setProjectRef(ref);await f.controller.open();await f.charge();const posted=f.calls.find(call=>call.path==='/theses/outlines').data;assert.equal(posted.projectId,'project-a');assert.equal(posted.snapshot.projectId,undefined);const binding=JSON.parse(f.commands.find(row=>row.key).contextKey);assert.equal(binding.projectRef,ref);assert.equal(binding.contextKey,JSON.stringify(f.getBrief()));
+});
+
+test('changing only the outline project invalidates the pending charge',async t=>{
+ const f=fixture(t);f.setProjectRef(projectReference('u1','project-a'));await f.controller.open();const input=f.$('[data-outline-ai-consent]');input.checked=true;input.dispatchEvent(new f.w.Event('change',{bubbles:true}));f.setProjectRef(projectReference('u1','project-b'));click(f,'[data-outline-ai-start]');assert.equal(f.calls.filter(call=>call.path==='/theses/outlines').length,0);assert.match(f.container.textContent,/论文主题或研究资料已变化/);
+});
+
+test('outline generation rejects a project owned by another signed-in account before billing or task submission',async t=>{
+ const f=fixture(t);f.setProjectRef(projectReference('other-user','project-a'));await f.controller.open();assert.equal(f.calls.some(call=>call.path==='/billing/quote'||call.path==='/theses/outlines'),false);assert.ok(f.$('[role="alert"]'));
+});
+
+
+test('a restored missing outline command keeps its persisted project binding and requires an explicit fresh command after a project change',async t=>{
+ const f=fixture(t);f.controller.dispose();const priorRef=projectReference('u1','project-a'),pendingContextKey=JSON.stringify({contextKey:JSON.stringify(f.getBrief()),projectRef:priorRef});f.setProjectRef(projectReference('u1','project-b'));const restored=f.w.outlineTest.mountWritingOutlineGenerator({...f.options,pendingClientKey:'old-project-command',pendingContextKey});t.after(()=>restored.dispose());await restored.open();assert.equal(f.$('[data-outline-ai-start]'),null);assert.equal(f.calls.some(row=>row.path==='/theses/outlines'),false);click(f,'[data-outline-ai-new]');await settle(()=>!restored.busy());const input=f.$('[data-outline-ai-consent]');input.checked=true;input.dispatchEvent(new f.w.Event('change',{bubbles:true}));click(f,'[data-outline-ai-start]');await settle(()=>!restored.busy());const posted=f.calls.find(row=>row.path==='/theses/outlines').data;assert.equal(posted.projectId,'project-b');assert.notEqual(posted.clientKey,'old-project-command');assert.equal(JSON.parse(f.commands.at(-1).contextKey).projectRef,projectReference('u1','project-b'));
+});
+
+
+test('an imported outline result keeps its frozen encoded context while the same account project uses its raw ID',async t=>{
+ const f=fixture(t),encoded=projectReference('u1','project-a');f.setProjectRef(encoded);await f.controller.open();await f.charge();const frozenContext=f.jobs.at(-1).contextKey;f.controller.dispose();f.setItem(completed);beginDraftScope({ownerId:'u1',projectRows:[{id:'project-a',title:'Original project'},{id:'project-b',title:'Another project'}]});t.after(endDraftScope);f.setProjectRef('project-a');const restored=f.w.outlineTest.mountWritingOutlineGenerator({...f.options,pendingJobId:'outline-1',pendingContextKey:frozenContext});t.after(()=>restored.dispose());await restored.open();assert.equal(f.$('[data-outline-ai-apply]').disabled,false);assert.equal(f.jobs.at(-1).contextKey,frozenContext);assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,1);assert.equal(f.calls.filter(row=>row.path==='/theses/outlines').length,1);f.setProjectRef(projectReference('other-user','project-a'));click(f,'[data-outline-ai-apply]');assert.equal(f.applies.length,0);assert.ok(f.$('[data-outline-ai-apply]').disabled);f.setProjectRef('project-b');await restored.open();click(f,'[data-outline-ai-apply]');assert.equal(f.applies.length,0);assert.ok(f.$('[data-outline-ai-apply]').disabled);f.setProjectRef('project-a');await restored.open();click(f,'[data-outline-ai-apply]');await settle(()=>f.applies.length===1);assert.equal(f.calls.filter(row=>row.path==='/theses/outlines').length,1);assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,1);
+});
+
+test('different local outline project refs do not compare equal when neither is an account project',async t=>{
+ const f=fixture(t);f.setProjectRef('local-a');await f.controller.open();f.setProjectRef('local-b');const input=f.$('[data-outline-ai-consent]');input.checked=true;input.dispatchEvent(new f.w.Event('change',{bubbles:true}));assert.equal(f.$('[data-outline-ai-start]').disabled,true);assert.equal(f.calls.some(row=>row.path==='/theses/outlines'),false);
 });
