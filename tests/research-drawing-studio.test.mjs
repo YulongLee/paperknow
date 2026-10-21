@@ -68,15 +68,15 @@ test('professional domain choices send their own semantic category without claim
  const f=fixture(t,{mode:'professional'});await f.mount.ready;assert.equal(f.container.querySelectorAll('details[data-rd-group]').length,12);f.click('[data-rd-figure="cell-mechanism"]');f.click('[data-rd-example]');const value=f.mount.getSnapshot();assert.equal(value.mode,'professional');assert.equal(value.context.categoryId,'biomedicine');assert.equal(value.context.figureType,'cell-mechanism');assert.match(value.text,/细胞信号/);assert.doesNotMatch(f.container.textContent,/已接入.*(?:Blender|AutoCAD|BioRender)|可运行仿真/);assert.match(f.container.textContent,/不执行仿真/);
 });
 
-test('drawing generation previews its quote, requires consent, submits image operation, and adopts an owned binary',async t=>{
- const f=fixture(t);await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-consent]'));assert.match(f.container.textContent,/10 科研积分/);assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);
- f.consent();f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-apply]'));const starts=f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data);assert.equal(starts.length,1);assert.equal(starts[0].data.operation,'image');assert.equal(starts[0].data.kind,'research');assert.equal(starts[0].data.snapshot.text,baseForm().prompt);assert.equal(starts[0].headers['X-PaperKnow-User'],'alice');
+test('drawing generation previews its quote with default confirmation, submits only after its explicit start click, and adopts an owned binary',async t=>{
+ const f=fixture(t);await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-consent]'));assert.match(f.container.textContent,/10 科研积分/);assert.equal(f.container.querySelector('[data-tj-consent]').checked,true);assert.equal(f.container.querySelector('[data-tj-start]').disabled,false);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);
+ f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-apply]'));const starts=f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data);assert.equal(starts.length,1);assert.equal(starts[0].data.operation,'image');assert.equal(starts[0].data.kind,'research');assert.equal(starts[0].data.snapshot.text,baseForm().prompt);assert.equal(starts[0].headers['X-PaperKnow-User'],'alice');
  f.click('[data-tj-apply]');await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));assert.equal(f.created.length,1);assert.equal(f.created[0].type,'image/png');assert.match(f.container.querySelector('[data-rd-generated-image]').src,/^blob:/);assert.equal(f.requests.find(row=>row.path.startsWith('/api/artifacts/')).headers['X-PaperKnow-User'],'alice');assert.match(f.requests.find(row=>row.path.startsWith('/api/artifacts/')).path,/expectedUserId=alice/);
  f.click('[data-rd-download]');await until(()=>f.downloads.length===1);assert.equal(f.downloads[0].name,'合成验收.png');const raw=f.w.localStorage.getItem(researchDrawingDraftKey+':basic:alice');assert.doesNotMatch(raw,/blob:|provider\.example|imageBase64|image-alice|downloadUrl|fixture-image/);f.mount.dispose();assert.equal(f.revoked.length,1);
 });
 
 test('changing a prompt after a fee quote immediately removes consent and stops stale submission',async t=>{
- const f=fixture(t);await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-consent]'));f.consent();assert.equal(f.container.querySelector('[data-tj-start]').disabled,false);const before=f.requests.length;f.enter('[data-rd-prompt]','修改后的研究问题和绘图内容');assert.equal(f.container.querySelector('[data-tj-consent]').checked,false);assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);assert.match(f.container.textContent,/输入已有修改/);assert.equal(f.requests.length,before);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);
+ const f=fixture(t);await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-consent]'));assert.equal(f.container.querySelector('[data-tj-consent]').checked,true);assert.equal(f.container.querySelector('[data-tj-start]').disabled,false);const before=f.requests.length;f.enter('[data-rd-prompt]','修改后的研究问题和绘图内容');assert.equal(f.container.querySelector('[data-tj-consent]').checked,false);assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);assert.match(f.container.textContent,/输入已有修改/);assert.equal(f.requests.length,before);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);
 });
 
 test('a full browser store stops before charging or submitting and preserves editable input',async t=>{
@@ -152,4 +152,27 @@ test('professional search understands software/domain/scene combinations and cle
  f.click('[data-rd-example]');assert.equal(f.mount.getSnapshot().context.figureType,'pytorch-01');assert.match(f.mount.getSnapshot().text,/网络结构/);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,0);
  f.enter('[data-rd-type-search]','not-a-real-figure');assert.equal(visible().length,0);assert.match(f.container.querySelector('[data-rd-search-result]').textContent,/没有匹配/);assert.equal(f.container.querySelectorAll('[data-rd-group]:not([hidden])').length,0);
  const imagej=researchFigureChoices('professional').find(item=>item.familyLabel==='ImageJ');assert.equal(researchFigureMatches(imagej,'生物医学 ImageJ'),true);assert.equal(researchFigureMatches(imagej,'材料'),false);
+});
+
+
+test('drawing opt-out survives same-input panel redraws and prevents even a directly dispatched start action',async t=>{
+ const f=fixture(t);await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-consent]'));
+ const choice=f.container.querySelector('[data-tj-consent]');assert.equal(choice.checked,true);choice.checked=false;choice.dispatchEvent(new f.w.Event('change',{bubbles:true}));
+ assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);
+ f.enter('[data-rd-title]',baseForm().title);
+ assert.equal(f.container.querySelector('[data-tj-consent]').checked,false,'redrawing an unchanged snapshot must not undo an explicit opt-out');
+ assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);
+ f.container.querySelector('[data-tj-start]').dispatchEvent(new f.w.MouseEvent('click',{bubbles:true}));
+ await until(()=>!!f.container.querySelector('.tool-job-error'));
+ assert.equal(f.container.querySelector('[data-tj-consent]').checked,false);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);
+ f.consent();assert.equal(f.container.querySelector('[data-tj-start]').disabled,false);f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-apply]'));
+ assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,1);
+});
+
+test('professional image generation inherits the ready default confirmation without auto-submitting its quote',async t=>{
+ const f=fixture(t,{mode:'professional'});await f.mount.ready;f.click('[data-rd-figure="cell-mechanism"]');f.click('[data-rd-example]');f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-consent]'));
+ assert.equal(f.container.querySelector('[data-tj-consent]').checked,true);assert.equal(f.container.querySelector('[data-tj-start]').disabled,false);assert.match(f.container.textContent,/10 科研积分/);
+ assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,1);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);
+ f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-apply]'));
+ const starts=f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data);assert.equal(starts.length,1);assert.equal(starts[0].data.operation,'image');assert.equal(starts[0].data.snapshot.mode,'professional');assert.equal(starts[0].data.snapshot.context.figureType,'cell-mechanism');assert.equal(starts[0].data.consent,true);
 });

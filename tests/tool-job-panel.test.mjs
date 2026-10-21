@@ -9,13 +9,13 @@ const originalSnapshot=()=>({title:'【合成验收】科研方法演示',text:'
 const quote=()=>({type:'agent',source:'credits',title:'演示文稿创作',token:'fixture-quote',creditCost:10,expiresAt:new Date(Date.now()+60000).toISOString()});
 const completedJob=(id='job-alice')=>({id,kind:'presentation',operation:'ppt',status:'completed',completedUnits:1,totalUnits:1,output:{text:'仅属于原账户的合成验收内容',slides:[],sourceIds:[]}});
 const until=async check=>{for(let i=0;i<100;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}assert.ok(check(),'异步界面未达到预期状态');};
-function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),initialOwner='alice',kind='presentation',operation='ppt',initialProjectRef=''}={}){
+function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),initialOwner='alice',kind='presentation',operation='ppt',initialProjectRef='',getQuote=quote}={}){
  const dom=new JSDOM('<main class="dashboard"><div id="job"></div></main>',{url:'https://paperknow.cn/workspace.html#category/ppt'}),w=dom.window,container=w.document.querySelector('#job');
  let ownerId=initialOwner,projectRef=initialProjectRef,snapshot=originalSnapshot(),job=structuredClone(initialJob),applies=0;const requests=[],states=[],instances=[];
  const api=async(path,data)=>{requests.push({path,data:data===undefined?undefined:structuredClone(data),ownerId});
   if(path==='/auth/me'){if(!ownerId)throw Object.assign(Error('登录已失效'),{status:401});return {user:{id:ownerId}};}
   if(path==='/tool-runs/capabilities')return {ready:true};
-  if(path==='/tool-runs/quote')return quote();
+  if(path==='/tool-runs/quote')return getQuote();
   if(path==='/tool-runs/jobs'){job={...job,id:'job-'+ownerId};return {item:structuredClone(job)};}
   if(path.startsWith('/tool-runs/jobs/by-key/'))throw Object.assign(Error('尚无任务'),{status:404});
   if(path==='/tool-runs/jobs/'+job.id){if(!job.id.endsWith(ownerId))throw Object.assign(Error('任务不存在'),{status:404});return {item:structuredClone(job)};}
@@ -29,10 +29,10 @@ function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),ini
  click:selector=>{const button=container.querySelector(selector);assert.ok(button,'未找到控件 '+selector);button.click();},consent:()=>{const input=container.querySelector('[data-tj-consent]');assert.ok(input);input.checked=true;input.dispatchEvent(new w.Event('change',{bubbles:true}));}};
 }
 
-test('tool fee preview, consent selection and closing do not submit work before explicit start',async t=>{
- const f=fixture(t);await f.panel.open();assert.match(f.container.textContent,/10 科研积分/);assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,0);
- f.consent();assert.equal(f.container.querySelector('[data-tj-start]').disabled,false);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,0);f.click('[data-tj-close]');assert.equal(f.container.hidden,true);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,0);
- await f.panel.open();f.consent();f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-apply]'));const starts=f.requests.filter(r=>r.path==='/tool-runs/jobs');assert.equal(starts.length,1);assert.equal(starts[0].data.consent,true);assert.equal(starts[0].data.billingToken,'fixture-quote');assert.deepEqual(starts[0].data.snapshot,f.getSnapshot());
+test('tool fee preview defaults consent to selected and closing does not submit work before explicit start',async t=>{
+ const f=fixture(t);await f.panel.open();assert.match(f.container.textContent,/10 科研积分/);assert.equal(f.container.querySelector('[data-tj-consent]').checked,true);assert.equal(f.container.querySelector('[data-tj-start]').disabled,false);assert.equal(f.container.querySelector('[data-tj-start]').textContent,'开始生成');assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,0);
+ assert.equal(f.container.querySelector('[data-tj-start]').disabled,false);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,0);f.click('[data-tj-close]');assert.equal(f.container.hidden,true);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,0);
+ await f.panel.open();assert.equal(f.container.querySelector('[data-tj-consent]').checked,true);f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-apply]'));const starts=f.requests.filter(r=>r.path==='/tool-runs/jobs');assert.equal(starts.length,1);assert.equal(starts[0].data.consent,true);assert.equal(starts[0].data.billingToken,'fixture-quote');assert.deepEqual(starts[0].data.snapshot,f.getSnapshot());
 });
 
 test('complete getState restores the original task without another quote, reservation or job submission',async t=>{
@@ -122,4 +122,19 @@ test('an imported tool result adopts from the equivalent raw account project wit
 
 test('different local tool project refs are distinct even when both resolve to no account project',async t=>{
  const f=fixture(t,{initialProjectRef:'local-a'});await f.panel.open();f.consent();f.setProjectRef('local-b');f.panel.inputChanged();assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);
+});
+
+
+test('unchecking default tool consent blocks submission until deliberately selected again',async t=>{
+ const f=fixture(t);await f.panel.open();const input=f.container.querySelector('[data-tj-consent]');input.checked=false;input.dispatchEvent(new f.w.Event('change',{bubbles:true}));assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);f.click('[data-tj-start]');await new Promise(resolve=>setImmediate(resolve));assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);
+ f.consent();assert.equal(f.container.querySelector('[data-tj-start]').disabled,false);f.click('[data-tj-start]');await until(()=>f.panel.getState().itemId==='job-alice');assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs').length,1);
+});
+
+test('default tool consent cannot reuse a quote after its expiry or a session owner change',async t=>{
+ let now=Date.now();t.mock.method(Date,'now',()=>now);const f=fixture(t);await f.panel.open();now+=120000;f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[role="alert"]'));assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);assert.match(f.container.textContent,/费用已变化/);
+ f.click('[data-tj-new]');await until(()=>f.requests.filter(row=>row.path==='/tool-runs/quote').length===2&&!f.container.querySelector('[data-tj-start]').disabled);f.setOwner('bob');f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-change-owner]'));assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);assert.equal(f.container.querySelector('[data-tj-start]'),null);
+});
+
+test('invalid tool fee data never enables the default generation action',async t=>{
+ const f=fixture(t,{getQuote:()=>({type:'agent',source:'credits',creditCost:10,title:'缺少令牌的报价'})});await f.panel.open();assert.match(f.container.textContent,/费用信息不完整/);assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);assert.equal(f.container.querySelector('[data-tj-consent]')?.checked||false,false);assert.equal(f.container.querySelector('[data-tj-start]')?.disabled??true,true);
 });

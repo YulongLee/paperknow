@@ -40,15 +40,15 @@ for(const kind of ['method','outline']){
   f.setOnline(true);await f.reload();
   assert.equal(f.sessionCalls,1,'The failed cached session must not be reused');
   assert.match(f.container.textContent,/10 科研积分/);assert.doesNotMatch(f.container.textContent,/登录账户已变化|初次会话读取失败/);
-  assert.equal(f.$('consent').checked,false);assert.equal(f.$('start').disabled,true);
+  assert.equal(f.$('consent').checked,true);assert.equal(f.$('start').disabled,false);
   assert.equal(f.calls.filter(call=>call.path===f.route).length,0);assert.equal(f.commands.length,0);assert.equal(f.applied.length,0);
   assert.equal(f.doc.querySelector('#manual').value,'用户已有说明，不应被覆盖');assert.equal(f.brief.outline[0].title,'用户原有提纲');
  });
 
- test(`${kind}: a failed live authentication recovers for the same account and still requires explicit paid consent`,async t=>{
+ test(`${kind}: a failed live authentication recovers for the same account and still waits for an explicit generation click`,async t=>{
   const f=fixture(t,kind);await f.controller.open();assert.match(f.container.textContent,/网络连接已中断/);
   f.setOnline(true);await f.reload();assert.match(f.container.textContent,/10 科研积分/);assert.doesNotMatch(f.container.textContent,/登录账户已变化/);
-  assert.equal(f.$('consent').checked,false);assert.equal(f.calls.filter(call=>call.path===f.route).length,0);
+  assert.equal(f.$('consent').checked,true);assert.equal(f.calls.filter(call=>call.path===f.route).length,0);
   await f.submit();assert.equal(f.calls.filter(call=>call.path===f.route).length,1);assert.equal(f.commands.length,1);assert.equal(f.applied.length,0);
  });
 

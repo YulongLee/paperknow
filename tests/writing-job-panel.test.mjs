@@ -7,9 +7,9 @@ import {projectReference} from '../dist/workspace/project-directory.mjs';
 
 const snapshot=()=>({title:'账户项目写作验收',profile:{level:'本科',targetWords:1000},materials:[],references:[],outline:[]});
 const until=async check=>{for(let i=0;i<100;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}assert.ok(check(),'写作任务界面未达到预期状态');};
-function fixture(t,{projectRef='',initialState={}}={}){
+function fixture(t,{projectRef='',initialState={},getQuote=()=>({type:'agent',source:'credits',creditCost:10,title:'文章写作',token:'test-quote',expiresAt:new Date(Date.now()+60000).toISOString()})}={}){
  const dom=new JSDOM('<main class="dashboard"><div id="job"></div></main>',{url:'https://paperknow.cn/workspace.html#tool/article'}),container=dom.window.document.querySelector('#job'),calls=[],instances=[];let ref=projectRef,ownerId='alice',record={id:'writing-1',kind:'article',operation:'draft',status:'completed',output:{text:'待核对的写作结果',sourceIds:[]}};
- const api=async(path,data)=>{calls.push({path,data:data===undefined?undefined:structuredClone(data)});if(path==='/auth/me')return {user:{id:ownerId}};if(path==='/writing/capabilities')return {ready:true};if(path==='/writing/quote')return {type:'agent',source:'credits',creditCost:10,title:'文章写作',token:'test-quote',expiresAt:new Date(Date.now()+60000).toISOString()};if(path==='/writing/jobs')return {item:{...record,projectId:data.projectId||null}};if(path==='/writing/jobs/writing-1')return {item:record};throw Error('测试不允许的请求 '+path);};
+ const api=async(path,data)=>{calls.push({path,data:data===undefined?undefined:structuredClone(data)});if(path==='/auth/me')return {user:{id:ownerId}};if(path==='/writing/capabilities')return {ready:true};if(path==='/writing/quote')return getQuote();if(path==='/writing/jobs')return {item:{...record,projectId:data.projectId||null}};if(path==='/writing/jobs/writing-1')return {item:record};throw Error('测试不允许的请求 '+path);};
  const mount=state=>{const panel=mountWritingJobPanel({container,ctx:{api},kind:'article',operation:'draft',getSnapshot:snapshot,getProjectRef:()=>ref,initialState:state});instances.push(panel);return panel;},panel=mount(initialState);
  t.after(()=>{instances.forEach(panel=>panel.dispose());dom.window.close();});return {dom,container,calls,panel,mount,setRef:value=>{ref=value;},setOwner:value=>{ownerId=value;},setRecord:value=>{record=value;},consent(){const input=container.querySelector('[data-wj-consent]');assert.ok(input);input.checked=true;input.dispatchEvent(new dom.window.Event('change'));},click:selector=>{const node=container.querySelector(selector);assert.ok(node,selector);node.click();}};
 }
@@ -46,4 +46,27 @@ test('an imported writing job keeps its frozen encoded binding and is adoptable 
 
 test('different local writing project refs cannot become equivalent merely because neither resolves to an account project',async t=>{
  const f=fixture(t,{projectRef:'local-a'});await f.panel.open();f.consent();f.setRef('local-b');f.click('[data-wj-start]');await until(()=>!!f.container.querySelector('[role="alert"]'));assert.equal(f.calls.some(row=>row.path==='/writing/jobs'),false);
+});
+
+
+test('a valid writing quote defaults to selected consent but only the explicit generation click submits a task',async t=>{
+ const f=fixture(t);await f.panel.open();
+ assert.equal(f.container.querySelector('[data-wj-consent]').checked,true);assert.equal(f.container.querySelector('[data-wj-start]').disabled,false);assert.equal(f.container.querySelector('[data-wj-start]').textContent,'生成正文');assert.match(f.container.textContent,/10 科研积分/);assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,0);
+ f.click('[data-wj-close]');assert.equal(f.container.hidden,true);assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,0);
+ await f.panel.open();assert.equal(f.container.querySelector('[data-wj-consent]').checked,true);f.click('[data-wj-start]');await until(()=>f.panel.getState().itemId==='writing-1');const submissions=f.calls.filter(row=>row.path==='/writing/jobs');assert.equal(submissions.length,1);assert.equal(submissions[0].data.consent,true);assert.equal(submissions[0].data.billingToken,'test-quote');
+});
+
+test('unchecking the default writing consent blocks submission until the user selects it again',async t=>{
+ const f=fixture(t);await f.panel.open();const input=f.container.querySelector('[data-wj-consent]');input.checked=false;input.dispatchEvent(new f.dom.window.Event('change'));
+ assert.equal(f.container.querySelector('[data-wj-start]').disabled,true);f.click('[data-wj-start]');await new Promise(resolve=>setImmediate(resolve));assert.equal(f.calls.some(row=>row.path==='/writing/jobs'),false);
+ f.consent();assert.equal(f.container.querySelector('[data-wj-start]').disabled,false);f.click('[data-wj-start]');await until(()=>f.panel.getState().itemId==='writing-1');assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);
+});
+
+test('default writing consent cannot submit an expired quote or follow an unconfirmed account switch',async t=>{
+ let now=Date.now();t.mock.method(Date,'now',()=>now);const f=fixture(t);await f.panel.open();now+=120000;f.click('[data-wj-start]');await until(()=>!!f.container.querySelector('[role="alert"]'));assert.equal(f.calls.some(row=>row.path==='/writing/jobs'),false);assert.match(f.container.textContent,/费用已有变化/);
+ f.click('[data-wj-new]');await until(()=>f.calls.filter(row=>row.path==='/writing/quote').length===2&&!f.container.querySelector('[data-wj-start]').disabled);f.setOwner('bob');f.click('[data-wj-start]');await until(()=>/账户已变化/.test(f.container.textContent));assert.equal(f.calls.some(row=>row.path==='/writing/jobs'),false);assert.equal(f.container.querySelector('[data-wj-start]'),null);
+});
+
+test('invalid writing fee data never defaults consent to a submit-ready state',async t=>{
+ const f=fixture(t,{getQuote:()=>({type:'agent',source:'credits',creditCost:10,title:'不完整报价'})});await f.panel.open();assert.match(f.container.textContent,/费用信息不完整/);assert.equal(f.calls.some(row=>row.path==='/writing/jobs'),false);assert.equal(f.container.querySelector('[data-wj-consent]')?.checked||false,false);assert.equal(f.container.querySelector('[data-wj-start]')?.disabled??true,true);
 });

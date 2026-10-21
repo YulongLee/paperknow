@@ -86,7 +86,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
     else if(text)body+=`<button type="button" class="btn primary" data-outline-ai-apply ${busy||drift?'disabled':''}>${applied?'再次使用这份 AI 提纲':'使用这份 AI 提纲'}</button><button type="button" class="btn secondary" data-outline-ai-new ${busy?'disabled':''}>重新生成</button>`;
     else if(drift&&commandPending)body+=`<button type="button" class="btn secondary" data-outline-ai-new ${busy?'disabled':''}>根据当前主题重新生成</button>`;
     else if(item||loadError||!quote)body+=`<button type="button" class="btn secondary" data-outline-ai-reload ${busy?'disabled':''}>${item?'重新获取费用并生成':commandPending?'读取原任务并重新确认费用':'重新读取'}</button>`;
-    else body+=`<button type="button" class="btn primary" data-outline-ai-start ${busy||!consent||drift?'disabled':''}>${busy?'正在提交…':ambiguous?'重试本次提交':'确认费用并生成提纲'}</button>${!ambiguous?`<button type="button" class="btn secondary" data-outline-ai-requote ${busy?'disabled':''}>重新获取费用</button>`:''}`;
+    else body+=`<button type="button" class="btn primary" data-outline-ai-start ${busy||!consent||drift?'disabled':''}>${busy?'正在提交…':ambiguous?'重试本次提交':'生成提纲'}</button>${!ambiguous?`<button type="button" class="btn secondary" data-outline-ai-requote ${busy?'disabled':''}>重新获取费用</button>`:''}`;
     body+='</div>';
     if(cap?.ready===false)body+=`<p class="writing-outline-ai-warning">${esc(cap.reason||'提纲生成服务暂未开放，仍可上传提纲或自己编辑。')}</p>`;
    }
@@ -116,12 +116,12 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
   finally{if(usable(token)){busy=false;render();schedule();}}
  }
  async function loadQuote(token,{preserveCommand=false}={}){
-  projectPayload();
+  quote=null;consent=false;projectPayload();
   cap=await request('/theses/outlines/capabilities',undefined,token);
   if(!cap?.ready){quote=null;throw Error(cap?.reason||'提纲生成服务暂未开放，仍可上传提纲或自己编辑。');}
   const value=await request('/billing/quote',{type:'agent'},token);
   if(!validThesisQuote(value))throw Error('费用信息不完整或已过期，请重新获取费用。');
-  quote=value;if(!preserveCommand)clientKey=win.crypto.randomUUID();consent=false;ambiguous=preserveCommand&&commandPending;message=preserveCommand?'上次任务尚未确认创建。请重新确认费用后重试同一任务；若后台已接收，会读取原任务。':'请确认费用与资料用途；尚未开始生成。';
+  quote=value;if(!preserveCommand)clientKey=win.crypto.randomUUID();consent=true;ambiguous=preserveCommand&&commandPending;message=preserveCommand?'上次任务尚未确认创建。请重新确认费用后重试同一任务；若后台已接收，会读取原任务。':'费用与资料用途已展示，点击“生成提纲”即可开始。';
  }
  async function prepare({newCommand=false}={}){
   if(ambiguous&&!newCommand){message='请先重试本次提交以确认结果，避免重复创建任务。';render();return;}
