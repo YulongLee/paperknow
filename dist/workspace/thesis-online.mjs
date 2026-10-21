@@ -1,4 +1,5 @@
 import {resolveAccountProjectId} from './project-directory.mjs';
+import {writingQualityPanel} from './writing-quality-panel.mjs';
 import {assessThesisEvidence} from './thesis-evidence.mjs';
 import {download as exportFile} from './ui.mjs';
 import {withStableView} from './view-stability.mjs';
@@ -12,7 +13,7 @@ const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&
 const instances=new Set();
 const running=item=>['queued','running','cancelling'].includes(item?.job?.status)||['queued','running','cancelling'].includes(item?.status);
 const labels={draft:'草稿已保存',queued:'排队中',running:'正在生成',completed:'已完成',failed:'生成中断',interrupted:'处理中断',needs_materials:'待补研究证据',budget_exceeded:'已达本次处理上限',cancelled:'已停止',cancelling:'正在停止',pending:'待生成',edited:'已编辑',saved:'已保存',partial:'部分完成'};
-const stageLabel=value=>({queue:'等待处理',queued:'等待处理',preparing:'准备研究资料',generating_section:'逐节写作',agent_running:'正在整理论证',agent_tools:'正在读取研究依据',reading_material:'读取研究资料',read_material:'读取研究资料',needs_materials:'等待补充研究证据',budget_exceeded:'已达本次处理上限',completed:'内容已保存',failed:'处理失败',interrupted:'处理中断',cancelled:'已停止'}[value]||'章节处理中');
+const stageLabel=value=>({queue:'等待处理',queued:'等待处理',preparing:'准备研究资料',generating_section:'逐节写作',agent_running:'正在整理论证',agent_tools:'正在读取研究依据',reading_material:'读取研究资料',read_material:'读取研究资料',auto_recovering:'正在自动恢复',verifying_citations:'核验参考文献题录',reviewing_manuscript:'正在审校全文',checking_consistency:'检查正文一致性',needs_materials:'等待补充研究证据',budget_exceeded:'已达本次处理上限',completed:'内容已保存',failed:'处理失败',interrupted:'处理中断',cancelled:'已停止',cancelling:'正在停止'}[value]||'章节处理中');
 const thesisStatus=item=>item.status==='draft'?'draft':item.job?.status||item.status;
 export function validThesisQuote(quote,now=Date.now()){
  return !!(quote&&quote.type==='agent'&&['free','membership','bundle','credits'].includes(quote.source)&&typeof quote.title==='string'&&quote.title.trim()&&typeof quote.token==='string'&&quote.token.length>0&&quote.token.length<=4096&&Number.isSafeInteger(quote.creditCost)&&quote.creditCost>=0&&(quote.source==='credits'?quote.creditCost>0:quote.creditCost===0)&&Number.isFinite(Date.parse(quote.expiresAt))&&Date.parse(quote.expiresAt)>now);
@@ -198,13 +199,18 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  function progress(){
   const job=item.job,complete=Number(job?.completedSections)||0,total=Number(job?.totalSections)||0,percent=total?Math.min(100,Math.floor(complete/total*100)):0;
   const historical=!!job&&(item.status==='draft'||job.snapshotChanged===true),completed=!historical&&(item.status==='completed'||job?.status==='completed');
+  const stopping=!historical&&['cancelled','cancelling'].includes(item.status)?item.status:!historical&&['cancelled','cancelling'].includes(job?.status)?job.status:null;
+  const continuous=!historical&&job?.continuous===true,recovering=!stopping&&running(item)&&job?.stage==='auto_recovering';
+  const automaticRetries=Number.isSafeInteger(job?.recovery?.automaticRetries)&&job.recovery.automaticRetries>0&&job.recovery.automaticRetries<100?job.recovery.automaticRetries:0;
+  const continuityTitle=continuous?'一次提交，自动连续生成':'';
+  const continuityText=stopping==='cancelled'?'任务已停止，不会自动继续；再次生成需由你操作。':stopping==='cancelling'?'正在停止；停止后不会自动继续，已完成内容会保留。':recovering?`服务短暂波动，正在${automaticRetries?'第 '+automaticRetries+' 次':''}尝试恢复；已保存内容保留，无需重复提交。`:continuous&&running(item)?'按提纲继续写作，随后核验题录并审校全文；可随时停止。':continuous&&!completed?'本次处理已暂停，已保存内容保留；可核对后继续。':'生成期间关闭页面不影响后台任务；已完成内容独立保存，正式使用前请核对。';
   const error=job?.error?typeof job.error==='string'?job.error:job.error.message||'生成中断，请核对后恢复。':'';
   const missing=[...new Set((Array.isArray(job?.missingEvidence)?job.missingEvidence:[]).filter(row=>typeof row==='string'&&row.trim()).map(row=>row.trim()))];
   const reviewItems=historical?[]:missing;
   const reviewDescription=completed?'初稿已生成，请逐项核对后使用。':running(item)?'随生成持续更新，可在窗口内滚动查看。':'生成时自动整理，不影响初稿保存和编辑。';
   const checklist=`<section class="thesis-review-checklist" role="region" aria-label="本稿待核对清单"><header><div><h3>待补充项目 <span role="status" aria-live="polite">${reviewItems.length} 项</span></h3><button type="button" data-thesis-review-latest ${reviewItems.length?'':'disabled'}>查看最新 ↓</button></div><p>${reviewDescription}</p></header><div data-thesis-review-scroll data-scroll-key="thesis-review:${escape(id||saveKey)}" tabindex="0" role="region" aria-label="待补充项目列表">${reviewItems.length?`<ul>${reviewItems.map((row,index)=>`<li><span aria-hidden="true">${String(index+1).padStart(2,'0')}</span><p>${escape(row)}</p></li>`).join('')}</ul>`:`<div class="thesis-review-empty"><b>${running(item)?'正在整理核对事项':'暂无待补充项目'}</b><p>${running(item)?'如需补充资料，将自动添加到这里。':'后续新增事项会显示在此窗口。'}</p></div>`}</div></section>`;
   const previous=historical&&(error||missing.length)?`<details class="thesis-previous-run"><summary>查看上次任务记录</summary><p>以下为此前任务的记录，研究信息已更新，不代表当前初稿的生成状态。</p>${error?`<p>${escape(error)}</p>`:''}${missing.length?`<p>上次待核对内容：${missing.map(escape).join('；')}</p>`:''}</details>`:'';
-  return `<section class="thesis-progress" aria-label="章节生成进度"><div><b>${escape(labels[historical?item.status:thesisStatus(item)]||'已保存')}</b><span>${historical?'此前任务进度':total?`${complete} / ${total} 个写作单元`:'已保存到账户'}${!historical&&job?.stage?' · '+stageLabel(job.stage):''}</span></div>${historical?'<p>研究信息或正文已有更新；上次任务记录继续保留。再次生成会建立新版本。</p>':''}${total?`<progress value="${percent}" max="100" aria-label="${historical?'上次任务':''}已完成 ${percent}%"></progress>`:''}${!historical&&!completed&&error?`<p class="thesis-error">${escape(error)}</p>`:''}<p>生成期间关闭页面不影响后台任务；已完成内容独立保存，正式使用前请核对。</p>${checklist}${previous}</section>`;
+  return `<section class="thesis-progress" aria-label="章节生成进度"><div><b>${escape(labels[historical?item.status:thesisStatus(item)]||'已保存')}</b><span>${historical?'此前任务进度':total?`${complete} / ${total} 个写作单元`:'已保存到账户'}${!historical&&job?.stage?' · '+stageLabel(stopping||job.stage):''}</span></div>${historical?'<p>研究信息或正文已有更新；上次任务记录继续保留。再次生成会建立新版本。</p>':''}${total?`<progress value="${percent}" max="100" aria-label="${historical?'上次任务':''}已完成 ${percent}%"></progress>`:''}${!historical&&!completed&&!running(item)&&error?`<p class="thesis-error">${escape(error)}</p>`:''}<p class="thesis-continuity-note" role="status" aria-live="polite"><strong ${continuityTitle?'':'hidden'}>${continuityTitle}</strong><span>${continuityText}</span></p>${checklist}${writingQualityPanel(item.quality,{references:item.snapshot?.references,completed,scrollKey:'thesis-quality:'+(id||saveKey)})}${previous}</section>`;
  }
  function researchForm(){
   const values=researchEdits||{method:item.profile?.method||'',researchQuestion:item.profile?.researchQuestion||'',supplement:''};

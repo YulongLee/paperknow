@@ -3,6 +3,8 @@ import {createBillingService} from './billing-service.mjs';
 import {writingBillingKey} from '../dist/workspace/writing-billing-catalog.mjs';
 import {createModelBudget} from './model-budget.mjs';
 import {agentSettingsReady} from './agent-settings.mjs';
+import {sectionWordsForRuntime} from './thesis-execution-policy.mjs';
+import {createThesisContinuity} from './thesis-continuity.mjs';
 import {initializeThesisSchema,normalizeThesisSnapshot,thesisPlan,thesisHash,thesisLimits,thesisFullText,thesisError,thesisTransaction,assertThesisAccountQuota,assertThesisChapterCapacity,isThesisReferenceChapter,thesisManualSourceIds} from './thesis-model.mjs';
 
 const active=new Set(['queued','running']);
@@ -14,6 +16,7 @@ export function assertThesisSettings(settings){if(!agentSettingsReady(settings))
 
 export function createThesisService(db,config={}){
  initializeThesisSchema(db);
+ const continuity=createThesisContinuity(db,config);
  const billing=config.billing||createBillingService(db,config),modelBudget=config.modelBudget||createModelBudget(db,config);
  db.exec(`CREATE TABLE IF NOT EXISTS thesis_generation_quotes(token TEXT PRIMARY KEY REFERENCES billing_quotes(token) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id),thesis_id TEXT NOT NULL REFERENCES theses(id),version INTEGER NOT NULL,snapshot_hash TEXT NOT NULL,action TEXT NOT NULL CHECK(action IN ('generate','resume')),created_at TEXT NOT NULL);`);
  const clock=()=>new Date(config.thesisNow?.()??Date.now()).toISOString();
@@ -27,6 +30,7 @@ export function createThesisService(db,config={}){
   const chapters=snapshot.outline.map(chapter=>{const latest=chapterVersion(row.id,chapter.id),units=checkpoints.filter(unit=>unit.chapter_id===chapter.id),completed=units.filter(unit=>unit.status==='completed').length;return {id:chapter.id,title:chapter.title,kind:chapter.kind||'body',targetWords:chapter.targetWords,version:latest?.version||0,status:active.has(row.status)&&units.length?(completed===units.length?'completed':completed?'partial':'pending'):latest?'saved':units.some(unit=>unit.status==='failed')?'failed':'pending',text:summary?'':latest?.text||'',sourceIds:latest?JSON.parse(latest.source_ids):[],source:latest?.source==='generated'&&isThesisReferenceChapter(chapter)?'compiled_references':latest?.source||null,stale:Boolean(latest?.run_id&&db.prepare('SELECT snapshot_hash FROM thesis_runs WHERE id=?').get(latest.run_id)?.snapshot_hash!==row.snapshot_hash),completedSections:completed,totalSections:units.length,error:units.find(unit=>unit.error)?.error||null};});
   const item={id:row.id,version:row.version,title:row.title,projectId:row.project_id,status:row.status,profile:snapshot.profile,outline:snapshot.outline,chapters,createdAt:row.created_at,updatedAt:row.updated_at,billingService:'agent',requiresReview:true,job:run?{id:run.id,snapshotChanged:run.snapshot_hash!==row.snapshot_hash,status:run.status,stage:run.stage,error:run.error,attempt:run.attempt,resultId:run.result_id,completedSections:checkpoints.filter(unit=>unit.status==='completed').length,totalSections:plan.length,settingsVersion:run.settings_version,inputTokens:run.usage_known?run.input_tokens:null,outputTokens:run.usage_known?run.output_tokens:null,usageIncomplete:!run.usage_known,providerCalls:run.provider_calls,missingEvidence:checkpoints.flatMap(unit=>JSON.parse(unit.missing_evidence||'[]')),canResume:!active.has(run.status)&&run.status!=='completed'&&run.snapshot_hash===row.snapshot_hash}:null};
   if(!summary){item.snapshot=snapshot;item.fullText=thesisFullText(snapshot,chapters);item.sections=checkpoints.map(unit=>({id:unit.unit_id,chapterId:unit.chapter_id,status:unit.status,text:unit.text,sourceIds:JSON.parse(unit.source_ids),missingEvidence:JSON.parse(unit.missing_evidence),error:unit.error}));}
+  if(run){const meta=JSON.parse(run.settings_meta);item.job.continuous=meta.continuous===true;const recovery=continuity.summary(run);if(recovery)item.job.recovery={automaticRetries:recovery.automaticRetries,lastReason:recovery.lastReason};if(run.quality&&!summary)item.quality={...JSON.parse(run.quality),stale:run.snapshot_hash!==row.snapshot_hash||chapters.some(chapter=>chapter.source==='manual'||chapter.stale)};}
   return item;
  }
  function touch(id,status){db.prepare('UPDATE theses SET version=version+1,status=?,updated_at=? WHERE id=?').run(status,clock(),id);}
@@ -64,7 +68,7 @@ export function createThesisService(db,config={}){
   const input=await readBody();
   if(action==='quote'){
    fields(input,['version','action']);const quotedAction=input.action??'generate';if(!['generate','resume'].includes(quotedAction))fail(400,'请选择生成或恢复操作');
-   expected(input,row);if(active.has(row.status))fail(409,'论文已经在生成中');const snapshot=JSON.parse(row.snapshot);thesisPlan(snapshot,config);await settings();admission(user);
+   expected(input,row);if(active.has(row.status))fail(409,'论文已经在生成中');const snapshot=JSON.parse(row.snapshot),runtime=await settings();thesisPlan(snapshot,config.thesisContinuousEnabled===true?{...config,thesisSectionWords:sectionWordsForRuntime(runtime,snapshot.profile.language,thesisLimits(config).sectionWords)}:config);admission(user);
    if(quotedAction==='resume'){const run=row.current_run_id?db.prepare('SELECT snapshot_hash,status FROM thesis_runs WHERE id=? AND user_id=?').get(row.current_run_id,user.id):null;if(!run||!['failed','interrupted','cancelled','needs_materials'].includes(run.status))fail(409,'当前没有可续跑的中断任务');if(run.snapshot_hash!==row.snapshot_hash)fail(409,'研究资料或提纲已变化，请确认后重新生成；旧章节仍然保留');}
    return response(thesisTransaction(db,()=>{const current=own(id,user);expected(input,current);if(active.has(current.status))fail(409,'论文已经在生成中');const quote=billing.quote(user,{type:'agent',serviceKey:writingBillingKey('thesis','draft',snapshot)});db.prepare('INSERT INTO thesis_generation_quotes VALUES(?,?,?,?,?,?,?)').run(quote.token,user.id,id,current.version,current.snapshot_hash,quotedAction,clock());return{...quote,thesisId:id,thesisVersion:current.version,snapshotHash:current.snapshot_hash,action:quotedAction};}));
   }
@@ -86,8 +90,8 @@ export function createThesisService(db,config={}){
   const hash=thesisHash({action,id,snapshotHash:row.snapshot_hash,...(action==='resume'?{runId:currentRun?.id}: {})});
   const old=command(user,input,hash);if(old)return response({item:serialize(own(id,user))});
   expected(input,row);if(active.has(row.status))fail(409,'当前论文正在生成，请先等待或取消');
-  const snapshot=JSON.parse(row.snapshot),validatedPlan=thesisPlan(snapshot,config),plan=action==='generate'?validatedPlan:null;
-  const enabled=await settings(),runtime=action==='resume'?await settings(currentRun?.settings_version):enabled;
+  const snapshot=JSON.parse(row.snapshot),enabled=await settings(),runtime=action==='resume'?await settings(currentRun?.settings_version):enabled;
+  const validatedPlan=thesisPlan(snapshot,config.thesisContinuousEnabled===true?{...config,thesisSectionWords:sectionWordsForRuntime(runtime,snapshot.profile.language,thesisLimits(config).sectionWords)}:config),plan=action==='generate'?validatedPlan:null;
   return response(thesisTransaction(db,()=>{const current=own(id,user),existing=command(user,input,hash);if(existing)return {item:serialize(current)};expected(input,current);if(active.has(current.status))fail(409,'论文已经在生成中');admission(user);
    const confirmed=db.prepare('SELECT * FROM thesis_generation_quotes WHERE token=? AND user_id=?').get(typeof input.billingToken==='string'?input.billingToken:'',user.id);
    if(!confirmed||confirmed.thesis_id!==id||confirmed.version!==current.version||confirmed.snapshot_hash!==current.snapshot_hash||confirmed.action!==action)fail(409,'论文信息或生成操作与费用确认不一致，请重新确认');
@@ -107,7 +111,7 @@ export function createThesisService(db,config={}){
    }else{
     assertThesisAccountQuota(db,user.id,Math.max(512,Buffer.byteLength(current.snapshot)+Buffer.byteLength(JSON.stringify(plan)))+plan.length*512+512,config);
     runId=randomUUID();
-    const safeMeta={version:runtime.version,engine:String(runtime.engine||'claude-agent-sdk'),model:String(runtime.model),maxTurns:runtime.maxTurns??null,maxOutputTokens:runtime.maxOutputTokens??null};
+    const safeMeta={version:runtime.version,engine:String(runtime.engine||'claude-agent-sdk'),model:String(runtime.model),maxTurns:runtime.maxTurns??null,maxOutputTokens:runtime.maxOutputTokens??null,continuous:config.thesisContinuousEnabled===true,qualityReview:config.writingQualityEnabled===true,skillCompositionVersion:1};
     db.prepare('INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(runId,user.id,current.project_id,'thesis','queued','queued',JSON.stringify({thesisId:id,settingsVersion:runtime.version}),`thesis:${input.clientKey}`,hash,at,at);
     db.prepare('INSERT INTO thesis_runs(id,thesis_id,user_id,snapshot,snapshot_hash,plan,settings_version,settings_meta,status,stage,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(runId,id,user.id,current.snapshot,current.snapshot_hash,JSON.stringify(plan),runtime.version,JSON.stringify(safeMeta),'queued','queued',at,at);
     for(const unit of plan)db.prepare('INSERT INTO thesis_checkpoints(run_id,unit_id,chapter_id,position,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(runId,unit.id,unit.chapterId,unit.position,at,at);

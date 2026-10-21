@@ -11,6 +11,7 @@ import {toolBanner} from '../dist/workspace/tool-banner.mjs';
 import {presentThesisDocument} from '../dist/workspace/thesis-document.mjs';
 import {isOutlineReferenceChapter} from '../dist/workspace/outline-word-budget.mjs';
 import {thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount} from '../dist/workspace/thesis-editor-presentation.mjs';
+import {writingQualityPanel} from '../dist/workspace/writing-quality-panel.mjs';
 const source=(await readFile(new URL('../dist/workspace/thesis-online.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const settle=async()=>{for(let i=0;i<14;i++)await new Promise(resolve=>setImmediate(resolve));};
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
@@ -24,7 +25,7 @@ async function fixture(t,{bytesGate}={}){
  const fetchImpl=async(path,options={})=>{calls.push({path,options});if(path==='/api/auth/me')return Response.json({user:{id:cookieOwner}});if(path==='/api/artifacts'){assert.equal(options.headers['X-PaperKnow-User'],cookieOwner);uploadBytes=Buffer.from(JSON.parse(options.body).data,'base64');return Response.json({item:{id:'file-1',bytes:uploadBytes.length}});}if(path.startsWith('/api/artifacts/file-1/download'))return new Response(uploadBytes);throw Error('Unexpected export request '+path);};
  const exportFile=async(name,content,type,options)=>{exports.push({name,content,type,options});return exportGeneratedFile({name,content,type,...options},{fetchImpl,documentObject:w.document,urlAPI:{createObjectURL:()=> 'blob:synthetic-export',revokeObjectURL(){}},notify(){},setTimeoutImpl(){}});};
  const renderer={createWritingDocx:async()=>{generating=true;return bytesGate?bytesGate.promise:new Uint8Array([80,75]);},createWritingPdf:async()=>{generating=true;return bytesGate?bytesGate.promise:new Uint8Array([37,80]);}};
- Object.assign(w,{withStableView,toolBanner,presentThesisDocument,assessThesisEvidence,isOutlineReferenceChapter,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,exportFile,documentExportButtons,structuredClone,bindDocumentExports:(prefix,getText,getTitle,status,options)=>bindDocumentExports(prefix,getText,getTitle,status,{loadDocument:async()=>renderer,loadFont:async()=>new Uint8Array([0]),downloadFile:exportFile,...options})});
+ Object.assign(w,{withStableView,toolBanner,presentThesisDocument,assessThesisEvidence,isOutlineReferenceChapter,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,writingQualityPanel,exportFile,documentExportButtons,structuredClone,bindDocumentExports:(prefix,getText,getTitle,status,options)=>bindDocumentExports(prefix,getText,getTitle,status,{loadDocument:async()=>renderer,loadFont:async()=>new Uint8Array([0]),downloadFile:exportFile,...options})});
  w.eval(source+'\nwindow.thesisExports={mountOnlineThesis,disposeOnlineThesis,thesisOnlineSessionChanged};');
  const ctx={session:async()=>({status:'ready',user:{id:'alice'}}),api:async path=>{if(path==='/theses/t1')return {item:structuredClone(item)};if(path==='/capabilities')return {thesis:{ready:true}};if(path==='/auth/me')return {user:{id:cookieOwner}};throw Error('Unexpected thesis request '+path);}};
  const stop=w.thesisExports.mountOnlineThesis({id:'t1',ctx,container:w.document.querySelector('.dashboard')});await stop.ready;

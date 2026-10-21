@@ -9,11 +9,11 @@ import {StringDecoder} from 'node:string_decoder';
 import {query,tool,createSdkMcpServer} from '@anthropic-ai/claude-agent-sdk';
 import {z} from 'zod';
 import {agentBaseURL,agentSettingsReady,agentWorkspaceId} from './agent-settings.mjs';
-import {loadAgentSkill} from './skills/index.mjs';
+import {loadAgentSkillComposition,writingSkillIdsForTask} from './skills/index.mjs';
 import {paperknowAIIdentityPolicy} from './ai-service-policy.mjs';
 import {normalizeTextLengthBudget,checkTextLength} from './text-length.mjs';
 
-const fail=(status,message)=>{throw Object.assign(new Error(message),{status,agentSafe:true});};
+const fail=(status,message,code)=>{throw Object.assign(new Error(message),{status,agentSafe:true,...(code?{code}:{})});};
 const toolNames=['list_materials','read_material','load_skill'];
 const usageFields=['input_tokens','output_tokens','cache_creation_input_tokens','cache_read_input_tokens'];
 const validToken=value=>Number.isSafeInteger(value)&&value>=0;
@@ -171,19 +171,19 @@ function normalizedTask(task){
   return {skill:task.skill,instructions:task.instructions,context:JSON.parse(context),materials};
 }
 const token=value=>Number.isSafeInteger(value)&&value>=0?value:0;
-export async function runAgentTask({settings,task,signal,onStage,maxTotalTokens,validateWritingOutput,validateToolOutput,dependencies={}}){
+export async function runAgentTask({settings,task,signal,onStage,maxTotalTokens,validateWritingOutput,validateToolOutput,validateThesisOutput,validateReviewOutput,dependencies={}}){
   const config=structuredClone(settings);if(maxTotalTokens!==undefined)config.maxTotalTokens=maxTotalTokens;if(!agentSettingsReady(config))fail(503,'公共 Agent 尚未启用或配置不完整');
   if(!Number.isSafeInteger(config.maxTurns)||config.maxTurns<1||config.maxTurns>12||!Number.isSafeInteger(config.timeoutMs)||config.timeoutMs<5000||config.timeoutMs>300000||!Number.isSafeInteger(config.maxOutputTokens)||config.maxOutputTokens<32||config.maxOutputTokens>16384||!Number.isFinite(config.maxCostUsd)||config.maxCostUsd<0.01||config.maxCostUsd>5)fail(400,'Agent 执行预算无效');
   if(config.maxTotalTokens!==undefined&&(!Number.isSafeInteger(config.maxTotalTokens)||config.maxTotalTokens<1||config.maxTotalTokens>2000000))fail(400,'Agent 本次剩余 Token 预算无效');
-  const input=normalizedTask(task),skill=await loadAgentSkill(input.skill);if(signal?.aborted)fail(499,'Agent 任务已取消');
+  const input=normalizedTask(task),skill=await loadAgentSkillComposition(input.skill,writingSkillIdsForTask({skill:input.skill,operation:input.context.operation,kind:input.context.kind}));if(signal?.aborted)fail(499,'Agent 任务已取消');
   let lengthBudget=null;
   if(input.context.lengthBudget!==undefined){try{lengthBudget=normalizeTextLengthBudget({...input.context.lengthBudget,language:input.context.profile?.language??'中文'});}catch{fail(400,'本次任务的正文篇幅范围无效');}}
   // Chapter tasks already carry their source index and server-loaded skill.
   // Avoid spending bounded execution turns loading either a second time.
   // Only a server-owned writing validator can enable result submission. A task
   // context flag, a thesis skill or an SDK response cannot grant this tool.
-  const writingSubmission=input.skill==='writing-task'&&typeof validateWritingOutput==='function'||input.skill==='tool-task'&&typeof validateToolOutput==='function';
-  const submissionValidator=input.skill==='tool-task'?validateToolOutput:validateWritingOutput;
+  const writingSubmission=input.skill==='writing-task'&&typeof validateWritingOutput==='function'||input.skill==='tool-task'&&typeof validateToolOutput==='function'||input.skill==='thesis-section'&&typeof validateThesisOutput==='function'||input.skill==='writing-review'&&typeof validateReviewOutput==='function';
+  const submissionValidator=input.skill==='tool-task'?validateToolOutput:input.skill==='thesis-section'?validateThesisOutput:input.skill==='writing-review'?validateReviewOutput:validateWritingOutput;
   const toolCallLimit=input.skill==='tool-task'&&typeof validateToolOutput==='function'?40:20;
   const indexedChapter=writingSubmission||['thesis-section','writing-task'].includes(input.skill)&&lengthBudget;
   const allowed=[...(indexedChapter?['read_material']:toolNames),...(writingSubmission?['submit_writing_output']:lengthBudget?['check_text_length']:[])].map(name=>'mcp__paperknow__'+name);
@@ -225,8 +225,8 @@ export async function runAgentTask({settings,task,signal,onStage,maxTotalTokens,
     // this wait still obeys the existing cancellation and timeout boundary.
     if(acceptedWritingText!==null)await abortable(relay.waitForProviderUsage());
     const submitted=acceptedWritingText!==null,acceptedTurnLimit=submitted&&completed?.subtype==='error_max_turns';
-    if(!completed||(!acceptedTurnLimit&&(completed.subtype!=='success'||completed.is_error))){if(completed?.subtype==='error_max_turns')fail(502,'Agent 已达到回合上限，结果未完成');if(completed?.subtype==='error_max_budget_usd')fail(502,'Agent 已达到预算上限，结果未完成');fail(502,'Agent 执行失败，请检查模型的 Anthropic 与工具调用兼容性');}
-    if(completed.permission_denials?.length)fail(502,'Agent 触发了未授权工具，结果未完成');if(['max_tokens','length'].includes(completed.stop_reason))fail(502,'Agent 输出被截断，请调整章节范围或输出预算');
+    if(!completed||(!acceptedTurnLimit&&(completed.subtype!=='success'||completed.is_error))){if(completed?.subtype==='error_max_turns')fail(502,'Agent 已达到回合上限，结果未完成','turn_limit');if(completed?.subtype==='error_max_budget_usd')fail(502,'Agent 已达到预算上限，结果未完成','cost_budget');fail(502,'Agent 执行失败，请检查模型的 Anthropic 与工具调用兼容性','runtime_error');}
+    if(completed.permission_denials?.length)fail(502,'Agent 触发了未授权工具，结果未完成','permission_denied');if(['max_tokens','length'].includes(completed.stop_reason))fail(502,'Agent 输出被截断，请调整章节范围或输出预算','truncated');
     if(signal?.aborted||timedOut||controller.signal.aborted||relay?.budgetExceeded||submitted&&calls>toolCallLimit)fail(429,'Agent 已超出执行预算，结果未提交');
     if(completed.total_cost_usd!==undefined&&completed.total_cost_usd!==null&&(!Number.isFinite(completed.total_cost_usd)||completed.total_cost_usd<0))fail(502,'Agent 用量记录无效');
     // A provider may ignore required tool choice. A plain SDK success cannot
@@ -239,7 +239,7 @@ export async function runAgentTask({settings,task,signal,onStage,maxTotalTokens,
     const usage=submitted?paid.usage:modelUsage.length?{input:modelUsage.reduce((n,v)=>n+token(v.inputTokens)+token(v.cacheReadInputTokens)+token(v.cacheCreationInputTokens),0),output:modelUsage.reduce((n,v)=>n+token(v.outputTokens),0)}:{input:token(completed.usage?.input_tokens)+token(completed.usage?.cache_read_input_tokens)+token(completed.usage?.cache_creation_input_tokens),output:token(completed.usage?.output_tokens)};
     if(!Number.isSafeInteger(usage.input)||!Number.isSafeInteger(usage.output))fail(502,'Agent 用量格式无效');
     if(usage.output>config.maxOutputTokens*config.maxTurns||Number.isFinite(completed.total_cost_usd)&&completed.total_cost_usd>config.maxCostUsd||submitted&&config.maxTotalTokens!==undefined&&usage.input+usage.output>config.maxTotalTokens)fail(502,'Agent 已超出执行预算，结果未提交');
-    return {text,usage,engine:config.engine,model:config.model,finishReason:submitted?'submitted':completed.stop_reason??null,...(submitted?{submitted:true,usageSource:'provider_responses',completionSource:relay.localCompletions?'local_control':'sdk_acknowledgement',providerRequests:paid.requests,providerMessages:paid.messages}:{}),costUsd:observedCost,costSource:observedCost===null?'unknown':'sdk_estimate',trace};
+    return {text,usage,engine:config.engine,model:config.model,skills:skill.skills,finishReason:submitted?'submitted':completed.stop_reason??null,...(submitted?{submitted:true,usageSource:'provider_responses',completionSource:relay.localCompletions?'local_control':'sdk_acknowledgement',providerRequests:paid.requests,providerMessages:paid.messages}:{}),costUsd:observedCost,costSource:observedCost===null?'unknown':'sdk_estimate',trace};
   }catch(error){if(writingSubmission&&relay?.providerUsage.requests)observedUsage=relay.providerUsage.usage;const safe=relay?.budgetExceeded?Object.assign(new Error('Agent 已达到本次 Token 预算，未继续调用模型'),{status:429,code:'budget_exceeded'}):signal?.aborted?Object.assign(new Error('Agent 任务已取消'),{status:499}):timedOut?Object.assign(new Error('Agent 执行超时，结果未提交'),{status:504}):error.agentSafe===true?error:Object.assign(new Error('Agent SDK 执行失败，请检查接口、模型与服务状态'),{status:502});Object.defineProperty(safe,'agentTrace',{value:privateTrace(),enumerable:false,configurable:true});throw Object.assign(safe,{usage:observedUsage,costUsd:observedCost,engine:config.engine,model:config.model});}
   finally{clearTimeout(timer);signal?.removeEventListener('abort',cancelled);controller.abort();try{stream?.close?.();if(stream?.return){let cleanupTimer;await Promise.race([stream.return(),new Promise(resolve=>{cleanupTimer=setTimeout(resolve,3000);})]).finally(()=>clearTimeout(cleanupTimer));}}catch{}await relay?.close();await rm(directory,{recursive:true,force:true});}
 }

@@ -55,6 +55,11 @@ CREATE TABLE IF NOT EXISTS thesis_chapter_versions(
  text TEXT NOT NULL,source_ids TEXT NOT NULL DEFAULT '[]',created_at TEXT NOT NULL,
  UNIQUE(thesis_id,chapter_id,version)
 );
+CREATE TABLE IF NOT EXISTS thesis_review_checkpoints(
+ run_id TEXT NOT NULL REFERENCES thesis_runs(id),attempt INTEGER NOT NULL,
+ unit_id TEXT NOT NULL,task_hash TEXT NOT NULL,result TEXT NOT NULL,created_at TEXT NOT NULL,
+ PRIMARY KEY(run_id,attempt,unit_id)
+);
 CREATE INDEX IF NOT EXISTS thesis_chapter_history ON thesis_chapter_versions(thesis_id,chapter_id,version);
 CREATE UNIQUE INDEX IF NOT EXISTS thesis_chapter_generated_run ON thesis_chapter_versions(run_id,chapter_id) WHERE source='generated';
 CREATE TRIGGER IF NOT EXISTS thesis_chapter_history_no_update BEFORE UPDATE ON thesis_chapter_versions
