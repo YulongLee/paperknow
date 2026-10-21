@@ -141,7 +141,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  function schedule(){
   clearTimeout(timer);
   if(!current()||!user||!item||!running(item))return;
-  timer=setTimeout(async()=>{try{if(!document.hidden&&!busy){await refresh();if(current())render();}}catch(error){failure(error);if(current())render();}finally{schedule();}},4000);
+  timer=setTimeout(async()=>{try{if(!document.hidden&&!busy){const before=JSON.stringify([item,message,editorError]);await refresh();if(current()&&JSON.stringify([item,message,editorError])!==before)render();}}catch(error){failure(error);if(current())render();}finally{schedule();}},4000);
  }
  function visibility(){if(document.hidden)persistDraft();else if(running(item))schedule();}
  document.addEventListener('visibilitychange',visibility);
@@ -200,9 +200,11 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   const historical=!!job&&(item.status==='draft'||job.snapshotChanged===true),completed=!historical&&(item.status==='completed'||job?.status==='completed');
   const error=job?.error?typeof job.error==='string'?job.error:job.error.message||'生成中断，请核对后恢复。':'';
   const missing=[...new Set((Array.isArray(job?.missingEvidence)?job.missingEvidence:[]).filter(row=>typeof row==='string'&&row.trim()).map(row=>row.trim()))];
-  const checklist=missing.length?`<section class="thesis-review-checklist" role="status" aria-label="本稿待核对清单"><h3>初稿已生成，请逐项核对</h3><p>以下内容不阻止初稿保存或编辑。请结合正文中的待补充标记补充资料，并核对事实与引文后再正式使用。</p><ul>${missing.map(row=>`<li>${escape(row)}</li>`).join('')}</ul></section>`:'';
+  const reviewItems=historical?[]:missing;
+  const reviewDescription=completed?'初稿已生成，请逐项核对后使用。':running(item)?'随生成持续更新，可在窗口内滚动查看。':'生成时自动整理，不影响初稿保存和编辑。';
+  const checklist=`<section class="thesis-review-checklist" role="region" aria-label="本稿待核对清单"><header><div><h3>待补充项目 <span role="status" aria-live="polite">${reviewItems.length} 项</span></h3><button type="button" data-thesis-review-latest ${reviewItems.length?'':'disabled'}>查看最新 ↓</button></div><p>${reviewDescription}</p></header><div data-thesis-review-scroll data-scroll-key="thesis-review:${escape(id||saveKey)}" tabindex="0" role="region" aria-label="待补充项目列表">${reviewItems.length?`<ul>${reviewItems.map((row,index)=>`<li><span aria-hidden="true">${String(index+1).padStart(2,'0')}</span><p>${escape(row)}</p></li>`).join('')}</ul>`:`<div class="thesis-review-empty"><b>${running(item)?'正在整理核对事项':'暂无待补充项目'}</b><p>${running(item)?'如需补充资料，将自动添加到这里。':'后续新增事项会显示在此窗口。'}</p></div>`}</div></section>`;
   const previous=historical&&(error||missing.length)?`<details class="thesis-previous-run"><summary>查看上次任务记录</summary><p>以下为此前任务的记录，研究信息已更新，不代表当前初稿的生成状态。</p>${error?`<p>${escape(error)}</p>`:''}${missing.length?`<p>上次待核对内容：${missing.map(escape).join('；')}</p>`:''}</details>`:'';
-  return `<section class="thesis-progress" aria-label="章节生成进度"><div><b>${escape(labels[historical?item.status:thesisStatus(item)]||'已保存')}</b><span>${historical?'此前任务进度':total?`${complete} / ${total} 个写作单元`:'已保存到账户'}${!historical&&job?.stage?' · '+stageLabel(job.stage):''}</span></div>${historical?'<p>研究信息或正文已有更新；上次任务记录继续保留。再次生成会建立新版本。</p>':''}${total?`<progress value="${percent}" max="100" aria-label="${historical?'上次任务':''}已完成 ${percent}%"></progress>`:''}${!historical&&!completed&&error?`<p class="thesis-error">${escape(error)}</p>`:''}<p>已完成内容独立保存。${running(item)?'关闭页面后任务仍在后台继续；重新打开即可查看进度。':'请核对内容后再用于正式提交。'}</p>${!historical?(completed?checklist:missing.length?`<p class="thesis-error">待补充证据：${missing.map(escape).join('；')}</p>`:''):previous}</section>`;
+  return `<section class="thesis-progress" aria-label="章节生成进度"><div><b>${escape(labels[historical?item.status:thesisStatus(item)]||'已保存')}</b><span>${historical?'此前任务进度':total?`${complete} / ${total} 个写作单元`:'已保存到账户'}${!historical&&job?.stage?' · '+stageLabel(job.stage):''}</span></div>${historical?'<p>研究信息或正文已有更新；上次任务记录继续保留。再次生成会建立新版本。</p>':''}${total?`<progress value="${percent}" max="100" aria-label="${historical?'上次任务':''}已完成 ${percent}%"></progress>`:''}${!historical&&!completed&&error?`<p class="thesis-error">${escape(error)}</p>`:''}<p>生成期间关闭页面不影响后台任务；已完成内容独立保存，正式使用前请核对。</p>${checklist}${previous}</section>`;
  }
  function researchForm(){
   const values=researchEdits||{method:item.profile?.method||'',researchQuestion:item.profile?.researchQuestion||'',supplement:''};
@@ -236,8 +238,9 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  function completedSectionsPreview(chapter){
   if(!chapter)return '';
   const sections=(item.sections||[]).filter(row=>row.chapterId===chapter.id&&row.status==='completed'&&String(row.text||'').trim());
-  if(!sections.length||sections.length>=Number(chapter.totalSections||0))return chapter.stale?'<p class="thesis-error">下方已保存正文基于此前的研究资料，尚未按当前资料重新生成，请核对版本。</p>':'';
-  return `<section class="thesis-completed-sections"><h4>当前任务已完成的小节</h4><p>这些内容已保存，但当前章节尚未全部完成。下方编辑区仍显示账户中已保存的整章版本；停止或中断不会清空下列内容。</p>${sections.map((row,index)=>`<details ${sections.length===1?'open':''}><summary>已完成小节 ${index+1}<small>${thesisEditorWordCount(String(row.text),item.profile?.language||item.snapshot?.profile?.language||'中文').toLocaleString('zh-CN')}${textMeasure()}</small></summary><pre>${escape(thesisEditorPresentation(item.snapshot||{},row.text).text)}</pre>${sourceLegend(thesisEditorPresentation(item.snapshot||{},row.text))}</details>`).join('')}${chapter.stale?'<p class="thesis-error">下方整章正文来自此前的研究资料，请与本次小节区分核对。</p>':''}</section>`;
+  if(!item.job&&!sections.length)return chapter.stale?'<p class="thesis-error">下方已保存正文基于此前的研究资料，尚未按当前资料重新生成，请核对版本。</p>':'';
+  const total=Math.max(sections.length,Number(chapter.totalSections)||0),partial=total>sections.length;
+  return `<details class="thesis-completed-sections" data-thesis-parts-panel data-thesis-view-key="chapter-parts:${escape(chapter.id)}"><summary data-thesis-parts-summary="${escape(chapter.id)}">查看已生成小节 <small>${sections.length} / ${total}</small></summary><div data-thesis-parts-scroll data-scroll-key="thesis-parts:${escape(chapter.id)}" tabindex="0" role="region" aria-label="已生成小节预览"><p>${partial?'当前章节尚未全部完成；已完成小节会持续保存在此处。':'本章生成小节已保存，下方编辑区可查看账户整章版本。'}停止或中断不会清空已保存内容。</p>${sections.map((row,index)=>`<details data-thesis-view-key="part:${escape(row.id)}"><summary data-thesis-part-summary="${escape(row.id)}">已完成小节 ${index+1}<small>${thesisEditorWordCount(String(row.text),item.profile?.language||item.snapshot?.profile?.language||'中文').toLocaleString('zh-CN')}${textMeasure()}</small></summary><pre data-scroll-key="thesis-part-text:${escape(row.id)}">${escape(thesisEditorPresentation(item.snapshot||{},row.text).text)}</pre>${sourceLegend(thesisEditorPresentation(item.snapshot||{},row.text))}</details>`).join('')||'<p>本章首个小节生成后会显示在这里。</p>'}${chapter.stale?'<p class="thesis-error">下方整章正文来自此前的研究资料，请与本次小节区分核对。</p>':''}</div></details>`;
  }
  function chapterHistory(chapter){
   const history=historyChapter===chapter?.id?historyItems:null,preview=historyChapter===chapter?.id?historyPreview:null;
@@ -252,10 +255,11 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
    pendingFocus=active.id?{id:active.id}:attr?{attr:attr.name,value:attr.value}:disclosure?.matches('.thesis-sources,.thesis-research-edit')?{summary:disclosure.className}:null;
    if(pendingFocus&&typeof active.selectionStart==='number')Object.assign(pendingFocus,{start:active.selectionStart,end:active.selectionEnd,scroll:active.scrollTop});
   }else if(active&&active!==document.body)pendingFocus=null;
+  for(const node of container.querySelectorAll('details[data-thesis-view-key]'))disclosureState.set('key:'+node.getAttribute('data-thesis-view-key'),node.open);
   for(const selector of ['.thesis-sources','.thesis-research-edit','.thesis-presentations','.thesis-generation-details','.thesis-service-details']){const node=$(selector);if(node)disclosureState.set(selector,node.open);}
  }
  function restoreView(){
-  for(const [selector,open] of disclosureState){const node=$(selector);if(node)node.open=open;}
+  for(const [selector,open] of disclosureState){const node=selector.startsWith('key:')?[...container.querySelectorAll('details[data-thesis-view-key]')].find(row=>row.getAttribute('data-thesis-view-key')===selector.slice(4)):$(selector);if(node)node.open=open;}
   if(!pendingFocus)return;
   const focus=pendingFocus,node=focus.id?[...container.querySelectorAll('[id]')].find(row=>row.id===focus.id):focus.attr?[...container.querySelectorAll('['+focus.attr+']')].find(row=>row.getAttribute(focus.attr)===focus.value):[...container.querySelectorAll('.thesis-sources,.thesis-research-edit')].find(row=>row.className===focus.summary)?.querySelector('summary');
   if(!node){pendingFocus=null;return;}
@@ -283,6 +287,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   bind();restoreView();schedule();
  }
  function bind(){
+  $('[data-thesis-review-latest]')?.addEventListener('click',()=>{const scroller=$('[data-thesis-review-scroll]');if(scroller)scroller.scrollTop=scroller.scrollHeight;});
   $('[data-thesis-reload]')?.addEventListener('click',()=>void load());
   $('[data-thesis-manual]')?.addEventListener('click',()=>{if(!busy&&persistDraft())onManual?.();});
   $('[data-thesis-create]')?.addEventListener('click',()=>void mutate(async()=>{
