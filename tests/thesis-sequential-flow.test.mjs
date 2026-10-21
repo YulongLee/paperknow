@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
+import {thesisResearchText,confirmThesisMaterials,confirmThesisReferences} from './helpers/thesis-flow.mjs';
 
 const settle=async()=>{for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));};
 function fixture(){
@@ -26,7 +27,9 @@ function assertOnlyStage(f,stage){
 }
 async function advanceToOutline(f){
  f.input('#writing-title','人工智能支持教学反馈的研究');
- for(const stage of [2,3,4]){f.$('#writing-process-next').click();await settle();assertOnlyStage(f,stage);}
+ f.$('#writing-process-next').click();await settle();assertOnlyStage(f,2);
+ confirmThesisMaterials();await settle();assertOnlyStage(f,3);
+ confirmThesisReferences();await settle();assertOnlyStage(f,4);
 }
 
 test('a new thesis exposes one form and cannot jump ahead by pointer or keyboard',async()=>{
@@ -69,17 +72,17 @@ test('the persistent next control completes all five steps without generating or
  }finally{f.close();}
 });
 
-test('optional knowledge can be skipped while its unconfirmed editor text remains a recoverable draft',async()=>{
+test('insufficient knowledge cannot be skipped while its unconfirmed editor text remains a recoverable draft',async()=>{
  const f=fixture();
  try{
   mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','可选补充步骤验收');f.$('#writing-process-next').click();await settle();
-  f.input('#knowledge-ai-input','尚未确认的研究想法');f.$('#writing-material-skip').click();await settle();assertOnlyStage(f,3);
-  const saved=f.save();assert.equal(saved.workflowUnlockedStage,3);assert.equal(saved.knowledgeFiles.length,0);assert.equal(saved.writingEditorState.inputs['knowledge-ai-input'],'尚未确认的研究想法');
-  f.$('[data-writing-step="2"]').click();await settle();assertOnlyStage(f,2);assert.equal(f.$('#knowledge-ai-input').value,'尚未确认的研究想法');
+  f.input('#knowledge-ai-input','尚未确认的研究想法');assert.equal(f.$('#writing-material-skip').hidden,true);f.$('#writing-material-skip').click();await settle();assertOnlyStage(f,2);assert.match(f.$('#writing-step-error').textContent,/100/);
+  const saved=f.save();assert.equal(saved.workflowUnlockedStage,2);assert.equal(saved.knowledgeFiles.length,0);assert.equal(saved.writingEditorState.inputs['knowledge-ai-input'],'尚未确认的研究想法');
+  clearEditor();mountWriting(saved.id,undefined,f.ctx);await settle();assertOnlyStage(f,2);assert.equal(f.$('#knowledge-ai-input').value,'尚未确认的研究想法');
  }finally{f.close();}
 });
 
-function completedDraft(overrides={}){return {id:'saved-thesis',tool:'writing',title:'已有论文内容恢复',writingResume:true,workflowStage:5,workflowUnlockedStage:5,targetWords:8000,outlineConfirmed:true,outlineSource:'pasted',outlineText:'第一章 已确认的研究结构\n1.1 已有资料与方法',outlineRows:[{id:'chapter',title:'第一章 已确认的研究结构',level:1,words:0},{id:'section',title:'1.1 已有资料与方法',level:2,words:8000}],bodySections:[{id:'chapter',title:'第一章 已确认的研究结构',text:'用户已经撰写的真实正文。'}],writingReferences:[{id:'ref',title:'用户核对的参考文献',authors:'研究者',year:'2025',confirmed:true}],knowledgeFiles:[{id:'material',name:'研究记录',purpose:'研究资料',text:'用户原始研究记录。',kind:'file',state:'parsed'}],methodSuggestion:{jobId:'method-job',text:'拟开展的分析方案，不代表已经完成实验。'},...overrides};}
+function completedDraft(overrides={}){return {id:'saved-thesis',tool:'writing',title:'已有论文内容恢复',writingResume:true,workflowStage:5,workflowUnlockedStage:5,targetWords:8000,outlineConfirmed:true,outlineSource:'pasted',outlineText:'第一章 已确认的研究结构\n1.1 已有资料与方法',outlineRows:[{id:'chapter',title:'第一章 已确认的研究结构',level:1,words:0},{id:'section',title:'1.1 已有资料与方法',level:2,words:8000}],bodySections:[{id:'chapter',title:'第一章 已确认的研究结构',text:'用户已经撰写的真实正文。'}],writingReferences:[{id:'ref',title:'用户核对的参考文献',authors:'研究者',year:'2025',confirmed:true}],knowledgeFiles:[{id:'material',name:'研究记录',purpose:'研究资料',text:thesisResearchText,kind:'file',state:'parsed'}],methodSuggestion:{jobId:'method-job',text:'拟开展的分析方案，不代表已经完成实验。'},...overrides};}
 
 test('returning to earlier confirmed steps preserves references, outline, allocation and existing body',async()=>{
  const f=fixture();
@@ -120,9 +123,11 @@ test('changing a confirmed target word count reallocates the outline and locks f
  try{
   const original=completedDraft({workflowStage:1});localStorage.setItem('paperknow-drafts',JSON.stringify([original]));mountWriting(original.id,undefined,f.ctx);await settle();assertOnlyStage(f,1);
   f.input('#writing-target','10000');f.$('#writing-target').dispatchEvent(new window.Event('change',{bubbles:true}));await settle();assertOnlyStage(f,1);
-  let saved=f.save();assert.equal(saved.outlineConfirmed,false);assert.equal(saved.workflowUnlockedStage,4);assert.equal(Number(saved.targetWords),10000);assert.equal(saved.outlineRows.find(row=>row.id==='section').words,10000);assert.deepEqual(saved.bodySections,original.bodySections);
+  let saved=f.save();assert.equal(saved.outlineConfirmed,false);assert.equal(saved.workflowUnlockedStage,1);assert.equal(Number(saved.targetWords),10000);assert.equal(saved.outlineRows.find(row=>row.id==='section').words,10000);assert.deepEqual(saved.bodySections,original.bodySections);
   const finalStep=f.$('[data-writing-step="5"]');assert.equal(finalStep.getAttribute('aria-disabled'),'true');finalStep.click();await settle();assertOnlyStage(f,1);
-  f.$('[data-writing-step="4"]').click();await settle();assertOnlyStage(f,4);f.$('#writing-process-next').click();await settle();assertOnlyStage(f,5);
+  f.$('[data-writing-step="4"]').click();await settle();assertOnlyStage(f,1);
+  for(const stage of [2,3,4]){f.$('#writing-process-next').click();await settle();assertOnlyStage(f,stage);}
+  f.$('#writing-process-next').click();await settle();assertOnlyStage(f,5);
   saved=f.save();assert.equal(saved.workflowUnlockedStage,5);assert.equal(saved.outlineConfirmed,true);assert.deepEqual(saved.bodySections,original.bodySections);assert.deepEqual(f.calls,[]);
  }finally{f.close();}
 });
@@ -132,7 +137,9 @@ test('continuing after a target input without a change event still synchronizes 
  try{
   const original=completedDraft({workflowStage:1});localStorage.setItem('paperknow-drafts',JSON.stringify([original]));mountWriting(original.id,undefined,f.ctx);await settle();
   f.input('#writing-target','12000');f.$('#writing-process-next').click();await settle();assertOnlyStage(f,2);
-  const saved=f.save();assert.equal(Number(saved.targetWords),12000);assert.equal(saved.outlineRows.find(row=>row.id==='section').words,12000);assert.equal(saved.outlineAllocationTarget,12000);assert.equal(saved.outlineConfirmed,false);assert.equal(saved.workflowUnlockedStage,4);assert.deepEqual(saved.bodySections,original.bodySections);assert.deepEqual(f.calls,[]);
+  const saved=f.save();assert.equal(Number(saved.targetWords),12000);assert.equal(saved.outlineRows.find(row=>row.id==='section').words,12000);assert.equal(saved.outlineAllocationTarget,12000);assert.equal(saved.outlineConfirmed,false);assert.equal(saved.workflowUnlockedStage,2);assert.deepEqual(saved.bodySections,original.bodySections);assert.deepEqual(f.calls,[]);
+  for(const stage of [3,4,5]){f.$('#writing-process-next').click();await settle();assertOnlyStage(f,stage);}
+  assert.equal(f.save().outlineRows.find(row=>row.id==='section').words,12000);assert.deepEqual(f.save().bodySections,original.bodySections);
  }finally{f.close();}
 });
 
@@ -142,7 +149,7 @@ test('changing a method proposal or removing confirmed research material locks f
   try{
    const original=completedDraft({workflowStage:2});localStorage.setItem('paperknow-drafts',JSON.stringify([original]));mountWriting(original.id,undefined,f.ctx);await settle();assertOnlyStage(f,2);
    if(action==='method')f.input('#knowledge-method-input','更新后的拟开展方法，尚待真实研究验证。');else f.$('[data-knowledge-action="remove"][data-knowledge-id="material"]').click();
-   await settle();const saved=f.save();assert.equal(saved.outlineConfirmed,false);assert.equal(saved.workflowUnlockedStage,4);assert.deepEqual(saved.bodySections,original.bodySections);assert.deepEqual(saved.outlineRows,original.outlineRows);
+   await settle();const saved=f.save();assert.equal(saved.outlineConfirmed,false);assert.equal(saved.workflowUnlockedStage,2);assert.deepEqual(saved.bodySections,original.bodySections);assert.deepEqual(saved.outlineRows,original.outlineRows);
    if(action==='method')assert.equal(saved.methodSuggestion.text,'更新后的拟开展方法，尚待真实研究验证。');else assert.deepEqual(saved.knowledgeFiles,[]);
    assert.equal(f.$('[data-writing-step="5"]').getAttribute('aria-disabled'),'true');f.$('[data-writing-step="5"]').click();await settle();assertOnlyStage(f,2);assert.deepEqual(f.calls,[]);
   }finally{f.close();}
@@ -154,7 +161,8 @@ test('deselecting a previously confirmed reference requires reconfirming the out
  try{
   const original=completedDraft({workflowStage:3});localStorage.setItem('paperknow-drafts',JSON.stringify([original]));mountWriting(original.id,undefined,f.ctx);await settle();assertOnlyStage(f,3);
   const reference=f.$('[data-reference-id="ref"]');assert.equal(reference.getAttribute('aria-pressed'),'true');reference.click();await settle();
-  const saved=f.save();assert.deepEqual(saved.writingReferences,[]);assert.equal(saved.outlineConfirmed,false);assert.equal(saved.workflowUnlockedStage,4);assert.deepEqual(saved.bodySections,original.bodySections);assert.deepEqual(saved.outlineRows,original.outlineRows);
+  const saved=f.save();assert.deepEqual(saved.writingReferences,[]);assert.equal(saved.outlineConfirmed,false);assert.equal(saved.workflowUnlockedStage,3);assert.deepEqual(saved.bodySections,original.bodySections);assert.deepEqual(saved.outlineRows,original.outlineRows);
+  assert.equal(f.$('[data-writing-step="4"]').getAttribute('aria-disabled'),'true');f.$('[data-writing-step="4"]').click();await settle();assertOnlyStage(f,3);
   assert.equal(f.$('[data-writing-step="5"]').getAttribute('aria-disabled'),'true');f.$('[data-writing-step="5"]').click();await settle();assertOnlyStage(f,3);assert.deepEqual(f.calls,[]);
  }finally{f.close();}
 });
@@ -167,4 +175,11 @@ test('legacy drafts without an unlocked-stage field retain their saved place and
   assert.equal(f.$('[data-writing-step="2"]').getAttribute('aria-disabled'),'false');assert.equal(f.$('[data-writing-step="4"]').getAttribute('aria-disabled'),'true');
   f.$('#writing-process-next').click();await settle();assertOnlyStage(f,4);assert.equal(f.save().workflowUnlockedStage,4);assert.deepEqual(f.save().bodySections,original.bodySections);
  }finally{f.close();}
+});
+
+
+test('legacy drafts with stale unlocked flags reopen at the earliest missing requirement without losing their manuscript',async()=>{
+ for(const [overrides,stage] of [[{title:''},1],[{knowledgeFiles:[]},2],[{writingReferences:[]},3]]){
+  const f=fixture();try{const original=completedDraft(overrides);delete original.workflowUnlockedStage;localStorage.setItem('paperknow-drafts',JSON.stringify([original]));mountWriting(original.id,undefined,f.ctx);await settle();assertOnlyStage(f,stage);assert.equal(f.$('[data-writing-step="'+(stage+1)+'"]').getAttribute('aria-disabled'),'true');const saved=f.save();assert.deepEqual(saved.outlineRows,original.outlineRows);assert.deepEqual(saved.bodySections,original.bodySections);assert.deepEqual(f.calls,[]);assert.equal(f.scrolls.length,0);}finally{f.close();}
+ }
 });

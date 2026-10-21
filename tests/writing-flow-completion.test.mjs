@@ -1,3 +1,4 @@
+import {confirmThesisMaterials,confirmThesisResearch,completeThesisDraft} from './helpers/thesis-flow.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
@@ -22,7 +23,7 @@ for(const source of ['model','uploaded','pasted'])test(`returning through Step 2
  const f=fixture();let confirmations=0;f.dom.window.confirm=()=>{confirmations++;return true;};
  try{
   const outline='第一章 专属研究结构\n1.1 专属研究对象',row={id:'existing',tool:'writing',title:'现有研究主题',targetWords:8000,workflowStage:2,writingResume:true,outlineText:outline,outlineSource:source,outlineFileName:source==='uploaded'?'本人提纲.txt':'',outlineRows:[{id:'c1',title:'第一章 专属研究结构',level:1,words:0},{id:'s1',title:'1.1 专属研究对象',level:2,words:8000}],bodySections:[{id:'c1',title:'第一章 专属研究结构',text:'已经保存的章节正文。'}]};
-  localStorage.setItem('paperknow-drafts',JSON.stringify([row]));mountWriting(row.id,undefined,f.ctx);
+  Object.assign(row,completeThesisDraft(row));localStorage.setItem('paperknow-drafts',JSON.stringify([row]));mountWriting(row.id,undefined,f.ctx);
   f.$('#writing-material-confirm').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.equal(confirmations,0,'ordinary continuation is not a replacement operation');
   let saved=f.save();assert.equal(saved.outlineText,outline);assert.equal(saved.outlineSource,source);assert.deepEqual(saved.outlineRows,row.outlineRows);assert.deepEqual(saved.bodySections,row.bodySections);assert.equal(saved.outlineFileName,row.outlineFileName);
   f.$('#writing-reference-confirm').click();await settle();assert.match(f.$('#outline-paper .outline-row-title').value,/专属研究结构/);saved=f.save();assert.equal(saved.outlineRows[1].words,8000);
@@ -82,15 +83,15 @@ for(const action of ['remove','clear'])test(`Step 2 ${action} of its only record
  }finally{f.close();}
 });
 
-test('explicit skip retains unsubmitted supplement as draft input without confirming it as evidence',async()=>{
+test('hidden legacy skip cannot advance and unsubmitted supplement remains a draft rather than evidence',async()=>{
  const f=fixture();
- try{mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','跳过补充说明');f.$('#writing-generate').click();f.input('#knowledge-ai-input','暂未确认的内容');f.$('#writing-material-skip').click();await settle();const saved=f.save();assert.equal(saved.knowledgeFiles.length,0);assert.equal(saved.writingEditorState.inputs['knowledge-ai-input'],'暂未确认的内容');}finally{f.close();}
+ try{mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','跳过补充说明');f.$('#writing-generate').click();f.input('#knowledge-ai-input','暂未确认的内容');assert.equal(f.$('#writing-material-skip').hidden,true);f.$('#writing-material-skip').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'2');const saved=f.save();assert.equal(saved.knowledgeFiles.length,0);assert.equal(saved.writingEditorState.inputs['knowledge-ai-input'],'暂未确认的内容');}finally{f.close();}
 });
 
 test('a reference file finishing after switching drafts never changes the replacement editor or its saved references',async()=>{
  const f=fixture();let resolve;
  try{
-  mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','先前论文');f.$('#writing-generate').click();f.$('#writing-material-confirm').click();
+  mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','先前论文');f.$('#writing-generate').click();confirmThesisMaterials();
   const pending=new Promise(done=>{resolve=done;});f.selectFile('#writing-reference-file',{name:'old-references.json',size:100,text:()=>pending});
   clearEditor();localStorage.removeItem('paperknow-drafts');location.hash='tool/writing?new=replacement';mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','新的论文');
   resolve(JSON.stringify([{id:'old-ref',title:'不应进入新论文的文献',authors:'Old Author',year:'2025'}]));await settle();
@@ -101,7 +102,7 @@ test('a reference file finishing after switching drafts never changes the replac
 test('text outline import succeeds and an import finishing after a draft switch cannot replace the new outline',async()=>{
  const f=fixture();let resolve;
  try{
-  mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','文本提纲导入');f.$('#writing-generate').click();f.$('#writing-material-confirm').click();f.$('#writing-reference-confirm').click();
+  mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','文本提纲导入');f.$('#writing-generate').click();confirmThesisResearch();
   f.selectFile('#outline-file',{name:'my-outline.txt',size:100,text:async()=>'第一章 文本导入的专属结构\n1.1 真实研究对象'});await settle();assert.match(f.$('#outline-paper .outline-row-title').value,/文本导入的专属结构/);
   const pending=new Promise(done=>{resolve=done;});f.selectFile('#outline-file',{name:'old-outline.txt',size:100,text:()=>pending});
   clearEditor();localStorage.removeItem('paperknow-drafts');location.hash='tool/writing?new=other';mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','新的独立论文');

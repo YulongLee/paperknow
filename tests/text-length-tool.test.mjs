@@ -8,7 +8,7 @@ const settings={enabled:true,engine:'claude-agent-sdk',baseURL:'https://provider
 const lookup=async()=>[{address:'8.8.8.8',family:4}];
 const success={type:'result',subtype:'success',is_error:false,stop_reason:'end_turn',total_cost_usd:.001,modelUsage:{fixture:{inputTokens:10,outputTokens:10}},permission_denials:[]};
 function fixture(){
- const snapshot=normalizeThesisSnapshot({title:'有限资料下的研究边界',profile:{language:'中文',targetWords:500},materials:[{id:'source-1',name:'本人确认的案例资料',text:'这是用户提供的研究记录；仅用于案例讨论，不声称已经验证效果。',confirmed:true}],references:[],outline:[{id:'c1',title:'研究边界',targetWords:60},{id:'c2',title:'分析与计划',targetWords:440}]}),unit=thesisPlan(snapshot)[0];
+ const snapshot=normalizeThesisSnapshot({title:'有限资料下的研究边界',profile:{language:'中文',targetWords:500},materials:[{id:'source-1',name:'本人确认的案例资料',text:'这是用户提供的研究记录；仅用于案例讨论，不声称已经验证效果。研究围绕有限资料的使用边界展开，现有记录明确区分了已经给出的案例说明和仍需后续收集的实证信息。当前材料可以支持对研究范围、资料限制与待验证方案的讨论，不能支持具体效果判断或统计结论。任务应保留这些边界，并按照章节分配检查正文篇幅，不通过新增模型调用或改变预算规避字数检查。',confirmed:true}],references:[],outline:[{id:'c1',title:'研究边界',targetWords:60},{id:'c2',title:'分析与计划',targetWords:440}]}),unit=thesisPlan(snapshot)[0];
  return {snapshot,unit,task:thesisAgentTask(snapshot,unit,[])};
 }
 const body=text=>JSON.stringify({text,source_ids:['source-1'],missing_evidence:[],complete:true});

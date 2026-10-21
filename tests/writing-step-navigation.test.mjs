@@ -1,3 +1,4 @@
+import {thesisResearchText,thesisReference,confirmThesisMaterials,confirmThesisReferences,selectThesisReference} from './helpers/thesis-flow.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -31,7 +32,7 @@ test('five-step transitions keep the viewport and do not force focus away from t
   f.$('#writing-process-next').focus();
   const retainedFocus=document.activeElement,focusCount=f.focuses.length;
   for(const selector of ['#writing-generate','#writing-material-confirm','#writing-reference-confirm']){
-   const count=f.scrolls.length;f.$(selector).click();await settle();
+   const count=f.scrolls.length;if(selector==='#writing-material-confirm')confirmThesisMaterials();else if(selector==='#writing-reference-confirm')confirmThesisReferences();else f.$(selector).click();await settle();
    assert.equal(f.scrolls.length,count,'a stage change never scrolls');
    assert.equal(f.$('.creation-grid'),shell,'the content shell stays mounted');
    assert.equal(document.activeElement,retainedFocus);
@@ -41,7 +42,7 @@ test('five-step transitions keep the viewport and do not force focus away from t
   assert.equal(f.$('#outline-paper .outline-row-title')!==null,true);
   assert.equal(f.scrolls.some(call=>call.element.id==='outline-paper'),false);
   assert.equal(f.$('#writing-title').value,'真实研究步骤定位');
-  assert.match(f.$('#writing-material').value,/真实研究资料/);
+  assert.equal(f.$('#writing-material').value,thesisResearchText);
   f.$('[data-writing-step="3"]').click();await settle();
   f.$('[data-writing-step="4"]').click();await settle();
   assert.equal(f.scrolls.length,0,'clicking step cards preserves the viewport');
@@ -67,7 +68,7 @@ test('completed steps use one real check in the original number slot and retain 
  const f=fixture();
  try{
   mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','状态检查');
-  f.$('#writing-generate').click();await settle();f.$('#writing-material-confirm').click();await settle();f.$('#writing-reference-confirm').click();await settle();
+  f.$('#writing-generate').click();await settle();confirmThesisMaterials();await settle();confirmThesisReferences();await settle();
   const steps=[...document.querySelectorAll('[data-writing-step]')];
   assert.equal(steps.length,5);
   assert.deepEqual(steps.map(step=>step.querySelector('.writing-detail-step-number').textContent),['✓','✓','✓','04','05']);
@@ -90,7 +91,7 @@ test('editing the current step and rerendering its controls does not move focus 
   const title=f.$('#writing-title');title.focus();const count=f.scrolls.length;
   f.input('#writing-title','保持输入位置，不应跳动');await settle();
   assert.equal(document.activeElement,title);assert.equal(f.scrolls.length,count);
-  f.$('#writing-generate').click();await settle();f.$('#writing-material-confirm').click();await settle();f.$('#writing-reference-confirm').click();await settle();
+  f.$('#writing-generate').click();await settle();confirmThesisMaterials();await settle();confirmThesisReferences();await settle();
   const field=f.$('#outline-paper .outline-row-title');field.focus();const stageScrolls=f.scrolls.length;
   field.value='第一章 用户重新填写的标题';field.dispatchEvent(new window.Event('input',{bubbles:true}));await settle();
   assert.equal(document.activeElement,field);assert.equal(f.scrolls.length,stageScrolls);assert.equal(field.value,'第一章 用户重新填写的标题');
@@ -110,7 +111,7 @@ test('rapid step changes schedule no focus or scroll work',async()=>{
  const f=fixture();
  try{
   mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','快速切换步骤');
-  f.$('#writing-generate').click();f.$('#writing-material-confirm').click();f.$('#writing-reference-confirm').click();
+  f.$('#writing-generate').click();confirmThesisMaterials();confirmThesisReferences();
   await settle();
   assert.equal(f.scrolls.length,0);
   assert.equal(f.$('.dashboard').dataset.writingStage,'4');
@@ -132,7 +133,7 @@ test('collapsed flow advances in place while a validation error still locates it
   assert.ok(f.$('.writing-process-guide').classList.contains('is-collapsed'));
   f.$('#writing-process-next').focus();const focusCount=f.focuses.length;
   for(const stage of ['2','3','4']){
-   f.$('#writing-process-next').click();await settle();
+   if(stage==='3')f.input('#knowledge-ai-input',thesisResearchText);if(stage==='4')selectThesisReference();f.$('#writing-process-next').click();await settle();
    assert.equal(f.$('.dashboard').dataset.writingStage,stage);
    assert.equal(document.activeElement,f.$('#writing-process-next'));
    assert.equal(f.focuses.length,focusCount);
@@ -155,4 +156,39 @@ test('completed-step colors remain green rather than being replaced by the task 
   assert.equal(style('.writing-detail-step-number').color,'rgb(139, 214, 177)');
   assert.equal(style('.is-complete b').color,'rgb(139, 214, 177)');
  }finally{dom.window.close();}
+});
+
+
+test('unmet thesis requirements cannot be bypassed through step cards, hidden actions or the legacy skip',async()=>{
+ const f=fixture();let requests=0;f.ctx.api=async()=>{requests++;throw Error('Blocked steps must not submit online work');};
+ try{mountWriting(undefined,undefined,f.ctx);f.$('[data-writing-step="5"]').click();f.$('#outline-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'1');
+  f.input('#writing-title','逐步确认的研究');f.$('#writing-generate').click();assert.equal(f.$('.dashboard').dataset.writingStage,'2');f.input('#knowledge-ai-input','1');f.$('#writing-material-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'2');assert.match(f.$('#writing-step-error').textContent,/100/);
+  for(const step of ['3','4','5']){f.$('[data-writing-step="'+step+'"]').click();assert.equal(f.$('.dashboard').dataset.writingStage,'2');}
+  assert.equal(f.$('#writing-material-skip').hidden,true);f.$('#writing-material-skip').click();f.$('#writing-reference-confirm').click();f.$('#outline-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'2');
+  confirmThesisMaterials();assert.equal(f.$('.dashboard').dataset.writingStage,'3');f.$('#writing-reference-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.match(f.$('#writing-reference-status').textContent,/至少.*1.*参考文献/);f.$('[data-writing-step="4"]').click();f.$('#outline-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.equal(requests,0);
+  confirmThesisReferences();assert.equal(f.$('.dashboard').dataset.writingStage,'4');f.$('#outline-confirm').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'5');assert.equal(requests,0);
+ }finally{f.close();}
+});
+
+test('restoring an incomplete later thesis draft returns to the earliest missing step without discarding body or proposal',()=>{
+ const f=fixture();try{const row={id:'legacy-incomplete',tool:'writing',title:'恢复待补资料的研究',degree:'本科',language:'中文',targetWords:8000,workflowStage:5,workflowUnlockedStage:5,outlineConfirmed:true,outlineText:'第一章 已有提纲',outlineRows:[{id:'c1',level:1,title:'第一章 已有提纲',words:8000}],bodySections:[{id:'c1',title:'第一章 已有提纲',text:'之前手动撰写并保存的正文。'}],knowledgeFiles:[{id:'too-short',name:'旧版说明',text:'1',kind:'file'}],writingReferences:[{...thesisReference}],methodSuggestion:{text:thesisResearchText,jobId:'proposed-plan'}};localStorage.setItem('paperknow-drafts',JSON.stringify([row]));mountWriting(row.id,undefined,f.ctx);assert.equal(f.$('.dashboard').dataset.writingStage,'2');assert.match(f.$('#writing-step-error').textContent,/100/);assert.equal(f.$('[data-writing-step="5"]').getAttribute('aria-disabled'),'true');f.$('#writing-save').click();const saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.deepEqual(saved.bodySections,row.bodySections);assert.deepEqual(saved.outlineRows,row.outlineRows);assert.deepEqual(saved.methodSuggestion,row.methodSuggestion);assert.equal(saved.workflowStage,2);assert.equal(saved.outlineConfirmed,false);
+ }finally{f.close();}
+});
+
+test('unconfirmed restored research input cannot unlock a later step until it replaces the recorded short source',async()=>{
+ const f=fixture();try{
+  const row={id:'restored-pending-input',tool:'writing',title:'恢复尚未确认的研究说明',degree:'本科',language:'中文',targetWords:8000,workflowStage:5,workflowUnlockedStage:5,outlineConfirmed:true,outlineText:'第一章 研究背景',outlineRows:[{id:'c1',level:1,title:'第一章 研究背景',words:8000}],bodySections:[{id:'c1',title:'第一章 研究背景',text:'已有正文需要完整保留。'}],knowledgeFiles:[{id:'original-note',name:'原研究说明',kind:'ai',text:'1'}],writingReferences:[{...thesisReference}],writingEditorState:{inputs:{'knowledge-ai-input':thesisResearchText}}};
+  localStorage.setItem('paperknow-drafts',JSON.stringify([row]));mountWriting(row.id,undefined,f.ctx);await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'2');assert.equal(f.$('#knowledge-ai-input').value,thesisResearchText);assert.equal(f.$('[data-writing-step="5"]').getAttribute('aria-disabled'),'true');f.$('[data-writing-step="5"]').click();assert.equal(f.$('.dashboard').dataset.writingStage,'2');
+  f.$('#writing-save').click();let saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.knowledgeFiles[0].text,'1');assert.equal(saved.writingEditorState.inputs['knowledge-ai-input'],thesisResearchText);assert.deepEqual(saved.bodySections,row.bodySections);
+  f.$('#writing-material-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');f.$('#writing-save').click();saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.knowledgeFiles[0].text,thesisResearchText);assert.equal(saved.knowledgeFiles[0].id,'original-note');assert.deepEqual(saved.bodySections,row.bodySections);
+ }finally{f.close();}
+});
+
+test('hidden outline and body actions cannot skip Step 2 even when stored materials and references are valid',()=>{
+ const f=fixture();try{
+  const row={id:'step-two-hidden-actions',tool:'writing',title:'资料已备但尚未逐步确认',degree:'本科',language:'中文',targetWords:8000,workflowStage:2,workflowUnlockedStage:2,outlineConfirmed:false,outlineText:'第一章 既有研究结构',outlineRows:[{id:'c1',level:1,title:'第一章 既有研究结构',words:8000}],bodySections:[{id:'c1',title:'第一章 既有研究结构',text:'既有正文必须保留。'}],knowledgeFiles:[{id:'file-source',name:'已保存研究资料',kind:'file',text:thesisResearchText}],writingReferences:[{...thesisReference}]};
+  localStorage.setItem('paperknow-drafts',JSON.stringify([row]));mountWriting(row.id,undefined,f.ctx);assert.equal(f.$('.dashboard').dataset.writingStage,'2');f.input('#outline-source-input','第一章 隐藏按钮不能采用的结构');
+  for(const selector of ['#outline-edit','#writing-version-back','#body-finish','#outline-template-create','#outline-paste-apply']){assert.ok(f.$(selector),selector);f.$(selector).click();assert.equal(f.$('.dashboard').dataset.writingStage,'2',selector+' must not skip confirmation');assert.equal(f.$('#writing-outline-area').hidden,true);assert.equal(f.$('#writing-body-area').hidden,true);}
+  f.$('#writing-save').click();const saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.workflowStage,2);assert.equal(saved.workflowUnlockedStage,2);assert.equal(saved.outlineText,row.outlineText);assert.deepEqual(saved.outlineRows,row.outlineRows);assert.deepEqual(saved.bodySections,row.bodySections);
+ }finally{f.close();}
 });

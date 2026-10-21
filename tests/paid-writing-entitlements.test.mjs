@@ -9,7 +9,7 @@ import {startThesisWorker} from '../backend/thesis-worker.mjs';
 import {writingBillingKey} from '../dist/workspace/writing-billing-catalog.mjs';
 const runtime={enabled:true,engine:'claude-agent-sdk',baseURL:'https://fixture.example.test',model:'fixture-model',apiKey:'fixture-only-key',version:'fixture-version',maxTurns:3,maxOutputTokens:4096,maxCostUsd:.1,timeoutMs:30000};
 const levels=[['专科','junior'],['本科','bachelor'],['硕士','master'],['博士','doctor']];
-const snapshot=(level='本科')=>({title:'合成研究资料的分析',profile:{level,language:'中文',targetWords:500},materials:[{id:'source',name:'合成资料',text:'这是一段由用户提供并确认的研究材料，用于隔离账务测试，不代表真实研究事实。',confirmed:true}],references:[],outline:[{id:'chapter',title:'研究背景',targetWords:500}]});
+const snapshot=(level='本科')=>({title:'合成研究资料的分析',profile:{level,language:'中文',targetWords:500},materials:[{id:'source',name:'合成资料',text:'这是一段由用户提供并确认的研究材料，用于隔离账务测试，不代表真实研究事实。案例研究对象是合成资料的组织方式，记录了资料归类、章节安排、引用核对和生成结果复核的操作要求。用户仅授权本次任务使用这些内容，研究尚未开展问卷、访谈或实验，不得据此编造统计结果；测试只验证学位权益匹配、任务失败释放和成功结算等账务行为。',confirmed:true}],references:[],outline:[{id:'chapter',title:'研究背景',targetWords:500}]});
 const success=task=>({text:JSON.stringify({complete:true,text:'研'.repeat(task.context.unit.targetWords)+'[source:source]',source_ids:['source'],missing_evidence:[]}),usage:{input:100,output:500},finishReason:'end_turn',trace:[{tool:'read_material',status:'completed',materialId:'source'}]});
 function fixture(t,{beforeBilling}={}){
  const db=database(':memory:'),user={id:'owner'},other={id:'other'};for(const p of [user,other])db.prepare('INSERT INTO users(id,name,role,created_at) VALUES(?,?,?,?)').run(p.id,p.id,'user',new Date().toISOString());

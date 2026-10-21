@@ -5,15 +5,17 @@ import {thesisSnapshotFromDraft} from '../dist/workspace/writing-model.mjs';
 import {normalizeThesisSnapshot,thesisPlan,selectThesisEvidence,thesisAgentTask,parseThesisSection,thesisManualSourceIds,assertThesisAccountQuota} from '../backend/thesis-model.mjs';
 import {thesisOutlineTask} from '../backend/thesis-outline-model.mjs';
 
+const confirmedConditions='用户提供的现有资料范围与条件说明，当前仅有研究背景整理、问题界定和资料获取条件，尚未形成实证结果。研究对象是城市通勤的影响因素，已有信息用于说明案例选择范围、资料来源和研究限制，拟采用的具体方法仍需结合实际条件确认。后续问卷、访谈或实验尚未实施，样本规模及统计结论也未确定；正文可以讨论研究方案与证据边界，不能将未来计划写成已经发生的事实。';
+
 const proposal={text:'拟结合用户实际可获得的资料开展案例分析，样本与执行条件待用户确认。',jobId:'method-job-1',model:'configured-model',generatedAt:'2026-10-17T00:00:00Z'};
 const draft=(extra={})=>({title:'城市通勤的影响因素研究',degree:'本科',targetWords:500,method:'',outlineRows:[{id:'intro',title:'研究背景',level:1,words:250},{id:'design',title:'拟开展的研究方法',level:1,words:250}],methodSuggestion:{...proposal},...extra});
 const snapshot=(extra={})=>normalizeThesisSnapshot(thesisSnapshotFromDraft(draft(extra)));
 
 test('edited AI method advice stays a proposed requirement and never becomes a confirmed material',()=>{
- const value=thesisSnapshotFromDraft(draft({material:'用户手动填写的真实研究条件说明。',methodSuggestion:{...proposal,text:'用户修改后的拟开展访谈方案，尚未实施。'}}));
+ const value=thesisSnapshotFromDraft(draft({material:confirmedConditions,methodSuggestion:{...proposal,text:'用户修改后的拟开展访谈方案，尚未实施。'}}));
  assert.deepEqual(value.requirements.researchPlan,{text:'用户修改后的拟开展访谈方案，尚未实施。',origin:'ai',status:'proposed',jobId:'method-job-1'});
  assert.equal(value.materials.length,1);
- assert.equal(value.materials[0].text,'用户手动填写的真实研究条件说明。');
+ assert.equal(value.materials[0].text,confirmedConditions);
  assert.equal(value.materials[0].confirmed,true);
  assert.equal(value.profile.method,'');
  assert.equal(value.materials.some(row=>row.text.includes('访谈方案')),false);
@@ -32,7 +34,7 @@ test('a method proposal alone cannot bootstrap real-evidence admission',()=>{
 });
 
 test('a proposal informs method prose without entering source selection or citations',()=>{
- const value=snapshot({knowledgeFiles:[{id:'real-condition',name:'真实条件说明',text:'用户提供的现有资料范围与条件，尚未形成实证结果。'}]});
+ const value=snapshot({knowledgeFiles:[{id:'real-condition',name:'真实条件说明',text:confirmedConditions}]});
  const unit=thesisPlan(value)[1],task=thesisAgentTask(value,unit,[]);
  assert.equal(task.context.requirements.researchPlan.text,proposal.text);
  assert.match(task.instructions,/requirements\.researchPlan.*拟开展研究方案/);

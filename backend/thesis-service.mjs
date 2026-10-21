@@ -86,7 +86,7 @@ export function createThesisService(db,config={}){
   const hash=thesisHash({action,id,snapshotHash:row.snapshot_hash,...(action==='resume'?{runId:currentRun?.id}: {})});
   const old=command(user,input,hash);if(old)return response({item:serialize(own(id,user))});
   expected(input,row);if(active.has(row.status))fail(409,'当前论文正在生成，请先等待或取消');
-  const snapshot=JSON.parse(row.snapshot),plan=action==='generate'?thesisPlan(snapshot,config):null;
+  const snapshot=JSON.parse(row.snapshot),validatedPlan=thesisPlan(snapshot,config),plan=action==='generate'?validatedPlan:null;
   const enabled=await settings(),runtime=action==='resume'?await settings(currentRun?.settings_version):enabled;
   return response(thesisTransaction(db,()=>{const current=own(id,user),existing=command(user,input,hash);if(existing)return {item:serialize(current)};expected(input,current);if(active.has(current.status))fail(409,'论文已经在生成中');admission(user);
    const confirmed=db.prepare('SELECT * FROM thesis_generation_quotes WHERE token=? AND user_id=?').get(typeof input.billingToken==='string'?input.billingToken:'',user.id);

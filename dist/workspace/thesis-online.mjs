@@ -1,4 +1,5 @@
 import {resolveAccountProjectId} from './project-directory.mjs';
+import {assessThesisEvidence} from './thesis-evidence.mjs';
 import {download as exportFile} from './ui.mjs';
 import {withStableView} from './view-stability.mjs';
 import {documentExportButtons,bindDocumentExports} from './document-export.mjs';
@@ -180,7 +181,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  }
  function costText(value){return value.source==='free'?'本次免费，不扣积分或权益次数。':value.source==='credits'?`本次预占 ${value.creditCost} 科研积分。`:`本次预占${value.source==='membership'?'会员':'套餐'}权益 1 次，不扣科研积分。`;}
  function generationNotes(){
-  return `<p>最多 ${Number(cap?.limits?.maxChapters)||30} 章 · 目标上限 ${(Number(cap?.limits?.maxTargetWords)||80000).toLocaleString('zh-CN')} 字。需确认含正文的真实资料，研究方法可稍后补充。</p><p>分章写作基于已确认资料中的相关片段，不等同于全文研读或在线文献核验。</p>`;
+  return `<p>最多 ${Number(cap?.limits?.maxChapters)||30} 章 · 目标上限 ${(Number(cap?.limits?.maxTargetWords)||80000).toLocaleString('zh-CN')} 字。需确认至少 100 个非空白正文字符的真实资料，研究方法可稍后补充。</p><p>分章写作基于已确认资料中的相关片段，不等同于全文研读或在线文献核验。</p>`;
  }
  function controls(){
   if(!item)return '';
@@ -304,7 +305,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   container.querySelectorAll('[data-thesis-quote]').forEach(button=>button.addEventListener('click',()=>void mutate(async()=>{
    if(!cap?.ready||running(item)||dirty())throw Error('请先保存修改并确认服务可用。');
    const binding=requireCurrentSnapshot();
-   if(![...(item.snapshot?.materials||[]),...(item.snapshot?.references||[])].some(row=>row.confirmed===true&&String(row.text||'').trim()))throw Error('请先确认至少一份含正文的真实研究材料；仅有文献题录不足以生成论文。');
+   const evidence=assessThesisEvidence(item.snapshot);if(!evidence.ready)throw Error(evidence.reason+' 仅有文献题录不足以生成论文，请补充真实研究材料。');
    quote=null;generationConsent=false;const value=await api('/theses/'+encodeURIComponent(id)+'/quote',{version:item.version,action:button.dataset.thesisQuote});if(!validThesisQuote(value))throw Error('报价不完整或已过期，请重新获取费用。');if(requireCurrentSnapshot().token!==binding.token)throw Error('论文信息已变化，请重新核对资料并确认费用。');quote={...value,version:item.version,snapshotBinding:binding.token};generationConsent=true;quoteAction=button.dataset.thesisQuote;commandKey=crypto.randomUUID();notice('费用已就绪，可直接开始生成。');
   })));
   $('[data-thesis-consent]')?.addEventListener('change',event=>{generationConsent=event.target.checked;const start=$('[data-thesis-start]');if(start)start.disabled=!generationConsent||busy||dirty()||snapshotBinding().blocked;});

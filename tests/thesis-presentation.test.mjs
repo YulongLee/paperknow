@@ -5,7 +5,7 @@ import {normalizeThesisSnapshot,thesisPlan,thesisAgentTask,parseThesisSection,th
 
 const disabled={table:false,formula:false,code:false};
 const enabled={table:true,formula:true,code:true};
-const source={id:'evidence',name:'用户确认的研究记录',text:'用户确认的研究记录：本例资料记录了六份问卷，项目人数为 6。变量 a 为已有案例数量，b 为观察期数，x=a/b 仅为变量定义。代码 sum([1, 2, 3]) 是待核对的示例，未执行。资料只用于分析与论证，不代表效果经过实验验证。',confirmed:true};
+const source={id:'evidence',name:'用户确认的研究记录',text:'用户确认的研究记录：本例资料记录了六份问卷，项目人数为 6。变量 a 为已有案例数量，b 为观察期数，x=a/b 仅为变量定义。代码 sum([1, 2, 3]) 是待核对的示例，未执行。资料只用于分析与论证，不代表效果经过实验验证。记录同时要求每一项表格、公式或代码呈现都保留原有资料边界，示例不能被改写成新的实验发现或未经验证的统计结论。',confirmed:true};
 const input=(extra={})=>({title:'小节呈现偏好的研究',profile:{level:'本科',language:'中文',targetWords:500},requirements:{contentMode:'rich'},materials:[source],references:[],outline:[{id:'chapter',title:'研究分析',targetWords:500}],...extra});
 function fixture(presentation,contentMode='rich'){
  const snapshot=normalizeThesisSnapshot(input({requirements:contentMode===undefined?{}:{contentMode},outline:[{id:'chapter',title:'研究分析',targetWords:500,...(presentation===undefined?{}:{presentation})}]}));

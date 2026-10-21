@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {isOutlineReferenceChapter} from '../dist/workspace/outline-word-budget.mjs';
 import {presentThesisDocument} from '../dist/workspace/thesis-document.mjs';
+import {assessThesisEvidence} from '../dist/workspace/thesis-evidence.mjs';
 import {researchWordCount} from './text-length.mjs';
 
 export const thesisError=(status,message,code)=>Object.assign(new Error(message),{status,...(code?{code}:{})});
@@ -69,7 +70,7 @@ function normalizeSourceIds(value=[]){if(!Array.isArray(value)||value.length>240
 export function thesisPlan(snapshot,config={}){
  const limits=thesisLimits(config);
  if(!snapshot.outline.length)fail(400,'请先确认至少一个论文章节');
- if(![...snapshot.materials,...snapshot.references].some(row=>row.confirmed&&row.text.trim()))fail(400,'请先确认至少一份含正文的研究材料或文献，不能凭空生成研究结果');
+ const evidence=assessThesisEvidence(snapshot);if(!evidence.ready)fail(400,evidence.reason);
  const writingChapters=snapshot.outline.filter(chapter=>!isThesisReferenceChapter(chapter));if(!writingChapters.length)fail(400,'请至少确认一个正文写作章节，参考文献列表由已使用来源编排');
  const specified=writingChapters.reduce((n,row)=>n+row.targetWords,0);
  if(specified>snapshot.profile.targetWords)fail(400,'章节目标字数合计不能超过论文目标字数');

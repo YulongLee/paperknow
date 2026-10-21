@@ -4,6 +4,8 @@ import {allocateOutlineWordBudget} from '../dist/workspace/outline-word-budget.m
 import {thesisSnapshotFromDraft} from '../dist/workspace/writing-model.mjs';
 import {normalizeThesisSnapshot,thesisPlan} from '../backend/thesis-model.mjs';
 
+const evidenceText='这份材料由测试用户提供并确认，记录跨学科研究流程的案例范围、资料分类方式和章节组织要求。现阶段只有用于验证字数计划的人工说明，不包含已经实施的实验、访谈或问卷结果。正文应根据材料描述讨论研究背景、案例分析与后续研究计划，明确区分已有内容与待验证事项；本测试仅检查章节和小节预算如何传递、分配及汇总，不据此主张任何真实研究结论。';
+
 const chapters=[
  {id:'intro',title:'第一章 研究背景',sections:[{id:'intro-a',title:'研究背景与意义'}]},
  {id:'method',title:'第二章 研究设计与方法',sections:[{id:'method-a',title:'研究对象'},{id:'method-b',title:'研究方法'}]},
@@ -13,7 +15,7 @@ const chapters=[
 ];
 function draftWithBudget(targetWords){
  const allocated=allocateOutlineWordBudget(chapters,targetWords);
- return {title:'跨学科研究流程的案例分析',degree:'硕士',targetWords,knowledgeFiles:[{id:'source',name:'流程案例记录（测试材料）',text:'仅用于字数计划验证的人工测试材料，不是真实研究结果。'}],outlineRows:allocated.flatMap(chapter=>[
+ return {title:'跨学科研究流程的案例分析',degree:'硕士',targetWords,knowledgeFiles:[{id:'source',name:'流程案例记录（测试材料）',text:evidenceText}],outlineRows:allocated.flatMap(chapter=>[
   {id:chapter.id,title:chapter.title,kind:chapter.kind,level:1,words:chapter.sections.length?0:chapter.targetWords},
   ...chapter.sections.map(section=>({id:section.id,title:section.title,level:2,words:section.targetWords}))
  ])};
@@ -34,13 +36,13 @@ for(const target of [8000,30001,80000])test(`outline editor budget reaches the b
 });
 
 test('body splits preserve odd section budgets without adding rounding words',()=>{
- const snapshot=normalizeThesisSnapshot({title:'预算测试',profile:{targetWords:3501},materials:[{id:'evidence',name:'测试材料',text:'验证字数分段的测试材料。',confirmed:true}],outline:[{id:'chapter',title:'研究分析',targetWords:3501}]});
+ const snapshot=normalizeThesisSnapshot({title:'预算测试',profile:{targetWords:3501},materials:[{id:'evidence',name:'测试材料',text:evidenceText,confirmed:true}],outline:[{id:'chapter',title:'研究分析',targetWords:3501}]});
  const plan=thesisPlan(snapshot);
  assert.deepEqual(plan.map(unit=>unit.targetWords),[1751,1750]);
 });
 
 test('legacy unspecified chapters and sections receive all remaining integer words',()=>{
- const input={title:'旧快照预算测试',profile:{targetWords:8000},materials:[{id:'evidence',name:'测试材料',text:'验证旧提纲字数分配的测试材料。',confirmed:true}]};
+ const input={title:'旧快照预算测试',profile:{targetWords:8000},materials:[{id:'evidence',name:'测试材料',text:evidenceText,confirmed:true}]};
  const chapterPlan=thesisPlan(normalizeThesisSnapshot({...input,outline:[{id:'a',title:'研究背景'},{id:'b',title:'研究方法'},{id:'c',title:'案例分析'}]}));
  assert.equal(chapterPlan.reduce((sum,unit)=>sum+unit.targetWords,0),8000);
  assert.deepEqual(['a','b','c'].map(id=>chapterPlan.filter(unit=>unit.chapterId===id).reduce((sum,unit)=>sum+unit.targetWords,0)),[2667,2667,2666]);
@@ -50,7 +52,7 @@ test('legacy unspecified chapters and sections receive all remaining integer wor
 });
 
 test('a zero or undersized section cannot silently add words to an exhausted chapter budget',()=>{
- const input={title:'小节最小预算测试',profile:{targetWords:500},materials:[{id:'evidence',name:'测试材料',text:'验证预算最小值的测试材料。',confirmed:true}]};
+ const input={title:'小节最小预算测试',profile:{targetWords:500},materials:[{id:'evidence',name:'测试材料',text:evidenceText,confirmed:true}]};
  for(const words of [0,19]){
   const snapshot=normalizeThesisSnapshot({...input,outline:[{id:'a',title:'案例分析',targetWords:500,sections:[{id:'a1',title:'分析一',targetWords:500-words},{id:'a2',title:'分析二',targetWords:words}]}]});
   assert.throws(()=>thesisPlan(snapshot),/至少需要.*20 字/);

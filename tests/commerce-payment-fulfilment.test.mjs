@@ -96,7 +96,7 @@ test('legacy AI availability cannot sell degree-specific writing when the requir
   assert.equal(f.payments.options().products.find(item=>item.id===offer.id).purchasable,false);
   for(const provider of ['wechat','alipay'])await assert.rejects(f.create(owner,offer.id,provider),{status:409});
  }
- const snapshot={title:'合成研究资料的分析',profile:{level:'本科',language:'中文',targetWords:500},materials:[{id:'source',name:'合成资料',text:'用户确认的合成研究资料，仅用于验证配置关闭时不销售不可执行的写作功能。',confirmed:true}],references:[],outline:[{id:'chapter',title:'研究背景',targetWords:500}]},config={...f.config,billing:f.billing},theses=createThesisService(f.db,config),drafts=createWritingService(f.db,config);
+ const snapshot={title:'合成研究资料的分析',profile:{level:'本科',language:'中文',targetWords:500},materials:[{id:'source',name:'合成资料',text:'用户确认的合成研究资料，仅用于验证配置关闭时不销售不可执行的写作功能。测试案例关注资料来源、写作权限与服务配置之间的关系，资料已经整理为研究背景、研究范围及任务限制三个部分。所有记录都属于隔离环境中的人工示例，不包含真实实验结果或用户隐私；任务应依据这些说明判断能否执行，并保留账户权限、报价绑定和权益结算边界。',confirmed:true}],references:[],outline:[{id:'chapter',title:'研究背景',targetWords:500}]},config={...f.config,billing:f.billing},theses=createThesisService(f.db,config),drafts=createWritingService(f.db,config);
  const created=await theses.handle({path:'/api/theses',method:'POST',user:owner,readBody:async()=>({snapshot,clientKey:randomUUID()})});
  await assert.rejects(theses.handle({path:'/api/theses/'+created.value.item.id+'/quote',method:'POST',user:owner,readBody:async()=>({version:created.value.item.version,action:'generate'})}),{status:503});
  await assert.rejects(drafts.handle({path:'/api/writing/quote',method:'POST',user:owner,readBody:async()=>({kind:'proposal',operation:'draft',snapshot})}),{status:503});

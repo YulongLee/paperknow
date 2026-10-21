@@ -7,7 +7,7 @@ import {mountThesisStage,mountOnlineThesis,mountThesisLibrary,disposeOnlineThesi
 import {thesisSnapshotFromDraft} from '../dist/workspace/writing-model.mjs';
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const settle=async()=>{for(let i=0;i<5;i++)await tick();};
-const snapshot=()=>({title:'真实研究',profile:{level:'博士',discipline:'物理学',language:'中文',targetWords:8000,method:'实验记录与文献分析',researchQuestion:'材料如何变化'},materials:[{id:'m1',name:'实验笔记',text:'真实实验记录，待自行核对。',purpose:'研究过程',confirmed:true}],references:[{id:'r1',title:'用户导入文献',sourceLabel:'本地题录，未核验',confirmed:true}],outline:[{id:'c1',title:'第一章 背景',targetWords:4000},{id:'c2',title:'第二章 讨论',targetWords:4000}]});
+const snapshot=()=>({title:'真实研究',profile:{level:'博士',discipline:'物理学',language:'中文',targetWords:8000,method:'实验记录与文献分析',researchQuestion:'材料如何变化'},materials:[{id:'m1',name:'实验笔记',text:'真实实验记录，待自行核对。'.repeat(12),purpose:'研究过程',confirmed:true}],references:[{id:'r1',title:'用户导入文献',sourceLabel:'本地题录，未核验',confirmed:true}],outline:[{id:'c1',title:'第一章 背景',targetWords:4000},{id:'c2',title:'第二章 讨论',targetWords:4000}]});
 const thesis=(overrides={})=>({id:'t1',version:1,title:'真实研究',profile:snapshot().profile,snapshot:snapshot(),outline:snapshot().outline,status:'draft',job:null,chapters:[{id:'c1',title:'第一章 背景',version:0,status:'pending',text:'',sourceIds:[]},{id:'c2',title:'第二章 讨论',version:0,status:'pending',text:'',sourceIds:[]}],...overrides});
 const quote=()=>({type:'agent',source:'credits',title:'论文分章生成',token:'quote-token',creditCost:10,expiresAt:new Date(Date.now()+60000).toISOString()});
 function fixture({item=thesis(),user={id:'u1'},cap={ready:true},handler}={}){
@@ -51,7 +51,7 @@ test('cloud save does not generate; model generation requires a valid quote and 
 });
 test('missing research evidence blocks quoting and saving research materials creates an explicit new snapshot',async()=>{
  const empty=thesis({profile:{...snapshot().profile,method:''},snapshot:{...snapshot(),profile:{...snapshot().profile,method:''},materials:[]}}),f=fixture({item:empty});const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
- f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(c=>c.path==='/theses/t1/quote').length,0);assert.match(f.$('[data-thesis-notice]').textContent,/含正文的真实研究材料/);
+ f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(c=>c.path==='/theses/t1/quote').length,0);assert.match(f.$('[data-thesis-notice]').textContent,/含正文的研究材料/);
  input(f,'#thesis-research-method','文献分析');input(f,'#thesis-research-supplement','用户提供的原始证据');f.$('[data-thesis-save-research]').click();await settle();const write=f.calls.find(c=>c.path==='/theses/t1'&&c.data);assert.equal(write.data.snapshot.profile.method,'文献分析');assert.equal(write.data.snapshot.materials[0].confirmed,true);assert.equal(write.data.snapshot.materials[0].text,'用户提供的原始证据');f.close();
 });
 test('optional blank profile reaches the quote with the generation checkbox ready and still waits for an explicit start',async()=>{
@@ -297,4 +297,9 @@ test('opening thesis fee details retains its state and opt-out across chapter re
  const summary=f.$('[data-thesis-disclosure="fees"]');summary.focus();f.$('[data-thesis-start]').dispatchEvent(new window.MouseEvent('click',{bubbles:true}));await settle();assert.equal(f.calls.some(c=>c.path.endsWith('/generate')),false);assert.equal(document.activeElement,summary);
  f.$('.thesis-generation-details').open=false;f.$('[data-thesis-chapter="c1"]').click();assert.equal(f.$('.thesis-generation-details').open,false);assert.equal(f.$('[data-thesis-start]').disabled,true);
  }finally{f.close();}
+});
+
+
+test('one-character placeholder evidence is rejected before a quote or generation request',async()=>{
+ const value=snapshot();value.materials=[{id:'m1',name:'研究说明',text:'1',confirmed:true}];const f=fixture({item:thesis({snapshot:value})});try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.some(row=>row.path==='/theses/t1/quote'),false);assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);assert.match(f.$('[data-thesis-notice]').textContent,/100/);}finally{f.close();}
 });

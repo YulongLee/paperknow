@@ -1,3 +1,4 @@
+import {thesisResearchText,confirmThesisMaterials} from './helpers/thesis-flow.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
@@ -19,14 +20,14 @@ const {clearEditor}=await import('../dist/workspace/edit-guard.mjs');
 bootstrap.close();
 for(const source of ['crossref','aminer','arxiv'])test(source+' reference actions import safe pending metadata, retain source attribution and survive explicit confirmation/save/reopen',async()=>{
  const f=fixture(source),label=source==='aminer'?'AMiner':source==='arxiv'?'arXiv':'Crossref';try{
-  mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','graph neural networks');f.$('#writing-generate').click();f.$('#writing-material-confirm').click();await settle();assert.equal(f.calls.length,0);
+  mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','graph neural networks');f.$('#writing-generate').click();confirmThesisMaterials();await settle();assert.equal(f.calls.length,0);
   f.$('[data-reference-mode="recommend"]').click();await settle();assert.equal(f.calls.length,1);assert.equal(new URL(f.calls[0].url,'https://example.test').searchParams.get('q'),'graph neural networks');
   const choice=f.$('[data-ref-select]');choice.checked=true;choice.dispatchEvent(new window.Event('change',{bubbles:true}));f.$('[data-ref-import]').click();await settle();f.$('[data-ref-done]').click();
   assert.ok(f.$('#writing-reference-list').textContent.includes(label+' · 在线题录，未读取全文'));f.$('#writing-save').click();let draft=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];
   assert.equal(draft.writingReferences.length,1);assert.equal(draft.writingReferences[0].confirmed,false);assert.equal(draft.writingReferences[0].text,'');assert.equal(draft.writingReferences[0].fullTextRead,false);if(source==='arxiv'){const row=draft.writingReferences[0];assert.equal(row.arxivId,'2610.12345v2');assert.equal(row.sourceId,'2610.12345');assert.equal(row.publishedDate,'2026-10-18T09:30:00.000Z');assert.equal(row.updatedDate,'2026-10-19T10:00:00.000Z');assert.equal(row.pdfUrl,'https://arxiv.org/pdf/2610.12345v2');assert.deepEqual(row.categories,['cs.AI']);}
   f.$('[data-reference-mode="search"]').click();await settle();assert.equal(f.calls.length,1,'opening search does not transmit query before submission');f.$('.wrs-form').dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true}));await settle();assert.equal(f.calls.length,2);assert.equal(f.$('[data-ref-select]').disabled,true,'same identifier cannot be added twice');f.$('[data-ref-done]').click();
   f.$('#writing-reference-confirm').click();await settle();f.$('#writing-save').click();draft=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(draft.workflowStage,4);assert.equal(draft.writingReferences[0].confirmed,true);
-  const snapshot=thesisSnapshotFromDraft(draft);assert.ok(snapshot.references[0].sourceLabel.includes(label));assert.equal(snapshot.references[0].text,'');assert.equal(snapshot.materials.length,0);
+  const snapshot=thesisSnapshotFromDraft(draft);assert.ok(snapshot.references[0].sourceLabel.includes(label));assert.equal(snapshot.references[0].text,'');assert.equal(snapshot.materials.length,1);assert.equal(snapshot.materials[0].text,thesisResearchText);
   clearEditor();mountWriting(draft.id,undefined,f.ctx);f.$('[data-writing-step="3"]').click();await settle();assert.match(f.$('#writing-reference-list').textContent,/Public metadata fixture/);assert.match(f.$('#writing-reference-list').textContent,/未读取全文/);
  }finally{f.close();}
 });
