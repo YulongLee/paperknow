@@ -551,3 +551,30 @@ test('research image task links retain their job identity without exposing raw i
  const f=await fixture(t,{view:'tasks',request:async path=>path==='/api/jobs'?{ok:true,status:200,json:async()=>({items:[{id:'recover-image',type:'tool_run',tool_kind:'research',tool_operation:'image',title:'待处理科研图',status:'running',created_at:now}]})}:undefined});
  assert.match(f.doc.querySelector('#job-list').textContent,/AI 科研绘图/);assert.ok([...f.doc.querySelectorAll('#job-list a')].some(link=>link.getAttribute('href')==='#category/research?mode=basic&job=recover-image'));assert.equal(f.calls.some(call=>call.body),false);
 });
+
+
+for(const [view,expected,selector] of [
+ ['usage',['/api/auth/me','/api/usage','/api/workspace/summary'],'.account-personal-metrics'],
+ ['help',['/api/auth/me','/api/feedback'],'#feedback-form'],
+ ['membership',['/api/auth/me','/api/payments/entitlements','/api/workspace/summary','/api/capabilities','/api/payments/options'],'.account-personal-metrics'],
+ ['tasks',['/api/capabilities','/api/auth/me','/api/projects','/api/jobs'],'#task-form'],
+ ['agent',['/api/capabilities','/api/auth/me','/api/projects','/api/files','/api/jobs'],'#agent-form'],
+ ['results',['/api/auth/me','/api/projects','/api/results','/api/workspace/drafts','/api/theses'],'#account-asset-query'],
+ ['projects',['/api/capabilities','/api/auth/me','/api/projects','/api/files','/api/results','/api/workspace/drafts','/api/theses'],'#project-form'],
+])test(view+' shows its account page even when unrelated libraries are unavailable and only reads required resources',async t=>{
+ const f=await fixture(t,{view,request:async(path,options)=>!options.body&&!expected.includes(path)?{ok:false,status:503,json:async()=>({error:'Unrelated library unavailable'})}:undefined});
+ assert.ok(f.doc.querySelector(selector),'the selected page is ready without unrelated library data');
+ assert.deepEqual(f.calls.map(call=>call.path).sort(),[...expected].sort());
+ for(const call of f.calls.filter(call=>!['/api/auth/me','/api/capabilities'].includes(call.path)))assert.equal(call.options.headers['X-PaperKnow-User'],'u1');
+});
+
+test('public capability and session reads overlap while private resources wait for the confirmed owner',async t=>{
+ const f=await fixture(t,{view:'tasks'});f.calls.length=0;
+ let confirmIdentity,identityStarted=false;const pendingIdentity=new Promise(resolve=>{confirmIdentity=resolve;});
+ const mounting=f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'tasks',{...f.ctx,session:async()=>{identityStarted=true;return pendingIdentity;}});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(identityStarted,true);assert.deepEqual(f.calls.map(call=>call.path),['/api/capabilities']);
+ confirmIdentity({status:'ready',user:{id:'verified-owner'}});await mounting;
+ assert.ok(f.doc.querySelector('#task-form'));assert.equal(f.calls.some(call=>call.path==='/api/auth/me'),false);
+ for(const call of f.calls.filter(call=>call.path!=='/api/capabilities'))assert.equal(call.options.headers['X-PaperKnow-User'],'verified-owner');
+});

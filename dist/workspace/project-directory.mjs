@@ -80,7 +80,7 @@ export function installProjectPickers(root,{onSessionRetry}={}){
   else if(!hasDraftScope()&&account.length)note.textContent='账户项目关联在线任务与生成成果；草稿按页面提示保存。';
   note.hidden=!note.textContent;seen.set(select,stamp);
  }
- function update(){if(!alive||!root.isConnected)return;withStableView(root.closest('.dashboard')||root,()=>root.querySelectorAll('select[data-project-picker]').forEach(paint));}
+ function update(){if(!alive||!root.isConnected)return;const pickers=root.querySelectorAll('select[data-project-picker]');if(!pickers.length)return;withStableView(pickers[0].closest('.dashboard')||root,()=>pickers.forEach(paint));}
  function schedule(){if(scheduled||!alive)return;scheduled=true;queueMicrotask(()=>{scheduled=false;update();if(root.querySelector('select[data-project-picker]'))void refreshAccountProjects();});}
  const observer=new win.MutationObserver(records=>{if(records.some(record=>[...record.addedNodes].some(node=>node.nodeType===1&&(node.matches?.('select[data-project-picker]')||node.querySelector?.('select[data-project-picker]')))))schedule();});
  observer.observe(root,{childList:true,subtree:true});listeners.add(update);schedule();

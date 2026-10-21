@@ -39,10 +39,7 @@
 /* The shared banner uses the existing independently generated pen illustration. */
 #app .dashboard.writing-landing header.writing-landing-hero{margin-bottom:26px;background:radial-gradient(ellipse at 83% 15%,#cfddff9c,transparent 50%),radial-gradient(ellipse at 48% 110%,#e6e4ff77,transparent 54%),linear-gradient(108deg,#fff 8%,#f2f6ff 60%,#edf2ff 100%)}
 #app .dashboard.writing-landing header.writing-landing-hero h1{font-size:clamp(27px,2.2vw,36px);font-weight:650;letter-spacing:-.035em;line-height:1.45;margin-top:15px}
-#app .dashboard.writing-landing header.writing-landing-hero .tool-banner-glass{animation:writing-pen-float 7s ease-in-out infinite}
-#app .dashboard.writing-landing header.writing-landing-hero .tool-banner-token{animation:writing-token-float 6s ease-in-out infinite}
-@keyframes writing-pen-float{0%,100%{translate:0 0;rotate:0deg}50%{translate:0 -7px;rotate:1deg}}
-@keyframes writing-token-float{0%,100%{translate:0 0}50%{translate:0 6px}}
+#app .dashboard.writing-landing header.writing-landing-hero :is(.tool-banner-glass,.tool-banner-token){animation:none}
 /* Override the older large-screen layout; the new rail follows its own container. */
 #app .dashboard.creation-page.writing-landing .writing-catalog-commercial .capability-group-writing .capability-list{grid-template-columns:repeat(2,minmax(0,1fr))}
 #app .dashboard.creation-page.writing-landing .writing-catalog-commercial .capability-groups{grid-template-columns:minmax(0,1.55fr) minmax(0,1fr)}

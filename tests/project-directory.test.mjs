@@ -199,3 +199,24 @@ test('a session error without an authentication retry callback does not expose a
  await settle(()=>root.querySelector('[data-project-picker-status]')?.textContent.includes('账户连接暂不可用'));
  assert.equal(root.querySelector('[data-project-picker-status] button'),null);assert.equal(calls.length,0);
 });
+
+
+test('directory updates on pages without a project picker do not read layout or scan scroll positions',async t=>{
+ const{w,root,directory:d,install}=await fixture(t,{html:'<div id="root"><aside id="navigation"><button>工作台导航</button></aside><main class="dashboard"><h1>格式排版</h1></main></div>'});
+ const measured=[],original=w.getComputedStyle.bind(w);w.getComputedStyle=node=>{measured.push(node);return original(node);};
+ root.getBoundingClientRect=()=>{throw Error('an unrelated page must not force project-picker layout');};
+ d.setProjectDirectorySession({id:'alice'});d.updateAccountProjects('alice',[{id:'p1',title:'账户项目'}]);install();
+ await new Promise(resolve=>setImmediate(resolve));
+ d.updateAccountProjects('alice',[{id:'p1',title:'已更新账户项目'}]);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(measured.length,0);assert.equal(root.querySelector('h1').textContent,'格式排版');
+});
+
+test('project picker stabilization measures only its feature rather than the full navigation shell',async t=>{
+ const{w,root,directory:d,install}=await fixture(t,{html:'<div id="root"><aside id="navigation"><button id="menu">导航</button></aside><main class="dashboard"><form><textarea id="notes">保留输入</textarea><select data-project-picker></select></form></main></div>'});
+ const measured=[],original=w.getComputedStyle.bind(w);w.getComputedStyle=node=>{measured.push(node);return original(node);};
+ root.getBoundingClientRect=()=>{throw Error('the app shell is outside the picker update');};
+ d.setProjectDirectorySession({id:'alice'});d.updateAccountProjects('alice',[{id:'p1',title:'功能项目'}]);install();
+ await settle(()=>root.querySelector('select option[value="account:alice:p1"]'));
+ assert.ok(measured.length);assert.ok(measured.every(node=>node.matches('.dashboard')));assert.equal(root.querySelector('textarea').value,'保留输入');
+});

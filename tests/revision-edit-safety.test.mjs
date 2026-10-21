@@ -20,17 +20,17 @@ const source=(await readFile(new URL('../dist/workspace/revision.mjs',import.met
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 const until=async check=>{for(let i=0;i<100;i++){if(check())return;await tick();}assert.ok(check(),'UI did not settle');};
 function fixture(t,{entry=true,extract=async()=>({text:'Parsed source.',warnings:[]})}={}){
- const dom=new JSDOM('<main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'https://paperknow.test/workspace.html'+(entry?'#category/reduce':'#tool/rewrite'),runScripts:'outside-only'}),w=dom.window,$=selector=>w.document.querySelector(selector),notices=[],downloads=[],requests=[];let fail=false,entryFail=false;
+ const dom=new JSDOM('<main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'https://paperknow.test/workspace.html'+(entry?'#category/reduce':'#tool/rewrite'),runScripts:'outside-only'}),w=dom.window,$=selector=>w.document.querySelector(selector),notices=[],downloads=[],requests=[];let fail=false,entryFail=false;const storageCalls={reads:0,writes:0,entryWrites:0};
  globalThis.document=w.document;
  const originalSet=w.Storage.prototype.setItem;
- w.Storage.prototype.setItem=function(key,value){if(entryFail&&key==='paperknow-revision-entry')throw Error('Synthetic entry quota');return originalSet.call(this,key,value);};
- Object.assign(w,{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports,...model,importWorkspaceDocument:extract,documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[],list:key=>JSON.parse(w.localStorage.getItem(key)||'[]'),write:(key,rows)=>{if(fail)throw Error('Synthetic storage failure');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:()=>{},download:(...args)=>downloads.push(args)});
+ w.Storage.prototype.setItem=function(key,value){if(key==='paperknow-revision-entry')storageCalls.entryWrites++;if(entryFail&&key==='paperknow-revision-entry')throw Error('Synthetic entry quota');return originalSet.call(this,key,value);};
+ Object.assign(w,{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports,...model,importWorkspaceDocument:extract,documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[],list:key=>{storageCalls.reads++;return JSON.parse(w.localStorage.getItem(key)||'[]');},write:(key,rows)=>{storageCalls.writes++;if(fail)throw Error('Synthetic storage failure');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:()=>{},download:(...args)=>downloads.push(args)});
  w.confirm=()=>false;
  const closeDialog=()=>{$('dialog').removeAttribute('open');$('dialog').dispatchEvent(new w.Event('close'));};$('dialog').close=closeDialog;
  const ctx={mode:entry?'reduce':'rewrite',notify:text=>notices.push(text),modal:(_title,html)=>{$('#workspace-dialog-body').innerHTML=html;$('dialog').setAttribute('open','');},api:async(...args)=>{requests.push(args);throw Error('Unexpected API request');}};
  w.eval(source+'\nwindow.revisionSafety={mountRevision,disposeRevision,revisionHasWork,revisionRouteGuard};');w.revisionSafety.mountRevision(ctx);
  t.after(()=>{fail=false;entryFail=false;w.revisionSafety.disposeRevision();w.Storage.prototype.setItem=originalSet;dom.window.close();});
- return{w,$,ctx,notices,downloads,requests,closeDialog,fail:value=>{fail=value;},failEntry:value=>{entryFail=value;},drafts:()=>JSON.parse(w.localStorage.getItem('test-drafts')||'[]'),input(selector,value){const node=$(selector);assert.ok(node,selector);node.value=value;node.dispatchEvent(new w.Event('input',{bubbles:true}));},click(selector){assert.ok($(selector),selector);$(selector).click();},submit(selector){$(selector).dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));},file(selector,name){const node=$(selector),file={name,size:100};Object.defineProperty(node,'files',{configurable:true,value:[file]});node.dispatchEvent(new w.Event('change',{bubbles:true}));return file;}};
+ return{w,$,ctx,notices,downloads,requests,storageCalls,closeDialog,fail:value=>{fail=value;},failEntry:value=>{entryFail=value;},drafts:()=>JSON.parse(w.localStorage.getItem('test-drafts')||'[]'),input(selector,value){const node=$(selector);assert.ok(node,selector);node.value=value;node.dispatchEvent(new w.Event('input',{bubbles:true}));},click(selector){assert.ok($(selector),selector);$(selector).click();},submit(selector){$(selector).dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));},file(selector,name){const node=$(selector),file={name,size:100};Object.defineProperty(node,'files',{configurable:true,value:[file]});node.dispatchEvent(new w.Event('change',{bubbles:true}));return file;}};
 }
 function create(f,text='FIRST original paragraph.\n\nSECOND original paragraph.'){
  f.click('[data-revision-input="paste"]');f.input('#revision-service-title','Existing document');f.input('#revision-service-text',text);f.submit('#revision-entry-form');assert.ok(f.$('#revision-space'));
@@ -93,4 +93,25 @@ test('R-ALL-COUNT-MISMATCH: 120 paragraphs and exact 32,000/3,500 boundaries agr
 test('an oversized all-paragraph scope is rejected before auth, quote or chargeable submission',async t=>{
  const dom=new JSDOM('<main><div id="panel"></div></main>',{url:'https://paperknow.test/workspace.html#tool/rewrite'}),notices=[],calls=[],doc=model.createRevision({title:'Many short paragraphs',text:Array(121).fill('Short source.').join('\n\n'),mode:'rewrite'},'r','now');globalThis.document=dom.window.document;
  const ui=mountRevisionAi({container:dom.window.document.querySelector('#panel'),getDocument:()=>doc,updateDocument:()=>{},ctx:{notify:value=>notices.push(value),api:async(...args)=>{calls.push(args);throw Error('No request expected');}}});t.after(()=>{ui.dispose();dom.window.close();});const scope=dom.window.document.querySelector('[data-rev-ai-scope]');scope.value='all';scope.dispatchEvent(new dom.window.Event('change'));dom.window.document.querySelector('[data-rev-ai-open]').click();await tick();assert.match(notices.join(''),/120 段/);assert.equal(calls.length,0);assert.match(dom.window.document.querySelector('.rev-ai-note').textContent,/120 段/);
+});
+
+
+test('clean revision navigation and disposal do not read or rewrite the full draft collection',t=>{
+ const f=fixture(t);create(f);Object.assign(f.storageCalls,{reads:0,writes:0,entryWrites:0});
+ assert.equal(f.w.revisionSafety.revisionRouteGuard(),true);assert.equal(f.w.revisionSafety.revisionRouteGuard(),true);f.w.revisionSafety.disposeRevision();
+ assert.deepEqual(f.storageCalls,{reads:0,writes:0,entryWrites:0});
+});
+test('an edited revision checkpoints once across repeated navigation guards and disposal',t=>{
+ const f=fixture(t);create(f);Object.assign(f.storageCalls,{reads:0,writes:0,entryWrites:0});f.input('#rev-suggestion','The revised sentence still requires review.');
+ assert.equal(f.w.revisionSafety.revisionRouteGuard(),true);assert.equal(f.w.revisionSafety.revisionRouteGuard(),true);f.w.revisionSafety.disposeRevision();
+ assert.deepEqual(f.storageCalls,{reads:1,writes:1,entryWrites:0});assert.equal(f.drafts()[0].paragraphs[0].suggestion,'The revised sentence still requires review.');assert.equal(f.drafts()[0].paragraphs[0].accepted,false);
+});
+test('failed revision checkpoint remains dirty, blocks leaving and retries before becoming clean',t=>{
+ const f=fixture(t);create(f);f.fail(true);f.input('#rev-suggestion','Keep this unsaved revised sentence.');
+ assert.equal(f.w.revisionSafety.revisionRouteGuard(),false);assert.equal(f.w.revisionSafety.revisionHasWork(),true);assert.equal(f.$('#rev-suggestion').value,'Keep this unsaved revised sentence.');
+ f.fail(false);Object.assign(f.storageCalls,{reads:0,writes:0,entryWrites:0});assert.equal(f.w.revisionSafety.revisionRouteGuard(),true);f.w.revisionSafety.disposeRevision();
+ assert.deepEqual(f.storageCalls,{reads:1,writes:1,entryWrites:0});assert.equal(f.drafts()[0].paragraphs[0].suggestion,'Keep this unsaved revised sentence.');
+});
+test('a clean revision preparation page leaves without writing an empty preparation draft',t=>{
+ const f=fixture(t);Object.assign(f.storageCalls,{reads:0,writes:0,entryWrites:0});assert.equal(f.w.revisionSafety.revisionRouteGuard(),true);f.w.revisionSafety.disposeRevision();assert.deepEqual(f.storageCalls,{reads:0,writes:0,entryWrites:0});
 });

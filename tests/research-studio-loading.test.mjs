@@ -12,10 +12,11 @@ import {esc,icon,download,formatDate} from '../dist/workspace/ui.mjs';
 
 const moduleSource=await readFile(new URL('../dist/workspace/research.mjs',import.meta.url),'utf8');
 // Keep the production loader, lifecycle guards, renderers and event handlers intact.
-// Substitute only the two network import boundaries with controlled promises.
+// Substitute only lazy module import boundaries with controlled promises.
 const source=moduleSource.replace(/^import .*;\n/gm,'').replace(/^export /gm,'')
  .replace("import('./research-formula-studio.mjs')",'loadFormulaStudioModule()')
- .replace("import('./research-drawing-studio.mjs')",'loadDrawingStudioModule()');
+ .replace("import('./research-drawing-studio.mjs')",'loadDrawingStudioModule()')
+ .replace("import('./tool-job-panel.mjs')",'loadToolJobPanelModule()');
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const flush=async()=>{for(let i=0;i<4;i++)await new Promise(resolve=>setImmediate(resolve));};
 
@@ -27,7 +28,7 @@ function harness(t,{mode='formula',session,drafts=[],ownerId,loadFormula,loadDra
  if(ownerId)state.beginDraftScope({ownerId,drafts});
  else if(drafts.length)w.localStorage.setItem(state.keys.drafts,JSON.stringify(drafts));
  if(session)w.localStorage.setItem(deliveryModel.researchSessionKey,JSON.stringify(session));
- const calls={formulaLoads:0,drawingLoads:0,mounts:[],disposals:[]},notices=[];
+ const calls={formulaLoads:0,drawingLoads:0,mounts:[],disposals:[],toolPanels:[]},notices=[];
  function mounted(kind,container,options){
   const lifecycle={dispose(){calls.disposals.push({kind,container});},hasUnsaved:()=>false,saveDraft:()=>true};
   calls.mounts.push({kind,container,options,lifecycle});
@@ -39,6 +40,7 @@ function harness(t,{mode='formula',session,drafts=[],ownerId,loadFormula,loadDra
   drawing:{mountResearchDrawing:(container,ctx,options)=>mounted('drawing',container,{...options,ctx})}
  };
  Object.assign(w,researchModel,deliveryModel,state,{structuredClone,mountFormulaOcr,toolBanner,withStableView,esc,icon,download,formatDate,
+  loadToolJobPanelModule:async()=>({mountToolJobPanel:options=>{let value={};const panel={setState(next){value=next;return options.onStateChange(next);},options};calls.toolPanels.push(panel);return{open(){},getState:()=>value,inputChanged(){},dispose(){}};}}),
   loadFormulaStudioModule:()=>{calls.formulaLoads++;return loadFormula?loadFormula(modules.formula,calls.formulaLoads):Promise.resolve(modules.formula);},
   loadDrawingStudioModule:()=>{calls.drawingLoads++;return loadDrawing?loadDrawing(modules.drawing,calls.drawingLoads):Promise.resolve(modules.drawing);}
  });
@@ -171,4 +173,25 @@ test('a stale rejected load after navigation cannot add a retry panel to the cur
  h.click('[data-mode="data"]');const table=h.q('.research-table');
  loading.reject(Error('Late download failure'));assert.equal(await ready,null);
  assert.equal(h.q('.research-table'),table);assert.equal(h.q('[data-research-studio-retry]'),null);assert.equal(h.calls.mounts.length,0);
+});
+
+
+test('clean research navigation and disposal avoid synchronously writing unchanged session data',async t=>{
+ const h=harness(t,{mode:'data'});h.mount();let writes=0;const original=h.w.Storage.prototype.setItem;
+ h.w.Storage.prototype.setItem=function(key,value){if(key===deliveryModel.researchSessionKey)writes++;return original.call(this,key,value);};
+ assert.equal(h.w.lifecycle.researchRouteGuard(),true);assert.equal(h.w.lifecycle.researchRouteGuard(),true);h.dispose();assert.equal(writes,0);
+});
+test('research changes persist once and identical formula disposal callbacks do not rewrite the session',async t=>{
+ const h=harness(t,{mode:'formula'});await h.mount();let writes=0;const original=h.w.Storage.prototype.setItem;
+ h.w.Storage.prototype.setItem=function(key,value){if(key===deliveryModel.researchSessionKey)writes++;return original.call(this,key,value);};
+ const change={formula:'x=17',formulaId:'existing-formula',requirements:'保留单位与定义'};h.calls.mounts[0].options.onChange(change);assert.equal(writes,1);
+ assert.equal(h.w.lifecycle.researchRouteGuard(),true);h.calls.mounts[0].options.onChange({...change});h.dispose();assert.equal(writes,1);assert.equal(JSON.parse(h.w.localStorage.getItem(deliveryModel.researchSessionKey)).formula,'x=17');
+});
+test('research recovery commands are persisted even without visible input changes, and failures block leaving until recovery succeeds',async t=>{
+ const h=harness(t,{mode:'data'});h.mount();h.click('[data-action="chart-generate"]');await flush();const panel=h.calls.toolPanels[0];assert.ok(panel);
+ let writes=0,fail=false;const original=h.w.Storage.prototype.setItem;
+ h.w.Storage.prototype.setItem=function(key,value){if(key===deliveryModel.researchSessionKey){writes++;if(fail)throw Error('synthetic session quota');}return original.call(this,key,value);};
+ const before={ownerId:'alice',commandKey:'command-one',snapshot:{title:'Frozen research table'},itemId:'existing-task'};panel.setState(before);assert.equal(writes,1);panel.setState({...before});assert.equal(writes,1);
+ fail=true;const next={...before,commandKey:'command-two',resumeFromJobId:'existing-task'};assert.throws(()=>panel.setState(next),/未能保存任务草稿/);assert.equal(!!h.w.lifecycle.researchHasWork(),true);assert.equal(h.w.lifecycle.researchRouteGuard(),false);
+ fail=false;assert.equal(h.w.lifecycle.researchRouteGuard(),true);const after=JSON.parse(h.w.localStorage.getItem(deliveryModel.researchSessionKey));assert.deepEqual(after.jobStates.data,next);const settled=writes;h.dispose();assert.equal(writes,settled);
 });

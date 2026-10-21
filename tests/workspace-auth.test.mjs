@@ -55,7 +55,7 @@ async function fixture(fetcher,{hash='#account',allReports=async()=>[],setup}={}
  vm.runInContext('(function(){'+thesisSource+'\nObject.assign(globalThis,{mountOnlineThesis,mountThesisLibrary,disposeOnlineThesis,thesisOnlineHasWork,thesisOnlineRouteGuard,thesisOnlineSessionChanged});})()',dom.getInternalVMContext());
  vm.runInContext('(function(){'+onlineSource+'\nObject.assign(globalThis,{mountOnlineWorkspace,disposeOnlineWorkspace,onlineWorkspaceRouteGuard,onlineWorkspaceHasWork,onlineWorkspaceSessionChanged,onlineWorkspaceConfirmLeave,onlineWorkspaceHref});})()',dom.getInternalVMContext());
  setup?.(dom.window);
- await vm.runInContext('(async()=>{'+source+'\nglobalThis.workspaceAuthTest={loadWorkspaceSession,workspaceServiceFetch,signOutWorkspace,renderAccount,authHref,render};})()',dom.getInternalVMContext());
+ await vm.runInContext('(async()=>{'+source+'\nglobalThis.workspaceAuthTest={loadWorkspaceSession,workspaceServiceFetch,signOutWorkspace,renderAccount,authHref,render,loadHomeService};})()',dom.getInternalVMContext());
  for(let i=0;i<8;i++)await Promise.resolve();
  return {dom,document:dom.window.document,storage,paymentCalls,reads,api:dom.window.workspaceAuthTest,close(){dom.window.disposeOnlineThesis();timers.forEach(clearTimeout);dom.window.close();}};
 }
@@ -541,4 +541,72 @@ test('local assets show their encoded account project and account route without 
  const encoded='account:'+encodeURIComponent(signedIn.id)+':remote-project',local=[{id:'local-project',name:'Local project'}],account={id:encoded,projectId:'remote-project',ownerId:signedIn.id,name:'Account research project',projectScope:'account'};
  const f=await fixture(async()=>response(200,signedIn),{hash:'#assets?scope=local',setup:w=>{w.localStorage.setItem(keys.projects,JSON.stringify(local));w.localStorage.setItem(keys.drafts,JSON.stringify([{id:'encoded-draft',title:'Linked account research draft',tool:'writing',stage:'draft',text:'Saved research content',projectId:encoded,updatedAt:'2026-10-21T00:00:00Z'}]));w.selectableProjects=()=>[structuredClone(account)];}});
  try{await settleReports();f.api.render();const link=f.document.querySelector('#asset-table-body .asset-project');assert.ok(link);assert.equal(link.textContent,account.name);assert.equal(link.getAttribute('href'),'#projects?scope=account&project=remote-project');const filter=f.document.querySelector('#asset-project-filter');assert.ok([...filter.options].some(option=>option.value===encoded&&option.textContent.includes(account.name)));filter.value=encoded;filter.dispatchEvent(new f.dom.window.Event('change',{bubbles:true}));const query=f.document.querySelector('#asset-query');query.value=account.name;query.dispatchEvent(new f.dom.window.Event('input',{bubbles:true}));assert.equal(f.document.querySelectorAll('#asset-table-body .asset-title').length,1);assert.equal(f.document.querySelector('#asset-table-body .asset-title').textContent,'Linked account research draft');assert.deepEqual(JSON.parse(f.storage.getItem(keys.projects)),local);assert.equal(JSON.parse(f.storage.getItem(keys.drafts))[0].projectId,encoded);}finally{f.close();}
+});
+
+function accountHomeData(owner,title){return {cap:{},user:owner,jobs:[],files:[],usage:[],projects:[],results:[],theses:[],drafts:[{id:'home-'+owner.id,title,tool:'writing',updated_at:'2026-10-21T00:00:00Z'}],summary:{counts:{projects:0,drafts:1,results:0,queuedJobs:0,runningJobs:0}}};}
+function showHomeFixtureRoute(f,hash){f.dom.window.history.replaceState(null,'','/workspace.html'+hash);f.api.render();}
+
+test('home revisits reuse current account records immediately and share an in-flight read without forcing another session request',async()=>{
+ const pending=deferredReports();let reads=0,auth=0;
+ const f=await fixture(async()=>{auth++;return response(200,signedIn);},{hash:'#home',setup:w=>{w.readHomeService=async()=>{reads++;return pending.promise;};w.mountResearch=()=>{w.document.querySelector('.dashboard').innerHTML='<input id="research-cache-test">';};}});
+ try{
+  await settleReports();assert.equal(reads,1);assert.equal(auth,1);
+  for(let i=0;i<3;i++){showHomeFixtureRoute(f,'#category/research');showHomeFixtureRoute(f,'#home');}
+  await settleReports();assert.equal(reads,1,'concurrent home mounts share the same private read');assert.equal(auth,1);
+  pending.resolve(accountHomeData(signedIn,'已保存的首页账户草稿'));await settleReports();
+  showHomeFixtureRoute(f,'#category/research');showHomeFixtureRoute(f,'#home');
+  assert.match(f.document.querySelector('#home-resume').textContent,/已保存的首页账户草稿/);assert.doesNotMatch(f.document.querySelector('#home-resume').textContent,/正在读取/);
+  await settleReports();assert.equal(reads,1,'fresh home data survives switching away and back');assert.equal(auth,1);
+ }finally{f.close();}
+});
+
+test('explicit local home does not request account overview lists and changing to account scope loads once',async()=>{
+ let reads=0;const f=await fixture(async()=>response(200,signedIn),{hash:'#home?scope=local',setup:w=>{w.readHomeService=async()=>{reads++;return accountHomeData(signedIn,'账户范围草稿');};}});
+ try{
+  await settleReports();showHomeFixtureRoute(f,'#home?scope=local');await settleReports();assert.equal(reads,0);assert.match(f.document.querySelector('#home-resume').textContent,/未上传的研究草稿/);
+  showHomeFixtureRoute(f,'#home?scope=account');await settleReports();assert.equal(reads,1);assert.match(f.document.querySelector('#home-resume').textContent,/账户范围草稿/);
+  showHomeFixtureRoute(f,'#home?scope=local');assert.doesNotMatch(f.document.querySelector('#home-resume').textContent,/账户范围草稿/);await settleReports();assert.equal(reads,1);
+ }finally{f.close();}
+});
+
+test('stale home data refreshes in the background while later responses leave another tool input untouched',async()=>{
+ const pending=deferredReports();let reads=0,clock=Date.now();
+ const f=await fixture(async()=>response(200,signedIn),{hash:'#home',setup:w=>{w.Date.now=()=>clock;w.readHomeService=async()=>++reads===1?accountHomeData(signedIn,'原先保存的账户内容'):pending.promise;w.mountResearch=()=>{w.document.querySelector('.dashboard').innerHTML='<input id="home-background-input">';};}});
+ try{
+  await settleReports();assert.equal(reads,1);clock+=15001;showHomeFixtureRoute(f,'#home');
+  assert.match(f.document.querySelector('#home-resume').textContent,/原先保存的账户内容/);assert.doesNotMatch(f.document.querySelector('#home-resume').textContent,/正在读取/);await settleReports();assert.equal(reads,2);
+  showHomeFixtureRoute(f,'#category/research');const input=f.document.querySelector('#home-background-input');input.value='正在编辑，不能替换';input.focus();
+  pending.resolve(accountHomeData(signedIn,'后台更新后的账户内容'));await settleReports();assert.equal(f.document.querySelector('#home-background-input'),input);assert.equal(input.value,'正在编辑，不能替换');assert.equal(f.document.activeElement,input);
+  showHomeFixtureRoute(f,'#home');assert.match(f.document.querySelector('#home-resume').textContent,/后台更新后的账户内容/);await settleReports();assert.equal(reads,2);
+ }finally{f.close();}
+});
+
+test('changing account clears cached home records and ignores the previous account response arriving later',async()=>{
+ const alice=signedIn,bob={...signedIn,id:'home-bob',name:'新账户'},oldPending=deferredReports(),newPending=deferredReports();let user=alice,reads=0,clock=Date.now();
+ const f=await fixture(async()=>response(200,user),{hash:'#home',setup:w=>{w.Date.now=()=>clock;w.readHomeService=async()=>{reads++;return reads===1?accountHomeData(alice,'旧账户私人标题'):reads===2?oldPending.promise:newPending.promise;};}});
+ try{
+  await settleReports();assert.match(f.document.querySelector('#home-resume').textContent,/旧账户私人标题/);
+  clock+=15001;void f.api.loadHomeService();await settleReports();assert.equal(reads,2);
+  user=bob;await f.api.loadWorkspaceSession(true);await settleReports();assert.equal(reads,3);assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/旧账户私人标题/);
+  oldPending.resolve(accountHomeData(alice,'旧账户晚到结果'));await settleReports();assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/旧账户晚到结果|旧账户私人标题/);
+  newPending.resolve(accountHomeData(bob,'新账户安全内容'));await settleReports();assert.match(f.document.querySelector('#home-resume').textContent,/新账户安全内容/);assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/旧账户/);
+  await f.api.signOutWorkspace();await settleReports();assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/新账户安全内容/);assert.match(f.document.querySelector('#home-resume').textContent,/未上传的研究草稿/);assert.equal(reads,3);
+ }finally{oldPending.resolve(accountHomeData(alice,'旧账户晚到结果'));newPending.resolve(accountHomeData(bob,'新账户安全内容'));f.close();}
+});
+
+
+test('explicit home reload bypasses a fresh cache, retains current records on a transient failure, and recovers on retry',async()=>{
+ let reads=0;const f=await fixture(async()=>response(200,signedIn),{hash:'#home',setup:w=>{w.readHomeService=async()=>{reads++;if(reads===2)throw Object.assign(Error('temporarily unavailable'),{status:503});return accountHomeData(signedIn,reads===1?'刷新前账户内容':'重新连接后的账户内容');};}});
+ try{
+  await settleReports();assert.equal(reads,1);await f.api.loadHomeService({force:true});assert.equal(reads,2);assert.match(f.document.querySelector('#home-resume').textContent,/刷新前账户内容/);assert.match(f.document.querySelector('#home-summary').textContent,/上次成功读取/);
+  await f.api.loadHomeService();assert.equal(reads,3);assert.match(f.document.querySelector('#home-resume').textContent,/重新连接后的账户内容/);assert.doesNotMatch(f.document.querySelector('#home-summary').textContent,/上次成功读取/);
+ }finally{f.close();}
+});
+
+test('home refresh authentication failures clear private cached records and recheck the current session',async()=>{
+ let reads=0,user=signedIn,auth=0;const f=await fixture(async()=>{auth++;return response(user?200:401,user);},{hash:'#home',setup:w=>{w.readHomeService=async()=>{reads++;if(reads>1){user=null;throw Object.assign(Error('session expired'),{status:401});}return accountHomeData(signedIn,'会话失效前的私人草稿');};}});
+ try{
+  await settleReports();assert.match(f.document.querySelector('#home-resume').textContent,/会话失效前的私人草稿/);assert.equal(auth,1);
+  await f.api.loadHomeService({force:true});await settleReports();assert.equal(auth,2);assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/会话失效前的私人草稿/);assert.match(f.document.querySelector('#home-resume').textContent,/未上传的研究草稿/);
+ }finally{f.close();}
 });
