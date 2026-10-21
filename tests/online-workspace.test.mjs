@@ -19,7 +19,7 @@ async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params=
  const dom=new JSDOM('<div id="app"><aside id="existing-sidebar">现有导航</aside><main class="dashboard"><div id="online"></div></main></div>',{url:'https://paperknow.cn/workspace.html#projects?scope=account',runScripts:'outside-only'}),w=dom.window;
  t.after(()=>{w.onlineTest.disposeOnlineWorkspace();w.close();});
  const scheduledPolls=[],pollWarnings=[];if(pollTimers){const originalSetTimeout=w.setTimeout.bind(w);w.setTimeout=(callback,delay,...args)=>{if(delay===5000){scheduledPolls.push(()=>callback(...args));return 900000+scheduledPolls.length;}return originalSetTimeout(callback,delay,...args);};Object.defineProperty(w.document,'hidden',{configurable:true,value:false});w.console.warn=(...args)=>pollWarnings.push(args);}
- w.HTMLElement.prototype.scrollIntoView=()=>{};w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
+ w.HTMLElement.prototype.scrollIntoView=()=>{};w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){const wasOpen=this.open;this.open=false;if(wasOpen)this.dispatchEvent(new w.Event('close'));};
  const exportBodies=[];const OriginalBlob=w.Blob;w.Blob=class extends OriginalBlob{constructor(parts,options){super(parts,options);this.testContent=parts.join('');}};w.URL.createObjectURL=blob=>{exportBodies.push(blob.testContent);return 'blob:test';};w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=function(){if(this.download)downloads.push(this.download);};
  w.localStorage.setItem('paperknow-drafts','[{"title":"本地未上传成果"}]');
  w.download=async(name,content)=>{exportBodies.push(content);downloads.push(name);return {message:'已保存到账户云文件并发起下载。'};};
@@ -77,6 +77,98 @@ test('account project creation and file upload use real APIs and route parsing t
  assert.equal(f.calls.find(call=>call.path==='/api/files'&&call.body).body.data,'YWJj');
  const parse=f.calls.find(call=>call.path==='/api/jobs'&&call.body);assert.equal(parse.body.type,'parse');assert.equal(parse.body.projectId,'p1');assert.equal(parse.body.fileId,'f2');assert.ok(parse.body.idempotencyKey);
  assert.match(f.w.localStorage.getItem('paperknow-drafts'),/本地未上传成果/);
+});
+
+test('account project editor opens independently of a selected upload and closes without losing either input',async t=>{
+ const f=await fixture(t),dialog=f.doc.querySelector('#account-project-create'),opener=f.doc.querySelector('#project-create-reset');
+ assert.equal(dialog.tagName,'DIALOG');assert.equal(dialog.open,false);
+ assert.equal(dialog.querySelector('#project-form'),f.doc.querySelector('#project-form'));
+ assert.equal(f.doc.querySelectorAll('#project-create-reset').length,1);
+ const uploadForm=f.doc.querySelector('#upload-form'),file={name:'待上传的研究材料.txt',size:3,lastModified:1};
+ Object.defineProperty(f.doc.querySelector('#upload-file'),'files',{value:[file]});
+ opener.focus();opener.click();await settle(()=>dialog.open);
+ assert.equal(f.doc.querySelector('#online-confirm').open,false,'opening a project must not discard or prompt about the independent upload');
+ assert.equal(f.doc.activeElement,f.doc.querySelector('#project-title'));
+ input(f,'#project-title','尚未提交的研究项目');input(f,'#project-description','继续填写前应保留的说明');
+ f.doc.querySelector('#account-project-editor-close').click();await settle(()=>!dialog.open);
+ assert.equal(f.doc.activeElement,opener);assert.equal(f.doc.querySelector('#project-title').value,'尚未提交的研究项目');
+ assert.equal(f.doc.querySelector('#project-description').value,'继续填写前应保留的说明');
+ assert.equal(f.doc.querySelector('#upload-form'),uploadForm);assert.equal(f.doc.querySelector('#upload-file').files[0],file);
+ opener.click();await settle(()=>dialog.open);
+ assert.equal(f.doc.querySelector('#project-title').value,'尚未提交的研究项目','reopening a new-project draft resumes the same input');
+ dialog.dispatchEvent(new f.w.Event('cancel',{cancelable:true}));await settle(()=>!dialog.open);
+ assert.equal(f.doc.activeElement,opener);assert.equal(f.w.onlineTest.onlineWorkspaceHasWork(),true);
+ assert.equal(f.calls.some(call=>call.body),false,'opening, closing and Escape never submit or reset research input');
+});
+
+test('account project controls do not trigger the shared local-project view delegation',async t=>{
+ const f=await fixture(t),localViewChanges=[];
+ const delegate=event=>{const control=event.target.closest('[data-project-view]');if(control)localViewChanges.push(control.dataset.projectView);};
+ f.doc.addEventListener('click',delegate);t.after(()=>f.doc.removeEventListener('click',delegate));
+ const localControl=f.doc.createElement('button');localControl.type='button';localControl.dataset.projectView='cards';
+ f.doc.body.append(localControl);localControl.click();localControl.remove();
+ assert.deepEqual(localViewChanges,['cards'],'the shared delegated listener still recognizes real local-view controls');
+ localViewChanges.length=0;
+ f.doc.querySelector('#project-create-reset').click();await settle(()=>f.doc.querySelector('#account-project-create').open);
+ assert.deepEqual(localViewChanges,[],'opening an account project must not request a local-view rerender');
+ f.doc.querySelector('#account-project-cancel').click();
+ f.doc.querySelector('[data-account-project-edit="p1"]').click();
+ await settle(()=>f.doc.querySelector('#account-project-create').open&&f.doc.querySelector('#project-title').value==='账户研究项目');
+ assert.deepEqual(localViewChanges,[],'editing through a project card must not request a local-view rerender');
+ assert.equal(f.calls.some(call=>call.body),false);
+});
+
+test('account project editor rejects blank names locally and submits the corrected trimmed name once',async t=>{
+ const f=await fixture(t);f.doc.querySelector('#project-create-reset').click();
+ const dialog=f.doc.querySelector('#account-project-create'),name=f.doc.querySelector('#project-title');
+ await settle(()=>dialog.open);input(f,'#project-title','   ');submit(f,'#project-form');
+ await settle(()=>f.doc.querySelector('#project-form-error').textContent.trim());
+ assert.equal(name.getAttribute('aria-invalid'),'true');
+ assert.equal(dialog.open,true);assert.equal(f.calls.some(call=>call.path==='/api/projects'&&call.body),false);
+ input(f,'#project-title','  课堂反馈研究  ');submit(f,'#project-form');
+ await settle(()=>f.notices.includes('研究项目已创建'));
+ const requests=f.calls.filter(call=>call.path==='/api/projects'&&call.body);
+ assert.equal(requests.length,1);assert.equal(requests[0].body.title,'课堂反馈研究');
+ assert.equal(f.doc.querySelector('#account-project-create').open,false);
+});
+
+test('account project editor confirms switching a changed project and saves the chosen project version',async t=>{
+ const projects=[{id:'p1',title:'第一项研究',degree:'本科',major:'教育学',stage:'writing',status:'active',version:7,updated_at:now},{id:'p2',title:'第二项研究',degree:'硕士',major:'社会学',stage:'proposal',description:'原有研究说明',status:'active',version:3,updated_at:now}];
+ const f=await fixture(t,{request:async(path,options)=>{
+  if(path==='/api/projects'&&!options.body)return{ok:true,status:200,json:async()=>({items:projects})};
+  if(path==='/api/projects/p2'&&options.body){Object.assign(projects[1],JSON.parse(options.body),{version:4});return{ok:true,status:200,json:async()=>({id:'p2'})};}
+ }});
+ const first=f.doc.querySelector('[data-account-project-edit="p1"]'),second=f.doc.querySelector('[data-account-project-edit="p2"]');
+ first.focus();first.click();await settle(()=>f.doc.querySelector('#account-project-create').open);
+ input(f,'#project-title','第一项研究的未保存修改');f.doc.querySelector('#account-project-cancel').click();
+ second.focus();second.click();await settle(()=>f.doc.querySelector('#online-confirm').open);
+ assert.equal(f.doc.querySelector('#project-title').value,'第一项研究的未保存修改');
+ f.doc.querySelector('#online-confirm-no').click();assert.equal(f.doc.querySelector('#project-title').value,'第一项研究的未保存修改');
+ assert.equal(f.calls.some(call=>call.body),false);
+ second.click();await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();
+ await settle(()=>f.doc.querySelector('#account-project-create').open&&f.doc.querySelector('#project-title').value==='第二项研究');
+ assert.equal(f.doc.querySelector('#degree').value,'硕士');assert.equal(f.doc.querySelector('#major').value,'社会学');
+ input(f,'#project-title','第二项研究的保存修改');submit(f,'#project-form');await settle(()=>f.notices.includes('项目修改已保存'));
+ const requests=f.calls.filter(call=>call.path.startsWith('/api/projects/')&&call.body);
+ assert.equal(requests.length,1);assert.equal(requests[0].path,'/api/projects/p2');
+ assert.equal(requests[0].body.version,3);assert.equal(requests[0].body.title,'第二项研究的保存修改');
+ assert.equal(projects[0].title,'第一项研究');
+});
+
+test('account project editor retains the open draft after a save failure and can retry without losing a selected file',async t=>{
+ let attempts=0;
+ const f=await fixture(t,{request:async(path,options)=>path==='/api/projects'&&options.body&&++attempts===1?{ok:false,status:503,json:async()=>({error:'项目暂时无法保存'})}:undefined});
+ const file={name:'保留的论文资料.txt',size:3,lastModified:1};Object.defineProperty(f.doc.querySelector('#upload-file'),'files',{value:[file]});
+ f.doc.querySelector('#project-create-reset').click();await settle(()=>f.doc.querySelector('#account-project-create').open);
+ input(f,'#project-title','失败后继续创建的项目');input(f,'#major','教育技术学');submit(f,'#project-form');
+ await settle(()=>f.notices.includes('项目暂时无法保存'));
+ assert.equal(f.doc.querySelector('#account-project-create').open,true);
+ assert.equal(f.doc.querySelector('#project-title').value,'失败后继续创建的项目');assert.equal(f.doc.querySelector('#major').value,'教育技术学');
+ assert.equal(f.doc.querySelector('#upload-file').files[0],file);
+ submit(f,'#project-form');await settle(()=>f.notices.includes('研究项目已创建'));
+ assert.equal(attempts,2);assert.equal(f.doc.querySelector('#account-project-create').open,false);
+ assert.equal(f.doc.querySelector('#upload-file').files[0],file);
+ assert.equal(f.doc.querySelectorAll('.account-project-card').length,2,'a failed request must not add a phantom project');
 });
 
 test('task input is protected on navigation and unavailable AI stays disabled after material comparison',async t=>{
@@ -332,7 +424,7 @@ test('pending original deletion offers a retry without exposing download or incl
 });
 
 test('refreshing an edited project resets editing identity so a later new project cannot overwrite the old one',async t=>{
- const f=await fixture(t);f.doc.querySelector('[data-account-project-edit="p1"]').click();await settle(()=>f.doc.querySelector('#project-edit-note').textContent.includes('正在编辑'));input(f,'#project-title','放弃的项目修改');f.doc.querySelector('.account-refresh').click();await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.notices.includes('已读取最新账户内容'));assert.equal(f.doc.querySelector('#project-title').value,'');input(f,'#project-title','真正的新项目');submit(f,'#project-form');await settle(()=>f.notices.includes('项目已保存'));assert.equal(f.calls.some(call=>call.path==='/api/projects/p1'&&call.body),false);assert.equal(f.calls.find(call=>call.path==='/api/projects'&&call.body).body.title,'真正的新项目');
+ const f=await fixture(t);f.doc.querySelector('[data-account-project-edit="p1"]').click();await settle(()=>f.doc.querySelector('#project-edit-note').textContent.includes('正在编辑'));input(f,'#project-title','放弃的项目修改');f.doc.querySelector('.account-refresh').click();await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.notices.includes('已读取最新账户内容'));assert.equal(f.doc.querySelector('#project-title').value,'');input(f,'#project-title','真正的新项目');submit(f,'#project-form');await settle(()=>f.notices.includes('研究项目已创建'));assert.equal(f.calls.some(call=>call.path==='/api/projects/p1'&&call.body),false);assert.equal(f.calls.find(call=>call.path==='/api/projects'&&call.body).body.title,'真正的新项目');
 });
 
 test('legacy provider metadata never appears in AI task forms or usage rows',async t=>{

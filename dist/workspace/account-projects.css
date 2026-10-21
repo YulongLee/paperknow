@@ -1,0 +1,126 @@
+/* Account projects: focused library, contextual materials and one project editor. */
+#app .dashboard:has(.account-workspace[data-workspace-view="projects"])>.tool-banner{min-height:160px;padding:22px 28px;margin-bottom:16px}
+#app .dashboard:has(.account-workspace[data-workspace-view="projects"])>.tool-banner .tool-banner-scene{transform:scale(.82);transform-origin:right center}
+#app .dashboard:has(.account-workspace[data-workspace-view="projects"])>.workspace-content-scope{min-height:58px;padding:10px 14px;margin-block:0 16px}
+#app .account-workspace[data-workspace-view="projects"] .management-mode-actions{min-height:30px;padding:0;margin-bottom:8px}
+#app .account-workspace[data-workspace-view="projects"] .account-refresh{min-height:28px;margin:0;padding:5px 0;font-size:11px}
+
+#app .account-workspace[data-workspace-view="projects"] .management-overview{max-width:1520px;margin:0 auto 22px;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;border:0;background:transparent}
+#app .account-workspace[data-workspace-view="projects"] .management-overview>div{display:flex;align-items:center;gap:14px;padding:18px 22px;border:1px solid #e2e9f3;border-radius:13px;background:#fff}
+#app .account-workspace[data-workspace-view="projects"] .management-overview>div>div{display:flex;flex:1;align-items:center;justify-content:space-between;gap:12px}
+#app .account-workspace[data-workspace-view="projects"] .management-overview b{font-size:25px;font-weight:650;color:#203653;line-height:1.3}
+#app .account-workspace[data-workspace-view="projects"] .management-overview span{font-size:12px}
+#app .account-workspace[data-workspace-view="projects"] .management-overview .management-metric-icon{width:40px;height:40px;flex:none;border-radius:11px}
+#app .account-workspace[data-workspace-view="projects"] .management-mode-actions{max-width:1520px;margin:0 auto 8px}
+#app .account-workspace[data-workspace-view="projects"] .account-refresh{margin-bottom:10px}
+#app .account-project-hub{max-width:1520px;margin-inline:auto;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:22px;align-items:start}
+#app .account-project-main,#app .account-project-sidebar{min-width:0}
+#app .account-project-sidebar{display:grid;gap:18px}
+#app .account-project-hub .account-project-library{min-height:0;margin:0;padding:25px;border:1px solid #e0e8f3;border-radius:16px;background:#fff;box-shadow:0 4px 20px #24436b04}
+#app .account-project-library>.management-section-heading{align-items:center;margin-bottom:18px;gap:20px}
+#app .account-project-library .account-project-eyebrow{display:block;font-size:11px;font-weight:600;color:#6280aa;letter-spacing:1px;margin-bottom:7px}
+#app .account-project-library>.management-section-heading h2{font-size:22px;font-weight:650;color:#20334f;line-height:1.5;display:flex;align-items:center;gap:10px}
+#app .account-project-library>.management-section-heading p{font-size:13px;line-height:1.8;margin-top:7px;color:#73839a}
+#app .account-project-library .management-count{font-size:11px;min-width:24px;padding:3px 7px;background:#eef4ff;color:#4c75ba;border:0;border-radius:7px;line-height:1.4}
+#app .account-project-heading-actions{display:flex;align-items:center;gap:12px;flex:none}
+#app .account-project-heading-actions>a{font-size:12px;color:#5c7599}
+#app .account-project-heading-actions>button{min-height:42px;padding:10px 15px;border-radius:9px;font-size:13px;font-weight:600;white-space:nowrap}
+#app .account-project-library .management-project-toolbar{display:grid;grid-template-columns:minmax(0,1fr) 124px;gap:12px;margin:0 0 18px;padding:0 0 20px;border-bottom:1px solid #edf1f7}
+#app .account-project-library .management-project-toolbar>label{display:flex;align-items:center;gap:9px;padding:0 13px;margin:0;border:1px solid #e0e7f1;border-radius:9px;background:#f9fbfe;min-width:0}
+#app .account-project-library .management-project-toolbar>label svg{color:#7890ae;flex:none}
+#app .account-project-library .management-project-toolbar input{min-height:42px;border:0;padding:10px 0;box-shadow:none;outline:0;background:transparent;font-size:13px;min-width:0}
+#app .account-project-library .management-project-toolbar>label:focus-within{outline:3px solid #dce8ff;border-color:#7fa5ee}
+#app .account-project-library .management-project-toolbar select{min-width:0;width:100%;min-height:44px;font-size:12px;border-radius:9px;background:#fff}
+#app .account-project-library .management-project-rows{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,390px),1fr));gap:16px;margin:0}
+#app .account-project-library .management-project-rows.is-single{grid-template-columns:1fr}
+#app .account-project-library .management-project-rows>.account-project-card:not([hidden]){display:flex;flex-direction:column;gap:18px;min-width:0;min-height:0;margin:0;padding:22px;border:1px solid #dfe8f4;border-radius:13px;background:linear-gradient(120deg,#f8fbff,#fff 70%);box-shadow:none;transition:border-color .18s,box-shadow .18s}
+#app .account-project-library .account-project-card:hover{border-color:#bed1ed;box-shadow:0 5px 18px #24436b07}
+#app .account-project-library .account-project-card[hidden]{display:none!important}
+#app .account-project-card-head{display:flex;align-items:flex-start;gap:13px;min-width:0}
+#app .account-project-card-head>div{flex:1;min-width:0}
+#app .account-project-library .account-project-card-head .management-project-icon{display:grid;place-items:center;flex:0 0 46px;width:46px;height:46px;background:#eaf1ff;color:#3c76e6;border:1px solid #dce7fc;border-radius:12px}
+#app .account-project-library .account-project-card h2{font-size:18px;line-height:1.55;min-height:0;margin:0 0 9px;color:#203653;overflow-wrap:anywhere}
+#app .account-project-meta{display:flex;gap:6px 9px;flex-wrap:wrap;font-size:11px;color:#778ba8;line-height:1.6}
+#app .account-project-meta>span+span:before{content:"·";margin-right:9px;color:#b4c1d3}
+#app .account-project-card-head>.tag{flex:none;white-space:nowrap;margin:2px 0 0;border:1px solid #d8eee5;border-radius:6px;padding:4px 8px;background:#eef9f4;color:#37856a;font-size:10px;line-height:1.5}
+#app .account-project-card-head>.tag.archived{background:#f1f3f7;border-color:#e5e9f0;color:#7f8b9e}
+#app .account-project-library .account-project-description{font-size:13px;line-height:1.85;color:#71839d;margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+#app .account-project-library[data-account-project-view="detail"] .account-project-description{display:block;-webkit-line-clamp:unset}
+#app .account-project-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;border:1px solid #e8eef7;border-radius:10px;background:#fff;padding:14px 8px}
+#app .account-project-metrics>div{display:flex;align-items:center;justify-content:center;gap:9px;min-width:0}
+#app .account-project-metrics>div+div{border-left:1px solid #e9eef6}
+#app .account-project-metrics b{font-size:21px;line-height:1.3;color:#2d466a;font-weight:600}
+#app .account-project-metrics span{font-size:11px;color:#7a8ea9;line-height:1.5}
+#app .account-project-card-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto}
+#app .account-project-card-footer>.actions{padding:0;margin:0;gap:12px}
+#app .account-project-card-footer>.actions>a{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;font-size:12px;color:#5a759c;white-space:nowrap}
+#app .account-project-card-footer>.actions>a.button{background:#2e6bf1;border:1px solid #2e6bf1;color:white;font-size:12px;padding:9px 12px;border-radius:8px;box-shadow:0 3px 8px #2e6bf112}
+#app .account-project-card-footer>.actions>a.button:hover{background:#245cd6}
+#app .account-project-library .management-project-more{position:relative;flex:none;margin:0}
+#app .account-project-library .management-project-more>summary{display:flex;align-items:center;gap:7px;min-height:38px;padding:8px 7px;font-size:11px;color:#7d8ca2;border-radius:7px;list-style:none;cursor:pointer;white-space:nowrap}
+#app .account-project-library .management-project-more>summary:after{content:none}
+#app .account-project-library .management-project-more>summary::-webkit-details-marker{display:none}
+#app .account-project-library .management-project-more>summary:hover{background:#edf3fb;color:#3d6395}
+#app .account-project-library .management-project-more>div{position:absolute;right:0;bottom:calc(100% + 6px);top:auto;min-width:148px;padding:6px;border:1px solid #e0e7f1;border-radius:10px;background:#fff;box-shadow:0 10px 28px #233f681a;z-index:4}
+#app .account-project-library .management-project-more>div>button{width:100%;min-height:38px;justify-content:flex-start;padding:9px 10px;border:0;border-radius:6px;font-size:12px;background:transparent;box-shadow:none;color:#58708f}
+#app .account-project-library .management-project-more>div>button:last-child{color:#b86161}
+#app .account-project-library .account-project-updated{display:flex;align-items:center;gap:6px;font-size:11px;color:#9aa8ba;margin:0;padding-top:11px;border-top:1px solid #edf1f6}
+#app .account-project-library .management-archive-note{display:flex;align-items:center;gap:7px;font-size:11px;line-height:1.8;color:#94a1b5;margin:18px 0 0;padding-top:15px;border-top:1px solid #edf1f6}
+#app .account-project-related{border-top:1px solid #e7edf6;padding-top:5px}
+#app .account-project-related h3{font-size:14px;color:#385372;margin:16px 0 12px}
+#app .account-project-related p{font-size:12px;line-height:1.8;color:#8796ac}
+#app .account-project-guide{padding:24px;border:1px solid #dce7f7;border-radius:15px;background:linear-gradient(150deg,#f0f6ff,#fff 85%);overflow:hidden}
+#app .project-guide-symbol{display:grid;place-items:center;width:48px;height:48px;border:1px solid #d5e4fb;border-radius:13px;background:#fff;color:#487de0;box-shadow:0 4px 15px #3162ac09;margin-bottom:18px}
+#app .account-project-guide h3{font-size:18px;line-height:1.65;color:#294468;margin:0 0 9px;font-weight:600}
+#app .account-project-guide>p{font-size:12px;line-height:1.9;color:#7d90ad;margin:0}
+#app .account-project-guide ol{display:grid;gap:17px;list-style:none;padding:21px 0 0;margin:20px 0 0;border-top:1px solid #dfe9f8}
+#app .account-project-guide li{display:flex;align-items:flex-start;gap:12px;font-size:12px;color:#4c688e}
+#app .account-project-guide li>b{font-size:11px;font-weight:600;color:#7d9ac5;line-height:1.8}
+#app .account-project-guide small{display:block;font-size:11px;line-height:1.8;margin-top:4px;color:#91a1b9}
+#app .account-project-sidebar>.card{padding:0;margin:0;border-radius:14px;border-color:#e0e8f3;min-width:0}
+#app .account-project-sidebar #account-file-upload>summary{padding:21px;gap:12px;min-width:0}
+#app .account-project-sidebar #account-file-upload>summary small{font-size:11px;line-height:1.8}
+#app .account-project-sidebar #account-file-upload>h2{padding:0 21px;font-size:14px}
+#app .account-project-sidebar #upload-form{padding:0 21px 21px}
+#app .account-project-sidebar #upload-form label{font-size:12px;margin-top:15px}
+#app .account-project-sidebar #upload-form input,#app .account-project-sidebar #upload-form select{font-size:12px;min-width:0;max-width:100%}
+#app .account-project-sidebar #upload-form input[type="file"]{font-size:11px;padding:12px;white-space:normal}
+#app .account-project-sidebar #upload-form .muted{font-size:11px;line-height:1.9}
+#app .account-project-sidebar #upload-form button{width:100%;font-size:12px}
+#app .account-project-hub>.account-originals{grid-column:1/-1;min-height:0;margin:0;padding:23px 25px;border:1px solid #e0e8f3;border-radius:15px;background:#fff}
+#app .account-project-hub>.account-originals>.management-section-heading{margin-bottom:12px}
+#app .account-project-hub>.account-originals h2{font-size:17px;color:#2c4566}
+#app .account-project-hub>.account-originals .management-section-heading p{font-size:12px;color:#8797ad}
+#app .account-project-hub>.account-originals .management-empty{padding:22px 14px;min-height:0}
+#app .account-project-hub>.account-originals .row{font-size:12px}
+#app .account-workspace .account-project-dialog{width:min(640px,calc(100vw - 32px));max-width:640px;max-height:calc(100dvh - 40px);margin:auto;padding:0;border:1px solid #dfe7f2;border-radius:18px;background:#fff;box-shadow:0 28px 90px #11294e38;overflow:auto;overscroll-behavior:contain}
+#app .account-project-dialog:not([open]){display:none}
+#app .account-project-dialog::backdrop{background:#162d4d66;backdrop-filter:blur(4px)}
+#app .account-project-editor-head{display:flex;align-items:flex-start;gap:14px;padding:25px 26px 22px;border-bottom:1px solid #e8eef7;background:linear-gradient(110deg,#f4f8ff,#fff 85%)}
+#app .project-editor-symbol{display:grid;place-items:center;flex:none;width:45px;height:45px;border:1px solid #d9e5fb;border-radius:12px;color:#457be2;background:#fff}
+#app .account-project-editor-head>div{flex:1;min-width:0}
+#app .account-project-editor-head h2{font-size:22px;font-weight:650;line-height:1.5;color:#243c5e;margin:0}
+#app .account-project-editor-head p{font-size:12px;color:#8293ab;line-height:1.8;margin:7px 0 0}
+#app .account-project-editor-head>button{flex:none;width:36px;height:36px;min-height:36px;padding:7px;margin:-4px -7px 0 0;background:transparent;border:0;color:#7f91aa;box-shadow:none;border-radius:9px}
+#app .account-project-editor-form{padding:22px 26px 0}
+#app .project-editor-field{display:grid;gap:9px;min-width:0;margin-bottom:19px}
+#app .project-editor-fields{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+#app .project-editor-field>label{display:flex;align-items:center;gap:8px;margin:0;font-size:13px;font-weight:600;color:#3c5270}
+#app .project-editor-field>label>span{font-size:10px;font-weight:400;color:#9aa7ba}
+#app .project-editor-field>label>.project-field-required{color:#5f85ca;background:#eef4ff;border-radius:4px;padding:2px 5px}
+#app .account-project-dialog .project-editor-field>input,#app .account-project-dialog .project-editor-field>select,#app .account-project-dialog .project-editor-field>textarea{width:100%;min-height:46px;border:1px solid #dce5f1;border-radius:8px;background:#fbfcfe;color:#354e72;padding:11px 13px;font-size:13px;line-height:1.7}
+#app .account-project-dialog .project-editor-field>textarea{min-height:92px;resize:vertical}
+#app .account-project-dialog .project-editor-field>input:focus,#app .account-project-dialog .project-editor-field>select:focus,#app .account-project-dialog .project-editor-field>textarea:focus{border-color:#7ca3ed;outline:3px solid #e3edff;outline-offset:0;background:#fff;box-shadow:none}
+#app .project-editor-field>small{font-size:11px;font-weight:400;line-height:1.8;color:#97a5b8}
+#app .account-project-editor-form .project-editor-note{font-size:11px;line-height:1.8;color:#8394ad;margin:0 0 14px}
+#app .account-project-editor-form .project-editor-note:empty,#app .account-project-editor-form #project-form-error:empty{display:none}
+#app .account-project-editor-form #project-form-error{font-size:12px;line-height:1.8;margin:0 0 14px;padding:9px 12px;border-radius:7px;background:#fff1f1;color:#b55656}
+#app .project-editor-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:22px -26px 0;padding:18px 26px;border-top:1px solid #e9eef6;background:#fff;position:sticky;bottom:0}
+#app .project-editor-footer>span{display:flex;align-items:center;gap:7px;font-size:11px;color:#90a0b7}
+#app .project-editor-footer>div{display:flex;gap:10px}
+#app .project-editor-footer button{min-height:43px;padding:10px 18px;border-radius:8px;font-size:13px}
+#app .project-editor-footer button.primary{min-width:112px;background:#2e6bf1;border-color:#2e6bf1;color:white}
+@container workspace (max-width:1100px){#app .account-project-hub{grid-template-columns:1fr}#app .account-project-sidebar{grid-template-columns:1fr 1fr;align-items:start}#app .account-project-guide ol{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}#app .account-project-guide li{display:grid;gap:5px}#app .account-project-guide h3{font-size:17px}#app .account-project-hub .account-project-library{padding:22px}}
+@container workspace (max-width:700px){#app .account-project-hub{gap:16px}#app .account-project-sidebar{grid-template-columns:1fr}#app .account-project-guide{padding:20px;display:none}#app .account-project-hub .account-project-library{padding:19px}#app .account-project-library>.management-section-heading{flex-wrap:wrap;gap:14px}#app .account-project-heading-actions{width:100%;justify-content:space-between}#app .account-project-heading-actions>button{margin-left:auto}#app .account-project-library>.management-section-heading h2{font-size:20px}#app .account-project-library .management-project-toolbar{grid-template-columns:minmax(0,1fr) 104px;gap:8px}#app .account-project-library .management-project-rows>.account-project-card:not([hidden]){padding:17px;gap:16px}#app .account-project-library .account-project-card-head .management-project-icon{flex-basis:38px;width:38px;height:38px;border-radius:10px}#app .account-project-library .account-project-card h2{font-size:16px}#app .account-project-card-head{gap:10px}#app .account-project-card-head>.tag{font-size:9px;padding:3px 6px}#app .account-project-metrics>div{display:grid;gap:5px;text-align:center}#app .account-project-metrics b{font-size:20px}#app .account-project-metrics span{font-size:10px}#app .account-project-card-footer{flex-wrap:wrap;gap:6px}#app .account-project-card-footer>.actions{gap:12px}#app .account-project-library .management-archive-note{font-size:10px;align-items:flex-start}#app .account-project-hub>.account-originals{padding:20px}#app .account-workspace[data-workspace-view="projects"] .management-overview{gap:8px;margin-bottom:16px}#app .account-workspace[data-workspace-view="projects"] .management-overview>div{display:grid;padding:13px 11px;gap:10px}#app .account-workspace[data-workspace-view="projects"] .management-overview>div>div{display:grid;gap:7px}#app .account-workspace[data-workspace-view="projects"] .management-overview .management-metric-icon{width:31px;height:31px;border-radius:8px}#app .account-workspace[data-workspace-view="projects"] .management-overview span{font-size:10px}#app .account-workspace[data-workspace-view="projects"] .management-overview b{font-size:22px}}
+@media(max-width:600px){#app .account-workspace[data-workspace-view="projects"] input,#app .account-workspace[data-workspace-view="projects"] select,#app .account-workspace[data-workspace-view="projects"] textarea{font-size:16px}#app .account-project-dialog .project-editor-field>input,#app .account-project-dialog .project-editor-field>select,#app .account-project-dialog .project-editor-field>textarea{font-size:16px}#app .account-workspace .account-project-dialog{width:calc(100vw - 24px);max-height:calc(100dvh - 24px);border-radius:14px}#app .account-project-editor-head{padding:20px 18px;gap:11px}#app .project-editor-symbol{width:38px;height:38px;border-radius:10px}#app .account-project-editor-head h2{font-size:19px}#app .account-project-editor-head p{font-size:11px}#app .account-project-editor-form{padding:20px 18px 0}#app .project-editor-fields{grid-template-columns:1fr;gap:0}#app .project-editor-field{margin-bottom:17px}#app .project-editor-footer{padding:15px 18px;margin-inline:-18px;flex-wrap:wrap;gap:12px}#app .project-editor-footer>span{font-size:10px}#app .project-editor-footer>div{margin-left:auto}#app .project-editor-footer button{padding-inline:16px}}
+@media(prefers-reduced-motion:reduce){#app .account-project-library .account-project-card{transition:none}}
