@@ -1,4 +1,5 @@
 import {isOutlineReferenceChapter} from './outline-word-budget.mjs';
+import {splitMethodSupplement,methodSupplementRepair} from './writing-method-supplement.mjs';
 
 const thesisWordCounts={专科:[4000,6000,8000,10000],本科:[8000,12000,15000,20000],硕士:[20000,30000,40000,50000],博士:[60000,80000]};
 const thesisDegree=value=>String(value??'').trim().replace(/论文$/,'');
@@ -39,8 +40,9 @@ export function thesisSnapshotFromDraft(draft={}){
  for(const chapter of outline)if(chapter.sections?.length&&!chapter.targetWords)chapter.targetWords=chapter.sections.reduce((sum,section)=>sum+section.targetWords,0);
  if(!outline.length)throw Error('请先确认至少一个论文章节。');
  if(outline.length>30||outline.reduce((n,c)=>n+(c.sections?.length||1),0)>120)throw Error('在线论文最多支持 30 章、120 个写作单元，请调整提纲。');
- const materials=sourceIds((draft.knowledgeFiles||[]).filter(row=>clean(row.text)),'material').map(row=>({id:row.id,name:clean(row.name)||'研究资料',text:clean(row.text),purpose:clean(row.purpose)||'研究背景',confirmed:true}));
- if(!materials.length&&clean(draft.material))materials.push({id:'material:local-material',name:clean(draft.fileName)||'研究说明',text:clean(draft.material),purpose:clean(draft.materialPurpose)||'研究背景',confirmed:true});
+ const sourceText=value=>{const parts=splitMethodSupplement(value);if(parts.invalid)throw Error(methodSupplementRepair);return parts.userText;};
+ const materials=sourceIds((draft.knowledgeFiles||[]).map(row=>({...row,text:sourceText(row.text)})).filter(row=>clean(row.text)),'material').map(row=>({id:row.id,name:clean(row.name)||'研究资料',text:clean(row.text),purpose:clean(row.purpose)||'研究背景',confirmed:true}));
+ if(!materials.length&&sourceText(draft.material))materials.push({id:'material:local-material',name:clean(draft.fileName)||'研究说明',text:sourceText(draft.material),purpose:clean(draft.materialPurpose)||'研究背景',confirmed:true});
  const references=sourceIds(draft.writingReferences||[],'reference').map(row=>({id:row.id,title:clean(row.title),authors:clean(row.authors),year:/^\d{4}$/.test(clean(row.year))?clean(row.year):'',doi:clean(row.doi),url:clean(row.url),text:clean(row.text),sourceLabel:clean(row.sourceLabel)||clean(row.source)||'用户导入，未核验来源',confirmed:true}));
  if([...materials,...references].reduce((n,row)=>n+row.text.length,0)>100000)throw Error('选中资料正文超过 100,000 字符，请减少材料后再保存。');
  // An edited AI method proposal stays a plan, never a confirmed source of research facts.
