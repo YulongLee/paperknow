@@ -70,3 +70,15 @@ test('default writing consent cannot submit an expired quote or follow an unconf
 test('invalid writing fee data never defaults consent to a submit-ready state',async t=>{
  const f=fixture(t,{getQuote:()=>({type:'agent',source:'credits',creditCost:10,title:'不完整报价'})});await f.panel.open();assert.match(f.container.textContent,/费用信息不完整/);assert.equal(f.calls.some(row=>row.path==='/writing/jobs'),false);assert.equal(f.container.querySelector('[data-wj-consent]')?.checked||false,false);assert.equal(f.container.querySelector('[data-wj-start]')?.disabled??true,true);
 });
+
+test('writing generation keeps the fee and start visible while explanation is closed by default',async t=>{
+ const f=fixture(t);await f.panel.open();const disclosure=f.container.querySelector('[data-wj-disclosure]'),start=f.container.querySelector('[data-wj-start]'),cost=f.container.querySelector('.wf-charge > strong');
+ assert.ok(disclosure);assert.equal(disclosure.open,false);assert.match(cost.textContent,/10 科研积分/);assert.equal(cost.closest('details'),null);assert.equal(start.closest('details'),null);assert.equal(start.disabled,false);assert.equal(f.container.querySelector('[data-wj-consent]').closest('details'),disclosure);assert.equal(f.container.querySelector('[data-wj-consent]').checked,true);assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,0);
+ const toggle=disclosure.querySelector('summary');assert.match(toggle.textContent,/费用与资料说明/);assert.equal(toggle.tabIndex,0);toggle.click();assert.equal(disclosure.open,true);assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,0);
+});
+
+test('writing explanation remains open when a cancelled confirmation is re-rendered and a fresh quote starts collapsed',async t=>{
+ const f=fixture(t);await f.panel.open();f.click('[data-wj-disclosure-toggle]');const toggle=f.container.querySelector('[data-wj-disclosure-toggle]');toggle.focus();const input=f.container.querySelector('[data-wj-consent]');input.checked=false;input.dispatchEvent(new f.dom.window.Event('change'));
+ f.container.querySelector('[data-wj-start]').dispatchEvent(new f.dom.window.MouseEvent('click',{bubbles:true}));await until(()=>!!f.container.querySelector('[role="alert"]'));assert.equal(f.container.querySelector('[data-wj-disclosure]').open,true);assert.equal(f.container.querySelector('[data-wj-consent]').checked,false);assert.equal(f.container.querySelector('[data-wj-start]').disabled,true);assert.equal(f.dom.window.document.activeElement,f.container.querySelector('[data-wj-disclosure-toggle]'));assert.equal(f.calls.some(row=>row.path==='/writing/jobs'),false);
+ f.click('[data-wj-new]');await until(()=>f.calls.filter(row=>row.path==='/writing/quote').length===2&&!f.container.querySelector('[data-wj-start]').disabled);assert.equal(f.container.querySelector('[data-wj-disclosure]').open,false);assert.equal(f.container.querySelector('[data-wj-consent]').checked,true);assert.equal(f.calls.some(row=>row.path==='/writing/jobs'),false);
+});

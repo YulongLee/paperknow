@@ -12,7 +12,7 @@ const abortError=()=>Object.assign(new Error('页面已切换'),{name:'AbortErro
 export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getContextKey,getProjectRef=()=>'',onApply,onJobChange,onCommandChange,pendingJobId=null,pendingContextKey=null,pendingClientKey=null,isCurrent=()=>true}={}){
  if(!container)throw new TypeError('缺少提纲生成区域');
  const doc=container.ownerDocument,win=doc.defaultView;
- let alive=true,opened=false,epoch=0,timer=null,busy=false,user=null,accountId=null,cap=null,quote=null,item=null,snapshot=null,contextKey=pendingContextKey,jobId=pendingJobId||null,clientKey=pendingClientKey||null,commandPending=!!pendingClientKey,consent=false,ambiguous=!!pendingClientKey&&!pendingJobId,message='',error='',loadError=false,applied=false;
+ let alive=true,opened=false,epoch=0,timer=null,busy=false,user=null,accountId=null,cap=null,quote=null,item=null,snapshot=null,contextKey=pendingContextKey,jobId=pendingJobId||null,clientKey=pendingClientKey||null,commandPending=!!pendingClientKey,consent=false,disclosureOpen=false,ambiguous=!!pendingClientKey&&!pendingJobId,message='',error='',loadError=false,applied=false;
  let projectRef='';try{const pending=JSON.parse(pendingContextKey);if(typeof pending?.projectRef==='string'&&typeof pending?.contextKey==='string'&&Object.keys(pending).length===2)projectRef=pending.projectRef;}catch{}
  const controllers=new Set();
  const current=()=>alive&&container.isConnected&&isCurrent();
@@ -68,6 +68,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
  }
  function render(){
   if(!current()||!opened)return;
+  const disclosure=$('[data-outline-ai-disclosure]');if(disclosure)disclosureOpen=disclosure.open;
   withStableView(container.closest('.dashboard')||container,()=>{
    container.hidden=false;
    const running=active(item),text=item?.status==='completed'?String(item.output?.text||''):'',drift=!!contextKey&&!contextMatches()||commandPending&&!contextKey;
@@ -80,7 +81,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
     if(drift)body+='<p class="writing-outline-ai-warning" role="status">论文主题或研究资料已有变化。请先核对当前信息，再重新生成；这份结果不会直接替换当前提纲。</p>';
     if(item)body+=`<div class="writing-outline-ai-progress" role="status"><strong>${esc(statusText[item.status])}</strong><span>${esc(stages[item.stage]||stages[item.status]||'根据已确认的信息处理')}</span>${running?'<p>可离开此页面，后台任务会继续；重新打开可读取进度。</p>':''}${item.error?`<p class="writing-outline-ai-error">${esc(typeof item.error==='string'?item.error:item.error.message||'生成中断，请稍后重新生成。')}</p>`:''}</div>`;
     if(text)body+=`<div class="writing-outline-ai-preview"><label for="writing-outline-ai-result">AI 提纲预览</label><textarea id="writing-outline-ai-result" data-scroll-key="writing-outline-ai-preview" readonly rows="14">${esc(text)}</textarea><p>生成内容尚未应用。使用后，你仍可上传其他提纲或逐项编辑章节。</p></div>`;
-    if(quote&&!item){body+=`<div class="writing-outline-ai-charge"><strong>${esc(costText())}</strong><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；提纲生成与后续正文生成分别计费。</p><p>选中输入及生成结果会由阿里云内容安全服务审核。</p><label class="writing-outline-ai-consent"><input type="checkbox" data-outline-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容交由 AI 服务处理，并确认本次费用。</label></div>`;}
+    if(quote&&!item){body+=`<div class="writing-outline-ai-charge"><strong>${esc(costText())}</strong><details class="generation-disclosure" data-outline-ai-disclosure ${disclosureOpen?'open':''}><summary data-outline-ai-disclosure-summary tabindex="0">费用与资料说明<span class="generation-disclosure-hint">查看详情</span></summary><div class="generation-disclosure-body"><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；提纲生成与后续正文生成分别计费。</p><p>选中输入及生成结果会由阿里云内容安全服务审核。</p><label class="writing-outline-ai-consent"><input type="checkbox" data-outline-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容交由 AI 服务处理，并确认本次费用。</label></div></details></div>`;}
     body+='<div class="writing-outline-ai-actions">';
     if(running)body+=`<button type="button" class="btn secondary" data-outline-ai-refresh ${busy?'disabled':''}>读取最新状态</button><button type="button" class="btn secondary" data-outline-ai-cancel ${busy?'disabled':''}>停止生成</button>`;
     else if(text)body+=`<button type="button" class="btn primary" data-outline-ai-apply ${busy||drift?'disabled':''}>${applied?'再次使用这份 AI 提纲':'使用这份 AI 提纲'}</button><button type="button" class="btn secondary" data-outline-ai-new ${busy?'disabled':''}>重新生成</button>`;
@@ -121,7 +122,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
   if(!cap?.ready){quote=null;throw Error(cap?.reason||'提纲生成服务暂未开放，仍可上传提纲或自己编辑。');}
   const value=await request('/billing/quote',{type:'agent'},token);
   if(!validThesisQuote(value))throw Error('费用信息不完整或已过期，请重新获取费用。');
-  quote=value;if(!preserveCommand)clientKey=win.crypto.randomUUID();consent=true;ambiguous=preserveCommand&&commandPending;message=preserveCommand?'上次任务尚未确认创建。请重新确认费用后重试同一任务；若后台已接收，会读取原任务。':'费用与资料用途已展示，点击“生成提纲”即可开始。';
+  quote=value;if(!preserveCommand)clientKey=win.crypto.randomUUID();consent=true;ambiguous=preserveCommand&&commandPending;message=preserveCommand?'上次任务尚未确认创建。请重新确认费用后重试同一任务；若后台已接收，会读取原任务。':'费用已就绪，可直接点击“生成提纲”。';
  }
  async function prepare({newCommand=false}={}){
   if(ambiguous&&!newCommand){message='请先重试本次提交以确认结果，避免重复创建任务。';render();return;}

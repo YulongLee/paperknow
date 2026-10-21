@@ -1,0 +1,18 @@
+/* Keep generation actions compact; details remain available on demand. */
+#app .generation-disclosure{margin:12px 0 16px;padding:0;border:1px solid var(--pk-border,#dde6f4);border-radius:9px;background:var(--pk-surface,#fff);color:var(--pk-text,#33445f);font-size:12px;font-weight:400;line-height:1.8;overflow:hidden}
+#app .generation-disclosure>summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;padding:10px 12px;font-size:12px;font-weight:500;color:var(--pk-text,#435674);user-select:none}
+#app .generation-disclosure>summary::-webkit-details-marker{display:none}
+#app .generation-disclosure>summary::before{content:'';display:block;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);flex:0 0 auto;margin-right:3px}
+#app .generation-disclosure[open]>summary::before{transform:rotate(45deg);margin-top:-3px}
+#app .generation-disclosure>summary:hover{background:var(--pk-surface-soft,#f6f9ff)}
+#app .generation-disclosure>summary:focus-visible{outline:2px solid #8bacf7;outline-offset:-3px;border-radius:8px}
+#app .generation-disclosure-hint{margin-left:auto;color:var(--pk-muted,#8391a8);font-size:11px;font-weight:400;white-space:nowrap}
+#app .generation-disclosure[open] .generation-disclosure-hint{display:none}
+#app .generation-disclosure-body{border-top:1px solid var(--pk-border,#e3eaf4);padding:12px;color:var(--pk-muted,#6e7f99);font-size:12px;font-weight:400;line-height:1.85}
+#app .generation-disclosure-body p{margin:0 0 10px;font-size:12px;line-height:1.85;color:inherit}
+#app .generation-disclosure-body p:last-child{margin-bottom:0}
+#app .generation-disclosure-body label{display:flex;align-items:flex-start;gap:8px;margin:12px 0 0;padding-top:12px;border-top:1px solid var(--pk-border,#e3eaf4);font-size:12px;font-weight:400;line-height:1.85;color:var(--pk-text,#435674)}
+#app .generation-disclosure-body input[type=checkbox]{width:15px;height:15px;flex:0 0 15px;margin:4px 0 0;accent-color:var(--thesis-blue,#3265f4)}
+#app .thesis-charge>.thesis-action-row{margin-top:14px}
+#app .thesis-run-controls>.thesis-service-details{margin-bottom:0}
+@media(max-width:480px){#app .generation-disclosure>summary{padding:11px 10px}#app .generation-disclosure-body{padding:11px 10px}}

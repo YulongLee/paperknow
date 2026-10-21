@@ -282,3 +282,19 @@ test('a default-ready thesis quote cannot authorize generation into a changed ac
 test('an invalid new thesis quote removes the previous ready quote instead of reusing its default check',async()=>{
  let quotes=0;const f=fixture({handler:path=>path==='/theses/t1/quote'?(++quotes===1?quote():{...quote(),token:''}):undefined});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote]').click();await settle();assert.equal(f.$('[data-thesis-consent]').checked,true);f.$('[data-thesis-quote]').click();await settle();assert.equal(f.$('[data-thesis-start]'),null);assert.equal(f.calls.some(c=>c.path.endsWith('/generate')),false);assert.match(f.$('[data-thesis-notice]').textContent,/报价/);}finally{f.close();}
 });
+
+test('thesis generation keeps routine explanations collapsed and the quoted cost and start action visible',async()=>{
+ const f=fixture();try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
+ assert.equal(f.$('.thesis-service-details').open,false);assert.match(f.$('.thesis-service-details').textContent,/80,000/);assert.equal(f.$('[data-thesis-quote]').closest('details'),null);
+ f.$('[data-thesis-quote]').click();await settle();const disclosure=f.$('.thesis-generation-details');assert.equal(disclosure.open,false);assert.equal(f.$('.thesis-charge>strong').closest('details'),null);assert.match(f.$('.thesis-charge>strong').textContent,/10 科研积分/);assert.equal(f.$('[data-thesis-start]').closest('details'),null);assert.equal(f.$('[data-thesis-start]').disabled,false);assert.equal(f.$('[data-thesis-consent]').closest('details'),disclosure);assert.equal(f.calls.some(c=>c.path.endsWith('/generate')),false);
+ f.$('[data-thesis-start]').click();await settle();assert.equal(f.calls.filter(c=>c.path.endsWith('/generate')).length,1);
+ }finally{f.close();}
+});
+
+test('opening thesis fee details retains its state and opt-out across chapter redraws, and can be collapsed again',async()=>{
+ const f=fixture();try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote]').click();await settle();
+ f.$('.thesis-generation-details').open=true;const consent=f.$('[data-thesis-consent]');consent.checked=false;consent.dispatchEvent(new window.Event('change'));f.$('[data-thesis-chapter="c2"]').click();assert.equal(f.$('.thesis-generation-details').open,true);assert.equal(f.$('[data-thesis-consent]').checked,false);assert.equal(f.$('[data-thesis-start]').disabled,true);
+ const summary=f.$('[data-thesis-disclosure="fees"]');summary.focus();f.$('[data-thesis-start]').dispatchEvent(new window.MouseEvent('click',{bubbles:true}));await settle();assert.equal(f.calls.some(c=>c.path.endsWith('/generate')),false);assert.equal(document.activeElement,summary);
+ f.$('.thesis-generation-details').open=false;f.$('[data-thesis-chapter="c1"]').click();assert.equal(f.$('.thesis-generation-details').open,false);assert.equal(f.$('[data-thesis-start]').disabled,true);
+ }finally{f.close();}
+});

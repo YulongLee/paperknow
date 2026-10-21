@@ -138,3 +138,15 @@ test('default tool consent cannot reuse a quote after its expiry or a session ow
 test('invalid tool fee data never enables the default generation action',async t=>{
  const f=fixture(t,{getQuote:()=>({type:'agent',source:'credits',creditCost:10,title:'缺少令牌的报价'})});await f.panel.open();assert.match(f.container.textContent,/费用信息不完整/);assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);assert.equal(f.container.querySelector('[data-tj-consent]')?.checked||false,false);assert.equal(f.container.querySelector('[data-tj-start]')?.disabled??true,true);
 });
+
+test('tool generation keeps the fee and start visible while explanation is closed by default',async t=>{
+ const f=fixture(t);await f.panel.open();const disclosure=f.container.querySelector('[data-tj-disclosure]'),start=f.container.querySelector('[data-tj-start]'),cost=f.container.querySelector('.tool-job-charge > strong');
+ assert.ok(disclosure);assert.equal(disclosure.open,false);assert.match(cost.textContent,/10 科研积分/);assert.equal(cost.closest('details'),null);assert.equal(start.closest('details'),null);assert.equal(start.disabled,false);assert.equal(f.container.querySelector('[data-tj-consent]').closest('details'),disclosure);assert.equal(f.container.querySelector('[data-tj-consent]').checked,true);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs').length,0);
+ const toggle=disclosure.querySelector('summary');assert.match(toggle.textContent,/费用与资料说明/);assert.equal(toggle.tabIndex,0);toggle.click();assert.equal(disclosure.open,true);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs').length,0);
+});
+
+test('tool explanation stays open through an unchanged-input redraw and a fresh quote starts collapsed',async t=>{
+ const f=fixture(t);await f.panel.open();f.click('[data-tj-disclosure-toggle]');const toggle=f.container.querySelector('[data-tj-disclosure-toggle]');toggle.focus();const input=f.container.querySelector('[data-tj-consent]');input.checked=false;input.dispatchEvent(new f.w.Event('change',{bubbles:true}));f.panel.inputChanged();
+ assert.equal(f.container.querySelector('[data-tj-disclosure]').open,true);assert.equal(f.container.querySelector('[data-tj-consent]').checked,false);assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);assert.equal(f.w.document.activeElement,f.container.querySelector('[data-tj-disclosure-toggle]'));assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);
+ f.click('[data-tj-new]');await until(()=>f.requests.filter(row=>row.path==='/tool-runs/quote').length===2&&!f.container.querySelector('[data-tj-start]').disabled);assert.equal(f.container.querySelector('[data-tj-disclosure]').open,false);assert.equal(f.container.querySelector('[data-tj-consent]').checked,true);assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);
+});
