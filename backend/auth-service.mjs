@@ -1,5 +1,5 @@
 import {createHmac,randomInt,randomUUID,timingSafeEqual} from 'node:crypto';
-import {createSession,ensureOwnerRole,hashPassword,safeUser,verifyPassword} from './auth.mjs';
+import {createSession,ensureOwnerRole,hashPassword,safeUser,verifyPassword,accountIsBanned,accountBannedError,assertAccountActive} from './auth.mjs';
 
 const MINUTE=60000;
 const HOUR=60*MINUTE;
@@ -117,6 +117,7 @@ export function createAuthService(db,{secret,delivery,clock=Date.now,dailyLimit=
   }
 
   function signedIn(row,at){
+    assertAccountActive(db,row.id);
     ensureOwnerRole(db,row.id,ownerEmail,at);
     return {user:safeUser(db,row.id),token:createSession(db,row.id,at)};
   }
@@ -184,6 +185,7 @@ export function createAuthService(db,{secret,delivery,clock=Date.now,dailyLimit=
     return consume(input,'login',(challenge,at)=>{
       const row=findUser(challenge.channel,challenge.address);
       if(!row)return {failure:error(401,loginMessage)};
+      if(accountIsBanned(db,row.id))return {failure:accountBannedError()};
       // Legacy email registration did not prove ownership. A verified owner must
       // not inherit a password or surviving sessions chosen by a prior registrant.
       if(!row.verified_at){
@@ -217,6 +219,7 @@ export function createAuthService(db,{secret,delivery,clock=Date.now,dailyLimit=
     return consume(input,'reset',(challenge,at)=>{
       const row=findUser(challenge.channel,challenge.address);
       if(!row)return {failure:error(401,loginMessage)};
+      if(accountIsBanned(db,row.id))return {failure:accountBannedError()};
       markVerified(row,challenge,at);
       db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(hash,row.id);
       ensureOwnerRole(db,row.id,ownerEmail,at);

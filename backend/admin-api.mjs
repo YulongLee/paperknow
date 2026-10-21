@@ -1,3 +1,4 @@
+import {createAdminUserManagement} from './admin-user-management.mjs';
 import {createResearchImageSettings} from './research-image-settings.mjs';
 import {randomUUID} from 'node:crypto';
 import {aiReady,publicModelSettings} from './config.mjs';
@@ -13,8 +14,8 @@ const ownerFields="u.name AS user_name,COALESCE(ue.address,u.email) AS user_emai
 const sharedSearch=['u.name','COALESCE(ue.address,u.email)','up.address'];
 const definitions={
   users:{
-    from:`users u ${identityJoins}`,
-    fields:`u.id,u.name,COALESCE(ue.address,u.email) AS email,up.address AS phone,u.role,u.created_at,
+    from:`users u ${identityJoins} LEFT JOIN user_management um ON um.user_id=u.id`,
+    fields:`u.id,u.name,COALESCE(ue.address,u.email) AS email,up.address AS phone,u.role,u.created_at,COALESCE(um.status,'active') AS account_status,COALESCE(um.version,1) AS version,
       ue.verified_at AS email_verified_at,up.verified_at AS phone_verified_at,
       (SELECT count(*) FROM projects p WHERE p.user_id=u.id) AS project_count,
       (SELECT count(*) FROM jobs j WHERE j.user_id=u.id) AS job_count`,
@@ -73,23 +74,25 @@ export function createAdminAPI(db,worker,config,auth){
     try{const result=work();db.exec('COMMIT;');return result;}
     catch(cause){db.exec('ROLLBACK;');throw cause;}
   };
+  const userManagement=createAdminUserManagement(db,{billing:config.billing,audit,transaction});
   const agentSettings=config.agentSettings||createAgentSettings(db,config,{audit});
   const researchImageSettings=config.researchImageSettings||createResearchImageSettings(db,config,{audit});
   let agentTestRunning=false,agentTestAt=0;
 
   function list(name,query){
-    parameters(query,['page','pageSize','q','status']);
+    parameters(query,['page','pageSize','q','status',...(name==='users'?['accountStatus']:[])]);
     const spec=definitions[name];
     if(!spec)fail(404,'管理接口不存在');
     const page=positiveInteger(query.get('page'),1),pageSize=Math.min(positiveInteger(query.get('pageSize'),20),50);
-    const search=(query.get('q')||'').trim(),status=query.get('status')||'';
-    if(search.length>100||status&&!spec.statuses.includes(status))fail(400,'筛选参数不正确');
+    const search=(query.get('q')||'').trim(),status=query.get('status')||'',accountStatus=query.get('accountStatus')||'';
+    if(search.length>100||status&&!spec.statuses.includes(status)||accountStatus&&!['active','banned'].includes(accountStatus))fail(400,'筛选参数不正确');
     const filters=[],values=[];
     if(search){
       filters.push(`(${spec.search.map(column=>`instr(lower(COALESCE(CAST(${column} AS TEXT),'')),lower(?))>0`).join(' OR ')})`);
       values.push(...spec.search.map(()=>search));
     }
     if(status){filters.push(`${spec.status}=?`);values.push(spec.statusValue?spec.statusValue(status):status);}
+    if(accountStatus){filters.push("COALESCE(um.status,'active')=?");values.push(accountStatus);}
     const where=filters.length?' WHERE '+filters.join(' AND '):'';
     const total=db.prepare(`SELECT count(*) n FROM ${spec.from}${where}`).get(...values).n;
     const items=db.prepare(`SELECT ${spec.fields} FROM ${spec.from}${where} ORDER BY ${spec.order} LIMIT ? OFFSET ?`).all(...values,pageSize,(page-1)*pageSize).map(sanitize);
@@ -128,9 +131,11 @@ export function createAdminAPI(db,worker,config,auth){
     // Keep an independent authorization boundary even if a future caller skips
     // createAPI's routing guard. Re-read role instead of trusting a request body.
     if(!user?.id)fail(401,'请先登录');
-    const actor=db.prepare('SELECT id,role FROM users WHERE id=?').get(user.id);
+    const actor=db.prepare("SELECT u.id,u.role,COALESCE(m.status,'active') status FROM users u LEFT JOIN user_management m ON m.user_id=u.id WHERE u.id=?").get(user.id);
     if(!actor)fail(401,'请先登录');
-    if(actor.role!=='admin')fail(403,'需要管理员权限');
+    if(actor.role!=='admin'||actor.status!=='active')fail(403,'需要管理员权限');
+    const managedUser=path.match(/^\/api\/admin\/users\/([^/]+)\/(manage|credits|membership|status)$/);
+    if(managedUser){parameters(query,[]);if(!config.billing)fail(503,'账户计费管理尚未启用');if(managedUser[2]==='manage'&&method==='GET')return userManagement.detail(managedUser[1]);if(managedUser[2]!=='manage'&&method==='POST')return userManagement.mutate(actor,managedUser[1],managedUser[2],await readBody());fail(404,'用户管理接口不存在');}
     if(path.startsWith('/api/admin/monitoring')){
       parameters(query,[]);
       if(!config.monitoring)fail(503,'运行监控尚未启用');

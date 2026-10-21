@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS admin_audit(
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS admin_audit_created ON admin_audit(created_at);
+CREATE INDEX IF NOT EXISTS admin_audit_target_created ON admin_audit(target_type,target_id,created_at);
 
 CREATE TABLE IF NOT EXISTS payment_config_versions(
   id TEXT PRIMARY KEY,provider TEXT NOT NULL CHECK(provider IN ('wechat','alipay')),
@@ -111,3 +112,35 @@ CREATE TABLE IF NOT EXISTS payment_entitlements(
   starts_at TEXT NOT NULL,expires_at TEXT NOT NULL,granted_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS payment_entitlements_owner ON payment_entitlements(user_id,expires_at);
+
+-- Operational account controls are separate from authentication identities and paid orders.
+CREATE TABLE IF NOT EXISTS user_management(
+ user_id TEXT PRIMARY KEY REFERENCES users(id),status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','banned')),
+ version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1),reason TEXT NOT NULL DEFAULT '',
+ updated_by TEXT REFERENCES users(id),updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS admin_user_commands(
+ actor_id TEXT NOT NULL REFERENCES users(id),command_id TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id),
+ action TEXT NOT NULL,input_hash TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(actor_id,command_id)
+);
+CREATE TABLE IF NOT EXISTS admin_credit_adjustments(
+ id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),actor_id TEXT NOT NULL REFERENCES users(id),
+ amount INTEGER NOT NULL CHECK(amount!=0 AND amount BETWEEN -1000000 AND 1000000),reason TEXT NOT NULL,created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS admin_credit_adjustments_owner ON admin_credit_adjustments(user_id,created_at);
+CREATE TRIGGER IF NOT EXISTS admin_credit_adjustments_no_update BEFORE UPDATE ON admin_credit_adjustments BEGIN SELECT RAISE(ABORT,'管理积分流水不可修改'); END;
+CREATE TRIGGER IF NOT EXISTS admin_credit_adjustments_no_delete BEFORE DELETE ON admin_credit_adjustments BEGIN SELECT RAISE(ABORT,'管理积分流水不可删除'); END;
+CREATE TABLE IF NOT EXISTS admin_membership_grants(
+ id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),product_id TEXT NOT NULL REFERENCES products(id),
+ title TEXT NOT NULL,items TEXT NOT NULL,starts_at TEXT NOT NULL,expires_at TEXT NOT NULL,
+ granted_by TEXT NOT NULL REFERENCES users(id),reason TEXT NOT NULL,created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS admin_membership_grants_owner ON admin_membership_grants(user_id,expires_at);
+CREATE TRIGGER IF NOT EXISTS admin_membership_grants_no_update BEFORE UPDATE ON admin_membership_grants BEGIN SELECT RAISE(ABORT,'原始会员授予记录不可修改'); END;
+CREATE TRIGGER IF NOT EXISTS admin_membership_grants_no_delete BEFORE DELETE ON admin_membership_grants BEGIN SELECT RAISE(ABORT,'原始会员授予记录不可删除'); END;
+CREATE TABLE IF NOT EXISTS admin_membership_overrides(
+ grant_key TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires_at TEXT NOT NULL,
+ status TEXT NOT NULL CHECK(status IN ('active','revoked')),reason TEXT NOT NULL,
+ updated_by TEXT NOT NULL REFERENCES users(id),updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS admin_membership_overrides_owner ON admin_membership_overrides(user_id);

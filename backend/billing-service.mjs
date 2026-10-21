@@ -4,6 +4,7 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {aiReady} from './config.mjs';
 import {agentSettingsReady} from './agent-settings.mjs';
 import {detectionBillingReady} from './detection-billing-readiness.mjs';
+import {managedMemberships,adminCreditTotal,adminCreditLedger} from './admin-user-entitlements.mjs';
 
 export const billingServiceTypes=Object.freeze([
  Object.freeze({key:'polish',title:'学术润色'}),
@@ -63,7 +64,7 @@ export function createBillingService(db,config={}){
  // records; no existing purchase, charge, entitlement or policy is rewritten.
  for(const table of ['billing_quotes','billing_reservations']){
   const present=new Set(db.prepare('PRAGMA table_info('+table+')').all().map(row=>row.name));
-  for(const [name,type]of [['service_key','TEXT'],['entitlement_key','TEXT'],...(table==='billing_quotes'?[['tool_policy_version','INTEGER']]:[])])if(!present.has(name))db.exec('ALTER TABLE '+table+' ADD COLUMN '+name+' '+type);
+  for(const [name,type]of [['service_key','TEXT'],['entitlement_key','TEXT'],['source_grant_id','TEXT REFERENCES admin_membership_grants(id)'],...(table==='billing_quotes'?[['tool_policy_version','INTEGER']]:[])])if(!present.has(name))db.exec('ALTER TABLE '+table+' ADD COLUMN '+name+' '+type);
  }
  db.exec(`CREATE TABLE IF NOT EXISTS tool_pricing_policy(id INTEGER PRIMARY KEY CHECK(id=1),rules TEXT NOT NULL,version INTEGER NOT NULL CHECK(version>=1),updated_at TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS billing_reservations_entitlement_v2 ON billing_reservations(source_order,entitlement_key,type,status);
@@ -73,6 +74,9 @@ export function createBillingService(db,config={}){
  CREATE TRIGGER IF NOT EXISTS billing_reservations_tool_identity_protect BEFORE UPDATE ON billing_reservations
  WHEN NEW.service_key IS NOT OLD.service_key OR NEW.entitlement_key IS NOT OLD.entitlement_key
  BEGIN SELECT RAISE(ABORT,'科研工具预占身份不可修改'); END;`);
+ db.exec(`CREATE INDEX IF NOT EXISTS billing_reservations_admin_grant ON billing_reservations(source_grant_id,entitlement_key,type,status);
+ CREATE TRIGGER IF NOT EXISTS billing_quotes_admin_identity_protect BEFORE UPDATE ON billing_quotes WHEN NEW.source_grant_id IS NOT OLD.source_grant_id BEGIN SELECT RAISE(ABORT,'管理会员报价身份不可修改'); END;
+ CREATE TRIGGER IF NOT EXISTS billing_reservations_admin_identity_protect BEFORE UPDATE ON billing_reservations WHEN NEW.source_grant_id IS NOT OLD.source_grant_id BEGIN SELECT RAISE(ABORT,'管理会员预占身份不可修改'); END;`);
  db.prepare('INSERT OR IGNORE INTO tool_pricing_policy(id,rules,version,updated_at) VALUES(1,?,1,?)').run(JSON.stringify(toolBillingServiceTypes.map(({key})=>defaultToolRule(key))),clock());
  // Only the two exact, validated historic catalogues are extended. Unknown keys,
  // duplicate/missing old entries and malformed modes remain closed for inspection.
@@ -135,9 +139,9 @@ export function createBillingService(db,config={}){
   if(!keys.has(type))fail(400,'不支持的计费服务');serviceKey=subservice(type,serviceKey);const policy=rules(),parent=policy.services.find(value=>value.key===type),tools=serviceKey?toolRules():null,child=tools?.services.find(value=>value.key===serviceKey),item=child?{...parent,title:child.title,mode:child.effectiveMode,creditCost:child.effectiveCreditCost,available:child.available}:parent;
   if(!item.available)fail(503,'当前服务尚未启用');if(item.mode==='disabled')fail(503,'当前服务已暂停');return {...item,version:policy.version,serviceKey,toolVersion:tools?.version??null};
  }
- function counts(orderId,key){return db.prepare("SELECT COALESCE(sum(CASE WHEN status='held' THEN 1 ELSE 0 END),0) held,COALESCE(sum(CASE WHEN status='settled' THEN 1 ELSE 0 END),0) used FROM billing_reservations WHERE source_order=? AND COALESCE(entitlement_key,type)=? AND status IN ('held','settled')").get(orderId,key);}
+ function counts(orderId,key){const admin=typeof orderId==='string'&&orderId.startsWith('admin:');return db.prepare(`SELECT COALESCE(sum(CASE WHEN status='held' THEN 1 ELSE 0 END),0) held,COALESCE(sum(CASE WHEN status='settled' THEN 1 ELSE 0 END),0) used FROM billing_reservations WHERE ${admin?'source_grant_id':'source_order'}=? AND COALESCE(entitlement_key,type)=? AND status IN ('held','settled')`).get(admin?orderId.slice(6):orderId,key);}
  function grants(userId,source){
-  const membership=source==='membership',table=membership?'payment_entitlements':'payment_bundle_entitlements';
+  const membership=source==='membership';if(membership)return managedMemberships(db,userId,clock()).filter(row=>row.status!=='revoked').map(row=>({orderId:row.origin==='admin'?row.id:row.orderId,startsAt:row.startsAt,expiresAt:row.expiresAt,items:validItems(row.items)})).sort((a,b)=>a.expiresAt.localeCompare(b.expiresAt)||a.orderId.localeCompare(b.orderId));const table='payment_bundle_entitlements';
   return db.prepare(`SELECT e.order_id AS orderId,e.starts_at AS startsAt,e.expires_at AS expiresAt,d.entitlement FROM ${table} e JOIN payment_orders d ON d.order_id=e.order_id JOIN orders o ON o.id=e.order_id WHERE e.user_id=? AND o.user_id=? AND o.status='paid' ORDER BY e.expires_at,e.starts_at,e.order_id`).all(userId,userId).flatMap(row=>{
    let snapshot;try{snapshot=JSON.parse(row.entitlement);}catch{return [];}
    if(snapshot?.type!==source)return [];
@@ -154,7 +158,7 @@ export function createBillingService(db,config={}){
  function totals(userId){
   const purchased=db.prepare('SELECT COALESCE(sum(amount),0) n FROM payment_credit_ledger WHERE user_id=?').get(userId).n;
   const usage=db.prepare("SELECT COALESCE(sum(CASE WHEN status='settled' THEN credits ELSE 0 END),0) spent,COALESCE(sum(CASE WHEN status='held' THEN credits ELSE 0 END),0) held FROM billing_reservations WHERE user_id=? AND source='credits'").get(userId);
-  const balance=purchased-usage.spent,held=usage.held;
+  const balance=purchased+adminCreditTotal(db,userId)-usage.spent,held=usage.held;
   if(!Number.isSafeInteger(balance)||!Number.isSafeInteger(held)||balance<0||held<0||balance-held<0)fail(503,'账户积分记录异常，请联系支持');
   return {balance,held,available:balance-held};
  }
@@ -173,10 +177,11 @@ export function createBillingService(db,config={}){
   // Bound cleanup work and keep a full day after expiry for recent request retries.
   db.prepare('DELETE FROM billing_quotes WHERE token IN (SELECT token FROM billing_quotes WHERE expires_at<? ORDER BY expires_at,token LIMIT 500)').run(new Date(Date.parse(now)-86400000).toISOString());
   const token=randomBytes(32).toString('base64url'),expiresAt=new Date(Date.parse(now)+5*60000).toISOString();
-  db.prepare('INSERT INTO billing_quotes(token,user_id,type,source,source_order,credits,policy_version,expires_at,used,service_key,entitlement_key,tool_policy_version) VALUES(?,?,?,?,?,?,?,?,0,?,?,?)').run(token,user.id,item.key,source,sourceOrderId,creditCost,item.version,expiresAt,item.serviceKey,entitlementKey,item.toolVersion);
+  const adminGrantId=source==='membership'&&sourceOrderId?.startsWith('admin:')?sourceOrderId.slice(6):null;
+  db.prepare('INSERT INTO billing_quotes(token,user_id,type,source,source_order,source_grant_id,credits,policy_version,expires_at,used,service_key,entitlement_key,tool_policy_version) VALUES(?,?,?,?,?,?,?,?,?,0,?,?,?)').run(token,user.id,item.key,source,adminGrantId?null:sourceOrderId,adminGrantId,creditCost,item.version,expiresAt,item.serviceKey,entitlementKey,item.toolVersion);
   return {token,type:item.key,title:item.title,source,sourceOrderId,creditCost,expiresAt,policyVersion:item.version,...(item.serviceKey?{serviceKey:item.serviceKey,toolPolicyVersion:item.toolVersion}:{}),...(entitlementKey?{entitlementKey}:{})};
  }
- function reservation(row){return {id:row.id,jobId:row.job_id,attempt:row.attempt,userId:row.user_id,type:row.type,source:row.source,sourceOrderId:row.source_order,creditCost:row.credits,status:row.status,...(row.service_key?{serviceKey:row.service_key}:{}),...(row.entitlement_key?{entitlementKey:row.entitlement_key}:{}),createdAt:row.created_at,updatedAt:row.updated_at};}
+ function reservation(row){return {id:row.id,jobId:row.job_id,attempt:row.attempt,userId:row.user_id,type:row.type,source:row.source,sourceOrderId:row.source_grant_id?'admin:'+row.source_grant_id:row.source_order,...(row.source_grant_id?{sourceGrantId:row.source_grant_id}:{}),creditCost:row.credits,status:row.status,...(row.service_key?{serviceKey:row.service_key}:{}),...(row.entitlement_key?{entitlementKey:row.entitlement_key}:{}),createdAt:row.created_at,updatedAt:row.updated_at};}
  function event(id,kind,now){db.prepare('INSERT INTO billing_events(id,reservation_id,kind,created_at) VALUES(?,?,?,?)').run(randomUUID(),id,kind,now);}
  function reserve(user,jobId,attempt,type,token,serviceKey){
   serviceKey=subservice(type,serviceKey);
@@ -190,7 +195,7 @@ export function createBillingService(db,config={}){
    if(typeof token!=='string'||token.length>200)fail(400,'计费确认无效');
    quoted=db.prepare('SELECT * FROM billing_quotes WHERE token=? AND user_id=?').get(token,user.id);
    if(!quoted||quoted.type!==type||quoted.used||quoted.expires_at<=now||quoted.policy_version!==item.version||(quoted.service_key??null)!==serviceKey||(quoted.tool_policy_version??null)!==item.toolVersion)fail(409,'计费确认已失效，请重新确认后提交');
-   ({source,source_order:sourceOrderId,credits:creditCost,entitlement_key:entitlementKey}=quoted);
+   ({source,source_order:sourceOrderId,credits:creditCost,entitlement_key:entitlementKey}=quoted);if(quoted.source_grant_id)sourceOrderId='admin:'+quoted.source_grant_id;
    if(item.mode==='free'&&source!=='free'&&!(detectionKeys.has(serviceKey)&&['membership','bundle'].includes(source))||item.mode==='paid'&&source==='free')fail(409,'计费方式已变化，请重新确认');
   }else if(item.mode==='paid'||serviceKey)fail(409,'请先确认本次使用的权益或积分');
   if(source==='credits'){
@@ -200,7 +205,8 @@ export function createBillingService(db,config={}){
   }
   if(quoted&&!db.prepare('UPDATE billing_quotes SET used=1 WHERE token=? AND used=0').run(quoted.token).changes)fail(409,'本次计费确认已使用');
   const id=randomUUID();
-  db.prepare("INSERT INTO billing_reservations(id,job_id,attempt,user_id,type,source,source_order,credits,status,created_at,updated_at,service_key,entitlement_key) VALUES(?,?,?,?,?,?,?,?,'held',?,?,?,?)").run(id,jobId,attempt,user.id,type,source,sourceOrderId,creditCost,now,now,serviceKey,entitlementKey);
+  const adminGrantId=source==='membership'&&sourceOrderId?.startsWith('admin:')?sourceOrderId.slice(6):null;
+  db.prepare("INSERT INTO billing_reservations(id,job_id,attempt,user_id,type,source,source_order,source_grant_id,credits,status,created_at,updated_at,service_key,entitlement_key) VALUES(?,?,?,?,?,?,?,?,?,'held',?,?,?,?)").run(id,jobId,attempt,user.id,type,source,adminGrantId?null:sourceOrderId,adminGrantId,creditCost,now,now,serviceKey,entitlementKey);
   event(id,'reserve',now);return reservation(db.prepare('SELECT * FROM billing_reservations WHERE id=?').get(id));
  }
  function finish(jobId,status,kind){
@@ -214,7 +220,7 @@ export function createBillingService(db,config={}){
  function balance(userId){
   const purchased=db.prepare('SELECT p.order_id AS orderId,p.product_id AS productId,d.title,p.amount,p.kind,p.created_at AS createdAt FROM payment_credit_ledger p JOIN payment_orders d ON d.order_id=p.order_id WHERE p.user_id=? ORDER BY p.created_at DESC,p.order_id DESC LIMIT 100').all(userId).map(row=>({...row,id:'purchase:'+row.orderId,source:'credits',jobId:null,heldDelta:0}));
   const events=db.prepare(`SELECT e.id,e.kind,e.created_at AS createdAt,r.id AS reservationId,r.job_id AS jobId,r.attempt,r.type,r.service_key AS serviceKey,r.entitlement_key AS entitlementKey,r.source,r.source_order AS sourceOrderId,r.credits FROM billing_events e JOIN billing_reservations r ON r.id=e.reservation_id WHERE r.user_id=? AND r.source='credits' ORDER BY e.created_at DESC,e.rowid DESC LIMIT 100`).all(userId).map(({credits,...row})=>({...row,title:toolBillingServiceTypes.find(item=>item.key===row.serviceKey)?.title||billingServiceTypes.find(item=>item.key===row.type)?.title||row.type,amount:row.source==='credits'&&row.kind==='settle'?-credits:0,heldDelta:row.source==='credits'?(row.kind==='reserve'?credits:row.kind==='settle'||row.kind==='release'?-credits:0):0}));
-  const ledger=[...purchased,...events].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||b.id.localeCompare(a.id)).slice(0,100);
+  const ledger=[...purchased,...adminCreditLedger(db,userId),...events].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||b.id.localeCompare(a.id)).slice(0,100);
   return {...totals(userId),ledger};
  }
  function entitlements(userId){

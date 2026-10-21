@@ -3,6 +3,19 @@ import {promisify} from 'node:util';
 
 const scrypt=promisify(scryptCallback);
 export const digest=value=>createHash('sha256').update(value).digest('hex');
+const managementSchemas=new WeakSet();
+
+export const accountBannedError=()=>Object.assign(new Error('账号已被封禁，请联系人工支持'),{status:403,code:'ACCOUNT_BANNED'});
+export function accountIsBanned(db,userId){
+  // Older, standalone authentication databases predate user management. Do not
+  // cache absence: a migration may create the table on this same connection.
+  if(!managementSchemas.has(db)){
+    if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='user_management'").get())return false;
+    managementSchemas.add(db);
+  }
+  return db.prepare('SELECT status FROM user_management WHERE user_id=?').get(userId)?.status==='banned';
+}
+export function assertAccountActive(db,userId){if(accountIsBanned(db,userId))throw accountBannedError();}
 
 export async function hashPassword(password){
   const salt=randomBytes(16).toString('hex');
@@ -32,6 +45,7 @@ export function ensureOwnerAdmin(db,userOrId,ownerEmail,at=Date.now()){
   const userId=typeof userOrId==='string'?userOrId:userOrId?.id;
   const email=typeof ownerEmail==='string'?ownerEmail.trim().toLowerCase():'';
   if(!userId)return null;
+  assertAccountActive(db,userId);
   if(!email)return safeUser(db,userId);
   // Only a persisted, verified identity grants ownership. Neither the legacy
   // users.email field nor any request-provided role/name can elevate a user.
@@ -54,6 +68,7 @@ export function ensureOwnerAdmin(db,userOrId,ownerEmail,at=Date.now()){
 export const ensureOwnerRole=ensureOwnerAdmin;
 
 export function createSession(db,userId,at=Date.now()){
+  assertAccountActive(db,userId);
   db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(at);
   const token=randomBytes(32).toString('hex');
   db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)').run(digest(token),userId,at+7*86400000);
@@ -65,6 +80,7 @@ export function sessionUser(db,req,ownerEmail){
   if(!token)return null;
   const row=db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').get(digest(token),Date.now());
   if(!row)return null;
+  if(accountIsBanned(db,row.id))return null;
   return ensureOwnerAdmin(db,row.id,ownerEmail);
 }
 

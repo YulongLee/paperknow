@@ -1,6 +1,7 @@
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {createPaymentSettings,paymentBundleItems,paymentCatalog,paymentNotifyURL} from './payment-settings.mjs';
 import {createProviderPayment,queryProviderPayment,parseProviderNotification,validateProvider,validateAlipayPaymentURL,deriveAlipayQRPaymentURL} from './payment-providers.mjs';
+import {managedMemberships,adminCreditTotal,adminCreditLedger} from './admin-user-entitlements.mjs';
 import {productDelivery} from './commerce-readiness.mjs';
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const at=()=>new Date().toISOString();
@@ -51,7 +52,8 @@ export function createPaymentService(db,config={}){
   // The immutable order snapshot, never the current product price, drives fulfilment.
   if(validCredits){
    const balance=db.prepare('SELECT COALESCE(sum(amount),0) AS balance FROM payment_credit_ledger WHERE user_id=?').get(fresh.user_id).balance;
-   if(!Number.isSafeInteger(balance+entitlement.creditAmount))fail(500,'积分余额异常，请联系客服');
+   const currentBalance=config.billing?config.billing.balance(fresh.user_id).balance:balance+adminCreditTotal(db,fresh.user_id);
+   if(!Number.isSafeInteger(balance+entitlement.creditAmount)||!Number.isSafeInteger(currentBalance+entitlement.creditAmount))fail(500,'积分余额异常，请联系客服');
    db.prepare('INSERT INTO payment_credit_ledger(order_id,user_id,product_id,amount,kind,created_at) VALUES(?,?,?,?,?,?)').run(fresh.id,fresh.user_id,fresh.product_id,entitlement.creditAmount,'purchase',now);
   }else if(validBundle){
    const expiresAt=new Date(Date.parse(now)+entitlement.durationDays*86400000).toISOString();
@@ -145,18 +147,21 @@ export function createPaymentService(db,config={}){
  function getOrder(user,id){expire(user.id);return {item:publicOrder(own(id,user))};}
  function list(user){expire(user.id);return {items:db.prepare(orderSelect+' WHERE o.user_id=? ORDER BY o.created_at DESC,o.id DESC LIMIT 100').all(user.id).map(publicOrder)};}
  function entitlements(user){
- const items=db.prepare('SELECT e.order_id,e.product_id,e.type,e.starts_at,e.expires_at,d.title,d.entitlement FROM payment_entitlements e JOIN payment_orders d ON d.order_id=e.order_id WHERE e.user_id=? ORDER BY e.expires_at DESC LIMIT 100').all(user.id).map(({entitlement,...item})=>{
+ const managed=managedMemberships(db,user.id),byOrder=new Map(managed.filter(row=>row.origin==='payment').map(row=>[row.orderId,row]));
+ const items=db.prepare('SELECT e.order_id,e.product_id,e.type,e.starts_at,e.expires_at,d.title,d.entitlement FROM payment_entitlements e JOIN payment_orders d ON d.order_id=e.order_id WHERE e.user_id=? ORDER BY e.expires_at DESC LIMIT 100').all(user.id).flatMap(({entitlement,...item})=>{
+  const effective=byOrder.get(item.order_id);if(!effective||effective.status==='revoked')return [];item.expires_at=effective.expiresAt;
   let snapshot;try{snapshot=JSON.parse(entitlement);}catch{snapshot=null;}
   return {...item,description:typeof snapshot?.description==='string'?snapshot.description:'',...(config.billing?{membershipItems:paymentBundleItems(snapshot?.membershipItems||[],{allowEmpty:true})||[]}:{} )};
  });
- const balance=db.prepare('SELECT COALESCE(sum(amount),0) AS balance FROM payment_credit_ledger WHERE user_id=?').get(user.id).balance;
+ items.push(...managed.filter(row=>row.origin==='admin'&&row.status!=='revoked').map(row=>({order_id:row.id,product_id:row.productId,type:'membership',starts_at:row.startsAt,expires_at:row.expiresAt,title:row.title,description:row.description,membershipItems:row.items,origin:'admin'})));
+ const balance=db.prepare('SELECT COALESCE(sum(amount),0) AS balance FROM payment_credit_ledger WHERE user_id=?').get(user.id).balance+adminCreditTotal(db,user.id);
  const ledger=db.prepare('SELECT e.order_id AS orderId,e.product_id AS productId,d.title,e.amount,e.kind,e.created_at AS createdAt FROM payment_credit_ledger e JOIN payment_orders d ON d.order_id=e.order_id WHERE e.user_id=? ORDER BY e.created_at DESC,e.order_id DESC LIMIT 100').all(user.id);
  const bundles=db.prepare('SELECT e.order_id AS orderId,e.product_id AS productId,d.title,d.entitlement,e.starts_at AS startsAt,e.expires_at AS expiresAt,e.items FROM payment_bundle_entitlements e JOIN payment_orders d ON d.order_id=e.order_id WHERE e.user_id=? ORDER BY e.granted_at DESC,e.order_id DESC LIMIT 100').all(user.id).map(({entitlement,items,...item})=>{
   let snapshot,parsed;try{snapshot=JSON.parse(entitlement);}catch{}try{parsed=paymentBundleItems(JSON.parse(items));}catch{}
   return {...item,description:typeof snapshot?.description==='string'?snapshot.description:'',items:parsed||[]};
  });
  if(config.billing){const billing=config.billing.entitlements(user.id);return {items:items.map(item=>({...item,usage:billing.membershipUsage[item.order_id]||[]})),credits:config.billing.balance(user.id),bundles:bundles.map(item=>({...item,items:billing.bundleUsage[item.orderId]||item.items})),billing};}
- return {items,credits:{balance,ledger},bundles};
+ return {items,credits:{balance,ledger:[...ledger,...adminCreditLedger(db,user.id)].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,100)},bundles};
  }
  return {settings,options,create,query,notify,getOrder,list,entitlements};
 }

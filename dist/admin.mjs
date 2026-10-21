@@ -1,9 +1,10 @@
 import {researchImagesPanel,researchImagesPayload} from './admin-research-images.mjs';
+import {mountAdminUserManagement} from './admin-user-management.mjs';
 import {toolBillingServiceTypes,toolBillingModes,toolBillingPage,toolBillingRulesValid,toolBillingPayload} from './admin-tool-billing.mjs';
 import {monitoringPage,monitoringSettingsPayload} from './admin-monitoring.mjs';
 const paths = {
   overview: ['运营概览', '掌握账户、任务与服务的运行情况。', 'grid'],
-  users: ['用户管理', '查看注册账户、联系方式验证与使用情况。', 'users'],
+  users: ['用户管理', '管理会员权益、科研积分与账号使用状态。', 'users'],
   jobs: ['任务管理', '追踪任务状态，处理排队中或执行中的任务。', 'task'],
   results: ['成果记录', '查看服务端成果的归属、类型与创建记录。', 'file'],
   feedback: ['用户反馈', '记录处理进度，让每一条反馈都有回应。', 'message'],
@@ -44,7 +45,7 @@ const badge = value => { const [label, color] = Object.hasOwn(statuses, value) ?
 const filters = { users: ['user', 'admin'], jobs: ['queued', 'running', 'completed', 'failed', 'cancelled'], feedback: ['open', 'processing', 'resolved'], orders: ['pending', 'paid', 'closed', 'expired', 'cancelled', 'refunded', 'failed'], usage: ['billable', 'unbilled'] };
 const searchHints = { users: '搜索昵称、邮箱、手机号或用户 ID', jobs: '搜索任务 ID、类型或用户', results: '搜索成果名称、类型或用户', feedback: '搜索反馈内容、分类或用户', orders: '搜索订单、商品或用户', usage: '搜索模型、任务或用户', audit: '搜索操作、目标或管理员' };
 const headers = { users: ['用户', '联系方式', '身份', '项目 / 任务', '注册时间', '操作'], jobs: ['任务', '所属用户', '状态', '阶段 / 次数', '创建时间', '操作'], results: ['成果名称', '所属用户', '类型', '关联任务', '创建时间'], feedback: ['反馈内容', '提交用户', '分类', '处理状态', '提交时间', '操作'], orders: ['订单', '所属用户', '商品', '订单金额', '支付渠道', '商户订单号', '平台交易号', '订单状态', '创建 / 支付时间'], usage: ['模型与服务', '所属用户', '输入 / 输出 Token', '计费标记', '调用时间', '关联任务'], audit: ['操作', '管理员', '目标', '操作时间', '详情'] };
-const auditNames = { 'owner.verified': '管理员身份验证', 'job.cancel': '取消任务', 'feedback.update': '更新反馈', 'model.update': '修改模型配置', 'payment.config.update': '修改支付配置', 'payment.product.update': '修改可售商品', 'payment.channel.update': '切换或更新支付渠道', 'billing.rules.update': '修改服务计价', 'billing.tools.update': '修改科研工具计价' };
+const auditNames = { 'user.credits.adjust':'调整用户积分','user.membership.grant':'发放用户会员','user.membership.update':'调整会员有效期','user.membership.revoke':'撤销用户会员','user.status.update':'调整账号状态', 'owner.verified': '管理员身份验证', 'job.cancel': '取消任务', 'feedback.update': '更新反馈', 'model.update': '修改模型配置', 'payment.config.update': '修改支付配置', 'payment.product.update': '修改可售商品', 'payment.channel.update': '切换或更新支付渠道', 'billing.rules.update': '修改服务计价', 'billing.tools.update': '修改科研工具计价' };
 const billableServices = [{ key: 'polish', title: '学术润色' }, { key: 'review', title: '意见修改' }, { key: 'agent', title: '科研智能助手' }];
 const billingModes = { free: '免费', paid: '按权益计费', disabled: '暂停' };
 const paymentProviders = {
@@ -73,7 +74,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     win.clearTimeout(toastTimer); toastTimer = win.setTimeout(() => { $('#admin-toast').hidden = true; }, 5000);
   }
   function closeMenu() { $('#admin-app').classList.remove('nav-open'); $('#sidebar-backdrop').hidden = true; $('#menu-toggle').setAttribute('aria-expanded', 'false'); }
-  function closeDialog() { dialogGeneration++; if ($('#admin-dialog').open) $('#admin-dialog').close(); $('#dialog-body').replaceChildren(); $('#dialog-title').textContent = ''; previousFocus?.focus(); }
+  function closeDialog() { dialogGeneration++; $('#admin-dialog').classList.remove('user-management-dialog'); if ($('#admin-dialog').open) $('#admin-dialog').close(); $('#dialog-body').replaceChildren(); $('#dialog-title').textContent = ''; previousFocus?.focus(); }
   function deny(status, message) {
     authorized = false; user = null; currentData = null; generation++;
     win.clearInterval(polling); win.clearTimeout(toastTimer);
@@ -92,12 +93,12 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     const timer = win.setTimeout(() => { timedOut = true; controller.abort(); }, requestTimeoutMs);
     try {
       let response;
-      try { response = await win.fetch('/api' + path, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', signal: controller.signal, headers: body === undefined ? { Accept: 'application/json' } : { Accept: 'application/json', 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); }
+      try { response = await win.fetch('/api' + path, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', signal: controller.signal, headers: body === undefined ? { Accept: 'application/json', ...(user?.id?{'X-PaperKnow-User':user.id}:{}) } : { Accept: 'application/json', 'Content-Type': 'application/json', ...(user?.id?{'X-PaperKnow-User':user.id}:{}) }, body: body === undefined ? undefined : JSON.stringify(body) }); }
       catch { throw new Error(timedOut ? '请求超时，请稍后重试。' : '暂时无法连接服务，请检查网络后重试。'); }
       if (response.status === 401 || response.status === 403) { deny(response.status); const error = new Error(response.status === 401 ? '登录状态已失效。' : '管理权限已失效。'); error.status = response.status; throw error; }
       let value;
       try { value = await response.json(); } catch { throw new Error(timedOut ? '请求超时，请稍后重试。' : '服务暂时不可用，请稍后重试。'); }
-      if (!response.ok) throw new Error(typeof value.error === 'string' ? value.error : '操作未完成，请稍后重试。');
+      if (!response.ok) { const error=new Error(typeof value.error === 'string' ? value.error : '操作未完成，请稍后重试。');error.status=response.status;error.code=value.code;throw error; }
       return value;
     } finally { win.clearTimeout(timer); }
   }
@@ -114,7 +115,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   function transactionText(value) { return typeof value === 'string' && value ? `<span class="cell-id" style="user-select:all" title="${esc(value)}">${esc(value)}</span>` : '—'; }
   function rowMarkup(view, row) {
     const id = esc(row.id);
-    if (view === 'users') return `<td><div class="cell-title">${esc(row.name || '未填写昵称')}</div><div class="cell-secondary">${idText(row.id)}</div></td><td>${row.email ? `<div class="cell-contact">${esc(row.email)}</div><div class="cell-secondary">邮箱${row.email_verified_at ? '已验证' : '未验证'}</div>` : ''}${row.phone ? `<div class="cell-contact">${esc(row.phone)}</div><div class="cell-secondary">手机${row.phone_verified_at ? '已验证' : '未验证'}</div>` : ''}${!row.email && !row.phone ? '—' : ''}</td><td>${badge(row.role)}</td><td class="cell-number">${count(row.project_count)} / ${count(row.job_count)}</td><td>${date(row.created_at)}</td><td><button class="text-button" data-detail="${id}">查看详情</button></td>`;
+    if (view === 'users') return `<td><div class="cell-title">${esc(row.name || '未填写昵称')}</div><div class="cell-secondary">${idText(row.id)}</div></td><td>${row.email ? `<div class="cell-contact">${esc(row.email)}</div><div class="cell-secondary">邮箱${row.email_verified_at ? '已验证' : '未验证'}</div>` : ''}${row.phone ? `<div class="cell-contact">${esc(row.phone)}</div><div class="cell-secondary">手机${row.phone_verified_at ? '已验证' : '未验证'}</div>` : ''}${!row.email && !row.phone ? '—' : ''}</td><td>${badge(row.role)}<div class="cell-secondary"><span class="badge ${(row.account_status||row.status)==='banned'?'red':'green'}">${(row.account_status||row.status)==='banned'?'已封禁':'正常'}</span></div></td><td class="cell-number">${count(row.project_count)} / ${count(row.job_count)}</td><td>${date(row.created_at)}</td><td><div class="row-actions"><button class="button compact" data-user-manage="${id}">管理用户</button><button class="text-button" data-detail="${id}">详情</button></div></td>`;
     if (view === 'jobs') return `<td><div class="cell-title">${esc(typeNames[row.type] || row.type || '未知任务')}</div><div class="cell-secondary">${idText(row.id)}</div></td><td>${person(row)}</td><td>${badge(row.status)}</td><td><div>${esc(row.stage || '—')}</div><div class="cell-secondary">执行 ${count(row.attempt)} 次</div></td><td>${date(row.created_at)}</td><td><div class="row-actions"><button class="text-button" data-detail="${id}">详情</button>${['queued', 'running'].includes(row.status) ? `<button class="text-button cancel" data-cancel="${id}">取消任务</button>` : ''}</div></td>`;
     if (view === 'results') return `<td><div class="cell-title">${esc(row.title || '未命名成果')}</div><div class="cell-secondary">${idText(row.id)}</div></td><td>${person(row)}</td><td>${esc(typeNames[row.type] || row.type || '—')}</td><td>${idText(row.job_id)}</td><td>${date(row.created_at)}</td>`;
     if (view === 'feedback') return `<td><div class="cell-content clamp">${esc(row.body)}</div><div class="cell-secondary">${idText(row.id)}</div></td><td>${person(row)}</td><td>${esc(row.category || '未分类')}</td><td>${badge(row.status || 'open')}</td><td>${date(row.created_at)}</td><td><button class="text-button" data-feedback="${id}">处理反馈</button></td>`;
@@ -122,11 +123,11 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     if (view === 'usage') return `<td><div class="cell-title">${esc(row.model || '—')}</div><div class="cell-secondary">${esc(row.provider || '—')}</div></td><td>${person(row)}</td><td class="cell-number">${count(row.input_tokens)} / ${count(row.output_tokens)}</td><td>${badge(row.billable ? 'billable' : 'unbilled')}</td><td>${date(row.created_at)}</td><td>${idText(row.job_id)}</td>`;
     return `<td><div class="cell-title">${esc(auditNames[row.action] || row.action || '未知操作')}</div><div class="cell-secondary">${idText(row.id)}</div></td><td>${person(row)}</td><td><div>${esc(row.target_type || '—')}</div>${idText(row.target_id)}</td><td>${date(row.created_at)}</td><td><button class="text-button" data-detail="${id}">查看记录</button></td>`;
   }
-  function table(view, items) { return `<div class="table-scroll"><table class="data-table"><caption class="visually-hidden">${paths[view][0]}</caption><thead><tr>${headers[view].map(title => `<th scope="col">${title}</th>`).join('')}</tr></thead><tbody>${items.map(row => `<tr>${rowMarkup(view, row)}</tr>`).join('')}</tbody></table></div>`; }
+  function table(view, items) { return `<div class="table-scroll"><table class="data-table"><caption class="visually-hidden">${paths[view][0]}</caption><thead><tr>${headers[view].map(title => `<th scope="col">${title}</th>`).join('')}</tr></thead><tbody>${items.map(row => `<tr ${view==='users'?`data-user-row="${esc(row.id)}"`:''}>${rowMarkup(view, row)}</tr>`).join('')}</tbody></table></div>`; }
   function listPage(view, data) {
     const query = queries[view], total = Number(data.total) || 0, pages = Math.max(1, Math.ceil(total / query.pageSize));
     const notice = view === 'orders' ? '订单金额以服务端记录为准，未支付订单不计入收入。' : view === 'usage' ? 'Token 来自模型实际返回的数据，缺失项显示「—」。计费标记不等于第三方账单或平台已收取费用。' : view === 'results' ? '这里展示成果元信息；正文与原件仍由所属用户在工作台管理。' : '';
-    return `${notice ? `<div class="page-notice">${icon('info')}<span>${notice}</span></div>` : ''}<section class="panel"><div class="table-toolbar"><form id="search-form" class="search-form" role="search"><div class="search-box">${icon('search')}<input id="admin-search" aria-label="搜索${paths[view][0]}" placeholder="${searchHints[view]}" maxlength="200" value="${esc(query.q)}"></div>${filters[view] ? `<select id="status-filter" class="filter-select" aria-label="${view === 'users' ? '用户身份' : '状态'}筛选"><option value="">${view === 'users' ? '全部身份' : '全部状态'}</option>${filters[view].map(status => `<option value="${status}" ${query.status === status ? 'selected' : ''}>${statuses[status][0]}</option>`).join('')}</select>` : ''}<button class="button primary" type="submit">查询</button>${query.q || query.status ? '<button class="button" id="reset-search" type="button">重置</button>' : ''}</form><span class="table-summary">共 <b>${count(total)}</b> 条记录</span></div>${data.items.length ? table(view, data.items) : empty(query.q || query.status ? '没有找到匹配记录' : '暂无记录', query.q || query.status ? '试试其他关键词，或重置筛选条件。' : { users: '新注册账户将在这里显示。', jobs: '用户提交任务后，可在这里查看执行进度。', results: '任务完成并产生结果后，将显示成果记录。', feedback: '用户提交的反馈将在这里统一处理。', orders: '用户提交购买订单后，将在这里显示记录。', usage: '模型产生实际调用后，将显示用量记录。', audit: '管理员执行关键操作后，将留下操作记录。' }[view])}<div class="pagination"><span>每页 ${query.pageSize} 条${total ? ` · 第 ${(query.page - 1) * query.pageSize + 1}–${Math.min(query.page * query.pageSize, total)} 条` : ''}</span><div class="pagination-buttons"><button class="button compact" id="previous-page" ${query.page <= 1 ? 'disabled' : ''}>上一页</button><span>${query.page} / ${pages}</span><button class="button compact" id="next-page" ${query.page >= pages ? 'disabled' : ''}>下一页</button></div></div></section>`;
+    return `${notice ? `<div class="page-notice">${icon('info')}<span>${notice}</span></div>` : ''}<section class="panel"><div class="table-toolbar"><form id="search-form" class="search-form" role="search"><div class="search-box">${icon('search')}<input id="admin-search" aria-label="搜索${paths[view][0]}" placeholder="${searchHints[view]}" maxlength="200" value="${esc(query.q)}"></div>${filters[view] ? `<select id="status-filter" class="filter-select" aria-label="${view === 'users' ? '用户身份' : '状态'}筛选"><option value="">${view === 'users' ? '全部身份' : '全部状态'}</option>${filters[view].map(status => `<option value="${status}" ${query.status === status ? 'selected' : ''}>${statuses[status][0]}</option>`).join('')}</select>` : ''}${view==='users'?`<select id="account-status-filter" class="filter-select" aria-label="账号状态筛选"><option value="">全部账号状态</option><option value="active" ${query.accountStatus==='active'?'selected':''}>正常使用</option><option value="banned" ${query.accountStatus==='banned'?'selected':''}>已封禁</option></select>`:''}<button class="button primary" type="submit">查询</button>${query.q || query.status || query.accountStatus ? '<button class="button" id="reset-search" type="button">重置</button>' : ''}</form><span class="table-summary">共 <b>${count(total)}</b> 条记录</span></div>${data.items.length ? table(view, data.items) : empty(query.q || query.status || query.accountStatus ? '没有找到匹配记录' : '暂无记录', query.q || query.status || query.accountStatus ? '试试其他关键词，或重置筛选条件。' : { users: '新注册账户将在这里显示。', jobs: '用户提交任务后，可在这里查看执行进度。', results: '任务完成并产生结果后，将显示成果记录。', feedback: '用户提交的反馈将在这里统一处理。', orders: '用户提交购买订单后，将在这里显示记录。', usage: '模型产生实际调用后，将显示用量记录。', audit: '管理员执行关键操作后，将留下操作记录。' }[view])}<div class="pagination"><span>每页 ${query.pageSize} 条${total ? ` · 第 ${(query.page - 1) * query.pageSize + 1}–${Math.min(query.page * query.pageSize, total)} 条` : ''}</span><div class="pagination-buttons"><button class="button compact" id="previous-page" ${query.page <= 1 ? 'disabled' : ''}>上一页</button><span>${query.page} / ${pages}</span><button class="button compact" id="next-page" ${query.page >= pages ? 'disabled' : ''}>下一页</button></div></div></section>`;
   }
   function serviceRow(label, name, enabled, enabledLabel = '已配置') { return `<div class="service-status-row"><span class="service-name">${icon(name)}${label}</span><span class="service-status ${enabled ? '' : 'off'}">${enabled ? enabledLabel : '未开放'}</span></div>`; }
   function overviewPage(data) {
@@ -282,7 +283,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     if (!quiet) { currentData = null; loadedAt = ''; $('#admin-content').innerHTML = heading(view) + loading(); }
     try {
       const query = queries[view];
-      const suffix = query ? '?' + new URLSearchParams({ page: String(query.page), pageSize: String(query.pageSize), ...(query.q ? { q: query.q } : {}), ...(query.status ? { status: query.status } : {}) }) : '';
+      const suffix = query ? '?' + new URLSearchParams({ page: String(query.page), pageSize: String(query.pageSize), ...(query.q ? { q: query.q } : {}), ...(query.status ? { status: query.status } : {}), ...(view==='users'&&query.accountStatus?{accountStatus:query.accountStatus}:{}) }) : '';
       const data = await request('/admin/' + view + suffix);
       if (!authorized || ticket !== generation) return;
       if (query && !Array.isArray(data.items)) throw new Error('返回的数据格式不正确，请重试。');
@@ -314,6 +315,14 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   }
   const details = pairs => `<dl class="detail-grid">${pairs.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value ?? '—')}</dd>`).join('')}</dl>`;
   function findRow(id) { return currentData?.items?.find(row => String(row.id) === id); }
+  function showUserManagement(id){
+    if(currentView!=='users'||!findRow(id))return;
+    const token=openDialog('管理用户','');$('#admin-dialog').classList.add('user-management-dialog');
+    mountAdminUserManagement({doc,userId:id,actorId:user.id,request,toast,isCurrent:()=>authorized&&token===dialogGeneration&&currentView==='users'&&$('#admin-dialog').open,onChanged:next=>{
+      const row=findRow(id);if(!row)return;Object.assign(row,next,{account_status:next.status});
+      const tr=[...doc.querySelectorAll('[data-user-row]')].find(node=>node.dataset.userRow===id);if(tr)tr.innerHTML=rowMarkup('users',row);
+    }});
+  }
   function showDetail(id) {
     const row = findRow(id); if (!row) return;
     if (currentView === 'users') openDialog('用户资料', details([['用户 ID', row.id], ['昵称', row.name], ['邮箱', row.email || '未填写'], ['邮箱验证', row.email_verified_at ? date(row.email_verified_at) : '未验证'], ['手机号', row.phone || '未填写'], ['手机验证', row.phone_verified_at ? date(row.phone_verified_at) : '未验证'], ['身份', statuses[row.role]?.[0] || row.role], ['注册时间', date(row.created_at)], ['项目 / 任务', `${count(row.project_count)} / ${count(row.job_count)}`]]));
@@ -546,16 +555,17 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     const paymentConfigure = event.target.closest('[data-payment-configure]'); if (paymentConfigure) { const field = $(`#${paymentConfigure.dataset.paymentConfigure}-appId`); field?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); field?.focus({ preventScroll: true }); return; }
     const bundleEdit = event.target.closest('[data-bundle-add], [data-bundle-remove], [data-membership-add], [data-membership-remove]'); if (bundleEdit) { editBundleItems(bundleEdit); return; }
     const query = queries[currentView];
-    if (event.target.closest('#reset-search') && query) { Object.assign(query, { q: '', status: '', page: 1 }); loadView(); }
+    if (event.target.closest('#reset-search') && query) { Object.assign(query, { q: '', status: '', accountStatus:'', page: 1 }); loadView(); }
     if (event.target.closest('#previous-page') && query && query.page > 1) { query.page--; loadView(); }
     if (event.target.closest('#next-page') && query && query.page * query.pageSize < Number(currentData?.total)) { query.page++; loadView(); }
+    const manager = event.target.closest('[data-user-manage]');if(manager){showUserManagement(manager.dataset.userManage);return;}
     const detail = event.target.closest('[data-detail]'); if (detail) showDetail(detail.dataset.detail);
     const cancel = event.target.closest('[data-cancel]'); if (cancel) confirmCancel(cancel.dataset.cancel);
     const feedback = event.target.closest('[data-feedback]'); if (feedback) editFeedback(feedback.dataset.feedback);
   });
   $('#admin-content').addEventListener('submit', event => {
     if (!authorized) return;
-    if (event.target.id === 'search-form') { event.preventDefault(); Object.assign(queries[currentView], { q: $('#admin-search').value.trim(), status: $('#status-filter')?.value || '', page: 1 }); loadView(); }
+    if (event.target.id === 'search-form') { event.preventDefault(); Object.assign(queries[currentView], { q: $('#admin-search').value.trim(), status: $('#status-filter')?.value || '', accountStatus:$('#account-status-filter')?.value||'', page: 1 }); loadView(); }
     if (event.target.id === 'model-form') saveSettings(event);
     if (event.target.id === 'research-image-settings-form') void saveImageSettings(event);
     if (event.target.id === 'agent-settings-form') saveAgentSettings(event);
