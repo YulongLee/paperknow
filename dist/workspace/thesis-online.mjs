@@ -16,9 +16,10 @@ const running=item=>['queued','running','cancelling'].includes(item?.job?.status
 const labels={draft:'草稿已保存',queued:'排队中',running:'正在生成',completed:'已完成',failed:'生成中断',interrupted:'处理中断',needs_materials:'待补研究证据',budget_exceeded:'已达本次处理上限',cancelled:'已停止',cancelling:'正在停止',pending:'待生成',edited:'已编辑',saved:'已保存',partial:'部分完成'};
 const stageLabel=value=>({queue:'等待处理',queued:'等待处理',preparing:'准备研究资料',generating_section:'逐节写作',agent_running:'正在整理论证',agent_tools:'正在读取研究依据',reading_material:'读取研究资料',read_material:'读取研究资料',auto_recovering:'正在自动恢复',verifying_citations:'核验参考文献题录',reviewing_manuscript:'正在审校全文',checking_consistency:'检查正文一致性',needs_materials:'等待补充研究证据',budget_exceeded:'已达本次处理上限',completed:'内容已保存',failed:'处理失败',interrupted:'处理中断',cancelled:'已停止',cancelling:'正在停止'}[value]||'章节处理中');
 const thesisStatus=item=>item.status==='draft'?'draft':item.job?.status||item.status;
-export function validThesisQuote(quote,now=Date.now()){
- return !!(quote&&quote.type==='agent'&&['free','membership','bundle','credits'].includes(quote.source)&&typeof quote.title==='string'&&quote.title.trim()&&typeof quote.token==='string'&&quote.token.length>0&&quote.token.length<=4096&&Number.isSafeInteger(quote.creditCost)&&quote.creditCost>=0&&(quote.source==='credits'?quote.creditCost>0:quote.creditCost===0)&&Number.isFinite(Date.parse(quote.expiresAt))&&Date.parse(quote.expiresAt)>now);
+export function validServiceQuote(quote,type,now=Date.now()){
+ return !!(['polish','review','agent'].includes(type)&&quote&&quote.type===type&&['free','membership','bundle','credits'].includes(quote.source)&&typeof quote.title==='string'&&quote.title.trim()&&typeof quote.token==='string'&&quote.token.length>0&&quote.token.length<=4096&&Number.isSafeInteger(quote.creditCost)&&quote.creditCost>=0&&(quote.source==='credits'?quote.creditCost>0:quote.creditCost===0)&&Number.isFinite(Date.parse(quote.expiresAt))&&Date.parse(quote.expiresAt)>now);
 }
+export function validThesisQuote(quote,now=Date.now()){return validServiceQuote(quote,'agent',now);}
 export function thesisDocumentText(item){
  const chapters=(item?.chapters||[]).filter(chapter=>String(chapter.text||'').trim());
  if(!chapters.length)return '';

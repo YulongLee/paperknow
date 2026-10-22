@@ -207,3 +207,10 @@ test('purchased degree and detection quotas link to all exact services only when
   try{await renderOnlinePersonal('membership',env.ctx);const links=[...document.querySelectorAll('.member-bundle-record .member-quota-rows a')].map(link=>link.getAttribute('href'));assert.deepEqual(links,scenario==='ready'?routes.map(item=>item.href):[],scenario);assert.equal(document.querySelectorAll('.member-bundle-record .member-quota-rows li').length,18);assert.ok(calls.every(call=>call.data===undefined));assert.equal(localStorage.length,0);}finally{env.dom.window.close();}
  }
 });
+
+
+test('purchased polish and review allowances open their actual modern editor when only the Agent runtime is ready',async()=>{
+ const cap={ai:false,tools:{ready:true},billing:{services:['polish','review'].map(key=>({key,mode:'paid',available:true}))}};
+ const env=setup(async path=>path==='/payments/entitlements'?{items:[{order_id:'modern-member',type:'membership',title:'研究会员',starts_at:'2020-01-01',expires_at:'2099-01-01',usage:['polish','review'].map(key=>({key,title:key,quantity:2,used:0,held:0,remaining:2}))}],bundles:[]}:path==='/capabilities'?cap:{counts:{}},'#membership?scope=account');
+ try{await renderOnlinePersonal('membership',env.ctx);const links=[...document.querySelectorAll('.member-quota-rows a')].map(link=>link.getAttribute('href'));assert.deepEqual(links,['#tool/polish','#tool/review']);}finally{env.dom.window.close();}
+});

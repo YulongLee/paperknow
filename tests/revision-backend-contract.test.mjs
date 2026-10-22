@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {revisionStrategy,revisionStrategyModes,revisionStrategyPlans} from '../dist/workspace/revision-strategy.mjs';
-import {normalizeToolRequest,toolBillingKey,toolRunPlan,toolRunTask,parseToolOutput,validateToolCandidate,joinToolOutputs,restoreRevisionCheckpoint} from '../backend/tool-run-model.mjs';
+import {normalizeToolRequest,toolBillingKey,toolBillingIdentity,toolRunPlan,toolRunTask,parseToolOutput,validateToolCandidate,joinToolOutputs,restoreRevisionCheckpoint} from '../backend/tool-run-model.mjs';
 
 const text='This synthetic record reports -3 mg/(kg·d), 1e-3 m/s^2 and $x+y=z$ with [1; 2] (OwnedAuthor, 2020). The wording remains a draft for review.';
 const request=(snapshot={})=>({kind:'revision',operation:'rewrite',snapshot:{title:'Owned synthetic record',text,mode:'rewrite',context:{plan:'strong'},...snapshot}});
@@ -11,7 +11,9 @@ const candidate=(value,transform=original=>original.replace('reports','records')
 test('all typed revision strategies have fixed server requirements and matching billing keys',()=>{
  for(const mode of Object.keys(revisionStrategyModes))for(const plan of Object.keys(revisionStrategyPlans)){
   const value=normalizeToolRequest(request({mode,context:{plan}})),strategy=revisionStrategy(mode,plan),task=toolRunTask(value,toolRunPlan(value)[0]);
-  assert.equal(task.context.mode,mode);assert.equal(task.context.revisionStrategy.plan,plan);assert.equal(toolBillingKey(value),strategy.billingKey);assert.ok(task.instructions.includes(strategy.requirements));assert.match(task.instructions,/不.*承诺|不能.*声称|不得.*宣称/);assert.equal(task.context.revisionProtection.factsVerified,false);assert.equal(task.context.language,plan==='english'?'English':'中文');
+  const baseService=['polish','review'].includes(mode)&&plan!=='dual';
+  assert.deepEqual(toolBillingIdentity(value),baseService?{type:mode,serviceKey:null}:{type:'agent',serviceKey:strategy.billingKey});
+  assert.equal(task.context.mode,mode);assert.equal(task.context.revisionStrategy.plan,plan);assert.equal(toolBillingKey(value),baseService?null:strategy.billingKey);assert.ok(task.instructions.includes(strategy.requirements));assert.match(task.instructions,/不.*承诺|不能.*声称|不得.*宣称/);assert.equal(task.context.revisionProtection.factsVerified,false);assert.equal(task.context.language,plan==='english'?'English':'中文');
  }
  assert.equal(revisionStrategy('reduce','dual').billingKey,'revision-dual');assert.equal(revisionStrategy('reduce','strong').billingKey,'revision-aigc');assert.equal(revisionStrategy('rewrite','bundle').billingKey,'revision-reduce');
 });

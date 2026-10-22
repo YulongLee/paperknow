@@ -28,7 +28,7 @@ function sizeMemberRecordLists(target,onDispose){
  else{win.addEventListener('resize',resize);onDispose(()=>win.removeEventListener('resize',resize));}
 }
 const serviceRoutes={
- polish:'#tasks?scope=account&type=polish',review:'#tasks?scope=account&type=review',
+ polish:'#tool/polish',review:'#tool/review',
  'literature-read':'#category/literature?view=reading','literature-answer':'#category/literature?view=reading','literature-translate':'#category/literature?view=translation',
  'revision-reduce':'#category/reduce','revision-aigc':'#category/aigc','revision-dual':'#category/reduce',
  'presentation-ai':'#tool/ppt','presentation-proposal':'#tool/ppt?mode=proposal','presentation-thesis':'#tool/ppt?mode=thesis',
@@ -40,7 +40,7 @@ const runtimeReady=cap=>cap.thesis?.ready===true||cap.writing?.ready===true||cap
 export function personalServiceState(cap,key){
  if(key==='agent'&&runtimeReady(cap)&&Array.isArray(cap.toolBilling?.services)&&cap.toolBilling.services.some(item=>personalServiceState(cap,item.key).ready))return {ready:true,label:'已开放'};
  const child=Object.hasOwn(serviceRoutes,key)&&!['polish','review'].includes(key);
- const configured=key==='detection-similarity'?cap.webSimilarity?.ready===true:key==='detection-aigc'?cap.aigcDetection?.ready===true:/^thesis-(junior|bachelor|master|doctor)$/.test(key)?cap.thesis?.ready===true:/^(proposal|taskbook|literature-review)-(junior|bachelor|master|doctor)$/.test(key)?cap.writing?.ready===true:child?cap.tools?.ready===true:key==='agent'?(runtimeReady(cap)||cap.ai===true&&cap.agent===true):cap.ai===true;
+ const configured=key==='detection-similarity'?cap.webSimilarity?.ready===true:key==='detection-aigc'?cap.aigcDetection?.ready===true:/^thesis-(junior|bachelor|master|doctor)$/.test(key)?cap.thesis?.ready===true:/^(proposal|taskbook|literature-review)-(junior|bachelor|master|doctor)$/.test(key)?cap.writing?.ready===true:child?cap.tools?.ready===true:key==='agent'?(runtimeReady(cap)||cap.ai===true&&cap.agent===true):['polish','review'].includes(key)?cap.tools?.ready===true||cap.ai===true:cap.ai===true;
  const rules=child?cap.toolBilling?.services:cap.billing?.services;
  if(!Array.isArray(rules))return {ready:configured,label:configured?'已开放':'未配置'};
  const rule=rules.find(item=>item?.key===key),mode=rule?.effectiveMode??rule?.mode;
@@ -48,7 +48,7 @@ export function personalServiceState(cap,key){
  const ready=configured&&['free','paid'].includes(mode)&&rule.available===true;
  return {ready,label:ready?'已开放':'待配置'};
 }
-const taskLink=(key,cap={})=>key==='agent'?(runtimeReady(cap)?'#category/writing':cap.agent===true?'#tasks?scope=account&view=agent':''):serviceRoutes[key]||'';
+const taskLink=(key,cap={})=>['polish','review'].includes(key)?cap.tools?.ready===true?serviceRoutes[key]:cap.ai===true?'#tasks?scope=account&type='+key:'':key==='agent'?(runtimeReady(cap)?'#category/writing':cap.agent===true?'#tasks?scope=account&view=agent':''):serviceRoutes[key]||'';
 function quotaRows(items,esc,{usable=true,cap={}}={}){
  const rows=Array.isArray(items)?items:[];
  return rows.length?`<ul class="member-quota-rows">${rows.map(item=>`<li><span>${esc(item?.title||'服务项目')}</span><span>包含 ${countValue(item?.quantity)} 次 · 已用 ${countValue(item?.used)} · 预占 ${countValue(item?.held)} · 剩余 ${countValue(item?.remaining)}</span>${usable&&personalServiceState(cap,item?.key).ready&&Number.isSafeInteger(item?.remaining)&&item.remaining>0&&taskLink(item?.key,cap)?`<a href="${taskLink(item.key,cap)}">使用服务 →</a>`:''}</li>`).join('')}</ul>`:'<p class="muted">次数使用记录暂不可用，请稍后刷新核对。</p>';

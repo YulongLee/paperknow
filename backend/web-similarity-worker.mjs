@@ -7,6 +7,7 @@ import {createBillingService} from './billing-service.mjs';
 import {createWebSimilaritySearch} from './web-similarity-search.mjs';
 import {createWebSourceReader} from './web-similarity-source.mjs';
 import {initializeWebSimilaritySchema,webSimilarityReady,readWebSimilarityArtifact,saveWebSimilarityArtifact,removeWebSimilarityArtifacts} from './web-similarity-service.mjs';
+import {includedDetectionHeld,detectionTrialSearchCount} from './detection-entitlements.mjs';
 import {webSimilarityLimits,webSimilarityVersion,planWebQueries,webSimilarityDay,webSimilarityFileName} from './web-similarity-model.mjs';
 
 const safeError=message=>Object.assign(new Error(message),{webSimilaritySafe:true});
@@ -44,9 +45,11 @@ export function startWebSimilarityWorker(db,config={}){
     if(!active(job.id)||signal.aborted)return;
     stage(job.id,'searching');
     tx(()=>{
-     const day=webSimilarityDay();
-     if(db.prepare('SELECT count(*) n FROM web_similarity_attempts WHERE created_at>=? AND created_at<? AND user_id=?').get(day.start,day.end,job.user_id).n>=webSimilarityLimits.userDailyLimit*webSimilarityLimits.maxQueries)throw safeError('今日联网检索次数已达试运行上限，本次未继续检索。');
-     if(db.prepare('SELECT count(*) n FROM web_similarity_attempts WHERE created_at>=? AND created_at<?').get(day.start,day.end).n>=webSimilarityLimits.globalDailyLimit*webSimilarityLimits.maxQueries)throw safeError('联网检索今日额度已用完，本次未继续检索。');
+     if(!includedDetectionHeld(db,job.user_id,job.id,'detection-similarity')){
+      const day=webSimilarityDay(),window={since:day.start,until:day.end};
+      if(detectionTrialSearchCount(db,{...window,userId:job.user_id})>=webSimilarityLimits.userDailyLimit*webSimilarityLimits.maxQueries)throw safeError('今日联网检索次数已达试运行上限，本次未继续检索。');
+      if(detectionTrialSearchCount(db,window)>=webSimilarityLimits.globalDailyLimit*webSimilarityLimits.maxQueries)throw safeError('联网检索今日额度已用完，本次未继续检索。');
+     }
      db.prepare('INSERT INTO web_similarity_attempts VALUES(?,?,?,?)').run(job.id,i,job.user_id,clock());
      db.prepare('UPDATE web_similarity_runs SET queries_attempted=queries_attempted+1,updated_at=? WHERE id=?').run(clock(),job.id);
     });

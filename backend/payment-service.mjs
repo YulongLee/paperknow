@@ -59,7 +59,10 @@ export function createPaymentService(db,config={}){
    const expiresAt=new Date(Date.parse(now)+entitlement.durationDays*86400000).toISOString();
    db.prepare('INSERT INTO payment_bundle_entitlements(order_id,user_id,product_id,starts_at,expires_at,granted_at,items) VALUES(?,?,?,?,?,?,?)').run(fresh.id,fresh.user_id,fresh.product_id,now,expiresAt,now,JSON.stringify(bundleItems));
   }else{
-   const previous=db.prepare('SELECT max(expires_at) AS until FROM payment_entitlements WHERE user_id=? AND product_id=?').get(fresh.user_id,fresh.product_id).until;
+   // Renew after the effective paid term, including scheduled renewals. Account
+   // overrides never rewrite issued grants, so their original dates cannot be
+   // used here after a paid membership is shortened, extended or revoked.
+   const previous=managedMemberships(db,fresh.user_id,now).filter(row=>row.origin==='payment'&&row.productId===fresh.product_id&&['active','scheduled'].includes(row.status)).reduce((until,row)=>row.expiresAt>until?row.expiresAt:until,now);
    const startsAt=previous&&previous>now?previous:now,expiresAt=new Date(Date.parse(startsAt)+entitlement.durationDays*86400000).toISOString();
    db.prepare('INSERT INTO payment_entitlements(order_id,user_id,product_id,type,starts_at,expires_at,granted_at) VALUES(?,?,?,?,?,?,?)').run(fresh.id,fresh.user_id,fresh.product_id,'membership',startsAt,expiresAt,now);
   }

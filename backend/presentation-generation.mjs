@@ -1,14 +1,9 @@
-import {createPptMasterRuntime,pptMasterRuntimeReady,PPT_MASTER_REVISION} from './ppt-master-runtime.mjs';
+import {createPptMasterRuntime,PPT_MASTER_REVISION} from './ppt-master-runtime.mjs';
 import {pptMasterDesignPlan,pptMasterSlideTask,parsePptMasterSlideOutput,validatePptMasterSlideCandidate} from './ppt-master-model.mjs';
 import {toolStorageCheck} from './tool-run-service.mjs';
 import {savePresentationDelivery} from './presentation-delivery.mjs';
-
-export function presentationGenerationStatus(config={}){
- const storage=config.storage;
- const storageReady=storage?.provider==='aliyun_oss'&&typeof storage.bucket==='string'&&typeof storage.prefix==='string'&&typeof storage.putArtifact==='function'&&typeof storage.readArtifact==='function'&&typeof storage.removeArtifact==='function';
- const rendererReady=config.pptMasterEnabled===true&&(typeof config.pptMasterRenderer==='function'||pptMasterRuntimeReady(config));
- return{ready:storageReady&&rendererReady,reason:!storageReady?'演示成果云存储暂不可用，请稍后重试':!rendererReady?'演示生成服务正在准备，请稍后重试':null};
-}
+import {presentationGenerationStatus} from './presentation-readiness.mjs';
+export {presentationGenerationStatus} from './presentation-readiness.mjs';
 
 export async function generatePptMasterPresentation(db,config,{row,value,output,signal,isActive,onStage,runAuthor}){
  const readiness=presentationGenerationStatus(config);if(!readiness.ready)throw Object.assign(new Error(readiness.reason),{status:503});

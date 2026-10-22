@@ -9,6 +9,8 @@ import {createWebSimilarityService} from '../backend/web-similarity-service.mjs'
 import {startWebSimilarityWorker} from '../backend/web-similarity-worker.mjs';
 import {startWorker} from '../backend/worker.mjs';
 import {detectionBillingReady} from '../backend/detection-billing-readiness.mjs';
+import {includedDetectionHeld,detectionTrialUsage,detectionTrialSearchCount} from '../backend/detection-entitlements.mjs';
+import {webSimilarityDay,webSimilarityLimits} from '../backend/web-similarity-model.mjs';
 
 const paragraph='数字化研究需要保留可核对的原始材料，并通过清晰的文字记录研究过程，使分析结论建立在真实证据与可复现的方法之上。';
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
@@ -108,4 +110,81 @@ test('a failed settlement cannot leave a completed result or spent package use',
   else{const{service,worker}=f.web(),created=await f.submitWeb(service);id=created.value.item.id;await worker.tick();assert.equal(f.db.prepare('SELECT count(*) n FROM results WHERE job_id=?').get(id).n,0);}
   assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(id).status,'failed');assert.equal(f.used(order).used,0);assert.equal(f.used(order).held,0);assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(id).status,'released');assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,0);
  }
+});
+
+test('AIGC funded allowance bypasses exhausted trial task, character, call and billing-unit limits',async t=>{
+ const f=fixture(t,{aigcDetectionUserDailyLimit:1,aigcDetectionUserDailyCharacters:100,aigcDetectionGlobalDailyCalls:1,aigcDetectionGlobalDailyBillingUnits:1}),service=f.aigc();
+ await f.submitAigc(service);await service.waitForIdle();
+ const counts=()=>Object.fromEntries(['aigc_detections','aigc_detection_requests','jobs','billing_quotes','billing_reservations','billing_events'].map(table=>[table,f.db.prepare('SELECT count(*) n FROM '+table).get().n]));
+ const before=counts();await assert.rejects(f.submitAigc(service,{text:paragraph+'免费超过额度'}),{status:429});assert.deepEqual(counts(),before);
+ const order=f.grant('detection-aigc',2),paid=await f.submitAigc(service,{text:paragraph+'套餐正常使用'});assert.equal(paid.status,202);await service.waitForIdle();assert.equal(f.used(order).used,1);
+ assert.equal(f.db.prepare('SELECT status FROM aigc_detections WHERE id=?').get(paid.value.id).status,'completed');assert.equal(f.calls.length,2);
+ const day=webSimilarityDay();assert.equal(detectionTrialUsage(f.db,'detection-aigc',{since:day.start,until:day.end,userId:f.user.id}).n,1);
+});
+
+test('AIGC paid settled and released history never consumes later free trial allowance',async t=>{
+ for(const failed of [false,true]){
+  let failNext=failed;const f=fixture(t,{aigcDetectionUserDailyLimit:1,cloud:async()=>{if(failNext)throw Error('synthetic provider failure');return{label:'ugc',confidence:96};}}),order=f.grant('detection-aigc',1),service=f.aigc();
+  const paid=await f.submitAigc(service);await service.waitForIdle();assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(paid.value.id).status,failed?'released':'settled');
+  failNext=false;if(failed)f.config.billingNow=()=>new Date(Date.now()+2*86400000);
+  const free=await f.submitAigc(service,{text:paragraph+'回到免费试用'});await service.waitForIdle();assert.equal(free.status,202);assert.equal(f.db.prepare('SELECT billing_job_id FROM aigc_detections WHERE id=?').get(free.value.id).billing_job_id,null);
+  await assert.rejects(f.submitAigc(service,{text:paragraph+'超过免费次数'}),{status:429});assert.equal(f.used(order)?.used||0,failed?0:1);
+ }
+});
+
+function seedWebTrials(f,{tasks=1,queries=3,owner='alice'}={}){
+ const at=new Date().toISOString();
+ for(let i=0;i<tasks;i++){
+  const id=randomUUID();f.db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,'web_similarity','failed','failed','{}',?,?,?,?)").run(id,owner,id,id,at,at);
+  f.db.prepare('INSERT INTO web_similarity_runs(id,user_id,title,characters,queries_reserved,queries_attempted,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(id,owner,'合成历史试用',paragraph.length,queries,queries,at,at);
+  for(let q=0;q<queries;q++)f.db.prepare('INSERT INTO web_similarity_attempts VALUES(?,?,?,?)').run(id,q,owner,at);
+ }
+}
+
+test('web bundle bypasses exhausted free admission and worker search caps while free work stays limited',async t=>{
+ const f=fixture(t),{service,worker}=f.web();seedWebTrials(f,{tasks:webSimilarityLimits.globalDailyLimit,queries:webSimilarityLimits.maxQueries});
+ const quotes=f.db.prepare('SELECT count(*) n FROM billing_quotes').get().n;
+ await assert.rejects(f.submitWeb(service),{status:429});assert.equal(f.db.prepare('SELECT count(*) n FROM billing_quotes').get().n,quotes);assert.equal(f.calls.length,0);
+ const order=f.grant('detection-similarity',1),paid=await f.submitWeb(service);assert.equal(paid.status,202);assert.equal(includedDetectionHeld(f.db,f.user.id,paid.value.item.id,'detection-similarity'),true);
+ await worker.tick();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(paid.value.item.id).status,'completed');assert.equal(f.used(order).used,1);assert.ok(f.calls.includes('search'));
+});
+
+test('web worker still applies trial search caps after admission and does not accept a released allowance as paid',async t=>{
+ for(const released of [false,true]){
+  const f=fixture(t),order=released?f.grant('detection-similarity',1):null,{service,worker}=f.web(),created=await f.submitWeb(service);
+  if(released){f.billing.release(created.value.item.id);assert.equal(includedDetectionHeld(f.db,f.user.id,created.value.item.id,'detection-similarity'),false);}
+  seedWebTrials(f,{tasks:webSimilarityLimits.globalDailyLimit,queries:webSimilarityLimits.maxQueries,owner:'bob'});
+  await worker.tick();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(created.value.item.id).status,'failed');assert.equal(f.calls.length,0);if(order)assert.equal(f.used(order).used,0);
+ }
+});
+
+test('completed web bundle attempts do not consume free daily tasks or searches after package exhaustion',async t=>{
+ const f=fixture(t),order=f.grant('detection-similarity',4),{service,worker}=f.web();
+ for(let i=0;i<4;i++){const created=await f.submitWeb(service,{text:paragraph+'套餐正文'+i});await worker.tick();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(created.value.item.id).status,'completed');}
+ assert.equal(f.used(order).used,4);const day=webSimilarityDay(),window={since:day.start,until:day.end,userId:f.user.id};assert.equal(detectionTrialUsage(f.db,'detection-similarity',window).n,0);assert.equal(detectionTrialSearchCount(f.db,window),0);
+ const free=await f.submitWeb(service,{text:paragraph+'本次免费正文'});await worker.tick();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(free.value.item.id).status,'completed');assert.equal(detectionTrialUsage(f.db,'detection-similarity',window).n,1);assert.equal(f.used(order).used,4);
+});
+
+test('unrelated service or foreign-owner allowances never grant a detection trial-cap exemption',async t=>{
+ for(const foreign of [false,true]){
+  const f=fixture(t,{aigcDetectionUserDailyLimit:1}),service=f.aigc();await f.submitAigc(service);await service.waitForIdle();
+  f.grant(foreign?'detection-aigc':'detection-similarity',2,foreign?{id:'bob'}:f.user);
+  await assert.rejects(f.submitAigc(service,{text:paragraph+'没有匹配权益'}),{status:429});assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);
+  await assert.rejects(f.submitAigc(service,{text:paragraph+'伪造付费字段',paid:true}),{status:400});assert.equal(f.calls.length,1);
+ }
+});
+
+test('nonempty undetermined AIGC segments keep diagnostics and release the package instead of settling',async t=>{
+ const f=fixture(t,{cloud:async text=>text[0]==='A'?{label:'ugc',confidence:96}:{label:'undetermined',confidence:null}}),order=f.grant('detection-aigc',1),service=f.aigc();
+ const created=await f.submitAigc(service,{text:'A'.repeat(5000)+'B'.repeat(100)});await service.waitForIdle();
+ const item=(await service.handle({path:'/api/aigc-detections/'+created.value.id,method:'GET',user:f.user})).value;
+ assert.equal(item.status,'failed');assert.equal(item.completedParts,2);assert.deepEqual(item.parts.map(part=>part.label),['ugc','undetermined']);assert.equal(item.parts[0].confidence,96);assert.equal(item.conclusive,false);assert.match(item.error,/未结算/);
+ assert.equal(f.used(order).held,0);assert.equal(f.used(order).used,0);assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(item.id).status,'released');assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,0);
+});
+
+test('whitespace-only AIGC segments do not create an extra provider call or block valid paid delivery',async t=>{
+ const f=fixture(t),order=f.grant('detection-aigc',1),service=f.aigc(),created=await f.submitAigc(service,{text:' '.repeat(5000)+'B'.repeat(100)});await service.waitForIdle();
+ const item=(await service.handle({path:'/api/aigc-detections/'+created.value.id,method:'GET',user:f.user})).value;
+ assert.equal(item.status,'completed');assert.equal(item.completedParts,2);assert.equal(f.calls.length,1);assert.equal(f.used(order).used,1);assert.equal(f.used(order).held,0);
+ assert.equal(item.conclusive,true);assert.equal(item.verdict,'ugc');assert.deepEqual(item.counts,{aigc:0,ugc:1,undetermined:0});assert.equal(item.parts[0].skipped,true);assert.equal(item.parts[0].label,'undetermined');assert.equal(item.parts[0].confidence,null);assert.deepEqual(item.parts.map(({start,end})=>[start,end]),[[0,5000],[5000,5100]]);
 });

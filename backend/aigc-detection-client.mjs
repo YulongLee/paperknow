@@ -62,19 +62,20 @@ export function prepareAigcText(text,limits=aigcDetectionDefaults){
 const safeRequestId=value=>typeof value==='string'&&/^[-A-Za-z0-9_.]{1,150}$/.test(value)?value:null;
 export function normalizeAigcResponse(response,{expectedDataId}={}){
  const requestId=safeRequestId(response?.body?.RequestId);
- const failed=()=>Object.assign(unavailable(),requestId?{aigcRequestId:requestId}:{});
+ const failed=(status=503)=>Object.assign(unavailable(),{status},requestId?{aigcRequestId:requestId}:{});
  if(!plain(response)||response.statusCode!==200||!plain(response.body)||response.body.Code!==200||!plain(response.body.Data))throw failed();
  // DataId is documented as optional. If returned, it must bind the response
  // to this exact partition rather than being silently applied to another text.
  if(expectedDataId!==undefined&&response.body.Data.DataId!==undefined&&response.body.Data.DataId!==expectedDataId)throw failed();
  const rows=response.body.Data.Result;
- let label='undetermined',confidence=null;
- // Missing/nonLabel/unrecognized/conflicting results are no conclusion. Never
- // invert ugc confidence, average segments or treat an empty result as human.
- if(Array.isArray(rows)&&rows.length===1&&plain(rows[0])&&['aigc','ugc'].includes(rows[0].Label)&&typeof rows[0].Confidence==='number'&&Number.isFinite(rows[0].Confidence)&&rows[0].Confidence>=0&&rows[0].Confidence<=100){
-  label=rows[0].Label;confidence=rows[0].Confidence;
- }
- return{label,confidence,requestId};
+ if(!Array.isArray(rows)||rows.length!==1||!plain(rows[0]))throw failed(502);
+ const row=rows[0];
+ // The official schema explicitly allows nonLabel without a confidence field.
+ // Keep that inconclusive result distinct from a malformed/empty response;
+ // neither may become a human-authorship verdict or a charged full delivery.
+ if(row.Label==='nonLabel'&&row.Confidence===undefined)return{label:'undetermined',confidence:null,requestId};
+ if(!['aigc','ugc'].includes(row.Label)||typeof row.Confidence!=='number'||!Number.isFinite(row.Confidence)||row.Confidence<0||row.Confidence>100)throw failed(502);
+ return{label:row.Label,confidence:row.Confidence,requestId};
 }
 export function createAigcDetectionClient(config={}, {client}={}){
  config={...config};const limits=aigcDetectionLimits(config),endpoint=endpointFor(config);

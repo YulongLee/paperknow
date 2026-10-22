@@ -45,8 +45,9 @@ test('chunks all submitted text with exact Unicode offsets and reserves all bill
 
 test('only valid explicit labels and confidence conclude; never invert confidence or trust RiskLevel',()=>{
  assert.equal(normalizeAigcResponse(response('ugc',98)).confidence,98);
- for(const result of [[],[{Label:'nonLabel'}],[{Label:'ugc'}],[{Label:'ugc',Confidence:'98'}],[{Label:'ugc',Confidence:-1}],[{Label:'ugc',Confidence:101}],[{Label:'aigc',Confidence:NaN}],[{Label:'aigc',Confidence:90},{Label:'ugc',Confidence:10}],[{Label:'futureLabel',Confidence:99}]]){
-  const r=response();r.body.Data.Result=result;assert.deepEqual(normalizeAigcResponse(r),{label:'undetermined',confidence:null,requestId:'private-aigc-trace'});
+ const inconclusive=response();inconclusive.body.Data.Result=[{Label:'nonLabel'}];assert.deepEqual(normalizeAigcResponse(inconclusive),{label:'undetermined',confidence:null,requestId:'private-aigc-trace'});
+ for(const result of [[],[{Label:'ugc'}],[{Label:'ugc',Confidence:'98'}],[{Label:'ugc',Confidence:-1}],[{Label:'ugc',Confidence:101}],[{Label:'aigc',Confidence:NaN}],[{Label:'aigc',Confidence:90},{Label:'ugc',Confidence:10}],[{Label:'futureLabel',Confidence:99}]]){
+  const r=response();r.body.Data.Result=result;assert.throws(()=>normalizeAigcResponse(r),error=>{assert.equal(error.status,502);return safe('aigc_detection_unavailable')(error);});
  }
  const risk=response('ugc',98);risk.body.Data.RiskLevel='high';assert.equal(normalizeAigcResponse(risk).label,'ugc');
  for(const value of [{statusCode:500,body:response().body},{statusCode:200,body:{Code:408,Message:'unit-aigc-secret'}},{statusCode:200,body:{Code:200,Data:null}}])assert.throws(()=>normalizeAigcResponse(value),safe('aigc_detection_unavailable'));
@@ -88,7 +89,7 @@ test('async result preserves labels and offsets, owners and duplicate submission
 test('unknown segment yields no whole-document conclusion and mixed known labels never become an averaged percentage',async t=>{
  const known=fixture(t,{client:{async detect(content){return{label:content[0]==='A'?'aigc':'ugc',confidence:content[0]==='A'?99:98};}}});
  const mixed=(await known.completed({text:'A'.repeat(5000)+'B'.repeat(100)})).value;assert.equal(mixed.verdict,'mixed');assert.equal(mixed.conclusive,true);assert.deepEqual(mixed.parts.map(row=>row.confidence),[99,98]);
- const unknown=fixture(t,{client:{async detect(){return{label:'undetermined',confidence:null};}}});const item=(await unknown.completed()).value;assert.equal(item.status,'completed');assert.equal(item.verdict,'undetermined');assert.equal(item.conclusive,false);assert.equal(item.parts[0].confidence,null);
+ const unknown=fixture(t,{client:{async detect(){return{label:'undetermined',confidence:null};}}});const item=(await unknown.completed()).value;assert.equal(item.status,'failed');assert.equal(item.verdict,'undetermined');assert.equal(item.conclusive,false);assert.equal(item.parts[0].confidence,null);assert.equal(item.completedParts,1);assert.match(item.error,/未取得有效鉴别结论/);
 });
 
 test('long-text budgets preflight entire task before any call and survive restart/failure',async t=>{

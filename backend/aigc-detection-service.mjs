@@ -1,6 +1,6 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {createAigcDetectionClient,aigcDetectionConfigured,aigcDetectionDefaults,aigcDetectionLimits,aigcDetectionError,prepareAigcText} from './aigc-detection-client.mjs';
-import {detectionFreeEntryReady,reserveIncludedDetection} from './detection-entitlements.mjs';
+import {detectionFreeEntryReady,reserveIncludedDetection,includedDetectionHeld,detectionTrialUsage} from './detection-entitlements.mjs';
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const validId=value=>typeof value==='string'&&/^[-A-Za-z0-9_]{1,120}$/.test(value);
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
@@ -33,8 +33,8 @@ export function createAigcDetectionService(db,config={}, {client}={}){
  const billing=config.billing;
  const own=(id,user)=>{const row=db.prepare('SELECT * FROM aigc_detections WHERE id=? AND user_id=?').get(id,user.id);if(!row)fail(404,'文本鉴别记录不存在');return row;};
  const summarize=(row,cached=false)=>{
-  const parts=JSON.parse(row.parts),counts={aigc:0,ugc:0,undetermined:0};for(const part of parts)counts[part.label||'undetermined']++;
-  const complete=row.status==='completed',verdict=!complete||counts.undetermined?'undetermined':counts.aigc&&counts.ugc?'mixed':counts.aigc?'aigc':'ugc';
+  const parts=JSON.parse(row.parts),counts={aigc:0,ugc:0,undetermined:0};for(const part of parts)if(part.skipped!==true)counts[part.label||'undetermined']++;
+  const complete=row.status==='completed',verdict=!complete||counts.undetermined||!counts.aigc&&!counts.ugc?'undetermined':counts.aigc&&counts.ugc?'mixed':counts.aigc?'aigc':'ugc';
   return{id:row.id,status:row.status,characters:row.characters,partCount:row.part_count,completedParts:row.completed_parts,parts,counts,verdict,conclusive:complete&&verdict!=='undetermined',...(row.error?{error:row.error}:{}),createdAt:row.created_at,updatedAt:row.updated_at,notice,...(cached?{cached:true}:{})};
  };
  function finish(id,status,{message,requestIds}={}){return atomic(()=>{
@@ -49,7 +49,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
  // Only new metered rows have mirrors; historical detection records are untouched.
  if(billing)for(const row of db.prepare("SELECT id FROM aigc_detections WHERE status='running' AND billing_job_id IS NOT NULL").all())finish(row.id,'failed',{message:'服务切换中断了本次鉴别，套餐预占次数已释放；不会自动重复提交。'});
  async function process(id,prepared){
-  const started=Date.now(),parts=prepared.parts.map(({content,...part})=>({...part,label:'undetermined',confidence:null})),requestIds=[];
+  const started=Date.now(),parts=prepared.parts.map(({content,...part})=>({...part,...(!content.trim()?{skipped:true}:{}),label:'undetermined',confidence:null})),requestIds=[];
   try{
    for(const part of prepared.parts){
     if(db.isOpen===false)return;
@@ -66,6 +66,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
     if(typeof result.requestId==='string'&&/^[-A-Za-z0-9_.]{1,150}$/.test(result.requestId))requestIds.push(result.requestId);
     db.prepare("UPDATE aigc_detections SET completed_parts=completed_parts+1,parts=?,request_ids=?,updated_at=? WHERE id=? AND status='running'").run(JSON.stringify(parts),JSON.stringify(requestIds),new Date().toISOString(),id);
    }
+   if(prepared.parts.some(part=>part.content.trim()&&parts[part.index].label==='undetermined'))throw aigcDetectionError('aigc_detection_inconclusive',502,'部分正文未取得有效鉴别结论，已保留分段记录，本次未结算。');
    if(db.isOpen!==false)finish(id,'completed');
   }catch(error){
    const safe=error?.aigcDetectionSafe?error:aigcDetectionError('aigc_detection_unavailable',503,'文本鉴别暂未完成，已保留处理记录，不会自动重复提交。');
@@ -98,18 +99,20 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    if(!aigcDetectionConfigured(config)||cloud.ready===false||typeof cloud.detect!=='function')fail(503,'文本鉴别暂未开放，请稍后再试。');
    if(db.prepare("SELECT count(*) n FROM aigc_detections WHERE user_id=? AND status='running'").get(user.id).n)fail(409,'已有文本正在鉴别，请等待完成后再提交');
    if(db.prepare("SELECT count(*) n FROM aigc_detections WHERE status='running'").get().n>=limits.maxConcurrent)fail(429,'文本鉴别当前繁忙，请稍后再试');
-   const today=new Date();today.setUTCHours(0,0,0,0);const at=today.toISOString();
-   const userBudget=db.prepare('SELECT count(*) n,COALESCE(sum(characters),0) characters FROM aigc_detections WHERE user_id=? AND created_at>=?').get(user.id,at);
-   if(userBudget.n>=limits.userDailyLimit||userBudget.characters+prepared.characters>limits.userDailyCharacters)fail(429,'今日文本鉴别额度已用完，请明天再试');
-   const budget=db.prepare('SELECT COALESCE(sum(reserved_calls),0) calls,COALESCE(sum(reserved_billing_units),0) units FROM aigc_detections WHERE created_at>=?').get(at);
-   if(budget.calls+prepared.calls>limits.globalDailyCalls||budget.units+prepared.billingUnits>limits.globalDailyBillingUnits)fail(429,'文本鉴别今日额度已用完，请稍后再试');
-   const id=randomUUID(),created=new Date().toISOString(),parts=prepared.parts.map(({content,...part})=>({...part,label:'undetermined',confidence:null}));
+   const id=randomUUID(),created=new Date().toISOString(),parts=prepared.parts.map(({content,...part})=>({...part,...(!content.trim()?{skipped:true}:{}),label:'undetermined',confidence:null}));
    db.prepare("INSERT INTO aigc_detections(id,user_id,input_hash,status,characters,part_count,reserved_calls,reserved_billing_units,parts,created_at,updated_at) VALUES(?,?,?,'running',?,?,?,?,?,?,?)").run(id,user.id,hash,prepared.characters,parts.length,prepared.calls,prepared.billingUnits,JSON.stringify(parts),created,created);
    db.prepare('INSERT INTO aigc_detection_requests VALUES(?,?,?,?)').run(user.id,input.idempotencyKey,id,hash);
    reserveIncludedDetection(billing,user,id,'detection-aigc',{createJob:()=>{
     db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,attempt,created_at,updated_at) VALUES(?,?,'aigc_detection','running','detecting','{}',?,?,1,?,?)").run(id,user.id,'aigc:'+id,hash,created,created);
     db.prepare('UPDATE aigc_detections SET billing_job_id=? WHERE id=?').run(id,id);
    }});
+   if(!includedDetectionHeld(db,user.id,id,'detection-aigc')){
+    const today=new Date();today.setUTCHours(0,0,0,0);const window={since:today.toISOString(),until:new Date(today.getTime()+86400000).toISOString(),excludeId:id};
+    const userBudget=detectionTrialUsage(db,'detection-aigc',{...window,userId:user.id});
+    if(userBudget.n>=limits.userDailyLimit||userBudget.characters+prepared.characters>limits.userDailyCharacters)fail(429,'今日文本鉴别额度已用完，请明天再试');
+    const budget=detectionTrialUsage(db,'detection-aigc',window);
+    if(budget.calls+prepared.calls>limits.globalDailyCalls||budget.billingUnits+prepared.billingUnits>limits.globalDailyBillingUnits)fail(429,'文本鉴别今日额度已用完，请稍后再试');
+   }
    return{row:own(id,user),cached:false};
   });
   if(admission.cached)return{value:summarize(admission.row,true)};

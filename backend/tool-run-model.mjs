@@ -3,11 +3,13 @@ import {thesisError,thesisHash} from './thesis-model.mjs';
 import {researchFigureSelection} from './research-figure-selection.mjs';
 import {readingModes} from '../dist/workspace/literature-reading-modes.mjs';
 import {revisionStrategy} from '../dist/workspace/revision-strategy.mjs';
+import {toolBillingIdentity} from '../dist/workspace/tool-billing-identity.mjs';
+export {toolBillingIdentity};
 import {revisionProtectionRequirements,revisionProtectionVersion,validateRevisionOriginal,validateRevisionProtection} from '../dist/workspace/revision-protection.mjs';
 import {normalizeRevisionComparisonContext} from '../dist/workspace/revision-comparison-model.mjs';
 export const toolOperations=Object.freeze({literature:['read','answer','translate'],revision:['rewrite'],presentation:['ppt'],research:['chart','diagram','formula','image'],format:['format']});
 export const toolOperationNames=Object.freeze({read:'文献解读',answer:'原文问答',translate:'文献翻译',rewrite:'学术表达优化',ppt:'演示文稿创作',chart:'科研图表配置',diagram:'科研结构示意图',formula:'公式辅助',image:'AI科研绘图',format:'格式建议'});
-export function toolBillingKey({kind,operation,snapshot}){if(kind==='revision')return revisionStrategy(snapshot.mode,snapshot.context?.plan).billingKey;if(kind==='presentation')return'presentation-'+snapshot.mode;if(kind==='format')return'format-advice';return kind+'-'+operation;}
+export function toolBillingKey(value){return toolBillingIdentity(value).serviceKey;}
 const fail=(message,status=400)=>{throw thesisError(status,message);};
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const clean=(v,max=1000,min=0)=>{if(typeof v!=='string'||v.length>max||v.trim().length<min||/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(v))fail('输入内容不完整或超出处理范围');return v.trim();};

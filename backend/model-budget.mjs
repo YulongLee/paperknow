@@ -1,3 +1,4 @@
+import {jobBillingType,jobBillingTypeExpression} from './job-billing-identity.mjs';
 const aiTypes=Object.freeze(['polish','review','agent','thesis','thesis_outline','thesis_method','writing','tool_run']);
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const limit=(value,fallback,max)=>Number.isSafeInteger(value)&&value>=1&&value<=max?value:fallback;
@@ -33,7 +34,6 @@ export function createModelBudget(db,config={}){
  }
  function userIdValid(userId){if(typeof userId!=='string'||!userId.trim())fail(400,'账户标识无效');}
  const hasTable=name=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name));
- const billingTypeForJob=type=>['thesis','thesis_outline','thesis_method','writing','tool_run'].includes(type)?'agent':type;
  const paidSource=row=>row?.source==='credits'?Number.isSafeInteger(row.credits)&&row.credits>0:['membership','bundle'].includes(row?.source)&&row.credits===0;
  function paidQuote(userId,{billingToken,billingType,serviceKey}={},window=day()){
   if(typeof billingToken!=='string'||!billingToken||billingToken.length>200||!['polish','review','agent'].includes(billingType)||serviceKey!==undefined&&serviceKey!==null&&(typeof serviceKey!=='string'||!serviceKey||serviceKey.length>160)||!hasTable('billing_quotes'))return false;
@@ -44,11 +44,11 @@ export function createModelBudget(db,config={}){
  }
  function heldPaidReservation(job,attempt){
   if(!hasTable('billing_reservations'))return false;
-  const row=db.prepare("SELECT source,credits FROM billing_reservations WHERE job_id=? AND attempt=? AND user_id=? AND type=? AND status='held'").get(job.id,attempt,job.user_id,billingTypeForJob(job.type));
+  const row=db.prepare("SELECT source,credits FROM billing_reservations WHERE job_id=? AND attempt=? AND user_id=? AND type=? AND status='held'").get(job.id,attempt,job.user_id,jobBillingType(job));
   return paidSource(row);
  }
  function counts(userId,{includeQueued=true,excludeJobId=null}={},window=day()){
-  const reservations=hasTable('billing_reservations'),paidCondition="((r.source='credits' AND r.credits>0) OR (r.source IN ('membership','bundle') AND r.credits=0))",typeCondition="r.type=CASE WHEN j.type IN ('thesis','thesis_outline','thesis_method','writing','tool_run') THEN 'agent' ELSE j.type END";
+  const reservations=hasTable('billing_reservations'),paidCondition="((r.source='credits' AND r.credits>0) OR (r.source IN ('membership','bundle') AND r.credits=0))",typeCondition='r.type='+jobBillingTypeExpression('j');
   // Historical paid failures remain funded attempts for audit purposes even
   // after their refundable reservation is released; they never consume trial use.
   const unpaidAttempt=reservations?" AND NOT EXISTS(SELECT 1 FROM billing_reservations r WHERE r.job_id=a.job_id AND r.attempt=a.attempt AND r.user_id=a.user_id AND "+typeCondition+" AND r.status IN ('held','settled','released') AND "+paidCondition+")":'';
@@ -75,7 +75,7 @@ export function createModelBudget(db,config={}){
  }
  function start(jobId,attempt){
   if(typeof jobId!=='string'||!jobId||!Number.isSafeInteger(attempt)||attempt<1)fail(400,'模型任务或执行次数无效');
-  const job=db.prepare('SELECT id,user_id,type,status,attempt FROM jobs WHERE id=?').get(jobId);
+  const job=db.prepare('SELECT id,user_id,type,status,attempt,input FROM jobs WHERE id=?').get(jobId);
   if(!job)fail(404,'模型任务不存在');
   if(!aiTypes.includes(job.type))fail(400,'该任务不调用模型');
   const existing=db.prepare('SELECT job_id AS jobId,attempt,user_id AS userId,created_at AS createdAt FROM model_attempts WHERE job_id=? AND attempt=?').get(jobId,attempt);

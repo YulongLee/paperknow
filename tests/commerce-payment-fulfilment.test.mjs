@@ -22,7 +22,7 @@ const credentials={
 };
 function fixture(t){
  const db=database(':memory:'),created=[],remote=new Map();t.after(()=>db.close());
- const config={paymentConfigKey:randomBytes(32).toString('base64'),agentEnabled:true,
+ const config={paymentConfigKey:randomBytes(32).toString('base64'),agentEnabled:true,pptMasterEnabled:true,pptMasterRenderer(){assert.fail('no presentation rendering in payment acceptance');},
   getAI:()=>({aiURL:'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',aiKey:'synthetic-no-network-ai-key',aiModel:'qwen3.8-flash'}),
   getAgentSettings:()=>({enabled:true,engine:'claude-agent-sdk',baseURL:'https://synthetic.example.invalid/anthropic',apiKey:'synthetic-agent-key',model:'synthetic-model',version:'synthetic-version'}),
   webSimilarityEnabled:true,webSimilarityModel:'qwen3.8-flash',aigcDetectionEnabled:true,moderationAccessKeyId:'synthetic-detection-id',moderationAccessKeySecret:'synthetic-detection-secret',

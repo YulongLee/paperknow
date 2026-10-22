@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {digest} from './auth.mjs';
 import {createArtifactService,initializeArtifactSchema} from './artifact-service.mjs';
 import {webSearchConfigured} from './web-similarity-search.mjs';
-import {detectionFreeEntryReady,reserveIncludedDetection} from './detection-entitlements.mjs';
+import {detectionFreeEntryReady,reserveIncludedDetection,includedDetectionHeld,detectionTrialUsage} from './detection-entitlements.mjs';
 import {webSimilarityLimits,webSimilarityVersion,webSimilarityInput,planWebQueries,webSimilarityDay,webSimilarityFileName,webSimilarityFail as fail} from './web-similarity-model.mjs';
 
 export function initializeWebSimilaritySchema(db){
@@ -102,14 +102,16 @@ export function createWebSimilarityService(db,config={}){
    if(!webSimilarityReady(config))fail(503,webSimilarityCapabilities(config).reason);
    if(db.prepare("SELECT 1 FROM jobs WHERE user_id=? AND type='web_similarity' AND status IN ('preparing','queued','running')").get(user.id))fail(409,'你已有一项联网查重正在处理，请完成后再提交。');
    if(db.prepare("SELECT count(*) n FROM jobs WHERE type='web_similarity' AND status IN ('preparing','queued','running')").get().n>=webSimilarityLimits.maxQueued)fail(429,'联网查重当前繁忙，请稍后再试。');
-   const day=webSimilarityDay();
-   if(db.prepare("SELECT count(*) n FROM web_similarity_runs r JOIN jobs j ON j.id=r.id WHERE r.user_id=? AND r.created_at>=? AND r.created_at<? AND j.stage!='input_failed'").get(user.id,day.start,day.end).n>=webSimilarityLimits.userDailyLimit)fail(429,'今日联网查重次数已用完，请明日再试。');
-   if(db.prepare("SELECT count(*) n FROM web_similarity_runs r JOIN jobs j ON j.id=r.id WHERE r.created_at>=? AND r.created_at<? AND j.stage!='input_failed'").get(day.start,day.end).n>=webSimilarityLimits.globalDailyLimit)fail(429,'联网查重今日试运行额度已用完，请稍后再试。');
    const id=randomUUID(),at=new Date().toISOString();
    db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,'web_similarity','preparing','saving_input','{}',?,?,?,?)").run(id,user.id,input.idempotencyKey,hash,at,at);
    const coverage={sampledParagraphs:plan.sampledParagraphs,totalParagraphs:plan.totalParagraphs,queries:plan.queries.length,candidateSources:0,fetchedSources:0,failedSources:0,searchComplete:false};
    db.prepare('INSERT INTO web_similarity_runs(id,user_id,title,characters,queries_reserved,coverage,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(id,user.id,input.title,input.characters,plan.queries.length,JSON.stringify(coverage),at,at);
    reserveIncludedDetection(config.billing,user,id,'detection-similarity');
+   if(!includedDetectionHeld(db,user.id,id,'detection-similarity')){
+    const day=webSimilarityDay(),window={since:day.start,until:day.end,excludeId:id};
+    if(detectionTrialUsage(db,'detection-similarity',{...window,userId:user.id}).n>=webSimilarityLimits.userDailyLimit)fail(429,'今日联网查重次数已用完，请明日再试。');
+    if(detectionTrialUsage(db,'detection-similarity',window).n>=webSimilarityLimits.globalDailyLimit)fail(429,'联网查重今日试运行额度已用完，请稍后再试。');
+   }
    return{id,existing:false};
   });
   if(!reserved.existing){

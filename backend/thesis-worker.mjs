@@ -27,47 +27,56 @@ export function startThesisWorker(db,config={}){
  let busy=false,stopped=false,currentPromise=null;const controllers=new Map();
  const transaction=fn=>thesisTransaction(db,fn);
  const isContinuous=run=>config.thesisContinuousEnabled!==false&&JSON.parse(run.settings_meta||'{}').continuous===true;
+ // An explicit resume keeps the run ID but replaces its execution attempt.
+ // Every callback retains the attempt it claimed, never the latest row's identity.
+ const ownsAttempt=run=>Boolean(run&&db.prepare('SELECT 1 FROM thesis_runs r JOIN jobs j ON j.id=r.id JOIN theses t ON t.id=r.thesis_id WHERE r.id=? AND r.user_id=? AND r.attempt=? AND j.user_id=r.user_id AND t.current_run_id=r.id').get(run.id,run.user_id,run.attempt));
  function requeue(run){
-  const job=db.prepare('SELECT status FROM jobs WHERE id=?').get(run.id),current=db.prepare('SELECT current_run_id FROM theses WHERE id=?').get(run.thesis_id);
-  if(!isContinuous(run)||job?.status!=='running'||current?.current_run_id!==run.id||!db.prepare("SELECT 1 FROM billing_reservations WHERE job_id=? AND attempt=? AND status='held'").get(run.id,run.attempt))return false;
-  const recovered=continuity.recover(run);if(recovered.recoveredDispatches>0)db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=?').run(run.id);if(!recovered.ready)return false;
-  const at=clock();db.prepare("UPDATE thesis_runs SET status='queued',stage='auto_recovering',error=NULL,updated_at=? WHERE id=? AND status='running'").run(at,run.id);db.prepare("UPDATE jobs SET status='queued',stage='auto_recovering',error=NULL,updated_at=? WHERE id=? AND status='running'").run(at,run.id);db.prepare("UPDATE thesis_checkpoints SET status='pending',error=NULL,updated_at=? WHERE run_id=? AND status='running'").run(at,run.id);db.prepare("UPDATE theses SET status='queued',version=version+1,updated_at=? WHERE id=? AND current_run_id=?").run(at,run.thesis_id,run.id);return true;
+  if(!ownsAttempt(run)||!isContinuous(run))return false;
+  const job=db.prepare('SELECT status FROM jobs WHERE id=?').get(run.id);
+  if(job?.status!=='running'||!db.prepare("SELECT 1 FROM thesis_runs WHERE id=? AND attempt=? AND status='running'").get(run.id,run.attempt)||!db.prepare("SELECT 1 FROM billing_reservations WHERE job_id=? AND attempt=? AND user_id=? AND status='held'").get(run.id,run.attempt,run.user_id))return false;
+  const recovered=continuity.recover(run);if(recovered.recoveredDispatches>0)db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=? AND attempt=?').run(run.id,run.attempt);if(!recovered.ready)return false;
+  const at=clock();db.prepare("UPDATE thesis_runs SET status='queued',stage='auto_recovering',error=NULL,updated_at=? WHERE id=? AND attempt=? AND status='running'").run(at,run.id,run.attempt);db.prepare("UPDATE jobs SET status='queued',stage='auto_recovering',error=NULL,updated_at=? WHERE id=? AND status='running'").run(at,run.id);db.prepare("UPDATE thesis_checkpoints SET status='pending',error=NULL,updated_at=? WHERE run_id=? AND status='running'").run(at,run.id);db.prepare("UPDATE theses SET status='queued',version=version+1,updated_at=? WHERE id=? AND current_run_id=?").run(at,run.thesis_id,run.id);return true;
  }
- function markStopped(runId,status,message){
-  const run=db.prepare('SELECT * FROM thesis_runs WHERE id=?').get(runId);if(!run||!active(run.status))return;
-  const at=clock();db.prepare('UPDATE thesis_runs SET status=?,stage=?,error=?,updated_at=? WHERE id=?').run(status,status,message,at,runId);
+ function markStopped(runId,attempt,status,message){
+  if(!Number.isSafeInteger(attempt)||attempt<1)return;
+  const run=db.prepare('SELECT * FROM thesis_runs WHERE id=? AND attempt=?').get(runId,attempt);if(!run||!active(run.status)||!ownsAttempt(run))return;
+  const at=clock();db.prepare('UPDATE thesis_runs SET status=?,stage=?,error=?,updated_at=? WHERE id=? AND attempt=?').run(status,status,message,at,runId,attempt);
   // The shared task centre uses its existing terminal states; the thesis run
   // retains the precise reason (missing evidence, interruption or cancellation).
   db.prepare('UPDATE jobs SET status=?,stage=?,error=?,updated_at=? WHERE id=?').run(status==='cancelled'?'cancelled':'failed',status,message,at,runId);
   db.prepare('UPDATE theses SET status=?,version=version+1,updated_at=? WHERE id=? AND current_run_id=?').run(status,at,run.thesis_id,runId);
   billing.release(runId);
  }
- transaction(()=>{for(const run of db.prepare("SELECT * FROM thesis_runs WHERE status='running'").all())if(!requeue(run))markStopped(run.id,'interrupted','服务重启中断了任务；已完成章节已保存，预占权益已释放，请确认后续跑');});
+ transaction(()=>{for(const run of db.prepare("SELECT * FROM thesis_runs WHERE status='running'").all())if(!requeue(run))markStopped(run.id,run.attempt,'interrupted','服务重启中断了任务；已完成章节已保存，预占权益已释放，请确认后续跑');});
  async function execute(){
   if(busy||stopped)return;
   const run=db.prepare("SELECT r.* FROM thesis_runs r JOIN theses t ON t.id=r.thesis_id WHERE r.status='queued' AND t.current_run_id=r.id ORDER BY r.created_at,r.id LIMIT 1").get();
-  if(!run)return;busy=true;const controller=new AbortController();controllers.set(run.id,controller);let runtime={};const continuous=isContinuous(run);
-  const running=()=>Boolean(!controller.signal.aborted&&db.prepare("SELECT 1 FROM thesis_runs r JOIN jobs j ON j.id=r.id JOIN theses t ON t.id=r.thesis_id WHERE r.id=? AND r.status='running' AND j.status='running' AND t.current_run_id=r.id").get(run.id));
-  const stage=value=>{if(!running())return;const name=safeStage(value);db.prepare('UPDATE thesis_runs SET stage=?,updated_at=? WHERE id=?').run(name,clock(),run.id);db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(name,clock(),run.id);};
+  if(!run)return;busy=true;const controller=new AbortController();controllers.set(run.id,{controller,attempt:run.attempt});let runtime={};const continuous=isContinuous(run);
+  const running=()=>Boolean(!controller.signal.aborted&&db.prepare("SELECT 1 FROM thesis_runs r JOIN jobs j ON j.id=r.id JOIN theses t ON t.id=r.thesis_id WHERE r.id=? AND r.user_id=? AND r.attempt=? AND r.status='running' AND j.status='running' AND j.attempt=r.attempt AND j.user_id=r.user_id AND t.current_run_id=r.id").get(run.id,run.user_id,run.attempt));
+  const writeRunning=fn=>transaction(()=>{if(!running())return false;fn();return true;});
+  const writeAttempt=fn=>transaction(()=>{if(!ownsAttempt(run))return false;fn();return true;});
+  const stage=value=>{const name=safeStage(value);writeRunning(()=>{db.prepare('UPDATE thesis_runs SET stage=?,updated_at=? WHERE id=? AND attempt=?').run(name,clock(),run.id,run.attempt);db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND attempt=? AND status='running'").run(name,clock(),run.id,run.attempt);});};
   try{
-   const claimed=transaction(()=>{if(db.prepare("SELECT id FROM thesis_runs WHERE status='running' AND id!=? LIMIT 1").get(run.id))return false;if(!db.prepare("UPDATE thesis_runs SET status='running',stage='preparing',updated_at=? WHERE id=? AND status='queued'").run(clock(),run.id).changes)return false;
+   const claimed=transaction(()=>{if(!ownsAttempt(run)||db.prepare("SELECT id FROM thesis_runs WHERE status='running' AND id!=? LIMIT 1").get(run.id))return false;if(!db.prepare("UPDATE thesis_runs SET status='running',stage='preparing',updated_at=? WHERE id=? AND attempt=? AND status='queued'").run(clock(),run.id,run.attempt).changes)return false;
     db.prepare("UPDATE jobs SET status='running',stage='preparing',attempt=?,updated_at=? WHERE id=? AND status='queued'").run(run.attempt,clock(),run.id);
     db.prepare("UPDATE theses SET status='running',version=version+1,updated_at=? WHERE id=? AND current_run_id=?").run(clock(),run.thesis_id,run.id);modelBudget.start(run.id,run.attempt);return true;});
    if(!claimed)return;
    assertThesisSettings(await config.getAgentSettings?.());
    runtime=assertThesisSettings(await config.getAgentSettings?.(run.settings_version));
+   if(!running())return;
    if(runtime.version!==run.settings_version)throw thesisError(503,'原生成配置版本不可用，请联系管理员');
    const snapshot=JSON.parse(run.snapshot),plan=JSON.parse(run.plan),baseline=run.input_tokens+run.output_tokens;
-   if(continuous)transaction(()=>continuity.ensure(run,snapshot,plan,runtime));
+   if(continuous&&!writeRunning(()=>continuity.ensure(run,snapshot,plan,runtime)))return;
    const runner=config.agentTaskRunner||runAgentTask;
    if(typeof runner!=='function')throw thesisError(503,'毕业论文 Agent 执行器尚未接入');
    for(const unit of plan){
     let retries=0;
     while(true){
     if(stopped)throw thesisError(503,'服务停止中断了任务');
-    if(controller.signal.aborted||db.prepare('SELECT status FROM thesis_runs WHERE id=?').get(run.id)?.status!=='running')return;
+    if(!running())return;
     const checkpoint=db.prepare('SELECT * FROM thesis_checkpoints WHERE run_id=? AND unit_id=?').get(run.id,unit.id);if(checkpoint.status==='completed')break;
     assertThesisSettings(await config.getAgentSettings?.());
+    if(!running())return;
     const complete=db.prepare("SELECT * FROM thesis_checkpoints WHERE run_id=? AND status='completed' ORDER BY position").all(run.id);
     const task=thesisAgentTask(snapshot,unit,complete),maxTurns=Math.min(continuous?12:6,Math.max(1,Number(runtime.maxTurns)||3)),maxOutputTokens=Math.min(continuous?16384:8000,Math.max(32,Number(runtime.maxOutputTokens)||4096));
     if(retries)task.instructions+='上一次输出未通过本节校验。本次按既定字数范围一次提交紧凑、完整的候选；不要重复字数检查后再输出全文，不追求精确等于目标，不编造依据。';
@@ -75,21 +84,21 @@ export function startThesisWorker(db,config={}){
     // request, including system instructions, tool schemas and growing history.
     const totals=db.prepare('SELECT input_tokens,output_tokens FROM thesis_runs WHERE id=?').get(run.id),spent=totals.input_tokens+totals.output_tokens-baseline;
     if(!continuous&&spent+maxOutputTokens>=limits.maxRunTokens)throw thesisError(429,'本次生成已达到模型预算边界，已保留完成章节；请确认新报价后续跑','budget_exceeded');
-    transaction(()=>{db.prepare("UPDATE thesis_checkpoints SET status='running',error=NULL,updated_at=? WHERE run_id=? AND unit_id=? AND status!='completed'").run(clock(),run.id,unit.id);db.prepare("UPDATE thesis_runs SET stage='generating_section',updated_at=? WHERE id=?").run(clock(),run.id);db.prepare("UPDATE jobs SET stage='generating_section',updated_at=? WHERE id=?").run(clock(),run.id);});
+    if(!writeRunning(()=>{db.prepare("UPDATE thesis_checkpoints SET status='running',error=NULL,updated_at=? WHERE run_id=? AND unit_id=? AND status!='completed'").run(clock(),run.id,unit.id);db.prepare("UPDATE thesis_runs SET stage='generating_section',updated_at=? WHERE id=? AND attempt=?").run(clock(),run.id,run.attempt);db.prepare("UPDATE jobs SET stage='generating_section',updated_at=? WHERE id=? AND attempt=?").run(clock(),run.id,run.attempt);}))return;
     let result,accounted=false,reservation=null,dispatched=false,finishedReservation=false;
     try{
      if(continuous)reservation=transaction(()=>continuity.reserve(run,unit.id,{remainingUnits:plan.length-complete.length,settings:runtime}));
-     db.prepare('UPDATE thesis_runs SET provider_calls=provider_calls+1 WHERE id=?').run(run.id);
+     if(!writeRunning(()=>db.prepare('UPDATE thesis_runs SET provider_calls=provider_calls+1 WHERE id=? AND attempt=?').run(run.id,run.attempt)))throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
      dispatched=true;result=await runner({settings:{...runtime,maxTurns,maxOutputTokens,...(reservation?{maxTotalTokens:reservation.maxTotalTokens,maxCostUsd:reservation.maxCostUsd}:{maxTotalTokens:limits.maxRunTokens-spent})},task,validateThesisOutput:candidate=>validateThesisCandidate(candidate,snapshot,unit),signal:controller.signal,onStage:stage});
+     if(!ownsAttempt(run)){if(reservation){transaction(()=>continuity.finish(reservation.id,{usage:result?.usage,costUsd:result?.costUsd,errorCode:'cancelled'}));finishedReservation=true;}return;}
      if(!knownUsage(result?.usage))throw thesisError(502,'模型未返回可核算的用量，当前章节未标记完成，请联系管理员后重试','usage_unknown');
-     transaction(()=>{db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE id=?').run(result.usage.input,result.usage.output,clock(),run.id);db.prepare('UPDATE thesis_checkpoints SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE run_id=? AND unit_id=?').run(result.usage.input,result.usage.output,clock(),run.id,unit.id);});
+     writeAttempt(()=>{db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE id=? AND attempt=?').run(result.usage.input,result.usage.output,clock(),run.id,run.attempt);db.prepare('UPDATE thesis_checkpoints SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE run_id=? AND unit_id=?').run(result.usage.input,result.usage.output,clock(),run.id,unit.id);});
      accounted=true;
-     if(controller.signal.aborted||db.prepare('SELECT status FROM thesis_runs WHERE id=?').get(run.id)?.status!=='running'){if(reservation){transaction(()=>continuity.finish(reservation.id,{usage:result.usage,costUsd:result.costUsd,errorCode:'cancelled'}));finishedReservation=true;}return;}
+     if(!running()){if(reservation){transaction(()=>continuity.finish(reservation.id,{usage:result.usage,costUsd:result.costUsd,errorCode:'cancelled'}));finishedReservation=true;}return;}
      if(!continuous&&spent+result.usage.input+result.usage.output>limits.maxRunTokens)throw thesisError(429,'模型实际用量达到本次预算上限，当前输出未作为完整章节提交，请确认后续跑','budget_exceeded');
      const content=parseThesisSection(result,snapshot,unit);
-     transaction(()=>{
+     const saved=writeRunning(()=>{
       if(reservation){const settled=continuity.finish(reservation.id,{usage:result?.usage,costUsd:result?.costUsd});if(settled.budgetExceeded)throw Object.assign(thesisError(429,'本次生成达到执行预算，已保留完成章节','budget_exceeded'),{usage:result?.usage});}
-      if(db.prepare('SELECT status FROM thesis_runs WHERE id=?').get(run.id)?.status!=='running')return;
       assertThesisAccountQuota(db,run.user_id,Math.max(512,Buffer.byteLength(content.text)+Buffer.byteLength(JSON.stringify(content.missingEvidence||[]))+Buffer.byteLength(JSON.stringify(cleanTrace(result.trace))))-Math.max(512,Buffer.byteLength(checkpoint.text)+Buffer.byteLength(checkpoint.trace)),config);
       db.prepare("UPDATE thesis_checkpoints SET status='completed',text=?,source_ids=?,missing_evidence=?,error=NULL,engine=?,model=?,trace=?,updated_at=? WHERE run_id=? AND unit_id=? AND status='running'").run(content.text,JSON.stringify(content.sourceIds),JSON.stringify(content.missingEvidence||[]),runtime.engine||'claude-agent-sdk',runtime.model,JSON.stringify(cleanTrace(result.trace)),clock(),run.id,unit.id);
       const chapterUnits=db.prepare('SELECT * FROM thesis_checkpoints WHERE run_id=? AND chapter_id=? ORDER BY position').all(run.id,unit.chapterId);
@@ -102,19 +111,20 @@ export function startThesisWorker(db,config={}){
       }
       db.prepare('UPDATE theses SET version=version+1,updated_at=? WHERE id=? AND current_run_id=?').run(clock(),run.thesis_id,run.id);
      });
+     if(!saved){if(reservation)transaction(()=>continuity.finish(reservation.id,{usage:result?.usage,costUsd:result?.costUsd,errorCode:'cancelled'}));return;}
      finishedReservation=Boolean(reservation);
      break;
     }catch(error){
      if(result?.usage&&!error.usage)error.usage=result.usage;
      if(reservation&&!finishedReservation){const finished=transaction(()=>continuity.finish(reservation.id,{usage:error.usage,costUsd:result?.costUsd??error.costUsd,errorCode:error.code}));if(finished.budgetExceeded)error=Object.assign(thesisError(429,'本次生成达到执行预算，已保留完成章节','budget_exceeded'),{usage:error.usage});}
-     if(!accounted&&dispatched){const usage=error.usage;transaction(()=>{if(knownUsage(usage)){db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+? WHERE id=?').run(usage.input,usage.output,run.id);db.prepare('UPDATE thesis_checkpoints SET input_tokens=input_tokens+?,output_tokens=output_tokens+? WHERE run_id=? AND unit_id=?').run(usage.input,usage.output,run.id,unit.id);}else db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=?').run(run.id);});}
+     if(!accounted&&dispatched){const usage=error.usage;writeAttempt(()=>{if(knownUsage(usage)){db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+? WHERE id=? AND attempt=?').run(usage.input,usage.output,run.id,run.attempt);db.prepare('UPDATE thesis_checkpoints SET input_tokens=input_tokens+?,output_tokens=output_tokens+? WHERE run_id=? AND unit_id=?').run(usage.input,usage.output,run.id,unit.id);}else db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=? AND attempt=?').run(run.id,run.attempt);});}
      if(continuous&&!stopped&&running()&&retries<2&&classifyThesisRetry(error).retryable){retries++;stage('auto_recovering');continue;}
-     if(db.prepare('SELECT status FROM thesis_runs WHERE id=?').get(run.id)?.status==='running')transaction(()=>{const diagnostics=failureDiagnostics(error);db.prepare("UPDATE thesis_checkpoints SET status='failed',error=?,missing_evidence=?,trace=CASE WHEN ?='[]' THEN trace ELSE ? END,updated_at=? WHERE run_id=? AND unit_id=? AND status!='completed'").run(thesisPublicError(error,runtime),JSON.stringify(error.missingEvidence||[]),JSON.stringify(diagnostics),JSON.stringify(diagnostics),clock(),run.id,unit.id);});
+     writeRunning(()=>{const diagnostics=failureDiagnostics(error);db.prepare("UPDATE thesis_checkpoints SET status='failed',error=?,missing_evidence=?,trace=CASE WHEN ?='[]' THEN trace ELSE ? END,updated_at=? WHERE run_id=? AND unit_id=? AND status!='completed'").run(thesisPublicError(error,runtime),JSON.stringify(error.missingEvidence||[]),JSON.stringify(diagnostics),JSON.stringify(diagnostics),clock(),run.id,unit.id);});
      throw error;
     }
     }
    }
-   if(controller.signal.aborted||db.prepare('SELECT status FROM thesis_runs WHERE id=?').get(run.id)?.status!=='running')return;
+   if(!running())return;
    const meta=JSON.parse(run.settings_meta||'{}');let quality=null;
    if(meta.qualityReview===true&&config.writingQualityEnabled!==false){
     const checkpoints=db.prepare("SELECT * FROM thesis_checkpoints WHERE run_id=? AND status='completed' ORDER BY position").all(run.id),reviewChapters=checkpoints.map(row=>{const unit=plan.find(unit=>unit.id===row.unit_id);return{id:'section-'+row.position,title:unit.chapterTitle===unit.title?unit.title:unit.chapterTitle+' · '+unit.title,text:row.text,sourceIds:JSON.parse(row.source_ids)};});
@@ -125,22 +135,23 @@ export function startThesisWorker(db,config={}){
      if(cached){if(cached.task_hash!==hash)throw thesisError(409,'审校资料已变化','review_changed');return JSON.parse(cached.result);}
      if(!continuous)throw thesisError(429,'本次未配置审校执行预算','budget_exceeded');
      assertThesisSettings(await config.getAgentSettings?.());
+     if(!running()||stopped)throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
      const reservation=transaction(()=>continuity.reserve(run,unitId,{remainingUnits:1,settings:runtime,kind:'review'}));let output,accounted=false;
-     const account=usage=>transaction(()=>{if(knownUsage(usage))db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE id=?').run(usage.input,usage.output,clock(),run.id);else db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=?').run(run.id);});
+     const account=usage=>writeAttempt(()=>{if(knownUsage(usage))db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE id=? AND attempt=?').run(usage.input,usage.output,clock(),run.id,run.attempt);else db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=? AND attempt=?').run(run.id,run.attempt);});
      try{
-      db.prepare('UPDATE thesis_runs SET provider_calls=provider_calls+1 WHERE id=?').run(run.id);
+      if(!writeRunning(()=>db.prepare('UPDATE thesis_runs SET provider_calls=provider_calls+1 WHERE id=? AND attempt=?').run(run.id,run.attempt)))throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
       output=await runner({settings:{...settings,maxTotalTokens:reservation.maxTotalTokens,maxCostUsd:reservation.maxCostUsd},task,validateReviewOutput,signal:controller.signal,onStage:()=>stage('reviewing_manuscript')});
       account(output?.usage);accounted=true;
       if(!knownUsage(output?.usage))throw thesisError(502,'审校未返回可核算用量','usage_unknown');
       if(!running()||stopped)throw thesisError(499,'任务已停止','cancelled');
       const validation=await validateReviewOutput(output);if(validation?.valid!==true)throw thesisError(502,'审校内容未通过定位检查','invalid_review_output');
-      transaction(()=>{const finished=continuity.finish(reservation.id,{usage:output.usage,costUsd:output.costUsd});if(finished.budgetExceeded)throw thesisError(429,'审校达到执行预算','budget_exceeded');const saved=JSON.stringify({text:output.text,trace:[],usage:output.usage});assertThesisAccountQuota(db,run.user_id,Buffer.byteLength(saved)+pendingReferenceBytes,config);db.prepare('INSERT INTO thesis_review_checkpoints VALUES(?,?,?,?,?,?)').run(run.id,run.attempt,unitId,hash,saved,clock());});
+      if(!writeRunning(()=>{const finished=continuity.finish(reservation.id,{usage:output.usage,costUsd:output.costUsd});if(finished.budgetExceeded)throw thesisError(429,'审校达到执行预算','budget_exceeded');const saved=JSON.stringify({text:output.text,trace:[],usage:output.usage});assertThesisAccountQuota(db,run.user_id,Buffer.byteLength(saved)+pendingReferenceBytes,config);db.prepare('INSERT INTO thesis_review_checkpoints VALUES(?,?,?,?,?,?)').run(run.id,run.attempt,unitId,hash,saved,clock());}))throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
       return output;
      }catch(error){if(!accounted)account(error.usage);transaction(()=>continuity.finish(reservation.id,{usage:output?.usage||error.usage,costUsd:output?.costUsd??error.costUsd,errorCode:error.code||'execution_failed'}));throw error;}
     }});
-    if(!running())return;transaction(()=>{const previous=db.prepare("SELECT length(CAST(coalesce(quality,'') AS BLOB)) bytes FROM thesis_runs WHERE id=?").get(run.id).bytes;const saved=fitOptionalWritingQuality(quality,{build:candidate=>candidate?JSON.stringify(candidate):null,check:json=>assertThesisAccountQuota(db,run.user_id,Math.max(0,(json?Buffer.byteLength(json):0)-previous+pendingReferenceBytes),config)});quality=saved.quality;db.prepare('UPDATE thesis_runs SET quality=?,updated_at=? WHERE id=?').run(saved.value,clock(),run.id);});
+    if(!writeRunning(()=>{const previous=db.prepare("SELECT length(CAST(coalesce(quality,'') AS BLOB)) bytes FROM thesis_runs WHERE id=? AND attempt=?").get(run.id,run.attempt).bytes;const saved=fitOptionalWritingQuality(quality,{build:candidate=>candidate?JSON.stringify(candidate):null,check:json=>assertThesisAccountQuota(db,run.user_id,Math.max(0,(json?Buffer.byteLength(json):0)-previous+pendingReferenceBytes),config)});quality=saved.quality;db.prepare('UPDATE thesis_runs SET quality=?,updated_at=? WHERE id=? AND attempt=?').run(saved.value,clock(),run.id,run.attempt);}))return;
    }
-   transaction(()=>{
+   writeRunning(()=>{
     const checkpoints=db.prepare('SELECT * FROM thesis_checkpoints WHERE run_id=? ORDER BY position').all(run.id);
     if(checkpoints.length!==plan.length||checkpoints.some(row=>row.status!=='completed'))throw thesisError(409,'章节尚未全部完成，未将任务标为成功');
     const usedSources=[...new Set(checkpoints.flatMap(row=>JSON.parse(row.source_ids)))],bibliography=compileThesisReferences(snapshot,usedSources);
@@ -154,17 +165,17 @@ export function startThesisWorker(db,config={}){
     billing.settle(run.id);
     db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(resultId,run.user_id,db.prepare('SELECT project_id FROM theses WHERE id=?').get(run.thesis_id).project_id,run.id,'agent',snapshot.title,JSON.stringify({original:'',suggestion,thesisId:run.thesis_id,engine:runtime.engine||'claude-agent-sdk',model:runtime.model,settingsVersion:run.settings_version,...(quality?{quality}:{}),chapters:chapters.map(({id,title,text,sourceIds,source})=>({id,title,text,sourceIds,source})),materials:snapshot.materials.filter(row=>row.confirmed).map(({id,name})=>({id,name})),references:snapshot.references.filter(row=>row.confirmed).map(({id,title,authors,year,doi,url})=>({id,title,authors,year,doi,url})),trace:checkpoints.flatMap(row=>JSON.parse(row.trace)).slice(-100),referenceListIncomplete:snapshot.outline.some(isThesisReferenceChapter)&&!bibliography,missingEvidence:[...new Set(checkpoints.flatMap(row=>JSON.parse(row.missing_evidence||'[]')))],draft:true,requiresReview:true}),at);
     db.prepare('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),run.user_id,run.id,runtime.engine||'claude-agent-sdk',runtime.model,totals.usage_known?totals.input_tokens:null,totals.usage_known?totals.output_tokens:null,billing.isBillable(run.id)?1:0,at);
-    db.prepare("UPDATE thesis_runs SET status='completed',stage='completed',error=NULL,result_id=?,updated_at=? WHERE id=?").run(resultId,at,run.id);
-    db.prepare("UPDATE jobs SET status='completed',stage='completed',error=NULL,result_id=?,updated_at=? WHERE id=?").run(resultId,at,run.id);
+    db.prepare("UPDATE thesis_runs SET status='completed',stage='completed',error=NULL,result_id=?,updated_at=? WHERE id=? AND attempt=?").run(resultId,at,run.id,run.attempt);
+    db.prepare("UPDATE jobs SET status='completed',stage='completed',error=NULL,result_id=?,updated_at=? WHERE id=? AND attempt=?").run(resultId,at,run.id,run.attempt);
     db.prepare("UPDATE theses SET status='completed',version=version+1,updated_at=? WHERE id=? AND current_run_id=?").run(at,run.thesis_id,run.id);
    });
   }catch(error){
-   if(stopped&&continuous){const requeued=transaction(()=>requeue(db.prepare('SELECT * FROM thesis_runs WHERE id=?').get(run.id)));if(requeued)return;}
+   if(stopped&&continuous){const requeued=transaction(()=>requeue(run));if(requeued)return;}
    const status=stopped?'interrupted':error.code==='needs_materials'?'needs_materials':'failed',message=stopped?'服务停止中断了任务；已完成章节已保存，预占权益已释放':thesisPublicError(error,runtime);
-   transaction(()=>markStopped(run.id,status,message));
-  }finally{if(stopped&&continuous&&db.prepare('SELECT status FROM thesis_runs WHERE id=?').get(run.id)?.status==='running')transaction(()=>{if(!requeue(db.prepare('SELECT * FROM thesis_runs WHERE id=?').get(run.id)))markStopped(run.id,'interrupted','服务维护中断了任务，已保留完成章节，请确认后继续');});controllers.delete(run.id);busy=false;}
+   transaction(()=>markStopped(run.id,run.attempt,status,message));
+  }finally{if(stopped&&continuous)transaction(()=>{if(ownsAttempt(run)&&db.prepare("SELECT 1 FROM thesis_runs WHERE id=? AND attempt=? AND status='running'").get(run.id,run.attempt)&&!requeue(run))markStopped(run.id,run.attempt,'interrupted','服务维护中断了任务，已保留完成章节，请确认后继续');});if(controllers.get(run.id)?.controller===controller)controllers.delete(run.id);busy=false;}
  }
  function tick(){if(busy||stopped)return Promise.resolve();currentPromise=execute();return currentPromise;}
  const timer=setInterval(()=>void tick(),Math.max(100,config.thesisPollMs||1000));timer.unref();
- return {tick,cancel(id){transaction(()=>markStopped(id,'cancelled','用户取消了任务，已完成章节已保存，预占权益已释放'));controllers.get(id)?.abort();},async stop(){stopped=true;clearInterval(timer);for(const controller of controllers.values())controller.abort();await currentPromise;},async close(){await this.stop();}};
+ return {tick,cancel(id){const execution=controllers.get(id),attempt=execution?.attempt??db.prepare('SELECT attempt FROM thesis_runs WHERE id=?').get(id)?.attempt;transaction(()=>markStopped(id,attempt,'cancelled','用户取消了任务，已完成章节已保存，预占权益已释放'));execution?.controller.abort();},async stop(){stopped=true;clearInterval(timer);for(const {controller}of controllers.values())controller.abort();await currentPromise;},async close(){await this.stop();}};
 }

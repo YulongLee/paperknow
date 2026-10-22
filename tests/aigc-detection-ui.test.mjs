@@ -11,6 +11,22 @@ function fixture(handler=()=>null,options={}){const dom=new JSDOM('<main class="
 
 test('AI labels never become an invented whole-document percentage or averaged confidence',()=>{const normalized=normalizeAigcResult(complete({partCount:2,completedParts:2,overallScore:87,aiPercent:90,parts:[{label:'aigc',confidence:80,start:0,end:6,characters:6},{label:'ugc',confidence:96,start:6,end:12,characters:6}]}));assert.equal(normalized.verdict,'mixed');assert.equal(normalized.overallScore,undefined);assert.equal(normalized.aiPercent,undefined);assert.deepEqual(normalized.counts,{aigc:1,ugc:1,undetermined:0});const uncertain=normalizeAigcResult(complete({verdict:'ugc',parts:[{label:'ugc',confidence:null,start:0,end:12}]}));assert.equal(uncertain.verdict,'undetermined');assert.equal(uncertain.parts[0].confidence,null);assert.equal(normalizeAigcResult(complete({parts:[{label:'aigc',confidence:101}]})).verdict,'undetermined');assert.equal(normalizeAigcResult(complete({completedParts:0})).fullyCompleted,false);assert.throws(()=>validateAigcText('字'.repeat(50001),cap),/不会自动截断/);});
 
+test('server-skipped blank segments preserve offsets without making valid content inconclusive',()=>{
+ const skipped={index:0,start:0,end:5000,characters:5000,label:'undetermined',confidence:null,skipped:true},known={index:1,start:5000,end:5100,characters:100,label:'ugc',confidence:96};
+ const normalized=normalizeAigcResult(complete({characters:5100,partCount:2,completedParts:2,parts:[skipped,known],conclusive:true}));
+ assert.equal(normalized.verdict,'ugc');assert.deepEqual(normalized.counts,{aigc:0,ugc:1,undetermined:0});assert.equal(normalized.parts[0].skipped,true);assert.equal(normalized.parts[0].label,'undetermined');assert.deepEqual(normalized.parts.map(({start,end})=>[start,end]),[[0,5000],[5000,5100]]);
+ assert.equal(normalizeAigcResult(complete({partCount:2,completedParts:2,parts:[{...skipped,skipped:false},known]})).verdict,'undetermined');
+ assert.equal(normalizeAigcResult(complete({parts:[skipped]})).verdict,'undetermined');
+});
+
+test('blank segment rows and exported reports explicitly say skipped instead of an unknown authorship verdict',async()=>{
+ const item=complete({characters:5100,partCount:2,completedParts:2,parts:[{index:0,start:0,end:5000,characters:5000,label:'undetermined',confidence:null,skipped:true},{index:1,start:5000,end:5100,characters:100,label:'ugc',confidence:96}],conclusive:true});
+ const f=fixture((url,body)=>url==='/api/aigc-detections'&&!body?response({items:[item]}):url==='/api/aigc-detections/task-1'?response(item):null);
+ try{await f.panel.ready;assert.match(f.$('[data-aigc-result]').textContent,/分段鉴别结果/);assert.match(f.$('[data-aigc-result]').textContent,/空白分段，已跳过/);assert.doesNotMatch(f.$('[data-aigc-result]').textContent,/结果仍待核对/);
+  const {aigcReportHtml}=await import('../dist/workspace/aigc-report.mjs');const html=aigcReportHtml(item);assert.match(html,/空白分段，已跳过/);assert.match(html,/偏人工表达/);
+ }finally{f.close();}
+});
+
 test('purchased detection usage is disclosed before consent without inventing a credit payment',async()=>{
  const f=fixture(url=>url==='/api/capabilities'?response({aigcDetection:{...cap,bundleUsageSupported:true}}):null);
  try{await f.panel.ready;assert.match(f.$('[data-detection-bundle-note]').textContent,/不扣积分.*套餐.*一次.*失败或取消/);assert.ok(f.$('[data-detection-bundle-note]').compareDocumentPosition(f.$('[data-aigc-consent]'))&f.dom.window.Node.DOCUMENT_POSITION_FOLLOWING);assert.equal(f.calls.some(call=>call.body),false);assert.equal(f.$('[data-aigc-consent]').checked,false);}finally{f.close();}
