@@ -117,13 +117,13 @@
 .dashboard .ppt-commercial .ppt-outline button{min-height:43px;font-size:12px;border-radius:9px;background:#fbfcff}
 .dashboard .ppt-commercial .ppt-steps{padding:12px;border:1px solid #e7edf6;border-radius:11px;background:#fafcff}
 
-/* Formatting has three visually distinct service entries and truthful progress. */
+/* Formatting keeps the available detection and smart-layout entries aligned. */
 #app .dashboard .format-commercial .format-services{margin:0 0 22px;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
 .dashboard .format-commercial .format-services-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:18px}
 .dashboard .format-commercial .format-services-heading h2{font-size:21px;line-height:1.5;color:var(--pf-text);margin:6px 0}
 .dashboard .format-commercial .format-services-heading p{font-size:12px;color:var(--pf-muted);margin:0;line-height:1.8}
 .dashboard .format-commercial .format-flow-kicker{font-size:9px;letter-spacing:.1em;color:#a29b8a;font-weight:600}
-.dashboard .format-commercial .format-service-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.dashboard .format-commercial .format-service-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .dashboard .format-commercial .format-service-card{--entry-tone:#6289c9;--entry-tint:#eff5ff;--entry-line:#dce7f7;position:relative;display:flex;align-items:flex-start;gap:13px;padding:22px 18px;min-width:0;min-height:166px;border:1px solid var(--entry-line);border-radius:15px;background:linear-gradient(135deg,var(--pf-surface),var(--entry-tint));text-align:left;isolation:isolate;overflow:hidden;box-shadow:0 3px 11px #2a3d5b03;transition:transform .18s ease,border-color .18s ease}
 .dashboard .format-commercial .format-entry-smart{--entry-tone:#b28b4d;--entry-tint:#fff8eb;--entry-line:#ede0c7}
 .dashboard .format-commercial .format-entry-refine{--entry-tone:#9a7bb1;--entry-tint:#f7f1fb;--entry-line:#e7dced}
