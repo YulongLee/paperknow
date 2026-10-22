@@ -58,7 +58,7 @@ export function installStoredFilePickers(root,{fetchImpl}={}){
  const doc=root.ownerDocument,win=doc.defaultView,decorated=new WeakSet();let picker=null;
  const excluded=input=>input.matches('#cloud-upload-file,#upload-file,#settings-file,[data-no-file-library]')||!!input.closest('#settings-data,.settings-import');
  function add(input,anchor,beforeSelect,accept=input.accept){
-  if(!anchor||decorated.has(anchor)||excluded(input))return;decorated.add(anchor);const button=doc.createElement('button');button.type='button';button.className='stored-file-trigger btn secondary';button.innerHTML=icon('folder',15)+'从文件管理选择';button.setAttribute('aria-label','从文件管理选择'+(input.getAttribute('aria-label')||''));
+  if(!anchor||decorated.has(anchor)||excluded(input))return;decorated.add(anchor);const button=doc.createElement('button');button.type='button';button.className='stored-file-trigger btn secondary';const purposeLabel=input.dataset.fileLibraryLabel?.trim(),labelText=purposeLabel||'从文件管理选择';button.innerHTML=icon('folder',15);button.append(doc.createTextNode(labelText));button.setAttribute('aria-label',purposeLabel||'从文件管理选择'+(input.getAttribute('aria-label')||''));
   // Never nest a button in an upload label: label default activation would open
   // the native file dialog while the cloud picker is already being shown.
   const label=anchor.closest('label'),placement=label||anchor;placement.insertAdjacentElement('afterend',button);

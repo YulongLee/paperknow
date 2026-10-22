@@ -63,3 +63,20 @@ test('DOCX template from file manager is still inspected and reuses the original
  const bytes=Uint8Array.from([80,75,1,2]),file=bindStoredFile(new File([bytes],'学校模板.docx'),{ownerId:'alice',sourceType:'artifact',id:'cloud-template',sha256:sha}),calls=[];
  const value=await uploadThesisTemplate(file,{expectedUserId:'alice',api:async(path,body)=>{calls.push({path,body});return{id:'template-original'};},inspectTemplate:async value=>{assert.deepEqual(value,bytes);return{version:1,recognized:['body']};}});assert.equal(value.source.fileId,'template-original');assert.deepEqual(calls.map(call=>call.path),['/files/reuse']);
 });
+
+
+test('upload purposes may name their cloud action with inert text while retaining the receiving control and format',async()=>{
+ const dom=new JSDOM('<main><label>样例<input id="sample" type="file" accept=".docx" aria-label="导入DOCX样例"></label><label>恢复<input id="rules" type="file" accept=".json,application/json"></label><label>普通上传<input id="plain" type="file" accept=".txt"></label></main>'),root=dom.window.document.querySelector('main');
+ const sample=root.querySelector('#sample'),rules=root.querySelector('#rules'),custom='<img src=x onerror=alert(1)>从文件管理选择样例';
+ sample.setAttribute('data-file-library-label',custom);rules.setAttribute('data-file-library-label','从文件管理恢复规则');
+ const view=installStoredFilePickers(root);
+ try{
+  const buttons=[...root.querySelectorAll('.stored-file-trigger')];assert.equal(buttons.length,3);
+  assert.equal(buttons[0].textContent,custom);assert.equal(buttons[0].getAttribute('aria-label'),custom);assert.equal(buttons[0].querySelector('img'),null);
+  assert.equal(buttons[1].textContent,'从文件管理恢复规则');assert.equal(buttons[2].textContent,'从文件管理选择');
+  assert.equal(root.querySelector('#sample'),sample);assert.equal(sample.accept,'.docx');assert.equal(rules.accept,'.json,application/json');assert.equal(sample.files.length,0);assert.equal(root.querySelector('label .stored-file-trigger'),null);
+  // Re-inserting the same upload control must not produce another action.
+  root.append(sample.closest('label'));await flush();assert.equal(root.querySelectorAll('.stored-file-trigger').length,3);
+  assert.equal(sample.accept,'.docx');assert.equal(sample.files.length,0);
+ }finally{view.dispose();dom.window.close();}
+});

@@ -15,8 +15,8 @@
 :is(#app,.dashboard) .format-commercial .format-preset-cyan{--format-preset-ink:#3188aa;--format-preset-soft:#eef9fe;--format-preset-border:#d9edf6}
 :is(#app,.dashboard) .format-commercial .format-preset-slate{--format-preset-ink:#5d708f;--format-preset-soft:#f1f5fa;--format-preset-border:#dfe6f0}
 :is(#app,.dashboard) .format-commercial .format-rule-import{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px;padding:20px;margin-top:22px;background:#f7f9fd;border:1px solid #e2e8f3;border-radius:12px}
-:is(#app,.dashboard) .format-commercial .format-rule-import>div:first-child{flex:1;min-width:200px}
-:is(#app,.dashboard) .format-commercial .format-rule-import>div:last-child{display:flex;gap:8px;flex-wrap:wrap}
+:is(#app,.dashboard) .format-commercial .format-rule-import>.format-sample-copy{flex:1;min-width:200px}
+:is(#app,.dashboard) .format-commercial .format-rule-import>.format-sample-actions{display:flex;gap:8px;flex-wrap:wrap}
 :is(#app,.dashboard) .format-commercial .format-rule-import strong{color:#344d70;font-size:13px}
 :is(#app,.dashboard) .format-commercial .format-rule-import p,:is(#app,.dashboard) .format-commercial .format-rule-import small{font-size:11px;line-height:1.8;color:#7486a2;margin:5px 0 0}
 :is(#app,.dashboard) .format-commercial .format-selected-rules{font-size:12px;color:#577094;margin:16px 0 0;padding:12px 14px;background:#edf3ff;border-radius:8px;overflow-wrap:anywhere}
@@ -52,3 +52,20 @@
 :is(#app,.dashboard) .format-commercial .format-section-consent{display:flex;align-items:flex-start;gap:9px;padding:13px;background:#fff8e9;border:1px solid #f2dfb5;border-radius:9px;font-size:12px;line-height:1.8;color:#8f6d30;margin:15px 0}
 :is(#app,.dashboard) .format-commercial .format-section-consent input{flex:0 0 auto;margin-top:5px}
 :is(#app,.dashboard) .format-commercial .format-scope-note{font-size:11px;line-height:1.9;color:#7b8da8;margin:15px 0}
+
+/* Keep document samples primary; rule backups are an optional secondary action. */
+:is(#app,.dashboard) .format-commercial .format-rule-import .format-sample-actions{align-items:center;gap:10px;flex-shrink:0}
+:is(#app,.dashboard) .format-commercial .format-rule-backup{margin:12px 0 0;border:1px solid #e5eaf3;border-radius:10px;background:#fff;box-shadow:none}
+:is(#app,.dashboard) .format-commercial .format-rule-backup>summary{display:flex;align-items:center;gap:12px;padding:14px 17px;list-style:none;cursor:pointer;color:#627695;font-size:12px}
+:is(#app,.dashboard) .format-commercial .format-rule-backup>summary::-webkit-details-marker{display:none}
+:is(#app,.dashboard) .format-commercial .format-rule-backup>summary>span:first-child{display:inline-flex;gap:8px;align-items:center;font-weight:600}
+:is(#app,.dashboard) .format-commercial .format-rule-backup>summary small{font-size:11px;color:#94a1b6}
+:is(#app,.dashboard) .format-commercial .format-backup-chevron{margin-left:auto;transition:transform .15s}
+:is(#app,.dashboard) .format-commercial .format-rule-backup[open] .format-backup-chevron{transform:rotate(180deg)}
+:is(#app,.dashboard) .format-commercial .format-backup-content{padding:0 17px 17px;border-top:1px solid #edf1f7}
+:is(#app,.dashboard) .format-commercial .format-backup-content>p{color:#8290a8;font-size:11px;line-height:1.9;margin:13px 0}
+:is(#app,.dashboard) .format-commercial .format-backup-actions{display:flex;align-items:center;flex-wrap:wrap;gap:9px}
+.hub-theme-dark :is(#app,.dashboard) .format-commercial .format-rule-backup{background:#1c2c43;border-color:#354862}
+.hub-theme-dark :is(#app,.dashboard) .format-commercial .format-backup-content{border-color:#354862}
+.hub-theme-dark :is(#app,.dashboard) .format-commercial .format-rule-backup>summary{color:#becce2}
+@media(max-width:700px){:is(#app,.dashboard) .format-commercial .format-sample-actions{width:100%}:is(#app,.dashboard) .format-commercial .format-sample-actions .btn{flex:1;justify-content:center}:is(#app,.dashboard) .format-commercial .format-rule-backup>summary{flex-wrap:wrap;gap:8px}:is(#app,.dashboard) .format-commercial .format-rule-backup>summary small{display:none}:is(#app,.dashboard) .format-commercial .format-backup-actions .btn{flex:1;justify-content:center}}
