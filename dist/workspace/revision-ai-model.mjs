@@ -2,6 +2,7 @@ import {editParagraph} from './revision-model.mjs';
 import {revisionStrategy} from './revision-strategy.mjs';
 import {validateRevisionOriginal,validateRevisionProtection} from './revision-protection.mjs';
 import {normalizeConfirmedRevisionReport} from './revision-report-model.mjs';
+import {revisionComparisonSnapshot} from './revision-comparison-model.mjs';
 const fingerprint=parts=>{let value=2166136261;for(const point of JSON.stringify(parts.map(p=>[p.id,p.suggestion,p.reason,p.comment,p.accepted,p.resolved]))){value=Math.imul(value^point.charCodeAt(0),16777619)>>>0;}return value.toString(16);};
 const changed=(original,revised)=>original.replace(/[\s\p{Default_Ignorable_Code_Point}]/gu,'')!==revised.replace(/[\s\p{Default_Ignorable_Code_Point}]/gu,'');
 export function revisionAiSnapshot(doc,{scope='current',index=0,paragraphIds=doc?.aiSelection?.paragraphIds}={}){
@@ -21,11 +22,13 @@ export function revisionAiSnapshot(doc,{scope='current',index=0,paragraphIds=doc
  for(const part of parts)if(!validateRevisionOriginal(part.original.trim()).valid)throw Error('原文包含不完整的公式结构或无有效文字，请先核对该段原文。');
  const text=parts.map(p=>p.original.trim()).join('\n\n');if(text.length>32000)throw Error('整稿超过单次 32,000 字符，请缩小所选段落或按“当前段落”分次处理，不会截断原稿。');
  const requirement=[doc.requirements,doc.plan==='dual'?'同时梳理重复表达与模板化句式，保留真实研究内容。':'',doc.plan==='english'?'保持英文专业术语，输出英文修改稿。':'',...parts.filter(p=>p.comment).map(p=>`${p.id} 待核对意见：${p.comment}`)].filter(Boolean).join('\n');
- if(requirement.length>3000)throw Error('本次修改要求及段落意见合计超过 3,000 字符，请精简后生成；原内容仍保留。');return {title:doc.title,text,requirements:requirement,mode:doc.mode,language:doc.plan==='english'?'en':'zh-CN',materials:[],context:{revisionId:doc.id,plan:doc.plan||'strong',scope,paragraphIds:parts.map(p=>p.id),editFingerprint:fingerprint(parts)}};
+ const comparison=doc.mode==='rewrite'?revisionComparisonSnapshot(doc,parts):{materials:[]};
+ if(requirement.length>3000)throw Error('本次修改要求及段落意见合计超过 3,000 字符，请精简后生成；原内容仍保留。');return {title:doc.title,text,requirements:requirement,mode:doc.mode,language:doc.plan==='english'?'en':'zh-CN',materials:comparison.materials,context:{revisionId:doc.id,plan:doc.plan||'strong',scope,paragraphIds:parts.map(p=>p.id),editFingerprint:fingerprint(parts),...(comparison.comparisonContext?{comparison:comparison.comparisonContext}:{})}};
 }
 export function applyRevisionAiOutput(doc,output,source){
  const ids=source?.context?.paragraphIds;if(!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length||!output||!Array.isArray(output.paragraphs)||output.paragraphs.length!==ids.length)throw Error('修改结果缺少对应段落，不能覆盖当前稿。');
  const parts=ids.map(id=>doc.paragraphs.find(p=>p.id===id));if(parts.some(part=>!part)||parts.map(part=>part.original.trim()).join('\n\n')!==source.text)throw Error('原文已变化，请重新确认修改范围。');
+ if(source.context.comparison){const current=revisionComparisonSnapshot(doc,parts);if(JSON.stringify(current.comparisonContext)!==JSON.stringify(source.context.comparison)||JSON.stringify(current.materials)!==JSON.stringify(source.materials))throw Error('对照文章或处理路径已变化，旧候选不能作为当前来源修改结果，请重新确认。');}
  if(source.context.editFingerprint!==undefined&&source.context.editFingerprint!==fingerprint(parts))throw Error('当前段落已有人工编辑或采纳变化，旧候选不能覆盖，请重新确认。');
  // Validate the entire batch before adding any candidate to the document.
  const checked=output.paragraphs.map((part,i)=>{

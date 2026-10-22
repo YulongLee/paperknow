@@ -10,6 +10,9 @@ import {documentExportButtons,bindDocumentExports} from '../dist/workspace/docum
 import {mountRevisionAi} from '../dist/workspace/revision-ai.mjs';
 import {revisionStrategy} from '../dist/workspace/revision-strategy.mjs';
 import {openRevisionReport} from '../dist/workspace/revision-report.mjs';
+import {revisionComparisonMarkup,openRevisionSources} from '../dist/workspace/revision-source-ui.mjs';
+import {normalizeRevisionComparison,compareRevisionDocument} from '../dist/workspace/revision-comparison-model.mjs';
+import {loadRevisionComparisonHandoff,hasRevisionComparisonHandoff} from '../dist/workspace/revision-comparison-handoff.mjs';
 import {normalizeConfirmedRevisionReport,reportSources} from '../dist/workspace/revision-report-model.mjs';
 import {validateRevisionProtection} from '../dist/workspace/revision-protection.mjs';
 import {mountAigcDetection,ensureAigcStyle} from '../dist/workspace/aigc-detection.mjs';
@@ -25,7 +28,7 @@ function fixture(t,{entry=true,extract=async()=>({text:'Parsed source.',warnings
  globalThis.document=w.document;
  const originalSet=w.Storage.prototype.setItem;
  w.Storage.prototype.setItem=function(key,value){if(key==='paperknow-revision-entry')storageCalls.entryWrites++;if(entryFail&&key==='paperknow-revision-entry')throw Error('Synthetic entry quota');return originalSet.call(this,key,value);};
- Object.assign(w,{projectPickerOptions},{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports,...model,importWorkspaceDocument:extract,documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[],list:key=>{storageCalls.reads++;return JSON.parse(w.localStorage.getItem(key)||'[]');},write:(key,rows)=>{storageCalls.writes++;if(fail)throw Error('Synthetic storage failure');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:()=>{},download:(...args)=>downloads.push(args)});
+ Object.assign(w,{projectPickerOptions},{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,revisionStrategy,openRevisionReport,revisionComparisonMarkup,openRevisionSources,normalizeRevisionComparison,compareRevisionDocument,loadRevisionComparisonHandoff,hasRevisionComparisonHandoff,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports,...model,importWorkspaceDocument:extract,documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[],list:key=>{storageCalls.reads++;return JSON.parse(w.localStorage.getItem(key)||'[]');},write:(key,rows)=>{storageCalls.writes++;if(fail)throw Error('Synthetic storage failure');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:()=>{},download:(...args)=>downloads.push(args)});
  w.confirm=()=>false;
  const closeDialog=()=>{$('dialog').removeAttribute('open');$('dialog').dispatchEvent(new w.Event('close'));};$('dialog').close=closeDialog;
  const ctx={mode:entry?'reduce':'rewrite',notify:text=>notices.push(text),modal:(_title,html)=>{$('#workspace-dialog-body').innerHTML=html;$('dialog').setAttribute('open','');},api:async(...args)=>{requests.push(args);throw Error('Unexpected API request');}};

@@ -17,3 +17,12 @@ test('my literature import uses only actual saved text and requires user confirm
 test('comparison input, metadata and explicit chapter scope recover from the automatic local draft',async t=>{const f=fixture(t,[{id:'u',title:'实际材料',text:actual,kind:'user'}]);await f.mount();f.input('#det-title','我的本地比对');f.click('[data-det-action="paste"]');f.input('#det-paste','第一章 绪论\n'+actual+'\n第二章 方法\n这是第二章实际研究方法的完整文本，需要用户选择是否进行比对。');f.submit('#det-paste-form');f.click('#det-next');const second=f.qs('[data-det-section="section-2"]');second.checked=false;second.dispatchEvent(new f.w.Event('change'));const saved=JSON.parse(f.w.localStorage.getItem('paperknow-local-comparison-draft-v1'));assert.equal(saved.input.title,'我的本地比对');assert.deepEqual(saved.ids,['section-1']);assert.equal(saved.confirmed,true);assert.match(saved.input.text,/第二章/);});
 
 test('free checking defaults to the new web workflow while the existing local flow stays explicit',async t=>{const f=fixture(t);f.w.history.replaceState(null,'','#category/detection');let mounted;f.w.mountWebSimilarity=options=>(mounted=options,{dispose(){}});await f.mount();assert.ok(f.qs('#web-similarity-host'));assert.equal(mounted.container,f.qs('#web-similarity-host'));assert.equal(f.qs('.detection-method-cards [aria-current="page"] b').textContent,'联网来源查重');assert.equal(f.qs('#det-file'),null);assert.ok([...f.w.document.querySelectorAll('a')].some(a=>a.getAttribute('href')==='#category/detection?view=local'));f.w.history.replaceState(null,'','#category/detection?view=web&report=web-owned');await f.mount();assert.equal(mounted.reportId,'web-owned');});
+
+test('a completed local comparison links the saved report into source-based reduction without putting text in the URL',async t=>{
+ const f=fixture(t,[{id:'user-source',kind:'user',title:'实际对照文章',text:actual,authors:[]}]);await f.mount();
+ f.click('[data-det-action="paste"]');f.input('#det-paste',actual);f.submit('#det-paste-form');f.click('#det-next');f.click('#det-next');
+ await f.settle(()=>!!f.qs('#workspace-dialog-body a[href*="localComparisonReport="]'));
+ assert.equal(f.store.reports.length,1);const report=f.store.reports[0],href=f.qs('#workspace-dialog-body a[href*="localComparisonReport="]').getAttribute('href');
+ assert.equal(href,'#category/reduce?localComparisonReport='+encodeURIComponent(report.id));
+ assert.equal(report.sources[0].text,actual);assert.equal(report.sections.flatMap(s=>s.paragraphs)[0].text,actual);assert.equal(href.includes(actual),false);
+});

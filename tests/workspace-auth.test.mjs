@@ -23,6 +23,9 @@ import {revisionStrategy} from '../dist/workspace/revision-strategy.mjs';
 import {openRevisionReport} from '../dist/workspace/revision-report.mjs';
 import {normalizeConfirmedRevisionReport,reportSources} from '../dist/workspace/revision-report-model.mjs';
 import {validateRevisionProtection} from '../dist/workspace/revision-protection.mjs';
+import {normalizeRevisionComparison,compareRevisionDocument} from '../dist/workspace/revision-comparison-model.mjs';
+import {revisionComparisonMarkup,openRevisionSources} from '../dist/workspace/revision-source-ui.mjs';
+import {loadRevisionComparisonHandoff,hasRevisionComparisonHandoff} from '../dist/workspace/revision-comparison-handoff.mjs';
 import {workspaceLinks} from '../dist/workspace/interface.mjs';
 import * as revisionModel from '../dist/workspace/revision-model.mjs';
 import * as taskModel from '../dist/workspace/task-model.mjs';
@@ -293,6 +296,7 @@ test('real AI reduction entry keeps its own heading, theme and selection across 
  const dom=new JSDOM('<div class="breadcrumb"><strong></strong></div><main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#category/aigc',runScripts:'outside-only'});
  Object.assign(dom.window,{projectPickerOptions,captureDraftScope,workspaceJobLabel,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),mountAigcDetection,ensureAigcStyle,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
  try{
+  Object.assign(dom.window,{normalizeRevisionComparison,compareRevisionDocument,revisionComparisonMarkup,openRevisionSources,loadRevisionComparisonHandoff,hasRevisionComparisonHandoff});
   vm.runInContext('(function(){'+revisionSource+'\nglobalThis.mountActualRevision=mountRevision;})()',dom.getInternalVMContext());
   const query=selector=>dom.window.document.querySelector(selector);
   const mount=hash=>{dom.window.history.replaceState(null,'',hash);dom.window.mountActualRevision({mode:'reduce',modal:()=>{},notify:()=>{}});};
