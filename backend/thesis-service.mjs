@@ -38,12 +38,10 @@ export function createThesisService(db,config={}){
  function touch(id,status){db.prepare('UPDATE theses SET version=version+1,status=?,updated_at=? WHERE id=?').run(status,clock(),id);}
  function command(user,input,hash){const old=db.prepare('SELECT * FROM thesis_commands WHERE user_id=? AND client_key=?').get(user.id,clientKey(input.clientKey));if(old&&old.input_hash!==hash)fail(409,'此提交标识已用于其他论文操作');return old;}
  function saveCommand(user,input,hash,id,runId){db.prepare('INSERT INTO thesis_commands VALUES(?,?,?,?,?,?)').run(user.id,input.clientKey,id,runId,hash,clock());}
- function admission(user){
-  modelBudget.check(user.id);
+ function admission(user,charge={}){
+  modelBudget.check(user.id,charge);
   if(db.prepare("SELECT count(*) n FROM thesis_runs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=2)fail(429,'当前账户已有两篇论文正在排队或生成，请先等待完成');
   if(db.prepare("SELECT count(*) n FROM thesis_runs WHERE status IN ('queued','running')").get().n>=50)fail(429,'生成队列当前较忙，请稍后再试');
-  const today=new Date(Date.parse(clock())-86400000).toISOString();
-  if(db.prepare('SELECT count(*) n FROM thesis_commands WHERE user_id=? AND created_at>=?').get(user.id,today).n>=(config.thesisUserDailyLimit||10))fail(429,'今日论文生成提交次数已用完，请稍后再试');
  }
  async function capabilities(){try{await settings();return {ready:true,reason:'',limits:thesisLimits(config),billingService:'agent',requiresEvidenceConfirmation:true,onlineReferenceVerification:false,evidenceMode:'reviewable_draft_with_optional_sources'};}catch(error){return {ready:false,reason:error.message,limits:thesisLimits(config),billingService:'agent',requiresEvidenceConfirmation:true,onlineReferenceVerification:false,evidenceMode:'reviewable_draft_with_optional_sources'};}}
  async function handle({path,method,user,readBody}){
@@ -82,9 +80,9 @@ export function createThesisService(db,config={}){
   const input=await readBody();
   if(action==='quote'){
    fields(input,['version','action']);const quotedAction=input.action??'generate';if(!['generate','resume'].includes(quotedAction))fail(400,'请选择生成或恢复操作');
-   expected(input,row);if(active.has(row.status))fail(409,'论文已经在生成中');const snapshot=JSON.parse(row.snapshot),runtime=await settings();thesisPlan(snapshot,config.thesisContinuousEnabled===true?{...config,thesisSectionWords:sectionWordsForRuntime(runtime,snapshot.profile.language,thesisLimits(config).sectionWords)}:config);admission(user);
+   expected(input,row);if(active.has(row.status))fail(409,'论文已经在生成中');const snapshot=JSON.parse(row.snapshot),runtime=await settings();thesisPlan(snapshot,config.thesisContinuousEnabled===true?{...config,thesisSectionWords:sectionWordsForRuntime(runtime,snapshot.profile.language,thesisLimits(config).sectionWords)}:config);
    if(quotedAction==='resume'){const run=row.current_run_id?db.prepare('SELECT snapshot_hash,status FROM thesis_runs WHERE id=? AND user_id=?').get(row.current_run_id,user.id):null;if(!run||!['failed','interrupted','cancelled','needs_materials'].includes(run.status))fail(409,'当前没有可续跑的中断任务');if(run.snapshot_hash!==row.snapshot_hash)fail(409,'研究资料或提纲已变化，请确认后重新生成；旧章节仍然保留');}
-   return response(thesisTransaction(db,()=>{const current=own(id,user);expected(input,current);if(active.has(current.status))fail(409,'论文已经在生成中');const quote=billing.quote(user,{type:'agent',serviceKey:writingBillingKey('thesis','draft',snapshot)});db.prepare('INSERT INTO thesis_generation_quotes VALUES(?,?,?,?,?,?,?)').run(quote.token,user.id,id,current.version,current.snapshot_hash,quotedAction,clock());return{...quote,thesisId:id,thesisVersion:current.version,snapshotHash:current.snapshot_hash,action:quotedAction};}));
+   return response(thesisTransaction(db,()=>{const current=own(id,user);expected(input,current);if(active.has(current.status))fail(409,'论文已经在生成中');const serviceKey=writingBillingKey('thesis','draft',snapshot),quote=billing.quote(user,{type:'agent',serviceKey});admission(user,{billingToken:quote.token,billingType:'agent',serviceKey});db.prepare('INSERT INTO thesis_generation_quotes VALUES(?,?,?,?,?,?,?)').run(quote.token,user.id,id,current.version,current.snapshot_hash,quotedAction,clock());return{...quote,thesisId:id,thesisVersion:current.version,snapshotHash:current.snapshot_hash,action:quotedAction};}));
   }
   if(!action&&!chapterId){
    fields(input,['version','snapshot','projectId']);const snapshot=normalizeThesisSnapshot(input.snapshot,config),pid=input.projectId===undefined?row.project_id:project(input.projectId,user);
@@ -106,7 +104,7 @@ export function createThesisService(db,config={}){
   expected(input,row);if(active.has(row.status))fail(409,'当前论文正在生成，请先等待或取消');
   const snapshot=JSON.parse(row.snapshot),enabled=await settings(),runtime=action==='resume'?await settings(currentRun?.settings_version):enabled;
   const validatedPlan=thesisPlan(snapshot,config.thesisContinuousEnabled===true?{...config,thesisSectionWords:sectionWordsForRuntime(runtime,snapshot.profile.language,thesisLimits(config).sectionWords)}:config),plan=action==='generate'?validatedPlan:null;
-  return response(thesisTransaction(db,()=>{const current=own(id,user),existing=command(user,input,hash);if(existing)return {item:serialize(current)};expected(input,current);if(active.has(current.status))fail(409,'论文已经在生成中');admission(user);
+  return response(thesisTransaction(db,()=>{const current=own(id,user),existing=command(user,input,hash);if(existing)return {item:serialize(current)};expected(input,current);if(active.has(current.status))fail(409,'论文已经在生成中');admission(user,{billingToken:input.billingToken,billingType:'agent',serviceKey:writingBillingKey('thesis','draft',snapshot)});
    const confirmed=db.prepare('SELECT * FROM thesis_generation_quotes WHERE token=? AND user_id=?').get(typeof input.billingToken==='string'?input.billingToken:'',user.id);
    if(!confirmed||confirmed.thesis_id!==id||confirmed.version!==current.version||confirmed.snapshot_hash!==current.snapshot_hash||confirmed.action!==action)fail(409,'论文信息或生成操作与费用确认不一致，请重新确认');
    const at=clock();let runId;

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {database} from '../backend/database.mjs';
 import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
+import {createModelBudget} from '../backend/model-budget.mjs';
 import {createThesisService} from '../backend/thesis-service.mjs';
 import {startThesisWorker} from '../backend/thesis-worker.mjs';
 import {normalizeThesisSnapshot,thesisPlan,thesisAgentTask,parseThesisSection,selectThesisEvidence,thesisHash,thesisPublicError} from '../backend/thesis-model.mjs';
@@ -141,6 +142,48 @@ test('failed later sections preserve checkpoints, release charges and resume onl
  assert.equal(failed.status,'failed');assert.equal(failed.job.completedSections,1);assert.ok(failed.chapters[0].text);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.billing.balance(f.user.id).held,0);
  const resumed=await f.resume(failed),key=f.db.prepare('SELECT client_key FROM thesis_commands WHERE run_id=? ORDER BY rowid DESC LIMIT 1').get(resumed.job.id).client_key;assert.equal(resumed.job.id,failed.job.id);await worker.tick();assert.equal(calls,3);assert.equal(f.get(queued.id).status,'completed');assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.db.prepare('SELECT input_tokens FROM usage').get().input_tokens,250);
  const retry=(await f.request(`/api/theses/${failed.id}/resume`,'POST',{version:failed.version,clientKey:key,consent:true,billingToken:'already-confirmed-idempotent-request'})).item;assert.equal(retry.status,'completed');assert.equal(f.billing.balance(f.user.id).balance,190);
+});
+
+test('credit-funded thesis submissions continue beyond ten commands and exhausted free quotas',async t=>{
+ const f=fixture(t,{aiUserDailyLimit:1,aiGlobalDailyLimit:1,thesisUserDailyLimit:1}),worker=f.start(),budget=createModelBudget(f.db,f.config);
+ const trial=await f.generate(await f.create());await worker.tick();assert.equal(f.get(trial.id).status,'completed');assert.equal(budget.summary(f.user.id).used,1);
+ const blocked=await f.create(),quotesBefore=f.db.prepare('SELECT count(*) n FROM billing_quotes').get().n;
+ await assert.rejects(f.request(`/api/theses/${blocked.id}/quote`,'POST',{version:blocked.version}),{status:429});
+ assert.equal(f.db.prepare('SELECT count(*) n FROM billing_quotes').get().n,quotesBefore,'rejected free quotes roll back');
+ f.pay();
+ for(let index=0;index<11;index++){
+  const queued=await f.generate(index===0?blocked:await f.create());assert.equal(f.billing.balance(f.user.id).held,10);
+  await worker.tick();assert.equal(f.get(queued.id).status,'completed');assert.equal(f.billing.balance(f.user.id).balance,200-(index+1)*10);
+ }
+ assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_commands').get().n,12);assert.equal(f.db.prepare('SELECT count(*) n FROM model_attempts').get().n,12);
+ assert.equal(budget.summary(f.user.id).used,1,'paid attempts do not consume the free quota');assert.equal(f.billing.balance(f.user.id).held,0);
+});
+
+test('credit-funded failed resumes release holds and keep completed sections beyond the old daily command cap',async t=>{
+ let failures=11,firstSectionCalls=0;const f=fixture(t,{aiUserDailyLimit:1,aiGlobalDailyLimit:1,thesisUserDailyLimit:1,agentTaskRunner:async({task})=>{if(task.context.unit.chapterId==='chapter-1')firstSectionCalls++;if(task.context.unit.chapterId==='chapter-2'&&failures-->0)throw new Error('synthetic temporary failure');return output(task);}});
+ f.pay();const worker=f.start(),queued=await f.generate(await f.create());
+ for(let attempt=0;attempt<11;attempt++){
+  await worker.tick();const failed=f.get(queued.id);assert.equal(failed.status,'failed');assert.equal(failed.job.completedSections,1);
+  assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.billing.balance(f.user.id).balance,200);
+  const resumed=await f.resume(failed);assert.equal(resumed.job.id,queued.job.id);
+ }
+ await worker.tick();const done=f.get(queued.id);assert.equal(done.status,'completed');assert.equal(firstSectionCalls,1);assert.equal(done.chapters[0].version,1);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_commands').get().n,12);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_reservations WHERE status='released'").get().n,11);
+ assert.equal(f.db.prepare("SELECT count(*) n FROM billing_reservations WHERE status='settled'").get().n,1);assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.billing.balance(f.user.id).held,0);
+ assert.equal(createModelBudget(f.db,f.config).summary(f.user.id).used,0);
+});
+
+test('paid thesis admission still enforces concurrent capacity and available balance',async t=>{
+ const f=fixture(t,{aiUserDailyLimit:1,aiGlobalDailyLimit:1});f.pay();
+ const queued=[];for(let index=0;index<2;index++)queued.push(await f.generate(await f.create()));
+ const third=await f.create(),quotesBefore=f.db.prepare('SELECT count(*) n FROM billing_quotes').get().n;
+ await assert.rejects(f.request(`/api/theses/${third.id}/quote`,'POST',{version:third.version}),error=>error.status===429&&/两篇论文/.test(error.message));
+ assert.equal(f.db.prepare('SELECT count(*) n FROM billing_quotes').get().n,quotesBefore);assert.equal(f.billing.balance(f.user.id).held,20);
+ for(const item of queued)await f.request(`/api/theses/${item.id}/cancel`,'POST',{version:item.version});
+ assert.equal(f.billing.balance(f.user.id).held,0);
+ f.billing.saveRules({version:f.billing.rules().version,services:billingServiceTypes.map(({key})=>({key,mode:'paid',creditCost:201}))});
+ await assert.rejects(f.request(`/api/theses/${third.id}/quote`,'POST',{version:third.version}),{status:402});
+ assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_runs').get().n,2);assert.equal(f.billing.balance(f.user.id).balance,200);
 });
 
 test('cancel aborts an in-flight call, retains completed sections and cannot settle after cancellation',async t=>{

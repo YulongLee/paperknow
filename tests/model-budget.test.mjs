@@ -6,6 +6,7 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {database} from '../backend/database.mjs';
 import {createModelBudget,modelLimits} from '../backend/model-budget.mjs';
+import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
 
 function fixture(t,{path=':memory:',userLimit=3,globalLimit=5}={}){
  const db=database(path);let time=Date.parse('2026-10-16T07:00:00.000Z');
@@ -107,4 +108,86 @@ test('caller transaction rollback removes an uncommitted attempt and restart ret
  const f=fixture(t),id=f.enqueue();assert.throws(()=>f.transaction(()=>{f.db.prepare("UPDATE jobs SET status='running',attempt=1 WHERE id=?").run(id);f.budget.start(id,1);throw new Error('fixture rollback');}),/fixture rollback/);
  assert.equal(f.db.prepare('SELECT count(*) n FROM model_attempts').get().n,0);assert.equal(f.budget.summary('alice').queued,1);
  f.start(id);f.finish(id,'failed');const restored=createModelBudget(f.db,f.config);assert.deepEqual(restored.summary('alice'),{used:1,queued:0,limit:3,remaining:2});
+});
+
+
+function billingFixture(f){
+ const config={...f.config,billingNow:f.config.modelBudgetNow,aiURL:'https://example.invalid/v1/chat/completions',aiKey:'synthetic-not-networked',aiModel:'fixture',agentEnabled:true,getAgentSettings:()=>({enabled:true,engine:'claude-agent-sdk',baseURL:'https://example.invalid/anthropic',model:'fixture',apiKey:'synthetic-only',version:'fixture-version'})};
+ const billing=createBillingService(f.db,config);billing.saveRules({version:billing.rules().version,services:billingServiceTypes.map(({key})=>({key,mode:'paid',creditCost:10}))});
+ function fund(source='credits',owner='alice'){
+  const id=randomUUID(),at=f.config.modelBudgetNow().toISOString(),expiresAt=new Date(Date.parse(at)+86400000).toISOString(),productId=source==='credits'?'credits-200':source==='membership'?'basic':'bundle-rewrite';
+  f.db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run(id,owner,productId,'paid',at);
+  if(source==='credits'){f.db.prepare('INSERT INTO payment_credit_ledger VALUES(?,?,?,?,?,?)').run(id,owner,productId,200,'purchase',at);return id;}
+  f.db.prepare('INSERT OR IGNORE INTO payment_config_versions(id,provider,sealed_settings,identity_hash,created_by,created_at) VALUES(?,?,?,?,?,?)').run('model-budget-billing-fixture','wechat','{}','fixture',owner,at);
+  const items=[{key:'polish',title:'合成润色权益',quantity:1}],entitlement={type:source,durationDays:1,[source==='membership'?'membershipItems':'bundleItems']:items};
+  f.db.prepare('INSERT INTO payment_orders(order_id,provider,out_trade_no,config_id,amount_cents,title,entitlement,idempotency_key,input_hash,user_id,expires_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(id,'wechat',id,'model-budget-billing-fixture',100,'合成商品',JSON.stringify(entitlement),id,id,owner,expiresAt,at);
+  if(source==='membership')f.db.prepare('INSERT INTO payment_entitlements VALUES(?,?,?,?,?,?,?)').run(id,owner,productId,'membership',at,expiresAt,at);else f.db.prepare('INSERT INTO payment_bundle_entitlements VALUES(?,?,?,?,?,?,?)').run(id,owner,productId,at,expiresAt,at,JSON.stringify(items));return id;
+ }
+ const quote=(owner='alice',type='polish',serviceKey)=>billing.quote({id:owner},{type,...(serviceKey?{serviceKey}:{})});
+ const reserve=(id,q,owner='alice',attempt=1,type='polish',serviceKey)=>f.transaction(()=>billing.reserve({id:owner},id,attempt,type,q.token,serviceKey));
+ return {billing,fund,quote,reserve};
+}
+
+const useFreeAllowance=f=>{const id=f.enqueue();f.start(id);f.finish(id);return id;};
+
+test('only an authentic owner/type/service-bound unused paid quote bypasses exhausted free daily counts',t=>{
+ const f=fixture(t,{userLimit:1,globalLimit:1});useFreeAllowance(f);
+ for(const options of [{paid:true},{source:'credits',balance:100000},{billingToken:'invented',billingType:'polish'}])assert.throws(()=>f.budget.check('alice',options),{status:429});
+ const b=billingFixture(f);b.fund();const q=b.quote();
+ assert.deepEqual(f.budget.check('alice',{billingToken:q.token,billingType:'polish'}),{used:1,queued:0,limit:null,remaining:null,paid:true});
+ for(const [owner,options]of [['bob',{billingToken:q.token,billingType:'polish'}],['alice',{billingToken:q.token,billingType:'review'}],['alice',{billingToken:q.token,billingType:'polish',serviceKey:'revision-reduce'}],['alice',{billingToken:q.token}]])assert.throws(()=>f.budget.check(owner,options),{status:429});
+ const scoped=b.quote('alice','agent','revision-reduce');assert.equal(f.budget.check('alice',{billingToken:scoped.token,billingType:'agent',serviceKey:'revision-reduce'}).paid,true);
+ for(const serviceKey of [undefined,'revision-aigc'])assert.throws(()=>f.budget.check('alice',{billingToken:scoped.token,billingType:'agent',serviceKey}),{status:429});
+ const id=f.job();b.reserve(id,q);assert.throws(()=>f.budget.check('alice',{billingToken:q.token,billingType:'polish'}),{status:429});f.finish(id,'cancelled');b.billing.release(id);
+ f.setTime('2026-10-16T07:05:00.000Z');assert.throws(()=>f.budget.check('alice',{billingToken:scoped.token,billingType:'agent',serviceKey:'revision-reduce'}),{status:429});
+});
+
+test('held paid execution and paid failed retries never consume free daily usage or rewrite audit records',t=>{
+ const f=fixture(t,{userLimit:1,globalLimit:1});useFreeAllowance(f);const b=billingFixture(f);b.fund();
+ const id=f.job(),q=b.quote();b.reserve(id,q);assert.deepEqual(f.budget.summary('alice'),{used:1,queued:0,limit:1,remaining:0});
+ f.start(id);f.finish(id,'failed');b.billing.release(id);assert.equal(f.db.prepare('SELECT count(*) n FROM model_attempts').get().n,2);assert.deepEqual(f.budget.summary('alice'),{used:1,queued:0,limit:1,remaining:0});assert.equal(b.billing.balance('alice').balance,200);
+ f.db.prepare("UPDATE jobs SET status='queued' WHERE id=?").run(id);assert.equal(f.budget.summary('alice').queued,1,'released old attempt cannot fund a new queued retry');
+ const retry=b.quote();b.reserve(id,retry,'alice',2);assert.equal(f.budget.summary('alice').queued,0);f.start(id);f.finish(id);b.billing.settle(id);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM model_attempts').get().n,3);assert.deepEqual(f.budget.summary('alice'),{used:1,queued:0,limit:1,remaining:0});assert.equal(b.billing.balance('alice').balance,190);assert.throws(()=>f.enqueue(),{status:429});
+ assert.throws(()=>f.db.prepare('DELETE FROM model_attempts').run(),/不可删除/);
+});
+
+test('continuous thesis recovery reuses only its audited paid attempt without reserving free queue space',t=>{
+ const f=fixture(t,{userLimit:1,globalLimit:1}),b=billingFixture(f);b.fund();const id=f.job({type:'thesis'}),q=b.quote('alice','agent');b.reserve(id,q,'alice',1,'agent');f.start(id);
+ const original={...f.db.prepare('SELECT * FROM model_attempts WHERE job_id=?').get(id)};f.db.prepare("UPDATE jobs SET status='queued',stage='auto_recovering' WHERE id=?").run(id);
+ assert.deepEqual(f.budget.summary('alice'),{used:0,queued:0,limit:1,remaining:1});assert.equal(f.budget.check('bob').remaining,1,'paid recovery must not consume the global free queue');
+ f.setTime('2026-10-17T07:00:00.000Z');assert.equal(f.budget.summary('alice').queued,0,'a recovery can reuse an audit from the prior day');
+ const restarted=createModelBudget(f.db,f.config);f.transaction(()=>{f.db.prepare("UPDATE jobs SET status='running',stage='preparing' WHERE id=? AND status='queued'").run(id);restarted.start(id,1);});
+ assert.deepEqual({...f.db.prepare('SELECT * FROM model_attempts WHERE job_id=?').get(id)},original);f.finish(id);b.billing.settle(id);assert.equal(restarted.summary('alice').used,0);assert.equal(b.billing.balance('alice').balance,190);
+});
+
+test('ordinary retry queues and stale unaudited funding cannot impersonate continuous thesis recovery',t=>{
+ for(const amendment of [{audit:false},{auditOwner:'bob'},{auditAttempt:2},{stage:'queued'},{type:'polish'},{status:'released'},{status:'settled'},{jobAttempt:2}]){
+  const f=fixture(t,{userLimit:1,globalLimit:1}),b=billingFixture(f);b.fund();const row={type:'thesis',stage:'auto_recovering',jobAttempt:1,audit:true,auditOwner:'alice',auditAttempt:1,status:'held',...amendment},id=f.job({type:row.type,attempt:row.jobAttempt}),type=row.type==='thesis'?'agent':'polish',q=b.quote('alice',type);b.reserve(id,q,'alice',1,type);
+  f.db.prepare('UPDATE jobs SET stage=? WHERE id=?').run(row.stage,id);if(row.audit)f.db.prepare('INSERT INTO model_attempts(job_id,attempt,user_id,created_at) VALUES(?,?,?,?)').run(id,row.auditAttempt,row.auditOwner,f.config.modelBudgetNow().toISOString());
+  if(row.status==='released')b.billing.release(id);if(row.status==='settled')b.billing.settle(id);
+  assert.equal(f.budget.summary('alice').queued,1,JSON.stringify(amendment));assert.throws(()=>f.budget.check('carol'),{status:429});
+ }
+});
+
+for(const source of ['membership','bundle'])test(source+' paid entitlement bypasses trial limits only until its actual quota is consumed',t=>{
+ const f=fixture(t,{userLimit:1,globalLimit:1});useFreeAllowance(f);const b=billingFixture(f);b.fund(source);
+ const q=b.quote();assert.equal(q.source,source);assert.equal(f.budget.check('alice',{billingToken:q.token,billingType:'polish'}).paid,true);
+ const id=f.job();b.reserve(id,q);f.start(id);f.finish(id);b.billing.settle(id);assert.equal(f.budget.summary('alice').used,1);assert.equal(f.budget.summary('alice').queued,0);
+ assert.throws(()=>b.quote(),{status:402});assert.throws(()=>f.budget.check('alice',{billingToken:q.token,billingType:'polish'}),{status:429});
+});
+
+test('worker refuses stale, foreign-owner, wrong-type or wrong-attempt paid reservations at an exhausted trial ceiling',t=>{
+ for(const amendment of [{status:'released'},{owner:'bob'},{type:'review'},{attempt:2},{source:'free',credits:0},{source:'credits',credits:0}]){
+  const f=fixture(t,{userLimit:1,globalLimit:1});useFreeAllowance(f);billingFixture(f);const id=f.job(),at=f.config.modelBudgetNow().toISOString(),row={status:'held',owner:'alice',type:'polish',attempt:1,source:'credits',credits:10,...amendment};
+  f.db.prepare('INSERT INTO billing_reservations(id,job_id,attempt,user_id,type,source,credits,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),id,row.attempt,row.owner,row.type,row.source,row.credits,row.status,at,at);
+  assert.throws(()=>f.start(id),{status:429});assert.equal(f.db.prepare('SELECT count(*) n FROM model_attempts').get().n,1);assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(id).status,'queued');
+ }
+});
+
+test('paid traffic does not consume the separate global trial pool, while free funded jobs still count',t=>{
+ const f=fixture(t,{userLimit:1,globalLimit:1}),b=billingFixture(f);b.fund('credits','bob');
+ for(let i=0;i<3;i++){const id=f.job({owner:'bob'}),q=b.quote('bob');b.reserve(id,q,'bob');f.start(id);f.finish(id);b.billing.settle(id);}
+ assert.deepEqual(f.budget.summary('bob'),{used:0,queued:0,limit:1,remaining:1});assert.ok(f.budget.check('alice'));const free=f.enqueue();f.start(free);f.finish(free);assert.throws(()=>f.budget.check('carol'),{status:429});
+ b.billing.saveRules({version:b.billing.rules().version,services:billingServiceTypes.map(({key})=>({key,mode:'free',creditCost:null}))});const freeQuote=b.quote();assert.equal(freeQuote.source,'free');assert.throws(()=>f.budget.check('alice',{billingToken:freeQuote.token,billingType:'polish'}),{status:429});
 });
