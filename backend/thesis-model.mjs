@@ -12,7 +12,7 @@ const str=(value,max=500,required=false)=>{if(value===undefined||value===null){i
 const integer=(value,fallback,min,max)=>{if(value===undefined||value===null||value==='')return fallback;const n=Number(value);if(!Number.isSafeInteger(n)||n<min||n>max)fail(400,`数量应为 ${min}～${max} 的整数`);return n;};
 const id=(value,fallback)=>{const result=str(value===undefined||value===null||value===''?fallback:value,100,true);if(!/^[\p{L}\p{N}_.:-]+$/u.test(result))fail(400,'资料或章节编号无效');return result;};
 const unique=(items,label)=>{if(new Set(items.map(item=>item.id)).size!==items.length)fail(400,`${label}编号不能重复`);return items;};
-export function initializeThesisSchema(db){db.exec(readFileSync(new URL('./thesis-schema.sql',import.meta.url),'utf8'));const columns=new Set(db.prepare('PRAGMA table_info(thesis_runs)').all().map(row=>row.name));for(const [name,type] of [['usage_known','INTEGER NOT NULL DEFAULT 1'],['provider_calls','INTEGER NOT NULL DEFAULT 0'],['quality','TEXT']])if(!columns.has(name))db.exec(`ALTER TABLE thesis_runs ADD COLUMN ${name} ${type}`);}
+export function initializeThesisSchema(db){db.exec(readFileSync(new URL('./thesis-schema.sql',import.meta.url),'utf8'));const columns=new Set(db.prepare('PRAGMA table_info(thesis_runs)').all().map(row=>row.name));for(const [name,type] of [['usage_known','INTEGER NOT NULL DEFAULT 1'],['provider_calls','INTEGER NOT NULL DEFAULT 0'],['quality','TEXT']])if(!columns.has(name))db.exec(`ALTER TABLE thesis_runs ADD COLUMN ${name} ${type}`);if(!db.prepare('PRAGMA table_info(theses)').all().some(row=>row.name==='export_template'))db.exec('ALTER TABLE theses ADD COLUMN export_template TEXT');}
 export const thesisHash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export function thesisLimits(config={}){return {maxChapters:30,maxSections:integer(config.thesisMaxSections,120,1,120),maxTargetWords:integer(config.thesisMaxTargetWords,80000,500,80000),sectionWords:integer(config.thesisSectionWords,1800,200,2500),maxSourceCharacters:integer(config.thesisMaxSourceCharacters,100000,1000,200000),maxRunTokens:integer(config.thesisMaxRunTokens,400000,1000,2000000),maxChapterVersions:200};}
 export const isThesisReferenceChapter=isOutlineReferenceChapter;
@@ -175,9 +175,10 @@ export function assertThesisAccountQuota(db,userId,additionalBytes,config={}){
  const max=Number.isSafeInteger(config.thesisAccountStorageBytes)&&config.thesisAccountStorageBytes>=1000&&config.thesisAccountStorageBytes<=50*1024*1024?config.thesisAccountStorageBytes:50*1024*1024;
  const sum=(sql,...args)=>db.prepare(sql).get(...args).n;
  const hasQuality=db.prepare('PRAGMA table_info(thesis_runs)').all().some(row=>row.name==='quality');
+ const hasExportTemplate=db.prepare('PRAGMA table_info(theses)').all().some(row=>row.name==='export_template');
  const hasReviewCheckpoints=Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='thesis_review_checkpoints'").get());
  const used=sum('SELECT coalesce(sum(max(512,bytes)),0) n FROM workspace_drafts WHERE user_id=?',userId)+
-  sum('SELECT coalesce(sum(max(512,length(CAST(snapshot AS BLOB)))),0) n FROM theses WHERE user_id=?',userId)+
+  sum(`SELECT coalesce(sum(max(512,length(CAST(snapshot AS BLOB))${hasExportTemplate?"+length(CAST(coalesce(export_template,'') AS BLOB))":''})),0) n FROM theses WHERE user_id=?`,userId)+
   sum(`SELECT coalesce(sum(max(512,length(CAST(snapshot AS BLOB))+length(CAST(plan AS BLOB))${hasQuality?"+length(CAST(coalesce(quality,'') AS BLOB))":''})),0) n FROM thesis_runs WHERE user_id=?`,userId)+
   (hasReviewCheckpoints?sum('SELECT coalesce(sum(length(CAST(c.result AS BLOB))),0) n FROM thesis_review_checkpoints c JOIN thesis_runs r ON r.id=c.run_id WHERE r.user_id=?',userId):0)+
   sum('SELECT coalesce(sum(max(512,length(CAST(v.text AS BLOB)))),0) n FROM thesis_chapter_versions v JOIN theses t ON t.id=v.thesis_id WHERE t.user_id=?',userId)+

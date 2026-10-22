@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {digest} from './auth.mjs';
 import {fileBytes} from './storage.mjs';
+import {assertThesisTemplateNotReferenced} from './thesis-export-template.mjs';
 
 const maxFileBytes=2*1024*1024,maxAccountBytes=50*1024*1024;
 // Count request bodies as well as storage writes: a PDF body is already large
@@ -47,6 +48,7 @@ export function createFileService(db,config={}){
     if(old&&old.expected_sha256!==input.expectedSha256)fail(409,'原件已变化，请刷新后再删除');
     if(old?.status==='completed')return null;
     const row=file(id,user);if(row.sha256!==input.expectedSha256)fail(409,'原件已变化，请刷新后再删除');
+    assertThesisTemplateNotReferenced(db,id,user.id);
     const active=db.prepare("SELECT input FROM jobs WHERE user_id=? AND status IN ('queued','running') AND type IN ('parse','agent','document_parse','document_translation')").all(user.id);
     if(active.some(job=>{try{const v=JSON.parse(job.input);return v.fileId===id||(Array.isArray(v.fileIds)&&v.fileIds.includes(id));}catch{return true;}}))fail(409,'仍有进行中的任务正在使用此原件，请等待完成或取消任务后再删除');
     const at=new Date().toISOString();

@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {safeUser,digest} from './auth.mjs';
 import {now} from './database.mjs';
 import {artifactVisibilityConditions,serializeArtifact} from './artifact-service.mjs';
+import {createThesisExportTemplates} from './thesis-export-template.mjs';
 
 const maxDraftBytes=750*1024,maxAccountBytes=50*1024*1024;
 const tools=new Set(['writing','taskbook','article','practice','idea','questionnaire','analysis','quick','topic','proposal','summary','course','review','rewrite','reduce','aigc','reading','search','translation','ppt','format','research','posting','resume']);
@@ -24,6 +25,7 @@ function cleanTree(value,depth=0,key=''){
 function payloadJSON(value){if(!object(value))error(400,'请提供草稿内容');const clean=cleanTree(value);for(const key of ['id','projectId','project_id','clientKey'])delete clean[key];const json=JSON.stringify(clean);if(Buffer.byteLength(json)>maxDraftBytes)error(413,'单份账户草稿最多 750KB，请导出本地备份或分章节保存');return json;}
 
 export function createWorkspaceService(db,{billing}={}){
+ const thesisExportTemplates=createThesisExportTemplates(db);
  const own=(table,id,user)=>{const row=db.prepare(`SELECT * FROM ${table} WHERE id=? AND user_id=?`).get(id,user.id);if(!row)error(404,'记录不存在');return row;};
  const projectId=(id,user)=>{if(id===undefined||id===null||id==='')return null;if(typeof id!=='string')error(400,'项目编号无效');own('projects',id,user);return id;};
  const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const value=fn();db.exec('COMMIT');return value;}catch(cause){db.exec('ROLLBACK');throw cause;}};
@@ -51,7 +53,9 @@ export function createWorkspaceService(db,{billing}={}){
  };
  const optionalRows=(table,sql,userId)=>tableExists(table)?db.prepare(sql).all(userId):[];
  const optionalBytes=(table,sql,userId)=>tableExists(table)?db.prepare(sql).get(userId).n:0;
+ const hasThesisExportTemplate=()=>db.prepare('PRAGMA table_info(theses)').all().some(row=>row.name==='export_template');
  const newExportBytes=userId=>
+  (hasThesisExportTemplate()?db.prepare("SELECT coalesce(sum(length(CAST(coalesce(export_template,'') AS BLOB))),0) n FROM theses WHERE user_id=?").get(userId).n:0)+
   optionalBytes('tool_runs',"SELECT coalesce(sum(length(CAST(snapshot AS BLOB))+length(CAST(plan AS BLOB))+length(CAST(coalesce(output,'') AS BLOB))),0) n FROM tool_runs WHERE user_id=?",userId)+
   (tableExists('tool_runs')?optionalBytes('tool_checkpoints','SELECT coalesce(sum(length(CAST(c.output AS BLOB))),0) n FROM tool_checkpoints c JOIN tool_runs r ON r.id=c.run_id WHERE r.user_id=?',userId):0)+
   optionalBytes('writing_runs',"SELECT coalesce(sum(length(CAST(snapshot AS BLOB))+length(CAST(plan AS BLOB))+length(CAST(coalesce(output,'') AS BLOB))),0) n FROM writing_runs WHERE user_id=?",userId)+
@@ -83,7 +87,7 @@ export function createWorkspaceService(db,{billing}={}){
    const results=db.prepare('SELECT id,project_id,job_id,type,title,body,created_at FROM results WHERE user_id=? ORDER BY created_at,id').all(user.id).map(row=>({...row,body:JSON.parse(row.body),revisions:revisionsByResult.get(row.id)||[]}));
    const jobs=db.prepare('SELECT id,project_id,type,status,stage,error,result_id,attempt,created_at,updated_at FROM jobs WHERE user_id=? ORDER BY created_at,id').all(user.id);
    const feedback=db.prepare("SELECT f.id,f.category,f.body,f.created_at,coalesce(m.status,'open') status,coalesce(m.updated_at,f.created_at) updated_at FROM feedback f LEFT JOIN feedback_management m ON m.feedback_id=f.id WHERE f.user_id=? ORDER BY f.created_at,f.id").all(user.id);
-   const theses=db.prepare('SELECT id,project_id,title,snapshot,version,status,current_run_id,created_at,updated_at FROM theses WHERE user_id=? ORDER BY created_at,id').all(user.id).map(row=>({...row,snapshot:JSON.parse(row.snapshot)}));
+   const theses=db.prepare(`SELECT id,project_id,title,snapshot,version,status,current_run_id,created_at,updated_at,${hasThesisExportTemplate()?'export_template':'NULL AS export_template'} FROM theses WHERE user_id=? ORDER BY created_at,id`).all(user.id).map(({export_template,...row})=>({...row,snapshot:JSON.parse(row.snapshot),exportTemplate:thesisExportTemplates.stored({...row,user_id:user.id,export_template})}));
    const thesisRuns=db.prepare('SELECT id,thesis_id,snapshot,plan,status,stage,error,attempt,result_id,input_tokens,output_tokens,created_at,updated_at FROM thesis_runs WHERE user_id=? ORDER BY created_at,id').all(user.id).map(row=>({...row,snapshot:JSON.parse(row.snapshot),plan:JSON.parse(row.plan)}));
    const thesisChapters=db.prepare('SELECT v.* FROM thesis_chapter_versions v JOIN theses t ON t.id=v.thesis_id WHERE t.user_id=? ORDER BY v.thesis_id,v.chapter_id,v.version').all(user.id).map(row=>({...row,source_ids:JSON.parse(row.source_ids)}));
    const thesisSections=db.prepare('SELECT c.* FROM thesis_checkpoints c JOIN thesis_runs r ON r.id=c.run_id WHERE r.user_id=? ORDER BY c.run_id,c.position').all(user.id).map(row=>({...row,source_ids:JSON.parse(row.source_ids),missing_evidence:JSON.parse(row.missing_evidence),trace:JSON.parse(row.trace)}));

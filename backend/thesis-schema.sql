@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS theses(
  id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),project_id TEXT REFERENCES projects(id),
  title TEXT NOT NULL,snapshot TEXT NOT NULL,snapshot_hash TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1),
- status TEXT NOT NULL DEFAULT 'draft',current_run_id TEXT,client_key TEXT,input_hash TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'draft',current_run_id TEXT,client_key TEXT,input_hash TEXT NOT NULL,export_template TEXT,
  created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(user_id,client_key)
 );
 CREATE INDEX IF NOT EXISTS theses_owner ON theses(user_id,updated_at);

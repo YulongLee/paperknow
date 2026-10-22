@@ -1,6 +1,8 @@
 import JSZip from 'jszip';
 import {PDFDocument,rgb} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
+import {applyThesisDocumentTemplate} from './thesis-document.js';
+export {inspectThesisDocxTemplate,defaultThesisTemplateProfile} from './thesis-template-profile.js';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 export function documentLines(value){const text=String(value);if(!text.trim())throw Error('请先填写或生成需要导出的内容。');if(text.length>500000)throw Error('正文超过 500,000 字符，请分章节导出。');if([...text].some(char=>{const point=char.codePointAt(0);return point>=0xd800&&point<=0xdfff||point===0xfffe||point===0xffff;}))throw Error('正文包含无法安全导出的字符，请修正后重试。');return text.replace(/\r\n?/g,'\n').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'').split('\n').map((text,i)=>({text,level:i===0?0:/^\s*第.{1,12}章|^\s*参考文献/.test(text)?1:/^\s*\d+\.\d+(?:\.\d+)?\s/.test(text)?2:3}));}
 const escaped=(text,index)=>{let count=0;while(index>0&&text[--index]==='\\')count++;return count%2===1;};
@@ -45,7 +47,8 @@ let formulaPromise;
 async function formulaRenderer(){if(!formulaPromise){const url=new URL('./research-formula.js',import.meta.url).href;formulaPromise=import(url).catch(error=>{formulaPromise=null;throw error;});}return formulaPromise;}
 function columnWidths(rows,total){const count=rows[0].length,minimum=Math.min(48,total/count/2),weights=Array.from({length:count},(_,index)=>{let weight=6;for(const row of rows)weight=Math.max(weight,Math.min(30,[...row[index]].length));return weight;}),sum=weights.reduce((n,value)=>n+value,0);return weights.map(weight=>minimum+(total-minimum*count)*weight/sum);}
 const wordRun=(text,properties='')=>`<w:r>${properties?`<w:rPr>${properties}</w:rPr>`:''}<w:t xml:space="preserve">${text.replace(/\t/g,'    ').split('\n').map(esc).join('</w:t><w:br/><w:t xml:space="preserve">')}</w:t></w:r>`;
-export async function createWritingDocx(text){
+export async function createWritingDocx(text,options={}){
+ if(options.documentKind==='thesis')return applyThesisDocumentTemplate(await createWritingDocx(text),{...options,blocks:documentBlocks(text)});
  const zip=new JSZip(),blocks=documentBlocks(text),formulas=new Map();
  // The current OMML converter emits vertical-bar fences as operator runs. Keep
  // their TeX until native delimiter semantics are verified across Word readers.
