@@ -694,3 +694,29 @@ test('history import protects a hidden project draft and selected upload before 
  assert.equal(f.doc.querySelector('#project-title').value,'尚未保存的新项目');
  assert.equal(checkbox.checked,true);assert.equal(f.w.onlineTest.onlineWorkspaceHasWork(),true);
 });
+
+test('account task window keeps all records, sorts mixed task types by creation time and resets only after a changed filter',async t=>{
+ const jobs=Array.from({length:8},(_,i)=>({id:'window-'+i,type:i%2?'writing':'parse',writing_kind:'course',writing_operation:'draft',status:i%2?'completed':'failed',attempt:1,created_at:new Date(Date.UTC(2026,9,20,i)).toISOString()}));
+ // A recent status update on an old task must not replace creation ordering.
+ jobs[0].updated_at='2026-10-23T08:00:00Z';
+ const f=await fixture(t,{view:'tasks',request:async path=>path==='/api/jobs'?{ok:true,status:200,json:async()=>({items:jobs})}:undefined});
+ const ids=()=>[...f.doc.querySelectorAll('.account-job-row')].map(row=>row.dataset.accountJobId);
+ assert.deepEqual(ids(),jobs.map(row=>row.id).reverse());
+ const window=f.doc.querySelector('.account-job-window');assert.ok(window);assert.equal(window.getAttribute('tabindex'),'0');assert.equal(window.getAttribute('role'),'region');assert.match(window.getAttribute('aria-label'),/上下滚动/);assert.equal(window.children.length,8,'older tasks remain available inside the window');
+ window.scrollTop=200;f.doc.querySelector('[data-account-job-filter="completed"]').click();assert.equal(f.doc.querySelector('.account-job-window'),null);assert.equal(f.doc.querySelector('.account-job-rows').scrollTop,0);assert.equal(ids().length,4);
+ f.doc.querySelector('[data-account-job-filter="all"]').click();f.doc.querySelector('.account-job-window').scrollTop=300;input(f,'#account-job-query','window-7');assert.deepEqual(ids(),['window-7']);assert.equal(f.doc.querySelector('.account-job-rows').scrollTop,0);assert.equal(f.calls.some(call=>call.body),false);
+});
+
+test('task polling preserves inner scroll and measures the first five variable-height rows again after resize',async t=>{
+ const jobs=Array.from({length:7},(_,i)=>({id:'sized-'+i,type:'parse',status:'completed',attempt:1,created_at:new Date(Date.UTC(2026,9,20,i)).toISOString()}));
+ const f=await fixture(t,{view:'tasks',pollTimers:true,request:async path=>path==='/api/jobs'?{ok:true,status:200,json:async()=>({items:jobs})}:undefined});
+ let observers=[],disconnected=0;f.w.ResizeObserver=class{constructor(callback){this.callback=callback;observers.push(this);}observe(){}disconnect(){disconnected++;}};
+ const original=f.w.HTMLElement.prototype.getBoundingClientRect;let fifthBottom=615;
+ f.w.HTMLElement.prototype.getBoundingClientRect=function(){if(this.matches('.account-job-window'))return{top:100};if(this.matches('.account-job-row')){const index=[...this.parentElement.children].indexOf(this);return{bottom:index===4?fifthBottom:100+(index+1)*100};}return original.call(this);};
+ await f.scheduledPolls[0]();let window=f.doc.querySelector('.account-job-window');assert.equal(window.style.maxHeight,'515px');window.scrollTop=220;
+ // Geometry in a scrolled viewport moves by the same offset.
+ fifthBottom=395;observers.at(-1).callback();assert.equal(window.style.maxHeight,'515px');
+ fifthBottom=715;window.scrollTop=0;observers.at(-1).callback();assert.equal(window.style.maxHeight,'615px');window.scrollTop=220;
+ fifthBottom=615;await f.scheduledPolls[1]();window=f.doc.querySelector('.account-job-window');assert.equal(window.scrollTop,220);assert.equal(disconnected,1);
+ f.w.onlineTest.disposeOnlineWorkspace();assert.equal(disconnected,2);
+});

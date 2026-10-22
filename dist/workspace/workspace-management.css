@@ -322,6 +322,9 @@
 .account-workspace .account-job-filters button { min-height: 36px; padding: 8px 10px; background: transparent; border-color: transparent; color: var(--pk-muted, #64748b); gap: 6px; font-size: 12px; }
 .account-workspace .account-job-filters button.active { color: var(--pk-blue, #246bfd); background: var(--pk-blue-soft, #edf3ff); }
 .account-job-filters span { font-size: 12px; font-variant-numeric: tabular-nums; }
+.account-workspace .account-job-window { max-height: 760px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #b5c4da transparent; }
+.account-workspace .account-job-window:focus-visible { outline: 2px solid var(--pk-blue, #246bfd); outline-offset: 3px; }
+.hub-theme-dark .account-workspace .account-job-window { scrollbar-color: #576d91 transparent; }
 .account-workspace .account-job-row { align-items: flex-start; }
 .account-job-copy { flex: 1; min-width: 0; }
 .account-job-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 5px; }
