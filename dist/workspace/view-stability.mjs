@@ -63,10 +63,12 @@ export function withStableView(root,update,{restoreFocus=true}={}){
  const win=root?.ownerDocument?.defaultView;
  if(!root?.isConnected||!win)return update();
  const before=position(win),saved=restoreFocus?identity(root.ownerDocument.activeElement,root):null,rows=nestedScroll(root);
+ const disclosures=[...root.querySelectorAll('details[data-view-disclosure]')].map(node=>({node,key:node.dataset.viewDisclosure,open:node.open}));
  reserve(root,win);
  try{return update();}
  finally{
   if(root.isConnected){
+   for(const node of root.querySelectorAll('details[data-view-disclosure]')){const saved=disclosures.find(row=>row.key===node.dataset.viewDisclosure);if(saved&&saved.node!==node)node.open=saved.open;}
    restoreNested(rows,root);keepFocus(saved,root);
    const after=position(win);
    if(Math.abs(after.x-before.x)>.5||Math.abs(after.y-before.y)>.5)win.scrollTo({left:before.x,top:before.y,behavior:'instant'});

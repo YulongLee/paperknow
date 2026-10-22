@@ -1,4 +1,5 @@
 import {esc,icon} from './ui.mjs';
+import {getToolWorkflow} from './tool-workflows.mjs';
 
 // One heading contract across the workspace, services and research tools.
 export const toolBannerCategories=Object.freeze({
@@ -24,8 +25,21 @@ export const toolBannerCategories=Object.freeze({
 
 // Titles, descriptions and optional labels can contain user-provided text.
 // Actions are trusted markup from the owning tool and keep their original IDs.
-export function toolBanner(key,{title,description,label,actions='',extraClass=''}={}){
+export function toolBanner(key,{title,description,label,actions='',extraClass='',workflow}={}){
   const category=Object.hasOwn(toolBannerCategories,key)?key:'writing';
   const feature=toolBannerCategories[category];
-  return `<header class="tool-banner hub-heading ${esc(extraClass)}" data-tool-category="${category}"><div class="tool-banner-scene" aria-hidden="true"><span class="tool-banner-orbit"></span><span class="tool-banner-glass"></span><span class="tool-banner-token">${icon(feature.icon,18)}</span><span class="tool-banner-spark">${icon('plus',14)}</span></div><div class="tool-banner-copy"><span class="tool-banner-label"><span class="tool-banner-label-icon">${icon(feature.icon,15)}</span><span>${esc(label??`${feature.group||'论文与科研'} · ${feature.title}`)}</span></span><h1>${esc(title||feature.title)}</h1><p>${esc(description??feature.description)}</p>${actions?`<div class="hub-heading-actions tool-banner-actions">${actions}</div>`:''}</div></header>`;
+  const guide=getToolWorkflow(category,workflow);
+  const process=workflowMarkup(guide);
+  return `<header class="tool-banner hub-heading ${esc(extraClass)}" data-tool-category="${category}"${guide?` data-workflow="${guide.key}"`:''}><div class="tool-banner-scene" aria-hidden="true"><span class="tool-banner-orbit"></span><span class="tool-banner-glass"></span><span class="tool-banner-token">${icon(feature.icon,18)}</span><span class="tool-banner-spark">${icon('plus',14)}</span></div><div class="tool-banner-copy"><span class="tool-banner-label"><span class="tool-banner-label-icon">${icon(feature.icon,15)}</span><span>${esc(label??`${feature.group||'论文与科研'} · ${feature.title}`)}</span></span><h1>${esc(title||feature.title)}</h1><p>${esc(description??feature.description)}</p>${actions?`<div class="hub-heading-actions tool-banner-actions">${actions}</div>`:''}</div>${process}</header>`;
+}
+
+function workflowMarkup(guide){
+  return guide?`<section class="tool-banner-workflow" aria-label="${esc(guide.title)}使用流程"><div class="tool-workflow-topline"><strong>使用流程</strong><span>按下方流程完成操作</span></div><ol class="tool-workflow-steps" data-scroll-key="tool-workflow-${guide.key}">${guide.steps.map((step,index)=>`<li><span class="tool-workflow-number" aria-hidden="true">${index+1}</span><span class="tool-workflow-label">${esc(step.title)}</span></li>`).join('')}</ol><details class="tool-workflow-details" data-view-disclosure="tool-workflow-${guide.key}" data-thesis-view-key="tool-workflow-${guide.key}"><summary tabindex="0" data-tool-workflow-summary>查看步骤说明</summary><ol>${guide.steps.map(step=>`<li><b>${esc(step.title)}</b><p>${esc(step.detail)}</p></li>`).join('')}</ol>${guide.note?`<p class="tool-workflow-note">${esc(guide.note)}</p>`:''}</details></section>`:'';
+}
+export function updateToolBannerWorkflow(banner,workflow){
+ if(!banner)return;
+ const guide=getToolWorkflow(banner.dataset.toolCategory,workflow),previous=banner.querySelector(':scope > .tool-banner-workflow');
+ if(previous&&guide&&banner.dataset.workflow===guide.key)return;
+ if(previous)previous.outerHTML=workflowMarkup(guide);else if(guide)banner.insertAdjacentHTML('beforeend',workflowMarkup(guide));
+ if(guide)banner.dataset.workflow=guide.key;else delete banner.dataset.workflow;
 }
