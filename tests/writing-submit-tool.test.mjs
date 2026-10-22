@@ -119,3 +119,14 @@ test('validator rejects malformed batches, metadata evidence and missing actual 
 });
 
 test('known upstream usage survives absent/zero SDK assistant accounting and unknown SDK cost stays explicitly unknown',async()=>{const output=await execute(async function*(options,f){await options.mcpServers.paperknow.instance._registeredTools.submit_writing_output.handler({candidate:f.candidate()});yield{...success,result:'ACK',modelUsage:{},usage:undefined,total_cost_usd:undefined};});assert.deepEqual(output.usage,{input:10,output:20});assert.equal(output.usageSource,'provider_responses');assert.equal(output.costUsd,null);assert.equal(output.costSource,'unknown');});
+
+
+test('controlled writing instructions use full-candidate submission while delegated method and outline keep their direct JSON contract',()=>{
+ const f=fixture();
+ for(const [kind,operation] of [['quick','draft'],['quick','abstract'],['article','draft'],['proposal','outline'],['proposal','method'],['idea','ideas'],['questionnaire','questionnaire']]){
+  const unit=writingPlan(f.snapshot,operation)[0],task=writingTask(kind,operation,f.snapshot,unit);
+  assert.doesNotMatch(task.instructions,/check_text_length|未经工具提交的兼容返回/);
+  if(task.skill==='writing-task'){assert.match(task.instructions,/通过 submit_writing_output 提交/);assert.match(task.instructions,/accepted=true 后只结束执行/);}
+  else{assert.ok(['thesis-method','thesis-outline'].includes(task.skill));assert.doesNotMatch(task.instructions,/submit_writing_output/);assert.match(task.instructions,/JSON/);}
+ }
+});

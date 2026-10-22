@@ -33,10 +33,10 @@ test('every in-range candidate finalizes immediately even when it differs from t
  const budget={target:60,min:40,max:80};
  for(const count of [40,41,59,60,61,79,80]){const result=checkTextLength('研'.repeat(count),budget);assert.equal(result.nextAction,'finalize');assert.equal(result.withinRange,true);assert.equal(result.delta,60-count);}
  for(const count of [0,39,81,265]){const result=checkTextLength('研'.repeat(count),budget);assert.equal(result.nextAction,'revise');assert.equal(result.withinRange,false);}
- const {task}=fixture();assert.match(task.instructions,/停止规则优先于贴近目标的偏好/);assert.match(task.instructions,/立即将本次已检查的原文逐字作为最终 JSON 的 text 返回/);assert.match(task.instructions,/禁止再修改文字、再次检查或调用其他工具/);assert.match(task.instructions,/即使 delta 不为 0，只要范围内就是合格篇幅/);assert.match(task.instructions,/一次修订应靠近 min～max 的内部而非边界/);assert.match(task.instructions,/不要逐个删除或增加 1～2 个字/);
+ const {task}=fixture();assert.match(task.instructions,/完整 JSON 对象.*submit_writing_output|完整 JSON 对象放入 submit_writing_output/);assert.match(task.instructions,/accepted=true.*立即结束本次执行/);assert.match(task.instructions,/不要再次修改、提交或输出整段正文/);assert.match(task.instructions,/篇幅在允许范围内即合格/);assert.match(task.instructions,/一次修订应靠近允许范围内部/);assert.match(task.instructions,/不要逐个增删 1～2 个字/);assert.doesNotMatch(task.instructions,/check_text_length/);
 });
 
-test('Agent can check and revise prose inside one run, with immutable server range and unchanged execution budgets',async()=>{
+test('legacy runtime without a production validator can check prose with immutable server range and unchanged execution budgets',async()=>{
  const {snapshot,unit,task}=fixture();let invocations=0,optionsSeen;
  const output=await runAgentTask({settings,task,dependencies:{lookup,query:({options})=>{invocations++;optionsSeen=options;return(async function*(){
   const tools=options.mcpServers.paperknow.instance._registeredTools;assert.deepEqual(Object.keys(tools).sort(),['check_text_length','read_material']);assert.equal((await options.canUseTool('mcp__paperknow__list_materials',{})).behavior,'deny');assert.equal((await options.canUseTool('mcp__paperknow__load_skill',{})).behavior,'deny');

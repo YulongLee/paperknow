@@ -15,6 +15,10 @@ const knownUsage=usage=>validUsage(usage?.input)&&validUsage(usage?.output)&&Num
 const safeStage=value=>typeof value==='string'&&/^[a-z][a-z0-9_-]{0,60}$/i.test(value)?value:'agent_running';
 const cleanTrace=value=>(Array.isArray(value)?value:[]).slice(-50).map(row=>({stage:safeStage(typeof row==='string'?row:row?.stage||row?.tool||row?.type),...(row?.tool==='read_material'&&row.status==='completed'&&typeof row.materialId==='string'?{tool:'read_material',status:'completed',materialId:row.materialId.slice(0,100)}:{})}));
 
+// Denied tool names are operational diagnostics. Keep neither arguments nor
+// content, and omit the public tool field so account archives project them out.
+const failureDiagnostics=error=>(Array.isArray(error?.agentTrace)?error.agentTrace:[]).filter(row=>row?.status==='denied'&&typeof row.tool==='string'&&/^[A-Za-z_][A-Za-z0-9_-]{0,119}$/.test(row.tool)).slice(-2).map(row=>({stage:'tool_denied',status:'denied',requestedTool:row.tool,code:error.code==='permission_denied'?'permission_denied':'unauthorized_tool'}));
+
 export function startThesisWorker(db,config={}){
  initializeThesisSchema(db);
  const billing=config.billing||createBillingService(db,config),modelBudget=config.modelBudget||createModelBudget(db,config),limits=thesisLimits(config);
@@ -105,7 +109,7 @@ export function startThesisWorker(db,config={}){
      if(reservation&&!finishedReservation){const finished=transaction(()=>continuity.finish(reservation.id,{usage:error.usage,costUsd:result?.costUsd??error.costUsd,errorCode:error.code}));if(finished.budgetExceeded)error=Object.assign(thesisError(429,'本次生成达到执行预算，已保留完成章节','budget_exceeded'),{usage:error.usage});}
      if(!accounted&&dispatched){const usage=error.usage;transaction(()=>{if(knownUsage(usage)){db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+? WHERE id=?').run(usage.input,usage.output,run.id);db.prepare('UPDATE thesis_checkpoints SET input_tokens=input_tokens+?,output_tokens=output_tokens+? WHERE run_id=? AND unit_id=?').run(usage.input,usage.output,run.id,unit.id);}else db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=?').run(run.id);});}
      if(continuous&&!stopped&&running()&&retries<2&&classifyThesisRetry(error).retryable){retries++;stage('auto_recovering');continue;}
-     if(db.prepare('SELECT status FROM thesis_runs WHERE id=?').get(run.id)?.status==='running')transaction(()=>db.prepare("UPDATE thesis_checkpoints SET status='failed',error=?,missing_evidence=?,updated_at=? WHERE run_id=? AND unit_id=? AND status!='completed'").run(thesisPublicError(error,runtime),JSON.stringify(error.missingEvidence||[]),clock(),run.id,unit.id));
+     if(db.prepare('SELECT status FROM thesis_runs WHERE id=?').get(run.id)?.status==='running')transaction(()=>{const diagnostics=failureDiagnostics(error);db.prepare("UPDATE thesis_checkpoints SET status='failed',error=?,missing_evidence=?,trace=CASE WHEN ?='[]' THEN trace ELSE ? END,updated_at=? WHERE run_id=? AND unit_id=? AND status!='completed'").run(thesisPublicError(error,runtime),JSON.stringify(error.missingEvidence||[]),JSON.stringify(diagnostics),JSON.stringify(diagnostics),clock(),run.id,unit.id);});
      throw error;
     }
     }

@@ -5,7 +5,7 @@ import {database} from '../backend/database.mjs';
 import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
 import {createThesisService} from '../backend/thesis-service.mjs';
 import {startThesisWorker} from '../backend/thesis-worker.mjs';
-import {normalizeThesisSnapshot,thesisPlan,thesisAgentTask,parseThesisSection,selectThesisEvidence,thesisHash} from '../backend/thesis-model.mjs';
+import {normalizeThesisSnapshot,thesisPlan,thesisAgentTask,parseThesisSection,selectThesisEvidence,thesisHash,thesisPublicError} from '../backend/thesis-model.mjs';
 import {thesisSnapshotFromDraft} from '../dist/workspace/writing-model.mjs';
 
 const snapshot=(extra={})=>({title:'课堂学习反馈的研究',profile:{level:'本科',discipline:'教育学',major:'教育技术',method:'基于已提供案例进行分析',researchQuestion:'课堂反馈如何支持学习',language:'中文',targetWords:500},requirements:{institution:'所有结论须有真实依据'},materials:[{id:'source-1',name:'用户提供的真实研究记录',text:'合成研究记录：本材料仅用于自动化测试。观察任务是在固定时间内记录课堂反馈如何被理解，并按问题类型整理原始记录。已有记录只用于示范证据关联与分章保存流程，不能用于推断真实教学效果；所有正式研究结论都需要研究者使用真实来源逐项核对。',confirmed:true}],references:[],outline:[{id:'chapter-1',title:'研究背景',targetWords:250},{id:'chapter-2',title:'案例分析',targetWords:250}],...extra});
@@ -258,4 +258,23 @@ test('a historical short-evidence command is idempotent and can resume only with
  const request={version:cancelled.version,clientKey:randomUUID(),consent:true,billingToken:quote.token},resumed=(await f.request(`/api/theses/${item.id}/resume`,'POST',request)).item;assert.equal(resumed.job.attempt,2);assert.equal(resumed.job.status,'queued');assert.equal(f.billing.balance(f.user.id).held,10);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,2);
  const repeated=(await f.request(`/api/theses/${item.id}/resume`,'POST',request)).item;assert.equal(repeated.job.id,resumed.job.id);assert.equal(repeated.job.attempt,2);assert.equal(f.billing.balance(f.user.id).held,10);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,2);
  await f.request(`/api/theses/${item.id}/cancel`,'POST',{version:repeated.version});assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(calls,0);
+});
+
+
+test('production thesis task describes only its registered full-candidate tools and preserves the fixed unit range',()=>{
+ for(const language of ['中文','English']){
+  const value=normalizeThesisSnapshot(snapshot({profile:{...snapshot().profile,language,targetWords:1000},outline:[{id:'c1',title:'研究背景',targetWords:1000}]})),unit=thesisPlan(value)[0],task=thesisAgentTask(value,unit,[]);
+  assert.match(task.instructions,/本任务只开放 read_material 和 submit_writing_output/);assert.doesNotMatch(task.instructions,/check_text_length|list_materials|load_skill|必须立即将本次已检查的原文/);assert.match(task.instructions,/完整 JSON 对象.*candidate 提交/);assert.match(task.instructions,/accepted=false/);assert.match(task.instructions,/accepted=true.*完整结果已冻结/);assert.match(task.instructions,/不以最终自由文本代替提交/);assert.equal(task.context.lengthBudget.target,1000);assert.equal(task.context.lengthBudget.min,800);assert.equal(task.context.lengthBudget.max,1200);assert.match(task.context.lengthBudget.countMethod,language==='English'?/英文按词/:/中文按非空白/);assert.equal(task.context.profile.targetWords,1000);
+ }
+});
+
+test('tool-call failures preserve completed units and store bounded private diagnostics without input or public tool details',async t=>{
+ let calls=0;const secret='fixture-sensitive-tool-argument',f=fixture(t,{agentTaskRunner:async({task})=>{if(++calls===1)return output(task);const error=Object.assign(new Error('Agent 请求了未授权工具 '+secret),{code:'unauthorized_tool',usage:{input:10,output:5}});Object.defineProperty(error,'agentTrace',{value:[{tool:'mcp__paperknow__check_text_length',status:'denied',args:{text:secret},model:'private-fixture-model'}, {tool:'../../private-file',status:'denied'}, {tool:'Z'.repeat(121),status:'denied'}]});throw error;}});
+ f.pay();const queued=await f.generate(await f.create());await f.start().tick();const failed=f.get(queued.id),row=f.db.prepare("SELECT trace,error FROM thesis_checkpoints WHERE run_id=? AND status='failed'").get(queued.job.id);
+ assert.equal(failed.status,'failed');assert.equal(failed.job.completedSections,1);assert.equal(failed.job.canResume,true);assert.ok(failed.chapters[0].text);assert.deepEqual(JSON.parse(row.trace),[{stage:'tool_denied',status:'denied',requestedTool:'mcp__paperknow__check_text_length',code:'unauthorized_tool'}]);assert.match(row.error,/生成过程出现工具调用异常，已完成内容保留/);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.billing.balance(f.user.id).held,0);assert.doesNotMatch(JSON.stringify(failed),/check_text_length|requestedTool|private-fixture-model|fixture-sensitive-tool-argument/);assert.doesNotMatch(row.trace,/args|private-file|private-fixture-model|fixture-sensitive-tool-argument/);
+});
+
+test('unauthorized tool diagnostics use one user-facing recovery message without revealing supplied details',()=>{
+ for(const error of [Object.assign(Error('unsafe detail'),{code:'unauthorized_tool'}),Object.assign(Error('unsafe detail'),{code:'permission_denied'}),Error('Agent 请求了未授权工具 mcp__paperknow__check_text_length')])assert.equal(thesisPublicError(error),'生成过程出现工具调用异常，已完成内容保留。请读取任务状态，确认后继续生成。');
+ assert.equal(thesisPublicError(Error('接口密钥 test-secret'),{apiKey:'test-secret'}),'接口密钥 [已隐藏]');
 });

@@ -42,3 +42,10 @@ test('HTTP callers can quote optional-material drafts but cannot bypass billing 
  }
  await f.thesis.tick();assert.equal(calls,0);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_runs').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);assert.equal(f.billing.balance('alice').balance,200);assert.equal(f.billing.balance('alice').held,0);
 });
+
+
+test('failed thesis tool diagnostics remain private in HTTP task reads and owner account archives',async t=>{
+ const f=await fixture(t,{agentTaskRunner:async()=>{const error=Object.assign(Error('Agent 请求了未授权工具 private-model-secret'),{code:'unauthorized_tool',usage:{input:10,output:5}});Object.defineProperty(error,'agentTrace',{value:[{tool:'read_material',status:'denied',args:{text:'private-request-argument'}}]});throw error;}}),item=await f.create();await f.generate(item);await f.thesis.tick();
+ const stored=f.db.prepare("SELECT trace FROM thesis_checkpoints WHERE status='failed'").get();assert.match(stored.trace,/requestedTool/);assert.match(stored.trace,/read_material/);
+ const read=await f.request('/theses/'+item.id),archive=await f.request('/account/export');assert.equal(read.status,200);assert.equal(archive.status,200);assert.match(read.value.item.job.error,/工具调用异常/);assert.doesNotMatch(JSON.stringify(read.value),/requestedTool|read_material|private-model-secret|private-request-argument/);assert.doesNotMatch(JSON.stringify(archive.value),/requestedTool|read_material|private-model-secret|private-request-argument/);assert.ok(archive.value.thesisSections.every(row=>row.trace.length===0));
+});

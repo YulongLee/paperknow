@@ -149,3 +149,13 @@ test('review rejects invented locations, altered quotations, unsupported verdict
 test('review refuses truncated, malformed and incomplete responses while preserving the caller manuscript',()=>{
  const chapters=manuscript(),before=structuredClone(chapters),task=writingReviewTask({chapters});for(const result of [{text:'{'},{...aiResult(),truncated:true},{...aiResult(),finishReason:'max_tokens'},aiResult([],{complete:false}),aiResult([],{limitations:[42]})])assert.throws(()=>parseWritingReview(result,task),error=>error.code==='invalid_review_output');assert.deepEqual(chapters,before);
 });
+
+
+test('review task submits its complete findings contract through the authorized tool and freezes after acceptance',()=>{
+ const task=writingReviewTask({chapters:manuscript()});
+ assert.match(task.instructions,/作为 candidate 提交 submit_writing_output/);
+ assert.match(task.instructions,/accepted=false.*按反馈修正完整候选/);
+ assert.match(task.instructions,/accepted=true 后结果已冻结，立即结束/);
+ assert.doesNotMatch(task.instructions,/check_text_length|只返回完整JSON/);
+ assert.deepEqual(task.materials,[]);
+});
