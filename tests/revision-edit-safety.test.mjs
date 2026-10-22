@@ -1,3 +1,4 @@
+import {projectPickerOptions} from '../dist/workspace/project-directory.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -24,7 +25,7 @@ function fixture(t,{entry=true,extract=async()=>({text:'Parsed source.',warnings
  globalThis.document=w.document;
  const originalSet=w.Storage.prototype.setItem;
  w.Storage.prototype.setItem=function(key,value){if(key==='paperknow-revision-entry')storageCalls.entryWrites++;if(entryFail&&key==='paperknow-revision-entry')throw Error('Synthetic entry quota');return originalSet.call(this,key,value);};
- Object.assign(w,{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports,...model,importWorkspaceDocument:extract,documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[],list:key=>{storageCalls.reads++;return JSON.parse(w.localStorage.getItem(key)||'[]');},write:(key,rows)=>{storageCalls.writes++;if(fail)throw Error('Synthetic storage failure');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:()=>{},download:(...args)=>downloads.push(args)});
+ Object.assign(w,{projectPickerOptions},{withStableView,esc,icon,formatDate,toolBanner,mountRevisionAi,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,mountAigcDetection,ensureAigcStyle,documentExportButtons,bindDocumentExports,...model,importWorkspaceDocument:extract,documentImportContinuesInBackground:()=>false,keys:{drafts:'test-drafts'},projects:()=>[],list:key=>{storageCalls.reads++;return JSON.parse(w.localStorage.getItem(key)||'[]');},write:(key,rows)=>{storageCalls.writes++;if(fail)throw Error('Synthetic storage failure');w.localStorage.setItem(key,JSON.stringify(rows));},recordTask:()=>{},download:(...args)=>downloads.push(args)});
  w.confirm=()=>false;
  const closeDialog=()=>{$('dialog').removeAttribute('open');$('dialog').dispatchEvent(new w.Event('close'));};$('dialog').close=closeDialog;
  const ctx={mode:entry?'reduce':'rewrite',notify:text=>notices.push(text),modal:(_title,html)=>{$('#workspace-dialog-body').innerHTML=html;$('dialog').setAttribute('open','');},api:async(...args)=>{requests.push(args);throw Error('Unexpected API request');}};

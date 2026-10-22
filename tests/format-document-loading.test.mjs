@@ -1,3 +1,4 @@
+import {projectPickerOptions} from '../dist/workspace/project-directory.mjs';
 import {formatPresets,presetRules,ruleSummary,importFormatRules,exportFormatRules,suggestedFormatExclusions} from '../dist/workspace/format-presets.mjs';
 import {createFormatReport,formatReportHtml} from '../dist/workspace/format-report.mjs';
 import test from 'node:test';
@@ -13,7 +14,7 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{reso
 function harness(load){
  const dom=new JSDOM('<main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#category/format',runScripts:'outside-only'}),w=dom.window,messages=[],calls={load:0,example:0,parse:0,apply:0};
  const tools={exampleDocx:async()=>{calls.example++;return new Uint8Array([1,2]);},parseDocx:async()=>{calls.parse++;return {paragraphs:[{sourceIndex:0,text:'示例段落',level:0,format:{}}],sections:[],warnings:[],chars:4};},applyDocx:async bytes=>{calls.apply++;return bytes;}};
- Object.assign(w,{formatPresets,presetRules,ruleSummary,importFormatRules,exportFormatRules,suggestedFormatExclusions,createFormatReport,formatReportHtml,hasDraftScope:()=>false,withStableView,keys:{drafts:'drafts'},list:()=>[],projects:()=>[],defaultRules,checkFormatting,toolBanner,esc:value=>String(value),icon:()=>'',mountToolJobPanel:()=>({dispose(){}}),loadFormatDocumentModule:()=>{calls.load++;return load(tools,calls.load);}});
+ Object.assign(w,{projectPickerOptions},{formatPresets,presetRules,ruleSummary,importFormatRules,exportFormatRules,suggestedFormatExclusions,createFormatReport,formatReportHtml,hasDraftScope:()=>false,withStableView,keys:{drafts:'drafts'},list:()=>[],projects:()=>[],defaultRules,checkFormatting,toolBanner,esc:value=>String(value),icon:()=>'',mountToolJobPanel:()=>({dispose(){}}),loadFormatDocumentModule:()=>{calls.load++;return load(tools,calls.load);}});
  w.eval(source+'\nwindow.lifecycle={mountFormat,disposeFormat};');
  return {dom,w,calls,tools,messages,mount:()=>w.lifecycle.mountFormat({notify:message=>messages.push(message)}),dispose:()=>w.lifecycle.disposeFormat()};
 }

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {catalog,catalogNav,retainWritingCatalog} from '../dist/workspace/writing-catalog.mjs';
 import {resetStableView} from '../dist/workspace/view-stability.mjs';
+import {projectReference,setProjectDirectorySession,updateAccountProjects,resolveAccountProjectId} from '../dist/workspace/project-directory.mjs';
 function setup(){const dom=new JSDOM('<aside class="sidebar"></aside><div class="breadcrumb"><strong></strong></div><main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'http://localhost/workspace.html#category/writing'});for(const k of ['window','document','localStorage','FormData','location','AbortController'])globalThis[k]=dom.window[k];dom.window.HTMLElement.prototype.scrollIntoView=()=>{};document.querySelector('dialog').close=()=>{};return {dom,ctx:{notify:()=>{},modal:(_,html)=>document.querySelector('#workspace-dialog-body').innerHTML=html}};}
 setup();
 const {mountWriting}=await import('../dist/workspace/writing.mjs');
@@ -58,12 +59,13 @@ test('writing resume excludes archived and other tool/project drafts and never l
  }finally{clearEditor();endDraftScope();dom.window.close();}
 });
 test('canonical project reassignment overrides legacy raw snapshots and survives autosave after reopening',()=>{
- const {dom,ctx}=setup();
+ const {dom,ctx}=setup(),cloudRef=projectReference('alice','cloud-p1');
  try{
+  setProjectDirectorySession({id:'alice'});updateAccountProjects('alice',[{id:'cloud-p1',title:'账户中的项目'}]);
   localStorage.setItem('paperknow-projects',JSON.stringify([{id:'p1',name:'旧项目'},{id:'p2',name:'新项目'}]));localStorage.setItem('paperknow-drafts',JSON.stringify([{id:'moved-draft',tool:'writing',title:'重新关联项目的论文',projectId:'p2',writingResume:true,writingEditorState:{inputs:{'writing-project':'p1','writing-title':'重新关联项目的论文'}}}]));
-  mountWriting('moved-draft',undefined,ctx);assert.equal($('#writing-project').value,'p2');input('#writing-major','教育学');assert.equal(flushEditorDraft(),true);let saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.projectId,'p2');assert.equal(Object.hasOwn(saved.writingEditorState.inputs,'writing-project'),false);
-  clearEditor();mountWriting(undefined,undefined,ctx);assert.equal($('#writing-project').value,'p2');$('#writing-project').value='p1';$('#writing-project').dispatchEvent(new window.Event('change',{bubbles:true}));assert.equal(flushEditorDraft(),true);saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.projectId,'p1');clearEditor();mountWriting(undefined,undefined,ctx);assert.equal($('#writing-project').value,'p1');
- }finally{clearEditor();dom.window.close();}
+  mountWriting('moved-draft',undefined,ctx);assert.equal($('#writing-project').value,'p2');assert.equal($('#writing-project').selectedOptions[0].disabled,true);assert.equal(resolveAccountProjectId('p2','alice'),null);assert.equal([...$('#writing-project').options].some(option=>option.value==='p1'),false);input('#writing-major','教育学');assert.equal(flushEditorDraft(),true);let saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.projectId,'p2');assert.equal(Object.hasOwn(saved.writingEditorState.inputs,'writing-project'),false);
+  clearEditor();mountWriting(undefined,undefined,ctx);assert.equal($('#writing-project').value,'p2');$('#writing-project').value=cloudRef;$('#writing-project').dispatchEvent(new window.Event('change',{bubbles:true}));assert.equal(flushEditorDraft(),true);saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.projectId,cloudRef);assert.equal(resolveAccountProjectId(saved.projectId,'alice'),'cloud-p1');clearEditor();mountWriting(undefined,undefined,ctx);assert.equal($('#writing-project').value,cloudRef);
+ }finally{clearEditor();setProjectDirectorySession(null);dom.window.close();}
 });
 test('automatic draft preserves existing body, structured outline and pending AI recovery fields across a normal tool reopen',()=>{
  const {dom,ctx}=setup();

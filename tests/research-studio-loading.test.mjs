@@ -1,3 +1,4 @@
+import {projectPickerOptions} from '../dist/workspace/project-directory.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -39,7 +40,7 @@ function harness(t,{mode='formula',session,drafts=[],ownerId,loadFormula,loadDra
   formula:{mountResearchFormulaStudio:options=>mounted('formula',options.container,options)},
   drawing:{mountResearchDrawing:(container,ctx,options)=>mounted('drawing',container,{...options,ctx})}
  };
- Object.assign(w,researchModel,deliveryModel,state,{structuredClone,mountFormulaOcr,toolBanner,withStableView,esc,icon,download,formatDate,
+ Object.assign(w,{projectPickerOptions},researchModel,deliveryModel,state,{structuredClone,mountFormulaOcr,toolBanner,withStableView,esc,icon,download,formatDate,
   loadToolJobPanelModule:async()=>({mountToolJobPanel:options=>{let value={};const panel={setState(next){value=next;return options.onStateChange(next);},options};calls.toolPanels.push(panel);return{open(){},getState:()=>value,inputChanged(){},dispose(){}};}}),
   loadFormulaStudioModule:()=>{calls.formulaLoads++;return loadFormula?loadFormula(modules.formula,calls.formulaLoads):Promise.resolve(modules.formula);},
   loadDrawingStudioModule:()=>{calls.drawingLoads++;return loadDrawing?loadDrawing(modules.drawing,calls.drawingLoads):Promise.resolve(modules.drawing);}
