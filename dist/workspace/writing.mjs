@@ -15,7 +15,7 @@ import {parseCitationImport} from './citation-import.mjs';
 import {writingLandingSide} from './writing-landing-side.mjs';
 import {list as scopedDraftList,write as scopedDraftWrite,keys as scopedDraftKeys,hasDraftScope} from './state.mjs';
 import {documentExportButtons,bindDocumentExports,downloadDefaultThesisTemplate} from './document-export.mjs';
-import {draftThesisTemplate,thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata} from './thesis-template.mjs';
+import {draftThesisTemplate,thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,openThesisTemplateChooser} from './thesis-template.mjs';
 import {catalog,catalogNav,writingHeading,writingDetailHeading,decorateWritingDetail} from './writing-catalog.mjs';
 import {registerEditor,markEditorSaved} from './edit-guard.mjs';
 import {outlineChapters,buildOutline,reconcileSections,composeBody,thesisSnapshotFromDraft,thesisWordCountSuggestions,thesisDefaultTargetWords,thesisTargetWordsState,changeThesisTargetDegree} from './writing-model.mjs';
@@ -388,7 +388,7 @@ async function templateApi(path,data){
  if(!alive()||$('#writing-form')!==form||!templateScope.isCurrent())throw new DOMException('页面已切换','AbortError');return result;
 }
 async function changeLocalTemplate(file){
- if(templateBusy||!alive())return;const expectedTemplateFileId=exportTemplate?.source?.fileId||null;templateBusy=true;renderLocalTemplate();const status=$('#writing-status');status.textContent=templateMessage=file?'正在保存 Word 格式模板…':'正在恢复通用学位论文模板…';
+ if(templateBusy||!alive())return;const expectedTemplateFileId=exportTemplate?.source?.fileId||null;templateBusy=true;const status=$('#writing-status');status.textContent=templateMessage=file?'正在识别并保存：'+file.name:'正在恢复通用学位论文模板…';renderLocalTemplate();
  try{
   const session=ctx?.session?await ctx.session():await templateApi('/auth/me'),expectedUserId=templateScope.ownerId||session?.user?.id;if(!expectedUserId)throw Error('请先登录，再保存学校模板。');
   const fresh=await templateApi('/auth/me');if(String(fresh?.user?.id)!==String(expectedUserId))throw Error('登录账户已变化，请重新打开论文后选择模板。');
@@ -403,7 +403,7 @@ function renderLocalTemplate(){
  for(const [id,prefix] of [['writing-local-template','writing-local'],['writing-final-template','writing-final']]){
   const host=$('#'+id);if(!host)continue;if(id==='writing-final-template')host.hidden=workflowStage!==5||!!thesisId;
   const open=host.querySelector('details')?.open;host.innerHTML=thesisTemplatePanel(exportTemplate,{legacyName:!exportTemplateSelectionMade&&/\.docx$/i.test(formatTemplateName)?formatTemplateName:'',prefix,busy:templateBusy});if(open)host.querySelector('details').open=true;host.querySelector('[data-template-status]').textContent=templateMessage;
-  host.querySelector('[data-template-choose]').addEventListener('click',()=>host.querySelector('[data-template-file]').click());host.querySelector('[data-template-file]').addEventListener('change',event=>{const file=event.target.files?.[0];if(file)void changeLocalTemplate(file);});host.querySelector('[data-template-clear]')?.addEventListener('click',()=>void changeLocalTemplate(null));host.querySelector('[data-template-download]').addEventListener('click',async()=>{const status=host.querySelector('[data-template-status]');try{const expectedUserId=exportTemplateAccountId||templateScope.ownerId||(ctx?.session?await ctx.session():null)?.user?.id;if(expectedUserId){const fresh=await templateApi('/auth/me');if(String(fresh?.user?.id)!==String(expectedUserId))throw Error('登录账户已变化，请重新打开论文后下载模板。');}await downloadDefaultThesisTemplate({expectedUserId,metadata:thesisExportMetadata({...loaded,...values(),outlineRows}),status,isCurrent:()=>alive()&&templateScope.isCurrent()});}catch(error){if(alive()&&error.name!=='AbortError'&&status.isConnected)status.textContent=error.message||'模板下载未完成，请重试。';}});
+  host.querySelector('[data-template-choose]').addEventListener('click',()=>openThesisTemplateChooser(host));host.querySelector('[data-template-file]').addEventListener('change',event=>{const file=event.target.files?.[0];if(file)void changeLocalTemplate(file);});host.querySelector('[data-template-clear]')?.addEventListener('click',()=>void changeLocalTemplate(null));host.querySelector('[data-template-download]').addEventListener('click',async()=>{const status=host.querySelector('[data-template-status]');try{const expectedUserId=exportTemplateAccountId||templateScope.ownerId||(ctx?.session?await ctx.session():null)?.user?.id;if(expectedUserId){const fresh=await templateApi('/auth/me');if(String(fresh?.user?.id)!==String(expectedUserId))throw Error('登录账户已变化，请重新打开论文后下载模板。');}await downloadDefaultThesisTemplate({expectedUserId,metadata:thesisExportMetadata({...loaded,...values(),outlineRows}),status,isCurrent:()=>alive()&&templateScope.isCurrent()});}catch(error){if(alive()&&error.name!=='AbortError'&&status.isConnected)status.textContent=error.message||'模板下载未完成，请重试。';}});
  }
 }
 function bodyCount(){if(taskKind==='writing')for(const id of ['body-export','body-docx','body-pdf'])$('#'+id).disabled=!bodySections.some(section=>String(section.text||'').trim());const text=$('#body-editor').value;$('#body-count').textContent=`当前章节 ${Array.from(text).length.toLocaleString('zh-CN')} 字符 · 修改后请保存`;}

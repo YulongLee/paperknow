@@ -88,3 +88,126 @@ test('saving account waits for a pending final template upload and later creates
  f.q('[data-thesis-create]').click();await waitFor(()=>f.item?.id==='t1'&&isVisible(f.q('[data-template-panel="thesis-online"]')));
  const creates=f.calls.filter(call=>call.path==='/theses'&&call.data);assert.equal(creates.length,1);assert.equal(creates[0].data.exportTemplateFileId,'draft-template');assert.equal(f.item.exportTemplate.source.fileId,'draft-template');assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
 });
+
+for(const failure of [false,true])test(`final template chooser immediately names the pending file and settles ${failure?'back to the retained template on failure':'on the saved choice'}`,async t=>{
+ const f=draftFixture(t,{failure,stored:finalDraft()});await waitFor(()=>f.q('[data-thesis-create]'));
+ let releaseRead;const readGate=new Promise(resolve=>{releaseRead=resolve;});
+ const pendingFile={name:'新学校模板.docx',size:fixtureBytes.length,arrayBuffer:async()=>{await readGate;return fixtureBytes.buffer;}};
+ try{
+  select(f,'#writing-final-template [data-template-file]',pendingFile);
+  const panel=f.q('#writing-final-template [data-template-panel]'),status=panel.querySelector('[data-template-status]');
+  assert.equal(panel.getAttribute('aria-busy'),'true');
+  assert.match(status.textContent,/新学校模板\.docx/);assert.match(status.textContent,/正在|保存|识别/);
+  assert.equal(panel.querySelector('[data-template-choose]').disabled,true);
+  assert.equal(panel.querySelector('[data-template-file]').disabled,true);
+  assert.equal(f.saved().exportTemplate.source.fileId,'old-template');
+ }finally{releaseRead();}
+ await waitFor(()=>!f.q('#writing-final-template [data-template-choose]').disabled);
+ const panel=f.q('#writing-final-template [data-template-panel]'),status=panel.querySelector('[data-template-status]');
+ assert.notEqual(panel.getAttribute('aria-busy'),'true');
+ assert.doesNotMatch(status.textContent,/正在.*(?:保存|识别)|(?:保存|识别).*中/);
+ assert.equal(panel.querySelector('.thesis-template-current strong').textContent,failure?'原学校模板.docx':'新学校模板.docx');
+ assert.equal(f.saved().exportTemplate.source.fileId,failure?'old-template':'draft-template');
+ assert.match(status.textContent,failure?/原有模板保持不变/:/已保存/);
+ assert.equal(f.calls.filter(call=>call.path==='/files').length,1);
+ assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
+});
+
+test('account template selection names the pending upload beside the chooser and applies it once',async t=>{
+ const f=accountFixture(t),api=f.ctx.api;let releaseUpload,uploadRequests=0;
+ const uploadGate=new Promise(resolve=>{releaseUpload=resolve;});
+ f.ctx.api=async(path,data)=>{if(path==='/files'){uploadRequests++;await uploadGate;}return api(path,data);};
+ const stop=mountThesisStage({id:'t1',ctx:f.ctx,container:f.q('.dashboard'),onTemplateSaved:value=>f.changes.push(value)});await stop.ready;
+ try{
+  select(f,'[data-template-file]',file());
+  let panel=f.q('[data-template-panel]');
+  assert.equal(panel.getAttribute('aria-busy'),'true');
+  assert.match(panel.querySelector('[data-template-status]').textContent,/新学校模板\.docx/);
+  assert.match(panel.querySelector('[data-template-status]').textContent,/正在|保存|识别/);
+  await waitFor(()=>uploadRequests===1);
+  panel=f.q('[data-template-panel]');assert.equal(panel.querySelector('[data-template-choose]').disabled,true);assert.equal(panel.querySelector('[data-template-file]').disabled,true);
+  assert.equal(f.item.exportTemplate.source.fileId,'old-template');
+ }finally{releaseUpload();}
+ await waitFor(()=>f.changes.at(-1)?.source?.fileId==='new-template'&&!f.q('[data-template-choose]').disabled);
+ const panel=f.q('[data-template-panel]');assert.notEqual(panel.getAttribute('aria-busy'),'true');
+ assert.equal(panel.querySelector('.thesis-template-current strong').textContent,'新学校模板.docx');
+ assert.match(panel.querySelector('[data-template-status]').textContent,/已保存/);
+ assert.equal(uploadRequests,1);assert.equal(f.calls.filter(call=>call.path==='/files').length,1);
+ assert.equal(f.calls.filter(call=>call.path.endsWith('/export-template')&&call.data).length,1);
+ assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
+});
+
+for(const mode of ['final draft','account'])for(const activation of ['showPicker','click fallback','blocked'])test(`${mode} template button uses ${activation} without a silent failure`,async t=>{
+ let f,selector;
+ if(mode==='account'){
+  f=accountFixture(t);const stop=mountThesisStage({id:'t1',ctx:f.ctx,container:f.q('.dashboard')});await stop.ready;selector='[data-template-panel]';
+ }else{
+  f=draftFixture(t,{stored:finalDraft()});await waitFor(()=>f.q('[data-thesis-create]'));selector='#writing-final-template [data-template-panel]';
+ }
+ const panel=f.q(selector),input=panel.querySelector('[data-template-file]');let nativeCalls=0,fallbackCalls=0;
+ Object.defineProperty(input,'value',{configurable:true,writable:true,value:'previously-selected-template.docx'});
+ Object.defineProperty(input,'showPicker',{configurable:true,value:activation==='click fallback'?undefined:()=>{nativeCalls++;if(activation==='blocked')throw new window.DOMException('File picker denied','SecurityError');}});
+ input.click=()=>{fallbackCalls++;if(activation==='blocked')throw new window.DOMException('File picker denied','SecurityError');};
+ panel.querySelector('[data-template-choose]').click();
+ assert.equal(input.value,'');
+ if(activation==='showPicker'){assert.equal(nativeCalls,1);assert.equal(fallbackCalls,0);}
+ else if(activation==='click fallback'){assert.equal(nativeCalls,0);assert.equal(fallbackCalls,1);}
+ else{
+  assert.equal(nativeCalls,1);assert.match(f.q(selector+' [data-template-status]').textContent,/选择|浏览器|文件|模板/);
+ }
+ assert.notEqual(f.q(selector).getAttribute('aria-busy'),'true');
+ assert.equal(f.calls.some(call=>call.path==='/files'||call.path.endsWith('/export-template')&&call.data),false);
+ assert.equal(panel.querySelector('.thesis-template-current strong').textContent,'原学校模板.docx');
+});
+
+for(const closeEvent of ['cancel','change'])test(`account generation polling leaves an open native template chooser attached and resumes after ${closeEvent}`,async t=>{
+ const scheduleTimeout=globalThis.setTimeout;let scheduledPoll;
+ globalThis.setTimeout=(callback,delay,...args)=>delay===4000?(scheduledPoll=()=>callback(...args),{syntheticTemplatePoll:true}):scheduleTimeout(callback,delay,...args);
+ t.after(()=>{globalThis.setTimeout=scheduleTimeout;});
+ const record={...initial(),status:'running',job:{id:'job1',status:'running',stage:'generating_section',completedSections:0,totalSections:1}},f=accountFixture(t,{record}),api=f.ctx.api;
+ Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});
+ let complete=false,reads=0;
+ f.ctx.api=async(path,data)=>{if(path==='/theses/t1'&&!data){reads++;return {item:structuredClone(complete?{...f.item,status:'completed',job:{...f.item.job,status:'completed',completedSections:1}}:f.item)};}return api(path,data);};
+ const stop=mountThesisStage({id:'t1',ctx:f.ctx,container:f.q('.dashboard')});await stop.ready;
+ const input=f.q('[data-template-file]');input.showPicker=()=>{};f.q('[data-template-choose]').click();
+ complete=true;assert.equal(typeof scheduledPoll,'function');await scheduledPoll();
+ assert.equal(reads,1,'the generation poll must wait until native file selection closes');
+ assert.equal(f.q('[data-template-file]'),input,'the actual input associated with the native dialog must remain connected');
+ assert.equal(input.isConnected,true);
+ if(closeEvent==='cancel')input.dispatchEvent(new window.Event('cancel',{bubbles:true}));
+ else{select(f,'[data-template-file]',file());await waitFor(()=>f.item.exportTemplate.source.fileId==='new-template'&&!f.q('[data-template-choose]').disabled);}
+ await scheduledPoll();
+ assert.equal(reads,2,'polling resumes after the native chooser closes');
+ assert.equal(f.q('[data-template-choose]').disabled,false);
+ assert.equal(f.q('.thesis-template-current strong').textContent,closeEvent==='cancel'?'原学校模板.docx':'新学校模板.docx');
+ assert.equal(f.calls.filter(call=>call.path==='/files').length,closeEvent==='cancel'?0:1);
+ assert.equal(f.calls.filter(call=>call.path.endsWith('/export-template')&&call.data).length,closeEvent==='cancel'?0:1);
+});
+
+test('a poll already in flight cannot replace an open chooser or authorize overwriting an unseen template choice',async t=>{
+ const scheduleTimeout=globalThis.setTimeout;let scheduledPoll;
+ globalThis.setTimeout=(callback,delay,...args)=>delay===4000?(scheduledPoll=()=>callback(...args),{syntheticTemplatePoll:true}):scheduleTimeout(callback,delay,...args);
+ t.after(()=>{globalThis.setTimeout=scheduleTimeout;});
+ const record={...initial(),status:'running',job:{id:'job1',status:'running',stage:'generating_section',completedSections:0,totalSections:1}},f=accountFixture(t,{record,externalTemplateDuringUpload:true}),api=f.ctx.api;
+ Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});
+ let holdNextRead=false,readStarted=false,releaseRead,reads=0;const readGate=new Promise(resolve=>{releaseRead=resolve;});
+ f.ctx.api=async(path,data)=>{
+  if(path==='/theses/t1'&&!data){reads++;if(holdNextRead){holdNextRead=false;readStarted=true;await readGate;return {item:{...structuredClone(f.item),version:4,exportTemplate:{...structuredClone(template),source:{...template.source,fileId:'external-template',name:'其他页面选中的模板.docx'}}}};}}
+  return api(path,data);
+ };
+ const stop=mountThesisStage({id:'t1',ctx:f.ctx,container:f.q('.dashboard')});await stop.ready;
+ holdNextRead=true;const inFlight=scheduledPoll();await waitFor(()=>readStarted);
+ const input=f.q('[data-template-file]');input.showPicker=()=>{};f.q('[data-template-choose]').click();
+ releaseRead();await inFlight;
+ assert.equal(f.q('[data-template-file]'),input);assert.equal(input.isConnected,true);
+ assert.equal(f.q('.thesis-template-current strong').textContent,'原学校模板.docx');
+ select(f,'[data-template-file]',file());
+ await waitFor(()=>/其他页面|版本已/.test(f.q('[data-template-status]')?.textContent||'')&&!f.q('[data-template-choose]').disabled);
+ const mutation=f.calls.find(call=>call.path.endsWith('/export-template')&&call.data);
+ assert.equal(mutation.data.expectedTemplateFileId,'old-template','selection must retain the template identity displayed when the native chooser opened');
+ assert.equal(f.item.exportTemplate.source.fileId,'external-template');
+ assert.equal(f.q('.thesis-template-current strong').textContent,'其他页面选中的模板.docx');
+ assert.equal(f.calls.filter(call=>call.path.endsWith('/export-template')&&call.data).length,1);
+ const previousReads=reads;await scheduledPoll();assert.equal(reads,previousReads+1,'normal generation polling resumes after the conflict');
+ assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
+});
