@@ -468,7 +468,7 @@ function saveWritingDraft({automatic=false}={}){
  const drafts=rows.map(row=>row.writingResume&&(row.tool||'writing')===taskKind&&String(row.projectId||'')===String(item.projectId||'')&&String(row.id)!==String(item.id)?{...row,writingResume:false}:row),i=drafts.findIndex(d=>String(d.id)===String(item.id));if(i>=0)drafts[i]=item;else drafts.unshift(item);
  try{
   scopedDraftWrite(scopedDraftKeys.drafts,drafts);savedId=item.id;markEditorSaved();
-  $('#writing-status').textContent=automatic?'草稿已自动保存到当前浏览器。':hasDraftScope()?'已保留当前编辑，请使用上方“保存到账户”保存到云端。':'已保存到当前浏览器，可在“我的成果”继续编辑。';
+  $('#writing-status').textContent=automatic?'草稿已自动保存到当前浏览器。':hasDraftScope()?'已保留当前编辑，请使用上方“保存到账户”保存到云端。':'已保存到当前浏览器，可在“文件管理”继续编辑。';
   if(draftHint&&!hasDraftScope())draftHint.textContent=automatic?'草稿已自动保存':'草稿已保存';
   $('#preview-tag').textContent=hasBody?'已保存正文':'已保存内容';
   if(!automatic)try{recordTask({id:'draft-'+item.id,title:item.title,kind:hasBody?'本地正文保存':content?'本地大纲保存':'本地草稿保存',status:'completed',url:'#draft/'+item.id});}catch{$('#writing-status').textContent+=' 任务记录未保存。';}

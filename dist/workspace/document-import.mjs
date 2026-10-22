@@ -1,3 +1,4 @@
+import {reuseStoredOriginal,storedFileSource} from './file-selection.mjs';
 const PDF_BYTES=20*1024*1024,PDF_PAGES=100;
 const abortError=()=>Object.assign(new Error('已停止等待；已提交的云端解析仍可在任务中心查看。'),{name:'AbortError'});
 const checkSignal=signal=>{if(signal?.aborted)throw abortError();};
@@ -25,9 +26,9 @@ export function createWorkspaceDocumentImporter({fetchImpl=(...args)=>fetch(...a
   if(!record){record={idempotencyKey:uuid()};records.set(key,record);}
   if(record.result)return record.result;if(record.inFlight)return record.inFlight;
   record.inFlight=(async()=>{
-  if(!record.id){const accepted=await confirmImpl(`PDF 云端解析确认\n\n「${file.name}」将上传至你的账户原件，并提交第三方文档解析服务（MinerU）提取正文、表格和公式（包括扫描文字）。PDF 最大 ${Math.floor(limit/1024/1024)}MB、最多 ${pages} 页；请确认你有权处理此文件，避免上传不必要的敏感信息。\n\n解析结果需人工核对；离开页面只停止等待，任务可在任务中心继续查看。取消仅停止本站任务，上游可能仍在处理。是否上传并解析？`);checkSignal(signal);if(!accepted)throw Object.assign(new Error('已取消导入，文件未提交解析。'),{name:'DocumentImportCancelled'});
+  if(!record.id){const stored=storedFileSource(file),accepted=await confirmImpl(`PDF 云端解析确认\n\n「${file.name}」${stored?'将使用你在文件管理中选择的已有文件，无需重新上传':'将上传至你的账户原件'}，并提交第三方文档解析服务（MinerU）提取正文、表格和公式（包括扫描文字）。PDF 最大 ${Math.floor(limit/1024/1024)}MB、最多 ${pages} 页；请确认你有权处理此文件，避免上传不必要的敏感信息。\n\n解析结果需人工核对；离开页面只停止等待，任务可在任务中心继续查看。取消仅停止本站任务，上游可能仍在处理。是否${stored?'使用并解析':'上传并解析'}？`);checkSignal(signal);if(!accepted)throw Object.assign(new Error('已取消导入，文件未提交解析。'),{name:'DocumentImportCancelled'});
    emit({stage:'uploading',message:stageMessages.uploading+'…',progress:null});
-   if(!record.fileId){const uploaded=await api('/files',{body:{name:file.name,data:await base64File(file,signal),expectedUserId:session.user.id,...(projectId?{projectId}:{})},signal});if(!uploaded.id)throw Error('原件上传未返回文件编号，请到我的项目核对原件。');record.fileId=uploaded.id;}
+   if(!record.fileId){const reused=await reuseStoredOriginal(file,{api:(path,body)=>api(path,{body,signal}),expectedUserId:session.user.id,projectId}),uploaded=reused||await api('/files',{body:{name:file.name,data:await base64File(file,signal),expectedUserId:session.user.id,...(projectId?{projectId}:{})},signal});if(!uploaded.id)throw Error('原件上传未返回文件编号，请到我的项目核对原件。');record.fileId=uploaded.id;}
    emit({stage:'queued',message:'原件已保存，正在提交 PDF 解析…',progress:null});
    const job=await api('/document-parses',{body:{fileId:record.fileId,idempotencyKey:record.idempotencyKey,consent:true,expectedUserId:session.user.id},signal});if(!job.id)throw Error('未取得解析任务编号，请先到任务中心核对。');record.id=job.id;
   }

@@ -84,3 +84,52 @@ test('changing accounts while encoding an upload stops before any bytes are subm
  f.root.querySelector('[data-cloud-upload-open]').click();const form=f.root.querySelector('.cloud-artifact-upload');Object.defineProperty(form.querySelector('input[type=file]'),'files',{value:[{name:'私密.txt',size:3,arrayBuffer:async()=>{await encoded;return new Uint8Array([97,98,99]).buffer;}}]});submitForm(f.dom,form);await flush();account='bob';encode();await flush();await flush();
  assert.equal(f.calls.some(c=>c.body),false);assert.match(f.root.textContent,/账户已变化/);assert.doesNotMatch(f.root.textContent,/生成文件<测试>/);
 });
+
+const original=(id='original-one',extra={})=>({id,name:'历史材料<正文>.docx',kind:'docx',bytes:123,sha256:'b'.repeat(64),project_id:'project-one',created_at:'2026-10-17T01:00:00.000Z',...extra});
+async function openOriginals(f){f.root.querySelector('[data-original-toggle]').click();await flush();await flush();}
+
+test('historical materials load only on expansion, paginate locally and follow the current filters without discarding file edits',async t=>{
+ const rows=Array.from({length:12},(_,i)=>original('original-'+i,{name:i===11?'独立研究.pdf':`历史材料${i}<正文>.docx`,kind:i===11?'pdf':'docx',project_id:i===11?null:'project-one'}));
+ const f=await manager(t,{request:async path=>path.startsWith('/api/files?')?Response.json({items:rows}):null});
+ assert.equal(f.calls.some(c=>c.path.startsWith('/api/files')),false);assert.equal(f.root.querySelector('[data-original-toggle]').getAttribute('aria-expanded'),'false');
+ f.root.querySelector('[data-cloud-edit]').click();f.root.querySelector('.cloud-artifact-metadata input').value='保留编辑.docx';
+ await openOriginals(f);assert.equal(f.root.querySelector('.cloud-artifact-metadata input').value,'保留编辑.docx');
+ assert.equal(f.root.querySelectorAll('[data-original-file]').length,10);assert.equal(f.root.querySelector('正文'),null);assert.match(f.root.querySelector('.cloud-original-toggle').textContent,/12 份/);
+ const read=f.calls.find(c=>c.path.startsWith('/api/files?'));assert.equal(read.path,'/api/files?expectedUserId=alice');assert.equal(read.options.headers['X-PaperKnow-User'],'alice');
+ f.root.querySelector('[data-original-page="2"]').click();assert.equal(f.root.querySelectorAll('[data-original-file]').length,2);assert.match(f.root.querySelector('.cloud-original-list').textContent,/独立研究.pdf/);
+ f.root.querySelector('[data-original-toggle]').click();await flush();await openOriginals(f);assert.equal(f.calls.filter(c=>c.path.startsWith('/api/files?')).length,1);
+ const search=f.root.querySelector('.cloud-artifact-search');search.querySelector('input').value='独立';search.querySelector('[name=kind]').value='pdf';search.querySelector('[name=project]').value='none';submitForm(f.dom,search);await flush();await flush();
+ assert.equal(f.root.querySelectorAll('[data-original-file]').length,1);assert.match(f.root.querySelector('.cloud-original-list').textContent,/独立研究.pdf/);assert.match(f.root.querySelector('.cloud-original-content .cloud-artifact-footer').textContent,/共 1 份材料/);assert.equal(f.calls.filter(c=>c.path.startsWith('/api/files?')).length,1);
+});
+
+test('historical material deletion requires confirmation and preserves server protections before an owner-bound retry',async t=>{
+ let allowed=false;const row=original(),f=await manager(t,{request:async(path,options)=>{
+  if(path.startsWith('/api/files?'))return Response.json({items:[row]});
+  if(path==='/api/files/original-one/delete')return allowed?Response.json({ok:true,deleted:true}):Response.json({error:{message:'该原件正在作为论文导出模板使用，请先更换模板'}},{status:409});
+ }});
+ await openOriginals(f);f.root.querySelector('[data-original-remove]').click();assert.equal(f.calls.some(c=>c.path.endsWith('/delete')),false);assert.match(f.root.querySelector('.cloud-original-list').textContent,/删除原件后无法恢复/);
+ f.root.querySelector('[data-original-remove-confirm]').click();await flush();await flush();assert.match(f.root.querySelector('.cloud-original-content [role=alert]').textContent,/正在作为论文导出模板使用/);assert.equal(f.root.querySelectorAll('[data-original-file]').length,1);
+ const deletion=f.calls.find(c=>c.path.endsWith('/delete'));assert.deepEqual(deletion.body,{expectedSha256:row.sha256});assert.equal(deletion.options.headers['X-PaperKnow-User'],'alice');
+ allowed=true;f.root.querySelector('[data-original-remove-confirm]').click();await flush();await flush();assert.equal(f.root.querySelector('[data-original-file]'),null);assert.match(f.notices.join(''),/已删除材料原件/);assert.ok(f.root.querySelector('[data-cloud-file]'));
+});
+
+test('historical downloads validate the expected owner after bytes arrive and stop if the account changes',async t=>{
+ let account='alice';const f=await manager(t,{session:async()=>({user:{id:account}}),request:async(path,options)=>{
+  if(path.startsWith('/api/files?'))return Response.json({items:[original()]});
+  if(path.startsWith('/api/files/original-one/download')){assert.match(path,/expectedUserId=alice/);assert.equal(options.headers['X-PaperKnow-User'],'alice');return {ok:true,async blob(){account='bob';return new Blob([new Uint8Array(123)]);}};}
+ }});
+ await openOriginals(f);f.root.querySelector('[data-original-download]').click();await flush();await flush();assert.match(f.root.textContent,/账户已变化/);assert.equal(f.root.querySelector('[data-original-file]'),null);assert.doesNotMatch(f.notices.join(''),/已发起材料下载/);
+});
+
+test('historical materials show read failures with a retry and do not replace the main file library',async t=>{
+ let fail=true;const f=await manager(t,{request:async path=>path.startsWith('/api/files?')?(fail?Response.json({error:'材料服务暂不可用'},{status:503}):Response.json({items:[original()]})):null});
+ await openOriginals(f);assert.match(f.root.querySelector('.cloud-original-content [role=alert]').textContent,/暂不可用/);assert.equal(f.root.querySelector('[data-original-file]'),null);assert.ok(f.root.querySelector('[data-cloud-file]'));
+ fail=false;f.root.querySelector('[data-original-refresh]').click();await flush();await flush();assert.ok(f.root.querySelector('[data-original-file]'));assert.equal(f.root.querySelector('.cloud-original-content [role=alert]'),null);
+});
+
+test('a historical materials read cannot paint after the owner changes or the view is disposed',async t=>{
+ let account='alice',finish;const pending=new Promise(resolve=>finish=resolve),f=await manager(t,{session:async()=>({user:{id:account}}),request:async path=>{if(path.startsWith('/api/files?')){await pending;return Response.json({items:[original()]});}}});
+ f.root.querySelector('[data-original-toggle]').click();await flush();account='bob';finish();await flush();await flush();assert.match(f.root.textContent,/账户已变化/);assert.doesNotMatch(f.root.textContent,/历史材料/);
+ let finishSecond;const secondPending=new Promise(resolve=>finishSecond=resolve),g=await manager(t,{request:async path=>{if(path.startsWith('/api/files?')){await secondPending;return Response.json({items:[original()]});}}});
+ g.root.querySelector('[data-original-toggle]').click();await flush();g.view.dispose();g.root.innerHTML='其他页面';finishSecond();await flush();await flush();assert.equal(g.root.textContent,'其他页面');
+});

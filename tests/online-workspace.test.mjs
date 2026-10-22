@@ -268,7 +268,7 @@ test('account drafts are opened by account id while local copies upload only aft
 });
 
 test('an expired session with a non-JSON response clears account content instead of leaving private data on screen',async t=>{
- const f=await fixture(t,{view:'results',request:async path=>path==='/api/workspace/drafts'?{ok:false,status:401,json:async()=>{throw Error('HTML response');}}:undefined});assert.match(f.doc.querySelector('#view').textContent,/登录后管理云端成果/);assert.equal(f.doc.querySelector('[data-result]'),null);assert.equal(f.doc.querySelector('#import-local-draft'),null);
+ const f=await fixture(t,{view:'results',request:async path=>path==='/api/workspace/drafts'?{ok:false,status:401,json:async()=>{throw Error('HTML response');}}:undefined});assert.match(f.doc.querySelector('#view').textContent,/登录后管理云端文件/);assert.equal(f.doc.querySelector('[data-result]'),null);assert.equal(f.doc.querySelector('#import-local-draft'),null);
 });
 
 test('retrying a failed parse submission reuses the already uploaded original file',async t=>{

@@ -40,8 +40,8 @@ export function mountAigcDetection({container,fetchImpl,uuid=()=>crypto.randomUU
    }
    return response;
   };
-  let exported;try{exported=await exportFile({name:`PaperKnow-AIGC鉴别报告-${reportItem.id}.html`,content,type:'text/html;charset=utf-8',sourceType:'detection',sourceId:reportItem.id},{fetchImpl:guardedFetch,documentObject:doc});}catch(error){if(error.publicMessage||[401,403,409].includes(error.status))throw error;throw publicError('报告文件未能确认保存或下载，请在“我的成果”核对后重试；当前鉴别结果仍保留。');}
-  await checkOwner();status(exported.message||'已保存报告，可在“我的成果”查看。');
+  let exported;try{exported=await exportFile({name:`PaperKnow-AIGC鉴别报告-${reportItem.id}.html`,content,type:'text/html;charset=utf-8',sourceType:'detection',sourceId:reportItem.id},{fetchImpl:guardedFetch,documentObject:doc});}catch(error){if(error.publicMessage||[401,403,409].includes(error.status))throw error;throw publicError('报告文件未能确认保存或下载，请在“文件管理”核对后重试；当前鉴别结果仍保留。');}
+  await checkOwner();status(exported.message||'已保存报告，可在“文件管理”查看。');
  }
  async function showReport(){
   await checkOwner();const content=reportContent();closePreview();

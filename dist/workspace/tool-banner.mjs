@@ -12,7 +12,7 @@ export const toolBannerCategories=Object.freeze({
   research:{title:'科研工具',icon:'grid',description:'整理研究数据，制作图表、记录专业绘图需求与编辑公式。'},
   home:{title:'工作台',group:'工作空间',icon:'grid',description:'组织项目、管理成果，在这里继续你的论文与研究。'},
   projects:{title:'我的项目',group:'工作空间',icon:'folder',description:'整理研究目标、资料与成果，让每一项研究都有清晰的进展。'},
-  assets:{title:'我的成果',group:'工作空间',icon:'file',description:'集中管理写作、检测、图表与演示成果，随时继续编辑。'},
+  assets:{title:'文件管理',group:'工作空间',icon:'file',description:'统一管理上传材料和生成文件，按项目整理，随时查找与复用。'},
   tasks:{title:'任务中心',group:'工作空间',icon:'clock',description:'查看研究任务和处理记录，跟进每一步的实际状态。'},
   membership:{title:'会员与用量',group:'个人与服务',icon:'diamond',description:'了解功能开放范围，查看账户权益与实际用量。'},
   settings:{title:'设置中心',group:'个人与服务',icon:'settings',description:'管理研究偏好、界面体验与数据备份。'},

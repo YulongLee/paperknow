@@ -1,3 +1,4 @@
+import {reuseStoredOriginal} from './file-selection.mjs';
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const thesisTemplateMaxBytes=2*1024*1024;
 export function draftThesisTemplate(draft={}){
@@ -29,7 +30,7 @@ export async function uploadThesisTemplate(file,{api,expectedUserId,projectId,is
  if(!profile||profile.version!==1||!Array.isArray(profile.recognized)||!profile.recognized.length)throw Error('未识别到可用的 Word 排版规则，请上传含正文样式的 DOCX 模板。');
  const digest=await globalThis.crypto.subtle.digest('SHA-256',bytes);if(!isCurrent())throw new DOMException('页面已切换','AbortError');
  const sha256=Array.from(new Uint8Array(digest),v=>v.toString(16).padStart(2,'0')).join('');let binary='';for(let index=0;index<bytes.length;index+=8192)binary+=String.fromCharCode(...bytes.subarray(index,index+8192));
- const value=await api('/files',{name:file.name,data:btoa(binary),expectedUserId,...(projectId?{projectId}:{})});
+ const value=await reuseStoredOriginal(file,{api,expectedUserId,projectId})||await api('/files',{name:file.name,data:btoa(binary),expectedUserId,...(projectId?{projectId}:{})});
  if(!isCurrent())throw new DOMException('页面已切换','AbortError');
  if(typeof value?.id!=='string'||!value.id)throw Error('模板上传未完成，原有模板保持不变，请重试。');
  return {version:1,source:{fileId:value.id,name:file.name,sha256,size:bytes.length},profile,status:'ready'};

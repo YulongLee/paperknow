@@ -135,7 +135,7 @@ function renderAccount(){
 }
 $('#account-button').addEventListener('click',()=>{
  if(!serviceUser){location.href='/auth.html?mode=login';return;}
- openDialog('你的账户',`<p><b>${esc(serviceUser.name)}</b><br>${esc(serviceUser.email||serviceUser.phone||'')}</p><div class="account-links"><a class="button" href="/workspace.html#home">进入工作台 ${svg('arrow')}</a><a class="button outline" href="/workspace.html#projects?scope=account">项目与文件</a><a class="button outline" href="/workspace.html#assets?scope=account">我的成果</a><a class="button outline" href="/workspace.html#membership?scope=account">会员与订单</a>${serviceUser.role==='admin'?'<a class="button outline" href="/admin.html">管理后台</a>':''}<button class="text-button" id="service-logout">退出登录</button></div>`);
+ openDialog('你的账户',`<p><b>${esc(serviceUser.name)}</b><br>${esc(serviceUser.email||serviceUser.phone||'')}</p><div class="account-links"><a class="button" href="/workspace.html#home">进入工作台 ${svg('arrow')}</a><a class="button outline" href="/workspace.html#projects?scope=account">项目与文件</a><a class="button outline" href="/workspace.html#assets?scope=account">文件管理</a><a class="button outline" href="/workspace.html#membership?scope=account">会员与订单</a>${serviceUser.role==='admin'?'<a class="button outline" href="/admin.html">管理后台</a>':''}<button class="text-button" id="service-logout">退出登录</button></div>`);
  $('#service-logout').onclick=async()=>{const b=$('#service-logout');b.disabled=true;try{const r=await fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(!r.ok)throw new Error();serviceUser=null;closeDialog();location.reload();}catch{toast('退出未完成，请重试。');b.disabled=false;}};
 });
 async function loadServiceState(){

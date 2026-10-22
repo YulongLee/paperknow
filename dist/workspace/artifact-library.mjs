@@ -9,19 +9,28 @@ const date=value=>{const d=new Date(value);return Number.isFinite(d.getTime())?d
 
 export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globalThis.fetch,projectId=''}={}){
  let disposed=false,request=0,page=1,query='',kind='',project=String(projectId||''),owner=null,data=null,armed=null,editing=null,busy=false,uploadOpen=false,projects=[],projectError='';
+ let originalsOpen=false,originals=null,originalsOwner=null,originalsPage=1,originalsRequest=0,originalsLoading=false,originalsError='',originalArmed=null;
  const controllers=new Set(),alive=()=>!disposed&&root.isConnected,doc=root.ownerDocument;
  const paint=html=>{if(alive())withStableView(root.closest('.dashboard')||root,()=>{root.innerHTML=html;});};
  const heading=()=>`<div class="cloud-artifact-heading"><div><span class="cloud-artifact-icon">${icon('folder',22)}</span><div><h2>云端文件</h2><p>生成和上传的文件集中保存，登录后可跨设备管理。</p></div></div><div class="cloud-artifact-heading-actions"><button type="button" data-cloud-refresh aria-label="刷新云端文件"><span aria-hidden="true">↻</span>刷新</button>${data?`<button type="button" data-cloud-upload-open class="cloud-artifact-primary" aria-expanded="${uploadOpen}">${icon('plus',15)}上传文件</button>`:''}</div></div>`;
- function invalidate(message){request++;owner=null;data=null;armed=null;editing=null;projects=[];paint(heading()+'<p class="cloud-artifact-error" role="alert">'+esc(message)+'</p>');}
+ function invalidate(message){request++;originalsRequest++;owner=null;data=null;armed=null;editing=null;projects=[];originals=null;originalsOwner=null;originalsOpen=false;originalsLoading=false;originalArmed=null;paint(heading()+'<p class="cloud-artifact-error" role="alert">'+esc(message)+'</p>');}
  async function api(path,input,expectedOwner=owner,binary=false,base='/api/artifacts'){
   const c=new AbortController();controllers.add(c);const timeout=setTimeout(()=>c.abort(),60000);
   try{
    const r=await fetchImpl(base+path,{method:input?'POST':'GET',credentials:'same-origin',cache:'no-store',headers:{...(input?{'Content-Type':'application/json'}:{}),...(expectedOwner?{'X-PaperKnow-User':expectedOwner}:{})},body:input?JSON.stringify(input):undefined,signal:c.signal});
-   if(!r.ok){const v=await r.json().catch(()=>({}));throw Object.assign(Error(v.error||'云文件暂时无法读取，请稍后重试'),{status:r.status,code:v.code});}
+   if(!r.ok){const v=await r.json().catch(()=>({}));throw Object.assign(Error(typeof v.error==='string'?v.error:v.error?.message||'云文件暂时无法读取，请稍后重试'),{status:r.status,code:v.code});}
    return await (binary?r.blob():r.json());
   }catch(error){if(c.signal.aborted)throw Error('云文件读取超时或已中止，请重试');throw error;}finally{clearTimeout(timeout);controllers.delete(c);}
  }
  const projectOptions=(selected='',filter=false)=>`${filter?'<option value="">所有项目</option><option value="none" '+(selected==='none'?'selected':'')+'>未归入项目</option>':'<option value="">未归入项目</option>'}${projects.map(p=>`<option value="${esc(p.id)}" ${selected===p.id?'selected':''}>${esc(p.title)}</option>`).join('')}`;
+ const filteredOriginals=()=>Array.isArray(originals)?originals.filter(row=>(!query||row.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()))&&(!kind||row.kind===kind)&&(!project||(project==='none'?!row.project_id:row.project_id===project))):[];
+ function originalMaterials(){
+  const filtered=filteredOriginals(),pages=Math.max(1,Math.ceil(filtered.length/10));originalsPage=Math.min(originalsPage,pages);
+  return `<section class="cloud-original-materials" aria-label="已上传材料"><button type="button" class="cloud-original-toggle" data-original-toggle aria-expanded="${originalsOpen}" aria-controls="cloud-original-content"><span>${icon('file',19)}<span><b>已上传材料${originals?`<small>${originals.length} 份</small>`:''}</b><small>已保存的论文、研究资料与学校模板，可在其他功能中选择使用。</small></span></span><span aria-hidden="true">${originalsOpen?'⌃':'⌄'}</span></button>${originalsOpen?`<div id="cloud-original-content" class="cloud-original-content">${originalsLoading?'<p class="cloud-original-status" role="status">正在读取已上传材料…</p>':originalsError?`<p class="cloud-artifact-error" role="alert">${esc(originalsError)}</p>`:''}${originals&&!originalsLoading?`<div class="cloud-original-list" aria-label="已上传材料列表">${filtered.length?filtered.slice((originalsPage-1)*10,originalsPage*10).map(row=>{
+   const projectName=projects.find(p=>p.id===row.project_id)?.title;
+   return `<article class="cloud-artifact-row" data-original-file="${esc(row.id)}"><div class="cloud-artifact-fileline"><span class="cloud-artifact-kind">${esc(row.kind.toUpperCase())}</span><div class="cloud-artifact-copy"><b title="${esc(row.name)}">${esc(row.name)}</b><small>${size(row.bytes)}<i>·</i>${esc(date(row.created_at))}${row.deletionStatus==='pending'?'<i>·</i><span>删除待重试</span>':''}</small><span class="cloud-artifact-project">${icon('folder',12)}${esc(projectName||(row.project_id?'已归入项目':'未归入项目'))}</span>${originalArmed===row.id?'<p>删除原件后无法恢复；已经生成的结果仍会保留。</p>':''}</div><div class="cloud-artifact-actions">${originalArmed===row.id?`<button type="button" data-original-remove-confirm="${esc(row.id)}" class="cloud-artifact-danger">确认删除</button><button type="button" data-original-remove-cancel>取消</button>`:`${row.deletionStatus==='pending'?'':`<button type="button" data-original-download="${esc(row.id)}">下载</button>`}<button type="button" data-original-remove="${esc(row.id)}">${row.deletionStatus==='pending'?'重试删除':'删除'}</button>`}</div></div></article>`;
+  }).join(''):`<p class="cloud-artifact-empty">${query||kind||project?'没有符合当前名称、格式或项目的已上传材料。':'还没有已上传材料。在写作、研读等功能中保存的原件会显示在这里。'}</p>`}</div><div class="cloud-artifact-footer"><span>共 ${filtered.length} 份材料 · 第 ${originalsPage} / ${pages} 页${query||kind||project?' · 已筛选':''}</span><div><button type="button" data-original-page="${originalsPage-1}" ${originalsPage<=1?'disabled':''}>上一页</button><button type="button" data-original-page="${originalsPage+1}" ${originalsPage>=pages?'disabled':''}>下一页</button></div></div>`:''}<div class="cloud-original-toolbar"><p>沿用上方名称、格式与项目筛选。</p><button type="button" data-original-refresh ${originalsLoading?'disabled':''}>${originalsError?'重试读取':'刷新材料'}</button></div></div>`:''}</section>`;
+ }
  function content(){
   const rows=data.items||[],pages=Math.max(1,Math.ceil(data.total/10)),used=Number(data.usedBytes)||0,quota=Number(data.quotaBytes)||0;
   const upload=uploadOpen?`<form class="cloud-artifact-upload"><div><h3>上传到云端</h3><p>文档、演示、图片与数据文件，单文件最大 ${size(data.maxFileBytes)}。</p></div><label for="cloud-upload-file">选择文件<input id="cloud-upload-file" type="file" required accept="${kinds.map(k=>'.'+k).join(',')}"></label><label for="cloud-upload-project">所属项目<select id="cloud-upload-project" ${projectError?'disabled':''}>${projectOptions()}</select></label><div><button class="cloud-artifact-primary" type="submit" ${data.storageReady===false?'disabled':''}>保存到云端</button><button type="button" data-cloud-upload-close>取消</button></div><p class="cloud-artifact-form-error" role="alert"></p></form>`:'';
@@ -29,14 +38,15 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
    const projectId=row.projectId||row.project_id||'',projectName=projects.find(p=>p.id===projectId)?.title;
    const editor=editing===row.id?`<form class="cloud-artifact-metadata" data-cloud-metadata="${esc(row.id)}"><label for="cloud-name-${esc(row.id)}">文件名称<input id="cloud-name-${esc(row.id)}" name="name" maxlength="180" required value="${esc(row.name)}"></label>${!projectError?`<label>所属项目<select name="projectId">${projectId&&!projectName?`<option value="${esc(projectId)}" selected>保留原项目</option>`:''}${projectOptions(projectId)}</select></label>`:''}<div><button type="submit" class="cloud-artifact-primary">保存修改</button><button type="button" data-cloud-edit-cancel>取消</button></div><p class="cloud-artifact-form-error" role="alert"></p></form>`:'';
    return `<article class="cloud-artifact-row" data-cloud-file="${esc(row.id)}"><div class="cloud-artifact-fileline"><span class="cloud-artifact-kind kind-${['png','jpg','jpeg','svg'].includes(row.kind)?'image':row.kind==='pptx'?'slides':['csv','xlsx','json'].includes(row.kind)?'data':'document'}">${esc(row.kind.toUpperCase())}</span><div class="cloud-artifact-copy"><b title="${esc(row.name)}">${esc(row.name)}</b><small>${size(row.bytes)}<i>·</i>${esc(date(row.createdAt))}<i>·</i><span class="cloud-artifact-status ${row.status==='ready'?'ready':''}">${esc(states[row.status]||'待核对')}</span></small><span class="cloud-artifact-project">${icon('folder',12)}${esc(projectName||(projectId?'已归入项目':'未归入项目'))}</span>${armed===row.id?'<p>删除后无法从云端恢复，已下载的本地文件不受影响。</p>':''}</div><div class="cloud-artifact-actions">${armed===row.id?`<button type="button" data-cloud-remove-confirm="${esc(row.id)}" class="cloud-artifact-danger">确认删除</button><button type="button" data-cloud-remove-cancel>取消</button>`:`${row.status==='ready'?`<button type="button" data-cloud-download="${esc(row.id)}">下载</button><button type="button" data-cloud-edit="${esc(row.id)}" aria-expanded="${editing===row.id}">管理</button>`:''}<button type="button" data-cloud-remove="${esc(row.id)}">${row.status==='deleting'?'重试删除':'删除'}</button>`}</div></div>${editor}</article>`;
-  }).join(''):`<div class="cloud-artifact-empty">${icon('folder',34)}<h3>${query||kind||project?'没有匹配的文件':'把你的研究成果保存到云端'}</h3><p>${query||kind||project?'尝试其他名称、格式或项目。':'上传已有文件，或在写作、绘图等功能中导出成果。保存成功后，即可在这里统一管理。'}</p></div>`}</div><div class="cloud-artifact-footer"><span>共 ${data.total} 个文件 · 第 ${page} / ${pages} 页</span><div><button type="button" data-cloud-page="${page-1}" ${page<=1?'disabled':''}>上一页</button><button type="button" data-cloud-page="${page+1}" ${page>=pages?'disabled':''}>下一页</button></div></div>`);
+  }).join(''):`<div class="cloud-artifact-empty">${icon('folder',34)}<h3>${query||kind||project?'没有匹配的文件':'把你的研究成果保存到云端'}</h3><p>${query||kind||project?'尝试其他名称、格式或项目。':'上传已有文件，或在写作、绘图等功能中导出成果。保存成功后，即可在这里统一管理。'}</p></div>`}</div><div class="cloud-artifact-footer"><span>共 ${data.total} 个文件 · 第 ${page} / ${pages} 页</span><div><button type="button" data-cloud-page="${page-1}" ${page<=1?'disabled':''}>上一页</button><button type="button" data-cloud-page="${page+1}" ${page>=pages?'disabled':''}>下一页</button></div></div>${originalMaterials()}`);
  }
  async function refresh(){
-  const version=++request;armed=null;editing=null;data=null;projects=[];projectError='';paint(heading()+'<p class="cloud-artifact-empty" role="status">正在读取云文件…</p>');
+  const version=++request;originalsRequest++;originalsLoading=false;armed=null;editing=null;data=null;projects=[];projectError='';paint(heading()+'<p class="cloud-artifact-empty" role="status">正在读取云文件…</p>');
   try{
    const current=await session(true);if(!alive()||version!==request)return;
    owner=current?.user?.id||null;
-   if(!owner){paint(heading()+'<div class="cloud-artifact-empty"><h3>登录后管理云端成果</h3><p>你的文件只对自己的账户开放。</p><a class="btn primary" href="/auth.html?next='+encodeURIComponent('/workspace.html#assets')+'">登录账户</a></div>');return;}
+   if(originalsOwner!==owner){originals=null;originalsOwner=null;originalsOpen=false;originalsPage=1;originalsError='';originalArmed=null;}
+   if(!owner){paint(heading()+'<div class="cloud-artifact-empty"><h3>登录后管理云端文件</h3><p>你的文件只对自己的账户开放。</p><a class="btn primary" href="/auth.html?next='+encodeURIComponent('/workspace.html#assets')+'">登录账户</a></div>');return;}
    const expectedOwner=owner,filters=new URLSearchParams({page:String(page),pageSize:'10',q:query,expectedUserId:owner});if(kind)filters.set('kind',kind);if(project)filters.set('projectId',project);
    const [fileRead,projectRead]=await Promise.allSettled([api('?'+filters,undefined,expectedOwner),api('',undefined,expectedOwner,false,'/api/projects')]);
    const confirmed=await session(true);if(!alive()||version!==request)return;
@@ -52,8 +62,50 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
  }
  const rowsEmpty=value=>!value.items.length&&value.total<=(page-1)*10;
  async function confirmOwner(expectedOwner,version){const current=await session(true);if(!alive()||version!==request)return false;if(current?.user?.id!==expectedOwner){invalidate('登录账户已变化，操作已停止；请切回原账户后重试');return false;}return true;}
+ function paintOriginals(){if(alive()&&data)withStableView(root.closest('.dashboard')||root,()=>{const panel=root.querySelector('.cloud-original-materials');if(panel)panel.outerHTML=originalMaterials();});}
+ async function loadOriginals(){
+  if(!owner||!data||!originalsOpen)return;const expectedOwner=owner,version=request,ticket=++originalsRequest;
+  originalsLoading=true;originalsError='';originalArmed=null;paintOriginals();
+  const current=()=>alive()&&version===request&&ticket===originalsRequest&&originalsOpen;
+  try{
+   if(!await confirmOwner(expectedOwner,version)||!current())return;
+   const value=await api('?'+new URLSearchParams({expectedUserId:expectedOwner}),undefined,expectedOwner,false,'/api/files');
+   if(!current()||!await confirmOwner(expectedOwner,version)||!current())return;
+   if(!Array.isArray(value.items)||value.items.some(row=>!row||typeof row.id!=='string'||!/^[A-Za-z0-9_-]{1,120}$/.test(row.id)||typeof row.name!=='string'||!['txt','docx','pdf'].includes(row.kind)||!Number.isSafeInteger(row.bytes)||row.bytes<0||typeof row.sha256!=='string'||!row.sha256))throw Error('已上传材料列表响应无法核对，请重试');
+   originals=value.items;originalsOwner=expectedOwner;originalsPage=1;
+  }catch(error){if(current()){if(error.status===401||error.code==='ACCOUNT_CHANGED')invalidate(error.message);else originalsError=error.message||'已上传材料暂时无法读取，请稍后重试';}}
+  finally{if(current()){originalsLoading=false;paintOriginals();}}
+ }
+ async function originalAction(button){
+  if(button.hasAttribute('data-original-toggle')){
+   if(originalsOpen){originalsOpen=false;originalsRequest++;originalsLoading=false;originalArmed=null;paintOriginals();return;}
+   if(!owner||!await confirmOwner(owner,request))return;originalsOpen=true;originalArmed=null;
+   if(!originals||originalsOwner!==owner){void loadOriginals();return;}paintOriginals();return;
+  }
+  if(button.hasAttribute('data-original-refresh')){void loadOriginals();return;}
+  if(button.hasAttribute('data-original-page')){originalsPage=Number(button.dataset.originalPage);originalArmed=null;paintOriginals();return;}
+  if(button.hasAttribute('data-original-remove-cancel')){originalArmed=null;paintOriginals();return;}
+  if(button.hasAttribute('data-original-remove')){originalArmed=button.dataset.originalRemove;originalsError='';paintOriginals();return;}
+  const id=button.dataset.originalDownload||button.dataset.originalRemoveConfirm,row=originals?.find(row=>row.id===id);if(!row||!owner||originalsOwner!==owner)return;
+  const expectedOwner=owner,version=request;busy=true;button.disabled=true;
+  try{
+   if(!await confirmOwner(expectedOwner,version))return;
+   if(button.hasAttribute('data-original-download')){
+    const blob=await api('/'+encodeURIComponent(id)+'/download?'+new URLSearchParams({expectedUserId:expectedOwner}),undefined,expectedOwner,true,'/api/files');
+    if(blob.size!==row.bytes)throw Error('材料大小校验未通过，未发起下载');
+    if(!await confirmOwner(expectedOwner,version))return;
+    const url=URL.createObjectURL(blob),a=doc.createElement('a');a.href=url;a.download=row.name;doc.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);notify('已发起材料下载，请确认浏览器保存完成。');
+   }else{
+    await api('/'+encodeURIComponent(id)+'/delete',{expectedSha256:row.sha256},expectedOwner,false,'/api/files');
+    if(!await confirmOwner(expectedOwner,version))return;
+    originals=originals.filter(item=>item.id!==id);originalArmed=null;originalsError='';paintOriginals();notify('已删除材料原件，已生成结果仍会保留。');
+   }
+  }catch(error){if(alive()&&version===request){if(error.status===401||error.code==='ACCOUNT_CHANGED')invalidate(error.message);else{originalsError=error.message||'材料操作未完成，请稍后重试';paintOriginals();}notify(error.message||'材料操作未完成，请稍后重试');}}
+  finally{busy=false;if(button.isConnected)button.disabled=false;}
+ }
  async function action(event){
   const button=event.target.closest('button');if(!button||!root.contains(button)||busy)return;
+  if(button.matches('[data-original-toggle],[data-original-refresh],[data-original-page],[data-original-remove-cancel],[data-original-remove],[data-original-download],[data-original-remove-confirm]')){await originalAction(button);return;}
   if(button.hasAttribute('data-cloud-refresh')){void refresh();return;}
   if(button.hasAttribute('data-cloud-reset')){query='';kind='';project='';page=1;void refresh();return;}
   if(button.hasAttribute('data-cloud-page')){page=Number(button.dataset.cloudPage);void refresh();return;}
@@ -80,7 +132,7 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
  }
  async function submit(event){
   const form=event.target;if(!form.matches('.cloud-artifact-search,.cloud-artifact-upload,.cloud-artifact-metadata'))return;event.preventDefault();if(busy||!data)return;
-  if(form.matches('.cloud-artifact-search')){query=form.querySelector('input').value.trim();kind=form.querySelector('[name=kind]').value;project=form.querySelector('[name=project]').value;page=1;void refresh();return;}
+  if(form.matches('.cloud-artifact-search')){query=form.querySelector('input').value.trim();kind=form.querySelector('[name=kind]').value;project=form.querySelector('[name=project]').value;page=1;originalsPage=1;void refresh();return;}
   const expectedOwner=owner,version=request,errorNode=form.querySelector('[role=alert]'),button=form.querySelector('[type=submit]');
   errorNode.textContent='';busy=true;button.disabled=true;
   try{

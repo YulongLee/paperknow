@@ -38,15 +38,15 @@ export async function exportGeneratedFile({name,content,type='text/plain;charset
   if(sourceId)payload.sourceId=String(sourceId).slice(0,120);if(projectId)payload.projectId=projectId;
   const response=await fetchImpl('/api/artifacts',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','X-PaperKnow-User':userId},body:JSON.stringify(payload),signal:AbortSignal.timeout(120000)}),value=await json(response);
   if(!response.ok)throw Error((value?.error||'云文件保存失败')+'；未发起下载，当前内容仍保留，请重试。');
-  if(typeof value?.item?.id!=='string'||!value.item.id)throw Error('云文件保存结果无法核对，未发起下载。请到“我的成果”核对后重试。');
+  if(typeof value?.item?.id!=='string'||!value.item.id)throw Error('云文件保存结果无法核对，未发起下载。请到“文件管理”核对后重试。');
   saved=value.item;
-  if(await owner(fetchImpl)!==userId)throw Error('文件已保存到原账户，但当前登录已变化；已停止下载，请切回原账户后在“我的成果”下载。');
+  if(await owner(fetchImpl)!==userId)throw Error('文件已保存到原账户，但当前登录已变化；已停止下载，请切回原账户后在“文件管理”下载。');
   const downloadResponse=await fetchImpl('/api/artifacts/'+encodeURIComponent(saved.id)+'/download?expectedUserId='+encodeURIComponent(userId),{credentials:'same-origin',cache:'no-store',headers:{'X-PaperKnow-User':userId},signal:AbortSignal.timeout(60000)});
-  if(!downloadResponse.ok){const failure=await json(downloadResponse);throw Error((failure?.error||'云文件下载暂时失败')+'；文件已保存，可在“我的成果”重试下载。');}
-  output=await downloadResponse.blob();if(!output.size)throw Error('云文件返回为空；未发起下载，请在“我的成果”核对后重试。');if(Number.isSafeInteger(saved.bytes)&&output.size!==saved.bytes)throw Error('云文件大小与保存记录不一致，已停止下载；请在“我的成果”核对后重试。');
-  if(await owner(fetchImpl)!==userId)throw Error('文件已保存到原账户，但当前登录已变化；已停止下载，请切回原账户后在“我的成果”下载。');
+  if(!downloadResponse.ok){const failure=await json(downloadResponse);throw Error((failure?.error||'云文件下载暂时失败')+'；文件已保存，可在“文件管理”重试下载。');}
+  output=await downloadResponse.blob();if(!output.size)throw Error('云文件返回为空；未发起下载，请在“文件管理”核对后重试。');if(Number.isSafeInteger(saved.bytes)&&output.size!==saved.bytes)throw Error('云文件大小与保存记录不一致，已停止下载；请在“文件管理”核对后重试。');
+  if(await owner(fetchImpl)!==userId)throw Error('文件已保存到原账户，但当前登录已变化；已停止下载，请切回原账户后在“文件管理”下载。');
  }
  const url=urlAPI.createObjectURL(output),anchor=documentObject.createElement('a');anchor.href=url;anchor.download=filename;documentObject.body.append(anchor);anchor.click();anchor.remove();setTimeoutImpl(()=>urlAPI.revokeObjectURL(url),10000);
- const message=saved?'已保存到账户云文件并发起下载，可在“我的成果”再次下载。':'已发起本地下载；当前未登录，文件未上传云端。';notify(message);return {saved:!!saved,item:saved,message};
+ const message=saved?'已保存到账户云文件并发起下载，可在“文件管理”再次下载。':'已发起本地下载；当前未登录，文件未上传云端。';notify(message);return {saved:!!saved,item:saved,message};
 }
 export async function downloadGeneratedFile(name,content,type,options={}){try{return await exportGeneratedFile({name,content,type,...options});}catch(error){artifactExportNotice(error.message||'导出失败，当前内容仍保留。',{error:true});throw error;}}

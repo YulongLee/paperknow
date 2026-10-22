@@ -139,6 +139,7 @@ if(path==='/api/tool-runs'||path.startsWith('/api/tool-runs/')){if(method==='POS
 if(path==='/api/writing'||path.startsWith('/api/writing/')){if(method==='POST')rate(req,60);const response=await writing.handle({path,method,user,readBody:()=>body(req)});if(response){send(response.status,response.value);return;}fail(404,'写作接口不存在');}
 if(path==='/api/theses'||path.startsWith('/api/theses/')){if(method==='POST')rate(req,60);const response=await thesisMethods.handle({path,method,user,readBody:()=>body(req)})||await thesisOutlines.handle({path,method,user,readBody:()=>body(req)})||await theses.handle({path,method,user,readBody:()=>body(req)});if(response){send(response.status,response.value);return;}fail(404,'论文接口不存在');}
 const workspaceResponse=await workspace({path,method,user,readBody:()=>body(req)});if(workspaceResponse){send(workspaceResponse.status,workspaceResponse.value);return;}
+if(path==='/api/files/reuse'&&method==='POST')rate(req,60);
 const fileResponse=await files({path,method,user,query:requestURL.searchParams,readBody:()=>body(req,path==='/api/files'?28*1024*1024:3*1024*1024)});
 if(fileResponse){if(fileResponse.body){res.writeHead(fileResponse.status||200,{...fileResponse.headers,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(fileResponse.body);}else send(fileResponse.status||200,fileResponse.value);return;}
 if(path==='/api/jobs'){

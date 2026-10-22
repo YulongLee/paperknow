@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {mountDocumentTranslation,eligibleTranslationFiles,validateTranslationFile,translationDownloadPath} from '../dist/workspace/document-translation.mjs';
+import {bindStoredFile} from '../dist/workspace/file-selection.mjs';
 import {mountFormulaOcr,formulaImageDimensions} from '../dist/workspace/formula-ocr.mjs';
 const reply=(body,status=200)=>({ok:status>=200&&status<300,status,json:async()=>body});
 const settle=async()=>{for(let i=0;i<7;i++)await new Promise(resolve=>setImmediate(resolve));};
@@ -26,3 +27,11 @@ test('image dimensions preserve aspect ratio and do not upscale small formula sc
 test('disabled services and logged out sessions keep text and manual formula alternatives available',async()=>{for(const service of ['translation','formula'])for(const loggedIn of [true,false]){const f=fixture(url=>url==='/api/auth/me'?reply({user:loggedIn?{id:'u1'}:null}):url==='/api/capabilities'?reply({documentTranslation:{ready:false},formulaOcr:{ready:false}}):assert.fail('should not read private files'));try{await f[service]().ready;assert.equal(f.calls.filter(c=>c.body).length,0);assert.match(f.$('#host').textContent,loggedIn?/暂未开放/:/登录/);if(!loggedIn)assert.match(f.$('#host a').getAttribute('href'),/^\/auth.html\?mode=login/);}finally{f.close();}}});
 
 test('closing a formula panel ignores late responses and never applies a result automatically',async()=>{let resolve;const f=fixture(url=>url==='/api/formula-recognitions'?new Promise(done=>resolve=done):initial(url));try{const instance=f.formula();await instance.ready;chooseFile(f,'[data-formula-ocr-file]');await settle();f.$('[data-formula-ocr-consent]').checked=true;f.$('[data-formula-ocr-submit]').click();await settle();instance.dispose();resolve(reply({id:'ocr1',status:'completed',latex:'x+y'}));await settle();assert.deepEqual(f.applied,[]);assert.equal(f.$('[data-formula-ocr-output]').hidden,true);}finally{f.close();}});
+
+test('choosing a cloud file after selecting an existing translation original replaces the old choice without reuploading',async()=>{
+ const f=fixture((url,body)=>{if(url==='/api/files/reuse')return reply({id:'chosen-cloud-original'});if(url==='/api/document-translations'&&body)return reply({id:'cloud-translation'});if(url==='/api/document-translations/cloud-translation')return reply({id:'cloud-translation',status:'completed',fileName:'新选择.docx',sourceLanguage:'en',targetLanguage:'zh'});return initial(url);});
+ try{await f.translation().ready;const existing=f.$('[data-doc-file]'),input=f.$('[data-doc-upload]');existing.value='file1';existing.dispatchEvent(new window.Event('change'));assert.equal(f.$('[data-doc-upload-wrap]').hidden,true);
+  const file=bindStoredFile({name:'新选择.docx',size:100},{ownerId:'u1',sourceType:'artifact',id:'cloud-docx',sha256:'a'.repeat(64)});Object.defineProperty(input,'files',{value:[file]});input.dispatchEvent(new window.Event('change'));assert.equal(existing.value,'');assert.equal(f.$('[data-doc-upload-wrap]').hidden,false);f.$('[data-doc-consent]').checked=true;submit(f);await settle();
+  assert.equal(f.calls.find(call=>call.url==='/api/document-translations'&&call.body).body.fileId,'chosen-cloud-original');assert.equal(f.calls.filter(call=>call.url==='/api/files'&&call.body).length,0);assert.equal(f.calls.filter(call=>call.url==='/api/files/reuse').length,1);
+ }finally{f.close();}
+});

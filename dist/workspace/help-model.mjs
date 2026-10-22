@@ -1,7 +1,7 @@
 export const feedbackKey='paperknow-help-feedback';
 export const feedbackTypes=['功能问题','使用咨询','体验建议','其他'];
 export const helpCategories=[{"id":"start","title":"新手入门","description":"创建项目与管理成果","icon":"book","color":"blue"},{"id":"writing","title":"写作与修改","description":"大纲编辑与内容保存","icon":"pen","color":"purple"},{"id":"literature","title":"AI 研读","description":"原文解读、问答与翻译","icon":"file","color":"mint"},{"id":"detection","title":"免费查重","description":"上传要求与报告解读","icon":"search","color":"orange"},{"id":"files","title":"文件与导出","description":"Word、PDF 与 PPT","icon":"upload","color":"blue"},{"id":"data","title":"账户与数据","description":"偏好设置与备份恢复","icon":"settings","color":"purple"}];
-export const relatedFeatures=['未选择','工作台与项目','我的成果','任务中心','AI 写作','AI 研读','降重复率','降 AI 率','免费查重','PPT 创作','科研工具','格式排版','会员与用量','设置与备份','其他'];
+export const relatedFeatures=['未选择','工作台与项目','文件管理','任务中心','AI 写作','AI 研读','降重复率','降 AI 率','免费查重','PPT 创作','科研工具','格式排版','会员与用量','设置与备份','其他'];
 export const articles=[
   {
     "id": "start-project",
@@ -11,7 +11,7 @@ export const articles=[
     "summary": "按研究课题组织草稿、文献与报告，区分本地项目和账户内容。",
     "steps": [
       "进入「我的项目」，先确认正在查看「本地内容」还是「账户内容」，再填写项目名称、学段与专业。",
-      "本地写作等工具可选择所属项目；已有本地成果可以从「我的成果」管理项目关联。账户项目和上传原件在账户内容中管理。",
+      "本地写作等工具可选择所属项目；已有本地成果可以从「文件管理」管理项目关联。账户项目和上传原件在账户内容中管理。",
       "保存后在对应空间重新打开项目或成果，确认实际记录已经写入。"
     ],
     "note": "本地项目保存在当前浏览器，账户项目由服务端保存；登录不会自动迁移本地项目，也不代表团队共享。",
@@ -27,7 +27,7 @@ export const articles=[
     "steps": [
       "选择 AI 写作、AI 研读、免费查重或其他相关工具。",
       "按页面提示填写真实研究信息，核对页面标注的当前可用范围。",
-      "编辑并保存内容，再到「我的成果」重新打开；任务中心查看已记录的实际操作。"
+      "编辑并保存内容，再到「文件管理」重新打开；任务中心查看已记录的实际操作。"
     ],
     "note": "本地模板和操作记录不代表在线 AI 服务已调用。",
     "action": "#home",
@@ -149,7 +149,7 @@ export const articles=[
     ],
     "note": "各页面的导出能力以实际按钮为准；文本导出不会自动变成排版后的 Word 文档。",
     "action": "#assets",
-    "actionLabel": "前往我的成果"
+    "actionLabel": "前往文件管理"
   },
   {
     "id": "data-location",
