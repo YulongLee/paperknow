@@ -9,10 +9,10 @@ const originalSnapshot=()=>({title:'【合成验收】科研方法演示',text:'
 const quote=()=>({type:'agent',source:'credits',title:'演示文稿创作',token:'fixture-quote',creditCost:10,expiresAt:new Date(Date.now()+60000).toISOString()});
 const completedJob=(id='job-alice')=>({id,kind:'presentation',operation:'ppt',status:'completed',completedUnits:1,totalUnits:1,output:{text:'仅属于原账户的合成验收内容',slides:[],sourceIds:[]}});
 const until=async check=>{for(let i=0;i<100;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}assert.ok(check(),'异步界面未达到预期状态');};
-function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),initialOwner='alice',kind='presentation',operation='ppt',initialProjectRef='',getQuote=quote}={}){
+function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),initialOwner='alice',kind='presentation',operation='ppt',initialProjectRef='',getQuote=quote,beforeApi=async()=>{}}={}){
  const dom=new JSDOM('<main class="dashboard"><div id="job"></div></main>',{url:'https://paperknow.cn/workspace.html#category/ppt'}),w=dom.window,container=w.document.querySelector('#job');
  let ownerId=initialOwner,projectRef=initialProjectRef,snapshot=originalSnapshot(),job=structuredClone(initialJob),applies=0;const requests=[],states=[],instances=[];
- const api=async(path,data)=>{requests.push({path,data:data===undefined?undefined:structuredClone(data),ownerId});
+ const api=async(path,data)=>{await beforeApi(path,data);requests.push({path,data:data===undefined?undefined:structuredClone(data),ownerId});
   if(path==='/auth/me'){if(!ownerId)throw Object.assign(Error('登录已失效'),{status:401});return {user:{id:ownerId}};}
   if(path==='/tool-runs/capabilities')return {ready:true};
   if(path==='/tool-runs/quote')return getQuote();
@@ -149,4 +149,29 @@ test('tool explanation stays open through an unchanged-input redraw and a fresh 
  const f=fixture(t);await f.panel.open();f.click('[data-tj-disclosure-toggle]');const toggle=f.container.querySelector('[data-tj-disclosure-toggle]');toggle.focus();const input=f.container.querySelector('[data-tj-consent]');input.checked=false;input.dispatchEvent(new f.w.Event('change',{bubbles:true}));f.panel.inputChanged();
  assert.equal(f.container.querySelector('[data-tj-disclosure]').open,true);assert.equal(f.container.querySelector('[data-tj-consent]').checked,false);assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);assert.equal(f.w.document.activeElement,f.container.querySelector('[data-tj-disclosure-toggle]'));assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);
  f.click('[data-tj-new]');await until(()=>f.requests.filter(row=>row.path==='/tool-runs/quote').length===2&&!f.container.querySelector('[data-tj-start]').disabled);assert.equal(f.container.querySelector('[data-tj-disclosure]').open,false);assert.equal(f.container.querySelector('[data-tj-consent]').checked,true);assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);
+});
+
+
+test('active tool progress updates keep the waiting window, controls and focus in place',async t=>{
+ const running={...completedJob(),status:'queued',output:null,completedUnits:0,totalUnits:4};
+ const f=fixture(t,{initialJob:running});await f.panel.open();f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-refresh]'));
+ const window=f.container.querySelector('[data-tj-result]'),title=f.container.querySelector('[data-tj-wait-title]'),refresh=f.container.querySelector('[data-tj-refresh]');refresh.focus();window.scrollTop=37;
+ f.setJob({...running,status:'running',completedUnits:2,progress:{stage:'authoring',currentPage:2,totalPages:6}});await f.panel.refresh();
+ assert.equal(f.container.querySelector('[data-tj-result]'),window);assert.equal(f.container.querySelector('[data-tj-wait-title]'),title);assert.equal(f.container.querySelector('[data-tj-refresh]'),refresh);assert.equal(f.w.document.activeElement,refresh);assert.equal(window.scrollTop,37);
+ assert.equal(title.textContent,'正在处理');assert.match(f.container.querySelector('[data-tj-units]').textContent,/2 \/ 4/);assert.match(f.container.querySelector('[data-tj-wait-detail]').textContent,/制作演示页面/);assert.match(f.container.textContent,/自动更新，无需重复点击/);assert.equal(refresh.disabled,false);
+ f.setJob({...completedJob(),completedUnits:4,totalUnits:4});await f.panel.refresh();assert.ok(f.container.querySelector('[data-tj-result].generation-result-window'));assert.ok(f.container.querySelector('[data-tj-preview]'));assert.equal(f.container.querySelector('.generation-wait-spinner'),null);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,1);
+});
+
+test('automatic tool polling neither replaces the panel nor disables its controls while the request is pending',async t=>{
+ let release,blocked=false;const running={...completedJob(),status:'running',output:null,completedUnits:0};
+ const f=fixture(t,{initialJob:running,beforeApi:path=>blocked&&path==='/tool-runs/jobs/job-alice'?new Promise(resolve=>{release=resolve;}):Promise.resolve()}),timers=[];
+ const realTimeout=f.w.setTimeout.bind(f.w);f.w.setTimeout=(callback,delay,...args)=>delay===2500?(timers.push(callback),realTimeout(()=>{},100000)):realTimeout(callback,delay,...args);
+ await f.panel.open();f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-refresh]'));const panel=f.container.firstElementChild,refresh=f.container.querySelector('[data-tj-refresh]');blocked=true;timers.at(-1)();await until(()=>!!release);
+ assert.equal(f.container.firstElementChild,panel);assert.equal(refresh.disabled,false);release();await until(()=>timers.length>1);assert.equal(f.container.firstElementChild,panel);assert.equal(f.container.querySelector('[data-tj-refresh]'),refresh);
+});
+
+test('submission immediately shows a waiting state and blocks repeated starts until the response arrives',async t=>{
+ let release;const running={...completedJob(),status:'queued',output:null,completedUnits:0};
+ const f=fixture(t,{initialJob:running,beforeApi:path=>path==='/tool-runs/jobs'?new Promise(resolve=>{release=resolve;}):Promise.resolve()});await f.panel.open();f.click('[data-tj-start]');await until(()=>!!release);
+ assert.match(f.container.querySelector('[data-tj-wait-title]').textContent,/正在提交/);assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);f.click('[data-tj-start]');release();await until(()=>!!f.container.querySelector('[data-tj-refresh]'));assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,1);
 });

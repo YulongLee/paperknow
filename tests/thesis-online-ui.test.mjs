@@ -386,3 +386,39 @@ test('a completed run from a different snapshot keeps its old gaps out of the cu
  const old='旧版本缺少的实验材料不属于本稿',f=fixture({item:thesis({status:'completed',job:{id:'old-run',status:'completed',stage:'completed',snapshotChanged:true,completedSections:3,totalSections:3,missingEvidence:[old]},chapters:[{id:'c1',title:'当前初稿',version:2,status:'saved',text:'当前保存的正文',sourceIds:[]}]})});
  try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;assert.ok(f.$('.thesis-review-checklist'));assert.equal(f.$('[data-thesis-review-scroll]').querySelectorAll('li').length,0);assert.doesNotMatch(f.$('.thesis-review-checklist').textContent,/旧版本缺少的实验材料/);assert.match(f.$('.thesis-previous-run').textContent,/旧版本缺少的实验材料/);assert.equal(f.$('.thesis-previous-run').open,false);assert.doesNotMatch(f.$('.thesis-editor').textContent,/旧版本缺少的实验材料/);assert.equal(f.$('[data-thesis-editor]').value,'当前保存的正文');assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();}
 });
+
+
+test('changed active progress updates in place while preserving editor, open previews and reader controls',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const section={id:'s1',chapterId:'c1',status:'completed',text:'第一个已经保存的小节。',sourceIds:[]},chapter={id:'c1',title:'研究背景',version:1,status:'partial',text:'已经保存的章节内容。',sourceIds:[],totalSections:3},original=thesis({status:'queued',job:{id:'run-steady',status:'queued',stage:'queued',completedSections:1,totalSections:3,missingEvidence:['核对已有研究记录']},chapters:[chapter],sections:[section]}),f=fixture({item:original});
+ Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});
+ try{
+  const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;
+  const editor=f.$('[data-thesis-editor]'),progress=f.$('.thesis-progress'),wait=f.$('[data-thesis-wait]'),review=f.$('[data-thesis-review-scroll]'),parts=f.$('[data-thesis-parts-panel]'),partScroll=f.$('[data-thesis-parts-scroll]'),quality=f.$('[data-thesis-quality-panel]'),qualityScroll=f.$('[data-thesis-quality-scroll]'),latest=f.$('[data-thesis-review-latest]');
+  assert.equal(wait.getAttribute('aria-busy'),'true');assert.match(wait.textContent,/等待开始/);
+  parts.open=true;quality.open=true;review.scrollTop=56;partScroll.scrollTop=49;qualityScroll.scrollTop=38;editor.scrollTop=27;editor.focus();editor.setSelectionRange(1,5);editor.style.height='635px';
+  f.setItem({...original,version:2,status:'running',job:{...original.job,status:'running',stage:'generating_section',completedSections:2,missingEvidence:['核对已有研究记录','补充实际样本来源']},chapters:[{...chapter,text:'新保存的章节内容，保留读取位置。',version:2}],sections:[section,{id:'s2',chapterId:'c1',status:'completed',text:'第二个新保存的小节。',sourceIds:[]}]});
+  t.mock.timers.tick(4000);await settle();
+  for(const [selector,node] of [['[data-thesis-editor]',editor],['.thesis-progress',progress],['[data-thesis-wait]',wait],['[data-thesis-review-scroll]',review],['[data-thesis-parts-panel]',parts],['[data-thesis-parts-scroll]',partScroll],['[data-thesis-quality-panel]',quality],['[data-thesis-quality-scroll]',qualityScroll],['[data-thesis-review-latest]',latest]])assert.equal(f.$(selector),node,selector+' must retain its existing DOM node');
+  assert.equal(document.activeElement,editor);assert.equal(editor.selectionStart,1);assert.equal(editor.selectionEnd,5);assert.equal(editor.style.height,'635px');assert.equal(editor.scrollTop,27);assert.match(editor.value,/新保存的章节内容/);assert.equal(review.scrollTop,56);assert.equal(partScroll.scrollTop,49);assert.equal(qualityScroll.scrollTop,38);assert.equal(parts.open,true);assert.equal(quality.open,true);assert.equal(review.querySelectorAll('li').length,2);assert.equal(f.$('[data-thesis-parts-summary] small').textContent,'2 / 3');assert.match(wait.textContent,/正在生成论文/);assert.equal(f.$('progress').value,66);
+  Object.defineProperty(review,'scrollHeight',{configurable:true,value:760});latest.click();assert.equal(review.scrollTop,760,'retained control still has its single working handler');assert.equal(f.calls.some(row=>row.data),false);
+ }finally{f.close();t.mock.timers.reset();}
+});
+
+test('generation feedback remains a fixed reading surface and has no simulated progress or forced scrolling',async()=>{
+ const f=fixture({item:thesis({status:'running',job:{id:'run-1',status:'running',stage:'agent_running',completedSections:0,totalSections:3}})});
+ try{const style=document.createElement('style');style.textContent=readFileSync(new URL('../dist/workspace/thesis-online.css',import.meta.url),'utf8');document.head.append(style);const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;const wait=f.$('[data-thesis-wait]');assert.equal(window.getComputedStyle(wait).height,'92px');assert.equal(wait.getAttribute('role'),'status');assert.equal(wait.getAttribute('aria-busy'),'true');assert.match(wait.textContent,/无需重复点击/);assert.equal(f.$('progress').value,0);assert.equal(f.calls.some(row=>row.data),false);assert.match(style.textContent,/prefers-reduced-motion:reduce/);}finally{f.close();}
+});
+
+
+test('delayed generation submission shows a dedicated waiting state while reading fees does not claim to generate',async()=>{
+ let resolveQuote,resolveSubmission;
+ const feeResponse=new Promise(resolve=>{resolveQuote=resolve;}),submissionResponse=new Promise(resolve=>{resolveSubmission=resolve;}),queued=thesis({version:2,status:'queued',job:{id:'submitted-job',status:'queued',stage:'queued',completedSections:0,totalSections:3}}),f=fixture({handler:path=>path==='/theses/t1/quote'?feeResponse:path==='/theses/t1/generate'?submissionResponse:undefined});
+ try{
+  const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;f.$('[data-thesis-quote]').click();await settle();
+  assert.equal(f.$('[data-thesis-wait]').getAttribute('aria-busy'),'false');assert.doesNotMatch(f.$('[data-thesis-wait-title]').textContent,/正在提交|正在生成/,'fee preview is not a generation submission');
+  resolveQuote(quote());await settle();f.$('[data-thesis-start]').click();await settle();
+  assert.equal(f.calls.filter(row=>row.path==='/theses/t1/generate').length,1);assert.equal(f.$('[data-thesis-wait]').getAttribute('aria-busy'),'true');assert.match(f.$('[data-thesis-wait-title]').textContent,/正在提交生成任务/);assert.match(f.$('[data-thesis-wait]').textContent,/无需重复点击/);assert.equal(f.$('[data-thesis-start]').disabled,true);assert.equal(f.$('[data-thesis-start]').textContent,'正在提交…');assert.equal(f.$('[data-thesis-dismiss]').disabled,true);f.$('[data-thesis-start]').click();await settle();assert.equal(f.calls.filter(row=>row.path==='/theses/t1/generate').length,1);
+  resolveSubmission({item:queued});await settle();assert.equal(f.$('[data-thesis-start]'),null);assert.match(f.$('[data-thesis-wait-title]').textContent,/已提交，等待开始/);assert.equal(f.$('[data-thesis-wait]').getAttribute('aria-busy'),'true');assert.equal(f.calls.filter(row=>row.path==='/theses/t1/generate').length,1);
+ }finally{resolveQuote(quote());resolveSubmission({item:queued});await settle();f.close();}
+});

@@ -7,9 +7,9 @@ import {projectReference} from '../dist/workspace/project-directory.mjs';
 
 const snapshot=()=>({title:'账户项目写作验收',profile:{level:'本科',targetWords:1000},materials:[],references:[],outline:[]});
 const until=async check=>{for(let i=0;i<100;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}assert.ok(check(),'写作任务界面未达到预期状态');};
-function fixture(t,{projectRef='',initialState={},getQuote=()=>({type:'agent',source:'credits',creditCost:10,title:'文章写作',token:'test-quote',expiresAt:new Date(Date.now()+60000).toISOString()})}={}){
+function fixture(t,{projectRef='',initialState={},beforeApi=async()=>{},getQuote=()=>({type:'agent',source:'credits',creditCost:10,title:'文章写作',token:'test-quote',expiresAt:new Date(Date.now()+60000).toISOString()})}={}){
  const dom=new JSDOM('<main class="dashboard"><div id="job"></div></main>',{url:'https://paperknow.cn/workspace.html#tool/article'}),container=dom.window.document.querySelector('#job'),calls=[],instances=[];let ref=projectRef,ownerId='alice',record={id:'writing-1',kind:'article',operation:'draft',status:'completed',output:{text:'待核对的写作结果',sourceIds:[]}};
- const api=async(path,data)=>{calls.push({path,data:data===undefined?undefined:structuredClone(data)});if(path==='/auth/me')return {user:{id:ownerId}};if(path==='/writing/capabilities')return {ready:true};if(path==='/writing/quote')return getQuote();if(path==='/writing/jobs')return {item:{...record,projectId:data.projectId||null}};if(path==='/writing/jobs/writing-1')return {item:record};throw Error('测试不允许的请求 '+path);};
+ const api=async(path,data)=>{calls.push({path,data:data===undefined?undefined:structuredClone(data)});await beforeApi(path,data);if(path==='/auth/me')return {user:{id:ownerId}};if(path==='/writing/capabilities')return {ready:true};if(path==='/writing/quote')return getQuote();if(path==='/writing/jobs')return {item:{...record,projectId:data.projectId||null}};if(path==='/writing/jobs/writing-1')return {item:record};if(path==='/writing/jobs/writing-1/cancel')return {item:{...record,status:'cancelled'}};throw Error('测试不允许的请求 '+path);};
  const mount=state=>{const panel=mountWritingJobPanel({container,ctx:{api},kind:'article',operation:'draft',getSnapshot:snapshot,getProjectRef:()=>ref,initialState:state});instances.push(panel);return panel;},panel=mount(initialState);
  t.after(()=>{instances.forEach(panel=>panel.dispose());dom.window.close();});return {dom,container,calls,panel,mount,setRef:value=>{ref=value;},setOwner:value=>{ownerId=value;},setRecord:value=>{record=value;},consent(){const input=container.querySelector('[data-wj-consent]');assert.ok(input);input.checked=true;input.dispatchEvent(new dom.window.Event('change'));},click:selector=>{const node=container.querySelector(selector);assert.ok(node,selector);node.click();}};
 }
@@ -81,4 +81,31 @@ test('writing explanation remains open when a cancelled confirmation is re-rende
  const f=fixture(t);await f.panel.open();f.click('[data-wj-disclosure-toggle]');const toggle=f.container.querySelector('[data-wj-disclosure-toggle]');toggle.focus();const input=f.container.querySelector('[data-wj-consent]');input.checked=false;input.dispatchEvent(new f.dom.window.Event('change'));
  f.container.querySelector('[data-wj-start]').dispatchEvent(new f.dom.window.MouseEvent('click',{bubbles:true}));await until(()=>!!f.container.querySelector('[role="alert"]'));assert.equal(f.container.querySelector('[data-wj-disclosure]').open,true);assert.equal(f.container.querySelector('[data-wj-consent]').checked,false);assert.equal(f.container.querySelector('[data-wj-start]').disabled,true);assert.equal(f.dom.window.document.activeElement,f.container.querySelector('[data-wj-disclosure-toggle]'));assert.equal(f.calls.some(row=>row.path==='/writing/jobs'),false);
  f.click('[data-wj-new]');await until(()=>f.calls.filter(row=>row.path==='/writing/quote').length===2&&!f.container.querySelector('[data-wj-start]').disabled);assert.equal(f.container.querySelector('[data-wj-disclosure]').open,false);assert.equal(f.container.querySelector('[data-wj-consent]').checked,true);assert.equal(f.calls.some(row=>row.path==='/writing/jobs'),false);
+});
+
+test('automatic writing status reads preserve active controls, focus and the scrollable waiting window',async t=>{
+ let hold=null;const snap=snapshot(),f=fixture(t,{initialState:{itemId:'writing-1',ownerId:'alice',snapshot:snap,contextKey:JSON.stringify(snap)},beforeApi:async path=>{if(hold&&path==='/writing/jobs/writing-1')await hold;}}),win=f.dom.window;
+ let poll;const nativeTimeout=win.setTimeout.bind(win),nativeClear=win.clearTimeout.bind(win);win.setTimeout=(fn,delay,...args)=>delay===2500?(poll=fn,-1):nativeTimeout(fn,delay,...args);win.clearTimeout=id=>{if(id!==-1)nativeClear(id);};
+ f.setRecord({id:'writing-1',operation:'draft',status:'running',completedUnits:1,totalUnits:3,stage:'verifying_citations'});await f.panel.open();
+ const section=f.container.firstElementChild,waiting=f.container.querySelector('[data-wj-result-window]'),stop=f.container.querySelector('[data-wj-cancel]'),summary=f.container.querySelector('[data-writing-quality-summary]');
+ waiting.scrollTop=37;summary.focus();f.container.querySelector('[data-writing-quality-panel]').open=true;
+ let release;hold=new Promise(resolve=>{release=resolve;});f.setRecord({id:'writing-1',operation:'draft',status:'running',completedUnits:2,totalUnits:3,stage:'checking_consistency'});poll();await until(()=>f.calls.filter(row=>row.path==='/writing/jobs/writing-1').length===2);
+ assert.equal(f.container.firstElementChild,section);assert.equal(f.container.querySelector('[data-wj-cancel]'),stop);assert.equal(stop.disabled,false);assert.equal(win.document.activeElement,summary);
+ release();await until(()=>/2 \/ 3/.test(f.container.querySelector('[data-wj-units]').textContent));
+ assert.equal(f.container.firstElementChild,section);assert.equal(f.container.querySelector('[data-wj-result-window]'),waiting);assert.equal(waiting.scrollTop,37);assert.equal(win.document.activeElement,summary);assert.equal(f.container.querySelector('[data-writing-quality-panel]').open,true);assert.match(f.container.querySelector('[data-wj-stage]').textContent,/检查正文一致性/);assert.match(waiting.textContent,/自动更新，无需重复点击/);assert.equal(waiting.getAttribute('aria-busy'),'true');assert.equal(f.calls.some(row=>row.path==='/writing/jobs'),false);
+});
+
+test('writing submission immediately shows waiting feedback, blocks duplicate clicks and retains task recovery on a lost response',async t=>{
+ let release,submitting=false;const pending=new Promise(resolve=>{release=resolve;}),f=fixture(t,{beforeApi:async path=>{if(path==='/writing/jobs'){submitting=true;await pending;throw Error('连接中断，响应暂未确认');}}});
+ await f.panel.open();const button=f.container.querySelector('[data-wj-start]');button.click();
+ assert.match(f.container.querySelector('[data-wj-result-window]').textContent,/正在提交生成任务/);assert.equal(f.container.querySelector('[data-wj-start]').disabled,true);f.container.querySelector('[data-wj-start]').click();
+ await until(()=>submitting);assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);release();await until(()=>!!f.container.querySelector('[role="alert"]'));
+ assert.match(f.container.textContent,/连接中断/);assert.ok(f.container.querySelector('[data-wj-recover]'));assert.equal(f.container.querySelector('[data-wj-result-window]').getAttribute('aria-busy'),'false');assert.ok(f.panel.getState().commandKey);assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);
+});
+
+test('a stop requested during an automatic writing status read executes after that read instead of being discarded',async t=>{
+ let hold=null,release;const snap=snapshot(),f=fixture(t,{initialState:{itemId:'writing-1',ownerId:'alice',snapshot:snap,contextKey:JSON.stringify(snap)},beforeApi:async path=>{if(hold&&path==='/writing/jobs/writing-1')await hold;}}),win=f.dom.window;
+ let poll;const nativeTimeout=win.setTimeout.bind(win),nativeClear=win.clearTimeout.bind(win);win.setTimeout=(fn,delay,...args)=>delay===2500?(poll=fn,-1):nativeTimeout(fn,delay,...args);win.clearTimeout=id=>{if(id!==-1)nativeClear(id);};
+ f.setRecord({id:'writing-1',operation:'draft',status:'running',completedUnits:0,totalUnits:3});await f.panel.open();hold=new Promise(resolve=>{release=resolve;});poll();await until(()=>f.calls.filter(row=>row.path==='/writing/jobs/writing-1').length===2);
+ f.click('[data-wj-cancel]');assert.equal(f.calls.some(row=>row.path.endsWith('/cancel')),false);release();await until(()=>/已停止/.test(f.container.textContent));assert.equal(f.calls.filter(row=>row.path.endsWith('/cancel')).length,1);assert.equal(f.calls.some(row=>row.path==='/writing/jobs'),false);
 });
