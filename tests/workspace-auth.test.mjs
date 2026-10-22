@@ -33,6 +33,7 @@ import {homeLayout,fitHomeRows,continuationAssets} from '../dist/workspace/home-
 
 const source=(await readFile(new URL('../dist/workspace/app.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
 const homeSource=await readFile(new URL('../dist/index.html',import.meta.url),'utf8');
+const historySource=(await readFile(new URL('../dist/workspace/project-history-import.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const onlineSource=(await readFile(new URL('../dist/workspace/online-workspace.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const revisionSource=(await readFile(new URL('../dist/workspace/revision.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const thesisSource=(await readFile(new URL('../dist/workspace/thesis-online.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
@@ -49,7 +50,7 @@ async function fixture(fetcher,{hash='#account',allReports=async()=>[],setup}={}
  storage.setItem(keys.profile,JSON.stringify({name:'本地昵称',degree:'硕士',major:'教育学'}));
  storage.setItem(keys.drafts,JSON.stringify([{id:'draft-one',title:'未上传的研究草稿'}]));
  const reads=[];const read=(key,fallback)=>{reads.push(key);return JSON.parse(storage.getItem(key)||'null')??fallback;};
- Object.assign(dom.window,{installStoredFilePickers:()=>({dispose(){}}),installProjectPickers:()=>()=>{},selectableProjects:()=>[],setProjectDirectorySession:()=>{},updateAccountProjects:()=>false,resolveAccountProjectId,captureDraftScope,workspaceJobLabel,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,assessThesisEvidence,writingQualityPanel,thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,downloadDefaultThesisTemplate,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
+ Object.assign(dom.window,{hasDraftScope:()=>false,installStoredFilePickers:()=>({dispose(){}}),installProjectPickers:()=>()=>{},selectableProjects:()=>[],setProjectDirectorySession:()=>{},updateAccountProjects:()=>false,resolveAccountProjectId,captureDraftScope,workspaceJobLabel,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,assessThesisEvidence,writingQualityPanel,thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,downloadDefaultThesisTemplate,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
   ...taskModel,...projectModel,...assetModel,...overviewModel,homeLayout,fitHomeRows,continuationAssets,readHomeService:async()=>({cap:{},user:null}),preferences:()=>({degree:'本科',...read(keys.preferences,{})}),profile:()=>({name:'研究者',...read(keys.profile,{})}),read,list:key=>read(key,[]),write:(key,value)=>storage.setItem(key,JSON.stringify(value)),projects:()=>read(keys.projects,[]),repository:{all:allReports},formatDate:()=>'',mountNavigation:()=>({close(){}}),
   disposeWritingFlows:()=>{},disposeDataAnalysis:()=>{},disposeQuestionnaire:()=>{},questionnaireRouteGuard:async()=>true,questionnaireSessionChanged:()=>{},disposeFormat:()=>{},disposeResearch:()=>{},disposePresentation:()=>{},disposeRevision:()=>{},disposeAccountDraft:()=>{},accountDraftEditing:()=>false,accountDraftHasWork:()=>false,accountDraftConfirmLeave:async()=>true,accountDraftSessionChanged:()=>{},accountDraftRouteGuard:()=>true,
   disposePayment:()=>{paymentCalls.push({type:'dispose'});},renderPaymentOrders:async()=>{paymentCalls.push({type:'orders'});},renderPaymentCheckout:async options=>{paymentCalls.push({type:'checkout',productId:options.productId,orderId:options.orderId});},clearEditor:()=>{},clearHelpWork:()=>{},clearSettingsWork:()=>{},clearMoreWork:()=>{},trackDialogForm:()=>()=>{},retainWritingCatalog:()=>{},isCurrentRouteChange:()=>false,
@@ -57,6 +58,7 @@ async function fixture(fetcher,{hash='#account',allReports=async()=>[],setup}={}
  });
  vm.runInContext('(function(){'+documentExportSource+'\nObject.assign(globalThis,{documentExportButtons,bindDocumentExports});})()',dom.getInternalVMContext());
  vm.runInContext('(function(){'+thesisSource+'\nObject.assign(globalThis,{mountOnlineThesis,mountThesisLibrary,disposeOnlineThesis,thesisOnlineHasWork,thesisOnlineRouteGuard,thesisOnlineSessionChanged});})()',dom.getInternalVMContext());
+ vm.runInContext('(function(){'+historySource+'\nObject.assign(globalThis,{mountProjectHistoryImport});})()',dom.getInternalVMContext());
  vm.runInContext('(function(){'+onlineSource+'\nObject.assign(globalThis,{mountOnlineWorkspace,disposeOnlineWorkspace,onlineWorkspaceRouteGuard,onlineWorkspaceHasWork,onlineWorkspaceSessionChanged,onlineWorkspaceConfirmLeave,onlineWorkspaceHref});})()',dom.getInternalVMContext());
  setup?.(dom.window);
  await vm.runInContext('(async()=>{'+source+'\nglobalThis.workspaceAuthTest={loadWorkspaceSession,workspaceServiceFetch,signOutWorkspace,renderAccount,authHref,render,loadHomeService};})()',dom.getInternalVMContext());
@@ -451,7 +453,7 @@ test('logout preserves the local workspace and late session responses cannot res
 
 test('workspace search finds account projects, drafts, task results and originals with correct direct routes',async()=>{
  const f=await fixture(async path=>{if(path==='/api/auth/me')return response(200,signedIn);const items=path==='/api/projects'?[{id:'p1',title:'课堂研究项目'}]:path==='/api/workspace/drafts'?[{id:'d1',title:'课堂研究草稿'}]:path==='/api/results'?[{id:'r1',title:'课堂研究成果'}]:path==='/api/files'?[{id:'f1',name:'课堂研究原件.txt'}]:null;return {ok:true,status:200,json:async()=>({items})};});
- try{f.dom.window.location.hash='#search/'+encodeURIComponent('课堂');f.api.render();await new Promise(resolve=>setTimeout(resolve,15));const panel=f.document.querySelector('#account-search-panel');assert.match(panel.textContent,/课堂研究项目/);assert.match(panel.textContent,/课堂研究草稿/);assert.match(panel.textContent,/课堂研究成果/);assert.deepEqual([...panel.querySelectorAll('a')].map(a=>a.getAttribute('href')),['#projects?scope=account&project=p1','#account-draft/d1','#assets?result=r1','/api/files/f1/download']);assert.ok(panel.querySelector('a[href="#account-draft/d1"]'));assert.ok(panel.querySelector('a[href="/api/files/f1/download"]'));}finally{f.close();}
+ try{f.dom.window.location.hash='#search/'+encodeURIComponent('课堂');f.api.render();await new Promise(resolve=>setTimeout(resolve,15));const panel=f.document.querySelector('#account-search-panel');assert.match(panel.textContent,/课堂研究项目/);assert.match(panel.textContent,/课堂研究草稿/);assert.match(panel.textContent,/课堂研究成果/);assert.deepEqual([...panel.querySelectorAll('a')].map(a=>a.getAttribute('href')),['#projects?project=p1','#account-draft/d1','#assets?result=r1','/api/files/f1/download']);assert.ok(panel.querySelector('a[href="#account-draft/d1"]'));assert.ok(panel.querySelector('a[href="/api/files/f1/download"]'));}finally{f.close();}
 });
 
 test('a failed account search shows an unavailable state rather than claiming zero matches',async()=>{
@@ -576,5 +578,29 @@ test('home refresh authentication failures clear private cached records and rech
  try{
   await settleReports();assert.match(f.document.querySelector('#home-resume').textContent,/会话失效前的私人草稿/);assert.equal(auth,1);
   await f.api.loadHomeService({force:true});await settleReports();assert.equal(auth,2);assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/会话失效前的私人草稿/);assert.match(f.document.querySelector('#home-resume').textContent,/未上传的研究草稿/);
+ }finally{f.close();}
+});
+
+
+test('project scopes and legacy detail links use one cloud project page while preserving historical records',async()=>{
+ for(const [hash,expected] of [['#projects?scope=local','#projects'],['#projects?scope=account&project=p1','#projects?project=p1'],['#project/legacy-project','#projects?legacy=legacy-project']]){
+  const f=await fixture(async()=>response(401),{hash,setup:w=>{w.localStorage.setItem(keys.projects,JSON.stringify([{id:'legacy-project',name:'历史研究项目'}]));}});
+  try{
+   await settleReports();assert.equal(f.dom.window.location.hash,expected);
+   assert.equal(f.document.querySelector('.workspace-content-scope'),null);
+   assert.equal(f.document.querySelector('.project-grid'),null);
+   assert.match(f.document.querySelector('#online-workspace').textContent,/登录后管理我的项目/);
+   assert.match(f.storage.getItem(keys.projects),/历史研究项目/);
+  }finally{f.close();}
+ }
+});
+
+test('new project shortcuts enter cloud creation without writing browser projects',async()=>{
+ const f=await fixture(async()=>response(401));
+ try{
+  const prior=f.storage.getItem(keys.projects),button=f.document.createElement('button');button.dataset.newProject='';f.document.querySelector('.dashboard').append(button);button.click();
+  assert.equal(f.dom.window.location.hash,'#projects?new=1');
+  assert.equal(f.storage.getItem(keys.projects),prior);
+  assert.equal(f.document.querySelector('#project-name'),null);
  }finally{f.close();}
 });

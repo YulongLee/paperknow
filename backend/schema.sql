@@ -28,6 +28,11 @@ CREATE TABLE IF NOT EXISTS workspace_project_details(
   stage TEXT NOT NULL DEFAULT '准备中',description TEXT NOT NULL DEFAULT '',
   version INTEGER NOT NULL DEFAULT 0 CHECK(version>=0)
 );
+CREATE TABLE IF NOT EXISTS workspace_project_imports(
+  user_id TEXT NOT NULL REFERENCES users(id),local_id TEXT NOT NULL,
+  project_id TEXT NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,PRIMARY KEY(user_id,local_id)
+);
 CREATE TABLE IF NOT EXISTS workspace_drafts(
   id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),project_id TEXT REFERENCES projects(id),
   title TEXT NOT NULL,tool TEXT NOT NULL,payload TEXT NOT NULL,bytes INTEGER NOT NULL CHECK(bytes>=0),

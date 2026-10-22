@@ -5,6 +5,7 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;
 let owner=null,rows=[],status='loading',revision=0,request=null,requestEpoch=0,loadedAt=0;
 const listeners=new Set();
 const emit=()=>{revision++;for(const listener of listeners)listener();};
+export function subscribeProjectDirectory(listener){listeners.add(listener);return ()=>listeners.delete(listener);}
 export const projectReference=(ownerId,id)=>`account:${encodeURIComponent(ownerId)}:${encodeURIComponent(id)}`;
 function reference(value){
  if(!String(value||'').startsWith('account:'))return null;
@@ -24,7 +25,14 @@ export function resolveAccountProjectId(value,ownerId){
 }
 export function selectableProjects(){
  if(hasDraftScope())return localProjects().map(row=>({...row,name:row.name||row.title,projectId:row.id,projectScope:'account',ownerId:draftScopeOwnerId()}));
- return [...rows.map(row=>({...row,id:projectReference(owner.id,row.id),projectId:row.id,ownerId:owner.id,name:row.title||row.name,projectScope:'account'})),...localProjects().map(row=>({...row,projectScope:'local'}))];
+ return owner?rows.map(row=>({...row,id:projectReference(owner.id,row.id),projectId:row.id,ownerId:owner.id,name:row.title||row.name,projectScope:'account'})):[];
+}
+export function projectPickerOptions(value='',{filter=false}={}){
+ const choices=selectableProjects(),selected=String(value||''),special=filter&&['all','none'].includes(selected);
+ let html=filter?`<option value="all" ${selected==='all'?'selected':''}>所有项目</option><option value="none" ${selected==='none'?'selected':''}>未归入项目</option>`:'<option value="">未归入项目</option>';
+ html+=choices.map(p=>`<option value="${esc(p.id)}" ${String(p.id)===selected?'selected':''}>${esc(p.name||p.title||'未命名项目')}${p.status==='archived'?'（已归档）':''}</option>`).join('');
+ if(selected&&!special&&!choices.some(p=>String(p.id)===selected))html+=`<option value="${esc(selected)}" selected disabled>原关联项目暂不可用，请重新选择</option>`;
+ return html;
 }
 export function setProjectDirectorySession(user,{status:nextStatus='ready'}={}){
  const next=user?.id?{id:String(user.id)}:null,changed=next?.id!==owner?.id,previousStatus=status;
@@ -57,16 +65,11 @@ export async function refreshAccountProjects({force=false}={}){
 export function installProjectPickers(root,{onSessionRetry}={}){
  const doc=root.ownerDocument,win=doc.defaultView,seen=new WeakMap(),optionMarkup=new WeakMap();let alive=true,scheduled=false;
  function paint(select){
-  const initial=!seen.has(select),value=initial?select.dataset.projectRef||select.value:select.value;
-  const stamp=JSON.stringify([revision,hasDraftScope(),draftScopeOwnerId(),value,localProjects()]);
+  const initial=!seen.has(select),filter=select.hasAttribute('data-project-picker-filter'),value=initial?select.dataset.projectRef||select.value:select.value;
+  const stamp=JSON.stringify([revision,hasDraftScope(),draftScopeOwnerId(),value,filter,hasDraftScope()?localProjects():null]);
   if(seen.get(select)===stamp)return;
-  const choices=selectableProjects().filter(p=>!select.hasAttribute('data-project-account-only')||p.projectScope==='account'),account=choices.filter(p=>p.projectScope==='account'),local=choices.filter(p=>p.projectScope!=='account');
-  const option=p=>`<option value="${esc(p.id)}" ${String(p.id)===String(value)?'selected':''}>${esc(p.name||p.title||'未命名项目')}${p.status==='archived'?'（已归档）':''}</option>`;
-  let html='<option value="">未归入项目</option>';
-  if(account.length)html+=`<optgroup label="账户项目">${account.map(option).join('')}</optgroup>`;
-  if(local.length)html+=`<optgroup label="本地项目">${local.map(option).join('')}</optgroup>`;
-  const missing=!!value&&!choices.some(p=>String(p.id)===String(value));
-  if(missing)html+=`<option value="${esc(value)}" selected disabled>原关联项目暂不可用，请重新选择</option>`;
+  const choices=selectableProjects();
+  const html=projectPickerOptions(value,{filter}),missing=!!value&&!(filter&&['all','none'].includes(value))&&!choices.some(p=>String(p.id)===String(value));
   if(optionMarkup.get(select)!==html){select.innerHTML=html;select.value=value||'';optionMarkup.set(select,html);}select.setAttribute('aria-busy',String(!hasDraftScope()&&status==='loading'));
   if(missing)select.setAttribute('aria-invalid','true');else select.removeAttribute('aria-invalid');
   let note=select.nextElementSibling;
@@ -76,15 +79,16 @@ export function installProjectPickers(root,{onSessionRetry}={}){
   else if(!hasDraftScope()&&status==='error'){
    note.append(doc.createTextNode(owner?'账户项目读取失败，已保留当前选择。':'账户连接暂不可用，已保留当前选择。'));
    if(owner||onSessionRetry){const retry=doc.createElement('button');retry.type='button';retry.textContent=owner?'重新读取':'重新连接';retry.onclick=()=>owner?void refreshAccountProjects({force:true}):void onSessionRetry();note.append(retry);}
-  }else if(!hasDraftScope()&&status==='guest'&&!local.length)note.textContent='登录后可选择“我的项目”中创建的账户项目。';
-  else if(!hasDraftScope()&&account.length)note.textContent='账户项目关联在线任务与生成成果；草稿按页面提示保存。';
+  }else if(!hasDraftScope()&&status==='guest')note.textContent='登录后可选择“我的项目”中创建的项目。';
+  else if(!hasDraftScope()&&choices.length&&!filter)note.textContent='项目关联在线任务与生成成果；草稿按页面提示保存。';
+  if(missing&&!hasDraftScope()&&!String(value).startsWith('account:'))note.append(doc.createTextNode(' 历史项目请前往“我的项目”导入后再选择。'));
   note.hidden=!note.textContent;seen.set(select,stamp);
  }
  function update(){if(!alive||!root.isConnected)return;const pickers=root.querySelectorAll('select[data-project-picker]');if(!pickers.length)return;withStableView(pickers[0].closest('.dashboard')||root,()=>pickers.forEach(paint));}
  function schedule(){if(scheduled||!alive)return;scheduled=true;queueMicrotask(()=>{scheduled=false;update();if(root.querySelector('select[data-project-picker]'))void refreshAccountProjects();});}
  const observer=new win.MutationObserver(records=>{if(records.some(record=>[...record.addedNodes].some(node=>node.nodeType===1&&(node.matches?.('select[data-project-picker]')||node.querySelector?.('select[data-project-picker]')))))schedule();});
  observer.observe(root,{childList:true,subtree:true});listeners.add(update);schedule();
- const change=event=>{const select=event.target;if(select.matches?.('select[data-project-picker]')){select.dataset.projectRef=select.value;select.removeAttribute('aria-invalid');}};
+ const change=event=>{const select=event.target;if(select.matches?.('select[data-project-picker]')){select.dataset.projectRef=select.value;select.removeAttribute('aria-invalid');update();}};
  root.addEventListener('change',change);
  return ()=>{alive=false;observer.disconnect();listeners.delete(update);root.removeEventListener('change',change);};
 }

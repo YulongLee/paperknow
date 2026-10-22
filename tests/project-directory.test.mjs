@@ -37,14 +37,13 @@ test('account references encode owner and project independently and cannot cross
  assert.equal(d.resolveAccountProjectId('local-project',owner),null);
 });
 
-test('selection merges account metadata with local projects without rewriting browser records',async t=>{
+test('selection uses only account projects without rewriting historical browser records',async t=>{
  const{w,directory:d}=await fixture(t),local=[{id:'local-one',name:'本地研究项目',major:'教育学'}];
  w.localStorage.setItem('paperknow-projects',JSON.stringify(local));
  d.setProjectDirectorySession({id:'alice'});
  d.updateAccountProjects('alice',[{id:'account-one',title:'账户论文项目',degree:'硕士',stage:'writing'}]);
  const rows=d.selectableProjects();
- assert.ok(rows.some(row=>row.id==='local-one'&&row.name==='本地研究项目'));
- assert.ok(rows.some(row=>row.id===d.projectReference('alice','account-one')&&row.name==='账户论文项目'));
+ assert.deepEqual(rows.map(row=>[row.id,row.name,row.projectScope]),[[d.projectReference('alice','account-one'),'账户论文项目','account']]);
  assert.deepEqual(JSON.parse(w.localStorage.getItem('paperknow-projects')),local);
  assert.equal(d.resolveAccountProjectId('account-one','alice'),null,'an unencoded raw ID outside an account draft scope remains a local reference');
 });
@@ -72,7 +71,7 @@ test('an account draft scope exposes only its fixed project rows and validates t
  assert.equal(d.resolveAccountProjectId('scoped','alice'),'scoped');
  assert.throws(()=>d.resolveAccountProjectId('scoped','bob'));
  endDraftScope();
- assert.ok(d.selectableProjects().some(row=>row.id==='local'));
+ assert.deepEqual(d.selectableProjects().map(row=>row.id),[d.projectReference('alice','other')]);
 });
 
 test('directory reads use the expected owner header and map the API title into a selectable name',async t=>{
@@ -107,12 +106,11 @@ test('installing account project options preserves the existing form, text, focu
  const form=root.querySelector('form'),topic=root.querySelector('#topic'),notes=root.querySelector('#notes'),select=root.querySelector('select');topic.focus();install();
  await settle(()=>select.value===d.projectReference('alice','p1'));
  assert.equal(root.querySelector('form'),form);assert.equal(root.querySelector('#topic'),topic);assert.equal(topic.value,'正在输入的研究主题');assert.equal(notes.value,'尚未提交的说明');assert.equal(w.document.activeElement,topic);
- const groups=[...select.querySelectorAll('optgroup')].map(group=>group.label);
- assert.ok(groups.some(label=>/账户/.test(label)));assert.ok(groups.some(label=>/本地/.test(label)));
- select.value='local';select.dispatchEvent(new w.Event('change',{bubbles:true}));
+ assert.equal(select.querySelector('optgroup'),null);
+ assert.equal([...select.options].some(option=>option.value==='local'),false);
  d.updateAccountProjects('alice',[{id:'p1',title:'账户项目'},{id:'p2',title:'新建账户项目'}]);
  await settle(()=>[...select.options].some(option=>option.value===d.projectReference('alice','p2')));
- assert.equal(select.value,'local');assert.equal(root.querySelector('form'),form);assert.equal(notes.value,'尚未提交的说明');
+ assert.equal(select.value,d.projectReference('alice','p1'));assert.equal(root.querySelector('form'),form);assert.equal(notes.value,'尚未提交的说明');
 });
 
 test('a picker inserted after installation receives current account options without replacing sibling inputs',async t=>{
@@ -124,17 +122,65 @@ test('a picker inserted after installation receives current account options with
  assert.equal(input.value,'保留的输入');assert.equal(w.document.activeElement,input);assert.equal(root.querySelector('input'),input);
 });
 
-test('failed account lookup leaves local options usable and exposes an explicit working retry',async t=>{
+test('project filters retain all and unassigned choices while the account directory changes',async t=>{
+ const{root,directory:d,install}=await fixture(t,{html:'<main id="root"><select data-project-picker data-project-picker-filter data-project-ref="none"></select></main>'});
+ d.setProjectDirectorySession({id:'alice'});d.updateAccountProjects('alice',[{id:'p1',title:'第一个云项目'}]);install();
+ const select=root.querySelector('select');await settle(()=>select.value==='none'&&select.options.length===3);
+ assert.deepEqual([...select.options].map(option=>option.value),['all','none',d.projectReference('alice','p1')]);assert.equal(select.hasAttribute('aria-invalid'),false);assert.equal(select.querySelector('optgroup'),null);
+ d.updateAccountProjects('alice',[{id:'p1',title:'已改名'},{id:'p2',title:'新项目'}]);
+ assert.equal(select.value,'none');assert.equal(select.options.length,4);assert.equal(select.selectedOptions[0].disabled,false);
+ d.setProjectDirectorySession(null);assert.deepEqual([...select.options].map(option=>option.value),['all','none']);assert.equal(select.value,'none');assert.equal(select.hasAttribute('aria-invalid'),false);
+});
+
+test('failed account lookup never substitutes browser projects and exposes an explicit working retry',async t=>{
  let attempts=0;
  const{w,root,directory:d,install}=await fixture(t,{html:'<main id="root"><label>所属项目<select data-project-picker><option value="">不关联项目</option></select></label></main>',fetch:async()=>++attempts===1?response([],503):response([{id:'retried',title:'重试获取的账户项目'}])});
  w.localStorage.setItem('paperknow-projects',JSON.stringify([{id:'local',name:'离线也可选的本地项目'}]));
  d.setProjectDirectorySession({id:'alice'});install();
  await settle(()=>[...root.querySelectorAll('button')].some(button=>/重试|重新获取|重新读取/.test(button.textContent)));
- const select=root.querySelector('select');assert.ok([...select.options].some(option=>option.value==='local'));
+ const select=root.querySelector('select');assert.deepEqual([...select.options].map(option=>option.value),['']);assert.deepEqual(d.selectableProjects(),[]);
  assert.equal(select.getAttribute('aria-busy'),'false');assert.match(root.querySelector('[data-project-picker-status]').textContent,/读取失败/);
  const retry=[...root.querySelectorAll('button')].find(button=>/重试|重新获取|重新读取/.test(button.textContent));retry.click();
  await settle(()=>[...select.options].some(option=>option.value===d.projectReference('alice','retried')));
  assert.equal(attempts,2);assert.equal(select.isConnected,true);
+});
+
+test('an unsigned user with historical browser projects sees no selectable project or private lookup',async t=>{
+ const calls=[];
+ const{w,root,directory:d,install}=await fixture(t,{html:'<main id="root"><select data-project-picker></select></main>',fetch:async(path,options)=>{calls.push({path,options});return response([]);}});
+ const local=[{id:'legacy',name:'历史项目'}];w.localStorage.setItem('paperknow-projects',JSON.stringify(local));
+ d.setProjectDirectorySession(null);install();
+ await settle(()=>root.querySelector('[data-project-picker-status]')?.textContent.includes('登录后'));
+ assert.deepEqual([...root.querySelector('select').options].map(option=>option.value),['']);assert.deepEqual(d.selectableProjects(),[]);assert.equal(calls.length,0);
+ assert.deepEqual(JSON.parse(w.localStorage.getItem('paperknow-projects')),local);
+});
+
+test('a historical raw reference remains disabled even when the cloud project has the same raw ID',async t=>{
+ const{w,root,directory:d,install}=await fixture(t,{html:'<main id="root"><form><textarea>保留的历史草稿</textarea><select data-project-picker data-project-ref="same-id"><option value="same-id" selected>历史项目</option></select></form></main>'});
+ const local=[{id:'same-id',name:'历史本地项目'}];w.localStorage.setItem('paperknow-projects',JSON.stringify(local));
+ d.setProjectDirectorySession({id:'alice'});d.updateAccountProjects('alice',[{id:'same-id',title:'云端不同项目'}]);install();
+ const select=root.querySelector('select');
+ await settle(()=>select.selectedOptions[0]?.disabled);
+ assert.equal(select.value,'same-id');assert.equal(select.getAttribute('aria-invalid'),'true');assert.equal(d.resolveAccountProjectId(select.value,'alice'),null);
+ assert.match(root.querySelector('[data-project-picker-status]').textContent,/我的项目.*导入历史项目|历史项目.*我的项目.*导入/);
+ assert.ok([...select.options].some(option=>option.value===d.projectReference('alice','same-id')&&!option.disabled));
+ d.updateAccountProjects('alice',[{id:'same-id',title:'云端更新后的项目'},{id:'p2',title:'其他项目'}]);
+ await settle(()=>[...select.options].some(option=>option.value===d.projectReference('alice','p2')));
+ assert.equal(select.value,'same-id');assert.equal(select.selectedOptions[0].disabled,true);assert.equal(root.querySelector('textarea').value,'保留的历史草稿');
+ select.value=d.projectReference('alice','same-id');select.dispatchEvent(new w.Event('change',{bubbles:true}));
+ assert.equal(select.hasAttribute('aria-invalid'),false);assert.equal(d.resolveAccountProjectId(select.value,'alice'),'same-id');
+ assert.doesNotMatch(root.querySelector('[data-project-picker-status]').textContent,/历史项目/);
+ assert.deepEqual(JSON.parse(w.localStorage.getItem('paperknow-projects')),local);
+});
+
+test('an account switch disables the former project selection rather than choosing the new owner matching ID',async t=>{
+ const{root,directory:d,install}=await fixture(t,{html:'<main id="root"><select data-project-picker data-project-ref="account:alice:p1"></select></main>'});
+ d.setProjectDirectorySession({id:'alice'});d.updateAccountProjects('alice',[{id:'p1',title:'甲账户项目'}]);install();
+ const select=root.querySelector('select');await settle(()=>select.selectedOptions[0]?.textContent==='甲账户项目');
+ d.setProjectDirectorySession({id:'bob'});d.updateAccountProjects('bob',[{id:'p1',title:'乙账户同编号项目'}]);
+ await settle(()=>[...select.options].some(option=>option.value===d.projectReference('bob','p1')));
+ assert.equal(select.value,d.projectReference('alice','p1'));assert.equal(select.selectedOptions[0].disabled,true);assert.equal(select.getAttribute('aria-invalid'),'true');
+ assert.throws(()=>d.resolveAccountProjectId(select.value,'bob'));assert.equal(select.querySelector('optgroup'),null);
 });
 
 test('a stale same-account lookup cannot overwrite a freshly published project directory',async t=>{

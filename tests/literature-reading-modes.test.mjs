@@ -4,6 +4,7 @@ import {JSDOM} from 'jsdom';
 import {readingModes,readingChatHistory} from '../dist/workspace/literature-reading-modes.mjs';
 import {mountLiteratureAi} from '../dist/workspace/literature-ai.mjs';
 import {validateSavedLiteratureAiResults} from '../dist/workspace/literature-ai-model.mjs';
+import {projectReference} from '../dist/workspace/project-directory.mjs';
 const source='An actual source paragraph with a verifiable method and finding.';
 const materials=[{id:'p1',name:'Paper / paragraph 1',text:source}];
 const answer=(id,question='Question '+id,text='Answer '+id)=>({id,jobId:id,operation:'answer',sourceScope:'full',materials:structuredClone(materials),question,output:{text,sourceIds:['p1'],citations:[{sourceId:'p1',quote:'actual source paragraph'}]},createdAt:'2026-10-20T00:00:0'+id+'Z'});
@@ -45,4 +46,20 @@ test('quick questions only fill the input and same-source history is explicit in
 });
 test('an unsaved manual edit is excluded from chat history even while durable storage still holds the old answer',async t=>{
  const record=answer('1');record.materials=[{id:'p1',name:'Paper · 第 1 段',text:source}];const f=fixture(t,[record]);f.$('[data-lit-ai-operation="answer"]').click();f.failEdits();f.input('[data-lit-ai-text]','Unpersisted human edit');assert.equal(f.getUi().getPendingEdits().length,1);f.$('[data-lit-include-history]').checked=true;f.$('[data-lit-include-history]').dispatchEvent(new f.w.Event('change',{bubbles:true}));f.input('[data-lit-ai-question]','A new source question');await f.open();const snapshot=f.calls.find(c=>c.path==='/tool-runs/quote').data.snapshot;assert.equal(snapshot.context.chatHistory,undefined);
+});
+
+for(const operation of ['read','answer','translate'])test('literature '+operation+' sends the selected account project in both quote and job requests',async t=>{
+ const f=fixture(t),reference=projectReference('owner1','cloud-paper-project');f.setPaper({...paper([]),projectId:reference});f.mount();
+ if(operation!=='read')f.$('[data-lit-ai-operation="'+operation+'"]').click();if(operation==='answer')f.input('[data-lit-ai-question]','What method does the supplied paragraph describe?');
+ await f.open();const quoted=f.calls.find(row=>row.path==='/tool-runs/quote').data;
+ assert.equal(quoted.projectId,'cloud-paper-project');assert.equal(quoted.snapshot.projectId,undefined);assert.equal(quoted.snapshot.text,source);assert.equal(f.calls.some(row=>row.path==='/tool-runs/jobs'),false);
+ f.$('[data-tj-start]').click();await until(()=>f.calls.some(row=>row.path==='/tool-runs/jobs'));
+ const created=f.calls.find(row=>row.path==='/tool-runs/jobs').data;assert.equal(created.projectId,'cloud-paper-project');assert.equal(created.operation,operation);assert.deepEqual(created.snapshot,quoted.snapshot);
+ assert.equal(f.getPaper().projectId,reference);assert.equal(f.getPaper().text,source);assert.deepEqual(f.getPaper().notes,[]);
+ assert.equal(f.getPaper().aiJobStates[operation].projectRef,reference);assert.equal(f.getPaper().aiJobStates[operation].projectId,'cloud-paper-project');
+});
+
+for(const [label,reference]of [['foreign account',projectReference('another-owner','private-project')],['historical local project','legacy-project']])test('a literature '+label+' association cannot be dropped into an independent AI submission',async t=>{
+ const f=fixture(t);f.setPaper({...paper([]),projectId:reference});f.mount();f.$('[data-lit-ai-open]').click();await until(()=>!!f.$('[role="alert"]'));
+ assert.equal(f.calls.some(row=>row.path==='/tool-runs/quote'||row.path==='/tool-runs/jobs'),false);assert.equal(f.getPaper().projectId,reference);assert.equal(f.getPaper().text,source);
 });

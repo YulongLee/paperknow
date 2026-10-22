@@ -13,19 +13,21 @@ import {presentThesisDocument} from '../dist/workspace/thesis-document.mjs';
 import {feedbackKey,normalizeFeedback} from '../dist/workspace/help-model.mjs';
 import {supportContactsMarkup,bindSupportContacts} from '../dist/workspace/support-contacts.mjs';
 const personalCode=(await readFile(new URL('../dist/workspace/online-personal-services.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
+const historyCode=(await readFile(new URL('../dist/workspace/project-history-import.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const code=(await readFile(new URL('../dist/workspace/online-workspace.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const now='2026-10-15T00:00:00Z';
 async function settle(check){for(let i=0;i<80;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,4));}throw Error('UI did not settle');}
-async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params='',request,pollTimers=false}={}){
+async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params='',request,pollTimers=false,legacyProjects=[]}={}){
  const dom=new JSDOM('<div id="app"><aside id="existing-sidebar">现有导航</aside><main class="dashboard"><div id="online"></div></main></div>',{url:'https://paperknow.cn/workspace.html#projects?scope=account',runScripts:'outside-only'}),w=dom.window;
  t.after(()=>{w.onlineTest.disposeOnlineWorkspace();w.close();});
  const scheduledPolls=[],pollWarnings=[];if(pollTimers){const originalSetTimeout=w.setTimeout.bind(w);w.setTimeout=(callback,delay,...args)=>{if(delay===5000){scheduledPolls.push(()=>callback(...args));return 900000+scheduledPolls.length;}return originalSetTimeout(callback,delay,...args);};Object.defineProperty(w.document,'hidden',{configurable:true,value:false});w.console.warn=(...args)=>pollWarnings.push(args);}
  w.HTMLElement.prototype.scrollIntoView=()=>{};w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){const wasOpen=this.open;this.open=false;if(wasOpen)this.dispatchEvent(new w.Event('close'));};
  const exportBodies=[];const OriginalBlob=w.Blob;w.Blob=class extends OriginalBlob{constructor(parts,options){super(parts,options);this.testContent=parts.join('');}};w.URL.createObjectURL=blob=>{exportBodies.push(blob.testContent);return 'blob:test';};w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=function(){if(this.download)downloads.push(this.download);};
+ if(legacyProjects.length)w.localStorage.setItem('paperknow-projects',JSON.stringify(legacyProjects));
  w.localStorage.setItem('paperknow-drafts','[{"id":"legacy-local","tool":"writing","title":"本地未上传成果"}]');
  w.download=async(name,content)=>{exportBodies.push(content);downloads.push(name);return {message:'已保存到账户云文件并发起下载。'};};
  const calls=[],navigations=[],downloads=[],notices=[];let saved=[],projects=[{id:'p1',title:'账户研究项目',degree:'本科',major:'教育学',updated_at:now}],files=[{id:'f1',name:'账户原件.txt',bytes:30,project_id:'p1'}],jobs=[{id:'pending',type:'parse',status:'queued',attempt:0,created_at:now},{id:'failed',type:'agent',status:'failed',attempt:1,created_at:now,error:'测试任务失败'}];
- Object.assign(w,{updateAccountProjects,resolveAccountProjectId,workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,thesisEditorPresentation,restoreThesisEditorText,presentThesisDocument});w.publicDraftCopy=publicDraftCopy;w.membershipPurchaseTiles=membershipPurchaseTiles;w.supportContactsMarkup=supportContactsMarkup;w.bindSupportContacts=bindSupportContacts;w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts'};w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
+ Object.assign(w,{mountProjectHistoryImport:()=>()=>{},updateAccountProjects,resolveAccountProjectId,workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,thesisEditorPresentation,restoreThesisEditorText,presentThesisDocument});w.publicDraftCopy=publicDraftCopy;w.membershipPurchaseTiles=membershipPurchaseTiles;w.supportContactsMarkup=supportContactsMarkup;w.bindSupportContacts=bindSupportContacts;w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts',projects:'paperknow-projects'};w.hasDraftScope=()=>false;w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
  w.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({path,body,options});if(request){const custom=await request(path,options);if(custom)return custom;}
   let status=200,value={};
   if(path==='/api/capabilities')value={ai,agent,aiProvider:'test-provider',storage:'local'};
@@ -47,6 +49,7 @@ async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params=
   else throw Error('Unexpected API '+path);
   return {ok:status<400,status,json:async()=>JSON.parse(JSON.stringify(value))};
  };
+ w.eval('(function(){'+historyCode+';window.mountProjectHistoryImport=mountProjectHistoryImport;})()');
  w.eval(code+'\nwindow.onlineTest={onlineWorkspaceHref,mountOnlineWorkspace,disposeOnlineWorkspace,onlineWorkspaceRouteGuard,onlineWorkspaceHasWork,onlineWorkspaceConfirmLeave,onlineWorkspaceSessionChanged};');
  const ctx={navigate:hash=>navigations.push(hash),notify:message=>notices.push(message)};
  await w.onlineTest.mountOnlineWorkspace(w.document.querySelector('#online'),view,ctx,new w.URLSearchParams(params));
@@ -57,7 +60,7 @@ function submit(f,selector){const form=f.doc.querySelector(selector);form.dispat
 
 test('account content requires login while retaining the existing workspace shell and local drafts',async t=>{
  const f=await fixture(t,{guest:true});
- assert.match(f.doc.querySelector('#online').textContent,/登录后查看账户内容/);
+ assert.match(f.doc.querySelector('#online').textContent,/登录后管理我的项目/);
  assert.equal(f.doc.querySelector('#existing-sidebar').textContent,'现有导航');
  assert.equal(f.calls.some(call=>['/api/projects','/api/jobs','/api/files','/api/results'].includes(call.path)),false);
  assert.match(f.w.localStorage.getItem('paperknow-drafts'),/本地未上传成果/);
@@ -604,7 +607,7 @@ test('cloud asset route links append queries correctly while project and task sc
  const f=await fixture(t,{view:'results'});
  assert.equal(f.w.onlineTest.onlineWorkspaceHref('results'),'#assets');
  assert.equal(f.w.onlineTest.onlineWorkspaceHref('results',{result:'result one',project:'p1'}),'#assets?result=result+one&project=p1');
- assert.equal(f.w.onlineTest.onlineWorkspaceHref('projects',{project:'p1'}),'#projects?scope=account&project=p1');
+ assert.equal(f.w.onlineTest.onlineWorkspaceHref('projects',{project:'p1'}),'#projects?project=p1');
  assert.equal(f.w.onlineTest.onlineWorkspaceHref('tasks'),'#tasks?scope=account');
 });
 
@@ -651,4 +654,43 @@ test('a primary cloud-file manager owns the single guest login prompt',async t=>
  const f=await fixture(t,{guest:true,view:'results'});
  await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'results',{...f.ctx,cloudFilesPrimary:true});
  assert.equal(f.doc.querySelector('#online .account-login-required'),null);assert.equal(f.doc.querySelector('#view').textContent,'');assert.equal(f.calls.some(call=>call.body),false);
+});
+
+
+test('cloud project creation deep links open one account editor and consume the request after rendering',async t=>{
+ const f=await fixture(t,{params:'new=1'});
+ assert.equal(f.doc.querySelector('#account-project-create').open,true);
+ assert.equal(f.doc.querySelector('#project-title'),f.doc.activeElement);
+ assert.equal(f.w.location.hash.includes('new='),false);
+ input(f,'#project-title','统一账户研究');submit(f,'#project-form');
+ await settle(()=>f.calls.some(c=>c.path==='/api/projects'&&c.body?.title==='统一账户研究')&&!f.doc.querySelector('#account-project-create').open);
+ assert.equal(f.calls.filter(c=>c.path==='/api/projects'&&c.body).length,1);
+ assert.equal(f.w.localStorage.getItem('paperknow-projects'),null);
+ assert.equal(f.doc.querySelector('.workspace-content-scope'),null);
+});
+
+test('project detail includes questionnaires in its results and links to the saved survey',async t=>{
+ const f=await fixture(t,{params:'project=p1',request:async(path,options)=>{
+  if(path==='/api/projects/p1'&&!options.body)return {ok:true,status:200,json:async()=>({item:{id:'p1',title:'问卷研究',counts:{questionnaires:1}},files:[],jobs:[],results:[],drafts:[],theses:[],questionnaires:[{id:'survey-1',projectId:'p1',title:'已保存的研究问卷'}]})};
+ }});
+ assert.match(f.doc.querySelector('.account-project-related').textContent,/已保存的研究问卷/);
+ assert.equal(f.doc.querySelector('.account-project-related a').getAttribute('href'),'#tool/questionnaire?survey=survey-1');
+ const metric=[...f.doc.querySelectorAll('.account-project-metrics>div')].find(node=>node.textContent.includes('研究成果'));
+ assert.equal(metric.querySelector('b').textContent,'1');
+});
+
+
+test('history import protects a hidden project draft and selected upload before refreshing the list',async t=>{
+ const f=await fixture(t,{legacyProjects:[{id:'legacy-project',name:'历史项目'}]});
+ f.doc.querySelector('#project-create-reset').click();input(f,'#project-title','尚未保存的新项目');f.doc.querySelector('#account-project-cancel').click();
+ f.doc.querySelector('.account-project-history').open=true;
+ const checkbox=f.doc.querySelector('.account-project-history input');checkbox.checked=true;checkbox.dispatchEvent(new f.w.Event('change',{bubbles:true}));
+ submit(f,'.account-project-history form');
+ await settle(()=>f.doc.querySelector('#online-confirm').open);
+ assert.match(f.doc.querySelector('#online-confirm-message').textContent,/当前项目或上传表单尚未保存/);
+ assert.equal(f.calls.filter(c=>c.path==='/api/projects/import-local').length,0);
+ f.doc.querySelector('#online-confirm-no').click();
+ await settle(()=>f.doc.querySelector('.account-project-history [role="status"]').textContent.includes('已取消导入'));
+ assert.equal(f.doc.querySelector('#project-title').value,'尚未保存的新项目');
+ assert.equal(checkbox.checked,true);assert.equal(f.w.onlineTest.onlineWorkspaceHasWork(),true);
 });
