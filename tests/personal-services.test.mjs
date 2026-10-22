@@ -10,7 +10,7 @@ function setup(api,hash='#help?scope=account'){
  for(const key of ['window','document','location','localStorage'])globalThis[key]=dom.window[key];
  let pending,remembered=0;const notices=[];
  const ctx={target:document.querySelector('#view'),api,notify:text=>notices.push(text),submit:(event,fn)=>{event.preventDefault();pending=Promise.resolve().then(fn).catch(error=>notices.push(error.message));},rememberForms:()=>remembered++,esc:escape,date:value=>value||'—',icon:()=>'', $:selector=>document.querySelector(selector)};
- return {dom,ctx,notices,remembered:()=>remembered,async submit(){document.querySelector('form').dispatchEvent(new window.Event('submit',{cancelable:true}));await pending;},async click(selector){document.querySelector(selector).click();await pending;}};
+ return {dom,ctx,notices,remembered:()=>remembered,async submit(){document.querySelector('#feedback-form').dispatchEvent(new window.Event('submit',{cancelable:true}));await pending;},async click(selector){document.querySelector(selector).click();await pending;}};
 }
 test('usage separates account cumulative totals, recent unknown tokens and storage from billing',async()=>{
  const env=setup(async path=>path==='/usage'?{items:[{model:'real-model',input_tokens:5,output_tokens:null,created_at:'2026-10-15'}]}:{usage:{records:120,inputTokens:2000,outputTokens:1000},storage:{fileBytes:1048576,draftBytes:0,maxAccountFileBytes:52428800,maxAccountDraftBytes:52428800}});

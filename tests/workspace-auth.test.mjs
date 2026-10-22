@@ -1,3 +1,5 @@
+import {helpKnowledgeMarkup,bindHelpKnowledge} from '../dist/workspace/help.mjs';
+import {supportContactsMarkup,bindSupportContacts} from '../dist/workspace/support-contacts.mjs';
 import {thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata} from '../dist/workspace/thesis-template.mjs';
 import {downloadDefaultThesisTemplate} from '../dist/workspace/document-export.mjs';
 import {assessThesisEvidence} from '../dist/workspace/thesis-evidence.mjs';
@@ -53,7 +55,7 @@ async function fixture(fetcher,{hash='#account',allReports=async()=>[],setup}={}
  storage.setItem(keys.profile,JSON.stringify({name:'本地昵称',degree:'硕士',major:'教育学'}));
  storage.setItem(keys.drafts,JSON.stringify([{id:'draft-one',title:'未上传的研究草稿'}]));
  const reads=[];const read=(key,fallback)=>{reads.push(key);return JSON.parse(storage.getItem(key)||'null')??fallback;};
- Object.assign(dom.window,{projectPickerOptions,hasDraftScope:()=>false,installStoredFilePickers:()=>({dispose(){}}),installProjectPickers:()=>()=>{},selectableProjects:()=>[],setProjectDirectorySession:()=>{},updateAccountProjects:()=>false,resolveAccountProjectId,captureDraftScope,workspaceJobLabel,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,buildThesisBibliography,assessThesisEvidence,writingQualityPanel,thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,downloadDefaultThesisTemplate,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
+ Object.assign(dom.window,{helpKnowledgeMarkup,bindHelpKnowledge,supportContactsMarkup,bindSupportContacts,projectPickerOptions,hasDraftScope:()=>false,installStoredFilePickers:()=>({dispose(){}}),installProjectPickers:()=>()=>{},selectableProjects:()=>[],setProjectDirectorySession:()=>{},updateAccountProjects:()=>false,resolveAccountProjectId,captureDraftScope,workspaceJobLabel,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,buildThesisBibliography,assessThesisEvidence,writingQualityPanel,thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,downloadDefaultThesisTemplate,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
   ...taskModel,...projectModel,...assetModel,...overviewModel,homeLayout,fitHomeRows,continuationAssets,readHomeService:async()=>({cap:{},user:null}),preferences:()=>({degree:'本科',...read(keys.preferences,{})}),profile:()=>({name:'研究者',...read(keys.profile,{})}),read,list:key=>read(key,[]),write:(key,value)=>storage.setItem(key,JSON.stringify(value)),projects:()=>read(keys.projects,[]),repository:{all:allReports},formatDate:()=>'',mountNavigation:()=>({close(){}}),
   disposeWritingFlows:()=>{},disposeDataAnalysis:()=>{},disposeQuestionnaire:()=>{},questionnaireRouteGuard:async()=>true,questionnaireSessionChanged:()=>{},disposeFormat:()=>{},disposeResearch:()=>{},disposePresentation:()=>{},disposeRevision:()=>{},disposeAccountDraft:()=>{},accountDraftEditing:()=>false,accountDraftHasWork:()=>false,accountDraftConfirmLeave:async()=>true,accountDraftSessionChanged:()=>{},accountDraftRouteGuard:()=>true,
   disposePayment:()=>{paymentCalls.push({type:'dispose'});},renderPaymentOrders:async()=>{paymentCalls.push({type:'orders'});},renderPaymentCheckout:async options=>{paymentCalls.push({type:'checkout',productId:options.productId,orderId:options.orderId});},clearEditor:()=>{},clearHelpWork:()=>{},clearSettingsWork:()=>{},clearMoreWork:()=>{},trackDialogForm:()=>()=>{},retainWritingCatalog:()=>{},isCurrentRouteChange:()=>false,
@@ -607,4 +609,22 @@ test('new project shortcuts enter cloud creation without writing browser project
   assert.equal(f.storage.getItem(keys.projects),prior);
   assert.equal(f.document.querySelector('#project-name'),null);
  }finally{f.close();}
+});
+
+
+test('all legacy help scope links open one canonical help page with public guidance',async()=>{
+ for(const legacy of ['#help?scope=local','#help?scope=account','#help?scope=local&draft=local']){
+  const calls=[],f=await fixture(async(path)=>{calls.push(path);return response(401);},{hash:legacy});
+  try{
+   await f.api.loadWorkspaceSession();f.api.render();
+   for(let i=0;i<12;i++)await Promise.resolve();
+   assert.equal(f.dom.window.location.hash,legacy.includes('draft=')?'#help?draft=local':'#help');
+   assert.equal(f.document.querySelector('.workspace-content-scope'),null);
+   assert.equal(f.document.querySelectorAll('.help-knowledge').length,1);
+   assert.match(f.document.querySelector('.dashboard').textContent,/使用指南/);
+   assert.match(f.document.querySelector('.dashboard').textContent,/登录后反馈/);
+   assert.equal(f.document.querySelector('#help-feedback-form'),null);
+   assert.equal(calls.includes('/api/feedback'),false);
+  }finally{f.close();}
+ }
 });

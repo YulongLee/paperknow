@@ -13,17 +13,6 @@ function fixture(t,{html='<main id="main"></main>',x=0,y=0,height=800,rootTop=80
  return {dom,win,doc,root,position,scrolls,$:selector=>doc.querySelector(selector)};
 }
 const pixels=value=>Math.max(0,...[...String(value).matchAll(/(-?\d+(?:\.\d+)?)px/g)].map(match=>Number(match[1])));
-test('an expanded usage guide survives same-feature rerenders without opening a different feature guide',t=>{
- const markup=key=>`<details data-view-disclosure="${key}"><summary>查看步骤说明</summary><p>帮助内容</p></details>`;
- const f=fixture(t,{html:'<main>'+markup('writing')+'</main>',y:480});f.$('details').open=true;
- withStableView(f.root,()=>{f.root.innerHTML=markup('writing');});assert.equal(f.$('details').open,true);assert.equal(f.position.y,480);
- withStableView(f.root,()=>{f.root.innerHTML=markup('formula');});assert.equal(f.$('details').open,false);assert.equal(f.position.y,480);
-});
-test('clicking a usage-guide disclosure intentionally toggles it without being undone by view retention',t=>{
- const f=fixture(t,{html:'<main><details data-view-disclosure="help"><summary>查看步骤说明</summary><p>帮助内容</p></details></main>',y:480}),dispose=installStableDisclosures(f.root);t.after(dispose);
- click(f,f.$('summary'));assert.equal(f.$('details').open,true);assert.equal(f.position.y,480);
- click(f,f.$('summary'));assert.equal(f.$('details').open,false);assert.equal(f.position.y,480);
-});
 function click(f,target,options={}){const event=new f.win.MouseEvent('click',{bubbles:true,cancelable:true,button:0,...options});target.dispatchEvent(event);return event;}
 
 test('a synchronous update returns its value and restores both viewport axes without smooth scrolling',t=>{

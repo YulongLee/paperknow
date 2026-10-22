@@ -424,3 +424,37 @@
 .dashboard #settings-account-status.error{color:var(--pk-error,#bc3b4b)}
 .dashboard .settings-privacy-note{margin-top:26px;padding-top:18px;border-top:1px solid var(--pk-border,#e5ebf3)}
 @media(max-width:480px){.dashboard .settings-account-export{padding:17px}.dashboard .settings-data-actions{gap:12px}.dashboard .settings-data-actions .btn{width:100%}}
+
+/* One help page keeps guides, feedback and progress together. */
+.dashboard .help-unified,.dashboard .help-knowledge{display:grid;gap:24px;min-width:0;align-content:start}
+.dashboard .help-unified .help-knowledge :is(h2,h3){color:var(--pk-text,#1d2b43);font-weight:600;letter-spacing:-.02em}
+.dashboard .help-unified .help-knowledge h2{font-size:18px;margin:0}
+.dashboard .help-unified .help-search-panel h2{font-size:25px;margin-bottom:9px}
+.dashboard .help-unified .help-category-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.dashboard .help-unified .help-knowledge .help-category{background:var(--pk-surface,#fff);border:1px solid var(--pk-border,#e5ebf3);text-align:left;border-radius:13px;display:flex;align-items:center;min-width:0}
+.dashboard .help-unified .help-knowledge .help-category:hover,.dashboard .help-unified .help-knowledge .help-category[aria-pressed=true]{background:var(--pk-blue-soft,#edf4ff);border-color:var(--pk-blue,#246bfd)}
+.dashboard .help-unified .help-knowledge .help-category>span:nth-child(2){flex:1;min-width:0}
+.dashboard .help-unified .help-knowledge .help-search-panel input{padding:8px 0;border:0;box-shadow:none;border-radius:0;min-width:0;flex:1;outline-offset:2px}
+.dashboard .help-unified .help-knowledge .help-search-panel input:focus-visible{outline:2px solid var(--pk-blue,#246bfd)}
+.dashboard .help-unified .help-knowledge .help-search-panel button.primary{color:#fff;background:var(--pk-blue,#246bfd);border-color:var(--pk-blue,#246bfd);min-height:40px}
+.dashboard .help-unified .help-knowledge .help-search-hot button{border:0;background:transparent;min-height:30px;padding:4px 0;color:var(--pk-blue,#246bfd)}
+.dashboard .help-unified .help-knowledge .help-faq-tabs button,.dashboard .help-unified .help-knowledge .help-view-all,.dashboard .help-unified .help-knowledge [data-help-knowledge-all]{border:0;border-radius:0;background:transparent;min-height:32px;color:var(--pk-blue,#246bfd)}
+.dashboard .help-unified .help-knowledge .help-faq-tabs button{border-bottom:2px solid transparent;color:var(--pk-muted,#64748b)}
+.dashboard .help-unified .help-knowledge .help-faq-tabs button[aria-pressed=true]{color:var(--pk-blue,#246bfd);border-bottom-color:var(--pk-blue,#246bfd)}
+.dashboard .help-unified .help-knowledge .help-result,.dashboard .help-unified .help-knowledge .help-faq details button{background:transparent;box-shadow:none;border-radius:0}
+.dashboard .help-unified .help-knowledge :is(.help-faq,.help-results,.help-knowledge-article){padding:24px;border:1px solid var(--pk-border,#e5ebf3);border-radius:16px;background:var(--pk-surface,#fff)}
+.dashboard .help-unified .help-knowledge [hidden]{display:none!important}
+.dashboard .help-unified .help-knowledge-article>summary{font-size:16px;font-weight:600;cursor:pointer;color:var(--pk-text,#1d2b43)}
+.dashboard .help-unified .help-article{color:var(--pk-text,#1d2b43);font-size:14px;line-height:1.85}
+.dashboard .help-unified .help-article :is(p,li){color:var(--pk-muted,#64748b)}
+.dashboard .help-unified .help-article aside{background:var(--pk-surface-soft,#f6f8fc);border:1px solid var(--pk-border,#e5ebf3);color:var(--pk-blue,#246bfd)}
+.dashboard .help-unified .personal-feedback-columns,.dashboard .help-unified .help-guest-support{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:24px;min-width:0}
+.dashboard .help-unified .help-guest-support{margin:0;padding:24px;border:1px solid var(--pk-border,#e5ebf3);border-radius:16px;background:var(--pk-surface,#fff);color:var(--pk-text,#1d2b43);gap:12px 32px}
+.dashboard .help-unified .help-guest-support>:is(h2,p,a,button){grid-column:1;margin:0}
+.dashboard .help-unified .help-guest-support>:is(a,button){justify-self:start}
+.dashboard .help-unified .help-guest-support>.personal-feedback-support{grid-column:2;grid-row:1 / span 3;margin:0;padding:0 0 0 28px;border-top:0;border-left:1px solid var(--pk-border,#e5ebf3)}
+.dashboard .help-unified .help-guest-support :is(h2,h3){color:var(--pk-text,#1d2b43)}
+.dashboard .help-unified .help-guest-support p{color:var(--pk-muted,#64748b);font-size:13px;line-height:1.85}
+@media(max-width:960px){.dashboard .help-unified .help-category-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard .help-unified .personal-feedback-columns,.dashboard .help-unified .help-guest-support{grid-template-columns:minmax(0,1fr)}.dashboard .help-unified .help-guest-support>.personal-feedback-support{grid-column:1;grid-row:auto;margin-top:8px;padding:20px 0 0;border-left:0;border-top:1px solid var(--pk-border,#e5ebf3)}}
+@media(max-width:650px){.dashboard .help-unified,.dashboard .help-knowledge{gap:20px}.dashboard .help-unified .help-knowledge :is(.help-faq,.help-results,.help-knowledge-article){padding:20px}.dashboard .help-unified .help-knowledge .help-category{padding:16px 12px}.dashboard .help-unified .help-category>svg{display:none}.dashboard .help-unified .help-search-panel h2{font-size:23px}.dashboard .help-unified .help-knowledge .help-search-panel input{font-size:16px!important}}
+@media(max-width:420px){.dashboard .help-unified .help-category-grid{grid-template-columns:minmax(0,1fr)}}

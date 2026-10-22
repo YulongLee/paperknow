@@ -358,7 +358,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  function renderView(){
   if(!current())return;
   captureView();
-  const prefix=standalone?toolBanner('writing',{workflow:library?'writing:library':'writing:writing',title:library?'我的账户论文':'毕业论文',label:library?'AI 写作 · 账户论文':'AI 写作 · 毕业论文',description:'从确认提纲，到分章写作、核对与导出。让每一步研究，都留下可以继续完善的版本。',extraClass:'writing-task-banner writing-task-writing detail-service-banner thesis-studio-banner',actions:`<a class="btn secondary" href="${library?'#tool/writing':'#theses'}">${library?'新建毕业论文':'账户论文'}</a><a class="btn secondary" href="#category/writing">返回 AI 写作</a>`}):'';
+  const prefix=standalone?toolBanner('writing',{title:library?'我的账户论文':'毕业论文',label:library?'AI 写作 · 账户论文':'AI 写作 · 毕业论文',description:'从确认提纲，到分章写作、核对与导出。让每一步研究，都留下可以继续完善的版本。',extraClass:'writing-task-banner writing-task-writing detail-service-banner thesis-studio-banner',actions:`<a class="btn secondary" href="${library?'#tool/writing':'#theses'}">${library?'新建毕业论文':'账户论文'}</a><a class="btn secondary" href="#category/writing">返回 AI 写作</a>`}):'';
   let body='';
   if(!loaded&&!loadError)body='<div class="thesis-loading" role="status">正在读取账户与服务状态…</div>';
   else if(loadError)body=`<section class="thesis-login"><h3>暂时无法读取</h3><p>${escape(loadError)}</p><button type="button" class="btn secondary" data-thesis-reload>重新读取</button></section>`;
