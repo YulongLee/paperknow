@@ -3,10 +3,13 @@
 const citationPattern=/\[source:([^\]]+)\]/g;
 const shortPattern=/〔(?:材料|文献|待核对来源)\d+〕/g;
 const shortLabels=text=>[...new Set(String(text).match(shortPattern)||[])];
-export function thesisEditorPresentation(snapshot={},raw=''){
+export function thesisEditorPresentation(snapshot={},raw='',{bibliography}={}){
  const original=String(raw),known=new Map();
+ const referenceNumbers=new Map((bibliography?.references||[]).map(row=>[row.id,row.number]));
+ let nextReference=referenceNumbers.size;
+ for(const row of snapshot.references||[])if(!referenceNumbers.has(row?.id))referenceNumbers.set(row?.id,++nextReference);
  for(const [rows,kind,prefix] of [[snapshot.materials||[],'material','材料'],[snapshot.references||[],'reference','文献']]){
-  rows.forEach((row,index)=>{if(typeof row?.id==='string'&&!known.has(row.id))known.set(row.id,{token:`〔${prefix}${index+1}〕`,name:String(row.name||row.title||'未命名来源'),kind,hasText:Boolean(String(row.text||'').trim()),confirmed:row.confirmed===true});});
+  rows.forEach((row,index)=>{if(typeof row?.id==='string'&&!known.has(row.id))known.set(row.id,{token:`〔${prefix}${kind==='reference'&&bibliography?referenceNumbers.get(row.id):index+1}〕`,name:String(row.name||row.title||'未命名来源'),kind,hasText:Boolean(String(row.text||'').trim()),confirmed:row.confirmed===true});});
  }
  const sourceMap=new Map(),unknown=new Map();
  for(const match of original.matchAll(citationPattern)){

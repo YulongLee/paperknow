@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import {DOMParser} from '@xmldom/xmldom';
 import {createWritingDocx,inspectThesisDocxTemplate} from '../src/writing-document.js';
 const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const rangeFor=(text,needle,number)=>{const location=text.indexOf(needle);assert.ok(location>=0,needle);const offset=needle.indexOf('['+number+']');assert.ok(offset>=0);const start=location+offset;return {start,end:start+String(number).length+2,number};};
 const sample='合成论文题目\n摘要\n摘要全文保留标记。\n第一章 绪论\n1.1 研究背景\n1.1.1 具体问题\n正文中的中文、English 123 和 $E=mc^2$ 应当保留。\n|组别|数量|\n|---|---|\n|实验组|12|\n第二章 讨论\n全部结论原样保留。\n参考文献\n[1] 真实来源待核对。';
 const docx=options=>createWritingDocx(sample,{documentKind:'thesis',metadata:{title:'合成论文题目',level:'本科',major:'计算机科学'},...options});
 const read=async bytes=>{const zip=await JSZip.loadAsync(bytes),xml=await zip.file('word/document.xml').async('string');return {zip,xml,document:new DOMParser().parseFromString(xml,'application/xml')};};
@@ -103,4 +104,60 @@ test('slot templates update the actual noncanonical styles and settings parts se
  const {zip}=await read(await createWritingDocx('合成论文题目\n第一章 背景\n正文保留。',{documentKind:'thesis',template:{status:'ready',bytes:await input.zip.generateAsync({type:'uint8array',compression:'DEFLATE'})}}));
  assert.match(await zip.file(stylePart).async('string'),/w:styleId="PKNormal"[^]*?w:eastAsia="仿宋"/);assert.match(await zip.file(settingsPart).async('string'),/updateFields[^>]+true/);assert.match(await zip.file(settingsPart).async('string'),/evenAndOddHeaders/);
  const relations=new DOMParser().parseFromString(await zip.file('word/_rels/document.xml.rels').async('string'),'application/xml');for(const [type,target]of [['styles','layout/school-styles.xml'],['settings','layout/school-settings.xml']])assert.equal([...relations.getElementsByTagNameNS(packageRelationships,'Relationship')].find(node=>node.getAttribute('Type')===officeRelationships+'/'+type)?.getAttribute('Target'),target);
+});
+
+test('thesis citations link only to unique numbered bibliography entries and remain superscript without altering ordinary indices',async()=>{
+ const text='引用排版测试\n第一章 绪论\n这里引用了已确认的文献[2]以及相邻来源[1][2]，未知编号[9]保持原文。\n|索引|内容|\n|---|---|\n|[1]|表格编号不应推断为文献引用|\n$$x_{[1]}=2$$\n参考文献\n[1] 张三. 合成研究来源一. 2024.\n[2] 李四. 合成研究来源二. 2025.\n待引用文献（尚未在正文引用）\n[待引用1] 未使用的来源[9]。';
+ const {document,xml}=await read(await createWritingDocx(text,{documentKind:'thesis',metadata:{citationRanges:[rangeFor(text,'文献[2]',2),rangeFor(text,'来源[1]',1),rangeFor(text,'][2]',2)]}}));
+ const starts=[...document.getElementsByTagNameNS(W,'bookmarkStart')].filter(node=>node.getAttributeNS(W,'name').startsWith('PKRef_')),targets=new Set(starts.map(node=>node.getAttributeNS(W,'name'))),links=[...document.getElementsByTagNameNS(W,'hyperlink')].filter(node=>targets.has(node.getAttributeNS(W,'anchor')));
+ assert.equal(starts.length,2);assert.equal(links.length,3);assert.deepEqual(links.map(node=>node.textContent),['[2]','[1]','[2]']);for(const link of links)assert.equal(link.getElementsByTagNameNS(W,'vertAlign')[0]?.getAttributeNS(W,'val'),'superscript');
+ assert.equal(document.getElementsByTagNameNS(W,'tbl')[0].getElementsByTagNameNS(W,'hyperlink').length,0);assert.match(xml,/未知编号\[9\]保持原文/);assert.match(xml,/未使用的来源\[9\]/);
+ const duplicate=await read(await createWritingDocx('重复编号\n第一章 绪论\n重复编号引用[1]不应任意跳转。\n参考文献\n[1] 来源甲。\n[1] 来源乙。',{documentKind:'thesis'}));assert.equal([...duplicate.document.getElementsByTagNameNS(W,'bookmarkStart')].filter(node=>node.getAttributeNS(W,'name').startsWith('PKRef_')).length,0);
+});
+
+test('narrow template page regions constrain both TOC tabs and generated table geometry',async()=>{
+ const base=await read(await createWritingDocx('模板\n普通示例正文'));
+ base.zip.file('word/document.xml',base.xml.replace('w:left="1440"','w:left="2600"').replace('w:right="1440"','w:right="2600"'));
+ const bytes=await base.zip.generateAsync({type:'uint8array',compression:'DEFLATE'}),{document}=await read(await docx({template:{status:'ready',bytes}})),available=11906-5200;
+ for(const tab of document.getElementsByTagNameNS(W,'tab'))if(tab.hasAttributeNS(W,'pos'))assert.ok(Number(tab.getAttributeNS(W,'pos'))<available);
+ const table=document.getElementsByTagNameNS(W,'tbl')[0];assert.equal(Number(table.getElementsByTagNameNS(W,'tblW')[0].getAttributeNS(W,'w')),available);assert.ok([...table.getElementsByTagNameNS(W,'gridCol')].reduce((sum,node)=>sum+Number(node.getAttributeNS(W,'w')),0)<=available+1);
+});
+
+test('slot tables use their actual insertion section width rather than the template last section',async()=>{
+ const base=await read(await createWritingDocx('学校封面\n{{正文}}\n后置横向说明'));
+ const section='<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="2600" w:right="2600" w:gutter="0"/></w:sectPr>';
+ base.zip.file('word/document.xml',base.xml.replace('</w:t></w:r></w:p><w:p><w:pPr><w:spacing w:after="120"/></w:pPr><w:r><w:t xml:space="preserve">后置横向说明','</w:t></w:r></w:p><w:p><w:pPr>'+section+'</w:pPr></w:p><w:p><w:pPr><w:spacing w:after="120"/></w:pPr><w:r><w:t xml:space="preserve">后置横向说明'));
+ const bytes=await base.zip.generateAsync({type:'uint8array',compression:'DEFLATE'}),{document,xml}=await read(await docx({template:{status:'ready',bytes}}));assert.equal(document.getElementsByTagNameNS(W,'sectPr').length,2,'test fixture retains distinct insertion and final sections');const table=document.getElementsByTagNameNS(W,'tbl')[0];assert.equal(Number(table.getElementsByTagNameNS(W,'tblW')[0].getAttributeNS(W,'w')),11906-5200);assert.match(xml,/学校封面/);assert.match(xml,/后置横向说明/);
+});
+
+test('Markdown headings become clean semantic Word headings while dated and numbered prose stay normal',async()=>{
+ const text='标题层级测试\n## 摘要\n摘要内容。\n# 第一章 绪论\n2026 年的研究描述应当保持正文。\n1 这个段落是完整的叙述句，不应被错误识别为章标题。\n## 1.1 研究背景\n正文引用[1]，代码`array[1]`保持字面量。\n## 参考文献\n[1] 合成真实对应题录。\n待引用文献（尚未在正文引用）\n[待引用1] 候选中出现[1]也不应连接。\n参考文献整理原文（待核对）\n整理原文[1]和原编号信息保留。';
+ const {document}=await read(await createWritingDocx(text,{documentKind:'thesis',metadata:{citationRanges:[rangeFor(text,'正文引用[1]',1)]}}));
+ const paras=[...document.getElementsByTagNameNS(W,'p')],paragraphText=node=>[...node.getElementsByTagNameNS(W,'t')].map(n=>n.textContent).join('');
+ for(const marker of ['第一章 绪论','1.1 研究背景','参考文献'])assert.ok(paras.some(node=>paragraphText(node)===marker&&node.getElementsByTagNameNS(W,'pStyle')[0]?.getAttributeNS(W,'val').startsWith('PKHeading')),marker);
+ for(const marker of ['2026 年的研究描述应当保持正文。','1 这个段落是完整的叙述句，不应被错误识别为章标题。'])assert.equal(paras.find(node=>paragraphText(node)===marker)?.getElementsByTagNameNS(W,'pStyle')[0]?.getAttributeNS(W,'val'),'PKNormal');
+ const referenceLinks=[...document.getElementsByTagNameNS(W,'hyperlink')].filter(node=>node.getAttributeNS(W,'anchor').startsWith('PKRef_'));assert.equal(referenceLinks.length,1);assert.equal(referenceLinks[0].textContent,'[1]');
+ assert.equal(paras.some(node=>/^#{1,3}\s/.test(paragraphText(node))),false);
+});
+
+test('a last-section chapter-only header follows the actual exported chapter instead of repeating its stale sample label',async()=>{
+ const reference=await headerTemplate(),input=await read(reference.bytes);
+ input.zip.file('word/header1.xml',`<w:hdr xmlns:w="${W}"><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>致 谢</w:t></w:r></w:p></w:hdr>`);
+ const source=await input.zip.generateAsync({type:'uint8array',compression:'DEFLATE'}),{zip}=await read(await createWritingDocx('合成论文\n第一章 绪论\n正文甲。\n第二章 设计\n正文乙。',{documentKind:'thesis',template:{status:'ready',bytes:source}})),header=await zip.file('word/header1.xml').async('string');
+ assert.match(header,/STYLEREF/);assert.match(header,/PaperKnow Heading1/);assert.match(header,/第一章 绪论/);assert.doesNotMatch(header,/致 谢/);assert.match(header,/w:jc w:val="center"/);assert.equal(await input.zip.file('word/header1.xml').async('string'),`<w:hdr xmlns:w="${W}"><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>致 谢</w:t></w:r></w:p></w:hdr>`);
+});
+
+test('unproven bracketed indices remain literal even when matching bibliography numbers exist',async()=>{
+ const text='引用来源验证\n第一章 绪论\narray[1]和中文符号端点[1]、真正文献[1]都不能仅凭数字猜测。\n参考文献\n[1] 合成文献信息。';
+ for(const metadata of [{},{citationRanges:[]},{citationRanges:[{start:text.indexOf('[1]'),end:text.indexOf('[1]')+3,number:2}]}]){
+  const {document}=await read(await createWritingDocx(text,{documentKind:'thesis',metadata}));assert.equal([...document.getElementsByTagNameNS(W,'hyperlink')].filter(node=>node.getAttributeNS(W,'anchor').startsWith('PKRef_')).length,0);assert.equal([...document.getElementsByTagNameNS(W,'bookmarkStart')].filter(node=>node.getAttributeNS(W,'name').startsWith('PKRef_')).length,1);
+ }
+});
+
+test('provenance offsets survive UTF16 text, normalized lines, tab expansion and native or fallback inline formulas',async()=>{
+ for(const formula of ['$E=mc^2$','$\\notARealCommand{x}$']){
+  const raw='精确引用验证\r\n第一章 绪论\r\n😀\t首个真实来源[1]、数组array[1]、中文端点[1]。公式'+formula+'后引文[2]。\u0001\r\n参考文献\r\n[1] 资料甲。\r\n[2] 资料乙。',text=raw.replace(/\r\n?/g,'\n').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,''),metadata={citationRanges:[rangeFor(text,'真实来源[1]',1),rangeFor(text,'后引文[2]',2)]};
+  const {document}=await read(await createWritingDocx(raw,{documentKind:'thesis',metadata})),links=[...document.getElementsByTagNameNS(W,'hyperlink')].filter(node=>node.getAttributeNS(W,'anchor').startsWith('PKRef_'));
+  assert.deepEqual(links.map(node=>node.textContent),['[1]','[2]']);const textContent=[...document.getElementsByTagNameNS(W,'t')].map(node=>node.textContent).join('');assert.match(textContent,/array\[1\]/);assert.match(textContent,/中文端点\[1\]/);
+ }
 });

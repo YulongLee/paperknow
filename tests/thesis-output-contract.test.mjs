@@ -14,7 +14,8 @@ test('document citations have independent reference and private-material numbers
  assert.match(text,/原始笔记\[材料1\]，参考乙\[1\]；对照甲\[2\]，再次参考乙\[1\]/);
  assert.match(text,/\[1\] 用户确认作者乙\. 真实文献乙\. 2024\. DOI: 10\.1234\/user-confirmed\. https:\/\/example.test\/paper/);
  assert.match(text,/\[2\] 真实文献甲/);assert.match(text,/研究材料来源（用户提供，待人工核对）\n\n\[材料1\] 本人的实验笔记（研究记录）/);
- assert.doesNotMatch(text,/\[source:|private-notebook|reference-b|reference-a|未使用的访谈|尚未确认的题录|已确认但未引用/);
+ assert.doesNotMatch(text,/\[source:|private-notebook|reference-b|reference-a|未使用的访谈|尚未确认的题录/);
+ assert.match(text,/待引用文献（尚未在正文引用）/);assert.match(text,/\[待引用1\] 已确认但未引用/);
  assert.deepEqual({value,rows},before);assert.equal(thesisFullText(value,rows),text);
  assert.deepEqual(thesisManualSourceIds(rows[0].text,value),['private-notebook','reference-b','reference-a']);
  assert.match(compileThesisReferences(value,['reference-b']),/\[source:reference-b\]/);

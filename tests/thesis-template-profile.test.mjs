@@ -97,3 +97,23 @@ test('actual inflation cannot exceed a forged small declared size, and encrypted
  const encrypted=await fixture(),ev=new DataView(encrypted.buffer);let e=0;while(ev.getUint32(e,true)!==0x02014b50)e++;ev.setUint16(e+8,ev.getUint16(e+8,true)|1,true);await assert.rejects(()=>inspectThesisDocxTemplate(encrypted),/加密/);
  await assert.rejects(()=>inspectThesisDocxTemplate(new Uint8Array(2*1024*1024+1)),/2 MB/);
 });
+
+test('an explicitly used school body style overrides an unrelated default Normal style',async()=>{
+ const styles=normal+'<w:style w:type="paragraph" w:styleId="SchoolBody"><w:name w:val="论文正文"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:line="440" w:lineRule="exact"/></w:pPr><w:rPr><w:rFonts w:eastAsia="宋体"/><w:sz w:val="26"/></w:rPr></w:style>',body=para('这是一段采用学校专用正文样式的实际内容，用于验证默认Normal样式不会覆盖真正的论文正文格式。','<w:pStyle w:val="SchoolBody"/>');
+ const result=await inspectThesisDocxTemplate(await fixture({styles,body}));assert.equal(result.rules.styles.Normal.eastAsia,'宋体');assert.equal(result.rules.styles.Normal.size,26);assert.equal(result.rules.styles.Normal.line,440);assert.equal(result.rules.styles.Normal.lineRule,'exact');
+});
+
+test('repeated directly formatted school body samples control formatting without a stray cover taking over',async()=>{
+ const body=para('学校封面大标题','<w:jc w:val="center"/>','<w:sz w:val="44"/><w:b/>')+[1,2,3].map(n=>para('第'+n+'段，这是足够长的学校正文样例，用于表达实际正文所使用的字体字号和行距，避免无关的Normal默认字号污染论文导出。','<w:jc w:val="both"/><w:spacing w:line="420" w:lineRule="exact"/>','<w:rFonts w:eastAsia="宋体"/><w:sz w:val="28"/>')).join('');
+ const result=await inspectThesisDocxTemplate(await fixture({body}));assert.equal(result.rules.styles.Normal.eastAsia,'宋体');assert.equal(result.rules.styles.Normal.size,28);assert.equal(result.rules.styles.Normal.line,420);assert.equal(result.rules.styles.Normal.bold,false);assert.equal(result.rules.styles.Normal.alignment,'both');
+});
+
+test('cover metadata fields do not become an oversized scientific table text style',async()=>{
+ const cover='<w:tbl><w:tr>'+['学号：','姓名：','专业：','学院：','指导教师：'].map(label=>'<w:tc>'+para(label,'','<w:sz w:val="32"/>')+'</w:tc>').join('')+'</w:tr></w:tbl>',body=cover+para('摘要')+para('合成摘要正文。');
+ const result=await inspectThesisDocxTemplate(await fixture({body}));assert.equal(result.rules.styles.TableText.size,21);assert.ok(result.unresolved.includes('styles.TableText.size'));
+});
+
+test('short large cover cells after an instruction abstract cannot override a scientific data table style',async()=>{
+ const cover=['中文题目：','外文题目：','生命科学学院'].map(label=>'<w:tbl><w:tr><w:tc>'+para(label,'','<w:sz w:val="32"/>')+'</w:tc></w:tr></w:tbl>').join(''),body=para('摘要')+para('模板前部的写作规范说明。')+cover;
+ const result=await inspectThesisDocxTemplate(await fixture({body}));assert.equal(result.rules.styles.TableText.size,21);assert.ok(result.unresolved.includes('styles.TableText.size'));
+});

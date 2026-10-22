@@ -4,7 +4,7 @@ import fontkit from '@pdf-lib/fontkit';
 import {applyThesisDocumentTemplate} from './thesis-document.js';
 export {inspectThesisDocxTemplate,defaultThesisTemplateProfile} from './thesis-template-profile.js';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
-export function documentLines(value){const text=String(value);if(!text.trim())throw Error('请先填写或生成需要导出的内容。');if(text.length>500000)throw Error('正文超过 500,000 字符，请分章节导出。');if([...text].some(char=>{const point=char.codePointAt(0);return point>=0xd800&&point<=0xdfff||point===0xfffe||point===0xffff;}))throw Error('正文包含无法安全导出的字符，请修正后重试。');return text.replace(/\r\n?/g,'\n').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'').split('\n').map((text,i)=>({text,level:i===0?0:/^\s*第.{1,12}章|^\s*参考文献/.test(text)?1:/^\s*\d+\.\d+(?:\.\d+)?\s/.test(text)?2:3}));}
+export function documentLines(value){const text=String(value);if(!text.trim())throw Error('请先填写或生成需要导出的内容。');if(text.length>500000)throw Error('正文超过 500,000 字符，请分章节导出。');if([...text].some(char=>{const point=char.codePointAt(0);return point>=0xd800&&point<=0xdfff||point===0xfffe||point===0xffff;}))throw Error('正文包含无法安全导出的字符，请修正后重试。');let sourceStart=0;return text.replace(/\r\n?/g,'\n').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'').split('\n').map((text,i)=>{const row={text,sourceStart,level:i===0?0:/^\s*第.{1,12}章|^\s*参考文献/.test(text)?1:/^\s*\d+\.\d+(?:\.\d+)?\s/.test(text)?2:3};sourceStart+=text.length+1;return row;});}
 const escaped=(text,index)=>{let count=0;while(index>0&&text[--index]==='\\')count++;return count%2===1;};
 // Delimiters are parsed conservatively. Unmatched math, currency and fenced
 // code remain literal text, and unsupported TeX is never removed from exports.
@@ -41,7 +41,7 @@ function documentBlocks(value){
   if(header?.length&&header.length<=20&&separator?.length===header.length&&separator.every(cell=>/^:?-{3,}:?$/.test(cell))){const rows=[header],align=separator.map(cell=>cell.startsWith(':')&&cell.endsWith(':')?'center':cell.endsWith(':')?'right':'left');index++;while(index+1<lines.length){const row=tableCells(lines[index+1].text);if(!row||row.length!==header.length)break;rows.push(row);index++;}blocks.push({type:'table',rows,align});continue;}
   blocks.push(line);
  }
- return blocks;
+ return blocks.map(block=>{if(block.literal||block.type==='formula'||block.type==='table')return block;let sourceOffset=0;const inlineSegments=inlineParts(block.text).map(part=>{const segment={text:part.text,sourceOffset,formula:Boolean(part.formula)};sourceOffset+=part.text.length;return segment;});return {...block,inlineSegments};});
 }
 let formulaPromise;
 async function formulaRenderer(){if(!formulaPromise){const url=new URL('./research-formula.js',import.meta.url).href;formulaPromise=import(url).catch(error=>{formulaPromise=null;throw error;});}return formulaPromise;}

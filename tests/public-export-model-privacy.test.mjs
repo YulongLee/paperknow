@@ -24,7 +24,7 @@ test('actual DOCX artifact excludes execution envelopes while retaining model na
  for(const name of Object.keys(zip.files))if(!zip.files[name].dir)packageText+=await zip.files[name].async('string');
  assertPrivateIdentityAbsent(packageText);
  const xml=await zip.file('word/document.xml').async('string'),doc=new DOMParser().parseFromString(xml,'application/xml'),exported=Array.from(doc.getElementsByTagName('w:t')).map(node=>node.textContent).join('\n');
- assert.ok(exported.includes(researchText));assert.ok(exported.includes(citationTitle));assert.equal(exported.includes('尚未引用的来源'),false);
+ assert.ok(exported.includes(researchText));assert.ok(exported.includes(citationTitle));assert.ok(exported.includes('待引用文献（尚未在正文引用）'));assert.ok(exported.includes('尚未引用的来源'));assert.doesNotMatch(exported,/\[1\]|已使用的参考文献/);
  assert.deepEqual(item,before);
 });
 
@@ -33,11 +33,11 @@ test('actual PDF pages and document metadata exclude runtime identity without ce
  for(const value of [metadata.getTitle(),metadata.getAuthor(),metadata.getSubject(),metadata.getCreator(),metadata.getProducer(),metadata.getKeywords()])assertPrivateIdentityAbsent(value);
  const task=getDocument({data:new Uint8Array(bytes),useSystemFonts:false});
  try{const document=await task.promise;let content='';for(let index=1;index<=document.numPages;index++){const page=await document.getPage(index);content+=(await page.getTextContent()).items.map(item=>item.str).join('');}
-  assertPrivateIdentityAbsent(content);const compact=value=>value.replace(/\s+/g,'');assert.ok(compact(content).includes(compact(researchText)));assert.ok(compact(content).includes(compact(citationTitle)));assert.equal(content.includes('尚未引用的来源'),false);
+  assertPrivateIdentityAbsent(content);const compact=value=>value.replace(/\s+/g,'');assert.ok(compact(content).includes(compact(researchText)));assert.ok(compact(content).includes(compact(citationTitle)));assert.ok(compact(content).includes('待引用文献（尚未在正文引用）'));assert.ok(content.includes('尚未引用的来源'));assert.doesNotMatch(content,/\[1\]|已使用的参考文献/);
  }finally{await task.destroy();}
 });
 
-test('customer TXT download emits only the manuscript and cited bibliography, never the surrounding runtime object',async()=>{const originalFetch=globalThis.fetch,artifactFetch=mockArtifactFetch(path=>{throw Error('Unexpected request '+path);},{userId:'researcher'});globalThis.fetch=async(path,options)=>{const response=await artifactFetch(path,options);return String(path).includes('/download?')?new Response(await response.arrayBuffer(),{headers:{'Content-Type':'text/plain;charset=utf-8'}}):response;};const restoreExport=()=>{globalThis.fetch=originalFetch;};
+test('customer TXT download retains manuscript and explicit pending bibliography without the surrounding runtime object',async()=>{const originalFetch=globalThis.fetch,artifactFetch=mockArtifactFetch(path=>{throw Error('Unexpected request '+path);},{userId:'researcher'});globalThis.fetch=async(path,options)=>{const response=await artifactFetch(path,options);return String(path).includes('/download?')?new Response(await response.arrayBuffer(),{headers:{'Content-Type':'text/plain;charset=utf-8'}}):response;};const restoreExport=()=>{globalThis.fetch=originalFetch;};
  const dom=new JSDOM('<main class="dashboard"></main>',{url:'https://paperknow.test/workspace.html#thesis/privacy-thesis'}),globals=['window','document','location','AbortController'],saved=new Map(globals.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)])),objectURL=URL.createObjectURL,revokeURL=URL.revokeObjectURL,schedule=globalThis.setTimeout,blobs=[],clicked=[];
  disposeOnlineThesis();
  try{
@@ -49,7 +49,7 @@ test('customer TXT download emits only the manuscript and cited bibliography, ne
   await view.ready;
   const button=document.querySelector('[data-thesis-txt]');assert.ok(button);assert.equal(button.disabled,false);button.click();
   await waitForExport(()=>blobs.length);assert.equal(blobs.length,1);assert.equal(clicked.length,1);assert.match(clicked[0].name,/\.txt$/);assert.equal(blobs[0].type,'text/plain;charset=utf-8');
-  const text=await blobs[0].text();assertPrivateIdentityAbsent(text);assert.ok(text.includes(researchText));assert.ok(text.includes(citationTitle));assert.equal(text.includes('尚未引用的来源'),false);
+  const text=await blobs[0].text();assertPrivateIdentityAbsent(text);assert.ok(text.includes(researchText));assert.ok(text.includes(citationTitle));assert.ok(text.includes('待引用文献（尚未在正文引用）'));assert.ok(text.includes('尚未引用的来源'));assert.doesNotMatch(text,/\[1\]|已使用的参考文献/);
  }finally{
   restoreExport();disposeOnlineThesis();dom.window.close();URL.createObjectURL=objectURL;URL.revokeObjectURL=revokeURL;globalThis.setTimeout=schedule;
   for(const [key,descriptor]of saved)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];

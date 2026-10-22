@@ -41,23 +41,27 @@ export async function inspectThesisDocxTemplate(bytes){
   }p.push(defaultP);r.push(defaultR);return{p,r};};
  const byRole=new Map();for(const [id,node]of styles){if(attr(node,'type')!=='paragraph')continue;const role=roleForStyle(node,styleGroups(id).p);if(role&&!byRole.has(role))byRole.set(role,id);}
  if(defaultStyle)byRole.set('Normal',attr(defaultStyle,'styleId'));
- const candidates=new Map(ROLES.map(role=>[role,[]]));let sectionRole='Normal';
+ const candidates=new Map(ROLES.map(role=>[role,[]])),coverTables=new Map();let sectionRole='Normal',frontMatterSeen=false;
  const paragraphs=[...document.getElementsByTagNameNS(W,'p')];if(paragraphs.length>20000)throw Error('模板段落过多。');
  for(const paragraph of paragraphs){
   if(hasAncestor(paragraph,'txbxContent')||hasAncestor(paragraph,'drawing'))continue;
   const text=paragraphText(paragraph);if(!text.trim())continue;
   const own=one(paragraph,'pPr'),id=attr(one(own,'pStyle'),'val')||attr(defaultStyle,'styleId'),inherited=styleGroups(id),p=[own,...inherited.p],roleNode=styles.get(id);let role=roleNode?roleForStyle(roleNode,p):null;
   const level=readNumber(first(p,'outlineLvl'),'val',0,2);if(level!==undefined)role='Heading'+(level+1);
-  if(/^(?:摘\s*要|abstract)$/i.test(text.trim())){sectionRole='Abstract';role='Heading1';}
-  else if(/^(?:参考文献|references|bibliography)$/i.test(text.trim())){sectionRole='References';role='Heading1';}
-  else if(/^(?:目\s*录|contents|table of contents)$/i.test(text.trim())){sectionRole='Normal';role='Heading1';}
+  if(/^(?:摘\s*要|abstract)$/i.test(text.trim())){sectionRole='Abstract';role='Heading1';frontMatterSeen=true;}
+  else if(/^(?:参考文献|references|bibliography)$/i.test(text.trim())){sectionRole='References';role='Heading1';frontMatterSeen=true;}
+  else if(/^(?:目\s*录|contents|table of contents)$/i.test(text.trim())){sectionRole='Normal';role='Heading1';frontMatterSeen=true;}
   else if(role?.startsWith('Heading'))sectionRole='Normal';
   else if(!role||role==='Normal')role=sectionRole;
   // Front headings and cached TOC entries have their own display roles. They
   // must not become a sample of Normal when a mostly-empty template is read.
   const displayName=attr(one(roleNode,'name'),'val')||'';
   if(id==='PKFrontHeading'||/^PaperKnow Front Heading$/i.test(displayName)||/^(?:PKTOC|TOC)[1-9]$/i.test(id||'')||/^(?:toc|目录)\s*[1-9]$/i.test(displayName))continue;
-  if(hasAncestor(paragraph,'tc'))role='TableText';
+  if(hasAncestor(paragraph,'tc')){
+   let table=paragraph.parentNode;while(table&&!(table.namespaceURI===W&&table.localName==='tbl'))table=table.parentNode;
+   if(!frontMatterSeen&&table){if(!coverTables.has(table)){const text=[...table.getElementsByTagNameNS(W,'t')].map(node=>node.textContent).join('').replace(/\s/g,'');coverTables.set(table,['学号','姓名','专业','学院','指导教师','完成日期'].filter(label=>text.includes(label)).length>=3);}if(coverTables.get(table))continue;}
+   role='TableText';
+  }
   if(!role)role='Normal';
   const directRuns=[...paragraph.getElementsByTagNameNS(W,'r')].filter(node=>!hasAncestorBetween(node,paragraph,['p','txbxContent','drawing']));
   const rankedRuns=directRuns.map(node=>({node,weight:[...node.getElementsByTagNameNS(W,'t')].reduce((sum,part)=>sum+part.textContent.length,0)})).filter(row=>row.weight).sort((a,b)=>b.weight-a.weight);
@@ -65,18 +69,34 @@ export async function inspectThesisDocxTemplate(bytes){
   // Paragraph properties never come from a character style. A direct run's
   // dominant formatting precedes its character/paragraph style inheritance.
   const directR=[rpr,...character.r.slice(0,-1)];
-  candidates.get(role).push({weight:Math.min(text.length,10000),p,r:[...directR,...inherited.r],directAlignment:property([own],'jc','val'),directSize:numeric(directR,'sz','val',2,400),directBold:toggle(directR,'b'),standalone:text.trim().length<=120&&!/[。！？.!?；;]/u.test(text)});
+  candidates.get(role).push({weight:Math.min(text.length,10000),p,r:[...directR,...inherited.r],sourceStyle:id,explicitStyle:Boolean(attr(one(own,'pStyle'),'val')),directAlignment:property([own],'jc','val'),directSize:numeric(directR,'sz','val',2,400),directBold:toggle(directR,'b'),standalone:text.trim().length<=120&&!/[。！？.!?；;]/u.test(text)});
  }
  for(const role of ROLES){
   const id=byRole.get(role),groups=id?styleGroups(id):null,declared=groups?readStyle(groups.p,groups.r,theme,warnings):{};
   // A cover title often has no pStyle and therefore inherits Normal. Its
   // direct large, bold or centered formatting must not redefine all body text.
-  const rows=candidates.get(role).filter(row=>role!=='Normal'||!(['center','right'].includes(row.directAlignment)||(row.standalone&&(row.directBold===true||row.directSize>(declared.size||24)*1.2)))).sort((a,b)=>b.weight-a.weight),candidate=rows[0];
-  const sample=candidate?readStyle(candidate.p,candidate.r,theme,warnings):{};
+  const rows=candidates.get(role).filter(row=>{
+   if(role==='Normal')return !(['center','right'].includes(row.directAlignment)||(row.standalone&&(row.directBold===true||row.directSize>(declared.size||24)*1.2)));
+   if(role==='TableText'&&row.standalone&&row.weight<=20)return (row.directSize??readStyle(row.p,row.r,theme,warnings).size??0)<=rules.styles.Normal.size*1.2;
+   return true;
+  }).sort((a,b)=>b.weight-a.weight),candidate=rows[0];
+  let selected=candidate,bodySample=false;
+  if(role==='Normal'){
+   // A real school body style takes precedence over an unrelated default
+   // Normal. Repeated directly formatted body samples also count, whereas a
+   // single cover/example run cannot redefine the document contract.
+   const named=rows.find(row=>row.sourceStyle!==id&&row.weight>=20&&styles.has(row.sourceStyle)&&roleForStyle(styles.get(row.sourceStyle),row.p)==='Normal');
+   const groups=new Map();for(const row of rows.filter(row=>!row.explicitStyle&&row.weight>=40)){
+    const values=readStyle(row.p,row.r,theme,warnings),key=JSON.stringify(values),group=groups.get(key)||{row,count:0,weight:0};group.count++;group.weight+=row.weight;groups.set(key,group);
+   }
+   const repeated=[...groups.values()].filter(group=>group.count>=2).sort((a,b)=>b.weight-a.weight)[0]?.row;
+   if(named||repeated){selected=named||repeated;bodySample=true;}
+  }
+  const sample=selected?readStyle(selected.p,selected.r,theme,warnings):{};
   // Named Normal plus its explicit inheritance is the body-format contract.
   // A credible body paragraph may fill missing attributes; direct outline
   // headings and other explicit roles still retain their actual formatting.
-  const values=role==='Normal'?{...sample,...declared}:candidate?sample:declared;
+  const values=role==='Normal'?!bodySample?{...sample,...declared}:{...declared,...sample}:candidate?sample:declared;
   for(const field of STYLE_FIELDS){const key='styles.'+role+'.'+field;if(values[field]!==undefined){rules.styles[role][field]=values[field];recognized.push(key);}else unresolved.push(key);}
  }
  const sections=[...document.getElementsByTagNameNS(W,'sectPr')],section=sections.at(-1),pages=sections.map(readPage);
@@ -118,7 +138,7 @@ function roleForStyle(node,p){
  const canonical=name.split('|').map(value=>value.match(/^(?:PK|PaperKnow\s+)(Normal|Title|Heading[123]|Abstract|References|TableText)$/i)).find(Boolean);if(canonical)return ROLES.find(role=>role.toLowerCase()===canonical[1].toLowerCase());
  const numbered=name.match(/(?:heading|标题|標題)\s*([123一二三])/i);if(numbered)return'Heading'+({'一':1,'二':2,'三':3}[numbered[1]]||numbered[1]);
  const outline=numeric(p,'outlineLvl','val',0,2);if(outline!==undefined)return'Heading'+(outline+1);
- if(/(?:^|\|)(?:normal|正文|标准|標準)(?:\||$)/i.test(name))return'Normal';
+ if(/(?:^|\|)(?:normal|body\s*text|论文正文|正文(?:文本|内容|首行缩进|段落)?|标准|標準)(?:\||$)/i.test(name))return'Normal';
  if(/(?:^|\|)(?:title|标题|標題|论文标题)(?:\||$)/i.test(name))return'Title';
  if(/abstract|摘要正文/i.test(name))return'Abstract';if(/references|bibliography|参考文献|參考文獻/i.test(name))return'References';if(/table\s*(?:text|content)|表格(?:文字|正文)/i.test(name))return'TableText';return null;
 }

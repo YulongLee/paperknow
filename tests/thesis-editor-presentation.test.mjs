@@ -44,3 +44,8 @@ test('editor counts match backend Chinese and English counts and exclude whitesp
  for(const [text,language] of [['汉字 空白\n标点。😀 [source:very-long-private-id]','中文'],["We can't claim state-of-the-art results. [source:long-id] Data 2026.",'English'],['重复[source:a][source:a]引用\t 资料','中文'],['中文 English [source:x] mixed 研究词。','英文']])assert.equal(thesisEditorWordCount(text,language),researchWordCount(text,language));
  assert.equal(thesisEditorWordCount('正文 [source:an-internal-id-with-100-characters]。','中文'),3);assert.equal(thesisEditorWordCount("We can't over-claim. [source:x]",'English'),3);
 });
+
+test('whole-manuscript reference numbers remain reversible when selected catalog order differs from first citation order',()=>{
+ const sources={references:[{id:'a',title:'后引用文献',confirmed:true},{id:'b',title:'先引用文献',confirmed:true}]},bibliography={references:[{id:'b',number:1},{id:'a',number:2}]},raw='第二章使用 [source:a]，再次比较 [source:b]。',view=thesisEditorPresentation(sources,raw,{bibliography});
+ assert.equal(view.text,'第二章使用 〔文献2〕，再次比较 〔文献1〕。');assert.equal(restoreThesisEditorText(view.text,view).text,raw);assert.equal(view.sources[0].name,'后引用文献');
+});

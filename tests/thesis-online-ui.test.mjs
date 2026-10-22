@@ -78,9 +78,9 @@ test('metadata-only references can request and explicitly start a reviewable dra
 test('a quote that expires after display still cannot start generation after the user consents',async()=>{
  const f=fixture(),now=Date.now;try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote]').click();await settle();const consent=f.$('[data-thesis-consent]');consent.checked=true;consent.dispatchEvent(new window.Event('change'));Date.now=()=>now()+120000;f.$('[data-thesis-start]').click();await settle();assert.equal(f.calls.some(call=>call.path.endsWith('/generate')),false);assert.match(f.$('[data-thesis-notice]').textContent,/重新确认费用/);assert.equal(f.$('.thesis-charge'),null);}finally{Date.now=now;f.close();}
 });
-test('export uses the server full text or only confirmed cited sources in a partial response',()=>{
- const value=thesis({chapters:[{id:'c1',title:'第一章',text:'真实正文',sourceIds:['m1','r-used','r-unconfirmed']}]});value.snapshot.references=[{id:'r-used',title:'已引用的来源',confirmed:true},{id:'r-unused',title:'未引用题录',confirmed:true},{id:'r-unconfirmed',title:'未确认来源',confirmed:false}];
- assert.match(thesisDocumentText(value),/已引用的来源/);assert.match(thesisDocumentText(value),/实验笔记/);assert.doesNotMatch(thesisDocumentText(value),/未引用题录|未确认来源/);assert.equal(thesisDocumentText({...value,fullText:'服务端整理的真实全文与来源'}),'服务端整理的真实全文与来源');
+test('export rebuilds current citation indexes and retains uncited confirmed records separately from the cited bibliography',()=>{
+ const value=thesis({chapters:[{id:'c1',title:'第一章',text:'真实正文 [source:r-used]；实验记录 [source:m1]。',sourceIds:['m1','r-used','r-unconfirmed']}]});value.snapshot.references=[{id:'r-used',title:'已引用的来源',confirmed:true},{id:'r-unused',title:'未引用题录',confirmed:true},{id:'r-unconfirmed',title:'未确认来源',confirmed:false}];
+ const text=thesisDocumentText(value);assert.match(text,/真实正文 \[1\]/);assert.match(text,/已引用的来源/);assert.match(text,/实验笔记/);assert.match(text,/待引用文献（尚未在正文引用）[^]*未引用题录/);assert.doesNotMatch(text,/未确认来源/);assert.equal(thesisDocumentText({...value,fullText:'旧缓存省略了参考文献'}),text);
 });
 test('refresh preserves unsaved text, optimistic save uses the current version and no local unlock gates exports',async()=>{
  const original=thesis({status:'completed',chapters:[{id:'c1',title:'第一章 <script>恶意</script>',text:'账户原文',version:1,status:'saved',sourceIds:['m1']}]}),f=fixture({item:original});const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
@@ -133,13 +133,13 @@ test('legacy full-text exports render citation labels and inventories without ch
  const value=thesis({title:'来源呈现测试',fullText:'旧版服务端全文 '+original,chapters:[{id:'c1',title:'第一章',text:original,sourceIds:['r1','m1','removed-private-id']}]});
  value.snapshot.references=[{id:'r1',title:'经用户确认的参考文献',authors:'研究者甲',year:'2025',confirmed:true},{id:'unused',title:'未使用文献',confirmed:true}];
  const raw=structuredClone(value),result=thesisDocumentText(value);
- assert.match(result,/已有研究指出这一现象 \[1\]/);assert.match(result,/用户观察见 \[材料1\]/);assert.match(result,/未识别来源 \[来源待核对\]/);assert.match(result,/经用户确认的参考文献/);assert.match(result,/实验笔记/);assert.doesNotMatch(result,/\[source:|removed-private-id|未使用文献|旧版服务端全文/);assert.deepEqual(value,raw);
+ assert.match(result,/已有研究指出这一现象 \[1\]/);assert.match(result,/用户观察见 \[材料1\]/);assert.match(result,/未识别来源 \[来源待核对\]/);assert.match(result,/经用户确认的参考文献/);assert.match(result,/实验笔记/);assert.doesNotMatch(result,/\[source:|removed-private-id|旧版服务端全文/);assert.deepEqual(value,raw);
 });
 
-test('an already formatted server document passes through verbatim and fallback uses citation presentation',()=>{
+test('a stale formatted server cache cannot override the current saved chapters and citation inventory',()=>{
  const value=thesis({chapters:[{id:'c1',title:'第一章',text:'参考研究 [source:r1] 与材料 [source:m1]。',sourceIds:['r1','m1']}]});
  value.snapshot.references=[{id:'r1',title:'研究参考文献',confirmed:true}];
- const formatted='服务端已排版正文\n\n第一章\n保留原有内容与空格  [1]';assert.equal(thesisDocumentText({...value,fullText:formatted}),formatted);
+ const formatted='服务端已排版正文\n\n第一章\n保留原有内容与空格  [1]';assert.equal(thesisDocumentText({...value,fullText:formatted}),thesisDocumentText(value));
  const fallback=thesisDocumentText(value);assert.match(fallback,/参考研究 \[1\] 与材料 \[材料1\]/);assert.match(fallback,/研究参考文献/);assert.match(fallback,/实验笔记/);assert.doesNotMatch(fallback,/\[source:/);
 });
 
@@ -421,4 +421,46 @@ test('delayed generation submission shows a dedicated waiting state while readin
   assert.equal(f.calls.filter(row=>row.path==='/theses/t1/generate').length,1);assert.equal(f.$('[data-thesis-wait]').getAttribute('aria-busy'),'true');assert.match(f.$('[data-thesis-wait-title]').textContent,/正在提交生成任务/);assert.match(f.$('[data-thesis-wait]').textContent,/无需重复点击/);assert.equal(f.$('[data-thesis-start]').disabled,true);assert.equal(f.$('[data-thesis-start]').textContent,'正在提交…');assert.equal(f.$('[data-thesis-dismiss]').disabled,true);f.$('[data-thesis-start]').click();await settle();assert.equal(f.calls.filter(row=>row.path==='/theses/t1/generate').length,1);
   resolveSubmission({item:queued});await settle();assert.equal(f.$('[data-thesis-start]'),null);assert.match(f.$('[data-thesis-wait-title]').textContent,/已提交，等待开始/);assert.equal(f.$('[data-thesis-wait]').getAttribute('aria-busy'),'true');assert.equal(f.calls.filter(row=>row.path==='/theses/t1/generate').length,1);
  }finally{resolveQuote(quote());resolveSubmission({item:queued});await settle();f.close();}
+});
+
+test('citation inventory uses global first appearance, locates across chapters and retains uncited metadata without any write',async()=>{
+ const value=thesis({status:'completed',chapters:[{id:'c1',title:'第一章',version:1,text:'前文引用 [source:b]。',sourceIds:['b']},{id:'c2',title:'第二章',version:1,text:'讨论引用 [source:a] 与再次引用 [source:b]。',sourceIds:['a','b']}]});
+ value.snapshot.references=[{id:'a',title:'文献甲',confirmed:true},{id:'b',title:'文献乙',confirmed:true},{id:'c',title:'候选 <script>不可执行</script>',confirmed:true}];
+ const f=fixture({item:value});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
+  const panel=f.$('.thesis-bibliography');assert.match(panel.textContent,/已引用 2 篇 · 待引用 1 篇/);assert.match(panel.textContent,/仅题录，未读取原文/);assert.equal(panel.querySelector('script'),null);assert.equal(panel.open,false);
+  panel.open=true;f.$('[data-thesis-cite-locate="a"]').click();assert.equal(f.$('[data-thesis-editor]').value,'讨论引用 〔文献2〕 与再次引用 〔文献1〕。');assert.equal(f.$('[data-thesis-editor]').value.slice(f.$('[data-thesis-editor]').selectionStart,f.$('[data-thesis-editor]').selectionEnd),'〔文献2〕');assert.equal(f.$('.thesis-bibliography').open,true);assert.equal(f.calls.filter(row=>row.data).length,0);
+ }finally{f.close();}
+});
+
+test('explicit citation insertion preserves canonical source markers and unsaved prose without automatically saving or generating',async()=>{
+ const value=thesis({status:'completed',chapters:[{id:'c1',title:'第一章',version:1,status:'saved',text:'账户原文。',sourceIds:[]}]});value.snapshot.references=[{id:'r1',title:'已选题录',confirmed:true}];
+ const f=fixture({item:value});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
+  input(f,'[data-thesis-editor]','我的修改正文。');f.$('[data-thesis-editor]').setSelectionRange(6,6);f.$('[data-thesis-cite-insert="r1"]').click();
+  assert.equal(f.$('[data-thesis-editor]').value,'我的修改正文〔文献1〕。');assert.match(f.$('.thesis-bibliography').textContent,/已引用 1 篇 · 待引用 0 篇/);assert.match(f.$('[data-thesis-notice]').textContent,/尚未保存/);assert.equal(f.calls.filter(row=>row.data).length,0);assert.equal(f.$('#thesis-online-docx').disabled,true);
+  f.$('[data-thesis-save-chapter]').click();await settle();assert.equal(f.calls.find(row=>row.path==='/theses/t1/chapters/c1'&&row.data)?.data.text,'我的修改正文[source:r1]。');assert.equal(f.$('#thesis-online-docx').disabled,false);assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);
+ }finally{f.close();}
+});
+
+test('citation inventory stays available while generating but never inserts into read-only chapters',async()=>{
+ const value=thesis({status:'running',job:{id:'job-1',status:'running'},chapters:[{id:'c1',title:'第一章',version:1,text:'保存正文 [source:r1]。'}]}),f=fixture({item:value});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
+  assert.equal(f.$('[data-thesis-cite-insert="r1"]').disabled,true);assert.equal(f.$('[data-thesis-cite-locate="r1"]').disabled,false);f.$('[data-thesis-cite-locate="r1"]').click();assert.equal(f.$('[data-thesis-editor]').readOnly,true);assert.equal(f.calls.filter(row=>row.data).length,0);
+ }finally{f.close();}
+});
+
+test('inserting a citation after a selected claim never replaces the selected original',async()=>{
+ const value=thesis({status:'completed',chapters:[{id:'c1',title:'第一章',version:1,text:'保留选中的完整论述[source:r1]与结尾。',sourceIds:['r1']}]});value.snapshot.references=[{id:'r1',title:'既有引用',confirmed:true},{id:'r2',title:'新引用',confirmed:true}];
+ const f=fixture({item:value});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
+  const editor=f.$('[data-thesis-editor]');editor.setSelectionRange(0,9);f.$('[data-thesis-cite-insert="r2"]').click();assert.match(f.$('[data-thesis-editor]').value,/保留选中的完整论述〔文献1〕〔文献2〕与结尾。/);f.$('[data-thesis-save-chapter]').click();await settle();assert.equal(f.calls.find(row=>row.path==='/theses/t1/chapters/c1'&&row.data)?.data.text,'保留选中的完整论述[source:r2][source:r1]与结尾。');
+ }finally{f.close();}
+});
+
+test('completed section previews use the same whole-manuscript citation numbers as the chapter editor',async()=>{
+ const value=thesis({status:'completed',chapters:[{id:'c1',title:'第一章',version:1,text:'先引乙[source:b]，再引甲[source:a]。',sourceIds:['a','b']}],sections:[{id:'s1',chapterId:'c1',status:'completed',text:'先引乙[source:b]，再引甲[source:a]。'}]});value.snapshot.references=[{id:'a',title:'甲',confirmed:true},{id:'b',title:'乙',confirmed:true}];
+ const f=fixture({item:value});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.equal(f.$('.thesis-completed-sections pre').textContent,f.$('[data-thesis-editor]').value);assert.match(f.$('.thesis-completed-sections pre').textContent,/先引乙〔文献1〕，再引甲〔文献2〕/);}finally{f.close();}
+});
+
+test('reusing a reference at a caret inside an existing token preserves that token and focuses the newly inserted occurrence',async()=>{
+ const value=thesis({status:'completed',chapters:[{id:'c1',title:'第一章',version:1,text:'原有论述[source:r1]，新的论述。',sourceIds:['r1']}]});value.snapshot.references=[{id:'r1',title:'既有来源',confirmed:true}];const f=fixture({item:value});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
+  const before=f.$('[data-thesis-editor]');before.setSelectionRange(6,6);f.$('[data-thesis-cite-insert="r1"]').click();const after=f.$('[data-thesis-editor]');assert.equal(after.value,'原有论述〔文献1〕〔文献1〕，新的论述。');assert.equal(after.selectionStart,after.value.lastIndexOf('〔文献1〕'));f.$('[data-thesis-save-chapter]').click();await settle();assert.equal(f.calls.find(row=>row.path==='/theses/t1/chapters/c1'&&row.data).data.text,'原有论述[source:r1][source:r1]，新的论述。');
+ }finally{f.close();}
 });
