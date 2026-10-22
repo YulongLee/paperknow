@@ -10,7 +10,13 @@ import {uploadThesisTemplate} from '../dist/workspace/thesis-template.mjs';
 const bytes=Buffer.from('已保存的测试资料'),sha=createHash('sha256').update(bytes).digest('hex');
 const row={id:'stored-1',name:'研究资料.txt',kind:'txt',bytes:bytes.length,sha256:sha,status:'ready'};
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
-async function settle(check){for(let n=0;n<100;n++){if(check())return;await flush();}throw Error('UI did not settle');}
+async function settle(check){
+ const deadline=performance.now()+5000;
+ // Crypto work may finish after many otherwise idle event-loop turns.
+ while(performance.now()<deadline){if(check())return;await new Promise(resolve=>setTimeout(resolve,5));}
+ if(check())return;
+ throw Error('UI did not settle');
+}
 async function fixture(t,{accept='.txt',handle,select=true,requestTimeout}={}){
  const dom=new JSDOM(`<main><label>上传<input id="file" type="file" accept="${accept}"></label></main>`,{url:'http://localhost/workspace.html#tool/proposal'}),w=dom.window,calls=[],selected=[];
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};Object.defineProperty(w.crypto,'subtle',{value:webcrypto.subtle});w.File=globalThis.File;
