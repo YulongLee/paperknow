@@ -45,7 +45,7 @@
     {
       "slug": "/features/format/",
       "file": "features/format/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-10-22",
       "title": "论文格式排版工具｜DOCX 检测与样式整理"
     },
     {
@@ -75,7 +75,7 @@
     {
       "slug": "/guides/docx-format/",
       "file": "guides/docx-format/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-10-22",
       "title": "DOCX 论文格式排版步骤｜检查、应用与副本复核"
     },
     {
@@ -93,7 +93,7 @@
     {
       "slug": "/about/",
       "file": "about/index.html",
-      "modifiedAt": "2026-10-21",
+      "modifiedAt": "2026-10-22",
       "title": "关于 PaperKnow｜论文写作与科研辅助工作台"
     },
     {
@@ -123,7 +123,7 @@
     {
       "slug": "/status/",
       "file": "status/index.html",
-      "modifiedAt": "2026-10-21",
+      "modifiedAt": "2026-10-22",
       "title": "PaperKnow 功能开放状态｜账户、AI、检索与导出范围"
     }
   ]

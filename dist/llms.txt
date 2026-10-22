@@ -10,12 +10,12 @@
 - [论文表达优化与 AI 文本鉴别｜原稿对照、逐段修改](https://paperknow.cn/features/reduce-ai/): PaperKnow 支持中文与英文 AI 表达优化、原稿对照、逐段采纳和版本保存，并提供通用 AI 文本鉴别的分段倾向与置信分。鉴别结果不代表论文 AI 字数占比，不替代学校指定报告。
 - [论文文本比对｜本地材料与公开网络来源核对](https://paperknow.cn/features/similarity-check/): PaperKnow 提供本地材料比对与联网来源比对，定位相似片段并保留来源证据。联网模式仅覆盖本次取得的公开网页正文，不覆盖封闭学术数据库，不替代学校指定查重报告。
 - [答辩 PPT 制作｜开题、毕业与可编辑 PPTX](https://paperknow.cn/features/ppt/): PaperKnow 支持 AI PPT、开题 PPT、毕业 PPT 三种创作流程。基于主题或真实报告生成页面及备注，确认费用后处理，核对采纳并逐页编辑，导出可编辑 PPTX；不编造研究结果。
-- [论文格式排版工具｜DOCX 检测与样式整理](https://paperknow.cn/features/format/): PaperKnow 支持 DOCX 格式检测、按规则智能排版与格式精细复核，检查字体、字号、行距、缩进和页边距，保留原稿并导出副本及清单。可选 AI 格式建议，学校授权模板与人工交付未开放。
+- [论文格式排版工具｜DOCX 检测与样式整理](https://paperknow.cn/features/format/): PaperKnow 支持 DOCX 格式检测与按规则智能排版，检查字体、字号、行距、缩进和页边距，保留原稿并导出副本及清单。可选 AI 格式建议，通用规则需要对照学校或期刊要求核对。
 - [AI 科研绘图与公式编辑｜描述生成图片、LaTeX 实时预览](https://paperknow.cn/features/research-tools/): PaperKnow 科研工具支持描述生成基础图表和专业科研示意图片、账户私有云端保存，以及公式模板、符号、截图识别和 LaTeX 实时排版。保留真实数据绘图入口，图片内容需核对。
 - [论文与科研工具使用指南](https://paperknow.cn/guides/): 阅读 PaperKnow 论文大纲、材料比对、DOCX 格式、开题与毕业 PPT、科研图表的操作指南。
 - [论文大纲生成与编辑指南｜AI 提纲、字数分配与核对](https://paperknow.cn/guides/paper-outline/): 按 PaperKnow 写作流程准备题目和真实材料，确认费用后生成 AI 提纲，自动映射章节与目标字数分配，也可导入、粘贴并自行修改。核对方法、引用与研究事实后再生成正文。
 - [本地材料比对怎么用｜正文、来源与报告核对](https://paperknow.cn/guides/material-comparison/): 按步骤导入论文和自备对照正文，确认章节，运行 PaperKnow 本地材料比对并查看来源。解释结果适用范围，以及为何不能替代学校正式查重。
-- [DOCX 论文格式排版步骤｜检查、应用与副本复核](https://paperknow.cn/guides/docx-format/): 使用 PaperKnow 对照通用或自定义规则检查 DOCX，调整标题与正文范围，导出排版副本，再核对目录、分页和复杂对象。高校模板库及人工精修尚未开放。
+- [DOCX 论文格式排版步骤｜检查、应用与副本复核](https://paperknow.cn/guides/docx-format/): 使用 PaperKnow 进行 DOCX 格式检测或智能排版，对照通用或自定义规则检查正文与标题，导出报告或排版副本，再核对目录、分页和复杂对象。
 - [开题与毕业 PPT 制作步骤｜结构、页面与 PPTX 导出](https://paperknow.cn/guides/research-ppt/): 按 PaperKnow AI PPT、开题 PPT 或毕业 PPT 流程，准备主题或真实报告，确认范围与费用后生成草稿，再审核、编辑大纲、页面与备注并导出可编辑 PPTX。
 - [科研基础图表制作步骤｜CSV 输入与 SVG、PNG 导出](https://paperknow.cn/guides/research-charts/): 按 PaperKnow 当前绘图流程整理表头、类别与数值系列，选择基础图表，核对坐标、单位和图例，再导出 SVG、PNG 与 CSV。区分描述统计和显著性检验。
 - [关于 PaperKnow｜论文写作与科研辅助工作台](https://paperknow.cn/about/): 了解 PaperKnow 的产品定位、八项论文与科研工具、当前服务范围，以及本地体验与在线账户的区别。运营名称：oneshowailab-paperknow。

@@ -9,7 +9,8 @@ import {createServer} from '../server.mjs';
 
 const origin='https://paperknow.cn';
 const refreshedPages=new Set(['/','/features/ai-writing/','/features/ai-reading/','/features/reduce-ai/','/features/similarity-check/','/features/ppt/','/guides/paper-outline/','/guides/research-ppt/','/guides/research-charts/','/about/','/help/','/status/']);
-const expectedModifiedAt=slug=>slug==='/'?'2026-10-22':refreshedPages.has(slug)?'2026-10-21':['/features/research-tools/','/privacy/'].includes(slug)?'2026-10-19':['/features/','/guides/'].includes(slug)?'2026-10-15':'2026-10-18';
+const formatUpdatedPages=new Set(['/','/features/format/','/guides/docx-format/','/about/','/status/']);
+const expectedModifiedAt=slug=>formatUpdatedPages.has(slug)?'2026-10-22':refreshedPages.has(slug)?'2026-10-21':['/features/research-tools/','/privacy/'].includes(slug)?'2026-10-19':['/features/','/guides/'].includes(slug)?'2026-10-15':'2026-10-18';
 const features={
   'ai-writing':'writing','ai-reading':'literature','reduce-similarity':'reduce',
   'reduce-ai':'aigc','similarity-check':'detection','ppt':'ppt',
@@ -270,7 +271,7 @@ test('public capability copy reflects shipped AI workflows while retaining real 
  assert.doesNotMatch(text('/features/ai-reading/'),/AI 理解和自动翻译尚未开放/);
  assert.match(text('/features/reduce-similarity/'),/AI 候选|AI 修改候选/);assert.match(text('/features/reduce-ai/'),/AI 率检测.*未|AI 检测率.*未/);
  assert.match(text('/features/ppt/'),/确认.*费用/);assert.match(text('/features/research-tools/'),/不执行专业软件、仿真计算|结构示意.*不等于|不是电路仿真/);
- assert.match(text('/features/format/'),/人工.*尚未开放|尚未开放人工/);
+ assert.match(text('/features/format/'),/格式检测与智能排版/);assert.doesNotMatch(text('/features/format/'),/精细排版|格式精细复核|格式精修|三类流程|三项服务/);
  assert.match(text('/features/similarity-check/'),/不能替代学校|不可以/);
  assert.match(text('/status/'),/2026 年 10 月 21 日/);assert.match(text('/status/'),/学校指定.*AI 率.*未接入/);
  assert.match(text('/features/ai-reading/'),/整篇.*中英互译/);
