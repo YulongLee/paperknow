@@ -169,3 +169,8 @@
 #app .writing-evidence-progress{margin:12px 0;color:var(--pk-muted,#7788a3);font-size:12px;line-height:1.8}
 #app .writing-evidence-progress.ready{color:#287c65}
 .hub-theme-dark #app .writing-step-error{border-color:#665332;background:#302b23;color:#e6c58d}
+
+/* Research context and document formatting have separate steps. */
+.writing-detail-commercial .knowledge-upload-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+@container workspace (max-width:650px){.writing-detail-commercial .knowledge-upload-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:650px){.writing-detail-commercial .knowledge-upload-grid{grid-template-columns:minmax(0,1fr)}}

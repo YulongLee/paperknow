@@ -20,6 +20,16 @@ export function createThesisService(db,config={}){
  initializeThesisSchema(db);
  const continuity=createThesisContinuity(db,config);
  const exportTemplates=createThesisExportTemplates(db,config);
+ function expectedTemplate(input,row){
+  if(!Object.hasOwn(input,'expectedTemplateFileId'))return expected(input,row);
+  if(!Number.isSafeInteger(input.version)||input.version<1)fail(400,'请提供当前论文版本');
+  const selected=input.expectedTemplateFileId;
+  if(selected!==null&&(typeof selected!=='string'||!/^[-A-Za-z0-9_]{1,120}$/.test(selected)))fail(400,'请提供当前格式模板的原件标识，或使用 null 表示通用模板');
+  // Chapter checkpoints advance the thesis version while DOCX inspection is
+  // awaiting private storage. Only a competing template selection conflicts
+  // with this independent export setting; body and research updates survive.
+  if((exportTemplates.stored(row)?.source?.fileId??null)!==selected)fail(409,'格式模板已在其他页面更新，请读取最新状态后再选择');
+ }
  const billing=config.billing||createBillingService(db,config),modelBudget=config.modelBudget||createModelBudget(db,config);
  db.exec(`CREATE TABLE IF NOT EXISTS thesis_generation_quotes(token TEXT PRIMARY KEY REFERENCES billing_quotes(token) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id),thesis_id TEXT NOT NULL REFERENCES theses(id),version INTEGER NOT NULL,snapshot_hash TEXT NOT NULL,action TEXT NOT NULL CHECK(action IN ('generate','resume')),created_at TEXT NOT NULL);`);
  const clock=()=>new Date(config.thesisNow?.()??Date.now()).toISOString();
@@ -66,10 +76,10 @@ export function createThesisService(db,config={}){
    const id=templateRoute[1],row=own(id,user);
    if(method==='GET'){const exportTemplate=await exportTemplates.verified(row),current=own(id,user);if(current.version!==row.version||current.export_template!==row.export_template)fail(409,'论文已更新，请读取最新状态后再导出');return response({exportTemplate,version:current.version});}
    if(method!=='POST')fail(405,'不支持的论文模板操作');
-   const input=await readBody();fields(input,['version','templateFileId']);expected(input,row);
+   const input=await readBody();fields(input,['version','templateFileId','expectedTemplateFileId']);expectedTemplate(input,row);
    if(!Object.hasOwn(input,'templateFileId'))fail(400,'请选择模板原件，或明确切换为通用模板');
    const selected=await exportTemplates.inspect(input.templateFileId,user.id),encoded=selected?JSON.stringify(selected):null;
-   return response(thesisTransaction(db,()=>{const current=own(id,user);expected(input,current);exportTemplates.assertReference(selected,user.id);if(encoded===current.export_template)return {item:serialize(current)};assertThesisAccountQuota(db,user.id,Math.max(512,Buffer.byteLength(current.snapshot)+Buffer.byteLength(encoded||''))-Math.max(512,Buffer.byteLength(current.snapshot)+Buffer.byteLength(current.export_template||'')),config);db.prepare('UPDATE theses SET export_template=?,version=version+1,updated_at=? WHERE id=? AND user_id=?').run(encoded,clock(),id,user.id);return {item:serialize(own(id,user))};}));
+   return response(thesisTransaction(db,()=>{const current=own(id,user);expectedTemplate(input,current);exportTemplates.assertReference(selected,user.id);if(encoded===current.export_template)return {item:serialize(current)};assertThesisAccountQuota(db,user.id,Math.max(512,Buffer.byteLength(current.snapshot)+Buffer.byteLength(encoded||''))-Math.max(512,Buffer.byteLength(current.snapshot)+Buffer.byteLength(current.export_template||'')),config);db.prepare('UPDATE theses SET export_template=?,version=version+1,updated_at=? WHERE id=? AND user_id=?').run(encoded,clock(),id,user.id);return {item:serialize(own(id,user))};}));
   }
   const history=path.match(/^\/api\/theses\/([^/]+)\/chapters\/([^/]+)\/versions(?:\/(\d+))?$/);
   if(history){const [,id,chapterId,version]=history,current=own(id,user),isReferences=JSON.parse(current.snapshot).outline.some(row=>row.id===chapterId&&isThesisReferenceChapter(row)),source=value=>isReferences&&value==='generated'?'compiled_references':value;if(method!=='GET')fail(405,'章节历史仅支持读取');if(version){const row=db.prepare('SELECT * FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? AND version=?').get(id,chapterId,Number(version));if(!row)fail(404,'章节历史版本不存在');return response({item:{id:row.id,chapterId:row.chapter_id,version:row.version,source:source(row.source),text:row.text,sourceIds:JSON.parse(row.source_ids),createdAt:row.created_at}});}return response({items:db.prepare('SELECT id,version,source,created_at AS createdAt FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? ORDER BY version DESC LIMIT 50').all(id,chapterId).map(row=>({...row,source:source(row.source)})),limit:50});}

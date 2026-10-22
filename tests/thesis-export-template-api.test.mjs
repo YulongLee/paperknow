@@ -55,3 +55,57 @@ test('concurrent HTTP template changes use optimistic version checks after priva
  const newer=await f.request(route,{version:item.version,templateFileId:second.id});assert.equal(newer.status,200);release.resolve();assert.equal((await pending).status,409);
  delete f.storage.gate;const current=(await f.request('/theses/'+item.id)).value.item;assert.equal(current.exportTemplate.source.fileId,second.id);assert.equal(current.version,newer.value.item.version);assert.equal((await f.request('/theses/'+bobItem.id,undefined,f.users.bob)).value.item.exportTemplate,null);
 });
+
+test('template identity CAS survives chapter checkpoints before and during inspection without losing body or research',async t=>{
+ const f=await fixture(t),source=await f.upload(),item=await f.create(),route='/theses/'+item.id+'/export-template',entered=deferred(),release=deferred();
+ const original=f.db.prepare('SELECT snapshot,snapshot_hash FROM theses WHERE id=?').get(item.id);
+ f.db.prepare("UPDATE theses SET version=version+1,status='running' WHERE id=?").run(item.id);
+ f.storage.gate=async row=>{if(row.id===source.id){entered.resolve();await release.promise;}};
+ const pending=f.request(route,{version:item.version,templateFileId:source.id,expectedTemplateFileId:null},f.users.alice,{'X-PaperKnow-User':'alice'});
+ await entered.promise;
+ const newBody='后台刚刚完成的新章节正文，切换模板时必须原样保留。';
+ f.db.prepare('INSERT INTO thesis_chapter_versions VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),item.id,'c-1',2,null,'generated',newBody,'[]',new Date().toISOString());
+ f.db.prepare('UPDATE theses SET version=version+1 WHERE id=?').run(item.id);
+ release.resolve();const changed=await pending;
+ assert.equal(changed.status,200,JSON.stringify(changed.value));assert.equal(changed.value.item.version,item.version+3);
+ assert.equal(changed.value.item.status,'running');assert.equal(changed.value.item.exportTemplate.source.fileId,source.id);
+ assert.equal(changed.value.item.chapters[0].text,newBody);assert.equal(changed.value.item.chapters[0].version,2);
+ assert.deepEqual(f.db.prepare('SELECT snapshot,snapshot_hash FROM theses WHERE id=?').get(item.id),original);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_chapter_versions WHERE thesis_id=?').get(item.id).n,2);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_generation_quotes').get().n,0);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_runs').get().n,0);
+ // Restoring default uses the same setting-level compare and swap, even when
+ // more chapter activity has advanced the aggregate thesis revision.
+ const bound=changed.value.item;f.db.prepare('UPDATE theses SET version=version+1 WHERE id=?').run(item.id);
+ const cleared=await f.request(route,{version:bound.version,templateFileId:null,expectedTemplateFileId:source.id});
+ assert.equal(cleared.status,200,JSON.stringify(cleared.value));assert.equal(cleared.value.item.exportTemplate,null);
+ assert.equal(cleared.value.item.chapters[0].text,newBody);assert.equal(cleared.value.item.status,'running');
+});
+
+test('template identity CAS rejects a competing selection before or during private inspection',async t=>{
+ const f=await fixture(t),first=await f.upload(),second=await f.upload(),item=await f.create(),route='/theses/'+item.id+'/export-template',entered=deferred(),release=deferred();
+ f.storage.gate=async row=>{if(row.id===first.id){entered.resolve();await release.promise;}};
+ const pending=f.request(route,{version:item.version,templateFileId:first.id,expectedTemplateFileId:null});await entered.promise;
+ const newer=await f.request(route,{version:item.version,templateFileId:second.id,expectedTemplateFileId:null});assert.equal(newer.status,200,JSON.stringify(newer.value));
+ release.resolve();const conflict=await pending;assert.equal(conflict.status,409);assert.match(conflict.value.error,/格式模板已在其他页面更新/);
+ delete f.storage.gate;const reads=f.reads.length;
+ const stale=await f.request(route,{version:newer.value.item.version,templateFileId:first.id,expectedTemplateFileId:null});
+ assert.equal(stale.status,409);assert.equal(f.reads.length,reads,'a known template conflict must stop before reading a new private original');
+ const current=(await f.request('/theses/'+item.id)).value.item;
+ assert.equal(current.exportTemplate.source.fileId,second.id);assert.equal(current.version,newer.value.item.version);
+ assert.equal(current.chapters[0].text,item.chapters[0].text);assert.deepEqual(current.snapshot,item.snapshot);
+});
+
+test('legacy clients retain exact thesis revision protection and malformed template CAS values are rejected before reads',async t=>{
+ const f=await fixture(t),source=await f.upload(),item=await f.create(),route='/theses/'+item.id+'/export-template';
+ f.db.prepare('UPDATE theses SET version=version+1 WHERE id=?').run(item.id);
+ const stale=await f.request(route,{version:item.version,templateFileId:source.id});assert.equal(stale.status,409);assert.equal(f.reads.length,0);
+ for(const expectedTemplateFileId of [0,42,true,'',' ','../private',{},[],'a'.repeat(121)]){
+  const response=await f.request(route,{version:item.version,templateFileId:source.id,expectedTemplateFileId});
+  assert.equal(response.status,400,JSON.stringify({expectedTemplateFileId,response}));
+ }
+ for(const version of [0,-1,1.5,'1',null])assert.equal((await f.request(route,{version,templateFileId:source.id,expectedTemplateFileId:null})).status,400);
+ assert.equal(f.reads.length,0);assert.equal(f.db.prepare('SELECT export_template FROM theses WHERE id=?').get(item.id).export_template,null);
+ const foreign=await f.upload(f.users.bob),denied=await f.request(route,{version:item.version,templateFileId:foreign.id,expectedTemplateFileId:null});
+ assert.equal(denied.status,404);assert.equal(f.reads.length,0);
+});
