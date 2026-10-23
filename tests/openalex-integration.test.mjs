@@ -29,7 +29,7 @@ test('public OpenAlex search receives configured auth while capabilities and res
   return new Response(JSON.stringify({meta:{count:1},results:[{id:'https://openalex.org/W123',title:'Graph research',publication_year:2025,doi:'https://doi.org/10.1234/graph',authorships:[{author:{display_name:'Example Author'}}],open_access:{is_oa:true,oa_url:'https://example.org/paper'},best_oa_location:{is_oa:true,landing_page_url:'https://example.org/paper'}}]}),{headers:{'content-type':'application/json'}});
  }});
  const capText=await(await fetch(base+'/api/capabilities')).text(),cap=JSON.parse(capText);
- assert.deepEqual(cap.academicSearchSources,['crossref','europepmc','openalex','arxiv']);
+ assert.deepEqual(cap.academicSearchSources,['crossref','europepmc','openalex','arxiv','pubmed']);
  assert.equal(cap.academicSearchSourceStatus.find(x=>x.id==='openalex').configured,true);
  assert.equal(capText.includes(key),false);assert.equal(capText.includes('PK_OPENALEX_API_KEY'),false);
  const res=await fetch(base+'/api/literature/search?q=graph%20research&source=openalex'),text=await res.text(),value=JSON.parse(text);
@@ -43,7 +43,7 @@ test('public OpenAlex search receives configured auth while capabilities and res
 test('missing OpenAlex configuration is visible without making an unauthenticated upstream request',async t=>{
  let calls=0;const base=await apiServer(t,{literatureFetch:async()=>{calls++;throw Error('Unexpected provider call');}});
  const cap=await(await fetch(base+'/api/capabilities')).json();
- assert.deepEqual(cap.academicSearchSources,['crossref','europepmc','arxiv']);
+ assert.deepEqual(cap.academicSearchSources,['crossref','europepmc','arxiv','pubmed']);
  assert.equal(cap.academicSearchSourceStatus.find(x=>x.id==='openalex').configured,false);
  const res=await fetch(base+'/api/literature/search?q=public%20research&source=openalex');
  assert.equal(res.status,503);assert.equal((await res.json()).sources[0].status,'not_configured');assert.equal(calls,0);

@@ -77,6 +77,18 @@ test('saved AMiner records show their source and abstract while keeping AI readi
   const saved=JSON.parse(localStorage.getItem(literatureKey))[0];assert.equal(saved.source,'aminer');assert.equal(saved.status,'unread');assert.equal(saved.scope,'metadata');assert.equal(saved.text,'');assert.equal(saved.confirmed,false);assert.equal(saved.fullTextRead,false);
  }finally{clearEditor();dom.window.close();}
 });
+test('saved PubMed and Semantic Scholar records retain honest source information and unread abstract scope',()=>{
+ for(const [source,label,url]of [['pubmed','PubMed','https://pubmed.ncbi.nlm.nih.gov/12345678/'],['semantic_scholar','Semantic Scholar','https://www.semanticscholar.org/paper/1234567890abcdef']]){
+  const {dom,ctx}=setup(),paper=validatePaper({id:source+'-metadata',title:label+' 学术题录',source,sourceId:'real-source-record',url,abstract:'实际来源摘要，尚未作为研读正文。',scope:'metadata',text:'',tags:[],notes:[],status:'unread',confirmed:false,fullTextRead:false});
+  try{localStorage.setItem(literatureKey,JSON.stringify([paper]));mountLiteratureReader(paper.id,ctx);assert.ok($('.lit-source-info').textContent.includes(label+' · 在线题录，未读取全文'));assert.match($('.lit-source-info').textContent,/在线题录 · 全文未读取/);assert.equal($('.lit-source-info a').href,url);assert.match($('.lit-database-abstract').textContent,/不会自动成为 AI 研读材料/);assert.match($('.lit-read-notice').textContent,/尚未选定 AI 研读材料/);assert.equal($('.lit-read-text .lit-ai-paragraph-label'),null);if(source==='pubmed'){assert.equal($('.lit-pubmed-notice a').href,'https://www.ncbi.nlm.nih.gov/About/disclaimer.html');assert.equal($('.lit-pubmed-notice a').rel,'noopener noreferrer');}const saved=JSON.parse(localStorage.getItem(literatureKey))[0];assert.equal(saved.text,'');assert.equal(saved.scope,'metadata');assert.equal(saved.fullTextRead,false);assert.equal(saved.confirmed,false);}
+  finally{clearEditor();dom.window.close();}
+ }
+});
+test('PubMed disclaimer remains visible for an aggregated record whose primary provider is different',()=>{
+ const {dom,ctx}=setup(),paper=validatePaper({id:'merged-pubmed',title:'聚合题录',source:'openalex',sourceId:'W123',url:'https://openalex.org/W123',sourceProvenance:[{source:'openalex',sourceId:'W123'},{source:'pubmed',sourceId:'12345678'}],scope:'metadata',text:'',tags:[],notes:[],status:'unread'});
+ try{localStorage.setItem(literatureKey,JSON.stringify([paper]));mountLiteratureReader(paper.id,ctx);assert.equal($('.lit-pubmed-notice a').href,'https://www.ncbi.nlm.nih.gov/About/disclaimer.html');assert.match($('.lit-source-info').textContent,/OpenAlex.*未读取全文/);}
+ finally{clearEditor();dom.window.close();}
+});
 test('saved arXiv metadata shows submission and update dates, preprint scope and canonical PDF without auto-reading',()=>{
  const {dom,ctx}=setup(),paper=validatePaper({id:'arxiv-metadata',title:'An arXiv preprint',authors:'A. Author',source:'arxiv',arxivId:'2610.12345v2',sourceId:'2610.12345',publishedDate:'2026-10-18T09:30:00Z',updatedDate:'2026-10-19T10:00:00Z',categories:['cs.AI'],abstract:'Actual abstract <script>unsafe()</script>',scope:'metadata',text:'',tags:[],notes:[],status:'unread',confirmed:false,fullTextRead:false});
  try{

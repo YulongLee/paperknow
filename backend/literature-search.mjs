@@ -1,5 +1,7 @@
 import {createHmac} from 'node:crypto';
 import {createArxivClient} from './arxiv-client.mjs';
+import {createPubMedClient} from './pubmed-client.mjs';
+import {createSemanticScholarClient} from './semantic-scholar-client.mjs';
 
 // Public bibliographic metadata only. Provider credentials stay in server-owned headers.
 const providers = Object.freeze({
@@ -8,6 +10,9 @@ const providers = Object.freeze({
   aminer: {id:'aminer',label:'AMiner',endpoint:'https://datacenter.aminer.cn/gateway/open_platform/api/paper/search'},
   openalex: {id:'openalex',label:'OpenAlex',endpoint:'https://api.openalex.org/works'},
   arxiv: {id:'arxiv',label:'arXiv',endpoint:'https://export.arxiv.org/api/query'},
+  pubmed: {id:'pubmed',label:'PubMed'},
+  semantic_scholar: {id:'semantic_scholar',label:'Semantic Scholar'},
+  cnki: {id:'cnki',label:'知网'},
 });
 // Crossref's official type IDs may be OR-ed by repeating the type filter.
 const crossrefTypes=Object.freeze({journal:['journal-article','journal','journal-issue','journal-volume'],thesis:['dissertation'],book:['book','edited-book','monograph','reference-book','book-set','book-series'],report:['report','report-series','report-component'],chapter:['book-chapter','book-section','book-part','book-track','reference-entry'],preprint:['posted-content'],conference:['proceedings-article','proceedings','proceedings-series'],other:['other','dataset','database','standard','component','peer-review','grant']});
@@ -118,7 +123,7 @@ export function parseLiteratureQuery(input){
   for(const key of p.keys())if(!allowed.has(key)||p.getAll(key).length!==1)invalid('检索参数不正确');
   const raw=p.get('q')??'',q=raw.trim().replace(/\s+/g,' ');
   if(raw.length>300||q.length<2||q.length>200||/[\u0000-\u001f\u007f-\u009f]/.test(raw)||!/[\p{L}\p{N}]/u.test(q))invalid('请输入 2～200 字符的公开标题或关键词');
-  const rawSource=p.get('source')||'all',selected=rawSource.split(',').map(v=>v.trim());if(rawSource.length>250||/[\u0000-\u001f\u007f-\u009f]/.test(rawSource)||new Set(selected).size>5||selected.some(v=>!v||v!=='all'&&!Object.hasOwn(providers,v))||selected.includes('all')&&selected.length!==1)invalid('请选择已接入的文献来源，全部来源不能与单个来源混选');const source=[...new Set(selected)].join(',');
+  const rawSource=p.get('source')||'all',selected=rawSource.split(',').map(v=>v.trim());if(rawSource.length>250||/[\u0000-\u001f\u007f-\u009f]/.test(rawSource)||new Set(selected).size>Object.keys(providers).length||selected.some(v=>!v||v!=='all'&&!Object.hasOwn(providers,v))||selected.includes('all')&&selected.length!==1)invalid('请选择已接入的文献来源，全部来源不能与单个来源混选');const source=[...new Set(selected)].join(',');
   const parseYear=key=>{const value=p.get(key);if(value===null||value==='')return null;if(!/^\d{4}$/.test(value)||!yearValue(value))invalid('年份应为 1000～2100 之间的四位数字');return Number(value);};
   const yearFrom=parseYear('yearFrom'),yearTo=parseYear('yearTo');if(yearFrom&&yearTo&&yearFrom>yearTo)invalid('起始年份不能晚于结束年份');
   const oa=p.get('openAccess');if(oa!==null&&oa!==''&&!['true','false'].includes(oa))invalid('开放获取筛选参数不正确');
@@ -154,7 +159,7 @@ function providerURL(id,query){
   return u;
 }
 function windowFiltered(id,query){
- return Boolean(id==='crossref'&&query.hasCitations!==undefined||id==='europepmc'&&query.type&&query.type!=='all'||id==='arxiv'&&query.hasDoi!==undefined||id==='aminer'&&(query.yearFrom||query.yearTo||query.hasDoi!==undefined||query.hasCitations!==undefined));
+ return Boolean(id==='pubmed'&&(query.yearFrom||query.yearTo||query.hasDoi!==undefined||query.type&&query.type!=='all')||id==='crossref'&&query.hasCitations!==undefined||id==='europepmc'&&query.type&&query.type!=='all'||id==='arxiv'&&query.hasDoi!==undefined||id==='aminer'&&(query.yearFrom||query.yearTo||query.hasDoi!==undefined||query.hasCitations!==undefined));
 }
 function matchesQuery(item,query){
  if(query.yearFrom&&(item.year===null||item.year<query.yearFrom)||query.yearTo&&(item.year===null||item.year>query.yearTo)||query.openAccess&&item.openAccess!==true)return false;
@@ -163,11 +168,11 @@ function matchesQuery(item,query){
  if(query.hasCitations!==undefined){const states=(item.sourceProvenance||[item]).map(source=>{const known=countValue(source.citationCount);return known!==undefined?known>0:source.citationBucket==='0'?false:typeof source.citationBucket==='string'?true:undefined;}),present=states.some(value=>value===true)?true:states.some(value=>value===false)?false:undefined;if(present!==query.hasCitations)return false;}return true;
 }
 function provenance(item){
- const out={};for(const key of ['source','sourceId','id','url','doi','year','openAccess','fullTextUrl','pdfUrl','citationCount','citationBucket','documentType','journal','publisher','volume','issue','pages','venue'])if(item[key]!==undefined&&item[key]!==null&&item[key]!=='')out[key]=item[key];return out;
+ const out={};for(const key of ['source','sourceId','id','url','doi','year','openAccess','fullTextUrl','pdfUrl','citationCount','citationBucket','pmid','documentType','journal','publisher','volume','issue','pages','venue'])if(item[key]!==undefined&&item[key]!==null&&item[key]!=='')out[key]=item[key];return out;
 }
 function mergeMetadata(target,item){
  target.sourceProvenance.push(provenance(item));
- for(const key of ['abstract','authors','citationBucket','arxivId','pdfUrl','fullTextUrl','documentType','type','journal','publisher','volume','issue','pages','venue'])if(!target[key]&&item[key])target[key]=item[key];
+ for(const key of ['abstract','authors','citationBucket','arxivId','pmid','pdfUrl','fullTextUrl','documentType','type','journal','publisher','volume','issue','pages','venue'])if(!target[key]&&item[key])target[key]=item[key];
  if(target.year===null&&item.year!==null)target.year=item.year;
  if(item.openAccess===true)target.openAccess=true;else if(target.openAccess===undefined&&item.openAccess===false)target.openAccess=false;
  // Counts from different indexes overlap. Preserve every source's count and expose
@@ -177,7 +182,7 @@ function mergeMetadata(target,item){
  const links=[...new Set(target.sourceProvenance.map(p=>p.fullTextUrl).filter(Boolean))];if(links.length>1)target.fullTextUrls=links;
 }
 function boundedSet(map,key,value,maximum){if(map.has(key))map.delete(key);while(map.size>=maximum)map.delete(map.keys().next().value);map.set(key,value);}
-export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.now,timeoutMs=8000,maxResponseBytes=2*1024*1024,clientLimit=20,cacheTtlMs=300000,maxCacheEntries=100,maxConcurrent=4,openAlexApiKey='',openAlexDailyLimit=500,aminerEnabled=false,aminerApiKey='',aminerUserId='',aminerToken='',aminerDailyLimit=100}={}){
+export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.now,timeoutMs=8000,maxResponseBytes=2*1024*1024,clientLimit=20,cacheTtlMs=300000,maxCacheEntries=100,maxConcurrent=4,semanticScholarEnabled=false,semanticScholarApiKey='',semanticScholarDailyLimit=100,openAlexApiKey='',openAlexDailyLimit=500,aminerEnabled=false,aminerApiKey='',aminerUserId='',aminerToken='',aminerDailyLimit=100}={}){
   const apiKey=typeof openAlexApiKey==='string'&&openAlexApiKey.length<=500&&!/[\s\u0000-\u001f\u007f]/.test(openAlexApiKey)?openAlexApiKey:'';
   const dailyLimit=Number.isInteger(openAlexDailyLimit)&&openAlexDailyLimit>=0&&openAlexDailyLimit<=10000?openAlexDailyLimit:500;
   const aminerKey=typeof aminerApiKey==='string'&&aminerApiKey.length<=500&&!/[\s\u0000-\u001f\u007f]/.test(aminerApiKey)?aminerApiKey:'';
@@ -186,11 +191,20 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
   const aminerTokenProvided=aminerToken!==''&&aminerToken!==undefined&&aminerToken!==null,aminerExpires=aminerTokenProvided?aminerTokenExpiry(aminerToken):null;
   // An explicitly supplied invalid/expired token never silently falls back to another credential.
   const aminerConfigured=()=>aminerEnabled===true&&(aminerTokenProvided?aminerExpires!==null&&aminerExpires>clock():Boolean(aminerKey&&aminerId));
-  const availableIds=({allowAminer=true}={})=>Object.keys(providers).filter(id=>(id!=='openalex'||Boolean(apiKey))&&(id!=='aminer'||allowAminer===true&&aminerConfigured()));
+  const semanticKey=typeof semanticScholarApiKey==='string'&&semanticScholarApiKey.length<=500&&!/[\s\u0000-\u001f\u007f]/.test(semanticScholarApiKey)?semanticScholarApiKey:'';
+  const semanticLimit=Number.isInteger(semanticScholarDailyLimit)&&semanticScholarDailyLimit>=0&&semanticScholarDailyLimit<=10000?semanticScholarDailyLimit:100;
+  const semanticConfigured=()=>semanticScholarEnabled===true&&Boolean(semanticKey);
+  const availableIds=({allowAminer=true,allowSemanticScholar=false}={})=>Object.keys(providers).filter(id=>id!=='cnki'&&(id!=='openalex'||Boolean(apiKey))&&(id!=='aminer'||allowAminer===true&&aminerConfigured())&&(id!=='semantic_scholar'||allowSemanticScholar===true&&semanticConfigured()));
   // Process-local request caps reset on restart and are not a persistent financial safeguard.
-  let openAlexDay=-1,openAlexCount=0,aminerDay=-1,aminerCount=0;
+  let openAlexDay=-1,openAlexCount=0,aminerDay=-1,aminerCount=0,semanticDay=-1,semanticCount=0;
   const cache=new Map(),inflight=new Map(),clients=new Map(),providerState=new Map(Object.keys(providers).map(id=>[id,{active:0,minuteAt:0,minuteCount:0,secondAt:0,secondCount:0,cooldownUntil:0}]));let active=0;
   const arxiv=createArxivClient({fetchImpl,clock,timeoutMs,maxResponseBytes});
+  const pubmed=createPubMedClient({fetchImpl,clock,timeoutMs,maxResponseBytes});
+  const semantic=createSemanticScholarClient({fetchImpl,clock,timeoutMs,maxResponseBytes,apiKey:semanticKey,beforeRequest:()=>{
+    const day=Math.floor(clock()/86400000);if(semanticDay!==day){semanticDay=day;semanticCount=0;}
+    if(semanticCount>=semanticLimit)throw new SearchError(503,'Semantic Scholar 今日检索额度已用完，请明日再试',undefined,undefined,'budget_exhausted');
+    semanticCount++;
+  }});
   function clientRate(clientKey){
     const time=clock(),key=String(clientKey||'unknown').slice(0,100);let bucket=clients.get(key);
     if(!bucket||bucket.until<=time)bucket={until:time+60000,count:0};bucket.count++;boundedSet(clients,key,bucket,10000);
@@ -200,6 +214,8 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
     // arXiv has its own process-wide serialized transport and bounded queue, independent
     // of the four existing providers' slots. Their credentials never enter its request.
     if(id==='arxiv'){const value=await arxiv.search(query);return{...value,...(windowFiltered(id,query)?{total:undefined,filterScope:'window'}:{}),pagination:{mode:'offset',page:query.page||1,limit:query.limit}};}
+    if(id==='pubmed'){const value=await pubmed.search(query);return{...value,...(windowFiltered(id,query)?{total:undefined,filterScope:'window'}:{})};}
+    if(id==='semantic_scholar')return semantic.search(query);
     const state=providerState.get(id),time=clock();
     if(id==='openalex'){
       const day=Math.floor(time/86400000);if(openAlexDay!==day){openAlexDay=day;openAlexCount=0;}
@@ -245,12 +261,14 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
     }catch(error){if(controller.signal.aborted)throw new SearchError(503,'该文献来源响应超时，请稍后重试');if(error instanceof SearchError)throw error;throw new SearchError(503,'该文献来源暂时不可用');}
     finally{clearTimeout(timer);state.active--;active--;}
   }
-  async function execute(query,{allowAminer=true}={}){
-    const ids=query.source==='all'?availableIds({allowAminer}):query.source.split(',');
+  async function execute(query,{allowAminer=true,allowSemanticScholar=false}={}){
+    const ids=query.source==='all'?availableIds({allowAminer,allowSemanticScholar}):query.source.split(',');
     const results=await Promise.all(ids.map(async id=>{
       if(id==='openalex'&&!apiKey)return {source:{id,label:providers[id].label,status:'not_configured',reason:'OpenAlex 暂未开放，请选择其他文献来源。'},items:[]};
       if(id==='aminer'&&(allowAminer!==true||!aminerConfigured()))return {source:{id,label:providers[id].label,status:'not_configured',reason:'AMiner 当前暂未开放，请选择其他文献来源。'},items:[]};
-      const unsupported=id==='crossref'&&query.openAccess?'Crossref 不提供可靠的开放获取筛选；请选择其他来源或取消筛选。':id==='aminer'&&query.openAccess?'AMiner 免费检索不提供可靠的开放获取筛选。':id==='aminer'&&query.type&&query.type!=='all'?'AMiner 免费检索未提供可核对的文献类型。':id==='aminer'&&['year','citations'].includes(query.sort)?'AMiner 免费检索不支持年份或被引次数排序。':id==='arxiv'&&(query.hasCitations!==undefined||query.sort==='citations')?'arXiv API 不提供被引次数，不能按被引状态筛选或排序。':'';
+      if(id==='cnki')return{source:{id,label:providers[id].label,status:'not_configured',reason:'知网需配置授权检索接口后开放。'},items:[]};
+      if(id==='semantic_scholar'&&(allowSemanticScholar!==true||!semanticConfigured()))return{source:{id,label:providers[id].label,status:'not_configured',reason:'Semantic Scholar 需配置接口密钥及商用许可后开放。'},items:[]};
+      const unsupported=id==='pubmed'&&(query.openAccess||query.hasCitations!==undefined||query.sort==='citations')?'PubMed 不提供可核对的开放许可或被引次数，请取消相应筛选。':id==='semantic_scholar'&&query.sort&&query.sort!=='relevance'?'Semantic Scholar 当前检索不支持该排序方式。':id==='semantic_scholar'&&(query.hasDoi!==undefined||query.hasCitations===false||['thesis','report','preprint'].includes(query.type))?'Semantic Scholar 当前检索不支持该筛选条件。':id==='crossref'&&query.openAccess?'Crossref 不提供可靠的开放获取筛选；请选择其他来源或取消筛选。':id==='aminer'&&query.openAccess?'AMiner 免费检索不提供可靠的开放获取筛选。':id==='aminer'&&query.type&&query.type!=='all'?'AMiner 免费检索未提供可核对的文献类型。':id==='aminer'&&['year','citations'].includes(query.sort)?'AMiner 免费检索不支持年份或被引次数排序。':id==='arxiv'&&(query.hasCitations!==undefined||query.sort==='citations')?'arXiv API 不提供被引次数，不能按被引状态筛选或排序。':'';
       if(unsupported)return{source:{id,label:providers[id].label,status:'unsupported_filter',reason:unsupported},items:[]};
       // DOI-only Crossref and homogeneous arXiv preprints can answer impossible
       // filters definitively without spending a provider request.
@@ -270,9 +288,9 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
   }
   return {
     listSources(options={}){return availableIds(options);},
-    sourceStatus({allowAminer=true}={}){const ids=availableIds({allowAminer});return Object.values(providers).filter(({id})=>id!=='aminer'||allowAminer===true).map(({id,label})=>({id,label,configured:ids.includes(id)}));},
-    async search(input,{clientKey,allowAminer=true}={}){
-      const scope={allowAminer:allowAminer===true},query=parseLiteratureQuery(input);clientRate(clientKey);const key=JSON.stringify([query,availableIds(scope),scope.allowAminer]),time=clock(),saved=cache.get(key);
+    sourceStatus({allowAminer=true,allowSemanticScholar=false}={}){const ids=availableIds({allowAminer,allowSemanticScholar});return Object.values(providers).filter(({id})=>id!=='aminer'||allowAminer===true).map(({id,label})=>({id,label,configured:ids.includes(id),...(id==='cnki'?{reason:'知网需配置授权检索接口后开放。'}:id==='semantic_scholar'&&!ids.includes(id)?{reason:'Semantic Scholar 需配置接口密钥及商用许可后开放。'}:{})}));},
+    async search(input,{clientKey,allowAminer=true,allowSemanticScholar=false}={}){
+      const scope={allowAminer:allowAminer===true,allowSemanticScholar:allowSemanticScholar===true},query=parseLiteratureQuery(input);clientRate(clientKey);const key=JSON.stringify([query,availableIds(scope),scope]),time=clock(),saved=cache.get(key);
       if(saved&&saved.until>time)return structuredClone(saved.value);if(saved)cache.delete(key);
       if(inflight.has(key))return structuredClone(await inflight.get(key));
       const pending=execute(query,scope);inflight.set(key,pending);

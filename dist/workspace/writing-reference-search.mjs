@@ -1,9 +1,15 @@
 import {esc,icon} from './ui.mjs';
 import {arxivMetadata,arxivBaseIdentifier} from './arxiv-metadata.mjs';
 
-const sources={all:'聚合检索',crossref:'Crossref',europepmc:'Europe PMC',openalex:'OpenAlex',arxiv:'arXiv',aminer:'AMiner'};
-const baselineSources=['crossref','europepmc'];
-const sourceDescriptions={crossref:'Crossref 覆盖多个学科的出版题录',europepmc:'Europe PMC 侧重生命科学与医学',openalex:'OpenAlex 扩展跨学科文献与开放获取信息',arxiv:'arXiv 提供预印本，可按最新提交或更新时间检索',aminer:'AMiner 提供跨学科学术题录'};
+const sources={all:'聚合检索',crossref:'Crossref',europepmc:'Europe PMC',pubmed:'PubMed',openalex:'OpenAlex',semantic_scholar:'Semantic Scholar',arxiv:'arXiv',aminer:'AMiner'};
+const baselineSources=['crossref','europepmc','pubmed'];
+const sourceDescriptions={crossref:'Crossref 覆盖多个学科的出版题录',europepmc:'Europe PMC 侧重生命科学与医学',pubmed:'PubMed 提供生物医学与生命科学文献题录',openalex:'OpenAlex 扩展跨学科文献与开放获取信息',semantic_scholar:'Semantic Scholar 提供跨学科题录与来源记录的被引信息',arxiv:'arXiv 提供预印本，可按最新提交或更新时间检索',aminer:'AMiner 提供跨学科学术题录'};
+export const pubmedSourceNotice='PubMed 数据来自 NCBI；文献题录与摘要的使用须遵守来源政策。<a href="https://www.ncbi.nlm.nih.gov/About/disclaimer.html" target="_blank" rel="noopener noreferrer">NCBI 免责声明与版权政策 ↗</a>';
+/** Unavailable providers are informational only, never offered as selectable sources. */
+export function unavailableAcademicSources(statuses,enabled=[]){
+ const labels={...sources,cnki:'知网'},seen=new Set();
+ return (Array.isArray(statuses)?statuses:[]).filter(row=>row&&Object.hasOwn(labels,row.id)&&row.id!=='all'&&row.configured===false&&!enabled.includes(row.id)&&!seen.has(row.id)&&seen.add(row.id)).map(row=>({id:row.id,label:labels[row.id],reason:clip(row.reason,300)||'该来源暂未开放，请使用其他已开放来源。'}));
+}
 const arxivSortLabels={submittedDate:'最新提交',lastUpdatedDate:'最新更新',relevance:'相关度'};
 const arxivAttribution='Thank you to arXiv for use of its open access interoperability.';
 const aminerScopeNotice='AMiner 检索提供学术题录，导入后可继续补充全文和阅读笔记。';
@@ -49,7 +55,7 @@ function referenceBibliography(input){
  if(Number.isSafeInteger(input.citationCount)&&input.citationCount>=0){result.citationCount=input.citationCount;if(Object.hasOwn(sources,input.citationCountSource)&&input.citationCountSource!=='all')result.citationCountSource=input.citationCountSource;}
  if(Array.isArray(input.keywords))result.keywords=[...new Set(input.keywords.filter(v=>typeof v==='string').map(v=>clip(v,80)).filter(Boolean))].slice(0,20);
  if(Array.isArray(input.authorNames))result.authorNames=input.authorNames.slice(0,100).map(v=>typeof v==='string'?{literal:clip(v,200)}:v).filter(v=>v&&typeof v==='object'&&!Array.isArray(v)).map(v=>Object.fromEntries(['family','given','literal'].filter(k=>typeof v[k]==='string'&&clip(v[k],200)).map(k=>[k,clip(v[k],200)]))).filter(v=>Object.keys(v).length);
- if(Array.isArray(input.sourceProvenance))result.sourceProvenance=input.sourceProvenance.slice(0,5).filter(v=>v&&Object.hasOwn(sources,v.source)&&v.source!=='all').map(v=>({source:v.source,sourceId:clip(v.sourceId,200),...Object.fromEntries(['journal','publisher','volume','issue','pages','venue'].filter(k=>typeof v[k]==='string').map(k=>[k,clip(v[k],k==='journal'||k==='publisher'||k==='venue'?500:100)])),...(/^(?:0|1-10|11-50|51-200|200-1000|201-1000|1000-5000|1001-5000|5000\+)$/.test(v.citationBucket||'')?{citationBucket:v.citationBucket}:{}),...(types.includes(v.documentType)?{documentType:v.documentType}:{}),...(validDoi(doiOf(v.doi))?{doi:validDoi(doiOf(v.doi))}:{}),...(/^\d{4}$/.test(String(v.year??''))?{year:String(v.year)}:{}),url:safeReferenceURL(v.url),...(typeof v.openAccess==='boolean'?{openAccess:v.openAccess}:{}),...(safeReferenceURL(v.fullTextUrl)?{fullTextUrl:safeReferenceURL(v.fullTextUrl)}:{}),...(Number.isSafeInteger(v.citationCount)&&v.citationCount>=0?{citationCount:v.citationCount}:{})}));
+ if(Array.isArray(input.sourceProvenance))result.sourceProvenance=input.sourceProvenance.slice(0,7).filter(v=>v&&Object.hasOwn(sources,v.source)&&v.source!=='all').map(v=>({source:v.source,sourceId:clip(v.sourceId,200),...Object.fromEntries(['journal','publisher','volume','issue','pages','venue'].filter(k=>typeof v[k]==='string').map(k=>[k,clip(v[k],k==='journal'||k==='publisher'||k==='venue'?500:100)])),...(/^(?:0|1-10|11-50|51-200|200-1000|201-1000|1000-5000|1001-5000|5000\+)$/.test(v.citationBucket||'')?{citationBucket:v.citationBucket}:{}),...(types.includes(v.documentType)?{documentType:v.documentType}:{}),...(validDoi(doiOf(v.doi))?{doi:validDoi(doiOf(v.doi))}:{}),...(/^\d{4}$/.test(String(v.year??''))?{year:String(v.year)}:{}),url:safeReferenceURL(v.url),...(typeof v.openAccess==='boolean'?{openAccess:v.openAccess}:{}),...(safeReferenceURL(v.fullTextUrl)?{fullTextUrl:safeReferenceURL(v.fullTextUrl)}:{}),...(Number.isSafeInteger(v.citationCount)&&v.citationCount>=0?{citationCount:v.citationCount}:{})}));
  return result;
 }
 
@@ -112,11 +118,12 @@ export function mountWritingReferenceSearch({container,mode='search',context={},
   <header class="wrs-intro"><span class="wrs-symbol">${icon(mode==='recommend'?'book':'search',24)}</span><div><span class="wrs-kicker">REFERENCE DISCOVERY</span><h2 id="${id}-title">${mode==='recommend'?'围绕研究主题，寻找真实文献':'找到可追溯的研究来源'}</h2><p>${mode==='recommend'?'根据题目与关键词检索相关题录；你可以修改检索词，缩小研究范围。':'按题目、关键词或 DOI 检索公开学术数据库。'}</p></div>${onLocalSearch?'<button type="button" class="btn secondary wrs-local-switch" data-ref-local>搜索我的文献库</button>':''}</header>
   <form class="wrs-form" data-unprotected><label for="${id}-query">${mode==='recommend'?'推荐检索词（可编辑）':'检索词'}</label><div class="wrs-search-line"><input type="search" id="${id}-query" name="q" minlength="2" maxlength="200" required autocomplete="off" placeholder="输入研究主题、英文关键词或 DOI" value="${esc(query??buildReferenceSearchQuery(context))}"><button class="btn primary" type="submit">${icon('search',16)}检索文献</button></div>
   <div class="wrs-source-bar"><label for="${id}-source">检索来源<select id="${id}-source" name="source">${['all',...baselineSources].map(value=>`<option value="${value}">${sources[value]}</option>`).join('')}</select></label><button type="button" class="btn secondary wrs-arxiv-shortcut" data-ref-arxiv hidden>${icon('search',14)}arXiv 最新论文</button><div class="wrs-arxiv-controls" data-ref-arxiv-controls hidden><label for="${id}-sort">排序方式<select id="${id}-sort" name="sort">${Object.entries(arxivSortLabels).map(([value,label])=>`<option value="${value}">${label}</option>`).join('')}</select></label><label for="${id}-range">提交时间（UTC）<select id="${id}-range" name="dateRange"><option value="all">不限时间</option><option value="7">近 7 天</option><option value="30">近 30 天</option></select></label></div></div>
+  <details data-ref-availability hidden><summary>其他来源状态</summary><div data-ref-unavailable class="wrs-source-states" aria-label="尚未开放的文献来源"></div></details>
   <p class="wrs-arxiv-notice" data-ref-arxiv-notice hidden>arXiv 以预印本为主，未必经过同行评审；“最新”按来源实际返回的提交或更新时间排序。</p>
   <details class="wrs-filters"><summary>筛选年份与开放获取 <span>可选</span></summary><div class="wrs-filter-grid"><label for="${id}-from">起始年份<input id="${id}-from" name="yearFrom" type="number" min="1000" max="${new Date().getFullYear()+1}" step="1" placeholder="不限"></label><label for="${id}-to">结束年份<input id="${id}-to" name="yearTo" type="number" min="1000" max="${new Date().getFullYear()+1}" step="1" placeholder="不限"></label><label class="wrs-oa"><input name="openAccess" type="checkbox">仅开放获取文献</label></div><p data-ref-provider-description>${baselineSources.map(value=>sourceDescriptions[value]).join('，')}。中文结果取决于数据库收录，英文关键词通常更易匹配。聚合检索会查询当前可用来源；开放获取筛选仅查询支持此条件的来源。</p></details></form>
   <div class="wrs-request-state"><p data-ref-status role="status" aria-live="polite">${autoSearch?'正在准备主题检索…':'输入检索词后开始；本次仅查找题录，不会生成正文或扣除积分。'}</p><button class="btn secondary" type="button" data-ref-cancel hidden>取消检索</button></div><p data-ref-error class="wrs-error" role="alert"></p><div data-ref-sources class="wrs-source-states" aria-label="数据库检索状态"></div>
   <div data-ref-results class="wrs-results" aria-busy="false"><div class="wrs-empty">${icon('book',30)}<h3>先找到文献，再核对依据</h3><p>选择需要的题录，添加后核对作者、年份和引用用途。</p></div></div>
-  <footer class="wrs-footer"><div><strong data-ref-selection>尚未选择文献</strong><small>仅添加题录与可用摘要，未读取全文，也不会自动确认引用。</small></div><button type="button" class="btn secondary" data-ref-done>完成</button><button type="button" class="btn primary" data-ref-import disabled>添加所选题录</button></footer><p class="wrs-arxiv-attribution" data-ref-arxiv-attribution hidden>${arxivAttribution}</p></section>`;
+  <footer class="wrs-footer"><div><strong data-ref-selection>尚未选择文献</strong><small>仅添加题录与可用摘要，未读取全文，也不会自动确认引用。</small></div><button type="button" class="btn secondary" data-ref-done>完成</button><button type="button" class="btn primary" data-ref-import disabled>添加所选题录</button></footer><p class="wrs-arxiv-attribution" data-ref-arxiv-attribution hidden>${arxivAttribution}</p><p class="wrs-arxiv-attribution" data-ref-pubmed-notice>${pubmedSourceNotice}</p></section>`;
  const form=$('form');
  function updateSourceControls(changed=false){
   const arxiv=form.querySelector('[name=source]').value==='arxiv';
@@ -132,6 +139,7 @@ export function mountWritingReferenceSearch({container,mode='search',context={},
    if(!response.ok)return;const body=await response.json();if(!current()||abort.signal.aborted||!Array.isArray(body.academicSearchSources))return;
    const enabled=[...new Set(body.academicSearchSources.filter(value=>value!=='all'&&Object.hasOwn(sourceDescriptions,value)))],select=form.querySelector('[name=source]'),previous=select.value;
    select.innerHTML=['all',...enabled].map(value=>`<option value="${value}">${sources[value]}</option>`).join('');select.value=enabled.includes(previous)?previous:'all';
+   const unavailable=unavailableAcademicSources(body.academicSearchSourceStatus,enabled);$('[data-ref-availability]').hidden=!unavailable.length;$('[data-ref-unavailable]').innerHTML=unavailable.map(row=>`<span class="wrs-source-state unsupported"><b>${esc(row.label)}</b><span>暂未开放</span><small>${esc(row.reason)}</small></span>`).join('');$('[data-ref-pubmed-notice]').hidden=!enabled.includes('pubmed');
    $('[data-ref-arxiv]').hidden=!enabled.includes('arxiv');$('[data-ref-arxiv-attribution]').hidden=!enabled.includes('arxiv');updateSourceControls();
    $('[data-ref-provider-description]').textContent=(enabled.length?enabled.map(value=>sourceDescriptions[value]).join('，')+'。':'当前暂无已开放的检索来源。')+'中文结果取决于数据库收录，英文关键词通常更易匹配。聚合检索会查询当前可用来源；开放获取筛选仅查询支持此条件的来源。'+(enabled.includes('aminer')?aminerScopeNotice:'');
   }catch{/* Keep existing public sources usable when the status request is unavailable. */}
@@ -147,6 +155,7 @@ export function mountWritingReferenceSearch({container,mode='search',context={},
  }
  function sourceMarkup(){
   if(sourceStates.some(row=>row.id==='arxiv')||items.some(row=>row.source==='arxiv'))$('[data-ref-arxiv-attribution]').hidden=false;
+  if(sourceStates.some(row=>row.id==='pubmed')||items.some(row=>row.source==='pubmed'||row.sourceProvenance?.some(value=>value.source==='pubmed')))$('[data-ref-pubmed-notice]').hidden=false;
   $('[data-ref-sources]').innerHTML=sourceStates.map(row=>{const state=row.status==='ok'?'ok':row.status==='unsupported_filter'?'unsupported':'error',label=sources[row.id]||clip(row.label,80)||'学术来源',reason=sourceReason(row);return `<span class="wrs-source-state ${state}"><i aria-hidden="true"></i><b>${esc(label)}</b><span>${esc(sourceStatusLabels[row.status]||'暂不可用')}</span>${reason?`<small>${esc(reason)}</small>`:''}</span>`;}).join('');
  }
  function rowsMarkup(){

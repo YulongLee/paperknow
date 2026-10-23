@@ -14,7 +14,7 @@ function fixture(options={}){
  for(const key of ['window','document','location','AbortController'])globalThis[key]=dom.window[key];
  const calls=[],imports=[];let stop;
  const base={container:document.getElementById('search-host'),context:{title:'Education feedback',keywords:'learning, education'},getExisting:()=>[],onImport:rows=>imports.push(rows),fetcher:async(url,init)=>{calls.push({url,init});return reply(results());}};
- const setup=extra=>{const settings={...base,...options,...extra},fetcher=settings.fetcher;settings.fetcher=(url,init)=>url==='/api/capabilities'?Promise.resolve(reply({academicSearchSources:options.availableSources||['crossref','europepmc']})):fetcher(url,init);return stop=mountWritingReferenceSearch(settings);};
+ const setup=extra=>{const settings={...base,...options,...extra},fetcher=settings.fetcher;settings.fetcher=(url,init)=>url==='/api/capabilities'?Promise.resolve(reply({academicSearchSources:options.availableSources||['crossref','europepmc'],academicSearchSourceStatus:options.sourceStatus||[]})):fetcher(url,init);return stop=mountWritingReferenceSearch(settings);};
  const $=selector=>document.querySelector(selector);
  return {dom,calls,imports,$,setup,close(){stop?.();document.querySelector('#workspace-dialog')?.dispatchEvent(new dom.window.Event('close'));dom.window.close();}};
 }
@@ -55,6 +55,21 @@ test('configured OpenAlex is selectable in the shared search and imports only tr
  input(f,'[name=source]','openalex');input(f,'[name=q]','education');f.$('[name=openAccess]').checked=true;submit(f);await settle();
  const request=new URL(f.calls[0].url,'https://example.test');assert.equal(request.searchParams.get('source'),'openalex');assert.equal(request.searchParams.get('openAccess'),'true');assert.match(f.$('[data-ref-sources]').textContent,/OpenAlex已检索/);assert.match(f.$('.wrs-result-index').textContent,/OpenAlex/);assert.match(f.$('.wrs-result-links').textContent,/开放获取/);
  choose(f);f.$('[data-ref-import]').click();await settle();assert.equal(f.imports[0][0].source,'openalex');assert.match(f.imports[0][0].sourceLabel,/OpenAlex.*未读取全文/);assert.equal(f.imports[0][0].scope,'metadata');assert.equal(f.imports[0][0].text,'');assert.equal(f.imports[0][0].fullTextRead,false);f.close();
+});
+test('configured PubMed and Semantic Scholar search and import actual metadata without trusting full-text claims',async()=>{
+ for(const [source,label,sourceURL] of [['pubmed','PubMed','https://pubmed.ncbi.nlm.nih.gov/12345678/'],['semantic_scholar','Semantic Scholar','https://www.semanticscholar.org/paper/1234567890abcdef']]){
+  const f=fixture({availableSources:[source],fetcher:async(url,init)=>{f.calls.push({url,init});return reply(results([paper({source,sourceId:'record-1',sourceLabel:'CNKI full-text access',url:sourceURL,scope:'full',text:'Unrequested text',confirmed:true,fullTextRead:true,citationCount:8,citationCountSource:source,sourceProvenance:[{source,sourceId:'record-1',citationCount:8}]})],{sources:[{id:source,status:'ok'}]}));}}),stop=f.setup();
+  try{await stop.ready;assert.deepEqual([...f.$('[name=source]').options].map(option=>option.value),['all',source]);input(f,'[name=source]',source);submit(f);await settle();assert.equal(new URL(f.calls[0].url,'https://example.test').searchParams.get('source'),source);assert.ok(f.$('[data-ref-sources]').textContent.includes(label));assert.ok(f.$('.wrs-result-index').textContent.includes(label));choose(f);f.$('[data-ref-import]').click();await settle();const saved=f.imports[0][0];assert.equal(saved.source,source);assert.equal(saved.sourceLabel,label+' · 在线题录，未读取全文');assert.equal(saved.sourceId,'record-1');assert.equal(saved.citationCountSource,source);assert.deepEqual(saved.sourceProvenance.map(({source,sourceId,citationCount})=>({source,sourceId,citationCount})),[{source,sourceId:'record-1',citationCount:8}]);assert.equal(saved.scope,'metadata');assert.equal(saved.text,'');assert.equal(saved.fullTextRead,false);assert.equal(saved.confirmed,false);assert.doesNotMatch(f.$('.writing-reference-search').textContent,/CNKI full-text access/);if(source==='pubmed'){assert.equal(f.$('[data-ref-pubmed-notice]').hidden,false);assert.equal(f.$('[data-ref-pubmed-notice] a').href,'https://www.ncbi.nlm.nih.gov/About/disclaimer.html');}}
+  finally{f.close();}
+ }
+});
+test('unavailable CNKI and Semantic Scholar show escaped backend reasons without becoming selectable or queried',async()=>{
+ const f=fixture({availableSources:['pubmed','cnki'],sourceStatus:[{id:'pubmed',configured:true},{id:'cnki',configured:false,reason:'知网需配置授权检索接口后开放。'},{id:'semantic_scholar',configured:false,reason:'需配置接口密钥及商用许可 <img src=x onerror=alert(1)>'},{id:'unknown',configured:false,reason:'Hidden unknown provider'}]}),stop=f.setup();
+ try{await stop.ready;assert.deepEqual([...f.$('[name=source]').options].map(option=>option.value),['all','pubmed']);assert.equal(f.$('[data-ref-availability]').hidden,false);assert.equal(f.$('[data-ref-availability]').open,false);assert.match(f.$('[data-ref-unavailable]').textContent,/知网.*需配置授权检索接口/);assert.match(f.$('[data-ref-unavailable]').textContent,/Semantic Scholar.*需配置接口密钥及商用许可 <img/);assert.equal(f.$('[data-ref-unavailable] img'),null);assert.doesNotMatch(f.$('[data-ref-unavailable]').textContent,/Hidden unknown provider/);assert.equal(f.calls.length,0);assert.equal(f.$('[data-ref-pubmed-notice] a').rel,'noopener noreferrer');}
+ finally{f.close();}
+});
+test('all seven genuine bibliographic provenance sources survive normalization without accepting CNKI as an integrated provider',()=>{
+ const sources=['crossref','europepmc','openalex','arxiv','aminer','pubmed','semantic_scholar'],value=normalizeReferenceSearchItem(paper({sourceProvenance:[...sources.map(source=>({source,sourceId:source+'-1'})),{source:'cnki',sourceId:'not-connected'}]}));assert.deepEqual(value.sourceProvenance.map(row=>row.source),sources);assert.equal(value.text,'');assert.equal(value.scope,'metadata');
 });
 const arxivPaper=(extra={})=>paper({source:'arxiv',sourceId:'2610.12345',arxivId:'2610.12345v2',title:'A current arXiv preprint',doi:'',url:'https://arxiv.org/abs/2610.12345v2',fullTextUrl:'https://arxiv.org/pdf/2610.12345v2',pdfUrl:'https://arxiv.org/pdf/2610.12345v2',type:'preprint',publishedDate:'2026-10-18T09:30:00Z',updatedDate:'2026-10-19T10:00:00Z',categories:['cs.AI','cs.LG'],openAccess:true,...extra});
 test('arXiv is discoverable, defaults to latest submission, and keeps chronology filters scoped to arXiv',async()=>{
@@ -138,7 +153,7 @@ test('failed import retains the selection for an explicit retry and never create
 });
 test('untrusted titles, abstracts and source messages are escaped and all external links are safe',async()=>{
  const f=fixture({mode:'recommend',fetcher:async()=>reply(results([paper({title:'<img src=x onerror=alert(1)>',abstract:'<script>unsafe()</script>',url:'javascript:alert(1)',doi:'',fullTextUrl:'data:text/html,unsafe'})],{sources:[{id:'crossref',status:'error',reason:'<img src=x onerror=1>'}]}))}),stop=f.setup();await stop.ready;
- assert.equal(f.$('img'),null);assert.equal(f.$('script'),null);assert.equal(f.$('.wrs-result-links a'),null);assert.match(f.$('.wrs-result').textContent,/<script>unsafe/);assert.match(f.$('.wrs-source-states').textContent,/<img/);f.close();
+ assert.equal(f.$('img'),null);assert.equal(f.$('script'),null);assert.equal(f.$('.wrs-result-links a'),null);assert.match(f.$('.wrs-result').textContent,/<script>unsafe/);assert.match(f.$('[data-ref-sources]').textContent,/<img/);f.close();
 });
 test('an older request cannot replace newer results even if the network ignores abort',async()=>{
  const pending=[];const f=fixture({fetcher:(url,init)=>new Promise(resolve=>{pending.push({url,init,resolve});})}),stop=f.setup();await stop.ready;

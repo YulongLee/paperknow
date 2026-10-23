@@ -60,17 +60,18 @@ test('arXiv timeout/oversized body/content-type/upstream throttling fail safely 
  let time=1000,calls=0;const client=createArxivClient({clock:()=>time,wait:async ms=>{time+=ms;},fetchImpl:async()=>{calls++;return new Response('private diagnostic',{status:429,headers:{'retry-after':'999999'}});}});await assert.rejects(client.search(query()),{status:503});time+=299000;await assert.rejects(client.search(query({q:'other topic'})),error=>error.sourceStatus==='rate_limited');assert.equal(calls,1);time+=1001;await assert.rejects(client.search(query({q:'other topic'})),{status:503});assert.equal(calls,2);
 });
 
-test('arXiv is public and independently bounded so all five sources can participate without credential leaks',async()=>{
+test('arXiv is public and independently bounded so all six configured sources can participate without credential leaks',async()=>{
  const calls=[];const service=createLiteratureSearch({openAlexApiKey:'synthetic-openalex',aminerEnabled:true,aminerApiKey:'synthetic-aminer',aminerUserId:'testuser',fetchImpl:async(url,options)=>{
   const host=new URL(url).hostname;calls.push({host,authorization:options.headers.Authorization});
   if(host==='export.arxiv.org')return response();
+  if(host==='eutils.ncbi.nlm.nih.gov')return Response.json({esearchresult:{count:'0',idlist:[]}});
   if(host==='api.crossref.org')return new Response(JSON.stringify({message:{items:[]}}),{headers:{'content-type':'application/json'}});
   if(host==='www.ebi.ac.uk')return new Response(JSON.stringify({resultList:{result:[]}}),{headers:{'content-type':'application/json'}});
   if(host==='api.openalex.org')return new Response(JSON.stringify({results:[]}),{headers:{'content-type':'application/json'}});
   return new Response(JSON.stringify({code:200,success:true,data:[]}),{headers:{'content-type':'application/json'}});
  }});
  assert.ok(service.listSources({allowAminer:false}).includes('arxiv'));assert.equal(service.sourceStatus().find(row=>row.id==='arxiv').configured,true);
- const result=await service.search(params({source:'all'}));assert.equal(result.sources.length,5);assert.ok(result.sources.every(row=>row.status==='ok'));assert.equal(result.items[0].source,'arxiv');assert.equal(calls.find(row=>row.host==='export.arxiv.org').authorization,undefined);assert.doesNotMatch(JSON.stringify(result),/synthetic-/);
+ const result=await service.search(params({source:'all'}));assert.equal(result.sources.length,6);assert.ok(result.sources.every(row=>row.status==='ok'));assert.equal(result.items[0].source,'arxiv');assert.equal(calls.find(row=>row.host==='export.arxiv.org').authorization,undefined);assert.doesNotMatch(JSON.stringify(result),/synthetic-/);
 });
 
 test('failed arXiv responses preserve other aggregate results with honest partial status',async()=>{

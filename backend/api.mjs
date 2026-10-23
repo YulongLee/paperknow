@@ -50,8 +50,8 @@ const documentTranslations=createDocumentTranslationService(db,{...config,cancel
 const formulaRecognitions=createFormulaOcrService(db,config);
 const aigcDetections=createAigcDetectionService(db,{...config,billing});
 const webSimilarity=createWebSimilarityService(db,{...config,billing,cancelWebSimilarity:id=>worker.cancel(id)});
-const literatureSearch=createLiteratureSearch({fetchImpl:config.literatureFetch,openAlexApiKey:config.openAlexApiKey,openAlexDailyLimit:config.openAlexDailyLimit,aminerEnabled:config.aminerEnabled,aminerApiKey:config.aminerApiKey,aminerUserId:config.aminerUserId,aminerToken:config.aminerToken,aminerDailyLimit:config.aminerDailyLimit});
-const literatureScope=req=>({allowAminer:config.aminerAccess==='public'||sessionUser(db,req,config.ownerEmail)?.role==='admin'});
+const literatureSearch=createLiteratureSearch({fetchImpl:config.literatureFetch,openAlexApiKey:config.openAlexApiKey,openAlexDailyLimit:config.openAlexDailyLimit,semanticScholarEnabled:config.semanticScholarEnabled,semanticScholarApiKey:config.semanticScholarApiKey,semanticScholarDailyLimit:config.semanticScholarDailyLimit,aminerEnabled:config.aminerEnabled,aminerApiKey:config.aminerApiKey,aminerUserId:config.aminerUserId,aminerToken:config.aminerToken,aminerDailyLimit:config.aminerDailyLimit});
+const literatureScope=req=>{const admin=sessionUser(db,req,config.ownerEmail)?.role==='admin';return{allowAminer:config.aminerAccess==='public'||admin,allowSemanticScholar:config.semanticScholarAccess==='public'&&config.semanticScholarCommercialLicensed===true||admin};};
 const desktopReleases=createDesktopReleaseService(db,config);
 const admin=createAdminAPI(db,worker,{...config,payments,billing},auth);
 const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}};
