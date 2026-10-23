@@ -21,6 +21,10 @@
 .writing-reference-search .wrs-arxiv-controls{display:flex;gap:12px;flex-wrap:wrap}
 .writing-reference-search .wrs-arxiv-notice{font-size:11px;line-height:1.9;color:var(--wrs-muted);margin:11px 0 0}
 .writing-reference-search .wrs-arxiv-attribution{font-size:10px;color:var(--wrs-muted);line-height:1.8;margin:14px 0 0}
+.writing-reference-search .wrs-data-use{margin-top:16px;font-size:11px;color:var(--wrs-muted)}
+.writing-reference-search .wrs-data-use summary{width:fit-content;cursor:pointer;min-height:32px;line-height:32px}
+.writing-reference-search .wrs-data-use summary:focus-visible{outline:2px solid #87a9ed;outline-offset:3px;border-radius:4px}
+.writing-reference-search .wrs-data-use .wrs-arxiv-attribution{margin:4px 0 10px}
 .writing-reference-search .wrs-preprint-note{font-size:10px;color:var(--wrs-muted);line-height:1.8;margin:9px 0 0 28px}
 .writing-reference-search .wrs-paper-dates{font-variant-numeric:tabular-nums}
 .writing-reference-search .wrs-filters{margin-top:14px;border:1px solid var(--wrs-line);background:var(--wrs-soft);border-radius:10px;padding:0 17px}

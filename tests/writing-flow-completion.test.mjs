@@ -107,7 +107,7 @@ test('a reference file finishing after switching drafts never changes the replac
 test('text outline import succeeds and an import finishing after a draft switch cannot replace the new outline',async()=>{
  const f=fixture();let resolve;
  try{
-  mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','文本提纲导入');f.$('#writing-generate').click();confirmThesisResearch();
+  mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','文本提纲导入');f.$('#writing-generate').click();await confirmThesisResearch();
   f.selectFile('#outline-file',{name:'my-outline.txt',size:100,text:async()=>'第一章 文本导入的专属结构\n1.1 真实研究对象'});await settle();assert.match(f.$('#outline-paper .outline-row-title').value,/文本导入的专属结构/);
   const pending=new Promise(done=>{resolve=done;});f.selectFile('#outline-file',{name:'old-outline.txt',size:100,text:()=>pending});
   clearEditor();localStorage.removeItem('paperknow-drafts');location.hash='tool/writing?new=other';mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','新的独立论文');

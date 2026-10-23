@@ -30,7 +30,7 @@ async function advanceToOutline(f){
  f.input('#writing-title','人工智能支持教学反馈的研究');
  f.$('#writing-process-next').click();await settle();assertOnlyStage(f,2);
  confirmThesisMaterials();await settle();assertOnlyStage(f,3);
- confirmThesisReferences();await settle();assertOnlyStage(f,4);
+ await confirmThesisReferences();await settle();assertOnlyStage(f,4);
 }
 
 test('a new thesis exposes one form and cannot jump ahead by pointer or keyboard',async()=>{

@@ -32,7 +32,7 @@ test('five-step transitions keep the viewport and do not force focus away from t
   f.$('#writing-process-next').focus();
   const retainedFocus=document.activeElement,focusCount=f.focuses.length;
   for(const selector of ['#writing-generate','#writing-material-confirm','#writing-reference-confirm']){
-   const count=f.scrolls.length;if(selector==='#writing-material-confirm')confirmThesisMaterials();else if(selector==='#writing-reference-confirm')confirmThesisReferences();else f.$(selector).click();await settle();
+   const count=f.scrolls.length;if(selector==='#writing-material-confirm')confirmThesisMaterials();else if(selector==='#writing-reference-confirm')await confirmThesisReferences();else f.$(selector).click();await settle();
    assert.equal(f.scrolls.length,count,'a stage change never scrolls');
    assert.equal(f.$('.creation-grid'),shell,'the content shell stays mounted');
    assert.equal(document.activeElement,retainedFocus);
@@ -68,7 +68,7 @@ test('completed steps use one real check in the original number slot and retain 
  const f=fixture();
  try{
   mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','状态检查');
-  f.$('#writing-generate').click();await settle();confirmThesisMaterials();await settle();confirmThesisReferences();await settle();
+  f.$('#writing-generate').click();await settle();confirmThesisMaterials();await settle();await confirmThesisReferences();await settle();
   const steps=[...document.querySelectorAll('[data-writing-step]')];
   assert.equal(steps.length,5);
   assert.deepEqual(steps.map(step=>step.querySelector('.writing-detail-step-number').textContent),['✓','✓','✓','04','05']);
@@ -91,7 +91,7 @@ test('editing the current step and rerendering its controls does not move focus 
   const title=f.$('#writing-title');title.focus();const count=f.scrolls.length;
   f.input('#writing-title','保持输入位置，不应跳动');await settle();
   assert.equal(document.activeElement,title);assert.equal(f.scrolls.length,count);
-  f.$('#writing-generate').click();await settle();confirmThesisMaterials();await settle();confirmThesisReferences();await settle();
+  f.$('#writing-generate').click();await settle();confirmThesisMaterials();await settle();await confirmThesisReferences();await settle();
   const field=f.$('#outline-paper .outline-row-title');field.focus();const stageScrolls=f.scrolls.length;
   field.value='第一章 用户重新填写的标题';field.dispatchEvent(new window.Event('input',{bubbles:true}));await settle();
   assert.equal(document.activeElement,field);assert.equal(f.scrolls.length,stageScrolls);assert.equal(field.value,'第一章 用户重新填写的标题');
@@ -111,7 +111,7 @@ test('rapid step changes schedule no focus or scroll work',async()=>{
  const f=fixture();
  try{
   mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','快速切换步骤');
-  f.$('#writing-generate').click();confirmThesisMaterials();confirmThesisReferences();
+  f.$('#writing-generate').click();confirmThesisMaterials();await confirmThesisReferences();
   await settle();
   assert.equal(f.scrolls.length,0);
   assert.equal(f.$('.dashboard').dataset.writingStage,'4');
@@ -133,7 +133,7 @@ test('collapsed flow advances in place while a validation error still locates it
   assert.ok(f.$('.writing-process-guide').classList.contains('is-collapsed'));
   f.$('#writing-process-next').focus();const focusCount=f.focuses.length;
   for(const stage of ['2','3','4']){
-   if(stage==='3')f.input('#knowledge-ai-input',thesisResearchText);if(stage==='4')selectThesisReference();f.$('#writing-process-next').click();await settle();
+   if(stage==='3')f.input('#knowledge-ai-input',thesisResearchText);if(stage==='4')await selectThesisReference();f.$('#writing-process-next').click();await settle();
    assert.equal(f.$('.dashboard').dataset.writingStage,stage);
    assert.equal(document.activeElement,f.$('#writing-process-next'));
    assert.equal(f.focuses.length,focusCount);
@@ -167,7 +167,7 @@ test('optional materials advance normally while required references and outline 
   f.input('#knowledge-ai-input','简短的补充说明');f.$('#writing-material-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.equal(f.$('#writing-step-error').hidden,true);
   for(const step of ['4','5']){f.$('[data-writing-step="'+step+'"]').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');}
   f.$('#writing-reference-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.match(f.$('#writing-reference-status').textContent,/至少.*1.*参考文献/);f.$('#outline-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.equal(requests,0);
-  confirmThesisReferences();assert.equal(f.$('.dashboard').dataset.writingStage,'4');f.$('[data-writing-step="5"]').click();assert.equal(f.$('.dashboard').dataset.writingStage,'4','a selected reference cannot bypass outline confirmation');
+  await confirmThesisReferences();assert.equal(f.$('.dashboard').dataset.writingStage,'4');f.$('[data-writing-step="5"]').click();assert.equal(f.$('.dashboard').dataset.writingStage,'4','a selected reference cannot bypass outline confirmation');
   f.$('#outline-confirm').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'5');assert.equal(requests,0);
  }finally{f.close();}
 });
