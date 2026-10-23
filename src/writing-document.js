@@ -2,6 +2,8 @@ import JSZip from 'jszip';
 import {PDFDocument,rgb} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import {applyThesisDocumentTemplate} from './thesis-document.js';
+import {DOMParser} from '@xmldom/xmldom';
+export {auditThesisExport} from './thesis-export-check.js';
 export {inspectThesisDocxTemplate,defaultThesisTemplateProfile} from './thesis-template-profile.js';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 export function documentLines(value){const text=String(value);if(!text.trim())throw Error('请先填写或生成需要导出的内容。');if(text.length>500000)throw Error('正文超过 500,000 字符，请分章节导出。');if([...text].some(char=>{const point=char.codePointAt(0);return point>=0xd800&&point<=0xdfff||point===0xfffe||point===0xffff;}))throw Error('正文包含无法安全导出的字符，请修正后重试。');let sourceStart=0;return text.replace(/\r\n?/g,'\n').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'').split('\n').map((text,i)=>{const row={text,sourceStart,level:i===0?0:/^\s*第.{1,12}章|^\s*参考文献/.test(text)?1:/^\s*\d+\.\d+(?:\.\d+)?\s/.test(text)?2:3};sourceStart+=text.length+1;return row;});}
@@ -62,6 +64,29 @@ export async function createWritingDocx(text,options={}){
  }
  zip.file('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>');zip.file('_rels/.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');zip.file('word/_rels/document.xml.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>');zip.file('word/styles.xml',`<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:pPr><w:spacing w:line="360" w:lineRule="auto"/></w:pPr><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="宋体"/><w:sz w:val="24"/></w:rPr></w:style>${[1,2].map(level=>`<w:style w:type="paragraph" w:styleId="Heading${level}"><w:name w:val="heading ${level}"/><w:basedOn w:val="Normal"/><w:pPr><w:keepNext/><w:outlineLvl w:val="${level-1}"/></w:pPr><w:rPr><w:b/><w:sz w:val="${level===1?30:26}"/></w:rPr></w:style>`).join('')}</w:styles>`);zip.file('word/document.xml',`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>${body.join('')}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr></w:body></w:document>`);return zip.generateAsync({type:'uint8array',compression:'DEFLATE'});
 }
+export async function inspectThesisExportContent(bytes,text){
+ const zip=await JSZip.loadAsync(bytes),part=zip.file('word/document.xml');if(!part)throw Error('论文导出文件缺少正文。');
+ const doc=new DOMParser().parseFromString(await part.async('string'),'application/xml'),W='http://schemas.openxmlformats.org/wordprocessingml/2006/main',M='http://schemas.openxmlformats.org/officeDocument/2006/math',normalize=value=>String(value).replace(/\s/g,''),read=node=>normalize([...node.getElementsByTagName('*')].filter(n=>n.localName==='t'&&[W,M].includes(n.namespaceURI)).map(n=>n.textContent).join(''));
+ const all=[...doc.getElementsByTagName('*')],positions=new Map(all.map((node,index)=>[node,index])),ends=new Map();for(const node of doc.getElementsByTagNameNS(W,'bookmarkEnd')){const id=node.getAttributeNS(W,'id');if(!ends.has(id))ends.set(id,[]);ends.get(id).push(node);}
+ const anchors=new Map(),order=[];for(const node of doc.getElementsByTagNameNS(W,'bookmarkStart')){const name=node.getAttributeNS(W,'name'),match=/^PKInput_(\d+)$/.exec(name);if(!match)continue;const index=Number(match[1]);if(anchors.has(index))throw Error('论文正文定位标记重复，已停止导出。');let paragraph=node.parentNode;while(paragraph&&!(paragraph.namespaceURI===W&&paragraph.localName==='p'))paragraph=paragraph.parentNode;const matching=ends.get(node.getAttributeNS(W,'id'))||[],end=matching[0];if(!paragraph||matching.length!==1||end.parentNode!==node.parentNode||positions.get(end)<=positions.get(node))throw Error('论文正文定位标记无效，已停止导出。');const actual=normalize(all.slice(positions.get(node)+1,positions.get(end)).filter(n=>n.localName==='t'&&[W,M].includes(n.namespaceURI)).map(n=>n.textContent).join(''));anchors.set(index,{paragraph,actual});order.push(index);}
+ const blocks=documentBlocks(text),expectedOrder=[];let checkedSegments=0,formulaSegments=0;const missing=[];
+ for(const [index,block]of blocks.entries()){
+  if(!String(block.text||'').trim()&&block.type!=='table')continue;
+  const anchor=index?anchors.get(index):null;let container=index?anchor?.paragraph:doc.documentElement;
+  if(index){expectedOrder.push(index);if(!container){missing.push(index);continue;}}
+  if(block.type==='table'){while(container&&!(container.namespaceURI===W&&container.localName==='tbl'))container=container.parentNode;if(!container){missing.push(index);continue;}}
+  const actual=block.type==='table'||!index?read(container):anchor.actual,segments=block.type==='formula'?[{text:block.text,formula:true}]:block.type==='table'?block.rows.flat().flatMap(value=>inlineParts(value)):block.literal?[{text:block.text}]:block.inlineSegments||[{text:block.text}];let cursor=0;
+  for(const segment of segments){if(segment.formula){formulaSegments++;continue;}const expected=normalize(segment.text.replace(/^\s*#{1,3}\s+/,''));if(!expected)continue;checkedSegments++;const found=actual.indexOf(expected,cursor);if(found<0){if(!index)throw Error('导出文件中的论文题目未与当前题目对应，已停止下载；请核对模板封面题名，将示例题名改为空白或 {{论文题目}} 后重新上传。');missing.push(index);}else cursor=found+expected.length;}
+ }
+ if(missing.length||JSON.stringify(order)!==JSON.stringify(expectedOrder))throw Error('导出文件正文完整性核对未通过，已停止下载；请核对模板正文区域后重试。');
+ // Inspect final rendered document text too: template regions can introduce
+ // explicit pending items that were absent from the manuscript input. Keep
+ // same-paragraph runs together so formatting splits cannot hide a marker.
+ let visible='',priorParagraph=null;for(const node of all.filter(n=>n.localName==='t'&&[W,M].includes(n.namespaceURI))){let paragraph=node.parentNode;while(paragraph&&!(paragraph.namespaceURI===W&&paragraph.localName==='p'))paragraph=paragraph.parentNode;if(paragraph!==priorParagraph&&visible)visible+='\n';visible+=node.textContent;priorParagraph=paragraph;}
+ const unresolvedPlaceholders=[...visible.matchAll(/(?:【|〔|\[|\{\{)\s*(?:待补充|待核对|待完善|请补充|待填写|来源待核对|文献信息待补全|草稿说明|To be supplied\b|To be verified\b|Draft note\b|TODO\b|TBD\b)[^\n\]】〕}]{0,500}(?:】|〕|\]|\}\})/giu)].length;
+ return {status:'passed',checkedSegments,formulaSegments,checkedBlocks:expectedOrder.length,unresolvedPlaceholders,scope:'ordered_block_text_segments'};
+}
+
 export async function createWritingPdf(text,fontBytes){
  // Localized glyph substitutions and ligatures can break the full font's
  // Unicode map; preserve literal scientific identifiers and consecutive digits.

@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import {DOMParser} from '@xmldom/xmldom';
 import {Inflate} from 'fflate';
 import {staticizeCachedPictureFields} from './thesis-template-static-fields.js';
+import {inspectThesisTemplatePlacement} from './thesis-template-placement.js';
 
 const mm=value=>Math.round(value*1440/25.4);
 const style=(overrides={})=>({eastAsia:'宋体',ascii:'Times New Roman',size:24,bold:false,alignment:'both',line:360,lineRule:'auto',firstLineChars:200,firstLine:0,hanging:0,before:0,after:0,pageBreakBefore:false,...overrides});
@@ -114,17 +115,19 @@ async function inspectTemplate(bytes,{includeBytes=false,requireStatic=false}={}
  const page=section?readPage(section):{};
  for(const field of PAGE_FIELDS){const key='page.'+field;if(page[field]!==undefined){rules.page[field]=page[field];recognized.push(key);}else unresolved.push(key);}
  if(rules.page.left+rules.page.right>=rules.page.width-720||rules.page.top+rules.page.bottom>=rules.page.height-720)throw Error('模板页边距没有保留足够正文区域，请调整后重试。');
- if(sections.length>1)warnings.push(pages.some(value=>JSON.stringify(value)!==JSON.stringify(pages.at(-1)))?'模板包含不同页面设置的多个分节，本次规则采用最后一节；封面、横向页及其他分节需人工核对。':'模板包含多个分节，规则采用最后一节，分节页码与页眉页脚需人工核对。');
+ result.placement=await inspectThesisTemplatePlacement(data);const preserve=result.placement.preservesTemplate;
+ if(sections.length>1)warnings.push(preserve?'导出保留模板的多个分节及页面设置，请核对分节页码和页眉页脚。':pages.some(value=>JSON.stringify(value)!==JSON.stringify(pages.at(-1)))?'模板包含不同页面设置的多个分节，本次规则采用最后一节；封面、横向页及其他分节需人工核对。':'模板包含多个分节，规则采用最后一节，分节页码与页眉页脚需人工核对。');
  if(rules.page.width>rules.page.height)warnings.push('模板最后一节为横向页面，已读取横向尺寸，请核对是否适用于论文正文。');
  if(rules.page.top<mm(25)||rules.page.left<mm(25)||rules.page.bottom<mm(20)||rules.page.right<mm(20))warnings.push('模板的部分页边距低于通用学位论文留边建议，已保留原数值，请按院校要求核对。');
- if(all(document,'cols').some(node=>Number(attr(node,'num')||1)>1))warnings.push('模板包含多栏排版，规则不包含分栏设置，请人工核对。');
- if(all(document,'textDirection').some(node=>!['lrTb','lr'].includes(attr(node,'val'))))warnings.push('模板包含竖排或特殊文字方向，规则不包含该设置。');
- if(docs.get(relatedPart(docs,'settings','word/settings.xml'))?.getElementsByTagNameNS(W,'mirrorMargins').length)warnings.push('模板使用镜像页边距，当前规则仅记录页边距数值，请核对双面装订。');
+ if(all(document,'cols').some(node=>Number(attr(node,'num')||1)>1))warnings.push(preserve?'模板包含多栏排版，已保留原有分节设置，请核对正文流向。':'模板包含多栏排版，规则不包含分栏设置，请人工核对。');
+ if(all(document,'textDirection').some(node=>!['lrTb','lr'].includes(attr(node,'val'))))warnings.push(preserve?'模板包含特殊文字方向，已保留原设置，请核对实际页面。':'模板包含竖排或特殊文字方向，规则不包含该设置。');
+ if(docs.get(relatedPart(docs,'settings','word/settings.xml'))?.getElementsByTagNameNS(W,'mirrorMargins').length)warnings.push(preserve?'模板使用镜像页边距，已保留原设置，请核对双面装订。':'模板使用镜像页边距，当前规则仅记录页边距数值，请核对双面装订。');
  if(!stylesDoc)warnings.push('模板没有 styles.xml，仅从实际段落读取显式格式；未提供的样式使用通用默认值。');
  if([...docs.values()].some(doc=>['embedRegular','embedBold','embedItalic','embedBoldItalic'].some(name=>doc.getElementsByTagNameNS(W,name).length)))warnings.push('模板包含嵌入字体；字体授权及目标设备的字体显示效果需另行核对。');
- if(unresolved.length)warnings.push('未识别的字体、字号或段落属性已采用通用默认值；这不代表已完整复刻院校模板。');
- if(all(document,'drawing').length||all(document,'pict').length)warnings.push('模板含图片或形状；本识别结果不包含封面图形与版式位置。');
- result.warnings=[...new Set(warnings)];result.summary=[`已读取 ${recognized.filter(key=>key.startsWith('page.')).length} 项页面设置、${recognized.filter(key=>key.startsWith('styles.')).length} 项样式属性。`,unresolved.length?`${unresolved.length} 项属性未明确识别，使用通用默认值。`:'规则范围内的页面和样式属性均已识别。','学校封面、声明、目录更新和最终打印分页仍需核对。'];
+ if(unresolved.length)warnings.push(preserve?'样式摘要有未识别属性；导出优先保留模板中实际段落的格式，缺失的正文样式使用通用默认值，请核对最终版式。':'未识别的字体、字号或段落属性已采用通用默认值；这不代表已完整复刻院校模板。');
+ if(all(document,'drawing').length||all(document,'pict').length)warnings.push(preserve?'模板中的嵌入图片及形状保持在原文档内，请核对最终位置。':'模板含图片或形状；本识别结果不包含封面图形与版式位置。');
+ warnings.push(...result.placement.warnings);
+ result.warnings=[...new Set(warnings)];result.summary=[`已读取 ${recognized.filter(key=>key.startsWith('page.')).length} 项页面设置、${recognized.filter(key=>key.startsWith('styles.')).length} 项样式属性。`,unresolved.length?`${unresolved.length} 项摘要属性未明确识别，${preserve?'优先保留原段落格式；缺失正文样式使用通用默认值。':'使用通用默认值。'}`:'规则范围内的页面和样式属性均已识别。',preserve?'导出保留模板包、封面和分节，在识别的正文位置填入内容。':result.placement.mode==='ambiguous'?'当前模板正文位置不明确，导出前需要补充独立正文占位符。':'此文件仅提供样式规则，导出使用通用封面和目录；不表示完整复刻原件。'];
  return includeBytes?{profile:result,bytes:staticPictures?await zip.generateAsync({type:'uint8array',compression:'DEFLATE'}):new Uint8Array(data)}:result;
 }
 

@@ -8,6 +8,7 @@ import {createWorkspaceService} from './workspace-service.mjs';
 import {createBillingService} from './billing-service.mjs';
 import {createModelBudget} from './model-budget.mjs';
 import {createThesisService} from './thesis-service.mjs';
+import {createThesisDocumentRenderer,convertThesisDocumentPayload} from './thesis-document-renderer.mjs';
 import {createThesisOutlineService} from './thesis-outline-service.mjs';
 import {createQuestionnaireService} from './questionnaire-service.mjs';
 import {createToolRunService} from './tool-run-service.mjs';
@@ -36,6 +37,7 @@ const auth=createAuthService(db,{secret:config.authCodeSecret,dailyLimit:config.
 const billing=createBillingService(db,config);
 const modelBudget=createModelBudget(db,config);
 const theses=createThesisService(db,{...config,billing,modelBudget,worker,cancelThesisRun:id=>worker.cancel(id)});
+const thesisRenderer=config.thesisDocumentRenderer||createThesisDocumentRenderer({commandPath:config.thesisDocumentRenderCommand,enabled:config.thesisDocumentRenderEnabled});
 const thesisOutlines=createThesisOutlineService(db,{...config,billing,modelBudget,cancelThesisOutline:id=>worker.cancel(id)});
 const thesisMethods=createThesisMethodService(db,{...config,billing,modelBudget,cancelThesisMethod:id=>worker.cancel(id)});
 const writing=createWritingService(db,{...config,billing,modelBudget,cancelWriting:id=>worker.cancel(id)});
@@ -111,6 +113,14 @@ const user=adminUser||sessionUser(db,req,config.ownerEmail);if(!user)fail(401,'�
 const expectedOwner=req.headers['x-paperknow-user'];
 if(expectedOwner!==undefined&&(typeof expectedOwner!=='string'||expectedOwner!==user.id)){send(409,{error:'登录账户已变化，请刷新页面后重试',code:'ACCOUNT_CHANGED'});return;}
 if(adminRequest){send(200,await admin({path,method,query:requestURL.searchParams,readBody:()=>body(req),user}));return;}
+if(path==='/api/theses/document-render'){
+ if(method==='GET'){const status=await thesisRenderer.status();send(200,{available:status.available,busy:status.busy,maxInputBytes:status.maxInputBytes});return;}
+ rate(req,60);const value=await body(req);
+ if(value.expectedUserId!==user.id)fail(409,'登录账户已变化，请刷新后重新导出');
+ const controller=new AbortController(),cancel=()=>{if(!res.writableEnded)controller.abort();};req.once('aborted',cancel);res.once('close',cancel);
+ try{send(200,await convertThesisDocumentPayload(thesisRenderer,value,{signal:controller.signal}));}finally{req.removeListener('aborted',cancel);res.removeListener('close',cancel);}
+ return;
+}
 if(path==='/api/aigc-detections'||path.startsWith('/api/aigc-detections/')){if(method==='POST')rate(req,30);const response=await aigcDetections.handle({path,method,user,readBody:()=>body(req)});if(!response)fail(404,'文本鉴别接口不存在');send(response.status||200,response.value);return;}
 if(path==='/api/web-similarity'||path.startsWith('/api/web-similarity/')){if(method==='POST')rate(req,20);const response=await webSimilarity.handle({path,method,user,query:requestURL.searchParams,readBody:()=>body(req)});if(!response)fail(404,'联网查重接口不存在');send(response.status||200,response.value);return;}
 if(path==='/api/document-translations'||path.startsWith('/api/document-translations/')){if(method==='POST')rate(req,30);const response=await documentTranslations.handle({path,method,user,readBody:()=>body(req)});if(!response)fail(404,'文档翻译接口不存在');send(response.status||200,response.value);return;}
