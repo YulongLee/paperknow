@@ -5,7 +5,7 @@ import {validThesisQuote} from './thesis-online.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const active=item=>['queued','running'].includes(item?.status);
 const statusText={queued:'正在排队',running:'正在生成方法建议',completed:'方法建议已生成',failed:'方法建议生成未完成',cancelled:'已停止生成'};
-const stages={queued:'等待 AI 服务处理',preparing:'整理主题与研究资料',agent_running:'设计拟开展的研究路径',agent_tools:'核对方法适用条件',completed:'请先预览，再填入补充说明',failed:'未生成可用的方法建议，原有补充说明未改动。',cancelled:'原有补充说明未改动'};
+const stages={queued:'等待 AI 服务处理',preparing:'整理主题与研究资料',checking_input:'核对输入资料',agent_running:'设计拟开展的研究路径',agent_tools:'结合资料完善方法建议',checking_output:'检查生成建议',completed:'请先预览，再填入补充说明',failed:'未生成可用的方法建议，原有补充说明未改动。',cancelled:'原有补充说明未改动'};
 const abortError=()=>Object.assign(new Error('页面已切换'),{name:'AbortError'});
 
 // The server owns durable jobs and billing. Suggestions stay proposed plans and are never applied or confirmed as research evidence by this controller.
@@ -13,6 +13,7 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
  if(!container)throw new TypeError('缺少方法建议生成区域');
  const doc=container.ownerDocument,win=doc.defaultView;
  let alive=true,opened=false,epoch=0,timer=null,busy=false,user=null,accountId=null,cap=null,quote=null,item=null,snapshot=null,contextKey=pendingContextKey,jobId=pendingJobId||null,clientKey=pendingClientKey||null,commandPending=!!pendingClientKey,consent=false,disclosureOpen=false,ambiguous=!!pendingClientKey&&!pendingJobId,message='',error='',loadError=false,applied=false,previewText=typeof pendingPreview?.text==='string'?pendingPreview.text:'',previewJobId=pendingPreview?.jobId?String(pendingPreview.jobId):null;
+ let submitting=false,startedAt=null,clockTimer=null,syncError=false,backgroundReading=false;
  let projectRef='';try{const pending=JSON.parse(pendingContextKey);if(typeof pending?.projectRef==='string'&&typeof pending?.contextKey==='string'&&Object.keys(pending).length===2)projectRef=pending.projectRef;}catch{}
  const controllers=new Set();
  const current=()=>alive&&container.isConnected&&isCurrent();
@@ -24,6 +25,13 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
  const bindProject=()=>{projectRef=String(getProjectRef()||'');resolveAccountProjectId(projectRef,accountId);contextKey=currentContextKey();};
  const projectPayload=()=>{const projectId=resolveAccountProjectId(projectRef,accountId);return projectId?{projectId}:{};};
  const clearPoll=()=>{if(timer!==null)win.clearTimeout(timer);timer=null;};
+ const clearClock=()=>{if(clockTimer!==null)win.clearTimeout(clockTimer);clockTimer=null;};
+ const elapsedText=()=>{const seconds=Math.max(0,Math.floor((Date.now()-(startedAt??Date.now()))/1000)),minutes=Math.floor(seconds/60);return `已用时 ${String(minutes).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;};
+ function updateClock(){const elapsed=$('[data-method-ai-elapsed]');if(elapsed)elapsed.textContent=elapsedText();}
+ function scheduleClock(){
+  clearClock();if(!current()||!opened||doc.hidden||!(submitting||active(item)))return;
+  updateClock();clockTimer=win.setTimeout(()=>{clockTimer=null;scheduleClock();},1000);
+ }
  const abortRequests=()=>{for(const controller of controllers)controller.abort();controllers.clear();};
  const notifyJob=()=>{if(current())onJobChange?.(jobId,{contextKey});};
  const notifyPreview=()=>{if(current())onPreviewChange?.(previewJobId?{jobId:previewJobId,text:previewText}:null);};
@@ -53,7 +61,7 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
   const next=identity(value);if(!next)throw Error('账户信息不完整，请重新登录后再生成方法建议。');return next;
  }
  function changedAccount(){
-  user=null;quote=null;consent=false;item=null;clearPoll();setError('登录账户已变化，请重新登录并打开方法建议生成。');throw Error(error);
+  user=null;quote=null;consent=false;item=null;clearPoll();clearClock();setError('登录账户已变化，请重新登录并打开方法建议生成。');throw Error(error);
  }
  async function owner(token=epoch){
   const next=await authenticate({fresh:true,token});
@@ -63,17 +71,26 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
  function takeItem(value,expectedId){
   if(!value?.id||!Object.hasOwn(statusText,value.status)||expectedId&&String(value.id)!==String(expectedId))throw Error('方法建议任务数据不完整，请读取最新状态。');
   if(value.userId&&String(value.userId)!==String(user?.id)||value.ownerId&&String(value.ownerId)!==String(user?.id))throw Error('当前账户无法读取这份方法建议，请重新打开。');
-  item=value;jobId=value.id;
+  const sameJob=String(jobId||'')===String(value.id),createdAt=Date.parse(value.createdAt||value.created_at||'');
+  if(!sameJob||startedAt===null){const origin=Number.isFinite(createdAt)&&createdAt<=Date.now()?createdAt:Date.now();startedAt=submitting&&startedAt!==null?Math.min(startedAt,origin):origin;}
+  item=value;jobId=value.id;syncError=false;
   if(value.status==='completed'&&previewJobId!==String(value.id)){previewText=String(value.output?.text||'');previewJobId=String(value.id);notifyPreview();}
   if(value.status==='completed'&&(!String(value.output?.text||'').trim()))throw Error('任务已结束，但没有可用的方法建议内容。原有补充说明未改动。');
   notifyJob();
+ }
+ function progressMarkup(){
+  const pending=submitting&&!active(item),phase=pending?'submitting':item?.status,working=pending||active(item),failed=phase==='failed';
+  if(!phase)return '';
+  const title=pending?'正在提交方法建议任务':statusText[phase],stage=pending?'正在保存生成请求，请稍候…':failed?stages.failed:stages[phase==='running'?item.stage:phase]||'正在根据已确认的信息生成方法建议';
+  const detail=typeof item?.error==='string'?item.error:item?.error?.message,index=pending?0:phase==='queued'?1:2;
+  return `<div class="writing-outline-ai-progress writing-method-ai-progress${working?' is-active':''}${syncError?' is-stale':''}" data-method-phase="${esc(phase)}" role="status" aria-live="polite" aria-atomic="false"><div class="writing-method-ai-progress-heading">${working?'<span class="writing-method-ai-spinner" aria-hidden="true"></span>':`<span class="writing-method-ai-result-icon" aria-hidden="true">${phase==='completed'?'✓':phase==='cancelled'?'−':'!'}</span>`}<div><strong>${esc(title)}</strong><span class="writing-method-ai-stage">${esc(stage)}</span></div>${working?`<span class="writing-method-ai-elapsed" data-method-ai-elapsed aria-live="off">${esc(elapsedText())}</span>`:''}</div>${working?`<div class="writing-method-ai-track" role="progressbar" aria-label="研究方法生成进度" aria-valuetext="${esc(stage)}"><span></span></div><ol class="writing-method-ai-steps" aria-label="方法建议生成流程">${['提交请求','等待处理','生成建议','预览使用'].map((label,i)=>`<li class="${i<index?'is-done':i===index?'is-current':''}"${i===index?' aria-current="step"':''}><span aria-hidden="true">${i<index?'✓':i+1}</span>${label}</li>`).join('')}</ol><p class="writing-method-ai-sync" data-method-ai-sync>${pending?'请求确认前请稍候，无需重复点击。':syncError?'暂时无法读取最新进度，正在重试；当前为上次同步的状态。':'进度自动更新，无需重复提交。'}</p>${!pending?'<p class="writing-method-ai-background">可离开此页面，后台任务会继续；重新打开可读取进度。</p>':''}`:''}${failed||detail?`<p class="writing-outline-ai-error writing-method-ai-error" role="alert">具体原因：${esc(String(detail||'本次任务未能返回可用建议，请重新确认费用后再试。').trim()||'本次任务未能返回可用建议，请重新确认费用后再试。')}</p>`:''}</div>`;
  }
  function render(){
   if(!current()||!opened)return;
   const disclosure=$('[data-method-ai-disclosure]');if(disclosure)disclosureOpen=disclosure.open;
   withStableView(container.closest('.dashboard')||container,()=>{
    container.hidden=false;
-   const running=active(item),completed=item?.status==='completed',failed=item?.status==='failed',text=completed?previewText:'',drift=!!contextKey&&!contextMatches()||commandPending&&!contextKey;
+   const running=active(item),completed=item?.status==='completed',text=completed?previewText:'',drift=!!contextKey&&!contextMatches()||commandPending&&!contextKey;
    const brief=snapshot||{},profile=brief.profile||{};
    let body='';
    if(busy&&!user&&!loadError)body='<p class="writing-outline-ai-loading writing-method-ai-loading" role="status">正在读取账户与方法建议服务…</p>';
@@ -81,10 +98,7 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
    else if(user){
     body=`<div class="writing-outline-ai-brief writing-method-ai-brief"><small>本次论文主题</small><h4>${esc(brief.title||'已保存的方法建议生成任务')}</h4><div class="writing-outline-ai-facts writing-method-ai-facts"><span>${esc(profile.level||'按当前写作设置')}</span>${profile.discipline||profile.major?`<span>${esc(profile.discipline||profile.major)}</span>`:''}<span>${Array.isArray(brief.materials)?brief.materials.length:0} 份资料</span><span>${Array.isArray(brief.references)?brief.references.length:0} 篇参考文献</span></div></div>`;
     if(drift)body+='<p class="writing-outline-ai-warning writing-method-ai-warning" role="status">论文主题或研究资料已有变化。请先核对当前信息，再重新生成；这份结果不会直接替换当前补充说明。</p>';
-    if(item){
-     const detail=typeof item.error==='string'?item.error:item.error?.message;
-     body+=`<div class="writing-outline-ai-progress writing-method-ai-progress" role="status"><strong>${esc(statusText[item.status])}</strong><span>${esc(failed?stages.failed:stages[item.stage]||stages[item.status]||'根据已确认的信息处理')}</span>${running?'<p>可离开此页面，后台任务会继续；重新打开可读取进度。</p>':''}${failed||detail?`<p class="writing-outline-ai-error writing-method-ai-error" role="alert">具体原因：${esc(String(detail||'本次任务未能返回可用建议，请重新确认费用后再试。').trim()||'本次任务未能返回可用建议，请重新确认费用后再试。')}</p>`:''}</div>`;
-    }
+    if(item||submitting)body+=progressMarkup();
     if(completed)body+=`<div class="writing-outline-ai-preview writing-method-ai-preview"><label for="writing-method-ai-result">拟开展的研究方法建议（可编辑）</label><textarea id="writing-method-ai-result" data-scroll-key="writing-method-ai-preview" rows="12" maxlength="12000">${esc(text)}</textarea><p>生成内容尚未应用。你可以先修改建议，再点击“填入补充说明”。该方案仅供拟开展研究参考，不代表已经完成研究。</p></div>`;
     if(quote&&!item){body+=`<div class="writing-outline-ai-charge writing-method-ai-charge"><strong>${esc(costText())}</strong><details class="generation-disclosure" data-method-ai-disclosure ${disclosureOpen?'open':''}><summary data-method-ai-disclosure-summary tabindex="0">费用与资料说明<span class="generation-disclosure-hint">查看详情</span></summary><div class="generation-disclosure-body"><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；方法建议与后续提纲、正文生成分别计费。</p><p>选中输入及生成结果会由阿里云内容安全服务审核。</p><label class="writing-outline-ai-consent writing-method-ai-consent"><input type="checkbox" data-method-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容交由 AI 服务处理以生成拟开展的研究方案，并确认本次费用。</label></div></details></div>`;}
     body+='<div class="writing-outline-ai-actions writing-method-ai-actions">';
@@ -100,6 +114,7 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
    container.innerHTML=`<div class="writing-outline-ai-shell writing-method-ai-shell"><header class="writing-outline-ai-heading writing-method-ai-heading"><div><small>AI RESEARCH METHODS</small><h3>让 AI 帮你梳理研究方法</h3><p>根据论文题目与已有说明生成拟开展的研究方案，预览、修改后再填入。</p></div><button type="button" class="writing-outline-ai-close writing-method-ai-close" data-method-ai-close aria-label="收起 AI 方法建议生成">×</button></header>${body}<p class="writing-outline-ai-notice writing-method-ai-notice" data-method-ai-notice role="status" aria-live="polite">${esc(message)}</p>${error?`<p class="writing-outline-ai-error writing-method-ai-error" role="alert">${esc(error)}</p>`:''}<p class="writing-outline-ai-save-hint writing-method-ai-save-hint">建议必须结合导师要求与实际条件核对。拟开展的方案不属于已完成的实验、调查或研究结果，点击“填入补充说明”后才会应用。</p></div>`;
    bind();
   });
+  scheduleClock();
  }
  function bind(){
   $('#writing-method-ai-result')?.addEventListener('input',event=>{previewText=event.target.value;try{notifyPreview();}catch(failure){setError(failure);const notice=$('[data-method-ai-notice]');if(notice)notice.textContent=error;}const button=$('[data-method-ai-apply]');if(button)button.disabled=busy||!contextMatches()||!previewText.trim();});
@@ -114,13 +129,15 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
   $('[data-method-ai-apply]')?.addEventListener('click',()=>void apply());
  }
  function close(){
-  if(!current())return;opened=false;epoch++;busy=false;clearPoll();abortRequests();withStableView(container.closest('.dashboard')||container,()=>{container.hidden=true;});
+  if(!current())return;opened=false;epoch++;busy=false;backgroundReading=false;submitting=false;clearPoll();clearClock();abortRequests();withStableView(container.closest('.dashboard')||container,()=>{container.hidden=true;});
  }
- async function run(action){
-  if(!current()||!opened||busy)return;
-  const token=epoch;busy=true;error='';render();
-  try{await action(token);}catch(failure){if(usable(token)&&failure.name!=='AbortError')setError(failure);}
-  finally{if(usable(token)){busy=false;render();schedule();}}
+ const progressSignature=()=>JSON.stringify([item?.id,item?.status,item?.stage,item?.error,previewJobId,user?.id,contextMatches(),error,syncError]);
+ async function run(action,{background=false,submission=false,reading=false}={}){
+  if(!current()||!opened)return;
+  if(busy){if(background||!backgroundReading)return;epoch++;abortRequests();clearPoll();busy=false;backgroundReading=false;}
+  const token=epoch,before=progressSignature();busy=true;backgroundReading=background;error='';if(submission){submitting=true;startedAt=Date.now();syncError=false;message='正在提交生成请求，无需重复点击。';}if(!background)render();
+  try{await action(token);}catch(failure){if(usable(token)&&failure.name!=='AbortError'){if(reading&&active(item))syncError=true;else setError(failure);}}
+  finally{if(usable(token)){busy=false;backgroundReading=false;submitting=false;if(!background||before!==progressSignature())render();else updateClock();schedule();}}
  }
  async function loadQuote(token,{preserveCommand=false}={}){
   quote=null;consent=false;projectPayload();
@@ -135,14 +152,14 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
   return run(async token=>{
    await owner(token);const brief=getSnapshot?.();if(!brief||!String(brief.title||'').trim())throw Error('请先填写论文主题，再生成方法建议。');
    if(commandPending){await onCommandChange?.(null,{contextKey});if(!usable(token))return;}
-   snapshot=structuredClone(brief);snapshot.outline=[];snapshot.bodySections=[];bindProject();item=null;jobId=null;quote=null;clientKey=null;commandPending=false;ambiguous=false;applied=false;loadError=false;previewText='';previewJobId=null;notifyPreview();notifyJob();
+   snapshot=structuredClone(brief);snapshot.outline=[];snapshot.bodySections=[];bindProject();item=null;jobId=null;quote=null;clientKey=null;commandPending=false;ambiguous=false;applied=false;loadError=false;previewText='';previewJobId=null;startedAt=null;syncError=false;notifyPreview();notifyJob();
    await loadQuote(token);
   });
  }
  async function open({fresh=false}={}){
   if(!current())return;
   const reauthenticate=fresh||loadError||!!accountId;
-  opened=true;epoch++;busy=true;error='';loadError=false;message='';clearPoll();abortRequests();const token=epoch;render();
+  opened=true;epoch++;busy=true;backgroundReading=false;submitting=false;error='';loadError=false;message='';clearPoll();clearClock();abortRequests();const token=epoch;render();
   try{
    const next=await authenticate({fresh:reauthenticate,token});if(!usable(token))return;
    if(accountId&&String(next?.id)!==accountId)changedAccount();
@@ -177,10 +194,10 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
     else{ambiguous=false;quote=null;consent=false;}
     throw failure;
    }
-  });
+  },{submission:true});
  }
  async function read(token){await owner(token);if(!jobId)return;const expected=jobId,value=await request('/theses/methods/'+encodeURIComponent(expected),undefined,token);takeItem(value.item,expected);}
- async function refresh(){return run(async token=>{await read(token);message='已读取最新任务状态。';});}
+ async function refresh(){return run(async token=>{await read(token);message='已读取最新任务状态。';},{reading:true});}
  async function cancel(){return run(async token=>{await owner(token);if(!jobId||!active(item))return;const expected=jobId,value=await request('/theses/methods/'+encodeURIComponent(expected)+'/cancel',{},token);takeItem(value.item,expected);message='已发送停止请求，原有补充说明保持不变。';});}
  async function apply(){
   if(!item||item.status!=='completed')return;if(!contextMatches()){setError('论文主题或研究资料已变化，请重新生成后再使用。');render();return;}
@@ -193,9 +210,9 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
  }
  function schedule(){
   clearPoll();if(!current()||!opened||busy||!user||!jobId||!active(item))return;
-  timer=win.setTimeout(async()=>{timer=null;if(!current()||!opened)return;if(doc.hidden){schedule();return;}await run(async token=>{await read(token);});},2000);
+  timer=win.setTimeout(async()=>{timer=null;if(!current()||!opened)return;if(doc.hidden){schedule();return;}await run(async token=>{await read(token);},{background:true,reading:true});},2000);
  }
- function visibility(){if(!doc.hidden)schedule();}
+ function visibility(){if(!doc.hidden)schedule();scheduleClock();}
  doc.addEventListener('visibilitychange',visibility);
- return {open,dispose(){if(!alive)return;alive=false;opened=false;epoch++;clearPoll();abortRequests();doc.removeEventListener('visibilitychange',visibility);},busy:()=>current()&&busy,hasWork:()=>current()&&busy};
+ return {open,dispose(){if(!alive)return;alive=false;opened=false;epoch++;clearPoll();clearClock();abortRequests();doc.removeEventListener('visibilitychange',visibility);},busy:()=>current()&&busy,hasWork:()=>current()&&busy};
 }
