@@ -100,7 +100,10 @@ async function inspectEmbeddedMedia(zip,documents){
 // This private profile disables macros and automatic link updates. External
 // resources are also rejected before opening the document; ordinary hyperlinks
 // remain navigation only. No user path, filename or option enters the command.
-const registry=`<?xml version="1.0" encoding="UTF-8"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop><prop oor:name="DisableActiveContent" oor:op="fuse"><value>true</value></prop><prop oor:name="BlockUntrustedRefererLinks" oor:op="fuse"><value>true</value></prop></item><item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>0</value></prop></item></oor:items>`;
+// Do not set DisableActiveContent: Writer renders native OMML using its math
+// object engine, and that switch silently blanks valid formulas. Uploaded OLE
+// objects and macros are rejected by the strict OOXML preflight instead.
+const registry=`<?xml version="1.0" encoding="UTF-8"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop><prop oor:name="BlockUntrustedRefererLinks" oor:op="fuse"><value>true</value></prop></item><item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>0</value></prop></item></oor:items>`;
 
 /** Strict template inspection runs first, with the existing ZIP/XML limits. */
 async function safeDocument(bytes){

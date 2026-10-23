@@ -36,7 +36,7 @@ test('valid DOCX is converted in a private directory, preserving the caller byte
  let work,seen;
  const f=await fixture(t,{runConversion:async options=>{
   work=options.workspace;seen=await readFile(path.join(work,'document.docx'));const registry=await readFile(path.join(work,'profile','user','registrymodifications.xcu'),'utf8');
-  assert.match(registry,/MacroSecurityLevel/);assert.match(registry,/DisableMacrosExecution/);assert.match(registry,/DisableActiveContent/);assert.match(registry,/Office.Writer\/Content\/Update/);assert.ok(path.isAbsolute(options.commandPath));assert.equal(options.timeoutMs,120000);
+  assert.match(registry,/MacroSecurityLevel/);assert.match(registry,/DisableMacrosExecution/);assert.doesNotMatch(registry,/DisableActiveContent/);assert.match(registry,/BlockUntrustedRefererLinks/);assert.match(registry,/Office.Writer\/Content\/Update/);assert.ok(path.isAbsolute(options.commandPath));assert.equal(options.timeoutMs,120000);
   await writeFile(path.join(work,'output','document.pdf'),await pdfBytes());
  }});
  const bytes=await docx(),original=Buffer.from(bytes),result=await f.renderer.convert({bytes});
@@ -231,9 +231,10 @@ test('API payload helper rejects ambiguous base64 before conversion and returns 
 test('real LibreOffice renders the current DOCX with first and last body content preserved',{skip:!process.env.PAPERKNOW_TEST_SOFFICE},async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'paperknow-render-native-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const renderer=createThesisDocumentRenderer({commandPath:process.env.PAPERKNOW_TEST_SOFFICE,tempRoot:root});
- const text='Synthetic native rendering acceptance\n\n第一章 合成验收\nNATIVE_FIRST_CONTENT_MARKER\n'+Array.from({length:100},(_,index)=>'Synthetic paragraph '+index+': Chinese 研究正文 and English body are preserved.').join('\n')+'\nFINAL_RENDER_MARKER_20261023';
- const result=await renderer.convert({bytes:await createWritingDocx(text,{documentKind:'thesis',metadata:{title:'Synthetic native rendering acceptance'}})});
+ const text='Synthetic native rendering acceptance\n\n第一章 合成验收\nNATIVE_FIRST_CONTENT_MARKER\nNATIVE_FORMULA_BEGIN $E=mc^2$ NATIVE_FORMULA_END\n'+Array.from({length:100},(_,index)=>'Synthetic paragraph '+index+': Chinese 研究正文 and English body are preserved.').join('\n')+'\nFINAL_RENDER_MARKER_20261023';
+ const source=await createWritingDocx(text,{documentKind:'thesis',metadata:{title:'Synthetic native rendering acceptance'}}),sourceXml=await(await JSZip.loadAsync(source)).file('word/document.xml').async('string');assert.match(sourceXml,/<m:oMath\b/);
+ const result=await renderer.convert({bytes:source});
  assert.ok(result.pages>=2);const {getDocument}=await import('pdfjs-dist/legacy/build/pdf.mjs');const task=getDocument({data:new Uint8Array(result.bytes),isEvalSupported:false,useSystemFonts:false}),pdf=await task.promise;
- try{let extracted='';for(let index=1;index<=pdf.numPages;index++)extracted+=(await(await pdf.getPage(index)).getTextContent()).items.map(item=>item.str).join('');assert.match(extracted,/NATIVE_FIRST_CONTENT_MARKER/);assert.match(extracted,/FINAL_RENDER_MARKER_20261023/);assert.equal(pdf.numPages,result.pages);}finally{await task.destroy();}
+ try{let extracted='';for(let index=1;index<=pdf.numPages;index++)extracted+=(await(await pdf.getPage(index)).getTextContent()).items.map(item=>item.str).join('');assert.match(extracted,/NATIVE_FIRST_CONTENT_MARKER/);assert.match(extracted,/FINAL_RENDER_MARKER_20261023/);assert.match(extracted.normalize('NFKC').replace(/\s/g,''),/NATIVE_FORMULA_BEGINE=mc2NATIVE_FORMULA_END/);assert.equal(pdf.numPages,result.pages);}finally{await task.destroy();}
  assert.deepEqual(await readdir(root),[]);
 });
