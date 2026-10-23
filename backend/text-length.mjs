@@ -2,7 +2,7 @@
 // executed, or sent anywhere by these helpers.
 export function researchWordCount(text,language='中文'){
  if(typeof text!=='string')throw new TypeError('统计正文必须是文本');
- const prose=text.replace(/\[source:[^\]]+\]/g,'');
+ const prose=text.replace(/\[(?:source|figure):[^\]]+\]/g,'');
  return /english|英文|英语/i.test(language)?(prose.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu)||[]).length:Array.from(prose.replace(/\s/g,'')).length;
 }
 export function normalizeTextLengthBudget(value){

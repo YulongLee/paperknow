@@ -265,7 +265,7 @@ test('chapter history is paginated metadata, owner-bound, immutable, and restori
 });
 
 test('identical chapter saves are no-ops and the history cap bounds blank/metadata growth without deleting versions',async t=>{
- const f=fixture(t),item=await f.create(),at=new Date().toISOString();for(let version=1;version<=200;version++)f.db.prepare('INSERT INTO thesis_chapter_versions VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),item.id,'chapter-1',version,null,'manual','版本 '+version,'[]',at);
+ const f=fixture(t),item=await f.create(),at=new Date().toISOString();for(let version=1;version<=200;version++)f.db.prepare('INSERT INTO thesis_chapter_versions(id,thesis_id,chapter_id,version,run_id,source,text,source_ids,created_at) VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),item.id,'chapter-1',version,null,'manual','版本 '+version,'[]',at);
  const same=await f.request(`/api/theses/${item.id}/chapters/chapter-1`,'POST',{version:item.version,text:'版本 200'});assert.equal(same.item.version,item.version);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_chapter_versions').get().n,200);
  await assert.rejects(f.request(`/api/theses/${item.id}/chapters/chapter-1`,'POST',{version:item.version,text:''}),/200/);const history=await f.request(`/api/theses/${item.id}/chapters/chapter-1/versions`);assert.equal(history.items.length,50);assert.equal(history.items.at(-1).version,151);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_chapter_versions').get().n,200);
 });
@@ -320,4 +320,22 @@ test('tool-call failures preserve completed units and store bounded private diag
 test('unauthorized tool diagnostics use one user-facing recovery message without revealing supplied details',()=>{
  for(const error of [Object.assign(Error('unsafe detail'),{code:'unauthorized_tool'}),Object.assign(Error('unsafe detail'),{code:'permission_denied'}),Error('Agent 请求了未授权工具 mcp__paperknow__check_text_length')])assert.equal(thesisPublicError(error),'生成过程出现工具调用异常，已完成内容保留。请读取任务状态，确认后继续生成。');
  assert.equal(thesisPublicError(Error('接口密钥 test-secret'),{apiKey:'test-secret'}),'接口密钥 [已隐藏]');
+});
+
+test('generated diagrams survive completed checkpoints, resume, chapter edits and owner-bound history without a second image request',async t=>{
+ const picture={id:'process',title:'拟开展的研究流程',kind:'flowchart',nodes:[{id:'scope',label:'界定问题'},{id:'review',label:'核对依据'},{id:'plan',label:'形成待验证方案'}],edges:[{from:'scope',to:'review'},{from:'review',to:'plan'}],caption:'本图为拟开展方案，不代表已完成的实测结果。'};
+ const seen=[];let failSecond=true;
+ const f=fixture(t,{agentTaskRunner:async({task})=>{const unit=task.context.unit;seen.push(unit.id);if(unit.chapterId==='chapter-2'&&failSecond){failSecond=false;throw Object.assign(Error('合成的暂时中断'),{usage:{input:10,output:10}});}const result=output(task);const candidate=JSON.parse(result.text);if(unit.presentation.image){candidate.text+='\n\n[figure:process]\n';candidate.figures=[picture];}return {...result,text:JSON.stringify(candidate)};}});
+ f.pay();const initial=await f.create(snapshot({requirements:{contentMode:'rich'},outline:[{id:'chapter-1',title:'第一章 研究流程',targetWords:250,presentation:{image:true}},{id:'chapter-2',title:'第二章 研究讨论',targetWords:250}]})),queued=await f.generate(initial),worker=f.start();await worker.tick();
+ let current=f.get(initial.id);assert.equal(current.status,'failed');const first=current.chapters[0],figure=first.figures[0];assert.ok(figure.id.startsWith('fig-'));assert.notEqual(figure.id,picture.id);assert.ok(first.text.includes('[figure:'+figure.id+']'));assert.deepEqual(current.sections[0].figures,first.figures);assert.equal(current.chapters[1].figures.length,0);assert.equal(f.db.prepare('SELECT figures FROM thesis_checkpoints WHERE run_id=? AND chapter_id=?').get(queued.job.id,first.id).figures,JSON.stringify(first.figures));
+ await f.resume(current);await worker.tick();current=f.get(initial.id);assert.equal(current.status,'completed');assert.equal(seen.filter(id=>id.startsWith('chapter-1::')).length,1,'resume reuses the saved picture, with no second image provider call');assert.deepEqual(current.chapters[0].figures,first.figures);const archived=JSON.parse(f.db.prepare('SELECT body FROM results WHERE user_id=?').get(f.user.id).body);assert.deepEqual(archived.chapters[0].figures,first.figures);
+ const saved=(await f.request(`/api/theses/${initial.id}/chapters/${first.id}`,'POST',{version:current.version,text:first.text+'\n已人工核对研究步骤。'})).item;assert.deepEqual(saved.chapters[0].figures,first.figures);
+ const removed=(await f.request(`/api/theses/${initial.id}/chapters/${first.id}`,'POST',{version:saved.version,text:first.text.replace('[figure:'+figure.id+']','')})).item;assert.equal(removed.chapters[0].figures.length,0);
+ const historical=(await f.request(`/api/theses/${initial.id}/chapters/${first.id}/versions/1`)).item;assert.deepEqual(historical.figures,first.figures);
+ const restored=(await f.request(`/api/theses/${initial.id}/chapters/${first.id}`,'POST',{version:removed.version,text:historical.text})).item;assert.deepEqual(restored.chapters[0].figures,first.figures);
+ await assert.rejects(f.request(`/api/theses/${initial.id}/chapters/chapter-2`,'POST',{version:restored.version,text:'非法跨章插图\n[figure:'+figure.id+']'}),error=>error.status===400);
+ await assert.rejects(f.request(`/api/theses/${initial.id}/chapters/${first.id}`,'POST',{version:restored.version,text:first.text+'\n[figure:'+figure.id+']'}),error=>error.status===400);
+ await assert.rejects(f.request(`/api/theses/${initial.id}/chapters/${first.id}/versions/1`,'GET',undefined,f.other),error=>error.status===404);
+ for(const text of ['图片格式错误\n[figure:broken','[FIGURE:'+figure.id+']','```text\n[figure:'+figure.id+']\n```'])await assert.rejects(f.request(`/api/theses/${initial.id}/chapters/${first.id}`,'POST',{version:restored.version,text}),error=>error.status===400);
+ assert.equal(f.get(initial.id).version,restored.version,'rejected manual edits do not create a version or remove stored media');
 });

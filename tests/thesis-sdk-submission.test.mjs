@@ -26,3 +26,11 @@ test('a rejected length candidate is repaired inside the same Agent execution wi
  const output=await runAgentTask({settings,task:thesisAgentTask(snapshot,unit,[]),validateThesisOutput:value=>{const checked=validateThesisCandidate(value,snapshot,unit);feedback.push(checked);return checked;},dependencies:{lookup:async()=>[{address:'8.8.8.8',family:4}],httpsRequest:p.requestImpl}});
  assert.equal(p.calls.length,2);assert.equal(feedback[0].valid,false);assert.equal(feedback[0].feedback.code,'word_limit_exceeded');assert.equal(feedback[1].valid,true);assert.equal(JSON.parse(output.text).text,candidate.text);assert.deepEqual(output.usage,{input:20,output:60});
 });
+
+test('structured diagram is accepted in the same writing submission without any image, network or execution tool',async()=>{
+ const value=normalizeThesisSnapshot({title:'合成流程图验收',profile:{level:'本科',language:'中文',targetWords:500},requirements:{contentMode:'rich'},materials:[],references:[],outline:[{id:'c1',title:'研究方案',targetWords:500,presentation:{image:true}}]}),section=thesisPlan(value)[0];
+ const selected={...candidate,text:candidate.text+'\n[figure:flow]\n',figures:[{id:'flow',title:'拟开展研究步骤',kind:'flowchart',nodes:[{id:'a',label:'提出研究问题'},{id:'b',label:'拟收集证据验证'}],edges:[{from:'a',to:'b'}],caption:'拟开展方案，尚未实施。'}]},p=provider([selected]);
+ const output=await runAgentTask({settings,task:thesisAgentTask(value,section,[]),validateThesisOutput:result=>validateThesisCandidate(result,value,section),dependencies:{lookup:async()=>[{address:'8.8.8.8',family:4}],httpsRequest:p.requestImpl}}),parsed=parseThesisSection(output,value,section);
+ assert.equal(p.calls.length,1);assert.equal(output.providerRequests,1);assert.equal(parsed.figures.length,1);assert.match(parsed.text,new RegExp(`\\[figure:${parsed.figures[0].id}\\]`));
+ assert.deepEqual(p.calls[0].tools.map(tool=>tool.name).sort(),['mcp__paperknow__read_material','mcp__paperknow__submit_writing_output']);assert.equal(output.submitted,true);assert.equal(output.completionSource,'local_control');
+});

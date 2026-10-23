@@ -6,7 +6,7 @@ const registry=Object.freeze({
  'tool-task':taskSkill('科研工具任务',1,'./tool-task.md'),
  'writing-task':taskSkill('科研写作草稿',1,'./writing-task.md'),
  'thesis-method':taskSkill('研究方法建议',1,'./thesis-method.md'),
- 'thesis-section':taskSkill('论文章节草稿',3,'./thesis-section.md'),
+ 'thesis-section':taskSkill('论文章节草稿',4,'./thesis-section.md'),
  'thesis-outline':taskSkill('论文提纲规划',1,'./thesis-outline.md'),
  'writing-review':taskSkill('全文一致性审校',1,'./writing-review.md'),
  'scientific-writing':adaptedSkill('学术论证与正文写作','scientific-writing','2.3'),

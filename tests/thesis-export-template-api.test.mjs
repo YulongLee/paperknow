@@ -64,7 +64,7 @@ test('template identity CAS survives chapter checkpoints before and during inspe
  const pending=f.request(route,{version:item.version,templateFileId:source.id,expectedTemplateFileId:null},f.users.alice,{'X-PaperKnow-User':'alice'});
  await entered.promise;
  const newBody='后台刚刚完成的新章节正文，切换模板时必须原样保留。';
- f.db.prepare('INSERT INTO thesis_chapter_versions VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),item.id,'c-1',2,null,'generated',newBody,'[]',new Date().toISOString());
+ f.db.prepare('INSERT INTO thesis_chapter_versions(id,thesis_id,chapter_id,version,run_id,source,text,source_ids,created_at) VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),item.id,'c-1',2,null,'generated',newBody,'[]',new Date().toISOString());
  f.db.prepare('UPDATE theses SET version=version+1 WHERE id=?').run(item.id);
  release.resolve();const changed=await pending;
  assert.equal(changed.status,200,JSON.stringify(changed.value));assert.equal(changed.value.item.version,item.version+3);

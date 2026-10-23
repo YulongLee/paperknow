@@ -49,3 +49,11 @@ test('whole-manuscript reference numbers remain reversible when selected catalog
  const sources={references:[{id:'a',title:'后引用文献',confirmed:true},{id:'b',title:'先引用文献',confirmed:true}]},bibliography={references:[{id:'b',number:1},{id:'a',number:2}]},raw='第二章使用 [source:a]，再次比较 [source:b]。',view=thesisEditorPresentation(sources,raw,{bibliography});
  assert.equal(view.text,'第二章使用 〔文献2〕，再次比较 〔文献1〕。');assert.equal(restoreThesisEditorText(view.text,view).text,raw);assert.equal(view.sources[0].name,'后引用文献');
 });
+
+test('saved diagram positions use reversible short labels and never bind an unowned or pasted image token',()=>{
+ const raw='研究步骤\n[figure:fig-0123456789abcdef0123]\n正文[source:private-material-a-long-internal-id]',figures=[{id:'fig-0123456789abcdef0123',title:'拟开展研究步骤'}],view=thesisEditorPresentation(snapshot(),raw,{figures});
+ assert.equal(view.text,'研究步骤\n〔图片1〕\n正文〔材料1〕');assert.equal(view.sources.length,1);assert.equal(restoreThesisEditorText(view.text,view).text,raw);assert.equal(thesisEditorWordCount(raw,'中文'),6);assert.equal(researchWordCount(raw,'中文'),6);
+ assert.equal(restoreThesisEditorText(view.text+'\n〔图片2〕',view).text,raw+'\n〔图片2〕');assert.deepEqual(restoreThesisEditorText('〔图片2〕',view).unmatched,['〔图片2〕']);
+ const collision=thesisEditorPresentation(snapshot(),'原有〔图片1〕\n'+raw,{figures});assert.equal(collision.collision,true);assert.equal(collision.text,'原有〔图片1〕\n'+raw);assert.equal(restoreThesisEditorText(collision.text,collision).text,collision.text);
+ const foreign=thesisEditorPresentation(snapshot(),raw);assert.match(foreign.text,/\[figure:fig-0123456789abcdef0123\]/);
+});

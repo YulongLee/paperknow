@@ -1,3 +1,4 @@
+import {normalizeThesisFigures} from './thesis-figure.mjs';
 import {isOutlineReferenceChapter} from './outline-word-budget.mjs';
 
 const bibliographyFields=['id','title','authors','year','doi','url','documentType','journal','publisher','publicationSource','volume','issue','pages','venue','accessedAt','sourceLabel'];
@@ -49,6 +50,7 @@ export function renderThesisCitations(text,bibliography){
 export function presentThesisDocument(snapshot={},chapters=[],options={}){return thesisDocumentPresentation(snapshot,chapters,options).text;}
 export function thesisDocumentPresentation(snapshot={},chapters=[],{title=snapshot.title}={}){
  const rows=chapters.filter(row=>String(row?.text||'').trim());
+ const figures=normalizeThesisFigures(rows.flatMap(row=>{const used=new Set([...String(row.text||'').matchAll(/\[figure:([^\]]+)\]/g)].map(match=>match[1]));return (row.figures||[]).filter(figure=>used.has(figure.id));}));
  if(!rows.length)return {text:'',citationRanges:[]};
  const missingChapters=(Array.isArray(snapshot.outline)?snapshot.outline:[]).filter(chapter=>!isOutlineReferenceChapter(chapter)&&!rows.some(row=>chapter.id&&row.id?chapter.id===row.id:String(chapter.title||'').trim()===String(row.title||'').trim()));
  const bibliographyModel=buildThesisBibliography(snapshot,chapters),references=new Map((snapshot.references||[]).filter(row=>row?.confirmed===true).map(row=>[row.id,row]));
@@ -75,5 +77,5 @@ export function thesisDocumentPresentation(snapshot={},chapters=[],{title=snapsh
  // bibliography labels and repeated paragraphs never create semantic ranges.
  const reductions=[];const text=rawText.replace(/\r\n?|[\x00-\x08\x0b\x0c\x0e-\x1f]/g,(match,offset)=>{const replacement=match[0]==='\r'?'\n':'';if(match.length>replacement.length)reductions.push({end:offset+match.length,size:match.length-replacement.length});return replacement;});
  let removed=0,reduction=0;const mapped=point=>{while(reduction<reductions.length&&reductions[reduction].end<=point)removed+=reductions[reduction++].size;return point-removed;};
- const citationRanges=rawRanges.map(range=>({start:mapped(range.start),end:mapped(range.end),number:range.number}));return {text,citationRanges};
+ const citationRanges=rawRanges.map(range=>({start:mapped(range.start),end:mapped(range.end),number:range.number}));return {text,citationRanges,...(figures.length?{figures}:{})};
 }

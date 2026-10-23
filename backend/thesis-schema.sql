@@ -45,14 +45,14 @@ CREATE TABLE IF NOT EXISTS thesis_commands(
 CREATE TABLE IF NOT EXISTS thesis_checkpoints(
  run_id TEXT NOT NULL REFERENCES thesis_runs(id),unit_id TEXT NOT NULL,chapter_id TEXT NOT NULL,position INTEGER NOT NULL,
  status TEXT NOT NULL DEFAULT 'pending',text TEXT NOT NULL DEFAULT '',source_ids TEXT NOT NULL DEFAULT '[]',
- missing_evidence TEXT NOT NULL DEFAULT '[]',error TEXT,engine TEXT,model TEXT,trace TEXT NOT NULL DEFAULT '[]',
+ missing_evidence TEXT NOT NULL DEFAULT '[]',figures TEXT NOT NULL DEFAULT '[]',error TEXT,engine TEXT,model TEXT,trace TEXT NOT NULL DEFAULT '[]',
  input_tokens INTEGER NOT NULL DEFAULT 0,output_tokens INTEGER NOT NULL DEFAULT 0,
  created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(run_id,unit_id)
 );
 CREATE TABLE IF NOT EXISTS thesis_chapter_versions(
  id TEXT PRIMARY KEY,thesis_id TEXT NOT NULL REFERENCES theses(id),chapter_id TEXT NOT NULL,version INTEGER NOT NULL CHECK(version>=1),
  run_id TEXT REFERENCES thesis_runs(id),source TEXT NOT NULL CHECK(source IN ('generated','manual','imported')),
- text TEXT NOT NULL,source_ids TEXT NOT NULL DEFAULT '[]',created_at TEXT NOT NULL,
+ text TEXT NOT NULL,source_ids TEXT NOT NULL DEFAULT '[]',created_at TEXT NOT NULL,figures TEXT NOT NULL DEFAULT '[]',
  UNIQUE(thesis_id,chapter_id,version)
 );
 CREATE TABLE IF NOT EXISTS thesis_review_checkpoints(

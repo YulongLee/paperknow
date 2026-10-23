@@ -53,7 +53,7 @@ test('local section preferences survive execution snapshot conversion and backen
 });
 
 test('presentation accepts only independent boolean switches at both chapter and subsection locations',()=>{
- const invalid=[null,false,'formula',[],{table:1},{formula:'true'},{code:null},{table:true,image:true}];
+ const invalid=[null,false,'formula',[],{table:1},{formula:'true'},{code:null},{table:true,image:1},{video:true}];
  for(const presentation of invalid)for(const subsection of [false,true]){
   const chapter={id:'chapter',title:'研究分析',targetWords:500,...(subsection?{sections:[{id:'section',title:'具体分析',targetWords:500,presentation}]}:{presentation})};
   assert.throws(()=>normalizeThesisSnapshot(input({outline:[chapter]})),error=>error.status===400);

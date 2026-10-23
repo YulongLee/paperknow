@@ -73,7 +73,7 @@ export function createWritingQualityRunner(config={}){
   const successful=quality.reviews.filter(review=>review.status==='completed'),checkedCharacters=successful.reduce((sum,review)=>sum+review.checkedCharacters,0),totalCharacters=chapters.reduce((sum,chapter)=>sum+chapter.text.length,0);
   quality.status=partial?'partial':'completed';if(!successful.length&&quality.consistency.status==='unavailable'&&(!quality.citations.items?.length||quality.citations.status==='unavailable'))quality.status='unavailable';
   quality.checkedAt=timestamp();quality.coverage={totalSections:chapters.length,totalCharacters,reviewedCharacters:checkedCharacters,reviewedBatches:successful.length,totalBatches:batches.length,complete:successful.length===batches.length&&checkedCharacters===totalCharacters};
-  quality.limitations=[...new Set([...(quality.citations.limitations||[]),...(quality.consistency.limitations||[]),'自动检查不能替代作者对研究事实、来源含义和院校要求的核对。',...(quality.coverage.complete?[]:['AI 辅助审校未覆盖全部正文；请查看未完成批次及检查范围。']),...(batches.length>1?['长文按片段审校；跨批次的逻辑和术语关系仍需全文人工复核。']:[])])];
+  quality.limitations=[...new Set([...(chapters.some(row=>row.figures?.length)?['图片仅通过结构与位置校验；图中逻辑、来源含义与科学准确性仍需作者核对。']:[]),...(quality.citations.limitations||[]),...(quality.consistency.limitations||[]),'自动检查不能替代作者对研究事实、来源含义和院校要求的核对。',...(quality.coverage.complete?[]:['AI 辅助审校未覆盖全部正文；请查看未完成批次及检查范围。']),...(batches.length>1?['长文按片段审校；跨批次的逻辑和术语关系仍需全文人工复核。']:[])])];
   return quality;
  };
 }

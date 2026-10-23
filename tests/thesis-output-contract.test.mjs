@@ -69,13 +69,13 @@ test('content form survives normalization while only explicit leaf preferences a
   const value=normalizeThesisSnapshot(thesisSnapshotFromDraft(draft(contentMode))),task=thesisAgentTask(value,{chapterTitle:'分析',title:'论证',sourceIds:[],targetWords:500},[]);
   assert.equal(value.requirements.contentMode,contentMode);assert.equal(task.context.requirements.contentMode,contentMode);
   assert.deepEqual(task.context.unit.presentation,{table:false,formula:false,code:false});
-  if(contentMode==='rich'){assert.match(task.instructions,/本节未开启任何扩展项目/);assert.match(task.instructions,/不主动添加表格、公式块或代码块/);assert.match(task.instructions,/全局扩展形式都不能代替本节授权/);}
-  else assert.match(task.instructions,/不主动添加图表、公式块或代码块/);
+  if(contentMode==='rich'){assert.match(task.instructions,/本节未开启任何扩展项目/);assert.match(task.instructions,/不主动添加数据表、图片、公式块或代码块/);assert.match(task.instructions,/全局扩展形式都不能代替本节授权/);}
+  else assert.match(task.instructions,/不主动添加数据表、图片、公式块或代码块/);
  }
  const selected=draft('rich');selected.outlineRows[0].presentation={formula:true};
  const value=normalizeThesisSnapshot(thesisSnapshotFromDraft(selected)),task=thesisAgentTask(value,{id:'one',chapterId:'one',sectionId:'one',chapterTitle:'分析',title:'论证',sourceIds:[],targetWords:500},[]);
  assert.deepEqual(task.context.unit.presentation,{table:false,formula:true,code:false});
- assert.match(task.instructions,/按本节已开启的 公式 服务当前论证/);
+ assert.match(task.instructions,/适合当前论证时生成本节已开启的 公式/);
  assert.match(task.instructions,/公式使用 LaTeX 并解释变量、适用条件和依据/);
 });
 

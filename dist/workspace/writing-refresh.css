@@ -7,3 +7,33 @@ html{scrollbar-gutter:stable}.creation-page .card{transition:border-color .15s,b
 .reference-evidence-preview{grid-column:1/-1;width:100%;margin:10px 0 0;padding:12px 16px;border:1px solid #e3eaf5;border-radius:10px;background:#f8faff}.reference-evidence-preview summary{cursor:pointer;color:#4d72aa;font-size:12px;font-weight:600}.reference-evidence-preview p{color:#8593aa;font-size:12px;line-height:1.7;margin:10px 0}.reference-evidence-preview pre{max-height:190px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;font-size:12px;line-height:1.9;color:#526784;background:#fff;border:1px solid #e7edf6;border-radius:8px;padding:12px;margin:10px 0 14px}.reference-evidence-preview .btn{font-size:12px}.reference-evidence-preview summary:focus-visible{outline:2px solid #92b2f5;outline-offset:4px}
 .creation-page[data-writing-stage="3"] .reference-row{flex-wrap:wrap}.reference-evidence-preview{flex-basis:100%;box-sizing:border-box;min-width:0}
 .thesis-source-gap{padding:16px 18px;margin:14px 0;border:1px solid #e1e9f5;background:#f7faff;border-radius:10px}.thesis-source-gap h3{font-size:14px;margin:0 0 8px;color:#4b6384}.thesis-source-gap p{color:#788ca7;font-size:12px;line-height:1.8;margin:7px 0}.thesis-source-gap .btn{margin-top:6px;font-size:12px}
+
+/* Compact per-section content controls remain available from the outline. */
+.creation-page[data-writing-stage="4"] .outline-row-controls{flex-wrap:wrap;gap:7px 12px}
+.creation-page[data-writing-stage="4"] .outline-row-presentation{display:flex;flex-wrap:wrap;gap:5px;position:relative;margin:0 0 0 auto;padding:0;border:0;min-width:0}
+.creation-page[data-writing-stage="4"] .outline-row-presentation legend{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.creation-page[data-writing-stage="4"] .outline-row-presentation label{display:inline-flex;gap:5px;min-height:32px;padding:4px 8px;margin:0;border:1px solid #e2e9f3;border-radius:6px;background:#fff;color:#64758c;font-size:11px;line-height:1.4;cursor:pointer;font-weight:500}
+.creation-page[data-writing-stage="4"] .outline-row-presentation label:hover{border-color:#a6bfed;background:#f8faff}
+.creation-page[data-writing-stage="4"] .outline-row-presentation label.is-selected{border-color:#9ebcf5;background:#eff5ff;color:#245fc3}
+.creation-page[data-writing-stage="4"] .outline-row-presentation label:focus-within{outline:2px solid #8fb2ff;outline-offset:2px}
+.creation-page[data-writing-stage="4"] .outline-row-presentation input[type="checkbox"]{width:14px;height:14px;min-height:14px;margin:0;accent-color:#3477df;flex-shrink:0}
+.creation-page[data-writing-stage="4"] .outline-content-icon{font-size:13px;line-height:1;min-width:13px;text-align:center}
+.creation-page[data-writing-stage="4"] .outline-content-guidance{display:flex;align-items:center;gap:18px;padding:0 17px 12px}
+.creation-page[data-writing-stage="4"] .outline-content-guidance p{margin:0;color:#75849b;font-size:11px;line-height:1.8}
+.creation-page[data-writing-stage="4"] .outline-content-guidance button{flex-shrink:0;border:0;background:transparent;color:#5478ad;font:inherit;font-size:11px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;min-height:32px}
+.creation-page[data-writing-stage="4"] .outline-content-guidance button:focus-visible{outline:2px solid #8fb2ff;outline-offset:2px}
+@media(max-width:760px){.creation-page[data-writing-stage="4"] .outline-row-presentation{flex-basis:100%;margin-left:0}.creation-page[data-writing-stage="4"] .outline-row-presentation label{min-height:36px;padding:6px 9px}.creation-page[data-writing-stage="4"] .outline-content-guidance{align-items:flex-start;gap:7px;flex-direction:column}.creation-page[data-writing-stage="4"] .outline-content-guidance button{padding-left:0}}
+
+.thesis-figure-gallery{margin:20px 0;padding:18px;border:1px solid #dce5f4;border-radius:14px;background:#f8faff}.thesis-figure-gallery>h4{margin:0 0 7px;color:#203659}.thesis-figure-gallery>p{margin:0 0 16px;font-size:12px;color:#6b7f9e;line-height:1.8}.thesis-figure-gallery figure{margin:14px 0 0;padding:16px;background:#fff;border:1px solid #e4ebf4;border-radius:10px}.thesis-figure-gallery svg{display:block;width:100%;max-width:760px;height:auto;margin:auto}.thesis-figure-gallery figcaption{display:flex;flex-direction:column;gap:6px;text-align:center;font-size:12px;line-height:1.8;color:#526783}.thesis-figure-gallery figcaption b{color:#263d5d}
+/* Reduce nested gutters on phones so four content choices remain a compact 2×2 group. */
+@media(max-width:760px){
+ .dashboard.creation-page[data-writing-stage="4"] #outline-paper{padding:0;border:0;background:transparent}
+ .dashboard.creation-page[data-writing-stage="4"] #outline-paper .outline-editing-rows{padding:8px}
+ .dashboard.creation-page[data-writing-stage="4"] #outline-paper .outline-edit-row{grid-template-columns:24px minmax(0,1fr);gap:6px;margin:6px 0;padding:8px}
+ .dashboard.creation-page[data-writing-stage="4"] #outline-paper .outline-row-actions{grid-column:2;justify-content:flex-end}
+ .dashboard.creation-page[data-writing-stage="4"] #outline-paper .outline-row-controls{padding-left:0;gap:7px}
+ .dashboard.creation-page[data-writing-stage="4"] #outline-paper .outline-row-count{display:none}
+ .dashboard.creation-page[data-writing-stage="4"] #outline-paper .outline-row-presentation{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));flex-basis:100%;width:100%;margin-left:0;gap:5px}
+ .dashboard.creation-page[data-writing-stage="4"] #outline-paper .outline-row-presentation label{min-width:0;justify-content:flex-start;padding:6px;gap:4px}
+ .dashboard.creation-page[data-writing-stage="4"] #outline-paper .outline-edit-row.is-subsection .outline-row-title{padding-left:6px}
+}

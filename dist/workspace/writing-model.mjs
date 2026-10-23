@@ -33,7 +33,7 @@ export function thesisSnapshotFromDraft(draft={}){
  const outline=[];
  for(const row of draft.outlineRows||[]){
   const reference=isOutlineReferenceChapter(row)||Number(row.level)===2&&isOutlineReferenceChapter(outline.at(-1));
-  const entry={id:clean(row.id),title:clean(row.title),targetWords:Math.max(0,Number(row.words)||0),...(row.presentation!==undefined?{presentation:Object.fromEntries(['table','formula','code'].map(key=>[key,draft.formula==='rich'&&!reference&&row.presentation?.[key]===true]))}:{}),...(isOutlineReferenceChapter(row)?{kind:'references'}:{})};
+  const entry={id:clean(row.id),title:clean(row.title),targetWords:Math.max(0,Number(row.words)||0),...(row.presentation!==undefined?{presentation:Object.fromEntries(['table',...(Object.hasOwn(row.presentation||{},'image')?['image']:[]),'formula','code'].map(key=>[key,draft.formula==='rich'&&!reference&&row.presentation?.[key]===true]))}:{}),...(isOutlineReferenceChapter(row)?{kind:'references'}:{})};
   if(!entry.title)throw Error('提纲中还有空标题，请返回提纲确认步骤。');
   if(Number(row.level)===2&&outline.length)(outline.at(-1).sections??=[]).push(entry);else outline.push(entry);
  }

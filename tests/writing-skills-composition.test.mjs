@@ -5,7 +5,7 @@ import {loadAgentSkill,loadAgentSkillComposition,registeredAgentSkills,writingSk
 test('legacy skill loading keeps its shape, version and original contract',async()=>{
  const skill=await loadAgentSkill('thesis-section');
  assert.deepEqual(Object.keys(skill).sort(),['id','instructions','name','version']);
- assert.equal(skill.version,3);
+ assert.equal(skill.version,4);
  assert.match(skill.instructions,/source_ids保持空数组/);
  assert.match(skill.instructions,/只处理本次指定章节/);
  for(const id of ['../../.env','__proto__','constructor',['thesis-section'],{id:'thesis-section'},null])await assert.rejects(()=>loadAgentSkill(id),error=>error.status===400&&/未注册/.test(error.message));

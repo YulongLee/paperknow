@@ -11,8 +11,8 @@ export function draftThesisTemplate(draft={}){
 export function thesisExportMetadata(value={}){
  const snapshot=value.snapshot||value,profile=snapshot.profile||value.profile||{},requirements=snapshot.requirements||{};
  const chapterTitles=(value.chapters||snapshot.outline||value.outlineRows||[]).filter(row=>row.level===undefined||Number(row.level)===1).map(row=>String(row.title||'').trim()).filter(Boolean);
- const title=String(value.title||snapshot.title||''),citationRanges=Array.isArray(value.chapters)?thesisDocumentPresentation(snapshot,value.chapters,{title}).citationRanges:null;
- return {title,level:String(profile.level||value.degree||''),major:String(profile.major||profile.discipline||value.major||''),institution:String(requirements.institution||value.institution||''),supervisor:String(requirements.supervisor||value.supervisor||''),author:String(value.author||requirements.author||''),chapterTitles,...(citationRanges?{citationRanges}:{})};
+ const title=String(value.title||snapshot.title||''),presentation=Array.isArray(value.chapters)?thesisDocumentPresentation(snapshot,value.chapters,{title}):null,citationRanges=presentation?.citationRanges;
+ return {title,level:String(profile.level||value.degree||''),major:String(profile.major||profile.discipline||value.major||''),institution:String(requirements.institution||value.institution||''),supervisor:String(requirements.supervisor||value.supervisor||''),author:String(value.author||requirements.author||''),chapterTitles,...(citationRanges?{citationRanges}:{}),...(presentation?.figures?.length?{figures:presentation.figures}:{})};
 }
 export function templateSelectionFailureMessage(error){
  const reason=typeof error?.message==='string'&&error.message.trim()?error.message.trim():'模板保存未完成，请重试。';
