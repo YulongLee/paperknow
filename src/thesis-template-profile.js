@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import {DOMParser} from '@xmldom/xmldom';
 import {Inflate} from 'fflate';
+import {staticizeCachedPictureFields} from './thesis-template-static-fields.js';
 
 const mm=value=>Math.round(value*1440/25.4);
 const style=(overrides={})=>({eastAsia:'宋体',ascii:'Times New Roman',size:24,bold:false,alignment:'both',line:360,lineRule:'auto',firstLineChars:200,firstLine:0,hanging:0,before:0,after:0,pageBreakBefore:false,...overrides});
@@ -9,7 +10,14 @@ export function defaultThesisTemplateProfile(){
  return {version:1,rules:{page:{width:11906,height:16838,top:mm(30),bottom:mm(25),left:mm(30),right:mm(25),header:mm(15),footer:mm(15),gutter:0},styles:{Normal:style(),Title:style({eastAsia:'黑体',size:44,bold:true,alignment:'center',firstLineChars:0,line:360,before:240,after:240}),Heading1:style({eastAsia:'黑体',size:32,bold:true,alignment:'center',firstLineChars:0,line:360,before:480,after:360,pageBreakBefore:true}),Heading2:style({eastAsia:'黑体',size:28,bold:true,alignment:'left',firstLineChars:0,line:360,before:240,after:120}),Heading3:style({eastAsia:'黑体',size:24,bold:true,alignment:'left',firstLineChars:0,line:360,before:120,after:120}),Abstract:style(),References:style({firstLineChars:0,hanging:480}),TableText:style({size:21,alignment:'left',line:240,firstLineChars:0})}},recognized:[],unresolved:[],warnings:[],summary:['通用学位论文模板；最终格式请按学位授予单位要求核对。']};
 }
 
-export async function inspectThesisDocxTemplate(bytes){
+export async function inspectThesisDocxTemplate(bytes){return inspectTemplate(bytes);}
+export async function prepareThesisDocxTemplate(bytes){
+ const prepared=await inspectTemplate(bytes,{includeBytes:true});
+ // Export only a fully revalidated copy; the account's original is immutable.
+ await inspectTemplate(prepared.bytes,{requireStatic:true});
+ return {bytes:prepared.bytes,profile:prepared.profile};
+}
+async function inspectTemplate(bytes,{includeBytes=false,requireStatic=false}={}){
  const data=bytes instanceof Uint8Array?bytes:bytes instanceof ArrayBuffer?new Uint8Array(bytes):null;
  if(!data||!data.length)throw Error('请上传有效的 DOCX 模板。');
  const records=inspectZipDirectory(data);
@@ -26,10 +34,13 @@ export async function inspectThesisDocxTemplate(bytes){
  if(!document||!types||!zip.file('_rels/.rels'))throw Error('不是有效的 Word DOCX 模板。');
  for(const node of all(types,'*')){const contentType=node.getAttribute('ContentType')||'';if(/macroEnabled|vbaProject|oleObject|activeX|encrypted/i.test(contentType))throw Error('模板包含宏、加密或不支持的嵌入内容。');}
  if(!all(types,'Override').some(node=>node.getAttribute('PartName')==='/word/document.xml'&&node.getAttribute('ContentType')==='application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml'))throw Error('只支持无宏的 DOCX 模板，不支持 DOCM 或其他文档类型。');
- const hyperlinks=inspectRelationships(docs,zip);
- for(const doc of docs.values())inspectActiveContent(doc);
+ let hyperlinks=inspectRelationships(docs,zip);
+ const staticPictures=staticizeCachedPictureFields(docs,zip);
+ if(requireStatic&&staticPictures)throw Error('模板图片字段尚未转换完成，请重新选择模板。');
+ for(const doc of docs.values())hyperlinks+=inspectActiveContent(doc);
  if(!document.getElementsByTagNameNS(W,'body').length)throw Error('模板缺少 Word 正文。');
  const result=defaultThesisTemplateProfile(),{rules,recognized,unresolved,warnings}=result;
+ if(staticPictures)warnings.push('模板中的旧图片引用将使用文档内已保存的图片，导出时不读取原电脑或网络路径；上传原件保持不变。');
  if(hyperlinks)warnings.push('模板包含普通网页或邮件超链接；不会抓取链接内容，导出后请核对链接是否仍适用。');
  const stylesDoc=docs.get(relatedPart(docs,'styles','word/styles.xml')),styles=new Map();
  if(stylesDoc)for(const node of stylesDoc.getElementsByTagNameNS(W,'style')){const id=attr(node,'styleId');if(id)styles.set(id,node);}
@@ -114,7 +125,7 @@ export async function inspectThesisDocxTemplate(bytes){
  if(unresolved.length)warnings.push('未识别的字体、字号或段落属性已采用通用默认值；这不代表已完整复刻院校模板。');
  if(all(document,'drawing').length||all(document,'pict').length)warnings.push('模板含图片或形状；本识别结果不包含封面图形与版式位置。');
  result.warnings=[...new Set(warnings)];result.summary=[`已读取 ${recognized.filter(key=>key.startsWith('page.')).length} 项页面设置、${recognized.filter(key=>key.startsWith('styles.')).length} 项样式属性。`,unresolved.length?`${unresolved.length} 项属性未明确识别，使用通用默认值。`:'规则范围内的页面和样式属性均已识别。','学校封面、声明、目录更新和最终打印分页仍需核对。'];
- return result;
+ return includeBytes?{profile:result,bytes:staticPictures?await zip.generateAsync({type:'uint8array',compression:'DEFLATE'}):new Uint8Array(data)}:result;
 }
 
 const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main',A='http://schemas.openxmlformats.org/drawingml/2006/main';
@@ -195,6 +206,35 @@ function inspectRelationships(docs,zip){
    const resolved=resolveRelationship(source,target);if(!zip.file(resolved))throw Error('模板关系引用了缺失的文档部件。');
   }}return hyperlinks;
 }
+function hyperlinkField(instruction){
+ // A Word hyperlink is navigation, not an instruction to import remote content.
+ // Recognize its fixed argument/switch grammar instead of rejecting all links.
+ const reject=()=>{throw Error('模板中的超链接字段格式不受支持，或指向本地文件；请删除该链接，或选择其他 DOCX 模板。');};
+ if(instruction.length>8192)return reject();
+ const tokens=[];let end=0;
+ for(const match of instruction.matchAll(/"((?:[^"\\]|\\.)*)"|([^\s"]+)/g)){
+  if(instruction.slice(end,match.index).trim())return reject();
+  tokens.push(match[1]===undefined?match[2]:match[1].replace(/\\"/g,'"'));end=match.index+match[0].length;
+ }
+ if(instruction.slice(end).trim()||tokens.shift()?.toUpperCase()!=='HYPERLINK')return reject();
+ let target,anchor='';
+ for(let index=0;index<tokens.length;index++){
+  const token=tokens[index],flag=token.toLowerCase();
+  if(['\\m','\\n'].includes(flag))continue;
+  if(['\\l','\\o','\\t','\\*'].includes(flag)){
+   const value=tokens[++index];if(value===undefined||value.length>1000||/[\u0000-\u001f\u007f]/.test(value))return reject();
+   if(flag==='\\l'){if(!/^[\p{L}\p{N}_.:-]{1,256}$/u.test(value))return reject();anchor=value;}
+   if(flag==='\\*'&&!/^(?:MERGEFORMAT|CHARFORMAT)$/i.test(value))return reject();
+   continue;
+  }
+  if(token.startsWith('\\')||target!==undefined)return reject();target=token;
+ }
+ if(!target){if(anchor)return 0;return reject();}
+ if(target.length>2000||/[\s\\\u0000-\u001f\u007f]/.test(target)||/%(?:0[ad]|00)/i.test(target))return reject();
+ let url;try{url=new URL(target);}catch{return reject();}
+ if(!['https:','http:','mailto:'].includes(url.protocol)||url.username||url.password||url.protocol==='mailto:'&&!url.pathname)return reject();
+ return 1;
+}
 function inspectActiveContent(document){
  for(const name of ['object','altChunk','subDoc'])if(document.getElementsByTagNameNS(W,name).length)throw Error('模板包含不支持的嵌入对象或外部文档。');
  const instructions=[...document.getElementsByTagNameNS(W,'fldSimple')].map(node=>attr(node,'instr')||''),stack=[],loose=new Map();
@@ -209,5 +249,10 @@ function inspectActiveContent(document){
   }
  }
  instructions.push(...stack,...loose.values());
- for(const instruction of instructions)if(/(?:INCLUDETEXT|INCLUDEPICTURE|DDEAUTO|DDE|DATABASE|HYPERLINK)|\b(?:LINK|RD)\b/i.test(instruction)||/(?:https?|file|ftp):|\\\\/i.test(instruction))throw Error('模板含外部文档、网络内容或动态数据字段，请移除后重试。');
+ let hyperlinks=0;
+ for(const instruction of instructions){
+  if(/^\s*HYPERLINK\b/i.test(instruction)){hyperlinks+=hyperlinkField(instruction);continue;}
+  if(/(?:INCLUDETEXT|INCLUDEPICTURE|DDEAUTO|DDE|DATABASE|HYPERLINK)|\b(?:LINK|RD)\b/i.test(instruction)||/(?:https?|file|ftp):|\\\\/i.test(instruction))throw Error('模板包含会加载外部文件、图片或动态数据的字段；请删除这些字段，或选择其他 DOCX 模板。');
+ }
+ return hyperlinks;
 }

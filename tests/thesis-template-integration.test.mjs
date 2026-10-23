@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {createWritingDocx} from '../src/writing-document.js';
+import {unzipSync,zipSync,strFromU8,strToU8} from 'fflate';
 const fixtureBytes=new Uint8Array(await createWritingDocx('学校模板样例\n正文段落使用学校规范。'));
 import {mountThesisStage,mountOnlineThesis,disposeOnlineThesis} from '../dist/workspace/thesis-online.mjs';
 import {mountWriting} from '../dist/workspace/writing.mjs';
@@ -209,5 +210,31 @@ test('a poll already in flight cannot replace an open chooser or authorize overw
  assert.equal(f.q('.thesis-template-current strong').textContent,'其他页面选中的模板.docx');
  assert.equal(f.calls.filter(call=>call.path.endsWith('/export-template')&&call.data).length,1);
  const previousReads=reads;await scheduledPoll();assert.equal(reads,previousReads+1,'normal generation polling resumes after the conflict');
+ assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
+});
+
+
+for(const mode of ['final draft','account'])test(`${mode} can choose a different DOCX immediately after a template validation failure`,async t=>{
+ let f,selector;
+ if(mode==='account'){f=accountFixture(t);const stop=mountThesisStage({id:'t1',ctx:f.ctx,container:f.q('.dashboard')});await stop.ready;selector='[data-template-panel]';}
+ else{f=draftFixture(t,{stored:finalDraft()});await waitFor(()=>f.q('[data-thesis-create]'));selector='#writing-final-template [data-template-panel]';}
+ const original=structuredClone(mode==='account'?f.item:f.saved()),parts=unzipSync(fixtureBytes);
+ parts['word/document.xml']=strToU8(strFromU8(parts['word/document.xml']).replace('<w:body>','<w:body><w:p><w:fldSimple w:instr=" INCLUDETEXT &quot;https://example.test/external.docx&quot; "/></w:p>'));
+ const invalidBytes=zipSync(parts),invalid={name:'含外部动态字段.docx',size:invalidBytes.length,arrayBuffer:async()=>invalidBytes.buffer};
+ select(f,selector+' [data-template-file]',invalid);
+ await waitFor(()=>/重新选择其他 DOCX 文件/.test(f.q(selector+' [data-template-status]')?.textContent||'')&&!f.q(selector+' [data-template-choose]').disabled);
+ const retained=mode==='account'?f.item:f.saved();assert.equal(retained.exportTemplate.source.fileId,'old-template');
+ assert.deepEqual(mode==='account'?retained.chapters:retained.bodySections,mode==='account'?original.chapters:original.bodySections);
+ assert.equal(f.calls.filter(call=>call.path==='/files').length,0,'a rejected template is never uploaded');
+ const retryInput=f.q(selector+' [data-template-file]');let chooserOpened=0;
+ Object.defineProperty(retryInput,'value',{configurable:true,writable:true,value:invalid.name});retryInput.showPicker=()=>{chooserOpened++;};
+ f.q(selector+' [data-template-choose]').click();assert.equal(chooserOpened,1);assert.equal(retryInput.value,'','retrying opens a fresh picker rather than retaining the rejected selection');
+ select(f,selector+' [data-template-file]',file());
+ const expectedId=mode==='account'?'new-template':'draft-template';
+ await waitFor(()=>(mode==='account'?f.item:f.saved())?.exportTemplate?.source?.fileId===expectedId&&!f.q(selector+' [data-template-choose]').disabled);
+ const applied=mode==='account'?f.item:f.saved();assert.equal(applied.exportTemplate.source.fileId,expectedId);assert.match(f.q(selector+' [data-template-status]').textContent,/已保存/);
+ assert.deepEqual(mode==='account'?applied.chapters:applied.bodySections,mode==='account'?original.chapters:original.bodySections);
+ assert.equal(f.calls.filter(call=>call.path==='/files').length,1);
+ assert.equal(f.calls.filter(call=>call.path.endsWith('/export-template')&&call.data).length,mode==='account'?1:0);
  assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
 });

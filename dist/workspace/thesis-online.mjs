@@ -4,7 +4,7 @@ import {assessThesisEvidence} from './thesis-evidence.mjs';
 import {download as exportFile} from './ui.mjs';
 import {withStableView} from './view-stability.mjs';
 import {documentExportButtons,bindDocumentExports,downloadDefaultThesisTemplate} from './document-export.mjs';
-import {thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,openThesisTemplateChooser,thesisTemplateChooserOpen} from './thesis-template.mjs';
+import {thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,openThesisTemplateChooser,thesisTemplateChooserOpen,templateSelectionFailureMessage} from './thesis-template.mjs';
 import {toolBanner} from './tool-banner.mjs';
 import {presentThesisDocument,buildThesisBibliography} from './thesis-document.mjs';
 import {isOutlineReferenceChapter} from './outline-word-budget.mjs';
@@ -95,7 +95,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  async function mutate(action,{generation=false,template=false,templateName=''}={}){
   if(busy||!current())return;
   busy=true;submittingGeneration=generation;if(template)templateMessage=templateName?'正在识别并保存：'+templateName:'正在恢复通用学位论文模板…';render();
-  try{await owner();if(current())await action();if(template)templateMessage=message;}catch(error){if(template)templateMessage=error.message||'模板保存未完成，请重试。';failure(error);}finally{busy=false;submittingGeneration=false;if(current())render();}
+  try{await owner();if(current())await action();if(template)templateMessage=message;}catch(error){if(template)templateMessage=templateSelectionFailureMessage(error);failure(error);}finally{busy=false;submittingGeneration=false;if(current())render();}
  }
  function draftKey(){return user?.id&&id?'paperknow-thesis-edits-v1:'+encodeURIComponent(String(user.id))+':'+encodeURIComponent(String(id)):null;}
  function storageRecord(){

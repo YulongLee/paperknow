@@ -15,7 +15,7 @@ import {parseCitationImport} from './citation-import.mjs';
 import {writingLandingSide} from './writing-landing-side.mjs';
 import {list as scopedDraftList,write as scopedDraftWrite,keys as scopedDraftKeys,hasDraftScope} from './state.mjs';
 import {documentExportButtons,bindDocumentExports,downloadDefaultThesisTemplate} from './document-export.mjs';
-import {draftThesisTemplate,thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,openThesisTemplateChooser} from './thesis-template.mjs';
+import {draftThesisTemplate,thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,openThesisTemplateChooser,templateSelectionFailureMessage} from './thesis-template.mjs';
 import {catalog,catalogNav,writingHeading,writingDetailHeading,decorateWritingDetail} from './writing-catalog.mjs';
 import {registerEditor,markEditorSaved} from './edit-guard.mjs';
 import {outlineChapters,buildOutline,reconcileSections,composeBody,thesisSnapshotFromDraft,thesisWordCountSuggestions,thesisDefaultTargetWords,thesisTargetWordsState,changeThesisTargetDegree} from './writing-model.mjs';
@@ -395,7 +395,7 @@ async function changeLocalTemplate(file){
   let next=file?await uploadThesisTemplate(file,{api:templateApi,expectedUserId,isCurrent:()=>alive()&&templateScope.isCurrent()}):null;
   if(thesisId){const latest=await templateApi('/theses/'+encodeURIComponent(thesisId)),value=await templateApi('/theses/'+encodeURIComponent(thesisId)+'/export-template',{version:latest.item.version,templateFileId:next?.source?.fileId||null,expectedTemplateFileId});next=value.item.exportTemplate;thesisStageDispose?.();thesisStageDispose=null;}
   exportTemplate=next;exportTemplateAccountId=String(expectedUserId);exportTemplateSelectionMade=true;const saved=saveWritingDraft({automatic:true});status.textContent=templateMessage=saved?'Word 导出模板已保存；正文与提纲保持不变，无需重新生成。':'模板已选择，但草稿尚未保存，请再次保存后离开。';
- }catch(error){if(alive()&&error.name!=='AbortError')status.textContent=templateMessage=(error.message||'模板保存失败。')+' 原有模板保持不变。';}
+ }catch(error){if(alive()&&error.name!=='AbortError')status.textContent=templateMessage=templateSelectionFailureMessage(error);}
  finally{templateBusy=false;if(alive()){renderLocalTemplate();$('#material-status').textContent=status.textContent;}}
 }
 function renderLocalTemplate(){

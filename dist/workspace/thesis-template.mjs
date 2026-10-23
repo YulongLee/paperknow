@@ -14,6 +14,11 @@ export function thesisExportMetadata(value={}){
  const title=String(value.title||snapshot.title||''),citationRanges=Array.isArray(value.chapters)?thesisDocumentPresentation(snapshot,value.chapters,{title}).citationRanges:null;
  return {title,level:String(profile.level||value.degree||''),major:String(profile.major||profile.discipline||value.major||''),institution:String(requirements.institution||value.institution||''),supervisor:String(requirements.supervisor||value.supervisor||''),author:String(value.author||requirements.author||''),chapterTitles,...(citationRanges?{citationRanges}:{})};
 }
+export function templateSelectionFailureMessage(error){
+ const reason=typeof error?.message==='string'&&error.message.trim()?error.message.trim():'模板保存未完成，请重试。';
+ const recovery=error?.status===409?'本次未覆盖其他页面的模板选择，请核对后重新选择 DOCX 文件。':'原有模板保持不变，可以重新选择其他 DOCX 文件。';
+ return reason+(/[。！？.!?]$/.test(reason)?'':'。')+' '+recovery;
+}
 const openTemplateChoosers=new WeakMap();
 export const thesisTemplateChooserOpen=root=>!![...(root?.querySelectorAll('[data-template-file]')||[])].find(input=>input.isConnected&&openTemplateChoosers.has(input));
 export function openThesisTemplateChooser(panel,{onClose=()=>{}}={}){

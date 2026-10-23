@@ -76,6 +76,30 @@ test('safe header/footer/image relationships and ordinary hyperlinks are accepte
  const extra={'word/_rels/document.xml.rels':`<r:Relationships xmlns:r="${R}">${rel('header1.xml','header')}</r:Relationships>`,'word/header1.xml':`<w:hdr xmlns:w="${W}">${para('合成页眉')}<w:p><w:fldSimple w:instr="PAGE"/></w:p></w:hdr>`,'word/_rels/header1.xml.rels':`<Relationships xmlns="${R}">${rel('media/logo.png','image')}${rel('https://example.test/school','hyperlink','External').replace('rId1','rId2')}</Relationships>`,'word/media/logo.png':new Uint8Array([1,2,3])};let calls=0;const previous=globalThis.fetch;globalThis.fetch=()=>{calls++;throw Error('network prohibited');};try{const value=await inspectThesisDocxTemplate(await fixture({extra}));assert.ok(value.warnings.some(text=>text.includes('超链接')));assert.equal(calls,0);}finally{globalThis.fetch=previous;}
 });
 
+const fieldAttribute=value=>value.replace(/[&<>"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]));
+const simpleField=instruction=>`<w:p><w:fldSimple w:instr="${fieldAttribute(instruction)}"><w:r><w:t>模板链接或页码</w:t></w:r></w:fldSimple></w:p>`;
+
+test('ordinary hyperlink fields and internal table-of-contents navigation do not prevent selecting a template',async()=>{
+ const fields=['HYPERLINK "https://www.example.edu.cn/rules?format=docx&year=2026" \\o "学校格式要求" \\t "_blank"','HYPERLINK "mailto:office@example.edu.cn"','HYPERLINK \\l "_Toc123456" \\* MERGEFORMAT','TOC \\o "1-3" \\h \\z \\u','PAGE','NUMPAGES','PAGEREF _Toc123456 \\h','REF _Ref123 \\h'];
+ let calls=0;const previous=globalThis.fetch;globalThis.fetch=()=>{calls++;throw Error('network prohibited');};
+ try{const value=await inspectThesisDocxTemplate(await fixture({body:para('合成模板正文，用于识别真实样式。')+fields.map(simpleField).join('')}));assert.equal(value.rules.styles.Normal.eastAsia,'仿宋');assert.ok(value.warnings.some(message=>message.includes('普通网页或邮件超链接')));assert.equal(calls,0);}finally{globalThis.fetch=previous;}
+ const internal=await inspectThesisDocxTemplate(await fixture({body:para('正文样式')+simpleField('HYPERLINK \\l "_Toc123456"')}));assert.equal(internal.warnings.some(message=>message.includes('超链接')),false,'internal navigation is not a remote source');
+});
+
+test('split hyperlink field instructions inside a TOC or header remain normal navigation',async()=>{
+ const begin='<w:r><w:fldChar w:fldCharType="begin"/></w:r>',end='<w:r><w:fldChar w:fldCharType="end"/></w:r>',separate='<w:r><w:fldChar w:fldCharType="separate"/></w:r>';
+ const linked=`${begin}<w:r><w:instrText xml:space="preserve"> HYPER</w:instrText></w:r><w:r><w:instrText xml:space="preserve">LINK \\l "_Toc123" </w:instrText></w:r>${separate}<w:r><w:t>第一章</w:t></w:r>${end}`;
+ const body=para('合成模板正文')+`<w:p>${begin}<w:r><w:instrText> TOC \\h </w:instrText></w:r>${separate}${linked}${end}</w:p>`;
+ const value=await inspectThesisDocxTemplate(await fixture({body,extra:{'word/header1.xml':`<w:hdr xmlns:w="${W}">${simpleField('HYPERLINK "https://example.edu.cn" \\* MERGEFORMAT')}</w:hdr>`}}));assert.ok(value.recognized.length);assert.ok(value.warnings.some(message=>message.includes('超链接')));
+});
+
+test('allowing navigation fields does not admit local files, executable links, malformed switches or nested external imports',async()=>{
+ const invalid=['HYPERLINK "file:///secret.docx"','HYPERLINK "C:\\\\secret.docx"','HYPERLINK "\\\\server\\share\\file.docx"','HYPERLINK "javascript:alert(1)"','HYPERLINK "data:text/html,unsafe"','HYPERLINK "ftp://example.edu.cn/file"','HYPERLINK "https://user:secret@example.edu.cn"','HYPERLINK "https://example.edu.cn/%0D%0A"','HYPERLINK "https://example.edu.cn" INCLUDETEXT "file:///secret"','HYPERLINK "https://example.edu.cn" \\l','HYPERLINK "https://example.edu.cn" \\unknown "value"','HYPERLINK "https://example.edu.cn','HYPERLINK \\l "../secret"','INCLUDETEXT "https://example.edu.cn/content"','INCLUDEPICTURE "https://example.edu.cn/image.png"','DDEAUTO excel data','DATABASE "https://example.edu.cn/data"'];
+ for(const instruction of invalid)await assert.rejects(()=>fixture({body:para('合成正文')+simpleField(instruction)}).then(inspectThesisDocxTemplate),/字段|超链接/,instruction);
+ const nested='<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> HYPERLINK "https://example.edu.cn" </w:instrText></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> INCLUDETEXT "file:///secret" </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>';
+ await assert.rejects(()=>fixture({body:para('合成正文')+nested}).then(inspectThesisDocxTemplate),/字段/);
+});
+
 test('rejects DTD, malformed XML, and external fields even in headers or split instruction runs',async()=>{
  for(const header of [`<!DOCTYPE x [<!ENTITY e SYSTEM "file:///secret">]><w:hdr xmlns:w="${W}"/>`,`<w:hdr xmlns:w="${W}"><w:p></w:hdr>`,`<w:hdr xmlns:w="${W}"><w:p><w:r><w:instrText>INCLUDE</w:instrText></w:r><w:r><w:instrText>TEXT</w:instrText></w:r></w:p></w:hdr>`])await assert.rejects(()=>fixture({extra:{'word/header1.xml':header}}).then(inspectThesisDocxTemplate),/DTD|XML|字段/);
 });

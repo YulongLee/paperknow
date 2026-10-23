@@ -67,6 +67,26 @@ test('legal external header hyperlinks remain ordinary links without fetching or
  try{const {zip,xml}=await read(await createWritingDocx('合成论文题目\n第一章 背景\n正文保留。',{documentKind:'thesis',template:{status:'ready',bytes}}));assert.match(xml,/headerReference/);assert.equal(await zip.file('word/_rels/header1.xml.rels').async('string'),headerRels);assert.match(await zip.file('word/header1.xml').async('string'),/合成学校官网/);assert.equal(requests,0);assert.equal(Object.keys(zip.files).some(path=>path.includes('https:')||path.includes('mailto:')),false);}finally{globalThis.fetch=old;}
 });
 
+test('static hyperlink and page fields survive both template export modes without accessing their targets',async()=>{
+ const old=globalThis.fetch;let requests=0;globalThis.fetch=()=>{requests++;throw Error('remote access prohibited');};
+ try{for(const slot of [false,true]){
+  const base=await headerTemplate({slot}),input=await read(base.bytes),header=`<w:hdr xmlns:w="${W}"><w:p><w:fldSimple w:instr='HYPERLINK "https://example.edu.cn/rules" \\o "学校 LINK 说明"'><w:r><w:t>合成学校规范</w:t></w:r></w:fldSimple><w:fldSimple w:instr='HYPERLINK \\l "_Toc123"'><w:r><w:t>目录跳转</w:t></w:r></w:fldSimple><w:fldSimple w:instr="PAGE"><w:r><w:t>1</w:t></w:r></w:fldSimple></w:p></w:hdr>`;
+  input.zip.file('word/header1.xml',header);const source=await input.zip.generateAsync({type:'uint8array'}),unchanged=new Uint8Array(source),{zip,xml}=await read(await docx({template:{status:'ready',bytes:source}}));
+  const exported=await zip.file('word/header1.xml').async('string');assert.equal(exported,header);assert.match(exported,/HYPERLINK/);assert.match(exported,/PAGE/);assert.match(xml,/全部结论原样保留/);assert.deepEqual(source,unchanged);
+ }}finally{globalThis.fetch=old;}assert.equal(requests,0);
+});
+
+test('cached picture imports become embedded static images in the exported copy while the template original stays unchanged',async()=>{
+ const old=globalThis.fetch;let requests=0;globalThis.fetch=()=>{requests++;throw Error('remote access prohibited');};
+ const png=Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aRWQAAAAASUVORK5CYII=','base64'));
+ try{for(const slot of [false,true]){
+  const base=await headerTemplate({slot}),input=await read(base.bytes),header=`<w:hdr xmlns:w="${W}" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="${officeRelationships}"><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> INCLUDEPICTURE "C:\\obsolete\\logo.png" \\d \\* MERGEFORMATINET </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:b/></w:rPr><w:drawing><a:blip r:embed="cachedLogo"/></w:drawing></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:hdr>`;
+  input.zip.file('word/header1.xml',header);input.zip.file('word/media/cached-logo.png',png);input.zip.file('word/_rels/header1.xml.rels',`<Relationships xmlns="${packageRelationships}"><Relationship Id="cachedLogo" Type="${officeRelationships}/image" Target="media/cached-logo.png"/></Relationships>`);input.zip.file('[Content_Types].xml',(await input.zip.file('[Content_Types].xml').async('string')).replace('</Types>','<Default Extension="png" ContentType="image/png"/></Types>'));
+  const source=await input.zip.generateAsync({type:'uint8array'}),unchanged=new Uint8Array(source),{zip,xml}=await read(await docx({template:{status:'ready',bytes:source}})),exported=await zip.file('word/header1.xml').async('string');
+  assert.doesNotMatch(exported,/INCLUDEPICTURE|obsolete|fldChar/);assert.match(exported,/r:embed="cachedLogo"/);assert.match(exported,/w:jc w:val="center"/);assert.match(exported,/<w:b/);assert.deepEqual(await zip.file('word/media/cached-logo.png').async('uint8array'),png);assert.match(xml,/全部结论原样保留/);assert.deepEqual(source,unchanged);assert.match(await (await read(source)).zip.file('word/header1.xml').async('string'),/INCLUDEPICTURE/);
+ }}finally{globalThis.fetch=old;}assert.equal(requests,0);
+});
+
 test('prefixed package content types and relationships retain header typing and do not introduce duplicate overrides or relations',async()=>{
  for(const slot of [false,true]){
   const {bytes}=await headerTemplate({slot,prefixed:true}),{zip}=await read(await createWritingDocx('合成论文题目\n第一章 背景\n正文保留。',{documentKind:'thesis',template:{status:'ready',bytes}}));

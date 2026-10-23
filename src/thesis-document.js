@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import {DOMParser,XMLSerializer} from '@xmldom/xmldom';
-import {defaultThesisTemplateProfile,inspectThesisDocxTemplate} from './thesis-template-profile.js';
+import {defaultThesisTemplateProfile,prepareThesisDocxTemplate} from './thesis-template-profile.js';
 
 const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main',R='http://schemas.openxmlformats.org/officeDocument/2006/relationships',P='http://schemas.openxmlformats.org/package/2006/relationships',CT='http://schemas.openxmlformats.org/package/2006/content-types';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
@@ -136,7 +136,7 @@ export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},t
  const original=await JSZip.loadAsync(bytes),doc=parse(await original.file('word/document.xml').async('string')),nodes=children(doc.getElementsByTagNameNS(W,'body')[0]).filter(n=>n.localName!=='sectPr');
  if(nodes.length!==blocks.length)throw Error('论文段落结构不一致，未导出不完整文件。');
  let profile=defaultThesisTemplateProfile(),source;
- if(template){if(template.status==='unavailable'||!template.bytes)throw Error('所选论文模板不可用，请重新上传模板或明确切换为通用模板。');profile=await inspectThesisDocxTemplate(template.bytes);source=await JSZip.loadAsync(template.bytes);}
+ if(template){if(template.status==='unavailable'||!template.bytes)throw Error('所选论文模板不可用，请重新上传模板或明确切换为通用模板。');const prepared=await prepareThesisDocxTemplate(template.bytes);profile=prepared.profile;source=await JSZip.loadAsync(prepared.bytes);}
  const rules=profile.rules,title=String(metadata.title||blocks[0]?.text||'研究论文').trim();metadata={...metadata,title};
  const explicitTitles=new Set((Array.isArray(chapterTitles)?chapterTitles:[]).map(value=>String(value?.title??value).trim()).filter(Boolean));
  const existing=source?parse(await source.file('word/document.xml').async('string')):null,bookmarks=existing?[...existing.getElementsByTagNameNS(W,'bookmarkStart')]:[],usedIds=new Set(bookmarks.map(n=>n.getAttributeNS(W,'id'))),usedNames=new Set(bookmarks.map(n=>n.getAttributeNS(W,'name')));

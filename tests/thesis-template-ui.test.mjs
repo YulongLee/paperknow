@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
-import {thesisTemplatePanel,uploadThesisTemplate,draftThesisTemplate,thesisExportMetadata} from '../dist/workspace/thesis-template.mjs';
+import {thesisTemplatePanel,uploadThesisTemplate,draftThesisTemplate,thesisExportMetadata,templateSelectionFailureMessage} from '../dist/workspace/thesis-template.mjs';
 import {thesisSnapshotFromDraft} from '../dist/workspace/writing-model.mjs';
 const inspected={version:1,recognized:['page.left'],rules:{page:{left:1800}},warnings:[],summary:['左页边距3cm']};
 const descriptor={version:1,source:{fileId:'file-school',name:'学校格式.docx',sha256:'a'.repeat(64),size:1200},status:'ready',profile:{summary:['A4，左页边距 3cm','正文宋体 12pt'],warnings:['复杂封面请核对']}};
@@ -22,3 +22,12 @@ test('draft descriptor contains only small template metadata and never enters th
 });
 
 test('unreadable DOCX structure is rejected before any original is uploaded',async()=>{const file={name:'损坏模板.docx',size:4,arrayBuffer:async()=>new Uint8Array([80,75,3,4]).buffer};await assert.rejects(uploadThesisTemplate(file,{expectedUserId:'u1',inspectTemplate:async()=>{throw Error('无法读取 DOCX 结构');},api:async()=>assert.fail('invalid template must not consume storage quota')}),/无法读取 DOCX/);assert.deepEqual(draftThesisTemplate({exportTemplate:{status:'unavailable',source:null}}),{version:1,source:null,status:'unavailable'});});
+
+
+test('template selection failures keep the concrete reason and explain how to choose a different file',()=>{
+ const message=templateSelectionFailureMessage(Error('模板含外部文档、网络内容或动态数据字段，请移除后重试。'));
+ assert.match(message,/模板含外部文档/);assert.match(message,/原有模板保持不变/);assert.match(message,/重新选择其他 DOCX 文件/);
+ assert.match(templateSelectionFailureMessage(null),/模板保存未完成.*重新选择其他 DOCX/);
+ const conflict=templateSelectionFailureMessage(Object.assign(Error('导出模板已在其他页面更新'),{status:409}));
+ assert.match(conflict,/未覆盖其他页面的模板选择/);assert.doesNotMatch(conflict,/原有模板保持不变/);
+});
