@@ -86,6 +86,12 @@ function providerUsageLedger(){
       };
     },
     idle(){return pending?new Promise(resolve=>waiters.push(resolve)):Promise.resolve();},
+    // This view remains usable while other requests are in flight. Their
+    // reservations are held separately; unknown usage must never become zero.
+    budgetUsage(){
+      let total=0;for(const {usage}of messages.values())for(const key of usageFields)total+=usage[key];
+      return{known:!unknown&&Number.isSafeInteger(total),total};
+    },
     snapshot(){
       let input=0,output=0;
       for(const {usage}of messages.values()){input+=usage.input_tokens+usage.cache_creation_input_tokens+usage.cache_read_input_tokens;output+=usage.output_tokens;}
@@ -149,9 +155,27 @@ export async function createAgentRelay(settings,{signal,resolver=lookup,requestI
       // their original tool-choice behavior and budgets.
       if(!body.tools.some(value=>value.name===submission))return deny(502,'Required writing submission tool unavailable');body.tool_choice={type:'any'};
     }
-    if(isMessage&&settings.maxTotalTokens!==undefined){const reserve=Buffer.byteLength(JSON.stringify(body))+body.max_tokens;if(reservedTokens+reserve>settings.maxTotalTokens){budgetExceeded=true;return deny(429,'Agent token budget reached');}reservedTokens+=reserve;}
+    let reserve=0;
+    if(isMessage&&settings.maxTotalTokens!==undefined){
+      const used=accounting.budgetUsage();if(!used.known)return deny(422,'Provider usage incomplete');
+      // Without a verified model tokenizer, UTF-8 payload size is only a
+      // conservative input reservation, NOT measured tokens. Reserve the full
+      // current history plus maximum output only until its response finishes.
+      reserve=Buffer.byteLength(JSON.stringify(body))+body.max_tokens;
+      if(used.total+reservedTokens+reserve>settings.maxTotalTokens){budgetExceeded=true;return deny(429,'Agent token budget reached');}
+      reservedTokens+=reserve;
+    }
     const prefix=url.pathname.replace(/\/$/,'').replace(/\/v1$/,'');
-    const settle=isMessage?accounting.begin():()=>{};let responseSeen=false;
+    const recordUsage=isMessage?accounting.begin():()=>{};let responseSeen=false,settled=false;
+    const settle=record=>{
+      if(settled)return;settled=true;recordUsage(record);
+      // Keep unknown reservations held and forbid further budgeted dispatches.
+      // Complete responses replace their reservation with deduplicated actual
+      // provider usage, including both cache input fields.
+      if(record)reservedTokens-=reserve;
+      const used=accounting.budgetUsage();
+      if(settings.maxTotalTokens!==undefined&&used.known&&used.total+reservedTokens>settings.maxTotalTokens)budgetExceeded=true;
+    };
     let upstream;try{upstream=requestImpl({protocol:'https:',hostname:url.hostname,port:443,path:prefix+target.pathname+(target.search==='?beta=true'?'?beta=true':''),method:'POST',servername:url.hostname,agent:false,lookup:(_host,options,callback)=>{const address=addresses[0];if(options?.all)callback(null,[address]);else callback(null,address.address,address.family|| (address.address.includes(':')?6:4));},headers:{'Content-Type':'application/json','x-api-key':settings.apiKey,'anthropic-version':'2023-06-01',...(workspaceId?{'X-DashScope-WorkSpace':workspaceId}:{}),...(typeof req.headers['anthropic-beta']==='string'?{'anthropic-beta':req.headers['anthropic-beta']}:{}),Accept:'application/json, text/event-stream'},signal},response=>{
       responseSeen=true;
       if(res.destroyed){settle(null);response.resume();return;}
@@ -168,7 +192,7 @@ export async function createAgentRelay(settings,{signal,resolver=lookup,requestI
     });active.add(upstream);res.once('close',()=>{if(!res.writableEnded)upstream.destroy();});upstream.once('close',()=>{active.delete(upstream);if(!responseSeen)settle(null);});upstream.once('error',()=>{settle(null);if(!res.headersSent)deny(502,'Upstream model connection failed');else res.destroy();});upstream.end(JSON.stringify(body));}catch{settle(null);deny(502,'Upstream model connection failed');}
   });
   server.requestTimeout=30000;server.headersTimeout=10000;await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
-  return {baseURL:`http://127.0.0.1:${server.address().port}`,token,get budgetExceeded(){return budgetExceeded;},get reservedTokens(){return reservedTokens;},get providerUsage(){return accounting.snapshot();},waitForProviderUsage:()=>accounting.idle(),get localCompletions(){return localCompletions;},async close(){for(const request of active)request.destroy();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}};
+  return {baseURL:`http://127.0.0.1:${server.address().port}`,token,get budgetExceeded(){return budgetExceeded;},get reservedTokens(){return reservedTokens+accounting.budgetUsage().total;},get providerUsage(){return accounting.snapshot();},waitForProviderUsage:()=>accounting.idle(),get localCompletions(){return localCompletions;},async close(){for(const request of active)request.destroy();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}};
 }
 function normalizedTask(task){
   if(!task||typeof task!=='object'||typeof task.instructions!=='string'||!task.instructions.trim()||task.instructions.length>12000||!task.context||typeof task.context!=='object'||Array.isArray(task.context)||!Array.isArray(task.materials)||task.materials.length>20)fail(400,'Agent 任务输入格式或长度无效');
@@ -184,14 +208,14 @@ export async function runAgentTask({settings,task,signal,onStage,maxTotalTokens,
   const input=normalizedTask(task),skill=await loadAgentSkillComposition(input.skill,writingSkillIdsForTask({skill:input.skill,operation:input.context.operation,kind:input.context.kind}));if(signal?.aborted)fail(499,'Agent 任务已取消');
   let lengthBudget=null;
   if(input.context.lengthBudget!==undefined){try{lengthBudget=normalizeTextLengthBudget({...input.context.lengthBudget,language:input.context.profile?.language??'中文'});}catch{fail(400,'本次任务的正文篇幅范围无效');}}
-  // Chapter tasks already carry their source index and server-loaded skill.
+  // Chapter and outline tasks already carry their source index and server-loaded skill.
   // Avoid spending bounded execution turns loading either a second time.
   // Only a server-owned writing validator can enable result submission. A task
   // context flag, a thesis skill or an SDK response cannot grant this tool.
   const writingSubmission=input.skill==='writing-task'&&typeof validateWritingOutput==='function'||input.skill==='tool-task'&&typeof validateToolOutput==='function'||input.skill==='thesis-section'&&typeof validateThesisOutput==='function'||input.skill==='writing-review'&&typeof validateReviewOutput==='function';
   const submissionValidator=input.skill==='tool-task'?validateToolOutput:input.skill==='thesis-section'?validateThesisOutput:input.skill==='writing-review'?validateReviewOutput:validateWritingOutput;
   const toolCallLimit=input.skill==='tool-task'&&typeof validateToolOutput==='function'?40:20;
-  const indexedChapter=writingSubmission||['thesis-section','writing-task'].includes(input.skill)&&lengthBudget;
+  const indexedChapter=writingSubmission||input.skill==='thesis-outline'||['thesis-section','writing-task'].includes(input.skill)&&lengthBudget;
   const allowed=[...(indexedChapter?['read_material']:toolNames),...(writingSubmission?['submit_writing_output']:lengthBudget?['check_text_length']:[])].map(name=>'mcp__paperknow__'+name);
   const directory=await mkdtemp(join(tmpdir(),'paperknow-agent-'));const controller=new AbortController();let timedOut=false,stream,relay,observedUsage=null,observedCost=null,trace=[],denied=[],calls=0,bytes=0,acceptedWritingText=null;
   const cancelled=()=>controller.abort();signal?.addEventListener('abort',cancelled,{once:true});const timer=setTimeout(()=>{timedOut=true;controller.abort();},config.timeoutMs);
@@ -227,10 +251,10 @@ export async function runAgentTask({settings,task,signal,onStage,maxTotalTokens,
     const consume=async()=>{for await(const message of stream){if(controller.signal.aborted)throw new Error('Aborted');bytes+=JSON.stringify(message).length;if(bytes>1000000)fail(502,'Agent 返回内容超出限制');if(message.type==='assistant'){for(const block of message.message?.content||[])if(block.type==='tool_use'&&!allowed.includes(block.name)){deniedTool(block.name);fail(502,'Agent 请求了未授权工具','unauthorized_tool');}}if(message.type==='result'){completed=message;const values=Object.values(message.modelUsage||{});if(values.length&&values.every(v=>Number.isSafeInteger(v.inputTokens)&&v.inputTokens>=0&&Number.isSafeInteger(v.outputTokens)&&v.outputTokens>=0)){observedUsage={input:values.reduce((n,v)=>n+v.inputTokens+token(v.cacheReadInputTokens)+token(v.cacheCreationInputTokens),0),output:values.reduce((n,v)=>n+v.outputTokens,0)};}else if(Number.isSafeInteger(message.usage?.input_tokens)&&message.usage.input_tokens>=0&&Number.isSafeInteger(message.usage?.output_tokens)&&message.usage.output_tokens>=0){observedUsage={input:message.usage.input_tokens+token(message.usage.cache_read_input_tokens)+token(message.usage.cache_creation_input_tokens),output:message.usage.output_tokens};}observedCost=Number.isFinite(message.total_cost_usd)&&message.total_cost_usd>=0?message.total_cost_usd:null;break;}}};
     const abortable=async operation=>{let aborted;try{return await Promise.race([operation,new Promise((_,reject)=>{aborted=()=>reject(new Error('Aborted'));if(controller.signal.aborted)aborted();else controller.signal.addEventListener('abort',aborted,{once:true});})]);}finally{controller.signal.removeEventListener('abort',aborted);}};
     await abortable(consume());
-    // The SDK can hit its final turn immediately after executing the accepted
-    // tool, before the response socket ends. Account only after HTTP completion;
+    // The SDK can emit a final result before the response socket ends. In
+    // particular this happens after an accepted tool. Account after completion;
     // this wait still obeys the existing cancellation and timeout boundary.
-    if(acceptedWritingText!==null)await abortable(relay.waitForProviderUsage());
+    if(relay.providerUsage.requests)await abortable(relay.waitForProviderUsage());
     const submitted=acceptedWritingText!==null,acceptedTurnLimit=submitted&&completed?.subtype==='error_max_turns';
     if(!completed||(!acceptedTurnLimit&&(completed.subtype!=='success'||completed.is_error))){if(completed?.subtype==='error_max_turns')fail(502,'Agent 已达到回合上限，结果未完成','turn_limit');if(completed?.subtype==='error_max_budget_usd')fail(502,'Agent 已达到预算上限，结果未完成','cost_budget');fail(502,'Agent 执行失败，请检查模型的 Anthropic 与工具调用兼容性','runtime_error');}
     if(completed.permission_denials?.length){for(const denial of completed.permission_denials.slice(0,20))deniedTool(denial.tool_name);fail(502,'Agent 触发了未授权工具，结果未完成','permission_denied');}if(['max_tokens','length'].includes(completed.stop_reason))fail(502,'Agent 输出被截断，请调整章节范围或输出预算','truncated');
@@ -241,13 +265,15 @@ export async function runAgentTask({settings,task,signal,onStage,maxTotalTokens,
     if(writingSubmission&&!submitted)fail(502,'本次写作未通过完整结果提交校验，原草稿保留');
     const text=submitted?acceptedWritingText:completed.result;if(typeof text!=='string'||!text.trim()||text.length>100000)fail(502,'Agent 未返回有效完整内容');
     const paid=relay.providerUsage,modelUsage=Object.values(completed.modelUsage||{});
-    if(submitted){if(!paid.complete||!paid.usage||paid.usage.input+paid.usage.output===0)fail(502,'Agent 未返回可核对的真实用量');if(paid.truncated)fail(502,'Agent 输出被截断，结果未提交');}
+    const providerAccounted=paid.requests>0;
+    if(submitted||providerAccounted){if(!paid.complete||!paid.usage||paid.usage.input+paid.usage.output===0)fail(502,'Agent 未返回可核对的真实用量');if(paid.truncated)fail(502,'Agent 输出被截断，结果未提交');}
     else if(modelUsage.length?modelUsage.some(value=>!validToken(value.inputTokens)||!validToken(value.outputTokens)):!validToken(completed.usage?.input_tokens)||!validToken(completed.usage?.output_tokens))fail(502,'Agent 未返回可核对的真实用量');
-    const usage=submitted?paid.usage:modelUsage.length?{input:modelUsage.reduce((n,v)=>n+token(v.inputTokens)+token(v.cacheReadInputTokens)+token(v.cacheCreationInputTokens),0),output:modelUsage.reduce((n,v)=>n+token(v.outputTokens),0)}:{input:token(completed.usage?.input_tokens)+token(completed.usage?.cache_read_input_tokens)+token(completed.usage?.cache_creation_input_tokens),output:token(completed.usage?.output_tokens)};
+    const usage=submitted||providerAccounted?paid.usage:modelUsage.length?{input:modelUsage.reduce((n,v)=>n+token(v.inputTokens)+token(v.cacheReadInputTokens)+token(v.cacheCreationInputTokens),0),output:modelUsage.reduce((n,v)=>n+token(v.outputTokens),0)}:{input:token(completed.usage?.input_tokens)+token(completed.usage?.cache_read_input_tokens)+token(completed.usage?.cache_creation_input_tokens),output:token(completed.usage?.output_tokens)};
     if(!Number.isSafeInteger(usage.input)||!Number.isSafeInteger(usage.output))fail(502,'Agent 用量格式无效');
-    if(usage.output>config.maxOutputTokens*config.maxTurns||Number.isFinite(completed.total_cost_usd)&&completed.total_cost_usd>config.maxCostUsd||submitted&&config.maxTotalTokens!==undefined&&usage.input+usage.output>config.maxTotalTokens)fail(502,'Agent 已超出执行预算，结果未提交');
+    if(usage.output>config.maxOutputTokens*config.maxTurns||Number.isFinite(completed.total_cost_usd)&&completed.total_cost_usd>config.maxCostUsd)fail(502,'Agent 已超出执行预算，结果未提交');
+    if(config.maxTotalTokens!==undefined&&usage.input+usage.output>config.maxTotalTokens)fail(429,'Agent 已达到本次执行用量上限，结果未提交','budget_exceeded');
     return {text,usage,engine:config.engine,model:config.model,skills:skill.skills,finishReason:submitted?'submitted':completed.stop_reason??null,...(submitted?{submitted:true,usageSource:'provider_responses',completionSource:relay.localCompletions?'local_control':'sdk_acknowledgement',providerRequests:paid.requests,providerMessages:paid.messages}:{}),costUsd:observedCost,costSource:observedCost===null?'unknown':'sdk_estimate',trace};
-  }catch(error){if(writingSubmission&&relay?.providerUsage.requests)observedUsage=relay.providerUsage.usage;const safe=relay?.budgetExceeded?Object.assign(new Error('Agent 已达到本次 Token 预算，未继续调用模型'),{status:429,code:'budget_exceeded'}):signal?.aborted?Object.assign(new Error('Agent 任务已取消'),{status:499}):timedOut?Object.assign(new Error('Agent 执行超时，结果未提交'),{status:504}):error.agentSafe===true?error:Object.assign(new Error('Agent SDK 执行失败，请检查接口、模型与服务状态'),{status:502});Object.defineProperty(safe,'agentTrace',{value:privateTrace(),enumerable:false,configurable:true});throw Object.assign(safe,{usage:observedUsage,costUsd:observedCost,engine:config.engine,model:config.model});}
+  }catch(error){if(relay?.providerUsage.requests)observedUsage=relay.providerUsage.usage;const safe=relay?.budgetExceeded?Object.assign(new Error('Agent 已达到本次执行预算，未继续调用模型'),{status:429,code:'budget_exceeded'}):signal?.aborted?Object.assign(new Error('Agent 任务已取消'),{status:499}):timedOut?Object.assign(new Error('Agent 执行超时，结果未提交'),{status:504}):error.agentSafe===true?error:Object.assign(new Error('Agent SDK 执行失败，请检查接口、模型与服务状态'),{status:502});Object.defineProperty(safe,'agentTrace',{value:privateTrace(),enumerable:false,configurable:true});throw Object.assign(safe,{usage:observedUsage,costUsd:observedCost,engine:config.engine,model:config.model});}
   finally{clearTimeout(timer);signal?.removeEventListener('abort',cancelled);controller.abort();try{stream?.close?.();if(stream?.return){let cleanupTimer;await Promise.race([stream.return(),new Promise(resolve=>{cleanupTimer=setTimeout(resolve,3000);})]).finally(()=>clearTimeout(cleanupTimer));}}catch{}await relay?.close();await rm(directory,{recursive:true,force:true});}
 }
 
