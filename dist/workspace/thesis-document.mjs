@@ -63,7 +63,12 @@ export function thesisDocumentPresentation(snapshot={},chapters=[],{title=snapsh
  };
  const referenceNumbers=new Map(bibliographyModel.references.map(row=>[row.id,row.number]));
  const semanticBody=text=>{const raw=String(text),citationRanges=[];let value='',cursor=0;for(const match of raw.matchAll(/\[source:([^\]]+)\]/g)){value+=raw.slice(cursor,match.index);const label=render(match[0]),start=value.length;value+=label;if(referenceNumbers.has(match[1]))citationRanges.push({start,end:value.length,number:referenceNumbers.get(match[1])});cursor=match.index+match[0].length;}value+=raw.slice(cursor);return {text:value,citationRanges};};
- const body=rows.filter(row=>!isOutlineReferenceChapter(row)).flatMap(row=>{const title=String(row.title||'');let text=stripThesisOwnedHeadings(row.text,[title]);if(thesisFrontMatterKind(row)==='abstract_en')text=text.replace(/^(?:英文题目|English title)\s*[:：].*\n*/im,'');return [title,semanticBody(text)];});
+ const renderChapter=row=>{const title=String(row.title||'');let text=stripThesisOwnedHeadings(row.text,[title]);if(thesisFrontMatterKind(row)==='abstract_en')text=text.replace(/^(?:英文题目|English title)\s*[:：].*\n*/im,'');return [title,semanticBody(text)];};
+ const manuscript=rows.filter(row=>!isOutlineReferenceChapter(row)),front=manuscript.filter(thesisFrontMatterKind).flatMap(renderChapter),body=manuscript.filter(row=>!thesisFrontMatterKind(row)).flatMap(renderChapter);
+ // Keep the disclosure in the body, after its first heading. Placing it
+ // before abstracts caused the template renderer to move intact paragraphs
+ // across source anchors and correctly fail the strict order check.
+ const disclosure=missingChapters.length?['部分章节尚未完成','本文仅包含当前已保存的章节草稿，不代表完整论文。尚未完成：'+missingChapters.map(row=>row.title||'未命名章节').join('、')+'。']:[];
  const bibliography=bibliographyModel.references.map(row=>row.label+' '+row.text);
  const bibliographyTitle=referenceChapters.some(canonicalReferenceChapter)?'参考文献':'已使用的参考文献（用户确认，待核对原文）';
  // Canonical references always follow citation order. Keep differing manual
@@ -71,7 +76,7 @@ export function thesisDocumentPresentation(snapshot={},chapters=[],{title=snapsh
  const referenceNotes=referenceChapters.filter(row=>!canonicalReferenceChapter(row)).map(row=>render(row.text).replace(/\[(\d+)\]/g,'〔文献$1〕'));
  const materialList=submission?[]:[...bibliographyModel.materials.map(row=>row.label+' '+row.name+(row.purpose?'（'+row.purpose+'）':'')),...bibliographyModel.associatedMaterials.map(row=>row.label+' '+row.name+(row.purpose?'（'+row.purpose+'）':'')+'（关联来源，当前正文未标注）')];
  const uncitedList=submission?[]:bibliographyModel.uncitedReferences.map(row=>row.label+' '+row.text);
- const parts=[title,...(missingChapters.length?['部分章节尚未完成','本文仅包含当前已保存的章节草稿，不代表完整论文。尚未完成：'+missingChapters.map(row=>row.title||'未命名章节').join('、')+'。']:[]),...body,...(bibliography.length?[bibliographyTitle,...bibliography]:[]),...(materialList.length?['研究材料来源（用户提供，待人工核对）',...materialList]:[]),...(uncitedList.length?['待引用文献（尚未在正文引用）','以下为已选题录，尚未建立正文引用；未因选中而认定已读取或已支持正文论断。',...uncitedList]:[]),...(referenceNotes.length?['参考文献整理原文（待核对）',...referenceNotes]:[]),...(unknown?['引用核对提示','正文含有未匹配的来源标记，请补充并核对来源后再用于提交。']:[])].filter(part=>part&&typeof part==='object'?Boolean(part.text):Boolean(part));
+ const parts=[title,...front,...(body.length?[body[0],...disclosure,...body.slice(1)]:disclosure),...(bibliography.length?[bibliographyTitle,...bibliography]:[]),...(materialList.length?['研究材料来源（用户提供，待人工核对）',...materialList]:[]),...(uncitedList.length?['待引用文献（尚未在正文引用）','以下为已选题录，尚未建立正文引用；未因选中而认定已读取或已支持正文论断。',...uncitedList]:[]),...(referenceNotes.length?['参考文献整理原文（待核对）',...referenceNotes]:[]),...(unknown?['引用核对提示','正文含有未匹配的来源标记，请补充并核对来源后再用于提交。']:[])].filter(part=>part&&typeof part==='object'?Boolean(part.text):Boolean(part));
  let rawText='';const rawRanges=[];for(const part of parts){if(rawText)rawText+='\n\n';const offset=rawText.length;rawText+=typeof part==='object'?part.text:String(part);if(typeof part==='object')rawRanges.push(...part.citationRanges.map(range=>({...range,start:range.start+offset,end:range.end+offset})));}
  // Match writing-document.documentLines before exposing UTF-16 offsets. Only
  // characters removed before a range change its position; ordinary [n] text,

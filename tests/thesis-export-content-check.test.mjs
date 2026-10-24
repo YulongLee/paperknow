@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import {DOMParser,XMLSerializer} from '@xmldom/xmldom';
 import {createWritingDocx,inspectThesisExportContent,auditThesisExport} from '../src/writing-document.js';
+import {thesisDocumentPresentation} from '../dist/workspace/thesis-document.mjs';
+import {thesisExportMetadata} from '../dist/workspace/thesis-template.mjs';
 
 const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const readText=node=>[...node.getElementsByTagNameNS(W,'t')].map(part=>part.textContent).join('');
@@ -87,6 +89,21 @@ test('final document checks include explicit pending items introduced by school-
 test('final placeholder scanning joins same-paragraph formatted runs while retaining paragraph boundaries',async()=>{
  const bytes=await write(),changed=await rewrite(bytes,doc=>{const body=doc.getElementsByTagNameNS(W,'body')[0],p=doc.createElementNS(W,'w:p');for(const value of ['【待','补充：英文','摘要】']){const run=doc.createElementNS(W,'w:r'),text=doc.createElementNS(W,'w:t');text.textContent=value;run.appendChild(text);p.appendChild(run);}body.appendChild(p);});
  const result=await inspectThesisExportContent(changed,simpleText);assert.equal(result.unresolvedPlaceholders,1);
+});
+
+test('editable partial drafts keep both abstracts before their disclosure and preserve every paragraph in default and recognized school templates',async()=>{
+ const snapshot={title:'合成初稿导出顺序验收',outline:[{id:'zh',title:'摘要'},{id:'en',title:'Abstract'},{id:'body',title:'第一章 研究方法'},{id:'pending',title:'第二章 研究结果'},{id:'ack',title:'致谢'}],materials:[],references:[{id:'r1',title:'合成来源',authors:'合成作者',year:'2026',confirmed:true}]};
+ const chapters=[{id:'zh',title:'摘要',text:'中文摘要内容完整保留。\n关键词：初稿；导出；验证'},{id:'en',title:'Abstract',text:'An English abstract for a synthetic export test.\nKey words: draft; export; validation'},{id:'body',title:'第一章 研究方法',text:'这一段正文必须保留[source:r1]。\n【待补充：真实研究记录】\n| 项目 | 说明 |\n| --- | --- |\n| 方法 | 拟开展方案 |\n```python\ndef draft(x):\n    return x + 1\n```\n正文中的数学表达式 $x^2+1$ 保留。'}],item={title:snapshot.title,snapshot,chapters},before=structuredClone(item),presentation=thesisDocumentPresentation(snapshot,chapters),metadata=thesisExportMetadata(item);
+ const template=await createWritingDocx('合成大学本科毕业论文\n论文题目：{{论文题目}}\n摘要\n这里是学校模板的中文摘要样例，需要用论文内容替换。\nAbstract\nThis is the school abstract example, to be replaced by the author.\n目录\n第一章 模板正文\n这里是学校模板正文样例，包含待替换内容。\n参考文献\n[1] 模板参考文献。\n致谢\n模板原有致谢样例。');
+ for(const templateOption of [null,{status:'ready',bytes:template}]){
+  const bytes=await write(presentation.text,{metadata,template:templateOption}),result=await inspectThesisExportContent(bytes,presentation.text,{metadata});
+  assert.equal(result.status,'passed');assert.ok(result.unresolvedPlaceholders>0,'Pending evidence remains visible without blocking an editable draft');
+ }
+ assert.ok(presentation.text.indexOf('Abstract')<presentation.text.indexOf('部分章节尚未完成'));
+ assert.ok(presentation.text.indexOf('第一章 研究方法\n\n')<presentation.text.indexOf('部分章节尚未完成'));
+ assert.ok(presentation.text.indexOf('部分章节尚未完成')<presentation.text.indexOf('这一段正文必须保留'));
+ for(const range of presentation.citationRanges)assert.equal(presentation.text.slice(range.start,range.end),'['+range.number+']');
+ assert.deepEqual(item,before,'Export ordering must never change saved chapters or research sources');
 });
 
 test('an unchanged populated example title gets a specific cover-title remedy instead of a generic body-region error',async()=>{
