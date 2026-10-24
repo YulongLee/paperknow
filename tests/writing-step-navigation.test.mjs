@@ -1,4 +1,4 @@
-import {thesisResearchText,thesisReference,confirmThesisMaterials,confirmThesisReferences,selectThesisReference} from './helpers/thesis-flow.mjs';
+import {applyThesisOutline,thesisResearchText,thesisReference,confirmThesisMaterials,confirmThesisReferences,selectThesisReference} from './helpers/thesis-flow.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -39,6 +39,8 @@ test('five-step transitions keep the viewport and do not force focus away from t
    assert.equal(f.focuses.length,focusCount,'step changes never force focus');
   }
   assert.equal(f.$('.dashboard').dataset.writingStage,'4');
+  assert.equal(f.$('#outline-paper .outline-row-title'),null,'confirming research does not silently invent an outline');
+  applyThesisOutline();
   assert.equal(f.$('#outline-paper .outline-row-title')!==null,true);
   assert.equal(f.scrolls.some(call=>call.element.id==='outline-paper'),false);
   assert.equal(f.$('#writing-title').value,'真实研究步骤定位');
@@ -92,7 +94,7 @@ test('editing the current step and rerendering its controls does not move focus 
   f.input('#writing-title','保持输入位置，不应跳动');await settle();
   assert.equal(document.activeElement,title);assert.equal(f.scrolls.length,count);
   f.$('#writing-generate').click();await settle();confirmThesisMaterials();await settle();await confirmThesisReferences();await settle();
-  const field=f.$('#outline-paper .outline-row-title');field.focus();const stageScrolls=f.scrolls.length;
+  applyThesisOutline();const field=f.$('#outline-paper .outline-row-title');field.focus();const stageScrolls=f.scrolls.length;
   field.value='第一章 用户重新填写的标题';field.dispatchEvent(new window.Event('input',{bubbles:true}));await settle();
   assert.equal(document.activeElement,field);assert.equal(f.scrolls.length,stageScrolls);assert.equal(field.value,'第一章 用户重新填写的标题');
  }finally{f.close();}
@@ -168,7 +170,7 @@ test('optional materials advance normally while required references and outline 
   for(const step of ['4','5']){f.$('[data-writing-step="'+step+'"]').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');}
   f.$('#writing-reference-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.match(f.$('#writing-reference-status').textContent,/至少.*1.*参考文献/);f.$('#outline-confirm').click();assert.equal(f.$('.dashboard').dataset.writingStage,'3');assert.equal(requests,0);
   await confirmThesisReferences();assert.equal(f.$('.dashboard').dataset.writingStage,'4');f.$('[data-writing-step="5"]').click();assert.equal(f.$('.dashboard').dataset.writingStage,'4','a selected reference cannot bypass outline confirmation');
-  f.$('#outline-confirm').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'5');assert.equal(requests,0);
+  applyThesisOutline();f.$('#outline-confirm').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'5');assert.equal(requests,0);
  }finally{f.close();}
 });
 
@@ -218,7 +220,8 @@ test('hidden outline and body actions cannot skip Step 2 even when stored materi
  const f=fixture();try{
   const row={id:'step-two-hidden-actions',tool:'writing',title:'资料已备但尚未逐步确认',degree:'本科',language:'中文',targetWords:8000,workflowStage:2,workflowUnlockedStage:2,outlineConfirmed:false,outlineText:'第一章 既有研究结构',outlineRows:[{id:'c1',level:1,title:'第一章 既有研究结构',words:8000}],bodySections:[{id:'c1',title:'第一章 既有研究结构',text:'既有正文必须保留。'}],knowledgeFiles:[{id:'file-source',name:'已保存研究资料',kind:'file',text:thesisResearchText}],writingReferences:[{...thesisReference}]};
   localStorage.setItem('paperknow-drafts',JSON.stringify([row]));mountWriting(row.id,undefined,f.ctx);assert.equal(f.$('.dashboard').dataset.writingStage,'2');f.input('#outline-source-input','第一章 隐藏按钮不能采用的结构');
-  for(const selector of ['#outline-edit','#writing-version-back','#body-finish','#outline-template-create','#outline-paste-apply']){assert.ok(f.$(selector),selector);f.$(selector).click();assert.equal(f.$('.dashboard').dataset.writingStage,'2',selector+' must not skip confirmation');assert.equal(f.$('#writing-outline-area').hidden,true);assert.equal(f.$('#writing-body-area').hidden,true);}
+  assert.equal(f.$('#outline-template-create'),null,'the generic-outline action is no longer offered');
+  for(const selector of ['#outline-edit','#writing-version-back','#body-finish','#outline-paste-apply']){assert.ok(f.$(selector),selector);f.$(selector).click();assert.equal(f.$('.dashboard').dataset.writingStage,'2',selector+' must not skip confirmation');assert.equal(f.$('#writing-outline-area').hidden,true);assert.equal(f.$('#writing-body-area').hidden,true);}
   f.$('#writing-save').click();const saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.workflowStage,2);assert.equal(saved.workflowUnlockedStage,2);assert.equal(saved.outlineText,row.outlineText);assert.deepEqual(saved.outlineRows,row.outlineRows);assert.deepEqual(saved.bodySections,row.bodySections);
  }finally{f.close();}
 });

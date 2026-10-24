@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {assessThesisEvidence} from '../dist/workspace/thesis-evidence.mjs';
-import {thesisResearchText,confirmThesisMaterials,confirmThesisReferences} from './helpers/thesis-flow.mjs';
+import {applyThesisOutline,thesisResearchText,confirmThesisMaterials,confirmThesisReferences} from './helpers/thesis-flow.mjs';
 
 const settle=async()=>{for(let i=0;i<6;i++)await new Promise(resolve=>setImmediate(resolve));};
 function fixture(){
@@ -31,6 +31,7 @@ async function advanceToOutline(f){
  f.$('#writing-process-next').click();await settle();assertOnlyStage(f,2);
  confirmThesisMaterials();await settle();assertOnlyStage(f,3);
  await confirmThesisReferences();await settle();assertOnlyStage(f,4);
+ applyThesisOutline();
 }
 
 test('a new thesis exposes one form and cannot jump ahead by pointer or keyboard',async()=>{

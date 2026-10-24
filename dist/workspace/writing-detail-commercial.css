@@ -98,8 +98,6 @@
 .writing-detail-commercial .writing-research-body>small{margin:12px 0 0}
 .writing-detail-commercial .outline-source-actions:has(#outline-manual-trigger){grid-template-columns:repeat(3,minmax(0,1fr))}
 .writing-detail-commercial #outline-ai-generate{border-color:color-mix(in srgb,var(--detail-accent) 42%,#dfe7f3);background:linear-gradient(125deg,#f2f6ff,#fff)}
-.writing-detail-commercial .outline-template-choice{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 0;color:var(--pk-muted,#8494ad);font-size:11px}
-.writing-detail-commercial .outline-template-choice .material-toggle{margin:0;padding:2px 0;font-size:11px;color:var(--detail-accent,#3569ee)}
 .writing-detail-commercial .writing-outline-ai-panel{margin:18px 0 0}
 .writing-detail-commercial .writing-outline-ai-shell{border:1px solid #ccdcff;border-radius:12px;padding:22px;background:linear-gradient(125deg,#f5f8ff,#fff);color:var(--pk-text,#2e405e)}
 .writing-detail-commercial .writing-outline-ai-heading{position:relative;padding-right:42px}
@@ -174,3 +172,10 @@
 .writing-detail-commercial .knowledge-upload-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 @container workspace (max-width:650px){.writing-detail-commercial .knowledge-upload-grid{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:650px){.writing-detail-commercial .knowledge-upload-grid{grid-template-columns:minmax(0,1fr)}}
+
+.writing-detail-commercial .outline-empty{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:26px;border:1px dashed var(--pk-border,#dce5f4);border-radius:12px;background:var(--pk-surface-soft,#f8faff)}
+.writing-detail-commercial .outline-empty strong{font-size:14px;color:var(--pk-text,#23344c)}
+.writing-detail-commercial .outline-empty p{margin:0;color:var(--pk-muted,#7d8da5);font-size:12px;line-height:1.9}
+@media(max-width:760px){.writing-detail-commercial .outline-empty{padding:18px}}
+
+.dashboard.writing-detail-commercial[data-writing-stage="4"] #outline-paper:has([data-outline-empty]){min-height:0}

@@ -18,4 +18,15 @@ export async function selectThesisReference(){
 export function confirmThesisMaterials(text=thesisResearchText){edit('#knowledge-ai-input',text);$('#writing-material-confirm').click();}
 export async function confirmThesisReferences(){await selectThesisReference();$('#writing-reference-confirm').click();}
 export async function confirmThesisResearch(text=thesisResearchText){confirmThesisMaterials(text);await confirmThesisReferences();}
+// Positive outline/editor tests explicitly paste a topic-bound synthetic structure.
+// Confirming research alone must continue to open an empty outline step.
+export function applyThesisOutline(text){
+ const topic=String($('#writing-title')?.value||'学习反馈研究').trim();
+ const outline=text||`第一章 ${topic}的问题界定\n1.1 ${topic}的资料范围\n1.2 ${topic}的研究问题\n第二章 ${topic}的分析设计\n2.1 ${topic}的材料整理方法\n2.2 ${topic}的比较维度\n第三章 ${topic}的论证与讨论\n3.1 ${topic}的证据比较\n3.2 ${topic}的解释边界\n第四章 ${topic}的研究总结\n4.1 ${topic}的限制与后续工作\n参考文献`;
+ if($('.dashboard')?.dataset.writingStage!=='4')throw Error('Expected the outline step before explicitly adopting the fixture outline');
+ const input=$('#outline-source-input'),drawer=input.closest('details');if(drawer)drawer.open=true;
+ edit('#outline-source-input',outline);$('#outline-paste-apply').click();
+ if(!$('#outline-paper .outline-row-title'))throw Error('Expected the explicitly pasted topic-specific fixture outline');
+ return outline;
+}
 export function completeThesisDraft(row){return {...row,degree:row.degree||'本科',language:row.language||'中文',targetWords:row.targetWords||8000,knowledgeFiles:row.knowledgeFiles?.length?row.knowledgeFiles:[{id:'step-gate-material',name:'合成验收正文材料',text:thesisResearchText,state:'confirmed',kind:'file'}],writingReferences:row.writingReferences?.length?row.writingReferences:[{...thesisReference}]};}

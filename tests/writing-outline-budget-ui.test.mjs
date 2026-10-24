@@ -1,4 +1,4 @@
-import {confirmThesisResearch} from './helpers/thesis-flow.mjs';
+import {applyThesisOutline,confirmThesisResearch} from './helpers/thesis-flow.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
@@ -13,7 +13,7 @@ const settle=async()=>{for(let index=0;index<12;index++)await new Promise(resolv
 const rows=()=>[...document.querySelectorAll('[data-outline-row-id]')];
 const row=id=>$(`[data-outline-row-id="${id}"]`);
 const saved=()=>JSON.parse(localStorage.getItem('paperknow-drafts'))[0];
-async function step4(){input('#writing-title','高校数字阅读服务优化研究');$('#writing-generate').click();await confirmThesisResearch();}
+async function step4(){input('#writing-title','高校数字阅读服务优化研究');$('#writing-generate').click();await confirmThesisResearch();applyThesisOutline();}
 const outlineText='第一章 研究背景\n1.1 研究背景与意义\n1.2 研究目标\n第二章 研究设计与方法\n2.1 研究对象\n2.2 数据处理方法\n第三章 数据分析与讨论\n3.1 结果分析\n3.2 研究讨论\n第四章 结论与展望\n4.1 研究结论\n参考文献\n5.1 真实文献清单';
 function adoptedItem(){return {id:'outline-8000',status:'completed',stage:'completed',model:'test-model',output:{text:outlineText,chapters:[{id:'intro',title:'研究背景',targetWords:1000,sections:[{id:'intro-a',title:'研究背景与意义',targetWords:500},{id:'intro-b',title:'研究目标',targetWords:500}]},{id:'method',title:'研究设计与方法',targetWords:2000,sections:[{id:'method-a',title:'研究对象',targetWords:1000},{id:'method-b',title:'数据处理方法',targetWords:1000}]},{id:'analysis',title:'数据分析与讨论',targetWords:4000,sections:[{id:'analysis-a',title:'结果分析',targetWords:2000},{id:'analysis-b',title:'研究讨论',targetWords:2000}]},{id:'conclusion',title:'结论与展望',targetWords:1000,sections:[{id:'conclusion-a',title:'研究结论',targetWords:1000}]},{id:'references',kind:'references',title:'参考文献',targetWords:500,sections:[{id:'references-a',title:'真实文献清单',targetWords:500}]}]}};}
 function aiContext(ctx,item=adoptedItem()){const calls=[];ctx.session=async()=>({status:'ready',user:{id:'budget-user'}});ctx.api=async(path,data)=>{calls.push({path,data});if(path==='/auth/me')return {user:{id:'budget-user'}};if(path==='/theses/outlines/capabilities')return {ready:true,billingService:'agent'};if(path==='/billing/quote')return {type:'agent',source:'credits',title:'提纲生成',token:'budget-quote',creditCost:10,expiresAt:new Date(Date.now()+300000).toISOString()};if(path==='/theses/outlines')return {item};throw Error('Unexpected '+path);};return calls;}
