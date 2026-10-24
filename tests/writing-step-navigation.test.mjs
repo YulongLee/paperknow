@@ -1,4 +1,4 @@
-import {applyThesisOutline,thesisResearchText,thesisReference,confirmThesisMaterials,confirmThesisReferences,selectThesisReference} from './helpers/thesis-flow.mjs';
+import {applyThesisOutline,thesisResearchText,thesisReference,confirmThesisMaterials,confirmThesisReferences,selectThesisReference,confirmThesisResearch} from './helpers/thesis-flow.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -223,5 +223,26 @@ test('hidden outline and body actions cannot skip Step 2 even when stored materi
   assert.equal(f.$('#outline-template-create'),null,'the generic-outline action is no longer offered');
   for(const selector of ['#outline-edit','#writing-version-back','#body-finish','#outline-paste-apply']){assert.ok(f.$(selector),selector);f.$(selector).click();assert.equal(f.$('.dashboard').dataset.writingStage,'2',selector+' must not skip confirmation');assert.equal(f.$('#writing-outline-area').hidden,true);assert.equal(f.$('#writing-body-area').hidden,true);}
   f.$('#writing-save').click();const saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.workflowStage,2);assert.equal(saved.workflowUnlockedStage,2);assert.equal(saved.outlineText,row.outlineText);assert.deepEqual(saved.outlineRows,row.outlineRows);assert.deepEqual(saved.bodySections,row.bodySections);
+ }finally{f.close();}
+});
+
+for(const initialY of [4000,400])test(`confirming a long outline ${initialY>1000?'reveals the next step above the old viewport':'keeps an already visible next step in place'} without losing its outline`,async()=>{
+ const f=fixture(),calls=[],scrolls=[],position={y:initialY};
+ try{
+  f.ctx.session=async()=>({status:'ready',user:{id:'transition-fixture'}});
+  f.ctx.api=async(path,data)=>{calls.push({path,data});if(path==='/capabilities')return {thesis:{ready:false}};throw Error('Unexpected request '+path);};
+  mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','长提纲切换合成验收');f.$('#writing-generate').click();await confirmThesisResearch();applyThesisOutline();
+  f.$('#writing-save').click();const before=JSON.parse(localStorage.getItem('paperknow-drafts'))[0],root=f.$('.dashboard'),heading=f.$('.preview-heading'),win=f.dom.window;
+  Object.defineProperties(win,{scrollY:{configurable:true,get:()=>position.y},scrollX:{configurable:true,get:()=>0},innerHeight:{configurable:true,value:800}});
+  win.scrollTo=options=>{scrolls.push(options);position.y=options.top??position.y;};
+  root.getBoundingClientRect=()=>({top:80-position.y,bottom:5280-position.y,height:5200,left:0,right:1000,width:1000});
+  heading.getBoundingClientRect=()=>({top:600-position.y,bottom:640-position.y,height:40,left:0,right:1000,width:1000});
+  const focus=document.activeElement;f.$('#outline-confirm').click();await settle();await settle();
+  assert.equal(root.dataset.writingStage,'5');assert.ok(f.$('[data-thesis-create]'),'the account save action is actually rendered');assert.equal(f.$('#thesis-online-stage').hidden,false);
+  const rect=heading.getBoundingClientRect();assert.ok(rect.bottom>0&&rect.top<win.innerHeight,'the next step must be within the viewport instead of above a blank reserved area');
+  if(initialY<1000){assert.equal(position.y,initialY);assert.equal(scrolls.length,0,'an already visible next step must not jump');}else{assert.ok(position.y<initialY);assert.ok(scrolls.every(row=>row.behavior==='instant'),'no animated intermediate page jumps');}
+  assert.equal(document.activeElement,focus,'revealing the next step does not move focus');
+  f.$('#writing-final-save').click();const after=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.deepEqual(after.outlineText.split('\n').map(line=>line.trim()),before.outlineText.split('\n').map(line=>line.trim()));assert.deepEqual(after.outlineRows,before.outlineRows);assert.equal(after.outlineConfirmed,true);assert.equal(after.workflowStage,5);
+  assert.ok(calls.every(row=>row.path==='/capabilities'),'confirming only loads service state, without creating a paper, quoting or generating');
  }finally{f.close();}
 });

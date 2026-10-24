@@ -4,7 +4,7 @@ import {splitMethodSupplement,fillMethodSupplement,methodSupplementRepair} from 
 import {arxivMetadata} from './arxiv-metadata.mjs';
 import {importWorkspaceDocument,documentImportContinuesInBackground} from './document-import.mjs';
 import {download as exportFile} from './ui.mjs';
-import {withStableView} from './view-stability.mjs';
+import {withStableView,resetStableView} from './view-stability.mjs';
 import {mountWritingOutlineGenerator} from './writing-outline-generator.mjs';
 import {mountWritingMethodGenerator} from './writing-method-generator.mjs';
 import {saveAccountDraft} from './account-draft-editor.mjs';
@@ -355,7 +355,20 @@ function ensureKnowledgeFiles(){if(!knowledgeFiles.length&&material)knowledgeFil
  hint.textContent=(notes.length?notes.join(' · ')+'。':'研究说明、方法建议和上传资料均可选。')+'可继续下一步确认参考文献。';
  hint.classList.add('ready');
 }
-function updateWorkflow(){return withStableView($('.dashboard'),updateWorkflowView);}
+function updateWorkflow(){
+ const root=$('.dashboard'),previousStage=root?.dataset.writingStage;
+ const result=withStableView(root,updateWorkflowView);
+ if(taskKind==='writing'&&root?.dataset.writingStage!==previousStage){
+  // Height reserved for a long previous step must not leave the next step above
+  // an empty viewport. Same-step generation and progress updates remain stable.
+  resetStableView(root);
+  const panel=workflowStage===1?$('.creation-input'):workflowStage===2?$('#writing-material-review'):workflowStage===3?$('#writing-reference-review'):$('.preview-heading');
+  const win=root.ownerDocument.defaultView,rect=panel?.getBoundingClientRect(),header=$('.hub-workspace .topbar')?.getBoundingClientRect();
+  const inset=Math.max(0,header?.bottom||0)+16;
+  if(rect?.height>0&&(rect.bottom<=inset||rect.top>=win.innerHeight))win.scrollTo({left:win.scrollX,top:Math.max(0,win.scrollY+rect.top-inset),behavior:'instant'});
+ }
+ return result;
+}
 function renderWritingStepNavigation(){
  document.querySelectorAll('[data-writing-step]').forEach(b=>{
   const step=Number(b.dataset.writingStep),active=step===workflowStage,completed=step<(taskKind==='writing'?workflowUnlockedStage:workflowStage)&&!active;
