@@ -65,3 +65,31 @@ html{scrollbar-gutter:stable}.creation-page .card{transition:border-color .15s,b
  .dashboard.creation-page[data-writing-stage="4"] #outline-paper .outline-row-presentation label{min-width:0;justify-content:flex-start;padding:6px;gap:4px}
  .dashboard.creation-page[data-writing-stage="4"] #outline-paper .outline-edit-row.is-subsection .outline-row-title{padding-left:6px}
 }
+
+/* Keep outline generation visible without repainting the waiting animation on each poll. */
+.writing-outline-ai-shell .writing-outline-ai-progress.writing-outline-job-progress{display:flex;flex-direction:column;gap:0;margin:18px 0;padding:20px;border:1px solid var(--pk-border,#dce7fa);border-radius:12px;background:var(--pk-surface-soft,#f7faff);line-height:1.7}
+.writing-outline-job-progress-heading{display:flex;align-items:center;gap:12px;min-width:0}
+.writing-outline-job-progress-heading>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.writing-outline-job-progress-heading strong{font-size:14px;color:var(--pk-text,#234674)}
+.writing-outline-job-progress-heading .writing-outline-job-stage{font-size:12px;color:#69809e;overflow-wrap:anywhere}
+.writing-outline-job-progress .writing-outline-job-spinner{display:block;flex:0 0 22px;width:22px;height:22px;box-sizing:border-box;border:2px solid #d6e4fb;border-top-color:#3477df;border-radius:50%;animation:outline-job-spin .9s linear infinite}
+.writing-outline-job-progress .writing-outline-job-elapsed{flex-shrink:0;min-width:96px;color:#6c819e;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.writing-outline-job-track{height:5px;overflow:hidden;border-radius:5px;background:#e2ebfa;margin-top:18px}
+.writing-outline-job-track>span{display:block;width:38%;height:100%;border-radius:inherit;background:#4f83e5;animation:outline-job-travel 1.8s ease-in-out infinite}
+.writing-outline-job-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;list-style:none;padding:0;margin:16px 0 12px}
+.writing-outline-job-steps li{display:flex;align-items:center;gap:6px;min-width:0;font-size:11px;color:#8c9bb1;white-space:nowrap}
+.writing-outline-job-steps li>span{display:grid;place-items:center;flex:0 0 18px;width:18px;height:18px;border-radius:50%;background:#eaf0f9;color:#879bb6;font-size:10px}
+.writing-outline-job-steps li.is-current{font-weight:600;color:#2f68c6}
+.writing-outline-job-steps li.is-current>span{background:#3477df;color:white}
+.writing-outline-job-steps li.is-done>span{background:#e2edff;color:#3973cf}
+.writing-outline-job-progress .writing-outline-job-sync{min-height:38px;margin:0;color:#58749b;font-size:12px;line-height:19px;overflow-wrap:anywhere}
+.writing-outline-job-progress .writing-outline-job-background{margin:0;color:#7c8da5;font-size:11px;line-height:19px}
+.writing-outline-job-progress.is-stale .writing-outline-job-sync{color:#916622}
+.writing-outline-job-progress .writing-outline-job-result-icon{display:grid;place-items:center;flex:0 0 28px;width:28px;height:28px;border-radius:50%;background:#e1f2ec;color:#278069;font-size:16px;font-weight:600}
+.writing-outline-job-progress[data-outline-phase="failed"] .writing-outline-job-result-icon{background:#fff0e7;color:#b76c26}
+.writing-outline-job-progress[data-outline-phase="cancelled"] .writing-outline-job-result-icon{background:#e9edf3;color:#718197}
+@keyframes outline-job-spin{to{transform:rotate(360deg)}}
+@keyframes outline-job-travel{0%{transform:translateX(-110%)}100%{transform:translateX(365%)}}
+@media(max-width:760px){.writing-outline-ai-shell .writing-outline-ai-progress.writing-outline-job-progress{padding:15px}.writing-outline-job-progress-heading{flex-wrap:wrap;gap:9px}.writing-outline-job-progress-heading>div{flex-basis:calc(100% - 34px)}.writing-outline-job-progress .writing-outline-job-elapsed{margin-left:31px;text-align:left;min-width:0}.writing-outline-job-steps{gap:5px}.writing-outline-job-steps li{flex-direction:column;gap:5px;font-size:10px}.writing-outline-job-progress .writing-outline-job-sync{min-height:57px}}
+@media(max-width:600px){.writing-detail-commercial .writing-outline-ai-panel .writing-outline-ai-shell{padding:12px}.writing-outline-ai-shell .writing-outline-ai-progress.writing-outline-job-progress{padding:12px}.writing-outline-job-steps{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 8px}.writing-outline-job-steps li{flex-direction:row;gap:5px;font-size:11px}}
+@media(prefers-reduced-motion:reduce){.writing-outline-job-spinner,.writing-outline-job-track>span{animation:none!important}.writing-outline-job-track>span{transform:translateX(82%);opacity:.5}}
