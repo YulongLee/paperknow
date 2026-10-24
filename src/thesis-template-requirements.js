@@ -39,6 +39,8 @@ export function readExplicitThesisRequirements(document){
   if(/(?:图的编号和图题|图序.*图名|图题).*?(?:宋体|号)/.test(s))add('styles.FigureCaption',typography(value),value);
   if(/表的编号和表题.*?(?:宋体|号)/.test(s))add('styles.TableCaption',typography(value),value);
   if(/参[考\s]*文[\s]*献[（(]/.test(s)&&/宋体/.test(s))add('styles.ReferenceHeading',typography(value),value);
+  if(/^致谢[（(]/.test(s)&&/宋体/.test(s))add('styles.AcknowledgementHeading',typography(value),value);
+  if(/^附录[A-Za-z一二三0-9]*[（(]/.test(s)&&/宋体/.test(s))add('styles.AppendixHeading',typography(value),value);
   if(/首行缩进[两二2]个字符/.test(s)&&/宋体/.test(s)&&/×/.test(s))add('styles.Normal',{firstLine:0,firstLineChars:200,hanging:0},value);
   const title=s.match(/^([一二三四五六七八九十]+、|\d+\.\d+\.\d+\s*|\d+\.\d+\s*)题名[（(]([^）)]+)[）)]/);
   if(title){const role=title[1].includes('.')?(title[1].split('.').length===3?'Heading3':'Heading2'):'Heading1';add('styles.'+role,typography(value),value);}
@@ -54,7 +56,7 @@ export function readExplicitThesisRequirements(document){
 }
 export function applyExplicitThesisRequirements(profile,contract){
  const baseline={...profile.rules.styles.Normal,...Object.fromEntries(contract.facts.filter(row=>row.path.startsWith('styles.Normal.')).map(row=>[row.path.split('.').at(-1),row.value]))};
- for(const role of ['TOC','TOCTitle','Header','FigureCaption','TableCaption','ReferenceHeading'])if(contract.facts.some(row=>row.path.startsWith('styles.'+role+'.')))profile.rules.styles[role]={...baseline,firstLine:0,firstLineChars:0,hanging:0,...(role==='TOCTitle'||role==='ReferenceHeading'?{alignment:'center',bold:true}:{})};
+ for(const role of ['TOC','TOCTitle','Header','FigureCaption','TableCaption','ReferenceHeading','AcknowledgementHeading','AppendixHeading'])if(contract.facts.some(row=>row.path.startsWith('styles.'+role+'.')))profile.rules.styles[role]={...baseline,firstLine:0,firstLineChars:0,hanging:0,...(['TOCTitle','ReferenceHeading','AcknowledgementHeading','AppendixHeading'].includes(role)?{alignment:'center',bold:true}:{})};
  for(const fact of contract.facts){const parts=fact.path.split('.');let target=profile.rules;if(parts[0]==='furniture'){target.furniture??={};}for(const key of parts.slice(0,-1))target=target[key];const key=parts.at(-1);fact.previous=target[key];target[key]=fact.value;profile.recognized.push(fact.path);profile.unresolved=profile.unresolved.filter(path=>path!==fact.path);}
  profile.recognized=[...new Set(profile.recognized)];
  profile.requirements=contract;

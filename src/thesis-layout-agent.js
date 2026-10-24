@@ -10,10 +10,12 @@ const R_FIELDS={eastAsia:['rFonts','eastAsia'],ascii:['rFonts','ascii'],size:['s
 function ensure(parent,name){let n=one(parent,name);if(!n){n=parent.ownerDocument.createElementNS(W,'w:'+name);parent.appendChild(n);}return n;}
 function set(parent,name,key,value){ensure(parent,name).setAttributeNS(W,'w:'+key,String(value));}
 function explicit(profile,role){const base=role.startsWith('TOC')&&role!=='TOCTitle'?'TOC':role;return (profile.requirements?.facts||[]).filter(row=>row.path.startsWith('styles.'+base+'.')).map(row=>({field:row.path.split('.').at(-1),value:row.value}));}
-function roleOf(p,profile){const id=attr(one(one(p,'pPr'),'pStyle'),'val'),canonical=id.match(/^PK(Normal|Heading[123]|Title|Abstract|References|TableText|Code|FrontHeading|TOC[123]|TOCTitle|FigureCaption|TableCaption|ReferenceHeading)$/)?.[1];let role=canonical||Object.entries(profile.placement?.roleStyles||{}).find(([,value])=>value===id)?.[0];if(!role)return null;
+function roleOf(p,profile){const id=attr(one(one(p,'pPr'),'pStyle'),'val'),canonical=id.match(/^PK(Normal|Heading[123]|Title|Abstract|References|TableText|Code|FrontHeading|TOC[123]|TOCTitle|FigureCaption|TableCaption|ReferenceHeading|AcknowledgementHeading|AppendixHeading)$/)?.[1];let role=canonical||Object.entries(profile.placement?.roleStyles||{}).find(([,value])=>value===id)?.[0];if(!role)return null;
  if(role==='Normal'&&/^表\s*\d+[-－.．\d]*\s+\S/.test(text(p).trim())&&profile.rules.styles.TableCaption)role='TableCaption';
  if([...p.getElementsByTagName('*')].some(n=>n.localName==='docPr'&&/^PKFigure_/.test(n.getAttribute('name')||''))&&profile.rules.styles.FigureCaption)role='FigureCaption';
  if(role==='Heading1'&&/^(?:参考文献|已使用的参考文献|references)$/i.test(text(p).replace(/\s/g,''))&&profile.rules.styles.ReferenceHeading)role='ReferenceHeading';
+ if(role==='Heading1'&&/^(?:致谢|acknowledg(?:e)?ments?)$/i.test(text(p).replace(/\s/g,''))&&profile.rules.styles.AcknowledgementHeading)role='AcknowledgementHeading';
+ if(role==='Heading1'&&/^(?:附录|appendix)(?:[A-Z一二三0-9]+)?$/i.test(text(p).replace(/\s/g,''))&&profile.rules.styles.AppendixHeading)role='AppendixHeading';
  if(role==='FrontHeading'&&/^目录$/.test(text(p).replace(/\s/g,''))&&profile.rules.styles.TOCTitle)role='TOCTitle';return role;
 }
 function propertiesOf(p,styles){const pr=one(p,'pPr'),groups=[pr],r=[];let id=attr(one(pr,'pStyle'),'val'),seen=new Set();while(id&&!seen.has(id)){seen.add(id);const style=styles.get(id);if(!style)break;groups.push(one(style,'pPr'));r.push(one(style,'rPr'));id=attr(one(style,'basedOn'),'val');}return {p:groups,r};}
@@ -32,6 +34,9 @@ function contractOperations(document,styles,profile){const operations=[],counts=
   for(const {field,value}of facts){if(P_FIELDS[field]){const [name,key]=P_FIELDS[field],expected=field==='lineRule'&&(math||figure)&&value==='exact'?'atLeast':value,actual=read(props.p,name,key);if(!equal(actual,expected))operations.push({kind:'paragraph',node:p,name,key,value:expected,role,field});}
    if(R_FIELDS[field])for(const run of p.getElementsByTagNameNS(W,'r')){if(!text(run))continue;counts.runs++;const [name,key]=R_FIELDS[field],actual=read([one(run,'rPr'),...props.r],name,key),expected=field==='bold'&&role==='Abstract'&&value===false&&/^(?:摘要|Abstract)[:：]?$/i.test(text(run).trim())?true:value;if(!equal(actual,expected))operations.push({kind:'run',node:run,name,key,value:typeof expected==='boolean'?Number(expected):expected,role,field});}
   }
+  // Remove the generator's presentation blue from native formula runs only;
+  // user-defined semantic colors and every formula token remain untouched.
+  if(math&&[...p.getElementsByTagNameNS(W,'bookmarkStart')].some(n=>/^PKInput_/.test(attr(n,'name'))))for(const run of p.getElementsByTagNameNS('http://schemas.openxmlformats.org/officeDocument/2006/math','r'))for(const color of run.getElementsByTagNameNS(W,'color'))if(attr(color,'val')==='203659')operations.push({kind:'attribute',node:color,key:'val',value:'000000',role,field:'formulaColor'});
   if((figure||math)&&read(props.p,'spacing','lineRule')==='exact')operations.push({kind:'paragraph',node:p,name:'spacing',key:'lineRule',value:'atLeast',role,field:'lineRule'});
   if(figure)for(const [name,key,value]of [['jc','val','center'],['ind','firstLine','0'],['ind','firstLineChars','0']])if(read(props.p,name,key)!==value)operations.push({kind:'paragraph',node:p,name,key,value,role,field:key});
  }
