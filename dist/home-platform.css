@@ -99,3 +99,11 @@ html:has(.homepage-v2){scroll-behavior:smooth;scroll-padding-top:96px}
 .homepage-v2 main .hero h1.hp-hero-headline{font-size:clamp(44px,3.9vw,60px);white-space:nowrap}
 @media(max-width:1000px){.homepage-v2 main .hero h1.hp-hero-headline{font-size:54px}}
 @media(max-width:700px){.homepage-v2 main .hero h1.hp-hero-headline{font-size:clamp(28px,9vw,42px)}}
+
+/* Keep official filing links readable and together at the bottom of the home page. */
+.homepage-v2 .footer-bottom{align-items:center;flex-wrap:wrap;gap:12px 24px;font-size:12px;line-height:1.8;color:#6b7890}
+.homepage-v2 .footer-filings{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px 20px}
+.homepage-v2 .footer-filings a{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.homepage-v2 .footer-filings a:hover{color:var(--hp-blue);text-decoration:underline;text-underline-offset:3px}
+.homepage-v2 .police-filing img{display:block;width:19px;height:20px;object-fit:contain;flex:none}
+@media(max-width:700px){.homepage-v2 .footer-bottom{justify-content:center;text-align:center}.homepage-v2 .footer-filings{width:100%;justify-content:center;gap:10px 18px}}
