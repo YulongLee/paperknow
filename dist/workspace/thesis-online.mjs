@@ -42,7 +42,7 @@ export function mountOnlineThesis({id,ctx={},container=document.querySelector('.
 export function mountThesisLibrary({ctx={},container=document.querySelector('.dashboard')}={}){
  return mountThesisStage({ctx,container,standalone:true,library:true});
 }
-export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjectRef=()=>'',getTemplateFileId,onTemplateSaved,onSaved,onManual,onReferences,standalone=false,library=false}={}){
+export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjectRef=()=>'',getTemplateFileId,onTemplateSaved,onSaved,onReferences,standalone=false,library=false}={}){
  for(const previous of [...instances])if(previous.container===container)previous.dispose();
  let alive=true,user=null,item=null,cap=null,busy=false,submittingGeneration=false,timer=null,selected=null,quote=null,generationConsent=false,quoteAction='generate',message='',loadError='',items=[],editorError='',loaded=false,researchEdits=null,historyChapter=null,historyItems=null,historyPreview=null;
  const controllers=new Set(),edits=new Map();
@@ -392,16 +392,15 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   else if(library)body=items.length?`<div class="thesis-library">${items.map(row=>`<a href="#thesis/${encodeURIComponent(row.id)}"><span class="thesis-symbol">▤</span><div><h2>${escape(row.title||'未命名论文')}</h2><p>${escape(row.profile?.level||'')} · ${escape(row.profile?.discipline||'')} · ${escape(labels[thesisStatus(row)]||'已保存')}</p><small>${escape(row.updatedAt?new Date(row.updatedAt).toLocaleString('zh-CN'):'账户保存')} · 版本 ${Number(row.version)||1}</small></div><span>继续写作 →</span></a>`).join('')}</div>`:'<section class="thesis-login"><span class="thesis-symbol">▤</span><h3>从第一篇账户论文开始</h3><p>完成毕业论文前四步并保存到账户，即可在这里继续写作。</p><a class="btn primary" href="#tool/writing">新建毕业论文</a></section>';
   else if(!item){
    let snapshot;try{snapshot=getSnapshot?.();}catch(error){body=`<p class="thesis-error">${escape(error.message)}</p>`;}
-   if(snapshot)body=`${snapshotSummary(snapshot)}<section class="thesis-save-account"><div><h3>先保存已确认的信息</h3><p>将以上论文资料保存到当前账户，不会开始生成或扣费。原有本地草稿独立保留。</p></div><button type="button" class="btn primary" data-thesis-create ${busy?'disabled':''}>${busy?'正在保存…':'保存到账户，继续生成'}</button></section>`;
+   if(snapshot)body=`${snapshotSummary(snapshot)}<section class="thesis-save-account"><div><h3>先保存已确认的信息</h3><p>将以上论文资料保存到当前账户，不会开始生成或扣费。</p></div><button type="button" class="btn primary" data-thesis-create ${busy?'disabled':''}>${busy?'正在保存…':'保存到账户，继续生成'}</button></section>`;
    else if(!body)body='<section class="thesis-login"><h3>请先选择一篇账户论文</h3><p>从账户论文列表打开已有论文，或从毕业论文前四步确认研究信息。</p><a class="btn secondary" href="#theses">查看账户论文</a></section>';
   }else body=`${snapshotDriftPanel()}<div class="thesis-studio-overview"><section class="thesis-studio-brief" aria-label="已确认的研究信息">${snapshotSummary(item.snapshot||{title:item.title,profile:item.profile,outline:item.outline})}${researchForm()}</section><aside class="thesis-studio-run" aria-label="撰写与任务进度">${controls()}${progress()}</aside></div><div class="thesis-workspace-heading"><div><small>章节工作区</small><h2>逐章写作，逐步完善</h2></div><p>对照研究依据核对正文，保存后再导出。</p></div>${chapterEditor()}${orphanedDrafts()}<section class="thesis-export"><div><small>文档交付</small><h3>核对完成，导出正文</h3><p>下载账户中已保存的正文；如有未保存修改，请先保存。引用来源与研究结果仍需本人核验。</p></div>${thesisTemplatePanel(item.exportTemplate,{legacyName:!item.exportTemplate&&!templateSelectionMade&&/\.docx$/i.test(item.snapshot?.requirements?.format||'')?item.snapshot.requirements.format:'',prefix:'thesis-online',busy})}<div class="thesis-action-row"><button type="button" class="btn secondary" data-thesis-txt>下载 TXT</button>${documentExportButtons('thesis-online')}</div><p role="status" data-thesis-export-status></p></section>`;
-  container.innerHTML=`${prefix}<div class="thesis-online-shell"><div data-thesis-notice role="status" aria-live="polite">${escape(message)}</div>${body}${!library?`<div class="thesis-bottom-actions">${onManual?'<button type="button" class="btn secondary" data-thesis-manual>继续本地手动写作</button>':''}<a href="#theses">查看账户论文 →</a></div>`:''}</div>`;
+  container.innerHTML=`${prefix}<div class="thesis-online-shell"><div data-thesis-notice role="status" aria-live="polite">${escape(message)}</div>${body}${!library?`<div class="thesis-bottom-actions"><a href="#theses">查看账户论文 →</a></div>`:''}</div>`;
   bind();const templateStatus=$('[data-template-status]');if(templateStatus)templateStatus.textContent=templateMessage;restoreView();schedule();
  }
  function bind(){
   $('[data-thesis-review-latest]')?.addEventListener('click',()=>{const scroller=$('[data-thesis-review-scroll]');if(scroller)scroller.scrollTop=scroller.scrollHeight;});
   $('[data-thesis-reload]')?.addEventListener('click',()=>void load());
-  $('[data-thesis-manual]')?.addEventListener('click',()=>{if(!busy&&persistDraft())onManual?.();});
   $('[data-thesis-create]')?.addEventListener('click',()=>void mutate(async()=>{
    const snapshot=getSnapshot(),templateFileId=getTemplateFileId?.();const value=await api('/theses',{clientKey:saveKey,snapshot,...projectPayload(),...(templateFileId?{exportTemplateFileId:templateFileId}:{})});takeItem(value.item);onSaved?.(item.id,item);notice('已保存到账户。生成前还需确认任务费用与资料用途。');
   }));

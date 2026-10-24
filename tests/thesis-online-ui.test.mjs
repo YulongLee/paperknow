@@ -38,9 +38,9 @@ test('snapshot conversion preserves all research profiles, materials and importe
  const local={title:'来源编号验证',targetWords:1000,outlineRows:[{id:'c1',title:'第一章',level:1,words:1000}],knowledgeFiles:[{id:'same',name:'材料一',text:'正文一'},{id:'same',name:'材料二',text:'正文二'},{name:'未设置编号',text:'正文三'}],writingReferences:[{id:'same',title:'文献一'},{id:'编号 / 💡',title:'文献二'}]},a=thesisSnapshotFromDraft(local),b=thesisSnapshotFromDraft(local);
  const ids=[...a.materials,...a.references].map(row=>row.id);assert.equal(new Set(ids).size,ids.length);assert.deepEqual(ids,[...b.materials,...b.references].map(row=>row.id));assert.ok(ids.every(id=>/^[\p{L}\p{N}_.:-]+$/u.test(id)&&id.length<=100));
 });
-test('guest can keep manual drafting; session errors never appear as a signed-out account',async()=>{
- const f=fixture({user:null});const stop=mountThesisStage({container:f.$('.dashboard'),getSnapshot:snapshot,ctx:f.ctx,onManual:()=>{}});await stop.ready;
- assert.match(f.$('.dashboard').textContent,/登录后保存到账户/);assert.ok(f.$('[data-thesis-manual]'));assert.equal(f.calls.filter(c=>c.data).length,0);f.close();
+test('guest uses the account sign-in entry; session errors never appear as a signed-out account',async()=>{
+ const f=fixture({user:null});const stop=mountThesisStage({container:f.$('.dashboard'),getSnapshot:snapshot,ctx:f.ctx});await stop.ready;
+ assert.match(f.$('.dashboard').textContent,/登录后保存到账户/);assert.equal(f.$('[data-thesis-manual]'),null);assert.equal(f.calls.filter(c=>c.data).length,0);f.close();
  const next=fixture();next.ctx.session=async()=>({status:'error'});const done=mountOnlineThesis({id:'t1',container:next.$('.dashboard'),ctx:next.ctx});await done.ready;assert.match(next.$('.dashboard').textContent,/无法核对登录状态/);assert.equal(next.$('a[href^="/auth.html"]'),null);next.close();
 });
 test('cloud save does not generate; model generation requires a valid quote and explicit source consent',async()=>{

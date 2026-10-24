@@ -69,7 +69,7 @@ test('the persistent next control completes all five steps without generating or
   const next=f.$('#writing-process-next');assert.equal(next.disabled,false,'outline confirmation remains reachable in the same control');
   next.click();await settle();assertOnlyStage(f,5);
   const saved=f.save();assert.equal(saved.workflowStage,5);assert.equal(saved.workflowUnlockedStage,5);assert.equal(saved.outlineConfirmed,true);assert.ok(saved.outlineRows.length>0);
-  assert.match(f.$('#thesis-online-stage').textContent,/登录后保存到账户/);assert.ok(f.$('[data-thesis-manual]'),'manual writing still has an entry');
+  assert.match(f.$('#thesis-online-stage').textContent,/登录后保存到账户/);assert.equal(f.$('[data-thesis-manual]'),null,'the account flow has no separate local writing entry');assert.equal(f.$('#writing-status').hidden,true);
   assert.equal(f.$('.creation-grid'),shell);assert.equal(f.scrolls.length,0);assert.deepEqual(f.calls,[],'navigation is not consent to an account write, model call or payment');
  }finally{f.close();}
 });
