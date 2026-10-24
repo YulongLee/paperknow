@@ -33,6 +33,7 @@ export function readExplicitThesisRequirements(document){
   if(/^中文[:：]/.test(s)&&/西文|数字/.test(s)){const rule=typography(value);for(const role of ['Normal','Abstract','References','TOC','TableText'])add('styles.'+role,rule,value);if(!/粗体|加粗/.test(s))add('styles.Abstract',{bold:false},value);if(rule.ascii)for(const role of ['Heading1','Heading2','Heading3','Title'])add('styles.'+role,{ascii:rule.ascii},value);}
   if(/^页眉[:：]/.test(s)){add('styles.Header',typography(value),value);const m=value.match(/页眉内容为[:：]\s*([^。\n]+)/);if(m)add('furniture',{headerText:m[1].trim()},value);}
   if(/页码从正文开始编排/.test(s))add('furniture',{bodyOnly:true},value);
+  if(/公式的编号右端对齐/.test(s))add('furniture',{numberedEquations:true},value);
   if(/目录标题/.test(s)&&/号|粗体/.test(s))add('styles.TOCTitle',typography(value),value);
   if(/目录内容/.test(s)&&/号/.test(s))add('styles.TOC',typography(value),value);
   if(/(?:图的编号和图题|图序.*图名|图题).*?(?:宋体|号)/.test(s))add('styles.FigureCaption',typography(value),value);

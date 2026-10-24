@@ -7,7 +7,7 @@ import {inspectThesisDocxTemplate} from '../src/thesis-template-profile.js';
 import {runThesisLayoutAgent,inspectThesisLayout} from '../src/thesis-layout-agent.js';
 import {compareRenderedThesisText,checkRenderedThesisPages} from '../backend/thesis-rendered-page-check.mjs';
 const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
-const source='合成排版验收论文\n摘要\n摘要文字保持不变。\n第一章 研究方法\n1.1 方法选择\n正文文字不得被排版流程改写，也不得添加不存在的实验结果。\n表 1 方案比较\n|方案|说明|\n|--|--|\n|甲|保留原文|\n第二章 结论\n最终结论文字保持不变。';
+const source='合成排版验收论文\n摘要\n摘要文字保持不变。\n第一章 研究方法\n1.1 方法选择\n正文文字不得被排版流程改写，也不得添加不存在的实验结果。\n表 1 方案比较\n|方案|说明|\n|---|---|\n|甲|保留原文|\n第二章 结论\n最终结论文字保持不变。';
 async function template(notes){return createWritingDocx('{{论文题目}}\n'+notes+'\n{{正文}}');}
 const notes='页面设置：左、右、下边距为2.5cm，上边距为2.8厘米。\n字符间距：标准；行间距：固定值18磅；段前距与段后距均为0磅。\n中文：宋体、小四；西文、数字等符号均采用Times New Roman字体。\n一、题名（宋体 四号 粗体）（段前、段后0.5行）\n1.1 题名（宋体 小四号 粗体）（段前、段后0.5行）';
 test('written school requirements override conflicting stored styles and retain exact evidence',async()=>{
@@ -39,6 +39,10 @@ test('instructions embedded in a template cannot authorize tools or change manus
 });
 test('contradictory written requirements are explicitly unresolved',async()=>{
  const profile=await inspectThesisDocxTemplate(await template('页面设置：上边距为2.8厘米。\n页面设置：上边距为3.0厘米。'));assert.equal(profile.requirements.ambiguities.length,1);assert.equal(profile.rules.page.top,1587);
+});
+test('missing table names and equation numbers cannot be reported as complete template compliance',async()=>{
+ const bytes=await template(notes+'\n表1（表的编号和表题应置于表上方）（居中 宋体 五号 粗体）\n公式的编号右端对齐。'),profile=await inspectThesisDocxTemplate(bytes),input=await createWritingDocx(source.replace('表 1 方案比较\n','')+'\n$$x^2+y^2=z^2$$',{documentKind:'thesis'}),out=await runThesisLayoutAgent(input,{profile});
+ assert.equal(out.report.status,'review_required');assert.ok(out.report.unresolved.some(row=>row.id==='missing_table_captions'));assert.ok(out.report.unresolved.some(row=>row.id==='missing_equation_numbers'));assert.equal((await inspectThesisLayout(out.bytes,profile)).mismatchCount,0);
 });
 test('page text check catches missing Chinese glyphs even when DOCX text is complete',()=>{
  const text='基于深度学习的羊脸识别系统研究方法与实验结果'.repeat(10);assert.equal(compareRenderedThesisText(text,text).status,'passed');assert.equal(compareRenderedThesisText(text,'研究方法'.repeat(10)).status,'failed');

@@ -43,7 +43,13 @@ function contractOperations(document,styles,profile){const operations=[],counts=
  return {operations,counts};
 }
 async function inspect(bytes,profile){const zip=await JSZip.loadAsync(bytes),doc=parse(await zip.file('word/document.xml').async('string')),styleFile=zip.file('word/styles.xml'),styles=new Map(styleFile?[...parse(await styleFile.async('string')).getElementsByTagNameNS(W,'style')].map(n=>[attr(n,'styleId'),n]):[]);return {zip,doc,...contractOperations(doc,styles,profile)};}
-export async function inspectThesisLayout(bytes,profile){const {operations,counts}=await inspect(bytes,profile);return {version:1,status:operations.length?'repair_required':'passed',checks:counts,mismatches:operations.slice(0,100).map(({kind,role,field})=>({kind,role,field})),mismatchCount:operations.length};}
+function contentFormatIssues(document,profile){
+ const issues=[...(profile.requirements?.ambiguities||[])];let tables=0,equations=0;
+ if(profile.rules.styles.TableCaption)for(const table of document.getElementsByTagNameNS(W,'tbl')){if(![...table.getElementsByTagNameNS(W,'bookmarkStart')].some(n=>/^PKInput_/.test(attr(n,'name'))))continue;let previous=table.previousSibling;while(previous&&(previous.nodeType!==1||!text(previous).trim()))previous=previous.previousSibling;if(!previous||!/^表\s*\d+(?:[.．－-]\d+)*\s*\S/.test(text(previous).trim()))tables++;}
+ if(profile.rules.furniture?.numberedEquations)for(const p of document.getElementsByTagNameNS(W,'p')){if(!p.getElementsByTagNameNS('http://schemas.openxmlformats.org/officeDocument/2006/math','oMathPara').length||![...p.getElementsByTagNameNS(W,'bookmarkStart')].some(n=>/^PKInput_/.test(attr(n,'name'))))continue;const label=text(p).trim(),fields=[...p.getElementsByTagNameNS(W,'instrText')].map(n=>n.textContent).concat([...p.getElementsByTagNameNS(W,'fldSimple')].map(n=>attr(n,'instr'))).join(' ');if(!/[（(]\s*\d+(?:[.．－-]\d+)*\s*[）)]\s*$/.test(label)&&!/\bSEQ\b/i.test(fields))equations++;}
+ if(tables)issues.push({id:'missing_table_captions',count:tables,message:`${tables} 个表格缺少独立表题，请补齐表名后复核；未根据内容猜写表名。`});if(equations)issues.push({id:'missing_equation_numbers',count:equations,message:`${equations} 处独立公式缺少模板要求的编号，请补齐后复核。`});return issues;
+}
+export async function inspectThesisLayout(bytes,profile){const {operations,counts,doc}=await inspect(bytes,profile),unresolved=contentFormatIssues(doc,profile);return {version:1,status:operations.length?'repair_required':unresolved.length?'review_required':'passed',checks:counts,mismatches:operations.slice(0,100).map(({kind,role,field})=>({kind,role,field})),mismatchCount:operations.length,unresolved};}
 // Bounded controller: inspect actual OOXML -> apply only whitelisted formatting
 // operations -> independently re-read -> verify manuscript source anchors.
 // No prose generation, arbitrary XML edits, shell commands or remote tools.
@@ -55,7 +61,7 @@ export async function runThesisLayoutAgent(bytes,{profile,verifyContent,onProgre
   const state=await inspect(output,profile);if(verifyContent)await verifyContent(output);
   const repairs=pass===0?await repairIncompleteTemplateFonts(state.zip):[];fontRepairs.push(...repairs);
   history.push({pass:pass+1,mismatches:state.operations.length,fontRepairs:repairs.length});
-  if(!state.operations.length&&!repairs.length)return {bytes:output,report:{version:1,status:'passed',iterations:history,checks:state.counts,explicitRequirements:profile.requirements?.facts.length||0,fontRepairs,unresolved:profile.requirements?.ambiguities||[]}};
+  if(!state.operations.length&&!repairs.length){const unresolved=contentFormatIssues(state.doc,profile);return {bytes:output,report:{version:1,status:unresolved.length?'review_required':'passed',iterations:history,checks:state.counts,explicitRequirements:profile.requirements?.facts.length||0,fontRepairs,unresolved}};}
   if(pass===limit)throw Error('排版检查仍有不符合模板的项目，已停止交付；原正文保留，请核对模板要求后重试。');
   onProgress({stage:'repair',pass:pass+1,count:state.operations.length});
   for(const op of state.operations){if(op.kind==='attribute')op.node.setAttributeNS(W,'w:'+op.key,String(op.value));else {const parent=op.kind==='paragraph'?ensure(op.node,'pPr'):op.kind==='run'?ensure(op.node,'rPr'):op.kind==='row'?ensure(op.node,'trPr'):op.node;set(parent,op.name,op.key,op.value);if(op.kind==='run'&&op.name==='rFonts'){const fonts=one(parent,'rFonts');fonts.removeAttributeNS(W,op.key==='eastAsia'?'eastAsiaTheme':'asciiTheme');if(op.key==='ascii'){fonts.removeAttributeNS(W,'hAnsiTheme');set(parent,'rFonts','hAnsi',op.value);}}if(op.kind==='run'&&op.name==='sz')set(parent,'szCs','val',op.value);}}
