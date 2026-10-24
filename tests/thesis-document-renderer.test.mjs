@@ -252,3 +252,9 @@ test('real LibreOffice renders the current DOCX with first and last body content
  try{let extracted='';for(let index=1;index<=pdf.numPages;index++)extracted+=(await(await pdf.getPage(index)).getTextContent()).items.map(item=>item.str).join('');assert.match(extracted,/NATIVE_FIRST_CONTENT_MARKER/);assert.match(extracted,/FINAL_RENDER_MARKER_20261023/);assert.match(extracted.normalize('NFKC').replace(/\s/g,''),/NATIVE_FORMULA_BEGINE=mc2NATIVE_FORMULA_END/);assert.equal(pdf.numPages,result.pages);}finally{await task.destroy();}
  assert.deepEqual(await readdir(root),[]);
 });
+
+test('a template preference cannot add an unsupplied fallback font library during conversion',async t=>{
+ const source=await docx(),zip=await JSZip.loadAsync(source),settings=await zip.file('word/settings.xml').async('string');zip.file('word/settings.xml',settings.replace('</w:settings>','<w:embedTrueTypeFonts/></w:settings>'));const input=await zip.generateAsync({type:'uint8array'}),original=Buffer.from(input);
+ const {renderer}=await fixture(t,{runConversion:async({workspace})=>{const prepared=await JSZip.loadAsync(await readFile(path.join(workspace,'document.docx')));assert.doesNotMatch(await prepared.file('word/settings.xml').async('string'),/<w:embedTrueTypeFonts/);await writeFile(path.join(workspace,'output','document.pdf'),await pdfBytes());}});
+ assert.ok((await renderer.convert({bytes:input})).pages>0);assert.deepEqual(Buffer.from(input),original);
+});

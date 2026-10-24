@@ -108,6 +108,10 @@ class HelperTests(unittest.TestCase):
             source.write_bytes(original)
             calls, load_properties = [], {}
             class Document:
+                def createInstance(self, name):
+                    self_name = name
+                    if self_name != "com.sun.star.document.Settings": raise AssertionError(self_name)
+                    return SimpleNamespace(getPropertySetInfo=lambda: SimpleNamespace(hasPropertyByName=lambda key: key == "EmbedOnlyUsedFonts"), setPropertyValue=lambda key, value: calls.append((key, value)))
                 def refresh(self): calls.append("layout")
                 def getCurrentController(self): return None
                 def supportsService(self, value): return value == "com.sun.star.text.TextDocument"
@@ -157,6 +161,7 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(source.read_bytes(), original)
             self.assertEqual((workspace / "output" / "document-refreshed.docx").read_bytes(), b"PK refreshed synthetic Word")
             self.assertIn("Office Open XML Text", calls)
+            self.assertIn(("EmbedOnlyUsedFonts", True), calls)
             report = json.loads((workspace / "conversion-report.json").read_text())
             self.assertTrue(report["sourceUnchanged"])
             self.assertTrue(report["textFieldsRefreshed"])

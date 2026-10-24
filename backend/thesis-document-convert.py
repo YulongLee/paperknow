@@ -180,6 +180,11 @@ def convert(command, directory, timeout):
         index_count = refresh_and_export(document, prop, uno.systemPathToFileUrl(str(target)))
         # Save a separate Word copy with refreshed field caches. The uploaded
         # source stays read-only and is hash-checked again below.
+        # Preserve supplied font embedding, but do not package fonts that are
+        # only mentioned by unused sample styles in a school template.
+        settings = document.createInstance("com.sun.star.document.Settings")
+        if settings.getPropertySetInfo().hasPropertyByName("EmbedOnlyUsedFonts"):
+            settings.setPropertyValue("EmbedOnlyUsedFonts", True)
         refreshed = workspace / "output" / "document-refreshed.docx"
         document.storeToURL(uno.systemPathToFileUrl(str(refreshed)), (
             prop("FilterName", "Office Open XML Text"), prop("Overwrite", False),

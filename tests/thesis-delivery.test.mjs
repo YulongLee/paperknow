@@ -70,8 +70,8 @@ test('explicit school reference and three-line-table requirements are read and a
 });
 
 test('an explicit body-page-number requirement replaces inherited Roman numbering with live page-count fields',async()=>{
- const template=await createWritingDocx('合成学校模板\n页码内容为：第X页，共XX页。页码从正文开始编排。\n{{正文}}');
+ const template=await createWritingDocx('合成学校模板\n页码内容为：第X页，共XX页。页码从正文开始编排。\n目录\n第一章 方法\n{{正文}}');
  const profile=await inspectThesisDocxTemplate(template);assert.equal(profile.rules.bodyPageNumbers,true);
  const bytes=await createWritingDocx('合成测试\n第一章 方法\n用于验证正文页码的合成段落。',{documentKind:'thesis',metadata:{title:'合成测试',chapterTitles:['第一章 方法']},template:{bytes:template,status:'ready'}}),zip=await JSZip.loadAsync(bytes),xml=await zip.file('word/document.xml').async('string');
- assert.match(xml,/<w:pgNumType w:fmt="decimal" w:start="1"/);const part=Object.keys(zip.files).find(name=>/^word\/pkBodyPageNumbers.*\.xml$/.test(name));assert.ok(part);const footer=await zip.file(part).async('string');assert.match(footer,/w:instr="PAGE"/);assert.match(footer,/w:instr="NUMPAGES"/);
+ assert.match(xml,/<w:pgNumType w:fmt="decimal" w:start="1"/);const part=Object.keys(zip.files).find(name=>/^word\/pkBodyPageNumbers.*\.xml$/.test(name));assert.ok(part);const footer=await zip.file(part).async('string');assert.match(footer,/w:instr="PAGE"/);assert.match(footer,/w:instr="PAGEREF PKBodyLastPage/);const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main',doc=new DOMParser().parseFromString(xml,'application/xml'),body=doc.getElementsByTagNameNS(W,'body')[0],nodes=[...body.childNodes].filter(node=>node.nodeType===1),main=nodes.findIndex(node=>[...node.getElementsByTagNameNS(W,'bookmarkStart')].some(marker=>/^PKInput_\d+$/.test(marker.getAttributeNS(W,'name')))&&node.textContent==='第一章 方法');assert.ok(main>0);for(const node of nodes.slice(0,main))assert.equal(node.getElementsByTagNameNS(W,'footerReference').length,0,'a cached contents entry cannot start body page numbers');
 });

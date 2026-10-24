@@ -233,8 +233,8 @@ function fillKnownCoverField(para,metadata){
   const match=matches[index],label=match[0].replace(/[\s:：]/g,''),from=match.index+match[0].length,to=matches[index+1]?.index??value.length,remainder=value.slice(from,to).replace(fontNote,''),key=keyFor(label,matches.slice(0,index).map(row=>row[0]).join(''));
   // Adjacent cover fields are handled independently. Existing personal names,
   // academic titles and signatures are never inferred or overwritten.
-  if(!key||!String(metadata[key]||'').trim()||!/^[\s_＿×Xx\.．·—-]*$/.test(remainder))continue;
-  const filled=String(metadata[key])+(label==='专业班级'&&metadata.className?' '+metadata.className:'')+(to<value.length?'   ':'');operations.push({from,to,text:filled});
+  const provided=label==='专业班级'?[metadata.major,metadata.className].filter(Boolean).join(' '):metadata[key];if(!key||!String(provided||'').trim()||!/^[\s_＿×Xx\.．·—-]*$/.test(remainder))continue;
+  const filled=String(provided)+(to<value.length?'   ':'');operations.push({from,to,text:filled});
  }
  // Remove explicit printing/font instructions only, retaining the original
  // text runs and their underline properties for unprovided blank fields.
@@ -242,6 +242,9 @@ function fillKnownCoverField(para,metadata){
  if(metadata.graduationYear)for(const match of value.matchAll(/×{4}(?=[^\n]{0,70}届)/g))operations.push({from:match.index,to:match.index+4,text:String(metadata.graduationYear)});
  if(metadata.completionDate)for(const match of value.matchAll(/二[○〇]××年×月/g))operations.push({from:match.index,to:match.index+match[0].length,text:String(metadata.completionDate)});
  replaceParagraphTextRanges(para,operations);
+ // Two blank signature-date fields must stay on one line. The template's
+ // four-character first-line indent can otherwise strand its final 日.
+ if(/^\s*日期[:：]\s*年\s*月\s*日\s+日期[:：]\s*年\s*月\s*日\s*$/.test(value)){const pr=children(para,'pPr')[0];if(pr){for(const ind of children(pr,'ind')){ind.setAttributeNS(W,'w:firstLine','0');ind.setAttributeNS(W,'w:firstLineChars','0');}for(const old of children(pr,'keepLines'))pr.removeChild(old);pr.appendChild(para.ownerDocument.createElementNS(W,'w:keepLines'));}}
 }
 function replaceParagraphTextRanges(para,operations){
  if(!operations.length)return;let offset=0;const spans=[...para.getElementsByTagNameNS(W,'t')].map(node=>{const span={node,from:offset,to:offset+node.textContent.length};offset=span.to;return span;});
@@ -271,7 +274,7 @@ async function normalizeTemplateFurniture(zip){
 }
 function joinInlineAbstract(fragment,label){
  const paragraphs=children(fragment.documentElement),heading=paragraphs[0],body=paragraphs[1];if(heading?.localName!=='p'||body?.localName!=='p'||children(children(heading,'pPr')[0],'pStyle')[0]?.getAttributeNS(W,'val')!=='PKFrontHeading'||children(children(body,'pPr')[0],'pStyle')[0]?.getAttributeNS(W,'val')!=='PKAbstract')return;
- const doc=fragment,tag=doc.createElementNS(W,'w:r'),value=doc.createElementNS(W,'w:t');value.textContent=label.startsWith('摘要')?'：':': ';tag.appendChild(value);
+ const doc=fragment,tag=doc.createElementNS(W,'w:r'),value=doc.createElementNS(W,'w:t');value.setAttribute('xml:space','preserve');value.textContent=label.startsWith('摘要')?'：':': ';tag.appendChild(value);
  for(const run of heading.getElementsByTagNameNS(W,'r')){let properties=children(run,'rPr')[0];if(!properties){properties=doc.createElementNS(W,'w:rPr');run.insertBefore(properties,run.firstChild);}if(!children(properties,'b').length)properties.appendChild(doc.createElementNS(W,'w:b'));}
  // Preserve each input bookmark around its original label/body text. The
  // inserted colon sits outside both ranges and cannot hide dropped content.
@@ -323,15 +326,24 @@ async function fillRecognizedTemplate(source,rules,metadata,placement,{frontGrou
   inserted=fitInsertedSections(inserted,root,anchor,rules.page,rules.styles.Normal);for(const node of inserted)root.insertBefore(document.importNode(node,true),anchor);for(const node of original)root.removeChild(node);
  }
  if(metadata.submission){let tail=children(root).at(-2);while(tail?.localName==='p'&&!texts(tail).trim()&&!tail.getElementsByTagNameNS(W,'drawing').length&&children(children(tail,'pPr')[0],'sectPr').length){const section=children(children(tail,'pPr')[0],'sectPr')[0],last=children(root).at(-1);if(last?.localName!=='sectPr')break;root.replaceChild(section.cloneNode(true),last);root.removeChild(tail);tail=children(root).at(-2);}}
+ compactEmptySectionCarriers(root);
  await refreshSampleChapterHeaders(source,document,placement,styles,headings.find(row=>row.level===1)?.text||metadata.title);
  if(rules.bodyPageNumbers)await applyExplicitBodyPageNumbers(source,document,headings.find(row=>row.level===1)?.text,rules);
  return finishPreservedTemplate(source,document,rules,metadata);
 }
 
+function compactEmptySectionCarriers(root){
+ for(let node of children(root))while(node.parentNode===root){const section=children(children(node,'pPr')[0],'sectPr')[0];let previous=node.previousSibling;while(previous&&previous.nodeType!==1)previous=previous.previousSibling;const controls=children(node).some(child=>child.localName!=='pPr'&&(child.localName!=='r'||children(child).some(part=>!['rPr','t'].includes(part.localName))));if(node.localName!=='p'||!section||texts(node).trim()||controls||previous?.localName!=='p')break;let properties=children(previous,'pPr')[0];if(properties&&children(properties,'sectPr').length)break;if(!properties){properties=root.ownerDocument.createElementNS(W,'w:pPr');previous.insertBefore(properties,previous.firstChild);}properties.appendChild(section);root.removeChild(node);node=previous;}
+}
+
 async function applyExplicitBodyPageNumbers(source,document,firstHeading,rules){
- const body=document.getElementsByTagNameNS(W,'body')[0],nodes=children(body),start=nodes.findIndex(node=>node.localName==='p'&&texts(node).trim()===firstHeading);if(start<0)return;
+ const body=document.getElementsByTagNameNS(W,'body')[0];let nodes=children(body),start=nodes.findIndex(node=>node.localName==='p'&&texts(node).trim()===firstHeading&&[...node.getElementsByTagNameNS(W,'bookmarkStart')].some(marker=>/^PKInput_\d+$/.test(marker.getAttributeNS(W,'name'))));if(start<0)return;
+ // An explicit slot can share its template section with the cover/contents.
+ // Separate that front matter before applying a body-only footer.
+ const bodyHeading=nodes[start],previous=nodes[start-1];if(previous&&!previous.getElementsByTagNameNS(W,'sectPr').length){const governing=nodes.slice(start).flatMap(node=>node.localName==='sectPr'?[node]:[...node.getElementsByTagNameNS(W,'sectPr')])[0];if(governing){let carrier=previous.localName==='p'?previous:document.createElementNS(W,'w:p'),properties=children(carrier,'pPr')[0];if(!properties){properties=document.createElementNS(W,'w:pPr');carrier.insertBefore(properties,carrier.firstChild);}properties.appendChild(governing.cloneNode(true));if(carrier!==previous)body.insertBefore(carrier,nodes[start]);nodes=children(body);start=nodes.indexOf(bodyHeading);}}
+ const bookmarks=[...body.getElementsByTagNameNS(W,'bookmarkStart')],names=new Set(bookmarks.map(node=>node.getAttributeNS(W,'name')));let lastPage='PKBodyLastPage';while(names.has(lastPage))lastPage+='_';const bookmarkId=String(Math.max(0,...bookmarks.map(node=>Number(node.getAttributeNS(W,'id'))||0))+1),lastParagraph=[...body.getElementsByTagNameNS(W,'p')].at(-1),begin=document.createElementNS(W,'w:bookmarkStart'),end=document.createElementNS(W,'w:bookmarkEnd');begin.setAttributeNS(W,'w:id',bookmarkId);begin.setAttributeNS(W,'w:name',lastPage);end.setAttributeNS(W,'w:id',bookmarkId);lastParagraph.appendChild(begin);lastParagraph.appendChild(end);
  const relPath='word/_rels/document.xml.rels',relations=parse(await readXml(source.file(relPath))),ids=new Set([...relations.getElementsByTagNameNS(P,'Relationship')].map(node=>node.getAttribute('Id')));let id='pkBodyPageNumbers';while(ids.has(id))id+='_';
- const part='word/'+id+'.xml',footer=parse(`<w:ftr xmlns:w="${W}"><w:p><w:pPr><w:jc w:val="center"/></w:pPr>${run('第 ')}<w:fldSimple w:instr="PAGE" w:dirty="true">${run('1')}</w:fldSimple>${run(' 页 共 ')}<w:fldSimple w:instr="NUMPAGES" w:dirty="true">${run('1')}</w:fldSimple>${run(' 页')}</w:p></w:ftr>`);for(const node of footer.getElementsByTagNameNS(W,'r')){const properties=footer.createElementNS(W,'w:rPr'),fonts=footer.createElementNS(W,'w:rFonts'),size=footer.createElementNS(W,'w:sz');fonts.setAttributeNS(W,'w:ascii','Times New Roman');fonts.setAttributeNS(W,'w:eastAsia','宋体');size.setAttributeNS(W,'w:val','24');properties.appendChild(fonts);properties.appendChild(size);node.insertBefore(properties,node.firstChild);}source.file(part,xml(footer));
+ const part='word/'+id+'.xml',footer=parse(`<w:ftr xmlns:w="${W}"><w:p><w:pPr><w:jc w:val="center"/></w:pPr>${run('第 ')}<w:fldSimple w:instr="PAGE" w:dirty="true">${run('1')}</w:fldSimple>${run(' 页 共 ')}<w:fldSimple w:instr="PAGEREF ${lastPage}" w:dirty="true">${run('1')}</w:fldSimple>${run(' 页')}</w:p></w:ftr>`);for(const node of footer.getElementsByTagNameNS(W,'r')){const properties=footer.createElementNS(W,'w:rPr'),fonts=footer.createElementNS(W,'w:rFonts'),size=footer.createElementNS(W,'w:sz');fonts.setAttributeNS(W,'w:ascii','Times New Roman');fonts.setAttributeNS(W,'w:eastAsia','宋体');size.setAttributeNS(W,'w:val','24');properties.appendChild(fonts);properties.appendChild(size);node.insertBefore(properties,node.firstChild);}source.file(part,xml(footer));
  const relation=relations.createElementNS(P,'Relationship');relation.setAttribute('Id',id);relation.setAttribute('Type',R+'/footer');relation.setAttribute('Target',id+'.xml');relations.documentElement.appendChild(relation);source.file(relPath,xml(relations));
  const types=parse(await readXml(source.file('[Content_Types].xml'))),override=types.createElementNS(CT,'Override');override.setAttribute('PartName','/'+part);override.setAttribute('ContentType','application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml');types.documentElement.appendChild(override);source.file('[Content_Types].xml',xml(types));
  let first=true;for(const [index,node]of nodes.entries())for(const section of node.localName==='sectPr'?[node]:node.getElementsByTagNameNS(W,'sectPr')){

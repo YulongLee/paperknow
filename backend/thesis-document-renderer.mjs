@@ -7,7 +7,7 @@ import {pathToFileURL} from 'node:url';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import JSZip from 'jszip';
-import {DOMParser} from '@xmldom/xmldom';
+import {DOMParser,XMLSerializer} from '@xmldom/xmldom';
 import {PDFDocument} from 'pdf-lib';
 import {prepareThesisDocxTemplate} from '../src/thesis-template-profile.js';
 
@@ -20,7 +20,7 @@ async function sourceRangeSignatures(bytes){
  const zip=await JSZip.loadAsync(bytes),part=zip.file('word/document.xml');if(!part)throw Error('missing document');
  const doc=new DOMParser().parseFromString(await part.async('string'),'application/xml'),W='http://schemas.openxmlformats.org/wordprocessingml/2006/main',M='http://schemas.openxmlformats.org/officeDocument/2006/math',starts=new Map(),ends=new Map(),signatures=new Map(),names=new Set();let text='';
  const read=node=>{if(node.nodeType===1){if(node.namespaceURI===W&&node.localName==='bookmarkStart'){const name=node.getAttributeNS(W,'name'),id=node.getAttributeNS(W,'id');if(/^PKInput_\d+$/.test(name)){if(starts.has(id)||names.has(name))throw Error('duplicate source range');names.add(name);starts.set(id,{name,offset:text.length,node});}}if(node.namespaceURI===W&&node.localName==='bookmarkEnd'){const id=node.getAttributeNS(W,'id');if(starts.has(id)){if(ends.has(id))throw Error('duplicate source end');ends.set(id,text.length);}}if((node.namespaceURI===W||node.namespaceURI===M)&&node.localName==='t')text+=node.textContent;}for(const child of node.childNodes||[])read(child);};read(doc);
- for(const [id,row]of starts){if(!ends.has(id))throw Error('source range missing');let table=row.node.parentNode;while(table&&!(table.namespaceURI===W&&table.localName==='tbl'))table=table.parentNode;const value=table?[...table.getElementsByTagNameNS(W,'t')].map(node=>node.textContent).join(''):text.slice(row.offset,ends.get(id));const container=table||row.node.parentNode,drawingCount=container.getElementsByTagNameNS(W,'drawing').length+container.getElementsByTagNameNS(W,'pict').length;signatures.set(row.name,JSON.stringify({text:value.replace(/\r\n?/g,'\n').replace(/\u00a0/g,' '),drawingCount}));}
+ for(const [id,row]of starts){if(!ends.has(id))throw Error('source range missing');let table=row.node.parentNode;while(table&&!(table.namespaceURI===W&&table.localName==='tbl'))table=table.parentNode;let paragraph=row.node.parentNode;while(paragraph&&!(paragraph.namespaceURI===W&&paragraph.localName==='p'))paragraph=paragraph.parentNode;const container=table||paragraph||row.node.parentNode,value=table?[...table.getElementsByTagNameNS(W,'t')].map(node=>node.textContent).join(''):paragraph?[...paragraph.getElementsByTagName('*')].filter(node=>(node.namespaceURI===W||node.namespaceURI===M)&&node.localName==='t').map(node=>node.textContent).join(''):text.slice(row.offset,ends.get(id)),drawingCount=container.getElementsByTagNameNS(W,'drawing').length+container.getElementsByTagNameNS(W,'pict').length;signatures.set(row.name,JSON.stringify({text:value.replace(/\r\n?/g,'\n').replace(/\u00a0/g,' '),drawingCount}));}
  return signatures;
 }
 async function assertRefreshedSourceRanges(before,after){
@@ -134,6 +134,11 @@ async function safeDocument(bytes){
   }
  }
  await inspectEmbeddedMedia(zip,documents);
+ // Some sample templates request font embedding without containing any font
+ // files. Writer then adds its entire fallback font set on save. Preserve
+ // fonts actually supplied by the document, but never introduce new binaries
+ // merely because a stale sample preference is enabled.
+ if(!Object.values(zip.files).some(entry=>!entry.dir&&/(?:^|\/)fonts\//i.test(entry.name))){let changed=false;const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';for(const [name,doc]of documents)if(doc.documentElement.namespaceURI===W&&doc.documentElement.localName==='settings'){for(const node of [...doc.getElementsByTagNameNS(W,'embedTrueTypeFonts')]){node.parentNode.removeChild(node);changed=true;}if(changed)zip.file(name,new XMLSerializer().serializeToString(doc));}if(changed)return zip.generateAsync({type:'uint8array',compression:'DEFLATE'});}
  return prepared.bytes;
 }
 
