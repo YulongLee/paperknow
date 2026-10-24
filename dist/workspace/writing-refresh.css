@@ -19,6 +19,7 @@ html{scrollbar-gutter:stable}.creation-page .card{transition:border-color .15s,b
 .creation-page[data-writing-stage="4"] .outline-row-presentation input[type="checkbox"]{width:14px;height:14px;min-height:14px;margin:0;accent-color:#3477df;flex-shrink:0}
 .creation-page[data-writing-stage="4"] .outline-content-icon{font-size:13px;line-height:1;min-width:13px;text-align:center}
 .creation-page[data-writing-stage="4"] .outline-content-guidance{display:flex;align-items:center;gap:18px;padding:0 17px 12px}
+.creation-page[data-writing-stage="4"] .outline-content-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;flex-shrink:0}
 .creation-page[data-writing-stage="4"] .outline-content-guidance p{margin:0;color:#75849b;font-size:11px;line-height:1.8}
 .creation-page[data-writing-stage="4"] .outline-content-guidance button{flex-shrink:0;border:0;background:transparent;color:#5478ad;font:inherit;font-size:11px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;min-height:32px}
 .creation-page[data-writing-stage="4"] .outline-content-guidance button:focus-visible{outline:2px solid #8fb2ff;outline-offset:2px}
