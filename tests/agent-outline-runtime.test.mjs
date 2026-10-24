@@ -110,6 +110,19 @@ test('ordinary outline also enforces its output ceiling against provider usage w
  await assert.rejects(()=>providerRun({provider,message:{...success,modelUsage:{fixture:{inputTokens:1,outputTokens:1}}},overrides:{maxOutputTokens:32}}),error=>{assert.match(error.message,/预算/);assert.deepEqual(error.usage,{input:20,output:100});return true;});
 });
 
+test('runtime distinguishes a denied next request from actual exhaustion without exposing prompt content',async()=>{
+ const provider=providerFixture({usage:{input_tokens:120,output_tokens:30},stopReason:'end_turn'});
+ await assert.rejects(()=>runAgentTask({settings:{...settings,maxTotalTokens:1000},task:fixture(false).task,dependencies:{lookup,httpsRequest:provider.requestImpl,query:({options})=>(async function*(){
+  await relayRequest(options);
+  const denied=await fetch(options.env.ANTHROPIC_BASE_URL+'/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':options.env.ANTHROPIC_API_KEY},body:JSON.stringify({model:options.model,max_tokens:32,messages:[{role:'user',content:'Private synthetic Chinese history 合成'.repeat(100)}]})});
+  assert.equal(denied.status,429);await denied.text();throw Error('Synthetic SDK stopped after relay denial');
+ })()}}),error=>{
+  assert.equal(error.code,'budget_exceeded');assert.deepEqual(error.usage,{input:120,output:30});
+  assert.equal(error.executionBudget.reason,'request_reservation');assert.equal(error.executionBudget.usedTokens,150);assert.equal(error.executionBudget.limitTokens,1000);assert.equal(error.executionBudget.inFlightTokens,0);assert.ok(error.executionBudget.requestTokens>1000);
+  assert.equal(Object.keys(error).includes('executionBudget'),false,'Only server-side orchestration reads admission diagnostics');assert.doesNotMatch(JSON.stringify(error.executionBudget),/Private|synthetic-outline-runtime-key/);return true;
+ });assert.equal(provider.calls.length,1,'The rejected next request must not contact the provider');
+});
+
 test('source-free non-submitted outline enforces total execution limit even in a query-only fixture',async()=>{
  await assert.rejects(()=>runAgentTask({settings:{...settings,maxTotalTokens:1000},task:fixture(false).task,dependencies:{lookup,query:()=> (async function*(){yield {...success,modelUsage:{fixture:{inputTokens:990,outputTokens:20}}};})()}}),error=>{
   assert.equal(error.code,'budget_exceeded');assert.equal(error.status,429);assert.deepEqual(error.usage,{input:990,output:20});return true;

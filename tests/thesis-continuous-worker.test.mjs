@@ -66,6 +66,40 @@ test('an 8000-character manuscript can finish beyond the former 400k window with
  const budget=f.db.prepare('SELECT token_limit FROM thesis_execution_budgets WHERE run_id=?').get(item.job.id);assert.ok(budget.token_limit>400000&&budget.token_limit<=2000000);
 });
 
+test('a 23-unit manuscript automatically recovers a preflight window failure after nine saved units and charges once',async t=>{
+ const seen=[],f=fixture(t,{agentTaskRunner:async({task,settings:runtime})=>{
+  const id=task.context.unit.id;seen.push({id,window:runtime.maxTotalTokens});
+  if(seen.length===10)throw Object.assign(new Error('Synthetic full-history preflight denial'),{status:429,code:'budget_exceeded',usage:{input:170687,output:11617},costUsd:.1,executionBudget:{reason:'request_reservation',limitTokens:runtime.maxTotalTokens,usedTokens:182304,inFlightTokens:0,requestTokens:runtime.maxTotalTokens-182304+10000}});
+  return result(task,{usage:{input:30000,output:1500}});
+ }});
+ const item=await f.generate(await f.create(snapshot(8000,23)));await f.start().tick();const done=f.get(item.id);
+ assert.equal(done.status,'completed');assert.equal(done.job.completedSections,23);assert.equal(done.job.attempt,1);assert.equal(done.job.recovery.automaticRetries,1);assert.equal(seen.length,24);
+ assert.equal(seen[9].id,seen[10].id);assert.ok(seen[10].window>seen[9].window,'Fresh recovery must receive the admitted larger window');
+ assert.ok(seen.slice(0,9).every(row=>seen.filter(other=>other.id===row.id).length===1),'Previously completed units are never regenerated');
+ assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_execution_budgets').get().n,1);assert.equal(f.db.prepare('SELECT count(*) n FROM model_attempts').get().n,1);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_chapter_versions').get().n,23);
+ assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='reserve'").get().n,1);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,1);assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.billing.balance(f.user.id).held,0);
+});
+
+test('an actual token ceiling or unknown accounting cannot masquerade as a fresh context window',async t=>{
+ for(const kind of ['plain-budget','actual-overrun','unknown-usage','whole-paper-cap']){
+  let calls=0;const extra=kind==='whole-paper-cap'?{thesisMaxRunTokens:400000}:{},f=fixture(t,{...extra,agentTaskRunner:async({settings:runtime})=>{
+   calls++;const usage=kind==='unknown-usage'?null:kind==='actual-overrun'?{input:runtime.maxTotalTokens,output:1}:{input:170687,output:11617};
+   throw Object.assign(new Error('Synthetic protected stop'),{status:429,code:'budget_exceeded',usage,costUsd:.01,...(kind==='plain-budget'?{}:{executionBudget:{reason:'request_reservation',limitTokens:runtime.maxTotalTokens,usedTokens:usage?usage.input+usage.output:0,inFlightTokens:0,requestTokens:runtime.maxTotalTokens}})});
+  }});
+  const item=await f.generate(await f.create());await f.start().tick();assert.equal(f.get(item.id).status,'failed',kind);assert.equal(calls,1,kind);assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);
+ }
+});
+
+test('repeated request-window failures stay inside three attempts and release the original purchase',async t=>{
+ let calls=0;const f=fixture(t,{agentTaskRunner:async({settings:runtime})=>{
+  calls++;throw Object.assign(new Error('Synthetic persistent preflight denial'),{status:429,code:'budget_exceeded',usage:{input:100,output:20},costUsd:.001,executionBudget:{reason:'request_reservation',limitTokens:runtime.maxTotalTokens,usedTokens:120,inFlightTokens:0,requestTokens:runtime.maxTotalTokens}});
+ }});
+ const item=await f.generate(await f.create());await f.start().tick();const stopped=f.get(item.id);
+ assert.equal(stopped.status,'failed');assert.equal(calls,3);assert.equal(stopped.job.attempt,1);assert.equal(stopped.job.recovery.automaticRetries,2);
+ assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_execution_budgets').get().n,1);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='reserve'").get().n,1);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,0);
+ assert.match(stopped.job.error,/不是积分不足/);assert.doesNotMatch(stopped.job.error,/Token|Agent|request_reservation|maxTotalTokens/);
+});
+
 test('an operator token ceiling stays effective without automatic budget reset',async t=>{
  let calls=0;const f=fixture(t,{thesisMaxRunTokens:1000,agentTaskRunner:async({task})=>{calls++;return result(task,{usage:{input:1500,output:300}});}});
  const item=await f.generate(await f.create());await f.start().tick();assert.equal(f.get(item.id).status,'failed');assert.equal(calls,1);assert.equal(f.get(item.id).job.attempt,1);assert.equal(f.billing.balance(f.user.id).balance,200);

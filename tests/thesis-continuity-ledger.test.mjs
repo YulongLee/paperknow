@@ -142,3 +142,18 @@ test('manual continuation has a separate immutable attempt and stale or foreign 
  assert.throws(()=>f.ledger.summary({...f.run(),user_id:'bob'}),error=>error.status===404);
  assert.equal(f.db.prepare("SELECT count(*) n FROM thesis_execution_budgets WHERE run_id='run-a'").get().n,2);
 });
+
+test('fresh context headroom uses the original pool and a rejected window can be funded without changing its completed reservation',t=>{
+ const f=fixture(t),initial=f.init(),one=f.reserve();
+ assert.ok(one.maxTotalTokens>=480000);assert.ok(one.maxTotalTokens<initial.tokenLimit);
+ f.ledger.finish(one.id,{usage:{input:170687,output:11617},costUsd:.1,errorCode:'budget_exceeded'});
+ const row=f.db.prepare('SELECT * FROM thesis_execution_dispatches WHERE id=?').get(one.id);
+ const next=f.reserve('u-0',{minimumTokens:700000});assert.ok(next.maxTotalTokens>=700000);
+ assert.equal(next.unitAttempt,2);assert.equal(next.maxCostUsd,.5);assert.equal(f.ledger.summary(f.run()).tokenLimit,initial.tokenLimit);
+ assert.deepEqual(f.db.prepare('SELECT * FROM thesis_execution_dispatches WHERE id=?').get(one.id),row);
+ f.ledger.finish(next.id,{usage:{input:100,output:100},costUsd:.001});
+ const remaining=f.ledger.summary(f.run()).remainingTokens;
+ assert.throws(()=>f.reserve('u-1',{minimumTokens:remaining+1}),error=>error.code==='budget_exceeded');
+ for(const minimumTokens of [-1,1.5,2000001,NaN])assert.throws(()=>f.reserve('u-1',{minimumTokens}),error=>error.code==='invalid_execution_budget');
+ assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_execution_dispatches').get().n,2,'Denied headroom must not dispatch or create a reservation');
+});

@@ -47,12 +47,23 @@ export function computeThesisRunBudget({snapshot={},plan,settings={},config={}}=
 export function classifyThesisRetry(error){
  const code=typeof error?.code==='string'?error.code.toLowerCase():'';
  const status=Number(error?.status);
+ if(Array.isArray(error?.agentTrace)&&error.agentTrace.some(row=>row?.status==='denied'))return {retryable:false,reason:'non_recoverable'};
+ const usage=error?.usage;
+ const usageKnown=usage&&Number.isSafeInteger(usage.input)&&usage.input>=0&&Number.isSafeInteger(usage.output)&&usage.output>=0&&Number.isSafeInteger(usage.input+usage.output)&&usage.input+usage.output>0;
+ // A relay can refuse the NEXT full request before sending it even though
+ // measured usage is still below this section's window. Only its private,
+ // content-free admission record permits a fresh section attempt. The ledger
+ // must fund that larger window out of the unchanged whole-paper pool.
+ const admission=error?.executionBudget;
+ if(code==='budget_exceeded'&&status===429&&usageKnown&&admission?.reason==='request_reservation'&&admission.inFlightTokens===0&&Number.isSafeInteger(admission.limitTokens)&&admission.limitTokens>0&&Number.isSafeInteger(admission.usedTokens)&&admission.usedTokens===usage.input+usage.output&&admission.usedTokens<=admission.limitTokens&&Number.isSafeInteger(admission.requestTokens)&&admission.requestTokens>0){
+  const required=admission.usedTokens+admission.requestTokens;
+  if(Number.isSafeInteger(required)&&required>admission.limitTokens&&required<=runCeiling)return {retryable:true,reason:'request_window',minimumTokens:Math.min(runCeiling,Math.ceil(required*1.25))};
+ }
  // Cancellation, access boundaries, moderation, evidence violations and cost
  // ceilings must not turn into an automatic second paid provider dispatch.
  const forbidden=new Set(['budget_exceeded','cost_budget','token_budget','usage_unknown','usage_incomplete','needs_materials','unknown_source','unread_source','draft_disclosure_missing','presentation_not_selected','unsupported_image','cancelled','aborted']);
  if([401,403,409,422,429,499].includes(status)||forbidden.has(code)||/(?:moderation|content_reject|permission|unauthori[sz]ed|authentication|budget)/.test(code))return {retryable:false,reason:'non_recoverable'};
- const usage=error?.usage;
- if(!usage||!Number.isSafeInteger(usage.input)||usage.input<0||!Number.isSafeInteger(usage.output)||usage.output<0||!Number.isSafeInteger(usage.input+usage.output)||usage.input+usage.output===0)return {retryable:false,reason:'usage_unknown'};
+ if(!usageKnown)return {retryable:false,reason:'usage_unknown'};
  if(['truncated','max_tokens','length'].includes(code))return {retryable:true,reason:'truncated'};
  if(['turn_limit','max_turns','error_max_turns'].includes(code))return {retryable:true,reason:'turn_limit'};
  if(['incomplete','word_limit_exceeded'].includes(code))return {retryable:true,reason:'length'};

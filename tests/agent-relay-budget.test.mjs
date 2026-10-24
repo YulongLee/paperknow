@@ -35,6 +35,8 @@ test('known provider usage settles the first Chinese request so the next full in
 test('a growing conversation reserves its entire new request and is rejected before dispatch when actual spend plus that hold exceeds the budget',async t=>{
  const f=await fixture(t,{settings:{maxTotalTokens:400}}),first=body('Short');const response=await f.send(first);assert.equal(response.status,200);await response.text();assert.equal(f.relay.reservedTokens,12);
  const next={...first,messages:[...first.messages,{role:'assistant',content:'Previous generated output '.repeat(30)},{role:'user',content:'Tool evidence '.repeat(20)}]};assert.ok(inputHold(next,f.config)+12>400);const denied=await f.send(next);assert.equal(denied.status,429);await denied.text();assert.equal(f.calls.length,1);assert.equal(f.relay.reservedTokens,12);assert.equal(f.relay.budgetExceeded,true);assert.deepEqual(f.relay.providerUsage.usage,{input:10,output:2});
+ assert.deepEqual(f.relay.requestBudgetRejection,{reason:'request_reservation',limitTokens:400,usedTokens:12,inFlightTokens:0,requestTokens:inputHold(next,f.config)});
+ assert.doesNotMatch(JSON.stringify(f.relay.requestBudgetRejection),/Previous generated output|Tool evidence|synthetic-only-key/);
 });
 
 test('simultaneous requests retain both pending upper bounds and cannot dispatch a third request through the shared budget',async t=>{
@@ -68,5 +70,5 @@ test('cache tokens are charged once and exact provider replays release their hol
 });
 
 test('actual provider usage above the configured limit is retained, marks the budget exceeded and prevents another dispatch',async t=>{
- const request=body('Short'),f=await fixture(t,{settings:{maxTotalTokens:400},plans:[{value:message('actual-over-budget',{input_tokens:500,output_tokens:20})}]});assert.ok(inputHold(request,f.config)<400);await(await f.send(request)).text();assert.deepEqual(f.relay.providerUsage.usage,{input:500,output:20});assert.equal(f.relay.reservedTokens,520);assert.equal(f.relay.budgetExceeded,true);const denied=await f.send(request);assert.equal(denied.ok,false);await denied.text();assert.equal(f.calls.length,1);
+ const request=body('Short'),f=await fixture(t,{settings:{maxTotalTokens:400},plans:[{value:message('actual-over-budget',{input_tokens:500,output_tokens:20})}]});assert.ok(inputHold(request,f.config)<400);await(await f.send(request)).text();assert.deepEqual(f.relay.providerUsage.usage,{input:500,output:20});assert.equal(f.relay.reservedTokens,520);assert.equal(f.relay.budgetExceeded,true);const denied=await f.send(request);assert.equal(denied.ok,false);await denied.text();assert.equal(f.calls.length,1);assert.equal(f.relay.requestBudgetRejection,null,'An actual overrun must never be presented as a recoverable reservation-only rejection');
 });

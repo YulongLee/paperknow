@@ -34,3 +34,10 @@ test('structured diagram is accepted in the same writing submission without any 
  assert.equal(p.calls.length,1);assert.equal(output.providerRequests,1);assert.equal(parsed.figures.length,1);assert.match(parsed.text,new RegExp(`\\[figure:${parsed.figures[0].id}\\]`));
  assert.deepEqual(p.calls[0].tools.map(tool=>tool.name).sort(),['mcp__paperknow__read_material','mcp__paperknow__submit_writing_output']);assert.equal(output.submitted,true);assert.equal(output.completionSource,'local_control');
 });
+
+test('real SDK growing Chinese repair history reports a recoverable preflight window with measured usage',async()=>{
+ const p=provider([{...candidate,text:'研'.repeat(20000)+'【待核对：本节来源】'}]);
+ await assert.rejects(()=>runAgentTask({settings:{...settings,maxTotalTokens:65000,timeoutMs:10000},task:thesisAgentTask(snapshot,unit,[]),validateThesisOutput:value=>validateThesisCandidate(value,snapshot,unit),dependencies:{lookup:async()=>[{address:'8.8.8.8',family:4}],httpsRequest:p.requestImpl}}),error=>{
+  assert.equal(error.code,'budget_exceeded',JSON.stringify({message:error.message,status:error.status,calls:p.calls.length,firstBytes:p.calls[0]?Buffer.byteLength(JSON.stringify(p.calls[0])):0}));assert.deepEqual(error.usage,{input:10,output:30});assert.equal(error.executionBudget?.reason,'request_reservation');assert.equal(error.executionBudget?.usedTokens,40);assert.ok(error.executionBudget?.requestTokens>65000);return true;
+ });assert.equal(p.calls.length,1,'Full second request is refused locally, before another provider call');
+});

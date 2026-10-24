@@ -50,3 +50,10 @@ test('cancellation, access, budget, moderation and evidence boundaries always st
  for(const code of ['budget_exceeded','cost_budget','token_budget','usage_unknown','needs_materials','unknown_source','unread_source','draft_disclosure_missing','presentation_not_selected','unsupported_image','moderation_rejected','content_rejected','permission_denied'])assert.equal(classifyThesisRetry({status:502,code,usage}).retryable,false,code);
  assert.equal(classifyThesisRetry({status:504,message:'timeout',usage}).retryable,false,'timeouts are not proof that an unknown provider dispatch can be paid again');
 });
+
+test('only a fully accounted relay preflight denial can request a fresh section window',()=>{
+ const error={code:'budget_exceeded',status:429,usage:{input:170687,output:11617},executionBudget:{reason:'request_reservation',limitTokens:274598,usedTokens:182304,inFlightTokens:0,requestTokens:100000}};
+ assert.deepEqual(classifyThesisRetry(error),{retryable:true,reason:'request_window',minimumTokens:352880});
+ for(const patch of [{reason:'actual_usage'},{usedTokens:300000},{usedTokens:182303},{inFlightTokens:100},{requestTokens:10},{requestTokens:2000000},{requestTokens:NaN},{limitTokens:NaN}])assert.equal(classifyThesisRetry({...error,executionBudget:{...error.executionBudget,...patch}}).retryable,false,JSON.stringify(patch));
+ for(const patch of [{status:499},{status:403},{code:'cost_budget'},{usage:null},{usage:{input:0,output:0}}, {executionBudget:null},{agentTrace:[{tool:'unauthorized',status:'denied'}]}])assert.equal(classifyThesisRetry({...error,...patch}).retryable,false);
+});

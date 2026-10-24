@@ -82,7 +82,7 @@ export function createThesisContinuity(db,config={}){
   const at=clock();db.prepare('INSERT INTO thesis_execution_budgets(run_id,attempt,user_id,settings_version,unit_ids,review_allowance,token_limit,cost_limit_micros,unit_cost_micros,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(row.id,row.attempt,row.user_id,row.settings_version,JSON.stringify(plan.map(unit=>unit.id)),reviewAllowance,tokenLimit,micros(costLimit),micros(perUnit),at,at);
   return {...summary(row),created:true};
  });}
- function reserve(run,unitId,{remainingUnits,settings,kind='section'}={}){return transaction(()=>{
+ function reserve(run,unitId,{remainingUnits,settings,kind='section',minimumTokens=0}={}){return transaction(()=>{
   const saved=budget(run),row=own(run),current=db.prepare('SELECT current_run_id FROM theses WHERE id=? AND user_id=?').get(row.thesis_id,row.user_id);
   if(row.status!=='running'||current?.current_run_id!==row.id)fail(409,'论文已停止或执行任务已变化','execution_not_running');
   if(settings?.version!==saved.settings_version)fail(409,'论文原始执行配置不可用','execution_settings_changed');
@@ -93,14 +93,21 @@ export function createThesisContinuity(db,config={}){
   if(kind==='review'&&db.prepare("SELECT count(*) n FROM thesis_execution_dispatches WHERE run_id=? AND attempt=? AND kind='review'").get(row.id,row.attempt).n>=saved.review_allowance)fail(429,'本篇论文已达到预先确认的审校批次数量','retry_limit');
   const state=summarize(saved);
   if(state.inFlight)fail(409,'当前论文已有尚未结束的模型调用','execution_in_flight');
+  if(!Number.isSafeInteger(minimumTokens)||minimumTokens<0||minimumTokens>2000000)fail(400,'论文执行单元的请求空间无效','invalid_execution_budget');
+  if(minimumTokens>state.remainingTokens)fail(429,'本篇论文剩余执行额度不足以继续当前章节，已保留完成章节','budget_exceeded');
   if(state.remainingTokens<1000)fail(429,'本篇论文已达到执行预算，已保留完成章节','budget_exceeded');
   const unitCost=settings.maxCostUsd;
   if(typeof unitCost!=='number'||!Number.isFinite(unitCost)||unitCost<.01||unitCost>5)fail(400,'论文单节成本预算无效','invalid_execution_budget');
   const cost=Math.min(saved.unit_cost_micros,micros(unitCost),Math.round(state.remainingCostUsd*scale));
   if(cost<10000)fail(429,'本篇论文已达到成本预算，已保留完成章节','cost_budget');
-  // Reserve enough request-history room for a section's bounded tool loop,
-  // while keeping a finite portion available after an unknown interrupted call.
-  const tokens=Math.min(state.remainingTokens,Math.max(120000,Math.ceil(state.remainingTokens/Math.max(remainingUnits,4)*2.5)));
+  // A 12-turn section must not inherit the same window as a short tool task.
+  // Request history is conservatively reserved in UTF-8 bytes by the relay;
+  // this headroom is released in favour of real usage after each dispatch.
+  // Unknown usage still holds this bounded reservation. Neither a retry nor
+  // extra context may widen the frozen whole-paper or per-call dollar caps.
+  const turns=Number.isSafeInteger(settings.maxTurns)&&settings.maxTurns>=1&&settings.maxTurns<=12?settings.maxTurns:6;
+  const contextHeadroom=Math.min(turns*40000,Math.ceil(state.remainingTokens/4*2.5));
+  const tokens=Math.min(state.remainingTokens,Math.max(120000,contextHeadroom,minimumTokens,Math.ceil(state.remainingTokens/Math.max(remainingUnits,4)*2.5)));
   const id=randomUUID(),at=clock();db.prepare("INSERT INTO thesis_execution_dispatches(id,run_id,attempt,user_id,unit_id,kind,unit_attempt,status,reserved_tokens,reserved_cost_micros,charged_tokens,charged_cost_micros,created_at) VALUES(?,?,?,?,?,?,?,'reserved',?,?,?,?,?)").run(id,row.id,row.attempt,row.user_id,unitId,kind,used+1,tokens,cost,tokens,cost,at);
   db.prepare('UPDATE thesis_execution_budgets SET updated_at=? WHERE run_id=? AND attempt=?').run(at,row.id,row.attempt);
   return {id,maxTotalTokens:tokens,maxCostUsd:amount(cost),unitAttempt:used+1,kind,unitId};

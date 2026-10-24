@@ -211,7 +211,7 @@ test('missing model usage, truncated output and insufficient evidence cannot bec
 });
 
 test('pre-dispatch budget blocks provider work and exposes a resumable failure without fake usage',async t=>{
- let calls=0;const f=fixture(t,{thesisMaxRunTokens:1000,agentTaskRunner:async({task})=>{calls++;return output(task);}});f.pay();const queued=await f.generate(await f.create()),worker=f.start();await worker.tick();assert.equal(calls,0);const item=f.get(queued.id);assert.equal(item.status,'failed');assert.match(item.job.error,/预算/);assert.equal(item.job.canResume,true);assert.equal(f.billing.balance(f.user.id).held,0);
+ let calls=0;const f=fixture(t,{thesisMaxRunTokens:1000,agentTaskRunner:async({task})=>{calls++;return output(task);}});f.pay();const queued=await f.generate(await f.create()),worker=f.start();await worker.tick();assert.equal(calls,0);const item=f.get(queued.id);assert.equal(item.status,'failed');assert.match(item.job.error,/系统处理上限/);assert.match(item.job.error,/不是积分不足/);assert.equal(item.job.canResume,true);assert.equal(f.billing.balance(f.user.id).held,0);
 });
 
 test('runtime readiness never blocks saving and rejects unversioned/incomplete credentials',async t=>{
