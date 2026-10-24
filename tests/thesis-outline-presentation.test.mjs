@@ -17,7 +17,7 @@ const structure=()=>[
 ];
 
 test('outline contract requests independent leaf presentation suggestions with evidence and subject boundaries',()=>{
- const task=thesisOutlineTask(brief());assert.match(task.instructions,/presentation/);for(const key of ['table','image','formula','code'])assert.match(task.instructions,new RegExp('"'+key+'"'));assert.match(task.instructions,/叶节点|叶小节|无子节/);assert.match(task.instructions,/参考文献/);assert.match(task.instructions,/不得编造|不能编造/);assert.match(task.instructions,/结构化流程图|流程图或概念/);assert.match(task.instructions,/学科|研究需要/);
+ const task=thesisOutlineTask(brief());assert.match(task.instructions,/presentation/);for(const key of ['table','image','formula','code'])assert.match(task.instructions,new RegExp('"'+key+'"'));assert.match(task.instructions,/叶节点|叶小节|无子节/);assert.match(task.instructions,/参考文献/);assert.match(task.instructions,/不得编造|不能编造/);assert.match(task.instructions,/结构化流程图|流程图或概念/);assert.match(task.instructions,/学科|研究需要/);assert.match(task.instructions,/未选键省略/);assert.match(task.instructions,/"presentation":\{\}/);assert.doesNotMatch(task.instructions,/"presentation":\{"table":false/);
 });
 
 test('AI leaf choices and explicit all-false choices survive parsing and exact budgets while references cannot request extra content',()=>{
