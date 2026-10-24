@@ -79,3 +79,9 @@ test('an explicit body-page-number requirement replaces inherited Roman numberin
 test('the default export starts the English title and its abstract on the same page',async()=>{
  const bytes=await createWritingDocx('合成测试\n摘要\n中文摘要内容。\nAbstract\nAn English abstract.',{documentKind:'thesis',metadata:{title:'合成测试',englishTitle:'Synthetic English Title'}}),zip=await JSZip.loadAsync(bytes),xml=await zip.file('word/document.xml').async('string'),W='http://schemas.openxmlformats.org/wordprocessingml/2006/main',doc=new DOMParser().parseFromString(xml,'application/xml'),paragraphs=[...doc.getElementsByTagNameNS(W,'p')],title=paragraphs.findIndex(node=>node.textContent==='Synthetic English Title');assert.ok(title>0);assert.ok(paragraphs[title].getElementsByTagNameNS(W,'keepNext').length);assert.ok(paragraphs[title].getElementsByTagNameNS(W,'pageBreakBefore').length);assert.equal(paragraphs[title+1].textContent,'Abstract');assert.equal(paragraphs[title+1].getElementsByTagNameNS(W,'pageBreakBefore')[0].getAttributeNS(W,'val'),'0');
 });
+
+test('cross-language full-text references remain available for actual reading instead of being excluded by untranslated keywords',()=>{
+ const value=snapshot();value.title='基于深度学习的羊脸识别系统';value.references=[{id:'english',title:'Individual Sheep Face Recognition',text:'This paper describes sheep face samples and animal identification.',confirmed:true}];
+ const unit={chapterTitle:'第一章 绪论',title:'研究背景',sourceIds:[]};assert.deepEqual(selectThesisEvidence(value,unit).sources.map(row=>row.id),['english']);
+ value.title='Individual Sheep Face Recognition';value.profile.language='English';value.references=[{id:'chinese',title:'羊脸个体识别研究',text:'羊脸样本与个体身份的讨论。',confirmed:true}];assert.deepEqual(selectThesisEvidence(value,{chapterTitle:'Introduction',title:'Motivation',sourceIds:[]}).sources.map(row=>row.id),['chinese']);
+});

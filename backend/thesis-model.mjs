@@ -196,7 +196,13 @@ export function selectThesisEvidence(snapshot,unit){
  const score=value=>{const lower=value.toLowerCase();return tokens.reduce((n,token)=>n+(lower.includes(token)?1:0),0);};
  const generic=new Set(['研究','系统','设计','分析','方法','基于','技术','应用','识别','深度','学习','模型','智能','理论','基础','背景','意义','现状','国内','国外','概述','相关','主要','工作','结构','study','research','system','based','using','analysis','method','learning','deep','design','the','and','for','with']);
  const relevanceQuery=query.replace(/基于|深度学习|机器学习|系统|设计|识别|研究|分析|方法|相关|理论|基础|国内外|现状|概述|应用|背景|意义|的|与|和|及/g,' '),informative=[...(relevanceQuery.match(/[a-z][a-z0-9-]{2,}/g)||[]),...[...relevanceQuery.matchAll(/[\p{Script=Han}]{2,}/gu)].flatMap(match=>Array.from({length:match[0].length-1},(_,i)=>match[0].slice(i,i+2)))].filter(token=>!generic.has(token)),referenceIds=new Set(snapshot.references.map(row=>row.id));
- const relevant=row=>snapshot.requirements.deliveryVersion!==1||unit.sourceIds?.length||!referenceIds.has(row.id)||!informative.length||informative.some(token=>(row.name+' '+row.text).toLowerCase().includes(token));
+ // Lexical mismatch is meaningful only when the title uses a comparable
+ // language. Chinese topics must keep English sources (and vice versa) for
+ // the agent's actual reading and source-support review, rather than silently
+ // treating the absence of translated keywords as evidence of irrelevance.
+ const chineseQuery=informative.some(token=>/[\p{Script=Han}]/u.test(token));
+ const comparableTitle=row=>chineseQuery?/[\p{Script=Han}]/u.test(row.name):/[a-z]/i.test(row.name);
+ const relevant=row=>snapshot.requirements.deliveryVersion!==1||unit.sourceIds?.length||!referenceIds.has(row.id)||!informative.length||!comparableTitle(row)||informative.some(token=>(row.name+' '+row.text).toLowerCase().includes(token));
  const candidates=all.filter(row=>(!unit.sourceIds?.length||unit.sourceIds.includes(row.id))&&relevant(row)).map((row,index)=>{const chunks=[];for(let start=0;start<row.text.length;start+=1200){const text=row.text.slice(start,start+1200);chunks.push({start,end:start+text.length,text,score:score(text)});}chunks.sort((a,b)=>b.score-a.score||a.start-b.start);return {...row,index,chunks:chunks.slice(0,2).sort((a,b)=>a.start-b.start),score:(chunks[0]?.score||0)+score(row.name)*2};});
  candidates.sort((a,b)=>b.score-a.score||a.index-b.index);
  const sources=candidates.slice(0,10).map(row=>({...row,text:row.chunks.map(chunk=>`【来源 ${row.id}；原文字符 ${chunk.start}～${chunk.end} / ${row.text.length}，以下仅为选取片段】\n${chunk.text}`).join('\n\n'),fragments:row.chunks.map(({start,end})=>({start,end,totalCharacters:row.text.length}))}));
