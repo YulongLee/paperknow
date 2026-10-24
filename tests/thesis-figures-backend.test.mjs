@@ -16,6 +16,13 @@ function candidate(unit,{figures=[figure()],block='\n[figure:flow]\n',draft=fals
 }
 const response=body=>({text:JSON.stringify(body),trace:[{tool:'read_material',status:'completed',materialId:'evidence'}]});
 
+test('figure instructions ask for chapter-specific academic diagrams with concise labels without expanding illustration permissions',()=>{
+ const {snapshot,plan:[unit]}=fixture(),task=thesisAgentTask(snapshot,unit,[]);
+ assert.match(task.instructions,/不把并行候选串成先后流程/);assert.match(task.instructions,/24 字以内/);assert.match(task.instructions,/图下/);assert.match(task.instructions,/不用流程框图代替实验结果图/);
+ assert.deepEqual(task.context.figureContract.kinds,['flowchart','concept']);assert.equal(task.context.figureContract.maxFigures,1);
+ const disabled=thesisAgentTask(snapshot,{...unit,part:2},[]);assert.equal(disabled.context.figureContract.allowed,false);assert.match(disabled.instructions,/本单元不允许插图/);assert.doesNotMatch(disabled.instructions,/论文插图采用简洁的学术线框表达/);
+});
+
 test('image permission persists only when provided and is disabled in plain text and reference chapters',()=>{
  const {snapshot,plan}=fixture();assert.equal(snapshot.outline[0].presentation.image,true);assert.equal(plan[0].presentation.image,true);
  const legacy=fixture({presentation:{table:true}});assert.equal(Object.hasOwn(legacy.snapshot.outline[0].presentation,'image'),false);assert.equal(Object.hasOwn(legacy.plan[0].presentation,'image'),false);
