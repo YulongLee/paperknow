@@ -7,6 +7,7 @@ import {createThesisService} from '../backend/thesis-service.mjs';
 import {startThesisWorker} from '../backend/thesis-worker.mjs';
 import {createThesisContinuity} from '../backend/thesis-continuity.mjs';
 import {assertThesisAccountQuota} from '../backend/thesis-model.mjs';
+import {prepareThesisDeliverySnapshot} from '../dist/workspace/thesis-delivery.mjs';
 
 const settings={enabled:true,engine:'claude-agent-sdk',baseURL:'https://fixture.example.com',model:'fixture',apiKey:'synthetic-only',version:'continuous-fixture-v1',maxTurns:12,maxOutputTokens:4096,maxCostUsd:.5,timeoutMs:30000};
 function snapshot(target=500,units=2){return {title:'合成验收：课堂反馈研究',profile:{level:'本科',language:'中文',targetWords:target},materials:[],references:[],outline:Array.from({length:units},(_,i)=>({id:'c'+i,title:'研究单元'+i,targetWords:Math.floor(target/units)+(i<target%units?1:0)}))};}
@@ -35,6 +36,27 @@ test('one submission repairs a failed section and settles one original purchase 
  assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='reserve'").get().n,1);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,1);
  assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.billing.balance(f.user.id).held,0);
  assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_chapter_versions').get().n,2);
+});
+
+test('one charged delivery job saves body then both abstracts, and free cover updates do not invalidate manuscript review or settle again',async t=>{
+ const sequence=[],f=fixture(t,{agentTaskRunner:async({task})=>{
+  const unit=task.context.unit;sequence.push(unit.frontMatter||'body');if(!unit.frontMatter)return result(task);
+  assert.ok(task.context.manuscriptExcerpts.length>=2,'summaries receive saved body evidence');
+  const text=unit.frontMatter==='abstract_en'?'English title: A Proposed Classroom Feedback Design\n\n'+('This study describes a proposed design without measured results. '.repeat(25))+'\n\nKey words: classroom; feedback; design':'这是一项课堂反馈方案设计研究。'.repeat(30)+'\n\n关键词：课堂；反馈；设计';
+  return {text:JSON.stringify({complete:true,draft:false,text,source_ids:[],missing_evidence:[]}),usage:{input:1000,output:300},costUsd:.01,trace:[]};
+ }});
+ const item=await f.generate(await f.create(prepareThesisDeliverySnapshot(snapshot())));await f.start().tick();const done=f.get(item.id);
+ assert.equal(done.status,'completed');assert.deepEqual(sequence,['body','body','abstract_zh','abstract_en']);assert.equal(done.job.completedSections,4);assert.match(done.fullText,/关键词：课堂/);assert.match(done.fullText,/Key words: classroom/);assert.equal(f.billing.balance(f.user.id).balance,190);
+ const hash=f.db.prepare('SELECT snapshot_hash FROM theses WHERE id=?').get(item.id).snapshot_hash,updated=(await f.api('/api/theses/'+item.id+'/export-metadata',{version:done.version,metadata:{author:'合成作者',studentId:'SYNTHETIC-001',institution:'合成学校'}})).item;
+ assert.equal(updated.exportMetadata.author,'合成作者');assert.equal(updated.status,'completed');assert.equal(f.db.prepare('SELECT snapshot_hash FROM theses WHERE id=?').get(item.id).snapshot_hash,hash);assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,1);
+ await assert.rejects(()=>f.api('/api/theses/'+item.id+'/export-metadata',{version:done.version,metadata:{author:'过期编辑'}}),error=>error.status===409);
+});
+
+test('a summary failure resumes only its unfinished summary and never writes or charges the body twice',async t=>{
+ const seen=[],f=fixture(t,{agentTaskRunner:async({task})=>{const kind=task.context.unit.frontMatter||'body';seen.push(kind);if(kind==='body')return result(task);if(kind==='abstract_en')return {text:'{incomplete',usage:{input:1000,output:300},costUsd:.01};return {text:JSON.stringify({complete:true,draft:false,text:'这是一项课堂反馈方案设计研究。'.repeat(30)+'\n关键词：课堂；反馈；设计',source_ids:[],missing_evidence:[]}),usage:{input:1000,output:300},costUsd:.01,trace:[]};}});
+ const item=await f.generate(await f.create(prepareThesisDeliverySnapshot(snapshot()))),worker=f.start();await worker.tick();let current=f.get(item.id);assert.equal(current.status,'failed');assert.equal(current.job.completedSections,3);assert.equal(f.billing.balance(f.user.id).balance,200);
+ f.config.agentTaskRunner=async({task})=>{seen.push(task.context.unit.frontMatter);return {text:JSON.stringify({complete:true,draft:false,text:'English title: A Proposed Classroom Feedback Design\n\n'+('This study describes a proposed design without measured results. '.repeat(25))+'\nKey words: classroom; feedback; design',source_ids:[],missing_evidence:[]}),usage:{input:1000,output:300},costUsd:.01,trace:[]};};
+ const quote=await f.api('/api/theses/'+item.id+'/quote',{version:current.version,action:'resume'});await f.api('/api/theses/'+item.id+'/resume',{version:current.version,clientKey:randomUUID(),consent:true,billingToken:quote.token});await worker.tick();current=f.get(item.id);assert.equal(current.status,'completed');assert.equal(seen.filter(kind=>kind==='body').length,2);assert.equal(seen.filter(kind=>kind==='abstract_zh').length,1);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,1);assert.equal(f.billing.balance(f.user.id).balance,190);
 });
 
 test('an 8000-character manuscript can finish beyond the former 400k window without manual resume',async t=>{

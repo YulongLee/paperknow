@@ -195,6 +195,20 @@ test('UNO result requires confirmed field/index refresh and unchanged private DO
  }
 });
 
+test('refreshed Word output is returned only when original manuscript source ranges still match',async t=>{
+ for(const changed of [false,true]){
+  const f=await fixture(t,{useUno:true,runConversion:async({workspace})=>{
+   const source=await readFile(path.join(workspace,'document.docx'));
+   await writeFile(path.join(workspace,'conversion-report.json'),JSON.stringify({version:1,textFieldsRefreshed:true,indexesUpdated:1,sourceUnchanged:true,sourceSha256:createHash('sha256').update(source).digest('hex')}));
+   let refreshed=source;if(changed){const zip=await JSZip.loadAsync(source),xml=await zip.file('word/document.xml').async('string');zip.file('word/document.xml',xml.replace('FINAL_RENDER_MARKER_20261023','DELETED_BODY_CONTENT'));refreshed=await zip.generateAsync({type:'uint8array'});}
+   await writeFile(path.join(workspace,'output','document-refreshed.docx'),refreshed);await writeFile(path.join(workspace,'output','document.pdf'),await pdfBytes());
+  }});
+  if(changed)await assert.rejects(()=>docx().then(bytes=>f.renderer.convert({bytes})),errorCode('document_render_word_changed'));
+  else {const bytes=await docx(),result=await f.renderer.convert({bytes});assert.equal(result.fieldsRefreshed,true);assert.ok(result.docxBytes.length);const zip=await JSZip.loadAsync(result.docxBytes);assert.match(await zip.file('word/document.xml').async('string'),/FINAL_RENDER_MARKER_20261023/);}
+  await f.empty();
+ }
+});
+
 test('Python helper tests cover refresh order, read-only load, source immutability and subprocess cleanup',()=>{
  const result=execFileSync('python3',['-I',new URL('./thesis-document-convert-test.py',import.meta.url).pathname],{encoding:'utf8',timeout:15000});assert.match(result,/helper-tests-passed/);
 });

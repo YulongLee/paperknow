@@ -4,7 +4,7 @@ import fontkit from '@pdf-lib/fontkit';
 import {applyThesisDocumentTemplate} from './thesis-document.js';
 import {DOMParser} from '@xmldom/xmldom';
 import {normalizeThesisFigures,rasterizeThesisFigure,inspectThesisFigurePng} from '../dist/workspace/thesis-figure.mjs';
-export {auditThesisExport} from './thesis-export-check.js';
+export {auditThesisExport,auditThesisSubmission} from './thesis-export-check.js';
 export {inspectThesisDocxTemplate,defaultThesisTemplateProfile} from './thesis-template-profile.js';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 export function documentLines(value){const text=String(value);if(!text.trim())throw Error('请先填写或生成需要导出的内容。');if(text.length>500000)throw Error('正文超过 500,000 字符，请分章节导出。');if([...text].some(char=>{const point=char.codePointAt(0);return point>=0xd800&&point<=0xdfff||point===0xfffe||point===0xffff;}))throw Error('正文包含无法安全导出的字符，请修正后重试。');let sourceStart=0;return text.replace(/\r\n?/g,'\n').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'').split('\n').map((text,i)=>{const row={text,sourceStart,level:i===0?0:/^\s*第.{1,12}章|^\s*参考文献/.test(text)?1:/^\s*\d+\.\d+(?:\.\d+)?\s/.test(text)?2:3};sourceStart+=text.length+1;return row;});}
@@ -32,11 +32,11 @@ function tableCells(text){
  for(let index=0;index<text.length;index++){const char=text[index];if(char==='`'&&!escaped(text,index)){let length=1;while(text[index+length]==='`')length++;code=code===length?0:code||length;current+='`'.repeat(length);index+=length-1;continue;}if(char==='|'&&!code&&!escaped(text,index)&&!ranges.some(([start,end])=>index>=start&&index<end)){cells.push(current.trim());current='';hasPipe=true;}else current+=char;}
  if(!hasPipe)return null;cells.push(current.trim());if(text.trim().startsWith('|'))cells.shift();if(text.trim().endsWith('|')&&!escaped(text.trim(),text.trim().length-1))cells.pop();return cells.map(value=>value.replace(/\\\|/g,'|'));
 }
-function documentBlocks(value,figures=[]){
+function documentBlocks(value,figures=[],{thesis=false}={}){
  const lines=documentLines(value),blocks=[],byId=new Map(figures.map(figure=>[figure.id,figure])),usedFigures=new Set();let fence=null;
  for(let index=0;index<lines.length;index++){
   const line=lines[index],marker=line.text.match(/^\s*(`{3,}|~{3,})/);
-  if(marker){if(!fence)fence=marker[1];else if(marker[1][0]===fence[0]&&marker[1].length>=fence.length)fence=null;blocks.push({...line,literal:true});continue;}
+  if(marker){if(!fence)fence=marker[1];else if(marker[1][0]===fence[0]&&marker[1].length>=fence.length)fence=null;blocks.push({...line,...(thesis?{text:'',codeBoundary:true}:{}),literal:true});continue;}
   if(fence){blocks.push({...line,literal:true});continue;}
   const figureMatch=line.text.trim().match(/^\[figure:([A-Za-z][A-Za-z0-9_-]{0,39})\]$/);
   if(figureMatch){const id=figureMatch[1],figure=byId.get(id);if(!figure)throw Error('正文中的图片未找到对应结构，请重新生成该节图片后导出。');if(usedFigures.has(id))throw Error('正文图片标记重复，请为每张图片保留一个位置。');usedFigures.add(id);blocks.push({...line,type:'figure',figure,number:usedFigures.size});continue;}
@@ -57,8 +57,8 @@ function figureCaption(block){return `图 ${block.number} ${block.figure.title}$
 const inspectFigurePng=inspectThesisFigurePng;
 export async function createWritingDocx(text,options={}){
  const figures=normalizeThesisFigures(options.metadata?.figures??options.figures);
- if(options.documentKind==='thesis')return applyThesisDocumentTemplate(await createWritingDocx(text,{figures,figureRasterizer:options.figureRasterizer}),{...options,blocks:documentBlocks(text,figures)});
- const zip=new JSZip(),blocks=documentBlocks(text,figures),formulas=new Map(),images=[];let imageBytes=0;
+ if(options.documentKind==='thesis')return applyThesisDocumentTemplate(await createWritingDocx(text,{figures,figureRasterizer:options.figureRasterizer,thesisSource:true}),{...options,blocks:documentBlocks(text,figures,{thesis:true})});
+ const zip=new JSZip(),blocks=documentBlocks(text,figures,{thesis:options.thesisSource===true}),formulas=new Map(),images=[];let imageBytes=0;
  // The current OMML converter emits vertical-bar fences as operator runs. Keep
  // their TeX until native delimiter semantics are verified across Word readers.
  async function math(raw){if(formulas.has(raw))return formulas.get(raw);let markup;try{const renderer=await formulaRenderer();const mathml=renderer.renderFormulaMathML(raw);if(/<mo\b[^>]*>(?:\||‖|&#x(?:7c|2016);)<\/mo>/i.test(mathml))throw Error('unverified Word fence');markup=renderer.mathmlToOmml(mathml,{fontSize:12,color:'203659'});}catch{markup=wordRun(raw);}formulas.set(raw,markup);return markup;}
@@ -78,7 +78,7 @@ export async function inspectThesisExportContent(bytes,text,options={}){
  const doc=new DOMParser().parseFromString(await part.async('string'),'application/xml'),W='http://schemas.openxmlformats.org/wordprocessingml/2006/main',M='http://schemas.openxmlformats.org/officeDocument/2006/math',normalize=value=>String(value).replace(/\s/g,''),read=node=>normalize([...node.getElementsByTagName('*')].filter(n=>n.localName==='t'&&[W,M].includes(n.namespaceURI)).map(n=>n.textContent).join(''));
  const all=[...doc.getElementsByTagName('*')],positions=new Map(all.map((node,index)=>[node,index])),ends=new Map();for(const node of doc.getElementsByTagNameNS(W,'bookmarkEnd')){const id=node.getAttributeNS(W,'id');if(!ends.has(id))ends.set(id,[]);ends.get(id).push(node);}
  const anchors=new Map(),order=[];for(const node of doc.getElementsByTagNameNS(W,'bookmarkStart')){const name=node.getAttributeNS(W,'name'),match=/^PKInput_(\d+)$/.exec(name);if(!match)continue;const index=Number(match[1]);if(anchors.has(index))throw Error('论文正文定位标记重复，已停止导出。');let paragraph=node.parentNode;while(paragraph&&!(paragraph.namespaceURI===W&&paragraph.localName==='p'))paragraph=paragraph.parentNode;const matching=ends.get(node.getAttributeNS(W,'id'))||[],end=matching[0];if(!paragraph||matching.length!==1||end.parentNode!==node.parentNode||positions.get(end)<=positions.get(node))throw Error('论文正文定位标记无效，已停止导出。');const actual=normalize(all.slice(positions.get(node)+1,positions.get(end)).filter(n=>n.localName==='t'&&[W,M].includes(n.namespaceURI)).map(n=>n.textContent).join(''));anchors.set(index,{paragraph,actual});order.push(index);}
- const figures=normalizeThesisFigures(options.metadata?.figures??options.figures),blocks=documentBlocks(text,figures),expectedOrder=[];let checkedSegments=0,formulaSegments=0,figureSegments=0;const missing=[];
+ const figures=normalizeThesisFigures(options.metadata?.figures??options.figures),blocks=documentBlocks(text,figures,{thesis:true}),expectedOrder=[];let checkedSegments=0,formulaSegments=0,figureSegments=0;const missing=[];
  const relationships=new Map(zip.file('word/_rels/document.xml.rels')?[...new DOMParser().parseFromString(await zip.file('word/_rels/document.xml.rels').async('string'),'application/xml').getElementsByTagNameNS('http://schemas.openxmlformats.org/package/2006/relationships','Relationship')].map(node=>[node.getAttribute('Id'),node]):[]);
  for(const [index,block]of blocks.entries()){
   if(!String(block.text||'').trim()&&block.type!=='table')continue;

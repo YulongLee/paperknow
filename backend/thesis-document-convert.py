@@ -2,7 +2,8 @@
 """Refresh a private DOCX copy in memory and export PDF through local UNO.
 
 Only the server-owned executable and private workspace are accepted. The input
-DOCX is never saved; Node remains responsible for strict OOXML preflight, the
+DOCX is never overwritten; a separate refreshed DOCX is saved alongside the PDF.
+Node remains responsible for strict OOXML preflight, the
 process-group deadline and final removal of the private workspace.
 """
 import hashlib
@@ -177,6 +178,12 @@ def convert(command, directory, timeout):
         if document is None or not document.supportsService("com.sun.star.text.TextDocument"):
             raise RuntimeError("not a Writer document")
         index_count = refresh_and_export(document, prop, uno.systemPathToFileUrl(str(target)))
+        # Save a separate Word copy with refreshed field caches. The uploaded
+        # source stays read-only and is hash-checked again below.
+        refreshed = workspace / "output" / "document-refreshed.docx"
+        document.storeToURL(uno.systemPathToFileUrl(str(refreshed)), (
+            prop("FilterName", "Office Open XML Text"), prop("Overwrite", False),
+        ))
         if not target.is_file() or target.is_symlink() or target.stat().st_size > 20 * 1024 * 1024:
             raise RuntimeError("invalid PDF output")
         if hashlib.sha256(source.read_bytes()).hexdigest() != before:

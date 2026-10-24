@@ -116,6 +116,14 @@ async function inspectTemplate(bytes,{includeBytes=false,requireStatic=false}={}
  for(const field of PAGE_FIELDS){const key='page.'+field;if(page[field]!==undefined){rules.page[field]=page[field];recognized.push(key);}else unresolved.push(key);}
  if(rules.page.left+rules.page.right>=rules.page.width-720||rules.page.top+rules.page.bottom>=rules.page.height-720)throw Error('模板页边距没有保留足够正文区域，请调整后重试。');
  result.placement=await inspectThesisTemplatePlacement(data);const preserve=result.placement.preservesTemplate;
+ // Read only narrow, explicit requirements. These are document formatting
+ // facts, not executable instructions and never authorize external actions.
+ const specification=paragraphs.map(paragraphText).join('\n');
+ const referenceMinimum=specification.match(/(?:文献|资料)[^\n。]{0,45}?(\d{1,2})\s*种以上/),foreignMinimum=specification.match(/至少(?:有)?\s*(\d{1,2})\s*篇外文/);
+ result.submission={...(referenceMinimum?{minimumReferences:Number(referenceMinimum[1])}:{}),...(foreignMinimum?{minimumForeignReferences:Number(foreignMinimum[1])}:{})};
+ if(/(?:采用|使用|编排)[^\n。]{0,20}三线表/.test(specification))rules.tableFormat='threeLine';
+ if(/页码从正文开始编排/.test(specification)&&/页码内容为[^\n。]{0,30}第\s*X\s*页/.test(specification))rules.bodyPageNumbers=true;
+ result.submission.requiredCoverFields=[...(/学\s*号[:：]/.test(specification)?['studentId']:[]),...(/学\s*院/.test(specification)?['college']:[]),...(/××××[^\n]{0,80}届/.test(specification)?['graduationYear']:[]),...(/二[○〇]××年×月/.test(specification)?['completionDate']:[])];
  if(sections.length>1)warnings.push(preserve?'导出保留模板的多个分节及页面设置，请核对分节页码和页眉页脚。':pages.some(value=>JSON.stringify(value)!==JSON.stringify(pages.at(-1)))?'模板包含不同页面设置的多个分节，本次规则采用最后一节；封面、横向页及其他分节需人工核对。':'模板包含多个分节，规则采用最后一节，分节页码与页眉页脚需人工核对。');
  if(rules.page.width>rules.page.height)warnings.push('模板最后一节为横向页面，已读取横向尺寸，请核对是否适用于论文正文。');
  if(rules.page.top<mm(25)||rules.page.left<mm(25)||rules.page.bottom<mm(20)||rules.page.right<mm(20))warnings.push('模板的部分页边距低于通用学位论文留边建议，已保留原数值，请按院校要求核对。');

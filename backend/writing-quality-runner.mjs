@@ -50,6 +50,7 @@ export function createWritingQualityRunner(config={}){
    await stage('reviewing_manuscript');
    const ids=new Set(sectionIds),audit={...quality.consistency,findings:(quality.consistency.findings||[]).filter(finding=>ids.has(finding.sectionId))};
    const task=writingReviewTask({snapshot,chapters:batch,audit,citationVerification:quality.citations});
+   const overviewBudget=Math.max(0,Math.min(9000,35000-JSON.stringify(task.context).length)),overviewAllowance=Math.max(0,Math.floor(overviewBudget/Math.max(1,chapters.length))-160);task.context.manuscriptOverview=overviewAllowance?chapters.map(chapter=>({title:String(chapter.title||'').slice(0,100),text:chapter.text.length<=overviewAllowance?chapter.text:chapter.text.slice(0,Math.floor(overviewAllowance/2))+'\n…\n'+chapter.text.slice(-Math.floor(overviewAllowance/2)),excerpted:chapter.text.length>overviewAllowance})):[];
    // The model sees and returns bounded synthetic segment IDs. Original section
    // IDs/offsets are server-owned mappings and never accepted from its output.
    task.context.manuscriptExcerpts=task.context.manuscriptExcerpts.map(piece=>{const origin=batch.find(row=>row.id===piece.id);return {...piece,partialChapter:origin.partialChapter,originalOffset:origin.originalOffset,totalCharacters:origin.totalCharacters};});

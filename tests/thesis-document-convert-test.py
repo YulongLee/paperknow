@@ -114,8 +114,9 @@ class HelperTests(unittest.TestCase):
                 def getTextFields(self): return SimpleNamespace(refresh=lambda: calls.append("fields"))
                 def getDocumentIndexes(self): return SimpleNamespace(getCount=lambda: 1, getByIndex=lambda _: SimpleNamespace(update=lambda: calls.append("index")))
                 def storeToURL(self, target, props):
-                    calls.append("pdf-only")
-                    Path(unquote(urlparse(target).path)).write_bytes(b"%PDF-1.7 synthetic")
+                    kind = next(prop.Value for prop in props if prop.Name == "FilterName")
+                    calls.append(kind)
+                    Path(unquote(urlparse(target).path)).write_bytes(b"%PDF-1.7 synthetic" if kind == "writer_pdf_Export" else b"PK refreshed synthetic Word")
                 def setModified(self, value): self.modified = value
                 def close(self, value): calls.append("close")
                 def store(self): raise AssertionError("must not save DOCX")
@@ -154,6 +155,8 @@ class HelperTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 load_properties["InteractionHandler"].handle(None)
             self.assertEqual(source.read_bytes(), original)
+            self.assertEqual((workspace / "output" / "document-refreshed.docx").read_bytes(), b"PK refreshed synthetic Word")
+            self.assertIn("Office Open XML Text", calls)
             report = json.loads((workspace / "conversion-report.json").read_text())
             self.assertTrue(report["sourceUnchanged"])
             self.assertTrue(report["textFieldsRefreshed"])

@@ -224,3 +224,34 @@ export function auditThesisExport({text, metadata = {}, templateProfile = null, 
   scope: {completeText: !limited, content: 'deterministic_rules', facts: 'not_verified', citationSupport: 'not_verified', layout: 'not_rendered', modelReview: 'existing_record_only', existingReviewComplete: review.complete, existingReviewStale: review.stale},
  };
 }
+
+// A formal download has stricter content requirements than an editable draft.
+// Passing these checks means structurally ready for the author's final review,
+// never certification of experiments, originality or university acceptance.
+export function auditThesisSubmission(input={}) {
+ const report=auditThesisExport(input),text=String(input.text||''),lines=scanLines(text),requirements=input.templateProfile?.submission||{},issues=[];
+ const add=(code,message)=>issues.push({code,message});
+ for(const check of report.checks)if(['body_present','incomplete_manuscript','audit_scope','unresolved_placeholders','unresolved_sources','citation_provenance','reference_number_duplicates','references_not_cited','duplicate_paragraphs','duplicate_headings'].includes(check.id)&&check.status!=='passed')add(check.id,check.message);
+ const section=label=>{const at=lines.findIndex(line=>!line.literal&&label.test(stripHeading(line.text)));if(at<0)return '';let end=at+1;while(end<lines.length&&(!lines[end].heading||/^(?:关键词|key\s*words?)/i.test(lines[end].text.trim()))&&!/^(?:Abstract|摘\s*要)$/i.test(stripHeading(lines[end].text)))end++;return lines.slice(at+1,end).map(line=>line.text).join('\n').trim();};
+ for(const [kind,label,pattern]of [['zh','中文摘要',/^摘\s*要$/u],['en','英文摘要',/^abstract$/i]]) {
+  const body=section(pattern),words=body.match(kind==='zh'?/^关键词\s*[:：]\s*(.+)$/m:/^key\s*words?\s*[:：]\s*(.+)$/im);
+  const count=words?.[1].split(/[;；,，]/).filter(value=>value.trim()).length||0;
+  if(body.replace(/\s/g,'').length<80)add('abstract_'+kind,`${label}尚未完整填写。`);
+  if(count<3||count>6)add('keywords_'+kind,`${label}需包含3～6个关键词。`);
+ }
+ if(!String(input.metadata?.englishTitle||'').trim())add('english_title','英文题目尚未填写。');
+ if(/^(?:专科|本科|硕士|博士)$/.test(input.metadata?.level||''))for(const [key,label]of [['author','作者姓名'],['institution','学校']])if(!String(input.metadata?.[key]||'').trim())add('cover_'+key,`请在封面信息中填写${label}。`);
+ for(const key of requirements.requiredCoverFields||[])if(!String(input.metadata?.[key]||'').trim())add('cover_'+key,'模板封面信息未填写完整：'+({studentId:'学号',college:'学院',graduationYear:'毕业届次',completionDate:'完成年月'}[key]||key)+'。');
+ const minimum=Number.isSafeInteger(requirements.minimumReferences)?requirements.minimumReferences:1;
+ if(report.counts.referenceEntries<minimum)add('reference_minimum',`当前已使用文献 ${report.counts.referenceEntries} 篇，至少需要 ${minimum} 篇有正文引用的文献${minimum===1?'；请同时核对学校数量要求':''}。`);
+ if(!report.counts.citationOccurrences)add('citations_missing','正文尚未建立可追溯的文献引用。');
+ const citedLines=lines.filter(line=>line.section==='references'&&/^\s*\[\d+\]/.test(line.text));
+ if(Number.isSafeInteger(requirements.minimumForeignReferences)&&requirements.minimumForeignReferences>0){const count=citedLines.filter(line=>!/[\p{Script=Han}]/u.test(line.text.replace(/https?:\/\/\S+/g,''))).length;if(count<requirements.minimumForeignReferences)add('foreign_references',`模板要求至少 ${requirements.minimumForeignReferences} 篇外文文献，当前可识别 ${count} 篇，请补充并核对。`);}
+ if(lines.some(line=>!line.literal&&/\\(?:frac|sum|sqrt|begin|tilde|exp|phi)\b/.test(plainLine(line.text))))add('raw_formula','正文仍有未排版的公式命令，请给公式补全数学定界符后再导出终稿。');
+ const tables=lines.filter(line=>/^\s*\|?\s*:?-{3,}:?\s*\|/.test(line.text)).length,tableTitles=lines.filter(line=>/^\s*表\s*\d+(?:[.\-－]\d+)?\s+\S/.test(line.text));
+ if(tables>tableTitles.length)add('table_captions','部分表格没有独立的编号与表题，请在对应表格上方补齐。');
+ if(new Set(tableTitles.map(line=>line.text.trim().match(/^表\s*(\d+(?:[.\-－]\d+)?)/)?.[1])).size<tableTitles.length)add('table_numbers','表格编号重复，请按全文或章节统一编号。');
+ const significant=(input.quality?.stale?[]:input.quality?.reviews||[]).flatMap(row=>row.findings||[]).filter(row=>row.severity==='warning'&&['method_result_consistency','source_support','claim_scope'].includes(row.category));
+ if(significant.length)add('review_findings',`整稿审校仍有 ${significant.length} 项方法、研究结论或引用依据问题，请处理后重新核对。`);
+ return {...report,submission:{ready:issues.length===0,issues,scope:'structural_and_existing_review_only'},status:issues.length?'review_required':report.status};
+}

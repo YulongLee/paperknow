@@ -19,14 +19,14 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{reso
 const settle=async()=>{for(let index=0;index<8;index++)await new Promise(resolve=>setImmediate(resolve));};
 async function until(predicate,message='operation did not settle',timeout=8000){const start=Date.now();while(!predicate()){if(Date.now()-start>timeout)assert.fail(message);await new Promise(resolve=>setTimeout(resolve,5));}}
 
-async function fixture(t,{qualityRecord=quality(),template=null,changeDocx=null,renderResult=null,renderError=null,renderWait=null,getOptionsWait=null,documentWait=null,ownerId='alice',sourceText=text}={}){
+async function fixture(t,{qualityRecord=quality(),template=null,changeDocx=null,renderResult=null,renderError=null,renderWait=null,getOptionsWait=null,documentWait=null,ownerId='alice',sourceText=text,submission=false}={}){
  endDraftScope();
- const dom=new JSDOM(`<main>${documentExportButtons('thesis-test')}<p id="status" role="status"></p></main>`,{url:'https://paperknow.test/workspace.html#thesis/synthetic-thesis'}),previous=Object.fromEntries(['window','document','location','fetch'].map(key=>[key,{own:Object.hasOwn(globalThis,key),value:globalThis[key]}]));
+ const dom=new JSDOM(`<main>${documentExportButtons('thesis-test',{submission})}<p id="status" role="status"></p></main>`,{url:'https://paperknow.test/workspace.html#thesis/synthetic-thesis'}),previous=Object.fromEntries(['window','document','location','fetch'].map(key=>[key,{own:Object.hasOwn(globalThis,key),value:globalThis[key]}]));
  for(const key of ['window','document','location'])globalThis[key]=dom.window[key];
  beginDraftScope({ownerId,drafts:[]});
  const generated=[],rendered=[],downloads=[],requests=[],checks=[],status=dom.window.document.querySelector('#status');
  let currentText=sourceText,currentTitle=metadata.title,optionsCalls=0,fontCalls=0,legacyPdfCalls=0,current=true,closed=false;
- const options={documentKind:'thesis',metadata:structuredClone(metadata),quality:structuredClone(qualityRecord),template};
+ const options={documentKind:'thesis',submission,metadata:structuredClone(metadata),quality:structuredClone(qualityRecord),template};
  const sourceCitation=sourceText.indexOf('[1]');options.metadata.citationRanges=sourceCitation>=0?[{start:sourceCitation,end:sourceCitation+3,number:1}]:[];
  const fetchImpl=async(path,request={})=>{
   requests.push({path,request});
@@ -34,7 +34,7 @@ async function fixture(t,{qualityRecord=quality(),template=null,changeDocx=null,
   assert.equal(path,'/api/theses/document-render');
   if(renderWait)await renderWait.promise;
   if(renderError)throw renderError;
-  const result=renderResult||{data:Buffer.from(syntheticPdf).toString('base64'),pages:2,warnings:['自动分页需要核对。']};
+  const result=typeof renderResult==='function'?renderResult(JSON.parse(request.body)):renderResult||{data:Buffer.from(syntheticPdf).toString('base64'),pages:2,warnings:['自动分页需要核对。']};
   return Response.json(result);
  };
  globalThis.fetch=fetchImpl;
@@ -72,6 +72,16 @@ async function withTemplate(){
  return{version:1,status:'ready',source:{fileId:'synthetic-template',name:'合成学校模板.docx',size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')},bytes};
 }
 const xmlOf=async bytes=>{const zip=await JSZip.loadAsync(bytes);return zip.file('word/document.xml').async('string');};
+
+test('formal export checks stop an incomplete manuscript before conversion while its editable draft remains downloadable',async t=>{
+ const f=await fixture(t,{submission:true});f.click('docx');await f.complete();assert.equal(f.generated.length,0);assert.equal(f.downloads.length,0);assert.equal(f.rendered.length,0);assert.match(f.status.textContent,/尚未满足终稿导出条件/);assert.ok(f.q('[data-export-check]').open);
+ f.click('draft');await f.complete();assert.equal(f.downloads.length,1);assert.match(f.downloads[0].name,/（初稿）\.docx$/);
+});
+
+test('formal Word delivery uses the source-verified refreshed Word copy after successful completeness and field checks',async t=>{
+ const complete='合成研究\n摘要\n'+('研究设计与验证。'.repeat(35))+'\n关键词：研究；设计；验证\nAbstract\n'+('This study reports the supplied design and evaluation. '.repeat(25))+'\nKey words: study; design; evaluation\n第一章 研究方法\n实际研究与文献依据[1]。\n参考文献\n[1] A. Author. A Study[J]. Journal, 2025.';
+ const f=await fixture(t,{submission:true,sourceText:complete,renderResult:payload=>({data:Buffer.from(syntheticPdf).toString('base64'),docxData:payload.data,fieldsRefreshed:true,pages:3,warnings:[]})});f.options.metadata.englishTitle='A Study Design';f.options.metadata.title='合成研究';f.click('docx');await f.complete();assert.equal(f.downloads.length,1,f.status.textContent);assert.equal(f.rendered.length,1);assert.deepEqual(f.downloads[0].bytes,f.generated[0].bytes);assert.match(f.status.textContent,/已保存并下载/);
+});
 
 for(const format of ['docx','pdf'])test(`real thesis ${format.toUpperCase()} pipeline uses DOCX content validation and the same document-render client`,async t=>{
  const template=await withTemplate(),original=Buffer.from(template.bytes),f=await fixture(t,{template});
