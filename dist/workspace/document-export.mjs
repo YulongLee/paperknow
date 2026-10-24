@@ -35,24 +35,26 @@ export function bindDocumentExports(prefix,getText,getTitle,status,{expectedUser
    const api=await loadDocument();if(!current())return;let bytes,options=await getDocumentOptions({draft});if(!current())return;options=options||{};
    const owner=expectedUserId??context.ownerId??options.expectedUserId;
    if(options.documentKind==='thesis'){
-    status.textContent='正在识别模板并检查已保存正文…';
+    status.textContent='1 / 3 · 正在读取模板要求并检查已保存正文…';
     options={...options,template:await templateBytes(options.template,owner)};if(!current())return;
     const profile=options.template?await api.inspectThesisDocxTemplate?.(options.template.bytes):api.defaultThesisTemplateProfile?.();if(!current())return;
     const formal=options.submission===true&&!draft;
+    if(formal&&profile?.requirements?.ambiguities?.length)throw Error('模板中存在相互冲突的格式要求，请确认后重新选择模板；可下载初稿继续修改。');
     if(formal&&typeof api.auditThesisSubmission!=='function')throw Error('终稿检查组件尚未就绪，请刷新后重试，或下载可编辑初稿。');
     const report=(formal?api.auditThesisSubmission:api.auditThesisExport)?.({text,metadata:options.metadata,templateProfile:profile,quality:options.quality})||{status:'review_required',checks:[],warnings:[]};
     showThesisExportCheck(status,report,{templateMode:profile?.placement?.mode||'default'});
     if(formal&&!report.submission?.ready){const panel=status.parentElement.querySelector('[data-export-check]');if(panel)panel.open=true;throw Error('尚未满足终稿导出条件：'+(report.submission?.issues||[]).slice(0,3).map(row=>row.message).join('；')+' 可下载可编辑初稿继续修改。');}
-    status.textContent='正在保留模板结构并生成 Word 文档…';const docx=await api.createWritingDocx(text,options);if(!current())return;
-    const content=await api.inspectThesisExportContent?.(docx,text,options);if(!current())return;
+    status.textContent='2 / 3 · 正在按模板排版正文、标题、图表与公式…';let docx=await api.createWritingDocx(text,options);if(!current())return;
+    let formatting=null;const verifyContent=bytes=>api.inspectThesisExportContent?.(bytes,text,options);const progress=event=>{if(current())status.textContent=event.stage==='repair'?`3 / 3 · 第 ${event.pass} 轮修正：正在处理 ${event.count} 项格式差异…`:`3 / 3 · 第 ${event.pass} 轮检查：核对字体、字号、行距、标题、页边距和表格…`;};if(api.runThesisLayoutAgent){formatting=await api.runThesisLayoutAgent(docx,{profile,verifyContent,onProgress:progress,signal:controller.signal});docx=formatting.bytes;}
+    const content=await verifyContent(docx);if(!current())return;
     const outputPending=Number.isSafeInteger(content?.unresolvedPlaceholders)&&content.unresolvedPlaceholders>=0?content.unresolvedPlaceholders:0,pendingRow=report.checks.find(row=>row.id==='unresolved_placeholders'),pendingCount=Math.max(outputPending,Number.isSafeInteger(pendingRow?.count)?pendingRow.count:0,Number.isSafeInteger(report.counts?.unresolvedPlaceholders)?report.counts.unresolvedPlaceholders:0);
     if(pendingCount){const message=`导出文档有 ${pendingCount} 处待补充或待核对标记，含模板补入的未填写项目；请核对后再交付。`;if(pendingRow)Object.assign(pendingRow,{status:'review_required',message,count:pendingCount});else report.checks.push({id:'unresolved_placeholders',label:'待补充标记',status:'review_required',message,count:pendingCount});report.counts={...report.counts,unresolvedPlaceholders:pendingCount};report.warnings=report.warnings.filter(row=>row?.code!=='unresolved_placeholders');report.warnings.push({code:'unresolved_placeholders',message,count:pendingCount});report.status='review_required';report.summary='本次导出检查发现文档仍有待补充标记，请核对模板未填写项目后再交付。';}
     showThesisExportCheck(status,report,{content,templateMode:profile?.placement?.mode||'default'});
     if(formal&&pendingCount)throw Error(`模板填入后仍有 ${pendingCount} 处未完成内容，暂不导出终稿；请补齐，或下载可编辑初稿。`);
     let layout=null;
-    try{status.textContent='正在检查 Word 分页并更新目录与页码，请稍候…';layout=await renderDocument(docx,{expectedUserId:owner,signal:controller.signal});}
+    try{for(let round=1;round<=3;round++){status.textContent=`3 / 3 · 第 ${round} 轮页面检查：正在生成实际页面并更新目录与页码…`;layout=await renderDocument(docx,{expectedUserId:owner,signal:controller.signal});if(!current())return;if(!layout?.docxBytes||!api.runThesisLayoutAgent)break;const checked=await api.runThesisLayoutAgent(layout.docxBytes,{profile,verifyContent,onProgress:progress,signal:controller.signal});formatting=checked;if(checked.report.iterations.length===1){layout.docxBytes=checked.bytes;break;}if(round===3)throw Error('页面生成后的格式仍有变化，已保留正文；请核对模板后重新导出。');docx=checked.bytes;layout=null;}}
     catch(error){if(format==='pdf'||formal)throw error;report.warnings.push({code:'layout_not_rendered',message:error.message||'页面渲染尚未完成。'});}
-    if(!current())return;showThesisExportCheck(status,report,{layout,content,templateMode:profile?.placement?.mode||'default'});
+    if(formatting?.report){report.checks.push({id:'template_layout',label:'模板排版核对',status:formatting.report.unresolved.length?'review_required':'checked',message:`已核对 ${formatting.report.checks.paragraphs} 段、${formatting.report.checks.sections} 个正文分节和 ${formatting.report.checks.tables} 个表格；明确规则内的格式差异已检查并修正。`});if(formatting.report.unresolved.length)report.status='review_required';}if(!current())return;showThesisExportCheck(status,report,{layout,content,templateMode:profile?.placement?.mode||'default'});
     if(formal&&(!layout?.fieldsRefreshed||format==='docx'&&!layout?.docxBytes))throw Error('目录与页码的 Word 更新尚未完成，暂不交付终稿；请稍后重试，或下载可编辑初稿。');
     bytes=format==='pdf'?layout.bytes:layout?.docxBytes||docx;
     status.textContent='检查记录已准备，正在保存导出文件…';

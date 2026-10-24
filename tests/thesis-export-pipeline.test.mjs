@@ -112,7 +112,7 @@ for(const format of ['docx','pdf'])test(`real thesis ${format.toUpperCase()} pip
   assert.deepEqual(Buffer.from(template.bytes),original,'the uploaded template is unchanged');assert.equal(f.sourceText,text);
   const panel=f.q('[data-export-check]');assert.ok(panel);assert.equal(panel.hidden,false);panel.open=true;
   assert.match(panel.querySelector('summary').textContent,/本次导出检查/);assert.equal(panel.querySelector('summary').textContent.includes('有待核对事项'),f.checks[0].status==='review_required','template recognition caveats remain visible instead of being presented as a clean review');
-  assert.match(panel.textContent,/按模板正文占位位置填入/);assert.match(panel.textContent,/正文文字检查：\d+ 项已按段落及顺序核对/);assert.match(panel.textContent,/已生成 2 页/);assert.match(panel.textContent,/已核对本次 Word 文件的分页/);assert.match(panel.textContent,/不代表事实核验或人工逐页审定/);
+  assert.match(panel.textContent,/按模板正文占位位置填入/);assert.match(panel.textContent,/正文文字检查：\d+ 项已按段落及顺序核对/);assert.match(panel.textContent,/已生成 2 页/);assert.match(panel.textContent,/页面边界与缺字检查未完成/);assert.match(panel.textContent,/不代表事实核验或人工逐页审定/);
   assert.match(f.status.textContent,/请核对 Word 中的最终版式/);assert.ok(f.checks[0].checks.some(row=>row.id==='existing_review'&&row.status==='passed'));
  }finally{f.close();}
 });

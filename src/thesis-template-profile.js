@@ -3,6 +3,7 @@ import {DOMParser} from '@xmldom/xmldom';
 import {Inflate} from 'fflate';
 import {staticizeCachedPictureFields} from './thesis-template-static-fields.js';
 import {inspectThesisTemplatePlacement} from './thesis-template-placement.js';
+import {readExplicitThesisRequirements,applyExplicitThesisRequirements} from './thesis-template-requirements.js';
 
 const mm=value=>Math.round(value*1440/25.4);
 const style=(overrides={})=>({eastAsia:'宋体',ascii:'Times New Roman',size:24,bold:false,alignment:'both',line:360,lineRule:'auto',firstLineChars:200,firstLine:0,hanging:0,before:0,after:0,pageBreakBefore:false,...overrides});
@@ -136,6 +137,7 @@ async function inspectTemplate(bytes,{includeBytes=false,requireStatic=false}={}
  if(all(document,'drawing').length||all(document,'pict').length)warnings.push(preserve?'模板中的嵌入图片及形状保持在原文档内，请核对最终位置。':'模板含图片或形状；本识别结果不包含封面图形与版式位置。');
  warnings.push(...result.placement.warnings);
  result.warnings=[...new Set(warnings)];result.summary=[`已读取 ${recognized.filter(key=>key.startsWith('page.')).length} 项页面设置、${recognized.filter(key=>key.startsWith('styles.')).length} 项样式属性。`,unresolved.length?`${unresolved.length} 项摘要属性未明确识别，${preserve?'优先保留原段落格式；缺失正文样式使用通用默认值。':'使用通用默认值。'}`:'规则范围内的页面和样式属性均已识别。',preserve?'导出保留模板包、封面和分节，在识别的正文位置填入内容。':result.placement.mode==='ambiguous'?'当前模板正文位置不明确，导出前需要补充独立正文占位符。':'此文件仅提供样式规则，导出使用通用封面和目录；不表示完整复刻原件。'];
+ applyExplicitThesisRequirements(result,readExplicitThesisRequirements(document));
  return includeBytes?{profile:result,bytes:staticPictures?await zip.generateAsync({type:'uint8array',compression:'DEFLATE'}):new Uint8Array(data)}:result;
 }
 

@@ -4,7 +4,7 @@
 
 Linux 默认通过 `/usr/bin/python3 -I` 调用受控 UNO 辅助程序，再启动 `/usr/bin/soffice`；也可通过服务端 `commandPath` 或 `PAPERKNOW_SOFFICE_PATH` 指定 LibreOffice 绝对路径，`pythonPath` 指定系统 Python。Ubuntu 运行环境需要 `libreoffice-writer libreoffice-math python3-uno fonts-noto-cjk fonts-crosextra-carlito fonts-crosextra-caladea fonts-liberation2 poppler-utils`；安装应由部署人员执行。`libreoffice-math` 是行内 OMML 公式正常显示的必要组件，仅安装 Writer 可能产生公式空白；字体包提供中文和常用西文字体替代，不能保证学校指定的专有字体完全一致。用户请求不能指定命令、目录、输出文件名或转换参数。
 
-UNO 使用随机私有管道，不监听 TCP；加载参数为 Hidden、ReadOnly、禁止宏、禁止外部链接更新，拒绝交互请求。先刷新 Writer 全文布局，并在可用时通过页游标遍历末页/首页；每次更新文档索引后重新分页，最后刷新页数与引用字段。仅执行 PDF `storeToURL`，绝不保存 DOCX。PDF 明确保留模板页样式、页码重启所需的自动空白页，避免 Word 的 NUMPAGES 包含空白页而 PDF 默认省略它们；不修改模板页码重启规则。转换前后校验原始 DOCX SHA-256，服务只有收到完整刷新报告且哈希一致才接受结果。非 Linux 或明确配置 `useUno:false` 使用命令行转换，并返回“目录与交叉引用页码未自动刷新”的警告；不能称为目录页码核验通过。
+UNO 使用随机私有管道，不监听 TCP；加载参数为 Hidden、ReadOnly、禁止宏、禁止外部链接更新，拒绝交互请求。先刷新 Writer 全文布局，并在可用时通过页游标遍历末页/首页；每次更新文档索引后重新分页，最后刷新页数与引用字段。渲染器另外保存隔离的 Word 中间件用于读取字段数值；不会直接交付重建后的 Word 包。仅将页码和交叉引用的数字显示缓存写回原生成包，保留原有样式、分节、图片和无关部件。PDF 明确保留模板页样式、页码重启所需的自动空白页，避免 Word 的 NUMPAGES 包含空白页而 PDF 默认省略它们；不修改模板页码重启规则。转换前后校验原始 DOCX SHA-256，服务只有收到完整刷新报告且哈希一致才接受结果。非 Linux 或明确配置 `useUno:false` 使用命令行转换，并返回“目录与交叉引用页码未自动刷新”的警告；不能称为目录页码核验通过。
 
 接口：
 
@@ -23,3 +23,11 @@ Linux UNO 辅助进程在导入 UNO、启动 LibreOffice 前设置操作系统�
 输出最大 20 MB；仅接收正常文件，检查 PDF 头并解析页数（1–1000 页）。输出解析可确认文件可读、页数有效，**不能确认全文完整、无缺字或最终排版正确**。正式发布仍需对实际学校模板、中文字体、封面、目录、跨页表格和末尾正文进行验收。
 
 运行单元验收：`node --test tests/thesis-document-renderer.test.mjs`。真实运行时验收可设置 `PAPERKNOW_TEST_SOFFICE` 为服务器可信 LibreOffice 绝对路径；该测试只使用合成论文，检查首尾正文标记、跨页以及临时文件清理。
+
+## 模板排版闭环
+
+导出前由 `src/thesis-layout-agent.js` 控制：读取模板中的声明式文字规范和样例、检查实际 OOXML、执行限定格式修正、重新读取并验证正文书签，最多三轮。冲突规则保留证据，不会执行模板中的任何工具或正文改写指令。检查涵盖明确字体、字号、行距、段前段后、缩进、标题、目录、正文分节页边距、表头重复、图片/公式行高以及封面空白容纳。
+
+Linux 页检查通过受控 `pdftotext -bbox-layout` 读取内部渲染页面，比较中文字量并检查文字是否超过纸张。此项不是视觉模型审校，也不能证明所有表格跨页、专有字体替代、学校文字规范都已经满足。最终界面只提供 DOCX；内部 PDF 仅用于页面检查。
+
+嵌入字体先检查字符覆盖。仅在生成副本中移除缺少新文字符号的字体绑定，保留字体名称以便 Word 使用已安装的完整字体；原模板原件不变。部署机器仍需完整的中文字体，专有字体无法保证一模一样。

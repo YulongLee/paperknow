@@ -1,0 +1,65 @@
+import JSZip from 'jszip';
+import {DOMParser,XMLSerializer} from '@xmldom/xmldom';
+import {repairIncompleteTemplateFonts} from './thesis-template-fonts.js';
+const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const parse=s=>new DOMParser().parseFromString(s,'application/xml'),xml=n=>new XMLSerializer().serializeToString(n);
+const children=(node,name)=>node?[...node.childNodes].filter(n=>n.nodeType===1&&n.namespaceURI===W&&(!name||n.localName===name)):[],one=(n,k)=>children(n,k)[0],attr=(n,k)=>n?.getAttributeNS(W,k)||'';
+const text=n=>[...n.getElementsByTagNameNS(W,'t')].map(n=>n.textContent).join('');
+const P_FIELDS={alignment:['jc','val'],line:['spacing','line'],lineRule:['spacing','lineRule'],before:['spacing','before'],after:['spacing','after'],beforeLines:['spacing','beforeLines'],afterLines:['spacing','afterLines'],firstLine:['ind','firstLine'],firstLineChars:['ind','firstLineChars'],hanging:['ind','hanging']};
+const R_FIELDS={eastAsia:['rFonts','eastAsia'],ascii:['rFonts','ascii'],size:['sz','val'],bold:['b','val'],characterSpacing:['spacing','val'],characterScale:['w','val']};
+function ensure(parent,name){let n=one(parent,name);if(!n){n=parent.ownerDocument.createElementNS(W,'w:'+name);parent.appendChild(n);}return n;}
+function set(parent,name,key,value){ensure(parent,name).setAttributeNS(W,'w:'+key,String(value));}
+function explicit(profile,role){const base=role.startsWith('TOC')&&role!=='TOCTitle'?'TOC':role;return (profile.requirements?.facts||[]).filter(row=>row.path.startsWith('styles.'+base+'.')).map(row=>({field:row.path.split('.').at(-1),value:row.value}));}
+function roleOf(p,profile){const id=attr(one(one(p,'pPr'),'pStyle'),'val'),canonical=id.match(/^PK(Normal|Heading[123]|Title|Abstract|References|TableText|Code|FrontHeading|TOC[123]|TOCTitle|FigureCaption|TableCaption|ReferenceHeading)$/)?.[1];let role=canonical||Object.entries(profile.placement?.roleStyles||{}).find(([,value])=>value===id)?.[0];if(!role)return null;
+ if(role==='Normal'&&/^表\s*\d+[-－.．\d]*\s+\S/.test(text(p).trim())&&profile.rules.styles.TableCaption)role='TableCaption';
+ if([...p.getElementsByTagName('*')].some(n=>n.localName==='docPr'&&/^PKFigure_/.test(n.getAttribute('name')||''))&&profile.rules.styles.FigureCaption)role='FigureCaption';
+ if(role==='Heading1'&&/^(?:参考文献|已使用的参考文献|references)$/i.test(text(p).replace(/\s/g,''))&&profile.rules.styles.ReferenceHeading)role='ReferenceHeading';
+ if(role==='FrontHeading'&&/^目录$/.test(text(p).replace(/\s/g,''))&&profile.rules.styles.TOCTitle)role='TOCTitle';return role;
+}
+function propertiesOf(p,styles){const pr=one(p,'pPr'),groups=[pr],r=[];let id=attr(one(pr,'pStyle'),'val'),seen=new Set();while(id&&!seen.has(id)){seen.add(id);const style=styles.get(id);if(!style)break;groups.push(one(style,'pPr'));r.push(one(style,'rPr'));id=attr(one(style,'basedOn'),'val');}return {p:groups,r};}
+function read(groups,name,key){for(const group of groups){const n=one(group,name);if(!n)continue;const value=n.getAttributeNS(W,key);if(value!==null&&value!=='')return value;if(name==='b')return '1';}return undefined;}
+function equal(actual,expected){return typeof expected==='boolean'?(['1','true','on'].includes(actual))===expected:typeof expected==='number'?Number(actual)===expected&&actual!==undefined:String(actual)===String(expected);}
+function coverWhitespaceOperations(nodes,styles,page){
+ const end=nodes.findIndex(n=>/独创性声明|原创性声明/.test(text(n)));if(end<1||end>80)return [];
+ const cover=nodes.slice(0,end),label=cover.map(text).join('');if(!/毕业论文/.test(label)||!(/学\s*号/.test(label)&&/题\s*目/.test(label)))return [];
+ const section=cover.flatMap(n=>[...n.getElementsByTagNameNS(W,'sectPr')])[0],margin=one(section,'pgMar'),size=one(section,'pgSz'),height=Number(attr(size,'h'))||page.height,width=(Number(attr(size,'w'))||page.width)-(Number(attr(margin,'left'))||page.left)-(Number(attr(margin,'right'))||page.right),available=height-(Number(attr(margin,'top'))||page.top)-(Number(attr(margin,'bottom'))||page.bottom);
+ const rows=cover.filter(n=>n.localName==='p').map(p=>{const props=propertiesOf(p,styles),direct=one(one(p,'pPr'),'rPr'),font=Number(read([direct,...props.r],'sz','val'))||24,line=Number(read(props.p,'spacing','line'))||240,rule=read(props.p,'spacing','lineRule'),value=text(p),widthNeeded=[...value].reduce((sum,c)=>sum+font*10*(/\s/.test(c)?.25:/[\u3400-\u9fff]/.test(c)?1:.55),0),lines=Math.max(1,Math.ceil(widthNeeded/width));return {p,blank:!value.trim()&&!p.getElementsByTagNameNS(W,'drawing').length&&!p.getElementsByTagNameNS(W,'pict').length&&!p.getElementsByTagNameNS(W,'u').length,height:lines*(rule==='exact'?line:Math.max(font*10,line/240*font*10))+(Number(read(props.p,'spacing','before'))||0)+(Number(read(props.p,'spacing','after'))||0)};});
+ if(rows.reduce((sum,r)=>sum+r.height,0)<=available*.68)return [];
+ return rows.filter(r=>r.blank&&r.height>120).flatMap(({p})=>[['line',120],['lineRule','exact'],['before',0],['after',0],['beforeLines',0],['afterLines',0]].map(([key,value])=>({kind:'paragraph',node:p,name:'spacing',key,value,field:'coverWhitespace'})));
+}
+function contractOperations(document,styles,profile){const operations=[],counts={paragraphs:0,runs:0,sections:0,tables:0};
+ for(const p of document.getElementsByTagNameNS(W,'p')){const role=roleOf(p,profile);if(!role)continue;counts.paragraphs++;const props=propertiesOf(p,styles),facts=explicit(profile,role),math=p.getElementsByTagNameNS('http://schemas.openxmlformats.org/officeDocument/2006/math','oMath').length>0,figure=[...p.getElementsByTagName('*')].some(n=>n.localName==='docPr'&&/^PKFigure_/.test(n.getAttribute('name')||''));
+  for(const {field,value}of facts){if(P_FIELDS[field]){const [name,key]=P_FIELDS[field],expected=field==='lineRule'&&(math||figure)&&value==='exact'?'atLeast':value,actual=read(props.p,name,key);if(!equal(actual,expected))operations.push({kind:'paragraph',node:p,name,key,value:expected,role,field});}
+   if(R_FIELDS[field])for(const run of p.getElementsByTagNameNS(W,'r')){if(!text(run))continue;counts.runs++;const [name,key]=R_FIELDS[field],actual=read([one(run,'rPr'),...props.r],name,key),expected=field==='bold'&&role==='Abstract'&&value===false&&/^(?:摘要|Abstract)[:：]?$/i.test(text(run).trim())?true:value;if(!equal(actual,expected))operations.push({kind:'run',node:run,name,key,value:typeof expected==='boolean'?Number(expected):expected,role,field});}
+  }
+  if((figure||math)&&read(props.p,'spacing','lineRule')==='exact')operations.push({kind:'paragraph',node:p,name:'spacing',key:'lineRule',value:'atLeast',role,field:'lineRule'});
+  if(figure)for(const [name,key,value]of [['jc','val','center'],['ind','firstLine','0'],['ind','firstLineChars','0']])if(read(props.p,name,key)!==value)operations.push({kind:'paragraph',node:p,name,key,value,role,field:key});
+ }
+ // Page geometry belongs to the section ending the generated body, not the
+ // last sample appendix section and not an unrelated cover page.
+ const nodes=children(document.getElementsByTagNameNS(W,'body')[0]);operations.push(...coverWhitespaceOperations(nodes,styles,profile.rules.page));const first=nodes.findIndex(n=>n.localName==='p'&&[...n.getElementsByTagNameNS(W,'bookmarkStart')].some(b=>/^PKInput_/.test(attr(b,'name')))&&/^Heading[123]$/.test(roleOf(n,profile)||''));
+ if(first>=0)for(const node of nodes.slice(first))for(const section of node.localName==='sectPr'?[node]:node.getElementsByTagNameNS(W,'sectPr')){counts.sections++;for(const fact of profile.requirements?.facts||[])if(/^page\.(top|bottom|left|right)$/.test(fact.path)){const key=fact.path.split('.')[1];if(!equal(attr(one(section,'pgMar'),key),fact.value))operations.push({kind:'section',node:section,name:'pgMar',key,value:fact.value,field:key});}}
+ for(const table of document.getElementsByTagNameNS(W,'tbl')){if(![...table.getElementsByTagNameNS(W,'bookmarkStart')].some(n=>/^PKInput_/.test(attr(n,'name'))))continue;counts.tables++;const row=children(table,'tr')[0];if(row&&!one(one(row,'trPr'),'tblHeader'))operations.push({kind:'row',node:row,name:'tblHeader',key:'val',value:1,field:'repeatHeader'});for(const height of table.getElementsByTagNameNS(W,'trHeight'))if(attr(height,'hRule')==='exact')operations.push({kind:'attribute',node:height,key:'hRule',value:'atLeast',field:'rowHeight'});}
+ return {operations,counts};
+}
+async function inspect(bytes,profile){const zip=await JSZip.loadAsync(bytes),doc=parse(await zip.file('word/document.xml').async('string')),styleFile=zip.file('word/styles.xml'),styles=new Map(styleFile?[...parse(await styleFile.async('string')).getElementsByTagNameNS(W,'style')].map(n=>[attr(n,'styleId'),n]):[]);return {zip,doc,...contractOperations(doc,styles,profile)};}
+export async function inspectThesisLayout(bytes,profile){const {operations,counts}=await inspect(bytes,profile);return {version:1,status:operations.length?'repair_required':'passed',checks:counts,mismatches:operations.slice(0,100).map(({kind,role,field})=>({kind,role,field})),mismatchCount:operations.length};}
+// Bounded controller: inspect actual OOXML -> apply only whitelisted formatting
+// operations -> independently re-read -> verify manuscript source anchors.
+// No prose generation, arbitrary XML edits, shell commands or remote tools.
+export async function runThesisLayoutAgent(bytes,{profile,verifyContent,onProgress=()=>{},signal,maxPasses=3}={}){
+ if(!profile?.rules)throw Error('模板排版规则尚未读取，请重新导出。');
+ let output=new Uint8Array(bytes),history=[],fontRepairs=[];const limit=Math.min(3,Math.max(1,Number.isSafeInteger(maxPasses)?maxPasses:3));
+ for(let pass=0;pass<=limit;pass++){
+  if(signal?.aborted)throw Error('论文排版已取消，原文保持不变。');onProgress({stage:'check',pass:pass+1});
+  const state=await inspect(output,profile);if(verifyContent)await verifyContent(output);
+  const repairs=pass===0?await repairIncompleteTemplateFonts(state.zip):[];fontRepairs.push(...repairs);
+  history.push({pass:pass+1,mismatches:state.operations.length,fontRepairs:repairs.length});
+  if(!state.operations.length&&!repairs.length)return {bytes:output,report:{version:1,status:'passed',iterations:history,checks:state.counts,explicitRequirements:profile.requirements?.facts.length||0,fontRepairs,unresolved:profile.requirements?.ambiguities||[]}};
+  if(pass===limit)throw Error('排版检查仍有不符合模板的项目，已停止交付；原正文保留，请核对模板要求后重试。');
+  onProgress({stage:'repair',pass:pass+1,count:state.operations.length});
+  for(const op of state.operations){if(op.kind==='attribute')op.node.setAttributeNS(W,'w:'+op.key,String(op.value));else {const parent=op.kind==='paragraph'?ensure(op.node,'pPr'):op.kind==='run'?ensure(op.node,'rPr'):op.kind==='row'?ensure(op.node,'trPr'):op.node;set(parent,op.name,op.key,op.value);if(op.kind==='run'&&op.name==='rFonts'){const fonts=one(parent,'rFonts');fonts.removeAttributeNS(W,op.key==='eastAsia'?'eastAsiaTheme':'asciiTheme');if(op.key==='ascii'){fonts.removeAttributeNS(W,'hAnsiTheme');set(parent,'rFonts','hAnsi',op.value);}}if(op.kind==='run'&&op.name==='sz')set(parent,'szCs','val',op.value);}}
+  state.zip.file('word/document.xml',xml(state.doc));output=await state.zip.generateAsync({type:'uint8array',compression:'DEFLATE'});
+ }
+ throw Error('论文排版检查未完成。');
+}

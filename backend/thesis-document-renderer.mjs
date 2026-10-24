@@ -10,21 +10,23 @@ import JSZip from 'jszip';
 import {DOMParser,XMLSerializer} from '@xmldom/xmldom';
 import {PDFDocument} from 'pdf-lib';
 import {prepareThesisDocxTemplate} from '../src/thesis-template-profile.js';
+import {checkRenderedThesisPages} from './thesis-rendered-page-check.mjs';
+import {mergeThesisFieldCaches} from './thesis-field-cache.mjs';
 
 export const THESIS_RENDER_MAX_INPUT_BYTES=2*1024*1024;
 export const THESIS_RENDER_MAX_OUTPUT_BYTES=20*1024*1024;
 const MAX_TIMEOUT=120000,MAX_LOG_BYTES=64*1024;
 const unoHelper=fileURLToPath(new URL('./thesis-document-convert.py',import.meta.url));
 let activeConversions=0;
-async function sourceRangeSignatures(bytes){
+async function sourceRangeSignatures(bytes,{includeMath=true}={}){
  const zip=await JSZip.loadAsync(bytes),part=zip.file('word/document.xml');if(!part)throw Error('missing document');
  const doc=new DOMParser().parseFromString(await part.async('string'),'application/xml'),W='http://schemas.openxmlformats.org/wordprocessingml/2006/main',M='http://schemas.openxmlformats.org/officeDocument/2006/math',starts=new Map(),ends=new Map(),signatures=new Map(),names=new Set();let text='';
- const read=node=>{if(node.nodeType===1){if(node.namespaceURI===W&&node.localName==='bookmarkStart'){const name=node.getAttributeNS(W,'name'),id=node.getAttributeNS(W,'id');if(/^PKInput_\d+$/.test(name)){if(starts.has(id)||names.has(name))throw Error('duplicate source range');names.add(name);starts.set(id,{name,offset:text.length,node});}}if(node.namespaceURI===W&&node.localName==='bookmarkEnd'){const id=node.getAttributeNS(W,'id');if(starts.has(id)){if(ends.has(id))throw Error('duplicate source end');ends.set(id,text.length);}}if((node.namespaceURI===W||node.namespaceURI===M)&&node.localName==='t')text+=node.textContent;}for(const child of node.childNodes||[])read(child);};read(doc);
- for(const [id,row]of starts){if(!ends.has(id))throw Error('source range missing');let table=row.node.parentNode;while(table&&!(table.namespaceURI===W&&table.localName==='tbl'))table=table.parentNode;let paragraph=row.node.parentNode;while(paragraph&&!(paragraph.namespaceURI===W&&paragraph.localName==='p'))paragraph=paragraph.parentNode;const container=table||paragraph||row.node.parentNode,value=table?[...table.getElementsByTagNameNS(W,'t')].map(node=>node.textContent).join(''):paragraph?[...paragraph.getElementsByTagName('*')].filter(node=>(node.namespaceURI===W||node.namespaceURI===M)&&node.localName==='t').map(node=>node.textContent).join(''):text.slice(row.offset,ends.get(id)),drawingCount=container.getElementsByTagNameNS(W,'drawing').length+container.getElementsByTagNameNS(W,'pict').length;signatures.set(row.name,JSON.stringify({text:value.replace(/\r\n?/g,'\n').replace(/\u00a0/g,' '),drawingCount}));}
+ const read=node=>{if(node.nodeType===1){if(node.namespaceURI===W&&node.localName==='bookmarkStart'){const name=node.getAttributeNS(W,'name'),id=node.getAttributeNS(W,'id');if(/^PKInput_\d+$/.test(name)){if(starts.has(id)||names.has(name))throw Error('duplicate source range');names.add(name);starts.set(id,{name,offset:text.length,node});}}if(node.namespaceURI===W&&node.localName==='bookmarkEnd'){const id=node.getAttributeNS(W,'id');if(starts.has(id)){if(ends.has(id))throw Error('duplicate source end');ends.set(id,text.length);}}if((node.namespaceURI===W||includeMath&&node.namespaceURI===M)&&node.localName==='t')text+=node.textContent;}for(const child of node.childNodes||[])read(child);};read(doc);
+ for(const [id,row]of starts){if(!ends.has(id))throw Error('source range missing');let table=row.node.parentNode;while(table&&!(table.namespaceURI===W&&table.localName==='tbl'))table=table.parentNode;let paragraph=row.node.parentNode;while(paragraph&&!(paragraph.namespaceURI===W&&paragraph.localName==='p'))paragraph=paragraph.parentNode;const container=table||paragraph||row.node.parentNode,value=table?[...table.getElementsByTagNameNS(W,'t')].map(node=>node.textContent).join(''):paragraph?[...paragraph.getElementsByTagName('*')].filter(node=>(node.namespaceURI===W||includeMath&&node.namespaceURI===M)&&node.localName==='t').map(node=>node.textContent).join(''):text.slice(row.offset,ends.get(id)),drawingCount=container.getElementsByTagNameNS(W,'drawing').length+container.getElementsByTagNameNS(W,'pict').length;signatures.set(row.name,JSON.stringify({text:value.replace(/\r\n?/g,'\n').replace(/\u00a0/g,' '),drawingCount,...(!includeMath?{mathCount:container.getElementsByTagNameNS(M,'oMath').length}:{})}));}
  return signatures;
 }
-async function assertRefreshedSourceRanges(before,after){
- const expected=await sourceRangeSignatures(before),actual=await sourceRangeSignatures(after);if(!expected.size)throw Error('missing source provenance');
+async function assertRefreshedSourceRanges(before,after,options){
+ const expected=await sourceRangeSignatures(before,options),actual=await sourceRangeSignatures(after,options);if(!expected.size)throw Error('missing source provenance');
  if(expected.size!==actual.size||JSON.stringify([...expected.keys()])!==JSON.stringify([...actual.keys()])||[...expected].some(([key,text])=>actual.get(key)!==text))throw Error('source text changed');
 }
 const failure=(status,code,message)=>Object.assign(new Error(message),{status,code});
@@ -220,10 +222,15 @@ export function createThesisDocumentRenderer(config={}){
     let pages;
     try{pages=(await PDFDocument.load(output,{updateMetadata:false,throwOnInvalidObject:true})).getPageCount();}catch{throw failure(502,'document_render_invalid_result','PDF 转换结果无法读取，请重新导出。');}
     if(!Number.isSafeInteger(pages)||pages<1||pages>1000)throw failure(422,'document_render_page_limit','PDF 页数不在支持范围内，请下载 Word 文档。');
+    let pageCheck=null;if(config.checkPages||process.platform==='linux'&&!config.runConversion){try{pageCheck=await (config.checkPages||checkRenderedThesisPages)({bytes:prepared,workspace,signal});}catch(error){abortIfNeeded(signal);throw failure(502,'document_render_page_check_failed','实际页面的文字与边界检查未完成，已保留正文；请稍后重试。');}if(pageCheck?.status!=='passed')throw failure(422,'document_render_page_mismatch','实际页面出现缺字或文字超出纸张，已停止交付；请检查模板字体和页面设置后重试。');}
+    // Native OMML serialization can reorder subscript/superscript tokens.
+    // Check its prose, bookmarks, drawings and math count; do not transfer any
+    // of its math. After numeric-cache transfer, check exact original math and
+    // text again in the package that will actually be delivered.
     let docxBytes=null;
-    if(useUno){const refreshed=path.join(workspace,'output','document-refreshed.docx');let info;try{info=await lstat(refreshed);}catch{}if(info){try{if(!info.isFile()||info.isSymbolicLink()||info.size<1||info.size>THESIS_RENDER_MAX_INPUT_BYTES)throw Error();const bytes=await readFile(refreshed);await safeDocument(bytes);await assertRefreshedSourceRanges(prepared,bytes);docxBytes=new Uint8Array(bytes);}catch{throw failure(502,'document_render_word_changed','更新目录后的 Word 正文完整性核对未通过，未交付终稿；原正文保留，可下载初稿。');}}}
+    if(useUno){const refreshed=path.join(workspace,'output','document-refreshed.docx');let info;try{info=await lstat(refreshed);}catch{}if(info){try{if(!info.isFile()||info.isSymbolicLink()||info.size<1||info.size>THESIS_RENDER_MAX_INPUT_BYTES)throw Error();const bytes=await readFile(refreshed);await safeDocument(bytes);await assertRefreshedSourceRanges(prepared,bytes,{includeMath:false});const merged=await mergeThesisFieldCaches(prepared,bytes);if(merged.unresolved)throw Error('field caches incomplete');await assertRefreshedSourceRanges(prepared,merged.bytes);docxBytes=merged.bytes;}catch{throw failure(502,'document_render_word_changed','更新目录后的 Word 正文完整性核对未通过，未交付终稿；原正文保留，可下载初稿。');}}}
     abortIfNeeded(signal);
-    return{bytes:new Uint8Array(output),...(docxBytes?{docxBytes}:{}),...(useUno?{fieldsRefreshed:true}:{}),pages,warnings:['PDF 已按当前 Word 文档转换，字体显示和最终分页请按学校要求核对。',...(!useUno?['本次转换未自动刷新目录与交叉引用页码，请在 Word/WPS 更新域后核对。']:[])]};
+    return{bytes:new Uint8Array(output),...(docxBytes?{docxBytes}:{}),...(useUno?{fieldsRefreshed:true}:{}),...(pageCheck?{pageCheck}:{}),pages,warnings:['PDF 已按当前 Word 文档转换，字体显示和最终分页请按学校要求核对。',...(!useUno?['本次转换未自动刷新目录与交叉引用页码，请在 Word/WPS 更新域后核对。']:[])]};
    }finally{
     try{if(workspace)await rm(workspace,{recursive:true,force:true,maxRetries:3,retryDelay:50});}finally{activeConversions--;}
    }
@@ -240,5 +247,5 @@ export async function convertThesisDocumentPayload(renderer,payload,{signal}={})
  if(bytes.byteLength>THESIS_RENDER_MAX_INPUT_BYTES)throw failure(413,'document_render_input_large','DOCX 转 PDF 暂支持最大 2 MB 文档，请下载 Word 文档。');
  if(bytes.toString('base64')!==payload.data)throw failure(422,'document_render_invalid','DOCX 文件编码无效，请重新导出。');
  const result=await renderer.convert({bytes,signal});
- return{data:Buffer.from(result.bytes).toString('base64'),...(result.docxBytes?{docxData:Buffer.from(result.docxBytes).toString('base64')}:{}),...(result.fieldsRefreshed?{fieldsRefreshed:true}:{}),pages:result.pages,mimeType:'application/pdf',warnings:result.warnings};
+ return{data:Buffer.from(result.bytes).toString('base64'),...(result.docxBytes?{docxData:Buffer.from(result.docxBytes).toString('base64')}:{}),...(result.fieldsRefreshed?{fieldsRefreshed:true}:{}),...(result.pageCheck?{pageCheck:result.pageCheck}:{}),pages:result.pages,mimeType:'application/pdf',warnings:result.warnings};
 }

@@ -4,6 +4,7 @@ import fontkit from '@pdf-lib/fontkit';
 import {applyThesisDocumentTemplate} from './thesis-document.js';
 import {DOMParser} from '@xmldom/xmldom';
 import {normalizeThesisFigures,rasterizeThesisFigure,inspectThesisFigurePng} from '../dist/workspace/thesis-figure.mjs';
+export {runThesisLayoutAgent,inspectThesisLayout} from './thesis-layout-agent.js';
 export {auditThesisExport,auditThesisSubmission} from './thesis-export-check.js';
 export {inspectThesisDocxTemplate,defaultThesisTemplateProfile} from './thesis-template-profile.js';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));

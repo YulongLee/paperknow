@@ -200,7 +200,7 @@ test('refreshed Word output is returned only when original manuscript source ran
   const f=await fixture(t,{useUno:true,runConversion:async({workspace})=>{
    const source=await readFile(path.join(workspace,'document.docx'));
    await writeFile(path.join(workspace,'conversion-report.json'),JSON.stringify({version:1,textFieldsRefreshed:true,indexesUpdated:1,sourceUnchanged:true,sourceSha256:createHash('sha256').update(source).digest('hex')}));
-   let refreshed=source;if(changed){const zip=await JSZip.loadAsync(source),xml=await zip.file('word/document.xml').async('string');zip.file('word/document.xml',xml.replace('FINAL_RENDER_MARKER_20261023','DELETED_BODY_CONTENT'));refreshed=await zip.generateAsync({type:'uint8array'});}
+   let refreshed=source;{const zip=await JSZip.loadAsync(source),xml=await zip.file('word/document.xml').async('string');zip.file('word/document.xml',xml.replace(/(<w:fldChar w:fldCharType="separate"\s*\/>\s*<\/w:r>\s*<w:r><w:t[^>]*>) (<\/w:t>)/g,'$1'+'1'+'$2'));refreshed=await zip.generateAsync({type:'uint8array'});}if(changed){const zip=await JSZip.loadAsync(source),xml=await zip.file('word/document.xml').async('string');zip.file('word/document.xml',xml.replace('FINAL_RENDER_MARKER_20261023','DELETED_BODY_CONTENT'));refreshed=await zip.generateAsync({type:'uint8array'});}
    await writeFile(path.join(workspace,'output','document-refreshed.docx'),refreshed);await writeFile(path.join(workspace,'output','document.pdf'),await pdfBytes());
   }});
   if(changed)await assert.rejects(()=>docx().then(bytes=>f.renderer.convert({bytes})),errorCode('document_render_word_changed'));
