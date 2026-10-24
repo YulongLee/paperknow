@@ -10,7 +10,7 @@ import {createServer} from '../server.mjs';
 const origin='https://paperknow.cn';
 const refreshedPages=new Set(['/','/features/ai-writing/','/features/ai-reading/','/features/reduce-ai/','/features/similarity-check/','/features/ppt/','/guides/paper-outline/','/guides/research-ppt/','/guides/research-charts/','/about/','/help/','/status/']);
 const formatUpdatedPages=new Set(['/','/features/format/','/guides/docx-format/','/about/','/status/']);
-const expectedModifiedAt=slug=>formatUpdatedPages.has(slug)?'2026-10-22':refreshedPages.has(slug)?'2026-10-21':['/features/research-tools/','/privacy/'].includes(slug)?'2026-10-19':['/features/','/guides/'].includes(slug)?'2026-10-15':'2026-10-18';
+const expectedModifiedAt=slug=>slug==='/features/ai-writing/'?'2026-10-25':formatUpdatedPages.has(slug)?'2026-10-22':refreshedPages.has(slug)?'2026-10-21':['/features/research-tools/','/privacy/'].includes(slug)?'2026-10-19':['/features/','/guides/'].includes(slug)?'2026-10-15':'2026-10-18';
 const features={
   'ai-writing':'writing','ai-reading':'literature','reduce-similarity':'reduce',
   'reduce-ai':'aigc','similarity-check':'detection','ppt':'ppt',

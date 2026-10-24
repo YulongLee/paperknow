@@ -34,14 +34,14 @@ async function fixture(t,{bytesGate}={}){
  const ctx={session:async()=>({status:'ready',user:{id:'alice'}}),api:async path=>{if(path==='/theses/t1')return {item:structuredClone(item)};if(path==='/capabilities')return {thesis:{ready:true}};if(path==='/auth/me')return {user:{id:cookieOwner}};throw Error('Unexpected thesis request '+path);}};
  const stop=w.thesisExports.mountOnlineThesis({id:'t1',ctx,container:w.document.querySelector('.dashboard')});await stop.ready;
  t.after(()=>{stop();dom.window.close();endDraftScope();});
- return {w,stop,calls,exports,get downloads(){return downloads;},get generating(){return generating;},setOwner(id){cookieOwner=id;},click(format){w.document.querySelector(format==='txt'?'[data-thesis-txt]':'#thesis-online-'+format).click();},q:selector=>w.document.querySelector(selector)};
+ return {w,stop,calls,exports,get downloads(){return downloads;},get generating(){return generating;},setOwner(id){cookieOwner=id;},click(format){w.document.querySelector('#thesis-online-'+format).click();},q:selector=>w.document.querySelector(selector)};
 }
-test('account thesis TXT, DOCX and PDF explicitly retain the opened account outside draftScope',async t=>{
- for(const format of ['txt','docx','pdf']){const f=await fixture(t);f.click(format);await settle();assert.equal(f.exports.length,1);assert.equal(f.exports[0].options.expectedUserId,'alice');assert.equal(f.exports[0].name,'合成账户论文.'+format);assert.equal(f.calls.filter(call=>call.path==='/api/artifacts').length,1);assert.equal(f.downloads,1);f.stop();}
+test('account thesis final and editable draft DOCX explicitly retain the opened account outside draftScope',async t=>{
+ for(const format of ['docx','draft']){const f=await fixture(t);f.click(format);await settle();assert.equal(f.exports.length,1);assert.equal(f.exports[0].options.expectedUserId,'alice');assert.equal(f.exports[0].name,'合成账户论文'+(format==='draft'?'（初稿）':'')+'.docx');assert.equal(f.calls.filter(call=>call.path==='/api/artifacts').length,1);assert.equal(f.downloads,1);f.stop();}
 });
 test('a switched cookie cannot upload or download an old account thesis in any export format',async t=>{
- for(const format of ['txt','docx','pdf']){const f=await fixture(t);f.setOwner('bob');f.click(format);await settle();assert.equal(f.exports[0]?.options.expectedUserId,'alice');assert.deepEqual(f.calls.map(call=>call.path),['/api/auth/me']);assert.equal(f.downloads,0);assert.match(f.q(format==='txt'?'[data-thesis-notice]':'[data-thesis-export-status]').textContent,/账户已变化/);f.stop();}
+ for(const format of ['docx','draft']){const f=await fixture(t);f.setOwner('bob');f.click(format);await settle();assert.equal(f.exports[0]?.options.expectedUserId,'alice');assert.deepEqual(f.calls.map(call=>call.path),['/api/auth/me']);assert.equal(f.downloads,0);assert.match(f.q('[data-thesis-export-status]').textContent,/账户已变化/);f.stop();}
 });
-test('late account thesis DOCX and PDF bytes cannot write cloud files or download after the page is replaced',async t=>{
- for(const format of ['docx','pdf']){const gate=deferred(),f=await fixture(t,{bytesGate:gate});f.click(format);await settle();assert.equal(f.generating,true);f.stop();f.q('.dashboard').innerHTML='<h1>另一账户的新页面</h1>';f.setOwner('bob');gate.resolve(new Uint8Array([1,2]));await settle();assert.equal(f.exports.length,0);assert.equal(f.calls.length,0);assert.equal(f.downloads,0);assert.equal(f.q('.dashboard').textContent,'另一账户的新页面');}
+test('late account thesis final and editable draft DOCX bytes cannot write cloud files or download after the page is replaced',async t=>{
+ for(const format of ['docx','draft']){const gate=deferred(),f=await fixture(t,{bytesGate:gate});f.click(format);await settle();assert.equal(f.generating,true);f.stop();f.q('.dashboard').innerHTML='<h1>另一账户的新页面</h1>';f.setOwner('bob');gate.resolve(new Uint8Array([1,2]));await settle();assert.equal(f.exports.length,0);assert.equal(f.calls.length,0);assert.equal(f.downloads,0);assert.equal(f.q('.dashboard').textContent,'另一账户的新页面');}
 });

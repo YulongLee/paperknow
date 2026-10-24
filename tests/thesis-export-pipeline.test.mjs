@@ -19,11 +19,12 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{reso
 const settle=async()=>{for(let index=0;index<8;index++)await new Promise(resolve=>setImmediate(resolve));};
 async function until(predicate,message='operation did not settle',timeout=8000){const start=Date.now();while(!predicate()){if(Date.now()-start>timeout)assert.fail(message);await new Promise(resolve=>setTimeout(resolve,5));}}
 
-async function fixture(t,{qualityRecord=quality(),template=null,changeDocx=null,renderResult=null,renderError=null,renderWait=null,getOptionsWait=null,documentWait=null,ownerId='alice',sourceText=text,submission=false}={}){
+async function fixture(t,{qualityRecord=quality(),template=null,changeDocx=null,renderResult=null,renderError=null,renderWait=null,getOptionsWait=null,documentWait=null,ownerId='alice',sourceText=text,submission=false,docxOnly=false,roguePdf=false}={}){
  endDraftScope();
- const dom=new JSDOM(`<main>${documentExportButtons('thesis-test',{submission})}<p id="status" role="status"></p></main>`,{url:'https://paperknow.test/workspace.html#thesis/synthetic-thesis'}),previous=Object.fromEntries(['window','document','location','fetch'].map(key=>[key,{own:Object.hasOwn(globalThis,key),value:globalThis[key]}]));
+ const dom=new JSDOM(`<main>${documentExportButtons('thesis-test',{submission,docxOnly})}<p id="status" role="status"></p></main>`,{url:'https://paperknow.test/workspace.html#thesis/synthetic-thesis'}),previous=Object.fromEntries(['window','document','location','fetch'].map(key=>[key,{own:Object.hasOwn(globalThis,key),value:globalThis[key]}]));
  for(const key of ['window','document','location'])globalThis[key]=dom.window[key];
  beginDraftScope({ownerId,drafts:[]});
+ if(roguePdf&&!dom.window.document.querySelector('#thesis-test-pdf'))dom.window.document.querySelector('main').insertAdjacentHTML('afterbegin','<button id="thesis-test-pdf">旧版 PDF 按钮</button>');
  const generated=[],rendered=[],downloads=[],requests=[],checks=[],status=dom.window.document.querySelector('#status');
  let currentText=sourceText,currentTitle=metadata.title,optionsCalls=0,fontCalls=0,legacyPdfCalls=0,current=true,closed=false;
  const options={documentKind:'thesis',submission,metadata:structuredClone(metadata),quality:structuredClone(qualityRecord),template};
@@ -47,7 +48,7 @@ async function fixture(t,{qualityRecord=quality(),template=null,changeDocx=null,
   auditThesisExport:input=>{const report=writingDocument.auditThesisExport(input);checks.push(report);return report;},
  };
  bindDocumentExports('thesis-test',()=>currentText,()=>currentTitle,status,{
-  isCurrent:()=>current,
+  docxOnly,isCurrent:()=>current,
   loadDocument:async()=>{if(documentWait)await documentWait.promise;return api;},
   loadFont:async()=>{fontCalls++;throw Error('thesis export must not load legacy PDF font');},
   getDocumentOptions:async()=>{optionsCalls++;if(getOptionsWait)await getOptionsWait.promise;return options;},
@@ -72,6 +73,19 @@ async function withTemplate(){
  return{version:1,status:'ready',source:{fileId:'synthetic-template',name:'合成学校模板.docx',size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')},bytes};
 }
 const xmlOf=async bytes=>{const zip=await JSZip.loadAsync(bytes);return zip.file('word/document.xml').async('string');};
+
+test('DOCX-only thesis delivery retains formal checks and editable drafts without offering or downloading a PDF',async t=>{
+ const f=await fixture(t,{submission:true,docxOnly:true});
+ assert.equal(f.q('#thesis-test-pdf'),null);assert.ok(f.q('#thesis-test-docx'));assert.ok(f.q('#thesis-test-draft'));
+ f.click('docx');await f.complete();assert.equal(f.generated.length,0);assert.equal(f.rendered.length,0);assert.match(f.status.textContent,/尚未满足终稿导出条件/);
+ f.click('draft');await f.complete();assert.equal(f.downloads.length,1);assert.match(f.downloads[0].name,/（初稿）\.docx$/);assert.equal(f.downloads[0].mime,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+ assert.equal(f.rendered.length,1,'Pagination checking is retained for Word delivery');assert.equal(f.legacyPdfCalls,0);assert.doesNotMatch(f.status.textContent,/PDF|TXT/);assert.doesNotMatch(f.q('[data-export-check]').textContent,/PDF/);
+});
+
+test('a stale PDF control cannot invoke generation, rendering or cloud download in a DOCX-only binding',async t=>{
+ const f=await fixture(t,{submission:true,docxOnly:true,roguePdf:true});f.click('pdf');await settle();
+ assert.equal(f.optionsCalls,0);assert.equal(f.generated.length,0);assert.equal(f.rendered.length,0);assert.equal(f.downloads.length,0);assert.equal(f.fontCalls,0);
+});
 
 test('formal export checks stop an incomplete manuscript before conversion while its editable draft remains downloadable',async t=>{
  const f=await fixture(t,{submission:true});f.click('docx');await f.complete();assert.equal(f.generated.length,0);assert.equal(f.downloads.length,0);assert.equal(f.rendered.length,0);assert.match(f.status.textContent,/尚未满足终稿导出条件/);assert.ok(f.q('[data-export-check]').open);
@@ -98,8 +112,8 @@ for(const format of ['docx','pdf'])test(`real thesis ${format.toUpperCase()} pip
   assert.deepEqual(Buffer.from(template.bytes),original,'the uploaded template is unchanged');assert.equal(f.sourceText,text);
   const panel=f.q('[data-export-check]');assert.ok(panel);assert.equal(panel.hidden,false);panel.open=true;
   assert.match(panel.querySelector('summary').textContent,/本次导出检查/);assert.equal(panel.querySelector('summary').textContent.includes('有待核对事项'),f.checks[0].status==='review_required','template recognition caveats remain visible instead of being presented as a clean review');
-  assert.match(panel.textContent,/按模板正文占位位置填入/);assert.match(panel.textContent,/正文文字检查：\d+ 项已按段落及顺序核对/);assert.match(panel.textContent,/已生成 2 页/);assert.match(panel.textContent,/PDF 来自本次 Word 文件/);assert.match(panel.textContent,/不代表事实核验或人工逐页审定/);
-  assert.match(f.status.textContent,/PDF 与 Word 使用同一排版文档/);assert.ok(f.checks[0].checks.some(row=>row.id==='existing_review'&&row.status==='passed'));
+  assert.match(panel.textContent,/按模板正文占位位置填入/);assert.match(panel.textContent,/正文文字检查：\d+ 项已按段落及顺序核对/);assert.match(panel.textContent,/已生成 2 页/);assert.match(panel.textContent,/已核对本次 Word 文件的分页/);assert.match(panel.textContent,/不代表事实核验或人工逐页审定/);
+  assert.match(f.status.textContent,/请核对 Word 中的最终版式/);assert.ok(f.checks[0].checks.some(row=>row.id==='existing_review'&&row.status==='passed'));
  }finally{f.close();}
 });
 
@@ -145,7 +159,7 @@ test('DOCX remains downloadable on conversion failure with an explicit unrendere
 
 test('invalid PDF envelopes are rejected by the client rather than becoming successful thesis downloads',async t=>{
  for(const renderResult of [{data:Buffer.from('NOT-PDF').toString('base64'),pages:2},{data:Buffer.from(syntheticPdf).toString('base64'),pages:0},{data:null,pages:1}]){
-  const f=await fixture(t,{renderResult});try{f.click('pdf');await f.complete();assert.equal(f.downloads.length,0);assert.equal(f.legacyPdfCalls,0);assert.match(f.status.textContent,/页面结果.*(?:格式无效|不完整)/);}finally{f.close();}
+  const f=await fixture(t,{renderResult});try{f.click('pdf');await f.complete();assert.equal(f.downloads.length,0);assert.equal(f.legacyPdfCalls,0);assert.match(f.status.textContent,/页面(?:检查)?结果.*(?:格式无效|不完整)/);}finally{f.close();}
  }
 });
 

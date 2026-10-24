@@ -66,7 +66,7 @@ test('an account template changed in another page during upload is not overwritt
 
 test('manual writing keeps a usable local template selector while the final-step selector stays hidden',async t=>{
  const stored={...finalDraft(),workflowStage:4,workflowUnlockedStage:4,writingEditorState:{manualWriting:true}},f=draftFixture(t,{stored});
- const local=f.q('#writing-local-template');assert.ok(isVisible(local));assert.equal(isVisible(f.q('#writing-final-template')),false);assert.equal([...document.querySelectorAll('[data-template-panel]')].filter(isVisible).length,1);
+ const local=f.q('#writing-local-template');assert.ok(isVisible(local));assert.ok(f.q('#body-docx'));assert.equal(f.q('#body-pdf'),null);assert.equal(f.q('#body-export'),null);assert.doesNotMatch(f.q('.thesis-local-exports').textContent,/PDF|TXT|null/);assert.equal(isVisible(f.q('#writing-final-template')),false);assert.equal([...document.querySelectorAll('[data-template-panel]')].filter(isVisible).length,1);
  const before=structuredClone(f.saved());select(f,'#writing-local-template [data-template-file]',file());await waitFor(()=>f.saved()?.exportTemplate?.source?.fileId==='draft-template'&&!f.q('#writing-local-template [data-template-choose]').disabled);
  assert.match(local.textContent,/新学校模板.docx/);assert.deepEqual(f.saved().bodySections,before.bodySections);assert.deepEqual(f.saved().outlineRows,before.outlineRows);assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
 });
