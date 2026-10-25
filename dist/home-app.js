@@ -150,7 +150,7 @@ const featurePanels=Array.from(document.querySelectorAll('[data-feature-panel]')
 const featureSection=$('#capabilities');
 const featureMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
 const featureCompact=window.matchMedia('(max-width: 700px)');
-let featureAutoplay=!featureMotion.matches,featureInView=false,featureHovered=false;
+let featureAutoplay=!featureMotion.matches,featureInView=false,featureKeyboardInput=true;
 let featureTimer=null;
 const featureDelay=5000;
 function selectFeature(key,moveFocus=false){
@@ -173,8 +173,10 @@ function selectFeature(key,moveFocus=false){
 }
 function syncFeatureRotation(){
  clearTimeout(featureTimer);featureTimer=null;
- const focused=featureSection.contains(document.activeElement);
- const rotating=featureAutoplay&&!featureCompact.matches&&featureInView&&!featureHovered&&!focused&&!document.hidden&&!dialog.open;
+ // A mouse click leaves focus on a tab; that must not stop autoplay forever.
+ // Keep keyboard navigation and focused actions inside a preview uninterrupted.
+ const focused=featureSection.contains(document.activeElement)&&(featureKeyboardInput||featurePanels.some(panel=>panel.contains(document.activeElement)));
+ const rotating=featureAutoplay&&!featureCompact.matches&&featureInView&&!focused&&!document.hidden&&!dialog.open;
  featureSection.dataset.rotation=rotating?'running':'paused';
  if(!rotating)return;
  featureTimer=setTimeout(()=>{
@@ -196,8 +198,12 @@ featureTabs.forEach((tab,index)=>{
  });
 });
 selectFeature(featureTabs.find(tab=>tab.getAttribute('aria-selected')==='true')?.dataset.featureTab||featureTabs[0]?.dataset.featureTab);
-featureSection.addEventListener('pointerenter',event=>{if(event.pointerType==='mouse'||event.pointerType==='pen'){featureHovered=true;syncFeatureRotation();}});
-featureSection.addEventListener('pointerleave',()=>{featureHovered=false;syncFeatureRotation();});
+document.addEventListener('pointerdown',()=>{featureKeyboardInput=false;syncFeatureRotation();});
+document.addEventListener('keydown',event=>{
+ if(['Shift','Control','Alt','Meta'].includes(event.key))return;
+ featureKeyboardInput=true;
+ if(featureSection.contains(document.activeElement))syncFeatureRotation();
+},true);
 featureSection.addEventListener('pointerdown',event=>{if(event.pointerType==='touch'){featureAutoplay=false;syncFeatureRotation();}});
 featureSection.addEventListener('focusin',syncFeatureRotation);
 featureSection.addEventListener('focusout',()=>queueMicrotask(syncFeatureRotation));

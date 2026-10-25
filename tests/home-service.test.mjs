@@ -312,17 +312,42 @@ test('capability carousel advances in view, wraps after the last capability, and
  }
 });
 
-test('capability carousel pauses while reading or away, and resumes with a fresh interval',async t=>{
+test('capability carousel keeps rotating with the mouse over it after a real pointer focus and click sequence',async t=>{
  const clock=carouselEnvironment(),d=await page(t,null,clock.prepare),w=d.defaultView;
- const section=d.querySelector('#capabilities');
+ const section=d.querySelector('#capabilities'),tab=d.querySelector('[data-feature-tab="literature"]');
+ const selected=()=>d.querySelector('[data-feature-tab][aria-selected="true"]').dataset.featureTab;
+ const pointer=type=>{const event=new w.Event(type,{bubbles:type==='pointerdown'});Object.defineProperty(event,'pointerType',{value:'mouse'});return event;};
+ clock.enter();const initialTimer=clock.timer;
+ section.dispatchEvent(pointer('pointerenter'));
+ assert.equal(clock.timer,initialTimer,'stationary hover does not stop or reset the five second interval');
+ tab.dispatchEvent(pointer('pointerdown'));tab.focus();tab.click();
+ assert.equal(selected(),'literature');assert.equal(d.activeElement,tab);
+ assert.equal(section.dataset.rotation,'running');assert.equal(clock.pending,1);
+ const manualTimer=clock.timer;
+ assert.notEqual(manualTimer,initialTimer,'a manual click grants a fresh five second interval');
+ section.dispatchEvent(pointer('pointerleave'));
+ assert.equal(clock.timer,manualTimer,'moving the mouse away does not change the interval');
+ clock.advance();assert.equal(selected(),'reduce');assert.equal(d.activeElement,tab,'rotation does not move focus');
+ assert.equal(d.querySelector('[data-feature-panel="reduce"]').hidden,false,'the lower preview follows the rotating tab');
+ clock.advance();assert.equal(selected(),'aigc');assert.equal(clock.pending,1,'rotation continues beyond a single transition');
+ tab.dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
+ assert.equal(clock.pending,0,'switching to keyboard navigation still pauses rotation');
+ assert.equal(d.activeElement,d.querySelector('[data-feature-tab="reduce"]'));
+ d.querySelector('#account-button').focus();await Promise.resolve();
+ assert.equal(clock.pending,1,'leaving keyboard interaction resumes rotation');
+});
+
+test('capability carousel pauses for keyboard focus, preview actions, dialogs, or leaving the page and resumes with a fresh interval',async t=>{
+ const clock=carouselEnvironment(),d=await page(t,null,clock.prepare),w=d.defaultView;
  clock.enter();
  let previousTimer=clock.timer;
  const assertPaused=()=>assert.equal(clock.pending,0,'rotation stops during the interruption');
  const assertRestarted=()=>{assert.equal(clock.pending,1);assert.notEqual(clock.timer,previousTimer,'resuming grants another full reading interval');previousTimer=clock.timer;};
- const hover=new w.Event('pointerenter');Object.defineProperty(hover,'pointerType',{value:'mouse'});
- section.dispatchEvent(hover);assertPaused();
- section.dispatchEvent(new w.Event('pointerleave'));assertRestarted();
  d.querySelector('[data-feature-tab="writing"]').focus();assertPaused();
+ d.querySelector('#account-button').focus();await Promise.resolve();assertRestarted();
+ const pointer=new w.Event('pointerdown',{bubbles:true});Object.defineProperty(pointer,'pointerType',{value:'mouse'});
+ const action=d.querySelector('[data-feature-panel="writing"] button');
+ action.dispatchEvent(pointer);action.focus();assertPaused();
  d.querySelector('#account-button').focus();await Promise.resolve();assertRestarted();
  d.querySelector('#about-button').click();await Promise.resolve();assertPaused();
  d.querySelector('#dialog-close').click();await Promise.resolve();assertRestarted();
