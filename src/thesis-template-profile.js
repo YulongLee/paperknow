@@ -12,6 +12,15 @@ export function defaultThesisTemplateProfile(){
  return {version:1,rules:{page:{width:11906,height:16838,top:mm(30),bottom:mm(25),left:mm(30),right:mm(25),header:mm(15),footer:mm(15),gutter:0},styles:{Normal:style(),Title:style({eastAsia:'黑体',size:44,bold:true,alignment:'center',firstLineChars:0,line:360,before:240,after:240}),Heading1:style({eastAsia:'黑体',size:32,bold:true,alignment:'center',firstLineChars:0,line:360,before:480,after:360,pageBreakBefore:true}),Heading2:style({eastAsia:'黑体',size:28,bold:true,alignment:'left',firstLineChars:0,line:360,before:240,after:120}),Heading3:style({eastAsia:'黑体',size:24,bold:true,alignment:'left',firstLineChars:0,line:360,before:120,after:120}),Abstract:style(),References:style({firstLineChars:0,hanging:480}),TableText:style({size:21,alignment:'left',line:240,firstLineChars:0})}},recognized:[],unresolved:[],warnings:[],summary:['通用学位论文模板；最终格式请按学位授予单位要求核对。']};
 }
 
+export function defaultWritingTemplateProfile(){
+ const profile=defaultThesisTemplateProfile();
+ Object.assign(profile.rules.styles.Title,{size:36,before:120,after:240});
+ Object.assign(profile.rules.styles.Heading1,{pageBreakBefore:false,alignment:'left',before:240,after:120});
+ profile.summary=['通用学术报告版式；按文档自身结构连续排版。'];
+ return profile;
+}
+
+
 export async function inspectThesisDocxTemplate(bytes){return inspectTemplate(bytes);}
 export async function prepareThesisDocxTemplate(bytes){
  const prepared=await inspectTemplate(bytes,{includeBytes:true});

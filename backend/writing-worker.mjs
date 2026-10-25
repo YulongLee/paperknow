@@ -1,3 +1,4 @@
+import {writingCompletionTask} from './writing-completion.mjs';
 import {randomUUID} from 'node:crypto';
 import {taskProjectId} from './task-project-context.mjs';
 import {createBillingService} from './billing-service.mjs';
@@ -38,7 +39,7 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
  }
  for(const unit of plan){
   if(controller.signal.aborted||!running())return;if(completed.some(value=>value.id===unit.id))continue;
-  const began=Date.now(),task=writingTask(row.kind,row.operation,snapshot,unit,completed);let output=await dispatch(task,maxTurns,runtime.timeoutMs,unit),parsed;if(!output)return;
+  const began=Date.now(),task=writingCompletionTask(writingTask(row.kind,row.operation,snapshot,unit,completed),unit);let output=await dispatch(task,maxTurns,runtime.timeoutMs,unit),parsed;if(!output)return;
   try{parsed=parseWritingOutput(output,row.kind,row.operation,snapshot,unit);}catch(error){
    const sourceIssue=error.validationCode==='source_attribution',lengthIssue=error.code==='word_limit';
    if(!sourceIssue&&!lengthIssue||repairTurns<2)throw error;
@@ -56,6 +57,7 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
   if(row.operation==='questionnaire')aggregateWritingQuestionnaire(snapshot,plan,[...completed,{id:unit.id,...parsed}],{partial:true});
   transaction(()=>{if(!running())return;const json=JSON.stringify({...parsed,title:parsed.title||unit.title,targetWords:unit.targetWords});writingStorageCheck(db,row.user_id,Buffer.byteLength(json),config);db.prepare('INSERT INTO writing_checkpoints VALUES(?,?,?,?,?)').run(row.id,unit.id,unit.position,json,clock());});completed.push({id:unit.id,title:unit.title,targetWords:unit.targetWords,...parsed});
  }
+ completed.sort((a,b)=>plan.findIndex(unit=>unit.id===a.id)-plan.findIndex(unit=>unit.id===b.id));
  let quality=null;
  if(config.writingQualityEnabled===true&&row.operation==='draft')quality=await qualityRunner({snapshot,chapters:completed.map(unit=>({id:unit.id,title:unit.title||snapshot.title,text:unit.text,sourceIds:unit.sourceIds})),runtime,runId:row.id,signal:controller.signal,isCurrent:()=>Boolean(running()),onStage:value=>{if(!running()||controller.signal.aborted)return;const name=/^[a-z][a-z0-9_]{0,60}$/i.test(value)?value:'reviewing_manuscript';db.prepare('UPDATE writing_runs SET stage=?,updated_at=? WHERE id=?').run(name,clock(),row.id);db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(name,clock(),row.id);},dispatch:async({task,settings,validateReviewOutput,unitId})=>{
   if(controller.signal.aborted||!running())throw thesisError(499,'任务已停止','cancelled');

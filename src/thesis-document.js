@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import {DOMParser,XMLSerializer} from '@xmldom/xmldom';
-import {defaultThesisTemplateProfile,prepareThesisDocxTemplate} from './thesis-template-profile.js';
+import {defaultThesisTemplateProfile,defaultWritingTemplateProfile,prepareThesisDocxTemplate} from './thesis-template-profile.js';
 import {analyzeThesisTemplatePlacement,decodeThesisTemplateXml} from './thesis-template-placement.js';
 import {repairIncompleteTemplateFonts} from './thesis-template-fonts.js';
 
@@ -376,10 +376,10 @@ async function mergeGeneratedFigureImages(original,target,document,reserved){
  return {count,relationships};
 }
 
-export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},template=null,submission=false,chapterTitles=metadata.chapterTitles||[]}={}){
+export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},template=null,submission=false,academicReport=false,chapterTitles=metadata.chapterTitles||[]}={}){
  const original=await JSZip.loadAsync(bytes),doc=parse(await readXml(original.file('word/document.xml'))),nodes=children(doc.getElementsByTagNameNS(W,'body')[0]).filter(n=>n.localName!=='sectPr');
  if(nodes.length!==blocks.length)throw Error('论文段落结构不一致，未导出不完整文件。');
- let profile=defaultThesisTemplateProfile(),source,placement;
+ let profile=academicReport?defaultWritingTemplateProfile():defaultThesisTemplateProfile(),source,placement;
  if(template){if(template.status==='unavailable'||!template.bytes)throw Error('所选论文模板不可用，请重新上传模板或明确切换为通用模板。');const prepared=await prepareThesisDocxTemplate(template.bytes);profile=prepared.profile;source=await JSZip.loadAsync(prepared.bytes);}
  if(source){const stylePart=await relatedPart(source,'styles','word/styles.xml');placement=analyzeThesisTemplatePlacement(parse(await readXml(source.file('word/document.xml'))),source.file(stylePart)?parse(await readXml(source.file(stylePart))):null);if(placement.mode==='ambiguous')throw Error(placement.warnings[0]||'无法可靠识别模板正文区域，请使用独立 {{正文}} 占位符。');}
  const output=source&&placement.mode!=='rules_only'?source:new JSZip(),generatedImages=await mergeGeneratedFigureImages(original,output,doc,source);
@@ -422,7 +422,7 @@ export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},t
  const footer=`<w:ftr xmlns:w="${W}"><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:eastAsia="宋体"/><w:sz w:val="18"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${run('1')}<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>`;
  zip.file('word/pk-footer.xml',footer);
  const header=references.references.match(/<w:headerReference[^>]+\/>/g)?.join('')||'',customFooter=references.references.match(/<w:footerReference[^>]+\/>/g)?.join('')||'';
- const documentBody=cover(title,metadata)+sectionBreak(section(page,{cover:true}))+front.join('')+contents(headings,width)+sectionBreak(section(page,{front:true}))+body+section(page,{header,refs:customFooter});
+ const documentBody=academicReport?p(title,'Title')+front.join('')+body+section(page,{header,refs:customFooter}):cover(title,metadata)+sectionBreak(section(page,{cover:true}))+front.join('')+contents(headings,width)+sectionBreak(section(page,{front:true}))+body+section(page,{header,refs:customFooter});
  zip.file('word/document.xml',`<w:document xmlns:w="${W}" xmlns:r="${R}" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>${documentBody}</w:body></w:document>`);
  const originalStylePart=source?await relatedPart(source,'styles','word/styles.xml'):null,styles=source?.file(originalStylePart)?parse(await readXml(source.file(originalStylePart))):parse(`<w:styles xmlns:w="${W}"><w:docDefaults><w:rPrDefault><w:rPr>${rPr(rules.styles.Normal)}</w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>${pPr(rules.styles.Normal)}</w:pPr></w:pPrDefault></w:docDefaults></w:styles>`);
  for(const n of [...styles.getElementsByTagNameNS(W,'style')])if(/^PK(?:Normal|Title|FrontHeading|Heading[123]|Abstract|References|TableText|Code|TOC[123]|TOC|TOCTitle|Header|FigureCaption|TableCaption|ReferenceHeading|AcknowledgementHeading|AppendixHeading)$/.test(n.getAttributeNS(W,'styleId')))n.parentNode.removeChild(n);

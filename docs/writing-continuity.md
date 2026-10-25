@@ -35,3 +35,14 @@ This improves completion under recoverable failures; it is not a guarantee again
 ## Verification
 
 Meaningful regression coverage includes strict SDK submission, automatic repair, long-run token budgeting, exact-once billing, maintenance recovery, unknown/all-zero usage, explicit cancellation, citation endpoint limits, exact review quotations, old schema compatibility and fixed-window UI behavior. Browser acceptance uses isolated synthetic accounts and an in-memory database. Real provider probes use synthetic short content and bounded spending; they do not certify full-thesis quality across all fields.
+
+
+## Other writing workflows
+
+The eight writing flows retain their existing step definitions and document identities. Valid output is durably adopted into the current draft automatically, while the outline still requires the author’s structural confirmation. A pending job is retrieved on returning to its step without a new quote or charge. Polling patches the existing progress bar and waiting window. Input drift or an account change prevents adoption.
+
+At delivery, explicit missing-fact markers and grounded saved review findings open a material supplement window. Authors can enter records, import documents, choose stored files, or add true reference metadata and text. Saving materials does not invoke a model. A separately confirmed completion quote binds the owned original job, current manuscript, normalized snapshot, project, and server-selected plan. It shares the original writing product’s entitlement identity. Unknown-response retries use the same command key.
+
+Completion copies untouched accepted checkpoints; only affected or unfinished units are generated. Whole-manuscript author edits require a full revision using all edited text as revision context. Original prose is never treated as newly read evidence. New materials are prioritized in the same bounded reader, and the normal actual-read citation validation remains mandatory. The full final manuscript is reviewed in its original order. Old jobs and local version history remain intact, and a failed completion releases its reservation. No new paid generation starts automatically after a check.
+
+Final writing DOCX exports use the existing deterministic layout repair/check loop and native page verification, with source-range checks before delivery. The report layout omits the thesis-specific cover, declaration and automatic table of contents. Editable DOCX drafts and TXT backups remain available. These changes do not change graduation-thesis steps or its supplement flow. Questionnaire design retains explicit question adoption and publication validation; its shared generation panel receives the same progress feedback. Data analysis retains its three-step real-data workflow, adds a visible processing state and guards concurrent calculations and stale results.

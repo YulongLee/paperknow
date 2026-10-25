@@ -60,6 +60,17 @@ export function bindDocumentExports(prefix,getText,getTitle,status,{expectedUser
     status.textContent='检查记录已准备，正在保存导出文件…';
     const exported=await downloadFile(title+(draft?'（初稿）':'')+'.'+format,bytes,format==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document',{expectedUserId:owner});
     if(current())status.textContent=exported.message+' '+(layout?`本次已生成 ${layout.pages} 页，请核对 Word 中的最终版式。`:'本次页面渲染未完成；已保留可编辑 Word，请核对版式。')+(report.status==='review_required'?' 存在待核对事项，请展开“本次导出检查”。':' 已完成本次规则检查，请核对最终版式。');
+   }else if(options.documentKind==='writing'&&format==='docx'){
+    status.textContent='1 / 3 · 正在检查文档内容并整理结构…';
+    let docx=await api.createWritingDocx(text,options);if(!current())return;
+    const profile=api.defaultWritingTemplateProfile?.(),verifyContent=bytes=>api.inspectThesisExportContent?.(bytes,text,options);
+    if(!profile||!api.runThesisLayoutAgent||!api.inspectThesisExportContent)throw Error('文档检查组件未就绪，请刷新后重试。');
+    const progress=event=>{if(current())status.textContent=`2 / 3 · 第 ${event.pass} 轮${event.stage==='repair'?'修正':'检查'}：整理标题、正文、行距与表格…`;};
+    let checked=await api.runThesisLayoutAgent(docx,{profile,verifyContent,onProgress:progress,signal:controller.signal});docx=checked.bytes;if(!current())return;
+    if(!draft&&checked.report.unresolved.length){await onNeedsCompletion?.({additional:checked.report.unresolved.map(row=>row.message)});throw Error('文档仍有待完善内容，已保留原稿，请在补充窗口提供资料后由系统继续处理。');}
+    await verifyContent(docx);if(!current())return;
+    let layout=null;if(!draft){for(let round=1;round<=3;round++){status.textContent=`3 / 3 · 第 ${round} 轮实际页面检查，请稍候…`;layout=await renderDocument(docx,{expectedUserId:owner,signal:controller.signal});if(!current())return;if(!layout?.docxBytes||!layout.fieldsRefreshed)throw Error('实际页面检查尚未完成，请稍后重试；当前内容已保留，也可下载可编辑初稿。');checked=await api.runThesisLayoutAgent(layout.docxBytes,{profile,verifyContent,onProgress:progress,signal:controller.signal});if(checked.report.iterations.length===1&&!checked.report.unresolved.length){layout.docxBytes=checked.bytes;break;}if(round===3)throw Error('页面格式尚未稳定，请稍后重试；已保存内容仍保留。');docx=checked.bytes;}await verifyContent(layout.docxBytes);}
+    if(!current())return;const exported=await downloadFile(title+(draft?'（初稿）':'')+'.docx',layout?.docxBytes||docx,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',{expectedUserId:owner});if(current())status.textContent=exported.message+(layout?` 已完成内容与实际页面检查，共 ${layout.pages} 页。`:' 已保留可编辑初稿。');
    }else{
     if(format==='pdf'){const typeface=await loadFont();if(!current())return;bytes=await api.createWritingPdf(text,typeface);}else bytes=await api.createWritingDocx(text,options);
     if(!current())return;const exported=await downloadFile(title+'.'+format,bytes,format==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document',{expectedUserId:owner});if(current())status.textContent=exported.message+' 请核对分页和最终格式。';
