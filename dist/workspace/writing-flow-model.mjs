@@ -1,3 +1,5 @@
+import {applyOutlinePresentationRecommendations} from './outline-content-recommendations.mjs';
+import {isOutlineReferenceChapter} from './outline-word-budget.mjs';
 import {writingStandardBrief} from './writing-standard.mjs';
 export const writingFlowSpecs=Object.freeze({
  proposal:{title:'开题报告',steps:['基础信息填写','精准知识补充','确定参考文献','确定开题提纲','确认生成版本'],panels:['basic','materials','references','outline','result'],outline:['选题背景与研究意义','研究目标与内容','拟采用的方法与技术路线','研究计划与预期成果']},
@@ -42,9 +44,20 @@ function flowExtraInstructions(kind,data){
  }
  return lines;
 }
+export const flowPresentationKeys=Object.freeze(['table','image','formula','code']);
+export const flowPresentation=value=>Object.fromEntries(flowPresentationKeys.map(key=>[key,value?.[key]===true]));
+function rowPresentation(row){
+ const leaves=(Array.isArray(row?.sections)?row.sections:[]).filter(child=>child?.presentation!==undefined);
+ if(leaves.length)return flowPresentation(Object.fromEntries(flowPresentationKeys.map(key=>[key,leaves.some(child=>child.presentation?.[key]===true)])));
+ return row?.sections?.length?undefined:row?.presentation===undefined?undefined:flowPresentation(row.presentation);
+}
+export function flowRecommendOutline(rows,snapshot,{reset=false}={}){
+ const normalized=flowOutlineRows(rows),prepared=reset?normalized.map(({presentation,...row})=>row):normalized;
+ return applyOutlinePresentationRecommendations(prepared,snapshot);
+}
 export function flowOutlineRows(input){
  const rows=Array.isArray(input)?input:flowText(input).split(/\r?\n/).map(title=>({title}));
- return rows.filter(row=>flowText(row?.title??row)).slice(0,30).map((row,index)=>({id:flowText(row?.id)||'section-'+(index+1),title:flowText(row?.title??row).replace(/^\s*(?:\d+[.、．]|[-*])\s*/,''),targetWords:Math.max(0,Math.round(Number(row?.targetWords??row?.words)||0)),...(row?.kind==='references'?{kind:'references'}:{})}));
+ return rows.filter(row=>flowText(row?.title??row)).slice(0,30).map((row,index)=>({id:flowText(row?.id)||'section-'+(index+1),title:flowText(row?.title??row).replace(/^\s*(?:\d+[.、．]|[-*])\s*/,''),targetWords:Math.max(0,Math.round(Number(row?.targetWords??row?.words)||0)),...(row?.kind==='references'?{kind:'references'}:{}),...(rowPresentation(row)!==undefined?{presentation:isOutlineReferenceChapter(row)?flowPresentation():rowPresentation(row)}:{})}));
 }
 export function flowAllocate(rows,target){
  const body=rows.filter(row=>row.kind!=='references'&&!/^(?:参考文献|参考资料|references|bibliography)/i.test(row.title)),total=body.reduce((n,row)=>n+(row.targetWords||1),0);let used=0;
@@ -62,11 +75,11 @@ export function writingFlowSnapshot(kind,data){
  const references=(data.references||[]).map(row=>({...row,confirmed:true}));
  const instructions=[flowText(data.instructions),...[writingStandardBrief(kind,data)].filter(Boolean),...flowExtraInstructions(kind,data),data.keywords?'关键词：'+data.keywords:'',data.practiceUnit?'实践单位：'+data.practiceUnit:'',data.practicePosition?'实践岗位：'+data.practicePosition:'',data.practiceStart?'开始日期：'+data.practiceStart:'',data.practiceEnd?'结束日期：'+data.practiceEnd:'',data.reportType?'报告类型：'+data.reportType:'',data.journal?'目标期刊 / 课程：'+data.journal:''].filter(Boolean).join('\n');
  if(instructions.length>12000)throw Error('写作要求和可选研究信息合计最多 12,000 字符，请精简后再生成。');
- return {title,profile:{level:flowLevel(data.level),major:flowText(data.major),language:flowLanguage(data.language),targetWords},requirements:{instructions,...(data.outputCount!==undefined?{outputCount:Number(data.outputCount)}:{}),...(data.scalePoints!==undefined?{scalePoints:Number(data.scalePoints)}:{}),...(flowText(data.researchPlan)?{researchPlan:{text:flowText(data.researchPlan),origin:'ai',status:'proposed'}}:{})},materials,references,outline:flowAllocate(flowOutlineRows(data.outline||[]),targetWords),abstract:flowText(data.abstract)};
+ return {title,profile:{level:flowLevel(data.level),major:flowText(data.major),language:flowLanguage(data.language),targetWords},requirements:{instructions,...(data.contentMode!==undefined||data.outline?.some(row=>row.presentation!==undefined)?{contentMode:data.contentMode==='text'?'text':'rich'}:{}),...(data.outputCount!==undefined?{outputCount:Number(data.outputCount)}:{}),...(data.scalePoints!==undefined?{scalePoints:Number(data.scalePoints)}:{}),...(flowText(data.researchPlan)?{researchPlan:{text:flowText(data.researchPlan),origin:'ai',status:'proposed'}}:{})},materials,references,outline:flowAllocate(flowOutlineRows(data.outline||[]),targetWords),abstract:flowText(data.abstract)};
 }
 export function migrateWritingFlow(kind,old={}){
  const spec=writingFlowSpec(kind),saved=old.writingFlow;
  if(saved&&saved.version===1){const value={...structuredClone(saved),level:flowLevel(saved.level),language:flowLanguage(saved.language)};return{...value,...flowWordState(kind,value)};}
  const note=old.writingEditorState?.inputs?.['knowledge-ai-input']??'';
- const fresh=!old.id&&!old.title&&old.targetWords===undefined,value={version:1,stage:0,title:old.title||'',level:flowLevel(old.degree),major:old.major||'',language:flowLanguage(old.language),targetWords:old.targetWords,notes:note,instructions:old.requirements||'',materials:(old.knowledgeFiles||[]).filter(row=>row.kind!=='ai'),references:old.writingReferences||[],outline:flowOutlineRows(old.outlineRows?.length?old.outlineRows:old.outlineText||''),outlineConfirmed:!!old.outlineConfirmed,body:old.bodySections?.filter(row=>row.text?.trim()).map(row=>row.title+'\n'+row.text).join('\n\n')||(['body','export','completed'].includes(old.stage)?old.text||'':''),abstract:'',jobs:{},versions:[],completed:[],...(fresh&&writingFlowKind(kind)==='article'?{journalTier:'普通',researchType:'不限'}:{}),...(fresh&&writingFlowKind(kind)==='idea'?{academicPurpose:'学位'}:{}),...(spec?{}:{})};return{...value,...flowWordState(kind,value)};
+ const fresh=!old.id&&!old.title&&old.targetWords===undefined,value={version:1,...(fresh?{contentMode:'rich'}:{}),stage:0,title:old.title||'',level:flowLevel(old.degree),major:old.major||'',language:flowLanguage(old.language),targetWords:old.targetWords,notes:note,instructions:old.requirements||'',materials:(old.knowledgeFiles||[]).filter(row=>row.kind!=='ai'),references:old.writingReferences||[],outline:flowOutlineRows(old.outlineRows?.length?old.outlineRows:old.outlineText||''),outlineConfirmed:!!old.outlineConfirmed,body:old.bodySections?.filter(row=>row.text?.trim()).map(row=>row.title+'\n'+row.text).join('\n\n')||(['body','export','completed'].includes(old.stage)?old.text||'':''),abstract:'',jobs:{},versions:[],completed:[],...(fresh&&writingFlowKind(kind)==='article'?{journalTier:'普通',researchType:'不限'}:{}),...(fresh&&writingFlowKind(kind)==='idea'?{academicPurpose:'学位'}:{}),...(spec?{}:{})};return{...value,...flowWordState(kind,value)};
 }
