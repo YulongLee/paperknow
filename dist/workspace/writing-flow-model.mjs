@@ -1,3 +1,4 @@
+import {proposalWritingBrief} from './proposal-standard.mjs';
 export const writingFlowSpecs=Object.freeze({
  proposal:{title:'开题报告',steps:['基础信息填写','精准知识补充','确定参考文献','确定开题提纲','确认生成版本'],panels:['basic','materials','references','outline','result'],outline:['选题背景与研究意义','研究目标与内容','拟采用的方法与技术路线','研究计划与预期成果']},
  summary:{title:'文献综述',steps:['基础信息填写','确定参考文献','确定综述提纲','确认生成版本'],panels:['basic','references','outline','result'],outline:['综述范围与检索方法','主要研究主题与证据比较','研究局限与未来方向']},
@@ -59,7 +60,7 @@ export function writingFlowSnapshot(kind,data){
  const materials=(data.materials||[]).filter(row=>flowText(row.text)).map(row=>({id:row.id,name:row.name,text:flowText(row.text),confirmed:true}));
  if(flowText(data.notes))materials.push({id:'user-notes',name:kind==='practice'?'用户实践记录':'用户补充说明',text:flowText(data.notes),confirmed:true});
  const references=(data.references||[]).map(row=>({...row,confirmed:true}));
- const instructions=[flowText(data.instructions),...flowExtraInstructions(kind,data),data.keywords?'关键词：'+data.keywords:'',data.practiceUnit?'实践单位：'+data.practiceUnit:'',data.practicePosition?'实践岗位：'+data.practicePosition:'',data.practiceStart?'开始日期：'+data.practiceStart:'',data.practiceEnd?'结束日期：'+data.practiceEnd:'',data.reportType?'报告类型：'+data.reportType:'',data.journal?'目标期刊 / 课程：'+data.journal:''].filter(Boolean).join('\n');
+ const instructions=[flowText(data.instructions),...(kind==='proposal'?[proposalWritingBrief(data)]:[]),...flowExtraInstructions(kind,data),data.keywords?'关键词：'+data.keywords:'',data.practiceUnit?'实践单位：'+data.practiceUnit:'',data.practicePosition?'实践岗位：'+data.practicePosition:'',data.practiceStart?'开始日期：'+data.practiceStart:'',data.practiceEnd?'结束日期：'+data.practiceEnd:'',data.reportType?'报告类型：'+data.reportType:'',data.journal?'目标期刊 / 课程：'+data.journal:''].filter(Boolean).join('\n');
  if(instructions.length>12000)throw Error('写作要求和可选研究信息合计最多 12,000 字符，请精简后再生成。');
  return {title,profile:{level:flowLevel(data.level),major:flowText(data.major),language:flowLanguage(data.language),targetWords},requirements:{instructions,...(data.outputCount!==undefined?{outputCount:Number(data.outputCount)}:{}),...(data.scalePoints!==undefined?{scalePoints:Number(data.scalePoints)}:{}),...(flowText(data.researchPlan)?{researchPlan:{text:flowText(data.researchPlan),origin:'ai',status:'proposed'}}:{})},materials,references,outline:flowAllocate(flowOutlineRows(data.outline||[]),targetWords),abstract:flowText(data.abstract)};
 }

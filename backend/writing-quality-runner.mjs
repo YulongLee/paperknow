@@ -15,7 +15,7 @@ export function createWritingQualityRunner(config={}){
   if(signal?.aborted)throw aborted();let listener;
   try{return await Promise.race([operation,new Promise((_,reject)=>{listener=()=>reject(aborted());signal?.addEventListener('abort',listener,{once:true});if(signal?.aborted)listener();})]);}finally{signal?.removeEventListener('abort',listener);}
  }
- function batchesFor(chapters){
+ function batchesFor(chapters,maxCharacters=22000){
   if(!Array.isArray(chapters)||chapters.length>200)throw Object.assign(new Error('审校章节数量无效'),{status:400});
   const batches=[];let batch=[],characters=0;
   const flush=()=>{if(batch.length)batches.push(batch);batch=[];characters=0;};
@@ -24,10 +24,10 @@ export function createWritingQualityRunner(config={}){
    if(!chapter.text.trim())continue;
    let start=0,part=0;
    while(start<chapter.text.length){
-    let end=Math.min(chapter.text.length,start+22000);
+    let end=Math.min(chapter.text.length,start+maxCharacters);
     if(end<chapter.text.length&&/[\uD800-\uDBFF]/.test(chapter.text[end-1]))end--;
     const text=chapter.text.slice(start,end),piece={id:'quality-section-'+(index+1)+'-part-'+(++part),title:typeof chapter.title==='string'?chapter.title.slice(0,300):'章节 '+(index+1),text,originalSectionId:chapter.id,originalOffset:start,totalCharacters:chapter.text.length,partialChapter:start>0||end<chapter.text.length};
-    if(batch.length>=12||characters+text.length>22000)flush();batch.push(piece);characters+=text.length;start=end;
+    if(batch.length>=12||characters+text.length>maxCharacters)flush();batch.push(piece);characters+=text.length;start=end;
    }
   }
   flush();return batches;
@@ -35,7 +35,7 @@ export function createWritingQualityRunner(config={}){
  return async function runWritingQuality({snapshot={},chapters=[],runtime={},runId='',signal,onStage,isCurrent=()=>true,dispatch}={}){
   const active=async()=>{if(signal?.aborted)throw aborted();if(await isCurrent()!==true||signal?.aborted)throw aborted();};
   const stage=async value=>{await active();await onStage?.(value);await active();};
-  await active();const batches=batchesFor(chapters),quality={status:'completed',checkedAt:timestamp(),citations:null,consistency:null,reviews:[],limitations:[]};let partial=false;
+  await active();const requirementCharacters=Math.min(12000,typeof snapshot.requirements?.instructions==='string'?snapshot.requirements.instructions.length:0),batches=batchesFor(chapters,Math.min(22000,26000-requirementCharacters)),quality={status:'completed',checkedAt:timestamp(),citations:null,consistency:null,reviews:[],limitations:[]};let partial=false;
   await stage('verifying_citations');
   try{
    quality.citations=await guarded(verifier.verify(Array.isArray(snapshot.references)?snapshot.references:[],{signal}),signal);await active();
