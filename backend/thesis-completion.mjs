@@ -24,7 +24,7 @@ export function completionInput(row,input,config){
 export function thesisCompletionPlan(db,row,basePlan,issueCodes=[]){
  const snapshot=JSON.parse(row.snapshot),saved=savedThesisChapters(db,row),needs=completionAssessment(db,row),issues=safeCompletionIssues(issueCodes),targets=new Set(needs.chapters.map(chapter=>chapter.id));
  const referencesChanged=snapshot.references.some(reference=>reference.confirmed&&reference.text?.trim()&&!saved.some(chapter=>chapter.record?.text.includes('[source:'+reference.id+']')));
- const broad=referencesChanged||issues.some(code=>/reference|citation|sources|duplicate|review_findings|raw_formula|table_numbers/.test(code));
+ const broad=issues.includes('supplement_check')&&!targets.size||referencesChanged||issues.some(code=>/reference|citation|sources|duplicate|review_findings|raw_formula|table_numbers/.test(code));
  for(const chapter of saved){if(isThesisReferenceChapter(chapter))continue;if(broad&&!thesisManualBackMatter(chapter)||thesisFrontMatterKind(chapter)&&issues.some(code=>/abstract|keywords|english_title/.test(code)))targets.add(chapter.id);}
  const bodyChanged=saved.some(chapter=>targets.has(chapter.id)&&!thesisFrontMatterKind(chapter)&&!thesisManualBackMatter(chapter));if(bodyChanged)for(const chapter of saved.filter(thesisFrontMatterKind))targets.add(chapter.id);
  const priorQuality=row.current_run_id?db.prepare('SELECT quality FROM thesis_runs WHERE id=? AND thesis_id=?').get(row.current_run_id,row.id)?.quality:null,reviewFindings=priorQuality?(JSON.parse(priorQuality).reviews||[]).flatMap(review=>review.findings||[]):[];

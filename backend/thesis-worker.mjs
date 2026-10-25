@@ -1,3 +1,4 @@
+import {runSupplementCheck} from './supplement-check.mjs';
 import {completionBaseline,completionManuscriptHash} from './thesis-completion.mjs';
 import {randomUUID} from 'node:crypto';
 import {buildThesisBibliography,thesisReferenceMetadata} from '../dist/workspace/thesis-document.mjs';
@@ -74,8 +75,35 @@ export function startThesisWorker(db,config={}){
    const completionReviewChapters=()=>{const versions=manuscriptVersions(),used=[...new Set(versions.flatMap(row=>[...(row.record?.text||'').matchAll(/\[source:([^\]]+)\]/g)].map(match=>match[1])))],references=compileThesisReferences(snapshot,used);return versions.map(row=>({id:row.id,title:row.title,text:isThesisReferenceChapter(row)?references:row.record?.text||'',sourceIds:row.record?JSON.parse(row.record.source_ids):[],figures:row.record?JSON.parse(row.record.figures||'[]'):[]}));};
 
    if(continuous&&!writeRunning(()=>continuity.ensure(run,snapshot,plan,runtime)))return;
+   const checkSupplements=config.supplementCheckEnabled===true&&JSON.parse(run.settings_meta||'{}').supplementCheck===true;
    const runner=config.agentTaskRunner||runAgentTask;
    if(typeof runner!=='function')throw thesisError(503,'毕业论文 Agent 执行器尚未接入');
+   const reviewDispatch=async({task,settings,validateReviewOutput,unitId})=>{
+     if(!running()||stopped)throw thesisError(499,'任务已停止','cancelled');
+     const hash=thesisHash(task),cached=db.prepare('SELECT task_hash,result FROM thesis_review_checkpoints WHERE run_id=? AND attempt=? AND unit_id=?').get(run.id,run.attempt,unitId);
+     if(cached){if(cached.task_hash!==hash)throw thesisError(409,'审校资料已变化','review_changed');return JSON.parse(cached.result);}
+     if(!continuous)throw thesisError(429,'本次未配置审校执行预算','budget_exceeded');
+     assertThesisSettings(await config.getAgentSettings?.());
+     if(!running()||stopped)throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
+     const reservation=transaction(()=>continuity.reserve(run,unitId,{remainingUnits:1,settings:runtime,kind:'review'}));let output,accounted=false;
+     const account=usage=>writeAttempt(()=>{if(knownUsage(usage))db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE id=? AND attempt=?').run(usage.input,usage.output,clock(),run.id,run.attempt);else db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=? AND attempt=?').run(run.id,run.attempt);});
+     try{
+      if(!writeRunning(()=>db.prepare('UPDATE thesis_runs SET provider_calls=provider_calls+1 WHERE id=? AND attempt=?').run(run.id,run.attempt)))throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
+      output=await runner({settings:{...settings,maxTotalTokens:reservation.maxTotalTokens,maxCostUsd:reservation.maxCostUsd},task,validateReviewOutput,signal:controller.signal,onStage:()=>stage(task.context.operation==='supplement-check'?'checking_supplements':'reviewing_manuscript')});
+      account(output?.usage);accounted=true;
+      if(!knownUsage(output?.usage))throw thesisError(502,'审校未返回可核算用量','usage_unknown');
+      if(!running()||stopped)throw thesisError(499,'任务已停止','cancelled');
+      const validation=await validateReviewOutput(output);if(validation?.valid!==true)throw thesisError(502,'审校内容未通过定位检查','invalid_review_output');
+      if(!writeRunning(()=>{const finished=continuity.finish(reservation.id,{usage:output.usage,costUsd:output.costUsd});if(finished.budgetExceeded)throw thesisError(429,'审校达到执行预算','budget_exceeded');const saved=JSON.stringify({text:output.text,trace:[],usage:output.usage});assertThesisAccountQuota(db,run.user_id,Buffer.byteLength(saved),config);db.prepare('INSERT INTO thesis_review_checkpoints VALUES(?,?,?,?,?,?)').run(run.id,run.attempt,unitId,hash,saved,clock());}))throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
+      return output;
+     }catch(error){if(!accounted)account(error.usage);transaction(()=>continuity.finish(reservation.id,{usage:output?.usage||error.usage,costUsd:output?.costUsd??error.costUsd,errorCode:error.code||'execution_failed'}));throw error;}
+    };
+   if(checkSupplements&&completionMode){
+    const chapters=snapshot.outline.map(chapter=>({id:chapter.id,title:chapter.title,text:savedBaseline.find(row=>row.chapter_id===chapter.id)?.text||'本节尚未生成，按已确认的章节目的核对所需资料。'}));
+    const supplementCheck=await runSupplementCheck({snapshot,chapters,kind:'thesis',phase:'materials',runtime,dispatch:reviewDispatch,signal:controller.signal,isCurrent:running,onStage:stage});
+    if(!writeRunning(()=>{const json=JSON.stringify({status:'partial',supplementCheck,manuscriptHash:completionManuscriptHash(chapters)});assertThesisAccountQuota(db,run.user_id,Buffer.byteLength(json),config);db.prepare('UPDATE thesis_runs SET quality=?,updated_at=? WHERE id=? AND attempt=?').run(json,clock(),run.id,run.attempt);}))return;
+    if(supplementCheck.status!=='materials_ready')throw thesisError(422,supplementCheck.status==='needs_materials'?'补充资料仍有缺项，请查看补充内容检查；原稿与已上传资料已保留。':'补充资料检查尚未完成，请稍后重试；原稿与材料已保留。','needs_materials');
+   }
    for(const unit of plan){
     let retries=0,minimumTokens=0;
     while(true){
@@ -138,26 +166,7 @@ export function startThesisWorker(db,config={}){
     const checkpoints=db.prepare("SELECT * FROM thesis_checkpoints WHERE run_id=? AND status='completed' ORDER BY position").all(run.id),reviewChapters=checkpoints.map(row=>{const unit=plan.find(unit=>unit.id===row.unit_id);return{id:'section-'+row.position,title:unit.chapterTitle===unit.title?unit.title:unit.chapterTitle+' · '+unit.title,text:row.text,sourceIds:JSON.parse(row.source_ids),figures:JSON.parse(row.figures||'[]')};});
     if(completionMode)reviewChapters.splice(0,reviewChapters.length,...completionReviewChapters());
     const referenceText=compileThesisReferences(snapshot,[...new Set(checkpoints.flatMap(row=>JSON.parse(row.source_ids)))]),pendingReferenceBytes=referenceText?snapshot.outline.filter(isThesisReferenceChapter).filter(chapter=>!db.prepare("SELECT 1 FROM thesis_chapter_versions WHERE run_id=? AND chapter_id=? AND source='generated'").get(run.id,chapter.id)).length*Math.max(512,Buffer.byteLength(referenceText)):0;
-    quality=await qualityRunner({snapshot,chapters:reviewChapters,runtime,runId:run.id,signal:controller.signal,onStage:stage,isCurrent:running,dispatch:async({task,settings,validateReviewOutput,unitId})=>{
-     if(!running()||stopped)throw thesisError(499,'任务已停止','cancelled');
-     const hash=thesisHash(task),cached=db.prepare('SELECT task_hash,result FROM thesis_review_checkpoints WHERE run_id=? AND attempt=? AND unit_id=?').get(run.id,run.attempt,unitId);
-     if(cached){if(cached.task_hash!==hash)throw thesisError(409,'审校资料已变化','review_changed');return JSON.parse(cached.result);}
-     if(!continuous)throw thesisError(429,'本次未配置审校执行预算','budget_exceeded');
-     assertThesisSettings(await config.getAgentSettings?.());
-     if(!running()||stopped)throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
-     const reservation=transaction(()=>continuity.reserve(run,unitId,{remainingUnits:1,settings:runtime,kind:'review'}));let output,accounted=false;
-     const account=usage=>writeAttempt(()=>{if(knownUsage(usage))db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE id=? AND attempt=?').run(usage.input,usage.output,clock(),run.id,run.attempt);else db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=? AND attempt=?').run(run.id,run.attempt);});
-     try{
-      if(!writeRunning(()=>db.prepare('UPDATE thesis_runs SET provider_calls=provider_calls+1 WHERE id=? AND attempt=?').run(run.id,run.attempt)))throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
-      output=await runner({settings:{...settings,maxTotalTokens:reservation.maxTotalTokens,maxCostUsd:reservation.maxCostUsd},task,validateReviewOutput,signal:controller.signal,onStage:()=>stage('reviewing_manuscript')});
-      account(output?.usage);accounted=true;
-      if(!knownUsage(output?.usage))throw thesisError(502,'审校未返回可核算用量','usage_unknown');
-      if(!running()||stopped)throw thesisError(499,'任务已停止','cancelled');
-      const validation=await validateReviewOutput(output);if(validation?.valid!==true)throw thesisError(502,'审校内容未通过定位检查','invalid_review_output');
-      if(!writeRunning(()=>{const finished=continuity.finish(reservation.id,{usage:output.usage,costUsd:output.costUsd});if(finished.budgetExceeded)throw thesisError(429,'审校达到执行预算','budget_exceeded');const saved=JSON.stringify({text:output.text,trace:[],usage:output.usage});assertThesisAccountQuota(db,run.user_id,Buffer.byteLength(saved)+pendingReferenceBytes,config);db.prepare('INSERT INTO thesis_review_checkpoints VALUES(?,?,?,?,?,?)').run(run.id,run.attempt,unitId,hash,saved,clock());}))throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
-      return output;
-     }catch(error){if(!accounted)account(error.usage);transaction(()=>continuity.finish(reservation.id,{usage:output?.usage||error.usage,costUsd:output?.costUsd??error.costUsd,errorCode:error.code||'execution_failed'}));throw error;}
-    }});
+    quality=await qualityRunner({snapshot,kind:'thesis',checkSupplements,chapters:reviewChapters,runtime,runId:run.id,signal:controller.signal,onStage:stage,isCurrent:running,dispatch:reviewDispatch});
     if(completionMode&&quality)quality.manuscriptHash=completionManuscriptHash(completionReviewChapters());
     if(!writeRunning(()=>{const previous=db.prepare("SELECT length(CAST(coalesce(quality,'') AS BLOB)) bytes FROM thesis_runs WHERE id=? AND attempt=?").get(run.id,run.attempt).bytes;const saved=fitOptionalWritingQuality(quality,{build:candidate=>candidate?JSON.stringify(candidate):null,check:json=>assertThesisAccountQuota(db,run.user_id,Math.max(0,(json?Buffer.byteLength(json):0)-previous+pendingReferenceBytes),config)});quality=saved.quality;db.prepare('UPDATE thesis_runs SET quality=?,updated_at=? WHERE id=? AND attempt=?').run(saved.value,clock(),run.id,run.attempt);}))return;
    }

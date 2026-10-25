@@ -26,6 +26,9 @@ async function fixture(t,{kind='proposal',failSave=false,delayUpload=false,accou
  let releaseUpload;const uploadGate=new Promise(resolve=>{releaseUpload=resolve;});
  const flow={version:1,title:'模板替换验收',level:'本科',major:'信息管理',language:'中文',targetWords:1000,instructions:'',notes:'研究尚未开展，拟使用公开资料完成分析。',materials:[],references:[],outline:[{id:'c1',title:'拟开展研究',targetWords:1000}],outlineConfirmed:true,body:'拟开展研究\n本研究拟使用公开资料开展比较分析，研究尚未实施。',stage:spec.steps.length-1,unlocked:spec.steps.length-1,jobs:{},versions:[],completed:spec.panels.slice(0,-1),[fields.template]:structuredClone(original),[fields.templateText]:'学校要求：说明拟开展计划。'};
  flow.bodyInputKey=JSON.stringify(writingFlowSnapshot(kind,flow));
+ // This fixture represents a previously checked plan; export-only template
+ // replacement must retain its material check while still rechecking layout.
+ flow.quality={coverage:{complete:true},supplementCheck:{version:1,phase:'final',status:'final_ready',coverage:{total:1,checked:1,complete:true},items:[{id:'plan',title:'拟开展研究',status:'not_required',requirement:'计划性内容',reason:'未声称已有实验结果',evidence:[],missing:[]}]}};flow.qualityText=flow.body;
  let cloud={id:'draft',tool:kind,title:flow.title,project_id:'',version:1,payload:{id:'draft',tool:kind,title:flow.title,writingResume:true,writingFlow:flow}};
  const files=new Map(),json=value=>new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
  globalThis.fetch=async(path,options={})=>{

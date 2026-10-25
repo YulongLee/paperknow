@@ -1,3 +1,4 @@
+import {runSupplementCheck} from './supplement-check.mjs';
 import {writingCompletionTask} from './writing-completion.mjs';
 import {randomUUID} from 'node:crypto';
 import {taskProjectId} from './task-project-context.mjs';
@@ -24,6 +25,7 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
  // when an administrator explicitly saved a 12-turn configuration. No config
  // record is upgraded here, and all token/cost/time ceilings still apply.
  if(!Number.isSafeInteger(runtime.maxTurns)||runtime.maxTurns<1||runtime.maxTurns>12)throw thesisError(503,'AI 写作执行预算未就绪，请联系支持');
+ const checkSupplements=config.supplementCheckEnabled===true&&JSON.parse(db.prepare('SELECT input FROM jobs WHERE id=?').get(row.id).input).supplementCheck===true;
  const snapshot=JSON.parse(row.snapshot),plan=JSON.parse(row.plan),budget=Number.isSafeInteger(config.writingMaxTokens)&&config.writingMaxTokens>=1000&&config.writingMaxTokens<=400000?config.writingMaxTokens:200000,maxTurns=Math.min(10,runtime.maxTurns),repairTurns=Math.min(2,runtime.maxTurns-maxTurns),maxOutputTokens=Math.min(8000,Math.max(32,Number(runtime.maxOutputTokens)||4096));
  const completed=db.prepare('SELECT unit_id,output FROM writing_checkpoints WHERE run_id=? ORDER BY position').all(row.id).map(value=>({id:value.unit_id,...JSON.parse(value.output)}));
  async function dispatch(task,turns,timeoutMs,unit,priorTrace=[]){
@@ -36,6 +38,22 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
   if(!usageKnown)throw thesisError(502,'写作服务未返回可核算用量，结果未标记完成');
   if(inputTokens+outputTokens>budget||output.usage.output>turns*maxOutputTokens||costConsumedBudget>runtime.maxCostUsd)throw thesisError(429,'写作超过本次执行预算，已完成草稿保留');
   return output;
+ }
+ const reviewDispatch=async({task,settings,validateReviewOutput,unitId})=>{
+  if(controller.signal.aborted||!running())throw thesisError(499,'任务已停止','cancelled');
+  const remainingCost=runtime.maxCostUsd-costConsumedBudget,remainingTokens=budget-inputTokens-outputTokens;if(remainingCost<.01||remainingTokens<1000)throw thesisError(429,'本次审校预算已用完','budget_exceeded');
+  const allocation=Math.min(settings.maxCostUsd,remainingCost);let output;
+  try{output=await(config.agentTaskRunner||runAgentTask)({settings:{...settings,maxCostUsd:allocation,maxTotalTokens:remainingTokens},task,validateReviewOutput,signal:controller.signal,onStage:()=>{}});}catch(error){account(error.usage);accountCost(error.costUsd,allocation,{id:unitId});throw error;}
+  account(output?.usage);accountCost(output?.costUsd,allocation,{id:unitId});if(controller.signal.aborted||!running())throw thesisError(499,'任务已停止','cancelled');if((await validateReviewOutput(output))?.valid!==true)throw thesisError(502,'检查结果未通过依据核对','invalid_review_output');if(!usageOK(output?.usage?.input)||!usageOK(output?.usage?.output)||output.usage.input+output.usage.output===0)throw thesisError(502,'审校未返回可核算用量','usage_unknown');
+  if(inputTokens+outputTokens>budget||costConsumedBudget>runtime.maxCostUsd)throw thesisError(429,'审校达到执行预算','budget_exceeded');return output;
+ };
+ const reportStage=value=>{if(!running()||controller.signal.aborted)return;db.prepare('UPDATE writing_runs SET stage=?,updated_at=? WHERE id=?').run(value,clock(),row.id);db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(value,clock(),row.id);};
+ if(checkSupplements&&plan.some(unit=>unit.completion===true)){
+  const chapters=plan.map(unit=>({id:unit.id,title:unit.title,text:unit.revisionOriginal||completed.find(row=>row.id===unit.id)?.text||'本节尚未生成，按已确认的章节目的核对所需资料。'}));
+  const supplementCheck=await runSupplementCheck({snapshot,chapters,kind:row.kind,phase:'materials',runtime,dispatch:reviewDispatch,signal:controller.signal,isCurrent:()=>Boolean(running()),onStage:reportStage});
+  if(!running()||controller.signal.aborted)return;
+  transaction(()=>{const json=JSON.stringify({quality:{status:'partial',supplementCheck}});writingStorageCheck(db,row.user_id,Buffer.byteLength(json),config);db.prepare('UPDATE writing_runs SET output=? WHERE id=?').run(json,row.id);});
+  if(supplementCheck.status!=='materials_ready')throw thesisError(422,supplementCheck.status==='needs_materials'?'补充资料仍有缺项，请查看“补充内容检查”后继续补充；原稿与已上传资料已保留。':'补充资料检查尚未完成，请稍后重试；原稿与材料已保留。','supplement_incomplete');
  }
  for(const unit of plan){
   if(controller.signal.aborted||!running())return;if(completed.some(value=>value.id===unit.id))continue;
@@ -59,14 +77,7 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
  }
  completed.sort((a,b)=>plan.findIndex(unit=>unit.id===a.id)-plan.findIndex(unit=>unit.id===b.id));
  let quality=null;
- if(config.writingQualityEnabled===true&&row.operation==='draft')quality=await qualityRunner({snapshot,chapters:completed.map(unit=>({id:unit.id,title:unit.title||snapshot.title,text:unit.text,sourceIds:unit.sourceIds,...(unit.figures?.length?{figures:unit.figures}:{})})),runtime,runId:row.id,signal:controller.signal,isCurrent:()=>Boolean(running()),onStage:value=>{if(!running()||controller.signal.aborted)return;const name=/^[a-z][a-z0-9_]{0,60}$/i.test(value)?value:'reviewing_manuscript';db.prepare('UPDATE writing_runs SET stage=?,updated_at=? WHERE id=?').run(name,clock(),row.id);db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(name,clock(),row.id);},dispatch:async({task,settings,validateReviewOutput,unitId})=>{
-  if(controller.signal.aborted||!running())throw thesisError(499,'任务已停止','cancelled');
-  const remainingCost=runtime.maxCostUsd-costConsumedBudget,remainingTokens=budget-inputTokens-outputTokens;if(remainingCost<.01||remainingTokens<1000)throw thesisError(429,'本次审校预算已用完','budget_exceeded');
-  const allocation=Math.min(settings.maxCostUsd,remainingCost);let output;
-  try{output=await(config.agentTaskRunner||runAgentTask)({settings:{...settings,maxCostUsd:allocation,maxTotalTokens:remainingTokens},task,validateReviewOutput,signal:controller.signal,onStage:()=>{}});}catch(error){account(error.usage);accountCost(error.costUsd,allocation,{id:unitId});throw error;}
-  account(output?.usage);accountCost(output?.costUsd,allocation,{id:unitId});if(!usageOK(output?.usage?.input)||!usageOK(output?.usage?.output)||output.usage.input+output.usage.output===0)throw thesisError(502,'审校未返回可核算用量','usage_unknown');
-  if(inputTokens+outputTokens>budget||costConsumedBudget>runtime.maxCostUsd)throw thesisError(429,'审校达到执行预算','budget_exceeded');return output;
- }});
+ if(config.writingQualityEnabled===true&&row.operation==='draft')quality=await qualityRunner({snapshot,kind:row.kind,checkSupplements,chapters:completed.map(unit=>({id:unit.id,title:unit.title||snapshot.title,text:unit.text,sourceIds:unit.sourceIds,...(unit.figures?.length?{figures:unit.figures}:{})})),runtime,runId:row.id,signal:controller.signal,isCurrent:()=>Boolean(running()),onStage:value=>{if(!running()||controller.signal.aborted)return;const name=/^[a-z][a-z0-9_]{0,60}$/i.test(value)?value:'reviewing_manuscript';db.prepare('UPDATE writing_runs SET stage=?,updated_at=? WHERE id=?').run(name,clock(),row.id);db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(name,clock(),row.id);},dispatch:reviewDispatch});
  transaction(()=>{if(controller.signal.aborted||!running())return;const baseOutput=row.operation==='questionnaire'?aggregateWritingQuestionnaire(snapshot,plan,completed):row.operation==='draft'?{text:completed.map(unit=>unit.structured?unit.text:unit.title+'\n\n'+unit.text).join('\n\n'),sourceIds:[...new Set(completed.flatMap(unit=>unit.sourceIds||[]))],sections:completed,...(completed.some(unit=>unit.figures?.length)?{figures:completed.flatMap(unit=>unit.figures||[])}:{}),requiresReview:true}:completed[0];const used=new Set(baseOutput.sourceIds||[]),sourceSnapshot={title:snapshot.title,materials:snapshot.materials.filter(source=>used.has(source.id)).map(({id,name})=>({id,name,confirmed:true})),references:snapshot.references.filter(source=>used.has(source.id)).map(({id,title,authors,year,doi,url})=>({id,title,authors,year,doi,url,confirmed:true}))};
   const saved=fitOptionalWritingQuality(quality,{build:candidate=>{const output={...baseOutput,...(candidate?{quality:candidate}:{})};return {json:JSON.stringify(output),body:JSON.stringify({...output,sourceSnapshot,writingJobId:row.id,kind:row.kind,operation:row.operation})};},check:value=>writingStorageCheck(db,row.user_id,Buffer.byteLength(value.body)+Buffer.byteLength(value.json),config)});quality=saved.quality;const {body,json}=saved.value;
   const id=randomUUID(),at=clock();billing.settle(row.id);db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(id,row.user_id,taskProjectId(db,row),row.id,'writing',snapshot.title+' · '+writingKinds[row.kind],body,at);db.prepare('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),row.user_id,row.id,runtime.engine||'claude-agent-sdk',runtime.model,usageKnown?inputTokens:null,usageKnown?outputTokens:null,billing.isBillable(row.id)?1:0,at);db.prepare("UPDATE writing_runs SET status='completed',stage='completed',output=?,result_id=?,error=NULL,updated_at=? WHERE id=?").run(json,id,at,row.id);db.prepare("UPDATE jobs SET status='completed',stage='completed',result_id=?,error=NULL,updated_at=? WHERE id=?").run(id,at,row.id);});

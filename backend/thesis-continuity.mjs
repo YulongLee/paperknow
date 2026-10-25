@@ -76,7 +76,9 @@ export function createThesisContinuity(db,config={}){
   if(typeof perUnit!=='number'||!Number.isFinite(perUnit)||perUnit<.01||perUnit>5)fail(400,'论文单节成本预算无效','invalid_execution_budget');
   const tokenLimit=computeThesisRunBudget({snapshot,plan,settings,config});
   const words=Number.isSafeInteger(snapshot.profile?.targetWords)&&snapshot.profile.targetWords>0?snapshot.profile.targetWords:plan.reduce((sum,unit)=>sum+(Number.isSafeInteger(unit.targetWords)&&unit.targetWords>0?unit.targetWords:0),0)||500;
-  const reviewAllowance=Math.min(24,Math.max(1,Math.ceil(words*(/english|英文|英语/i.test(snapshot.profile?.language||'中文')?6:1.2)/22000),Math.ceil(plan.length/12)));
+  const baseReviews=Math.max(1,Math.ceil(words*(/english|英文|英语/i.test(snapshot.profile?.language||'中文')?6:1.2)/22000),Math.ceil(plan.length/12));
+  const supplementReviews=config.supplementCheckEnabled===true&&JSON.parse(row.settings_meta||'{}').supplementCheck===true?Math.ceil(words*(/english|英文|英语/i.test(snapshot.profile?.language||'中文')?6:1.5)/10000)+Math.ceil(plan.length/6):0;
+  const reviewAllowance=Math.min(24,baseReviews+supplementReviews*(JSON.parse(row.settings_meta||'{}').completion?2:1));
   let costLimit=Math.min(maxCost,perUnit*(plan.length*1.25+reviewAllowance));
   if(config.thesisMaxRunCostUsd!==undefined&&config.thesisMaxRunCostUsd!==null){const cap=Number(config.thesisMaxRunCostUsd);if(!Number.isFinite(cap)||cap<.01||cap>maxCost)fail(400,'论文总成本上限应为 0.01～50 美元','invalid_execution_budget');costLimit=Math.min(costLimit,cap);}
   const at=clock();db.prepare('INSERT INTO thesis_execution_budgets(run_id,attempt,user_id,settings_version,unit_ids,review_allowance,token_limit,cost_limit_micros,unit_cost_micros,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(row.id,row.attempt,row.user_id,row.settings_version,JSON.stringify(plan.map(unit=>unit.id)),reviewAllowance,tokenLimit,micros(costLimit),micros(perUnit),at,at);

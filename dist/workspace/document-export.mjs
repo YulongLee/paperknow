@@ -1,3 +1,4 @@
+import {supplementCheckReady} from './supplement-check-panel.mjs';
 import {captureDraftScope} from './state.mjs';
 import {download} from './ui.mjs';
 import {renderThesisDocument,showThesisExportCheck} from './thesis-export-render.mjs';
@@ -34,6 +35,7 @@ export function bindDocumentExports(prefix,getText,getTitle,status,{expectedUser
   try{
    const api=await loadDocument();if(!current())return;let bytes,options=await getDocumentOptions({draft});if(!current())return;options=options||{};
    const owner=expectedUserId??context.ownerId??options.expectedUserId;
+   if(!draft&&options.requireSupplementCheck===true&&!supplementCheckReady(options.quality,{current:options.qualityCurrent!==false})){await onNeedsCompletion?.({report:{submission:{issues:[{code:'supplement_check',message:'请先完成补充内容检查。'}]}},additional:['补充内容尚未通过完整检查，请在补充窗口保存材料并自动完善。检查通过后，系统会继续处理终稿。']});throw Error('终稿需要先通过补充内容检查。已保留初稿和材料，请查看补充窗口。');}
    if(options.documentKind==='thesis'){
     status.textContent='1 / 3 · 正在读取模板要求并检查已保存正文…';
     options={...options,template:await templateBytes(options.template,owner)};if(!current())return;
