@@ -66,3 +66,11 @@
 @media(max-width:760px){.home-refresh .home-welcome{padding:16px;min-height:0}.home-refresh .home-welcome h1{font-size:28px}.home-refresh .home-welcome:after{right:-80px}.home-refresh .home-agent-entry{min-height:170px}}
 @media(max-width:1250px){.home-commercial-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.home-commercial-panel{padding:18px 15px;border-radius:14px}.home-commercial-heading{align-items:flex-start;flex-direction:column;gap:12px}.home-commercial-heading .btn{width:100%;justify-content:center}.home-commercial-grid{grid-template-columns:1fr;gap:9px}.home-commercial-card{padding:13px 12px}.home-commercial-card p{min-height:0}}
+
+/* Recent results keep five visible rows; additional records scroll in place. */
+.home-refresh #home-result-list{--home-result-row-height:96px;max-height:calc(5 * var(--home-result-row-height));overflow-y:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable;scrollbar-width:thin;padding-right:8px}
+.home-refresh #home-result-list:focus-visible{outline:2px solid #4f82ed;outline-offset:3px;border-radius:6px}
+.home-refresh #home-results #home-result-list>.hub-asset-row{box-sizing:border-box;height:var(--home-result-row-height);min-height:var(--home-result-row-height);padding:12px 0;flex-wrap:nowrap}
+.home-refresh #home-results #home-result-list .hub-row-copy{min-width:0}
+.home-refresh #home-results #home-result-list .hub-row-copy b{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;line-height:1.45}
+.home-refresh #home-results #home-result-list .hub-row-copy p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5;margin-top:4px}
