@@ -3,7 +3,7 @@ import {thesisError,thesisHash} from './thesis-model.mjs';
 const fail=(status,message)=>{throw thesisError(status,message);};
 const pending=/(?:【[^】\n]{0,100}(?:待补充|待核对|待填写|待提供)[^】\n]*】|\[(?:待补充|待核对|待填写|待提供)[^\]\n]*\]|\{\{[^}\n]+\}\}|\bTODO\b|\bTBD\b)/i;
 const plain=value=>value&&typeof value==='object'&&!Array.isArray(value);
-const textKey=snapshot=>JSON.stringify({title:snapshot.title,language:snapshot.profile.language,targetWords:snapshot.profile.targetWords,outline:snapshot.outline});
+const textKey=snapshot=>JSON.stringify({title:snapshot.title,profile:snapshot.profile,outline:snapshot.outline});
 
 // The saved job supplies the structure and original text. Neither is new evidence.
 // Only normalized materials passed through the existing reader may support facts.
@@ -15,7 +15,7 @@ export function prepareWritingCompletion(db,user,{kind,operation,snapshot,projec
  if(!['completed','failed','cancelled'].includes(row.status))fail(409,'原任务仍在处理中，请先读取原任务状态。');
  const original=JSON.parse(row.snapshot);
  if((taskProjectId(db,row)||null)!==(projectId||null))fail(409,'所属项目已变化，请按当前项目重新生成。');
- if(textKey(original)!==textKey(snapshot))fail(409,'题目、语言、篇幅或提纲已变化，请重新确认提纲后生成新版本；已有正文仍保留。');
+ if(textKey(original)!==textKey(snapshot))fail(409,'题目、学段、专业、语言、篇幅或提纲已变化，请重新确认提纲后生成新版本；已有正文仍保留。');
  const output=row.output?JSON.parse(row.output):null,previous=new Map(db.prepare('SELECT unit_id,output FROM writing_checkpoints WHERE run_id=? ORDER BY position').all(row.id).map(checkpoint=>[checkpoint.unit_id,JSON.parse(checkpoint.output)]));
  const plan=JSON.parse(row.plan).map(unit=>{const {revisionOriginal,completion,retained,...base}=unit;return base;});
  if(!plan.length)fail(409,'原任务没有可恢复的写作结构，请重新生成。');
