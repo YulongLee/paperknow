@@ -11,7 +11,14 @@ export const writingStandards=Object.freeze({
  quick:{title:'文章',authority:'本次写作任务',upload:'文章',guidance:[['写作目的','明确读者、用途和语言风格，摘要与提纲应对应同一主题。'],['结构与事实','按具体题目组织内容，核对事实与引用，不机械添加论文式章节。'],['篇幅与交付','根据实际用途控制篇幅，可补充文章模板；不要求学校封面或毕业论文目录。']],sources:[]}
 });
 export const writingStandardSpec=kind=>writingStandards[kind]||null;
-export const writingStandardFields=kind=>Object.fromEntries(['Template','TemplateText','Requirements','Metadata'].map(suffix=>[suffix[0].toLowerCase()+suffix.slice(1),(kind==='proposal'?'proposal':'document')+suffix]));
+export const writingStandardFields=kind=>Object.fromEntries(['Template','TemplateText','Requirements','Metadata','ExportTemplate','ExportTemplateSelectionMade'].map(suffix=>[suffix[0].toLowerCase()+suffix.slice(1),(kind==='proposal'?'proposal':'document')+suffix]));
+// An export-only choice must not change the writing brief or invalidate its outline.
+// The explicit flag distinguishes restoring the generic format from an old draft
+// that should continue to use the template selected in the materials step.
+export function writingExportTemplate(kind,data={}){
+ const fields=writingStandardFields(kind);
+ return (data[fields.exportTemplateSelectionMade]===true?data[fields.exportTemplate]:data[fields.template])||null;
+}
 export function writingStandardBrief(kind,data={}){
  const spec=writingStandardSpec(kind);if(!spec)return '';
  if(kind==='proposal')return proposalWritingBrief(data);

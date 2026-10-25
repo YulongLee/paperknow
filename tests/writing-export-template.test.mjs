@@ -1,0 +1,126 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {JSDOM} from 'jsdom';
+import JSZip from 'jszip';
+import {createWritingDocx} from '../src/writing-document.js';
+import {writingExportTemplate,writingStandardFields,writingStandards} from '../dist/workspace/writing-standard.mjs';
+import {writingFlowSnapshot,writingFlowSpecs} from '../dist/workspace/writing-flow-model.mjs';
+import {mountWritingFlow,disposeWritingFlows} from '../dist/workspace/writing-flows.mjs';
+import {mountAccountDraft,disposeAccountDraft} from '../dist/workspace/account-draft-editor.mjs';
+import {clearEditor,flushEditorDraft} from '../dist/workspace/edit-guard.mjs';
+import {list,keys} from '../dist/workspace/state.mjs';
+
+const until=async predicate=>{for(let i=0;i<500;i++){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,3));}assert.fail('template action did not settle');};
+const original={version:1,status:'ready',source:{fileId:'original',name:'原开题模板.docx',size:20,sha256:'a'.repeat(64)}};
+async function templateFile(){
+ const base=await createWritingDocx('{{论文题目}}\n{{正文}}',{documentKind:'writing',metadata:{title:'{{论文题目}}'}}),zip=await JSZip.loadAsync(base);
+ zip.file('word/styles.xml',(await zip.file('word/styles.xml').async('string')).replace(/w:eastAsia="宋体"/g,'w:eastAsia="仿宋"'));
+ zip.file('word/document.xml',(await zip.file('word/document.xml').async('string')).replace(/w:left="\d+"/g,'w:left="1984"'));
+ const bytes=await zip.generateAsync({type:'uint8array'});
+ return {bytes,name:'新开题排版.docx',size:bytes.length,arrayBuffer:async()=>bytes.buffer};
+}
+async function fixture(t,{kind='proposal',failSave=false,delayUpload=false}={}){
+ const dom=new JSDOM('<main class="dashboard"></main>',{url:'https://paperknow.test/workspace.html#tool/'+kind});
+ for(const key of ['window','document','localStorage','location','AbortController','MutationObserver','FormData'])globalThis[key]=dom.window[key];
+ const fields=writingStandardFields(kind),spec=writingFlowSpecs[kind],calls=[],artifacts=[],downloads=[],originalFetch=globalThis.fetch;
+ let releaseUpload;const uploadGate=new Promise(resolve=>{releaseUpload=resolve;});
+ const flow={version:1,title:'模板替换验收',level:'本科',major:'信息管理',language:'中文',targetWords:1000,instructions:'',notes:'研究尚未开展，拟使用公开资料完成分析。',materials:[],references:[],outline:[{id:'c1',title:'拟开展研究',targetWords:1000}],outlineConfirmed:true,body:'拟开展研究\n本研究拟使用公开资料开展比较分析，研究尚未实施。',stage:spec.steps.length-1,unlocked:spec.steps.length-1,jobs:{},versions:[],completed:spec.panels.slice(0,-1),[fields.template]:structuredClone(original),[fields.templateText]:'学校要求：说明拟开展计划。'};
+ flow.bodyInputKey=JSON.stringify(writingFlowSnapshot(kind,flow));
+ let cloud={id:'draft',tool:kind,title:flow.title,project_id:'',version:1,payload:{id:'draft',tool:kind,title:flow.title,writingResume:true,writingFlow:flow}};
+ const files=new Map(),json=value=>new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
+ globalThis.fetch=async(path,options={})=>{
+  const body=options.body?JSON.parse(options.body):undefined;calls.push({path:String(path),body});
+  if(path==='/api/auth/me')return json({user:{id:'alice'}});
+  if(path==='/api/projects')return json({items:[]});
+  if(path==='/api/workspace/drafts/draft'){
+   if(body){if(failSave)return new Response(JSON.stringify({error:'模拟账户保存失败'}),{status:409});cloud={...cloud,...body,version:cloud.version+1};}
+   return json({item:structuredClone(cloud)});
+  }
+  if(String(path).startsWith('/api/files/'))return new Response(files.get(String(path).split('/')[3]));
+  if(path==='/api/theses/document-render')return json({pages:1,data:Buffer.from('%PDF-synthetic-page').toString('base64'),docxData:body.data,fieldsRefreshed:true,pageCheck:{status:'passed'}});
+  if(path==='/api/artifacts'){
+   const bytes=Buffer.from(body.data,'base64'),id='export-'+artifacts.length;artifacts.push({id,bytes});return json({item:{id,bytes:bytes.length}});
+  }
+  if(String(path).startsWith('/api/artifacts/'))return new Response(artifacts.find(row=>String(path).includes(row.id)).bytes);
+  throw Error('Unexpected fetch '+path);
+ };
+ const ctx={api:async(path,body)=>{
+  calls.push({path,body});if(path==='/auth/me')return {user:{id:'alice'}};
+  if(path==='/files'){if(delayUpload)await uploadGate;const id='new-template';files.set(id,Buffer.from(body.data,'base64'));return {id};}
+  throw Error('Unexpected API '+path);
+ }};
+ dom.window.HTMLAnchorElement.prototype.click=function(){downloads.push(this.download);};
+ async function mount(){await mountAccountDraft('draft',{notify(){},mount:row=>mountWritingFlow({kind,container:document.querySelector('.dashboard'),ctx,draftId:row.id}),saveNative:()=>flushEditorDraft()});}
+ t.after(()=>{releaseUpload();disposeAccountDraft();clearEditor();disposeWritingFlows();globalThis.fetch=originalFetch;clearTimeout(document.getElementById('artifact-export-notice')?._artifactTimer);dom.window.close();});
+ await mount();
+ return {dom,fields,calls,artifacts,downloads,releaseUpload,get cloud(){return cloud;},mount,
+  q:selector=>document.querySelector(selector),local:()=>list(keys.drafts)[0].writingFlow,
+  select(file){const input=document.querySelector('[data-template-file]');Object.defineProperty(input,'files',{value:[file],configurable:true});input.dispatchEvent(new window.Event('change',{bubbles:true}));}
+ };
+}
+
+for(const kind of Object.keys(writingStandards))test(kind+' can replace its export format without changing the confirmed writing snapshot',async t=>{
+ const f=await fixture(t,{kind}),before=structuredClone(f.cloud.payload.writingFlow),file=await templateFile();
+ assert.ok(f.q('[data-wf-export-template]'));assert.equal(document.querySelectorAll('[data-template-file]').length,1);
+ let opened=0;f.q('[data-template-file]').showPicker=()=>opened++;f.q('[data-wf-template-choose]').click();assert.equal(opened,1);
+ f.select(file);assert.equal(f.q('#wf-body-docx').disabled,true);
+ await until(()=>!f.q('[data-wf-template-choose]').disabled);
+ const saved=f.cloud.payload.writingFlow;
+ assert.equal(saved[f.fields.exportTemplate].source.fileId,'new-template');
+ assert.equal(saved[f.fields.template].source.fileId,'original');
+ assert.equal(saved.body,before.body);assert.equal(saved.outlineConfirmed,true);assert.equal(saved.stage,before.stage);assert.equal(saved.unlocked,before.unlocked);
+ assert.deepEqual(saved.outline,before.outline);assert.deepEqual(writingFlowSnapshot(kind,saved),writingFlowSnapshot(kind,before));
+ assert.match(f.q('[data-wf-export-template] h3').textContent,/新开题排版/);
+ assert.doesNotMatch(f.q('[data-wf-export]').textContent,/当前正文来自此前版本/);
+ assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
+ await f.mount();assert.equal(f.local()[f.fields.exportTemplate].source.fileId,'new-template');
+ assert.equal(f.q('[aria-current="step"]').dataset.writingStep,String(before.stage+1));
+});
+
+test('the actual final export reads the replacement template from the cloud and applies its font and margin',async t=>{
+ const f=await fixture(t),file=await templateFile();f.select(file);await until(()=>!f.q('[data-wf-template-choose]').disabled);
+ f.q('#wf-body-docx').click();await until(()=>!f.q('#wf-body-docx').disabled);
+ assert.equal(f.artifacts.length,1,f.q('#writing-status').textContent);assert.equal(f.downloads.length,1);
+ assert.ok(f.calls.some(row=>row.path==='/api/files/new-template/download?expectedUserId=alice'));
+ assert.equal(f.calls.some(row=>row.path.includes('/api/files/original/')),false);
+ const zip=await JSZip.loadAsync(f.artifacts[0].bytes),xml=await zip.file('word/document.xml').async('string');
+ assert.match(await zip.file('word/styles.xml').async('string'),/仿宋/);assert.match(xml,/w:left="1984"/);
+ assert.match(xml,/本研究拟使用公开资料开展比较分析/);assert.doesNotMatch(xml,/\{\{正文\}\}|独创性声明/);
+ assert.equal(f.calls.filter(row=>row.path==='/api/theses/document-render').length,1);
+ assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
+});
+
+test('restoring the generic export format survives reopening without discarding the earlier writing requirements',async t=>{
+ const f=await fixture(t),before=structuredClone(f.cloud.payload.writingFlow);f.q('[data-wf-template-reset]').click();
+ await until(()=>f.q('[data-wf-template-reset]')===null);
+ assert.equal(writingExportTemplate('proposal',f.local()),null);
+ assert.deepEqual(writingFlowSnapshot('proposal',f.local()),writingFlowSnapshot('proposal',before));
+ await f.mount();assert.equal(writingExportTemplate('proposal',f.local()),null);assert.match(f.q('[data-wf-export-template] h3').textContent,/通用开题报告模板/);
+ assert.equal(f.local().outlineConfirmed,true);assert.equal(f.local().body,before.body);
+});
+
+test('cancelling a replacement and rejecting an invalid file retain the template, body and confirmed outline',async t=>{
+ const f=await fixture(t),before=structuredClone(f.local()),input=f.q('[data-template-file]');
+ input.showPicker=()=>{};f.q('[data-wf-template-choose]').click();input.dispatchEvent(new window.Event('cancel'));assert.equal(f.calls.some(row=>row.path==='/files'),false);
+ f.select({name:'不支持.txt',size:1,arrayBuffer:async()=>new Uint8Array([1]).buffer});await until(()=>!f.q('[data-wf-template-choose]').disabled);
+ assert.match(f.q('[data-wf-error]').textContent,/仅支持 DOCX/);assert.equal(writingExportTemplate('proposal',f.local()).source.fileId,'original');
+ assert.equal(f.local().body,before.body);assert.equal(f.local().outlineConfirmed,true);
+ assert.equal(f.calls.some(row=>row.path==='/files'),false);
+});
+
+test('a failed account save rolls back the export selection and allows retry without changing the manuscript',async t=>{
+ const f=await fixture(t,{failSave:true}),before=structuredClone(f.local());f.select(await templateFile());await until(()=>!f.q('[data-wf-template-choose]').disabled);
+ assert.match(f.q('[data-wf-error]').textContent,/账户草稿保存失败/);assert.equal(writingExportTemplate('proposal',f.local()).source.fileId,'original');
+ assert.equal(f.local().body,before.body);assert.equal(f.local().outlineConfirmed,true);assert.equal(f.cloud.payload.writingFlow[f.fields.exportTemplate],undefined);
+ let opened=0;f.q('[data-template-file]').showPicker=()=>opened++;f.q('[data-wf-template-choose]').click();assert.equal(opened,1);
+ f.q('[data-template-file]').dispatchEvent(new window.Event('cancel'));
+});
+
+test('template upload exposes a busy state and prevents an export from racing the new format',async t=>{
+ const f=await fixture(t,{delayUpload:true}),file=await templateFile();f.select(file);
+ await until(()=>f.calls.some(row=>row.path==='/files'));
+ assert.equal(f.q('[data-wf-standard]').getAttribute('aria-busy'),'true');assert.equal(f.q('#wf-body-docx').disabled,true);assert.equal(f.q('[data-wf-field="body"]').disabled,true);
+ f.q('#wf-body-docx').click();assert.equal(f.artifacts.length,0);
+ f.releaseUpload();await until(()=>!f.q('[data-wf-template-choose]').disabled);
+ assert.equal(f.q('[data-wf-standard]').getAttribute('aria-busy'),'false');assert.equal(f.q('#wf-body-docx').disabled,false);
+});
