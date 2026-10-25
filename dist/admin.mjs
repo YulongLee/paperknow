@@ -1,3 +1,4 @@
+import {revenueOverview,revenuePage,revenueDataValid,newRevenueQuery,revenueQueryString} from './admin-revenue.mjs';
 import {researchImagesPanel,researchImagesPayload} from './admin-research-images.mjs';
 import {mountAdminUserManagement} from './admin-user-management.mjs';
 import {toolBillingServiceTypes,toolBillingModes,toolBillingPage,toolBillingRulesValid,toolBillingPayload} from './admin-tool-billing.mjs';
@@ -9,6 +10,7 @@ const paths = {
   results: ['成果记录', '查看服务端成果的归属、类型与创建记录。', 'file'],
   feedback: ['用户反馈', '记录处理进度，让每一条反馈都有回应。', 'message'],
   orders: ['订单记录', '查看已有订单与商品信息。', 'order'],
+  revenue: ['收益统计', '查看真实支付收入、商品销售与收款明细。', 'chart'],
   usage: ['用量记录', '查看模型调用及实际返回的 Token 用量。', 'chart'],
   monitoring: ['运行监控', '监控容量、任务、支付与对象存储，提前发现运行风险。', 'chart'],
   settings: ['系统设置', '管理模型配置，查看平台服务的连接状态。', 'settings'],
@@ -45,7 +47,7 @@ const badge = value => { const [label, color] = Object.hasOwn(statuses, value) ?
 const filters = { users: ['user', 'admin'], jobs: ['queued', 'running', 'completed', 'failed', 'cancelled'], feedback: ['open', 'processing', 'resolved'], orders: ['pending', 'paid', 'closed', 'expired', 'cancelled', 'refunded', 'failed'], usage: ['billable', 'unbilled'] };
 const searchHints = { users: '搜索昵称、邮箱、手机号或用户 ID', jobs: '搜索任务 ID、类型或用户', results: '搜索成果名称、类型或用户', feedback: '搜索反馈内容、分类或用户', orders: '搜索订单、商品或用户', usage: '搜索模型、任务或用户', audit: '搜索操作、目标或管理员' };
 const headers = { users: ['用户', '联系方式', '身份', '项目 / 任务', '注册时间', '操作'], jobs: ['任务', '所属用户', '状态', '阶段 / 次数', '创建时间', '操作'], results: ['成果名称', '所属用户', '类型', '关联任务', '创建时间'], feedback: ['反馈内容', '提交用户', '分类', '处理状态', '提交时间', '操作'], orders: ['订单', '所属用户', '商品', '订单金额', '支付渠道', '商户订单号', '平台交易号', '订单状态', '创建 / 支付时间'], usage: ['模型与服务', '所属用户', '输入 / 输出 Token', '计费标记', '调用时间', '关联任务'], audit: ['操作', '管理员', '目标', '操作时间', '详情'] };
-const auditNames = { 'user.credits.adjust':'调整用户积分','user.membership.grant':'发放用户会员','user.membership.update':'调整会员有效期','user.membership.revoke':'撤销用户会员','user.status.update':'调整账号状态', 'owner.verified': '管理员身份验证', 'job.cancel': '取消任务', 'feedback.update': '更新反馈', 'model.update': '修改模型配置', 'payment.config.update': '修改支付配置', 'payment.product.update': '修改可售商品', 'payment.channel.update': '切换或更新支付渠道', 'billing.rules.update': '修改服务计价', 'billing.tools.update': '修改科研工具计价' };
+const auditNames = { 'revenue.export':'导出收益明细','user.credits.adjust':'调整用户积分','user.membership.grant':'发放用户会员','user.membership.update':'调整会员有效期','user.membership.revoke':'撤销用户会员','user.status.update':'调整账号状态', 'owner.verified': '管理员身份验证', 'job.cancel': '取消任务', 'feedback.update': '更新反馈', 'model.update': '修改模型配置', 'payment.config.update': '修改支付配置', 'payment.product.update': '修改可售商品', 'payment.channel.update': '切换或更新支付渠道', 'billing.rules.update': '修改服务计价', 'billing.tools.update': '修改科研工具计价' };
 const billableServices = [{ key: 'polish', title: '学术润色' }, { key: 'review', title: '意见修改' }, { key: 'agent', title: '科研智能助手' }];
 const billingModes = { free: '免费', paid: '按权益计费', disabled: '暂停' };
 const paymentProviders = {
@@ -66,6 +68,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   const paymentBaselines = new Map(), pendingPayments = new Set();
   let agentBaseline = '', agentPending = false, imageBaseline='', imagePending=false;
   const queries = Object.fromEntries(Object.keys(headers).map(key => [key, { page: 1, pageSize: 20, q: '', status: '' }]));
+  const revenueQuery=newRevenueQuery();
   const route = () => Object.hasOwn(paths, win.location.hash.slice(1)) ? win.location.hash.slice(1) : 'overview';
 
   function toast(message) {
@@ -134,7 +137,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     const m = data.metrics || {}, services = data.services || {}, days = Array.isArray(data.daily) ? data.daily : [], recent = Array.isArray(data.recentJobs) ? data.recentJobs.slice(0, 6) : [];
     const max = Math.max(1, ...days.flatMap(day => [Number(day.users) || 0, Number(day.jobs) || 0]));
     const cards = [['累计用户', m.users, `研究项目 ${count(m.projects)} 个`, 'users', 'users', ''], ['处理任务', m.jobs, `已完成 ${count(m.completed)} 个`, 'task', 'jobs', 'mint'], ['研究成果', m.results, `已上传原件 ${count(m.files)} 份`, 'file', 'results', 'lavender'], ['待完成反馈', m.feedbackOpen, '待处理与处理中', 'message', 'feedback', 'amber']];
-    return `<div class="metrics-grid">${cards.map(([label, value, foot, glyph, view, color]) => `<article class="metric-card ${color}"><div class="metric-top"><span>${label}</span><span class="metric-icon">${icon(glyph)}</span></div><strong class="metric-number">${count(value)}</strong><div class="metric-foot"><span>${foot}</span><a href="#${view}" data-view="${view}" aria-label="查看${paths[view][0]}">查看 →</a></div></article>`).join('')}</div><div class="dashboard-grid"><section class="panel"><div class="panel-heading"><div><h2>近 7 天活动</h2><p>新增用户与新建任务，按日统计</p></div><div class="chart-legend"><span><i></i>用户</span><span><i class="mint"></i>任务</span></div></div><div class="trend-chart" role="img" aria-label="${esc(days.map(day => `${day.date}：新增用户 ${count(day.users)}，任务 ${count(day.jobs)}`).join('；') || '暂无趋势数据')}"><div class="trend-columns">${days.map(day => `<div class="trend-day" title="${esc(day.date)} · 用户 ${count(day.users)} · 任务 ${count(day.jobs)}"><i class="trend-bar" style="height:${Math.max(0, Number(day.users) || 0) / max * 92}%"></i><i class="trend-bar mint" style="height:${Math.max(0, Number(day.jobs) || 0) / max * 92}%"></i></div>`).join('')}</div><div class="trend-labels">${days.map(day => `<span>${esc(String(day.date).slice(5).replace('-', '/'))}</span>`).join('')}</div>${!days.some(day => Number(day.users) || Number(day.jobs)) ? '<div class="trend-empty">这段时间还没有新增活动</div>' : ''}</div><div class="queue-strip"><span>排队中 <b>${count(m.queued)}</b></span><span>执行中 <b>${count(m.running)}</b></span><span>失败 <b>${count(m.failed)}</b></span></div></section><section class="panel"><div class="panel-heading"><h2>服务状态</h2><a href="#settings" data-view="settings" class="text-button">查看设置 →</a></div><div class="service-status-list">${serviceRow('AI 模型', 'ai', services.ai, '可用')}${serviceRow('邮箱验证码', 'mail', services.email)}${serviceRow('短信验证码', 'phone', services.sms)}${serviceRow('在线支付', 'order', services.payment, '已开放')}</div><div class="storage-strip"><span>原件存储 <b>${storageName(services.storage)}</b></span><span>${bytes(m.storageBytes)}</span></div></section></div><section class="panel"><div class="panel-heading"><div><h2>最近任务</h2><p>最新提交的服务任务</p></div><a href="#jobs" data-view="jobs" class="text-button">全部任务 →</a></div>${recent.length ? `<div class="table-scroll"><table class="data-table"><thead><tr><th scope="col">任务</th><th scope="col">所属用户</th><th scope="col">状态</th><th scope="col">提交时间</th></tr></thead><tbody>${recent.map(row => `<tr><td><div class="cell-title">${esc(typeNames[row.type] || row.type)}</div><div class="cell-secondary">${idText(row.id)}</div></td><td>${person(row)}</td><td>${badge(row.status)}</td><td>${date(row.created_at)}</td></tr>`).join('')}</tbody></table></div>` : empty('还没有提交任务', '真实任务开始执行后，将在这里展示状态。')}</section>`;
+    return `<div class="metrics-grid">${cards.map(([label, value, foot, glyph, view, color]) => `<article class="metric-card ${color}"><div class="metric-top"><span>${label}</span><span class="metric-icon">${icon(glyph)}</span></div><strong class="metric-number">${count(value)}</strong><div class="metric-foot"><span>${foot}</span><a href="#${view}" data-view="${view}" aria-label="查看${paths[view][0]}">查看 →</a></div></article>`).join('')}</div>${revenueOverview(data.revenue)}<div class="dashboard-grid"><section class="panel"><div class="panel-heading"><div><h2>近 7 天活动</h2><p>新增用户与新建任务，按日统计</p></div><div class="chart-legend"><span><i></i>用户</span><span><i class="mint"></i>任务</span></div></div><div class="trend-chart" role="img" aria-label="${esc(days.map(day => `${day.date}：新增用户 ${count(day.users)}，任务 ${count(day.jobs)}`).join('；') || '暂无趋势数据')}"><div class="trend-columns">${days.map(day => `<div class="trend-day" title="${esc(day.date)} · 用户 ${count(day.users)} · 任务 ${count(day.jobs)}"><i class="trend-bar" style="height:${Math.max(0, Number(day.users) || 0) / max * 92}%"></i><i class="trend-bar mint" style="height:${Math.max(0, Number(day.jobs) || 0) / max * 92}%"></i></div>`).join('')}</div><div class="trend-labels">${days.map(day => `<span>${esc(String(day.date).slice(5).replace('-', '/'))}</span>`).join('')}</div>${!days.some(day => Number(day.users) || Number(day.jobs)) ? '<div class="trend-empty">这段时间还没有新增活动</div>' : ''}</div><div class="queue-strip"><span>排队中 <b>${count(m.queued)}</b></span><span>执行中 <b>${count(m.running)}</b></span><span>失败 <b>${count(m.failed)}</b></span></div></section><section class="panel"><div class="panel-heading"><h2>服务状态</h2><a href="#settings" data-view="settings" class="text-button">查看设置 →</a></div><div class="service-status-list">${serviceRow('AI 模型', 'ai', services.ai, '可用')}${serviceRow('邮箱验证码', 'mail', services.email)}${serviceRow('短信验证码', 'phone', services.sms)}${serviceRow('在线支付', 'order', services.payment, '已开放')}</div><div class="storage-strip"><span>原件存储 <b>${storageName(services.storage)}</b></span><span>${bytes(m.storageBytes)}</span></div></section></div><section class="panel"><div class="panel-heading"><div><h2>最近任务</h2><p>最新提交的服务任务</p></div><a href="#jobs" data-view="jobs" class="text-button">全部任务 →</a></div>${recent.length ? `<div class="table-scroll"><table class="data-table"><thead><tr><th scope="col">任务</th><th scope="col">所属用户</th><th scope="col">状态</th><th scope="col">提交时间</th></tr></thead><tbody>${recent.map(row => `<tr><td><div class="cell-title">${esc(typeNames[row.type] || row.type)}</div><div class="cell-secondary">${idText(row.id)}</div></td><td>${person(row)}</td><td>${badge(row.status)}</td><td>${date(row.created_at)}</td></tr>`).join('')}</tbody></table></div>` : empty('还没有提交任务', '真实任务开始执行后，将在这里展示状态。')}</section>`;
   }
   function storageName(provider) { return provider === 'aliyun_oss' ? '阿里云 OSS' : provider === 'local_server_sqlite' ? '服务端存储' : esc(provider || '未配置'); }
   function paymentChannelControl(provider, data = {}, encryptionReady = false) {
@@ -283,15 +286,17 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     if (!quiet) { currentData = null; loadedAt = ''; $('#admin-content').innerHTML = heading(view) + loading(); }
     try {
       const query = queries[view];
-      const suffix = query ? '?' + new URLSearchParams({ page: String(query.page), pageSize: String(query.pageSize), ...(query.q ? { q: query.q } : {}), ...(query.status ? { status: query.status } : {}), ...(view==='users'&&query.accountStatus?{accountStatus:query.accountStatus}:{}) }) : '';
+      const suffix = view==='revenue'?'?'+revenueQueryString(revenueQuery):query ? '?' + new URLSearchParams({ page: String(query.page), pageSize: String(query.pageSize), ...(query.q ? { q: query.q } : {}), ...(query.status ? { status: query.status } : {}), ...(view==='users'&&query.accountStatus?{accountStatus:query.accountStatus}:{}) }) : '';
       const data = await request('/admin/' + view + suffix);
       if (!authorized || ticket !== generation) return;
+      if(view==='revenue'&&!revenueDataValid(data))throw new Error('收益数据格式不完整，请刷新后重试。');
+      if(view==='revenue'){revenueQuery.page=data.page;revenueQuery.pageSize=data.pageSize;}
       if (query && !Array.isArray(data.items)) throw new Error('返回的数据格式不正确，请重试。');
       if (quiet && (doc.activeElement?.closest('#search-form, #model-form, #monitoring-form') || $('#monitoring-form')?.dataset.dirty === 'true' || $('#admin-dialog').open || paymentsHaveWork() || agentHasWork() || imageHasWork())) return;
       if (query && Number.isInteger(data.page) && data.page > 0) query.page = data.page;
       if (query && query.page > Math.max(1, Math.ceil((Number(data.total) || 0) / query.pageSize))) { query.page = Math.max(1, Math.ceil((Number(data.total) || 0) / query.pageSize)); await loadView(view); return; }
       currentData = data; loadedAt = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-      $('#admin-content').innerHTML = heading(view) + (view === 'overview' ? overviewPage(data) : view === 'monitoring' ? monitoringPage(data) : view === 'settings' ? settingsPage(data) + agentSettingsPanel(data.agent) + researchImagesPanel(data.researchImages) : view === 'payments' ? paymentsPage(data) : listPage(view, data));
+      $('#admin-content').innerHTML = heading(view) + (view === 'overview' ? overviewPage(data) : view==='revenue'?revenuePage(data):view === 'monitoring' ? monitoringPage(data) : view === 'settings' ? settingsPage(data) + agentSettingsPanel(data.agent) + researchImagesPanel(data.researchImages) : view === 'payments' ? paymentsPage(data) : listPage(view, data));
       if (view === 'payments') rememberPaymentForms();
       if (view === 'settings') {agentBaseline = agentFingerprint();imageBaseline=imageFingerprint();}
     } catch (error) {
@@ -542,6 +547,26 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     catch(error){if(authorized&&ticket===generation)toast(error.message);}
     finally{if(button.isConnected){button.disabled=false;button.textContent='立即采样';}}
   }
+  function filterRevenue(form){
+    const next={range:form.elements.range.value,provider:form.elements.provider.value,kind:form.elements.kind.value,page:1,pageSize:20},error=form.querySelector('[data-revenue-filter-error]');
+    if(next.range==='custom'){
+      next.startDate=form.elements.startDate.value;next.endDate=form.elements.endDate.value;
+      const start=Date.parse(next.startDate+'T00:00:00Z'),end=Date.parse(next.endDate+'T00:00:00Z');
+      if(!Number.isFinite(start)||!Number.isFinite(end)||end<start||(end-start)/86400000>=366||next.endDate>form.elements.endDate.max){error.textContent='请选择有效日期，期间最多 366 天，结束日期不能晚于今天。';error.hidden=false;return;}
+    }
+    Object.assign(revenueQuery,next);void loadView('revenue');
+  }
+  async function exportRevenue(){
+    const button=$('[data-revenue-export]'),ticket=generation;if(!authorized||currentView!=='revenue'||!button||button.disabled)return;
+    button.disabled=true;button.textContent='正在准备明细…';
+    try{
+      const result=await request('/admin/revenue/export?'+revenueQueryString(revenueQuery,{exporting:true}));
+      if(!authorized||ticket!==generation||currentView!=='revenue')return;
+      if(typeof result.csv!=='string'||!result.csv.startsWith('\uFEFF')||result.csv.length>8*1024*1024||!Number.isSafeInteger(result.rows)||result.rows<0||result.rows>10000||!/^PaperKnow_收益明细_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.csv$/.test(result.filename))throw new Error('收益导出内容不完整，请重试。');
+      const url=win.URL.createObjectURL(new win.Blob([result.csv],{type:'text/csv;charset=utf-8'})),anchor=doc.createElement('a');anchor.href=url;anchor.download=result.filename;doc.body.append(anchor);anchor.click();anchor.remove();win.setTimeout(()=>win.URL.revokeObjectURL(url),10000);toast('已导出 '+result.rows+' 笔收益明细。');
+    }catch(error){if(authorized&&ticket===generation)toast(error.message);}
+    finally{if(button.isConnected){button.disabled=false;button.textContent='导出明细 CSV';}}
+  }
   $('#admin-content').addEventListener('input',event=>{const form=event.target.closest('#monitoring-form');if(form){form.dataset.dirty='true';form.querySelector('[data-monitor-dirty]').hidden=false;}});
   $('#admin-content').addEventListener('change',event=>{const form=event.target.closest('#monitoring-form');if(form){form.dataset.dirty='true';form.querySelector('[data-monitor-dirty]').hidden=false;}});
   $('#admin-app').addEventListener('click', event => {
@@ -549,6 +574,13 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     if (link) { event.preventDefault(); navigateView(link.dataset.view); return; }
     if (!authorized) return;
     if (event.target.closest('#refresh-view, #retry-view')) { guardPayments(() => loadView()); return; }
+    if(currentView==='revenue'){
+      if(event.target.closest('[data-revenue-export]')){void exportRevenue();return;}
+      if(event.target.closest('[data-revenue-reset]')){Object.assign(revenueQuery,newRevenueQuery());void loadView('revenue');return;}
+      const day=event.target.closest('[data-revenue-day]');if(day){Object.assign(revenueQuery,{range:'custom',startDate:day.dataset.revenueDay,endDate:day.dataset.revenueDay,page:1});void loadView('revenue');return;}
+      const page=event.target.closest('button[data-revenue-page]');if(page){const next=revenueQuery.page+(page.dataset.revenuePage==='next'?1:-1);if(next>=1&&next<=Math.max(1,Math.ceil((currentData?.total||0)/revenueQuery.pageSize))){revenueQuery.page=next;void loadView('revenue');}return;}
+      const order=event.target.closest('[data-revenue-order]'),check=event.target.closest('[data-revenue-check-orders]');if(order||check){event.preventDefault();Object.assign(queries.orders,{q:order?.dataset.revenueOrder||'',status:check?'paid':'',page:1});navigateView('orders');return;}
+    }
     if (event.target.closest('#test-agent-connection')) { testAgentSettings(); return; }
     if (event.target.closest('#monitor-sample')) { void sampleMonitoring(); return; }
     const paymentCheck = event.target.closest('[data-payment-check]'); if (paymentCheck) { checkPaymentChannel(paymentCheck.dataset.paymentCheck); return; }
@@ -565,6 +597,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   });
   $('#admin-content').addEventListener('submit', event => {
     if (!authorized) return;
+    if(event.target.id==='revenue-filter'){event.preventDefault();filterRevenue(event.target);return;}
     if (event.target.id === 'search-form') { event.preventDefault(); Object.assign(queries[currentView], { q: $('#admin-search').value.trim(), status: $('#status-filter')?.value || '', accountStatus:$('#account-status-filter')?.value||'', page: 1 }); loadView(); }
     if (event.target.id === 'model-form') saveSettings(event);
     if (event.target.id === 'research-image-settings-form') void saveImageSettings(event);
@@ -576,6 +609,8 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     if (event.target.matches('form[data-tool-billing-form]')) saveToolBilling(event);
   });
   for (const name of ['input', 'change']) $('#admin-content').addEventListener(name, event => { if(event.target.closest('#research-image-settings-form')) $('[data-image-dirty]').hidden=!imageHasWork(); if (event.target.closest('#agent-settings-form')) { const dirty = agentHasWork(); $('[data-agent-dirty]').hidden = !dirty; $('#test-agent-connection').disabled = dirty || !currentData?.agent?.version || !currentData?.agent?.configured; } const form = event.target.closest('form[data-payment-provider], form[data-payment-product], form[data-billing-form], form[data-tool-billing-form]'); if (form) refreshPaymentDirty(form); });
+  $('#admin-content').addEventListener('keydown',event=>{const day=event.target.closest('[data-revenue-day]');if(day&&['Enter',' '].includes(event.key)){event.preventDefault();day.dispatchEvent(new win.MouseEvent('click',{bubbles:true}));}});
+  $('#admin-content').addEventListener('change',event=>{if(event.target.matches('#revenue-filter [name=range]')){const custom=$('[data-revenue-custom]'),hidden=event.target.value!=='custom';custom.hidden=hidden;custom.querySelectorAll('input').forEach(input=>input.disabled=hidden);}});
   $('#admin-content').addEventListener('change', event => { if (event.target.matches('[data-payment-toggle]')) void togglePaymentChannel(event.target); if(event.target.matches('[data-tool-billing-mode]')||event.target.closest('form[data-tool-billing-form]'))updateToolBillingCost(event.target.closest('form')); if (event.target.matches('[data-billing-mode]')) updateBillingCost(event.target.closest('form')); if (event.target.matches('[name="bundleKey"], [name="membershipKey"]')) { const prefix = event.target.name === 'bundleKey' ? 'bundle' : 'membership', row = event.target.closest(`[data-${prefix}-row]`), title = row?.querySelector(`[name="${prefix}Title"]`); if (title && !title.value.trim()) title.value = allBillableServices().find(service => service.key === event.target.value)?.title || ''; if (row) refreshPaymentDirty(event.target.closest('form')); } });
   $('#menu-toggle').onclick = () => { const open = $('#admin-app').classList.toggle('nav-open'); $('#sidebar-backdrop').hidden = !open; $('#menu-toggle').setAttribute('aria-expanded', String(open)); };
   $('#sidebar-backdrop').onclick = closeMenu;

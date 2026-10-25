@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS payment_orders(
   error_code TEXT,UNIQUE(user_id,idempotency_key),UNIQUE(provider,provider_trade_no)
 );
 CREATE INDEX IF NOT EXISTS payment_orders_owner ON payment_orders(user_id,updated_at);
+CREATE INDEX IF NOT EXISTS payment_orders_paid_time ON payment_orders(unixepoch(paid_at));
 CREATE TABLE IF NOT EXISTS payment_entitlements(
   order_id TEXT PRIMARY KEY REFERENCES orders(id),user_id TEXT NOT NULL REFERENCES users(id),
   product_id TEXT NOT NULL REFERENCES products(id),type TEXT NOT NULL,

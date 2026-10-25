@@ -1,4 +1,5 @@
 import {createAdminUserManagement} from './admin-user-management.mjs';
+import {createAdminRevenue} from './admin-revenue.mjs';
 import {createResearchImageSettings} from './research-image-settings.mjs';
 import {randomUUID} from 'node:crypto';
 import {aiReady,publicModelSettings} from './config.mjs';
@@ -75,6 +76,7 @@ export function createAdminAPI(db,worker,config,auth){
     catch(cause){db.exec('ROLLBACK;');throw cause;}
   };
   const userManagement=createAdminUserManagement(db,{billing:config.billing,audit,transaction});
+  const revenue=createAdminRevenue(db);
   const agentSettings=config.agentSettings||createAgentSettings(db,config,{audit});
   const researchImageSettings=config.researchImageSettings||createResearchImageSettings(db,config,{audit});
   let agentTestRunning=false,agentTestAt=0;
@@ -123,7 +125,7 @@ export function createAdminAPI(db,worker,config,auth){
       for(const row of counts){const day=daily.find(item=>item.date===row.date);if(day)day[table]=row.n;}
     }
     const available=auth.options();
-    return {metrics,recentJobs:list('jobs',new URLSearchParams('pageSize=10')).items,daily,
+    return {metrics,revenue:revenue.overview(),recentJobs:list('jobs',new URLSearchParams('pageSize=10')).items,daily,
       services:{ai:aiReady(modelConfig()),email:available.emailCode,sms:available.phoneCode,payment:config.payments?.options().enabled||false,storage:config.storage?.provider||'local_server_sqlite'}};
   }
 
@@ -134,6 +136,8 @@ export function createAdminAPI(db,worker,config,auth){
     const actor=db.prepare("SELECT u.id,u.role,COALESCE(m.status,'active') status FROM users u LEFT JOIN user_management m ON m.user_id=u.id WHERE u.id=?").get(user.id);
     if(!actor)fail(401,'请先登录');
     if(actor.role!=='admin'||actor.status!=='active')fail(403,'需要管理员权限');
+    if(path==='/api/admin/revenue'&&method==='GET')return revenue.report(query);
+    if(path==='/api/admin/revenue/export'&&method==='GET'){const result=revenue.exportCSV(query);audit(actor,'revenue.export','report',result.filters.startDate+'_'+result.filters.endDate,{startDate:result.filters.startDate,endDate:result.filters.endDate,provider:result.filters.provider,kind:result.filters.kind,rows:result.rows,amountCents:result.amountCents});return result;}
     const managedUser=path.match(/^\/api\/admin\/users\/([^/]+)\/(manage|credits|membership|status)$/);
     if(managedUser){parameters(query,[]);if(!config.billing)fail(503,'账户计费管理尚未启用');if(managedUser[2]==='manage'&&method==='GET')return userManagement.detail(managedUser[1]);if(managedUser[2]!=='manage'&&method==='POST')return userManagement.mutate(actor,managedUser[1],managedUser[2],await readBody());fail(404,'用户管理接口不存在');}
     if(path.startsWith('/api/admin/monitoring')){

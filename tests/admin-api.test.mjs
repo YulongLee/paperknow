@@ -63,7 +63,7 @@ async function fixture(t,overrides={}){
 
 test('every admin path rejects guests and ordinary users before returning data or accepting actions',async t=>{
   const f=await fixture(t);
-  const paths=['','/overview','/users','/jobs','/results','/feedback','/orders','/usage','/audit','/settings','/model','/unknown'];
+  const paths=['','/revenue','/revenue/export','/overview','/users','/jobs','/results','/feedback','/orders','/usage','/audit','/settings','/model','/unknown'];
   for(const path of paths)assert.equal((await f.request('/api/admin'+path)).status,401);
   assert.equal((await f.request('/api/admin/model',{method:'POST',origin:'',data:{model:'bad',enabled:true}})).status,401);
   const user=await f.register('ordinary@example.com',{role:'admin',email:owner,name:owner});

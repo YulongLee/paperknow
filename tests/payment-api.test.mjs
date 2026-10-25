@@ -362,3 +362,27 @@ test('Alipay QR disappears for paid, expired, closed, legacy and malformed order
  await f.channel('wechat');const wechatOrder=(await f.create()).value.item;assert.match(wechatOrder.qrContent,/^weixin:/);assert.equal(wechatOrder.paymentQrUrl,null);
  assert.equal(f.count('payment_credit_ledger'),1);assert.equal(f.count('payment_entitlements'),0);
 });
+
+
+test('administrator revenue uses verified payment callbacks once, preserves historical prices and exports an audited reconciliation report',async t=>{
+ const f=await fixture(t);await f.ready('wechat');await f.channel('alipay');
+ const member=(await f.create()).value.item,credits=(await f.create({provider:'alipay',productId:'credits-200'})).value.item;
+ await f.create();
+ assert.equal((await f.notify(member)).status,204);assert.equal((await f.notify(member)).status,204);assert.equal((await f.notify(credits)).status,200);
+ await f.publish('basic',{priceCents:999,title:'后来改价的会员',description:'新的会员价格与原订单无关。'});
+ const endpoint='/api/admin/revenue?range=today';
+ const response=await f.request(endpoint,{cookie:f.admin.cookie});assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
+ const data=response.value;assert.deepEqual(data.summary,{amountCents:2321,orders:2,buyers:1,averageCents:1161});
+ assert.equal(data.byProvider.find(row=>row.key==='wechat').amountCents,321);assert.equal(data.byProvider.find(row=>row.key==='alipay').amountCents,2000);
+ assert.equal(data.byKind.find(row=>row.key==='membership').amountCents,321);assert.equal(data.byKind.find(row=>row.key==='credits').amountCents,2000);
+ assert.ok(data.products.some(row=>row.title===product.title&&row.amountCents===321));
+ assert.equal((await f.request(endpoint,{cookie:''})).status,401);assert.equal((await f.request(endpoint,{cookie:f.user.cookie})).status,403);
+ assert.equal((await f.request('/api/admin/revenue/export?range=today',{cookie:f.user.cookie})).status,403);
+ const exported=await f.request('/api/admin/revenue/export?range=today',{cookie:f.admin.cookie});assert.equal(exported.status,200);assert.equal(exported.value.rows,2);assert.equal(exported.value.amountCents,2321);assert.match(exported.value.csv,/3\.21/);assert.match(exported.value.csv,/20\.00/);
+ const audit=f.db.prepare("SELECT detail FROM admin_audit WHERE action='revenue.export'").get();assert.equal(JSON.parse(audit.detail).rows,2);assert.doesNotMatch(audit.detail,/csv|privateKey|sealed_settings|支付测试账户/);
+ f.db.prepare("UPDATE orders SET status='refunded' WHERE id=?").run(credits.id);
+ const after=(await f.request(endpoint,{cookie:f.admin.cookie})).value;assert.equal(after.summary.amountCents,321);assert.equal(after.summary.orders,1);assert.equal(after.dataQuality.markedRefundedOrders,1);
+ const overview=(await f.request('/api/admin/overview',{cookie:f.admin.cookie})).value;assert.equal(overview.revenue.totals.today.amountCents,321);
+ assert.equal((await f.request('/api/admin/revenue?range=today&provider=alipay',{cookie:f.admin.cookie})).value.summary.amountCents,0);
+ assert.equal(f.count('orders'),3);assert.equal(f.count('payment_credit_ledger'),1);assert.equal(f.count('payment_entitlements'),1);
+});
