@@ -206,5 +206,5 @@ test('final pending-marker count includes input and template fields exactly once
 });
 
 test('formal missing-material checks open the completion workflow instead of requiring an outside Word edit',async t=>{
- let details;const f=await fixture(t,{submission:true,docxOnly:true,onNeedsCompletion:async value=>{details=value;}});f.click('docx');await f.complete();assert.ok(details.report.submission.issues.length);assert.equal(f.downloads.length,0);assert.equal(f.rendered.length,0);assert.match(f.status.textContent,/补充窗口/);assert.doesNotMatch(f.status.textContent,/自行修改|可编辑初稿继续修改/);
+ let details;const f=await fixture(t,{submission:true,docxOnly:true,onNeedsCompletion:async value=>{details=value;}});f.click('docx');await f.complete();assert.ok(details.report.submission.issues.length);assert.equal(f.q('[data-export-check]').open,false);assert.equal(f.downloads.length,0);assert.equal(f.rendered.length,0);assert.match(f.status.textContent,/补充窗口/);assert.doesNotMatch(f.status.textContent,/自行修改|可编辑初稿继续修改/);
 });
