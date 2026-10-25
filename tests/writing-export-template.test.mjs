@@ -19,7 +19,7 @@ async function templateFile(){
  const bytes=await zip.generateAsync({type:'uint8array'});
  return {bytes,name:'新开题排版.docx',size:bytes.length,arrayBuffer:async()=>bytes.buffer};
 }
-async function fixture(t,{kind='proposal',failSave=false,delayUpload=false}={}){
+async function fixture(t,{kind='proposal',failSave=false,delayUpload=false,account=true}={}){
  const dom=new JSDOM('<main class="dashboard"></main>',{url:'https://paperknow.test/workspace.html#tool/'+kind});
  for(const key of ['window','document','localStorage','location','AbortController','MutationObserver','FormData'])globalThis[key]=dom.window[key];
  const fields=writingStandardFields(kind),spec=writingFlowSpecs[kind],calls=[],artifacts=[],downloads=[],originalFetch=globalThis.fetch;
@@ -36,6 +36,7 @@ async function fixture(t,{kind='proposal',failSave=false,delayUpload=false}={}){
    if(body){if(failSave)return new Response(JSON.stringify({error:'模拟账户保存失败'}),{status:409});cloud={...cloud,...body,version:cloud.version+1};}
    return json({item:structuredClone(cloud)});
   }
+  if(path==='/api/files'){files.set('new-template',Buffer.from(body.data,'base64'));return json({id:'new-template'});}
   if(String(path).startsWith('/api/files/'))return new Response(files.get(String(path).split('/')[3]));
   if(path==='/api/theses/document-render')return json({pages:1,data:Buffer.from('%PDF-synthetic-page').toString('base64'),docxData:body.data,fieldsRefreshed:true,pageCheck:{status:'passed'}});
   if(path==='/api/artifacts'){
@@ -50,10 +51,10 @@ async function fixture(t,{kind='proposal',failSave=false,delayUpload=false}={}){
   throw Error('Unexpected API '+path);
  }};
  dom.window.HTMLAnchorElement.prototype.click=function(){downloads.push(this.download);};
- async function mount(){await mountAccountDraft('draft',{notify(){},mount:row=>mountWritingFlow({kind,container:document.querySelector('.dashboard'),ctx,draftId:row.id}),saveNative:()=>flushEditorDraft()});}
+ async function mount(){if(!account){localStorage.setItem(keys.drafts,JSON.stringify([cloud.payload]));mountWritingFlow({kind,container:document.querySelector('.dashboard'),ctx,draftId:'draft'});return;}await mountAccountDraft('draft',{notify(){},mount:row=>mountWritingFlow({kind,container:document.querySelector('.dashboard'),ctx,draftId:row.id}),saveNative:()=>flushEditorDraft()});}
  t.after(()=>{releaseUpload();disposeAccountDraft();clearEditor();disposeWritingFlows();globalThis.fetch=originalFetch;clearTimeout(document.getElementById('artifact-export-notice')?._artifactTimer);dom.window.close();});
  await mount();
- return {dom,fields,calls,artifacts,downloads,releaseUpload,get cloud(){return cloud;},mount,
+ return {dom,fields,calls,artifacts,downloads,releaseUpload,ctx,get cloud(){return cloud;},mount,
   q:selector=>document.querySelector(selector),local:()=>list(keys.drafts)[0].writingFlow,
   select(file){const input=document.querySelector('[data-template-file]');Object.defineProperty(input,'files',{value:[file],configurable:true});input.dispatchEvent(new window.Event('change',{bubbles:true}));}
  };
@@ -123,4 +124,16 @@ test('template upload exposes a busy state and prevents an export from racing th
  f.q('#wf-body-docx').click();assert.equal(f.artifacts.length,0);
  f.releaseUpload();await until(()=>!f.q('[data-wf-template-choose]').disabled);
  assert.equal(f.q('[data-wf-standard]').getAttribute('aria-busy'),'false');assert.equal(f.q('#wf-body-docx').disabled,false);
+});
+
+
+for(const nativeAPI of [true,false])test('direct writing entry resolves the signed-in export account '+(nativeAPI?'with':'without')+' an injected API client',async t=>{
+ const f=await fixture(t,{account:false}),file=await templateFile();if(!nativeAPI)delete f.ctx.api;f.select(file);await until(()=>!f.q('[data-wf-template-choose]').disabled);
+ assert.equal(f.local()[f.fields.exportTemplate].source.fileId,'new-template');
+ f.q('#wf-body-docx').click();await until(()=>!f.q('#wf-body-docx').disabled);
+ assert.equal(f.artifacts.length,1,f.q('#writing-status').textContent);assert.equal(f.downloads.length,1);
+ assert.ok(f.calls.some(row=>row.path==='/api/files/new-template/download?expectedUserId=alice'));
+ const render=f.calls.find(row=>row.path==='/api/theses/document-render');assert.equal(render.body.expectedUserId,'alice');
+ const zip=await JSZip.loadAsync(f.artifacts[0].bytes);assert.match(await zip.file('word/styles.xml').async('string'),/仿宋/);
+ assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
 });
