@@ -18,7 +18,7 @@ function carouselEnvironment({reducedMotion=false,compact=false}={}){
    };
    Object.defineProperty(w.document,'hidden',{get:()=>hidden,configurable:true});
    const originalSetTimeout=w.setTimeout.bind(w),originalClearTimeout=w.clearTimeout.bind(w);
-   w.setTimeout=(callback,delay,...args)=>{if(delay!==6000)return originalSetTimeout(callback,delay,...args);const id={carouselTimer:++nextId};timers.set(id,()=>callback(...args));return id;};
+   w.setTimeout=(callback,delay,...args)=>{if(delay!==5000)return originalSetTimeout(callback,delay,...args);const id={carouselTimer:++nextId};timers.set(id,()=>callback(...args));return id;};
    w.clearTimeout=id=>{if(!timers.delete(id))originalClearTimeout(id);};
    w.IntersectionObserver=class{
     constructor(callback){observer=callback;}

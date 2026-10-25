@@ -152,7 +152,7 @@ const featureMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
 const featureCompact=window.matchMedia('(max-width: 700px)');
 let featureAutoplay=!featureMotion.matches,featureInView=false,featureHovered=false;
 let featureTimer=null;
-const featureDelay=6000;
+const featureDelay=5000;
 function selectFeature(key,moveFocus=false){
  const selected=featureTabs.find(tab=>tab.dataset.featureTab===key);
  if(!selected||!featurePanels.some(panel=>panel.dataset.featurePanel===key))return;
