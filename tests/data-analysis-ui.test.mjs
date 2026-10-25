@@ -69,3 +69,5 @@ test('editing an analysis preserves an unavailable historical association until 
   const cloudRef=projectReference('analysis-owner','cloud-analysis');assert.equal([...select.options].find(option=>option.value===cloudRef).disabled,false);f.change('#analysis-project',cloudRef);const saved=f.save();assert.equal(saved.projectId,cloudRef);assert.equal(saved.analysisState.form.projectId,cloudRef);assert.deepEqual(JSON.parse(localStorage.getItem('paperknow-projects')),[{id:'old-analysis',name:'不能混入目录的浏览器项目'}]);
  }finally{setProjectDirectorySession(null);f.close();}
 });
+
+test('analysis keeps data exports and offers only the checked DOCX document path',()=>{const f=fixture();try{f.mount();assert.ok(f.$('#analysis-report-docx'));assert.equal(f.$('#analysis-report-pdf'),null);assert.ok(f.$('#analysis-export-csv'));assert.ok(f.$('#analysis-export-txt'));assert.equal(document.querySelectorAll('.analysis-workflow button[data-analysis-step]').length,3);}finally{f.close();}});

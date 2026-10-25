@@ -64,14 +64,14 @@ export function bindDocumentExports(prefix,getText,getTitle,status,{expectedUser
     status.textContent='1 / 3 · 正在读取模板要求并检查文档结构…';
     options={...options,template:await templateBytes(options.template,owner)};if(!current())return;
     const profile=options.template?await api.inspectThesisDocxTemplate?.(options.template.bytes):api.defaultWritingTemplateProfile?.();if(!current())return;
-    if(!draft&&profile?.requirements?.ambiguities?.length)throw Error('学校模板含冲突的格式要求，请先核对模板后再导出。');
+    if(!draft&&profile?.requirements?.ambiguities?.length)throw Error('所选模板含冲突的格式要求，请先核对模板后再导出。');
     let docx=await api.createWritingDocx(text,options);if(!current())return;
     const verifyContent=bytes=>api.inspectThesisExportContent?.(bytes,text,options);
     if(!profile||!api.runThesisLayoutAgent||!api.inspectThesisExportContent)throw Error('文档检查组件未就绪，请刷新后重试。');
     const progress=event=>{if(current())status.textContent=`2 / 3 · 第 ${event.pass} 轮${event.stage==='repair'?'修正':'检查'}：整理标题、正文、行距与表格…`;};
     let checked=await api.runThesisLayoutAgent(docx,{profile,verifyContent,onProgress:progress,signal:controller.signal});docx=checked.bytes;if(!current())return;
     if(!draft&&checked.report.unresolved.length){await onNeedsCompletion?.({additional:checked.report.unresolved.map(row=>row.message)});throw Error('文档仍有待完善内容，已保留原稿，请在补充窗口提供资料后由系统继续处理。');}
-    const content=await verifyContent(docx);if(!current())return;if(!draft&&content?.unresolvedPlaceholders){await onNeedsCompletion?.({additional:['学校模板还有未填写的栏目，请在模板与要求中补充报告封面信息。']});throw Error('学校模板仍有未填写栏目，请补充报告封面信息或模板要求后重新导出；已有正文保留。');}
+    const content=await verifyContent(docx);if(!current())return;if(!draft&&content?.unresolvedPlaceholders){await onNeedsCompletion?.({additional:['所选模板还有未填写的栏目，请在模板与要求中补充文档信息。']});throw Error('所选模板仍有未填写栏目，请补充文档信息或模板要求后重新导出；已有正文保留。');}
     let layout=null;if(!draft){for(let round=1;round<=3;round++){status.textContent=`3 / 3 · 第 ${round} 轮实际页面检查，请稍候…`;layout=await renderDocument(docx,{expectedUserId:owner,signal:controller.signal});if(!current())return;if(!layout?.docxBytes||!layout.fieldsRefreshed)throw Error('实际页面检查尚未完成，请稍后重试；当前内容已保留，也可下载可编辑初稿。');checked=await api.runThesisLayoutAgent(layout.docxBytes,{profile,verifyContent,onProgress:progress,signal:controller.signal});if(checked.report.iterations.length===1&&!checked.report.unresolved.length){layout.docxBytes=checked.bytes;break;}if(round===3)throw Error('页面格式尚未稳定，请稍后重试；已保存内容仍保留。');docx=checked.bytes;}await verifyContent(layout.docxBytes);}
     if(!current())return;const exported=await downloadFile(title+(draft?'（初稿）':'')+'.docx',layout?.docxBytes||docx,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',{expectedUserId:owner});if(current())status.textContent=exported.message+(layout?` 已完成内容与实际页面检查，共 ${layout.pages} 页。`:' 已保留可编辑初稿。');
    }else{
