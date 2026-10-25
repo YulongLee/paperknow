@@ -43,7 +43,7 @@
 .writing-reference-search .wrs-source-states{display:flex;gap:8px;flex-wrap:wrap;margin:9px 0 17px}.writing-reference-search .wrs-source-states:empty{display:none}
 .writing-reference-search .wrs-source-state{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 9px;background:var(--wrs-soft);border:1px solid var(--wrs-line);border-radius:7px;font-size:10px;line-height:1.6;color:var(--wrs-muted)}
 .writing-reference-search .wrs-source-state>b{font-weight:550}.writing-reference-search .wrs-source-state>i{width:5px;height:5px;border-radius:50%;background:#bf934d}.writing-reference-search .wrs-source-state.ok>i{background:#3b9984}.writing-reference-search .wrs-source-state>small{font-size:10px;max-width:400px;overflow-wrap:anywhere}
-.writing-reference-search .wrs-results{min-height:180px;transition:opacity .15s}.writing-reference-search .wrs-results[aria-busy=true]{opacity:.55;pointer-events:none}
+.writing-reference-search .wrs-results{min-height:180px;transition:opacity .15s}
 .writing-reference-search .wrs-result-heading{display:flex;align-items:end;justify-content:space-between;gap:15px;padding:0 2px 14px;border-bottom:1px solid var(--wrs-line)}
 .writing-reference-search .wrs-result-heading h3{font-size:16px;margin:0;line-height:1.6;color:var(--wrs-ink)}.writing-reference-search .wrs-result-heading h3>span{font-weight:400;color:var(--wrs-muted);font-size:11px;margin-left:7px}
 .writing-reference-search .wrs-result-heading>p{margin:0;max-width:65%;font-size:10px;line-height:1.8;color:var(--wrs-muted);overflow-wrap:anywhere}
@@ -69,3 +69,16 @@
 @media(prefers-reduced-motion:reduce){.writing-reference-search .wrs-results{transition:none}}
 @media(max-width:760px){.writing-reference-search .wrs-intro:has(.wrs-local-switch){flex-wrap:wrap}.writing-reference-search .wrs-local-switch{margin-left:51px}.rdc-search-dialog .wrs-local-navigation{align-items:start;flex-wrap:wrap}}
 @media(max-width:560px){.writing-reference-search .wrs-source-bar>label{flex:1;min-width:130px}.writing-reference-search .wrs-source-bar select{font-size:16px;min-height:42px}.writing-reference-search .wrs-arxiv-controls{width:100%}.writing-reference-search .wrs-arxiv-controls>label{flex:1;min-width:120px}.writing-reference-search .wrs-arxiv-shortcut{min-height:42px}.writing-reference-search .wrs-preprint-note{margin-left:0}}
+
+/* A search in progress must be distinct from an empty result or an error. */
+.writing-reference-search.is-searching .wrs-request-state>p{color:var(--wrs-accent);font-size:13px;font-weight:600}
+.writing-reference-search .wrs-loading{display:grid;justify-items:center;align-content:center;gap:10px;min-height:240px;margin:12px 0;padding:26px 24px;border:1px solid color-mix(in srgb,var(--wrs-accent) 20%,var(--wrs-line));border-radius:12px;background:color-mix(in srgb,var(--wrs-accent) 4%,var(--wrs-surface));text-align:center}
+.writing-reference-search .wrs-loading h3{margin:2px 0 0;font-size:17px;font-weight:650;line-height:1.6;color:var(--wrs-ink)}
+.writing-reference-search .wrs-loading p{margin:0;max-width:100%;font-size:12px;line-height:1.8;color:var(--wrs-ink);overflow-wrap:anywhere}
+.writing-reference-search .wrs-loading .wrs-loading-hint{color:var(--wrs-muted)}
+.writing-reference-search .wrs-loading-spinner,.writing-reference-search .wrs-button-spinner{display:inline-block;border:3px solid color-mix(in srgb,var(--wrs-accent) 18%,transparent);border-top-color:var(--wrs-accent);border-radius:50%;animation:wrs-search-spin .85s linear infinite;flex-shrink:0}
+.writing-reference-search .wrs-loading-spinner{width:32px;height:32px}.writing-reference-search .wrs-button-spinner{width:16px;height:16px;border-width:2px;border-color:currentColor;border-right-color:transparent}
+.writing-reference-search .wrs-loading-lines{display:grid;gap:8px;width:min(300px,80%);margin-top:8px}.writing-reference-search .wrs-loading-lines i{height:7px;border-radius:5px;background:color-mix(in srgb,var(--wrs-accent) 9%,var(--wrs-surface));animation:wrs-search-pulse 1.6s ease-in-out infinite}.writing-reference-search .wrs-loading-lines i:nth-child(2){width:84%;animation-delay:.15s}.writing-reference-search .wrs-loading-lines i:nth-child(3){width:62%;animation-delay:.3s}
+.writing-reference-search.is-searching .wrs-search-line>button:disabled{opacity:1;cursor:wait}
+@keyframes wrs-search-spin{to{transform:rotate(360deg)}}@keyframes wrs-search-pulse{50%{opacity:.4}}
+@media(prefers-reduced-motion:reduce){.writing-reference-search :is(.wrs-loading-spinner,.wrs-button-spinner,.wrs-loading-lines i){animation:none}}

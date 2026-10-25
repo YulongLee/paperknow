@@ -114,6 +114,7 @@ export function mountWritingReferenceSearch({container,mode='search',context={},
   <form class="wrs-form" data-unprotected><label for="${id}-query">${mode==='recommend'?'推荐检索词（可编辑）':'检索词'}</label><div class="wrs-search-line"><input type="search" id="${id}-query" name="q" minlength="2" maxlength="200" required autocomplete="off" placeholder="输入研究主题、英文关键词或 DOI" value="${esc(query??buildReferenceSearchQuery(context))}"><button class="btn primary" type="submit">${icon('search',16)}检索文献</button></div>
   <details class="wrs-filters"><summary>高级筛选 <span>可选</span></summary><div class="wrs-filter-grid"><label for="${id}-sort">排序方式<select id="${id}-sort" name="sort">${Object.entries(referenceSortLabels).map(([value,label])=>`<option value="${value}"${chronologicalSort(value)?' data-ref-latest-option hidden disabled':''}>${label}</option>`).join('')}</select></label><label for="${id}-from">起始年份<input id="${id}-from" name="yearFrom" type="number" min="1000" max="${new Date().getFullYear()+1}" step="1" placeholder="不限"></label><label for="${id}-to">结束年份<input id="${id}-to" name="yearTo" type="number" min="1000" max="${new Date().getFullYear()+1}" step="1" placeholder="不限"></label><label class="wrs-oa"><input name="openAccess" type="checkbox">仅开放获取文献</label><label for="${id}-range" data-ref-date-range hidden>提交时间（UTC）<select id="${id}-range" name="dateRange" disabled><option value="all">不限时间</option><option value="7">近 7 天</option><option value="30">近 30 天</option></select></label></div><p data-ref-preprint-notice hidden>预印本可能尚未经过同行评审，请结合发表信息核对。</p></details></form>
   <div class="wrs-request-state"><p data-ref-status role="status" aria-live="polite">${autoSearch?'正在准备主题检索…':'输入检索词后开始；本次仅查找题录，不会生成正文或扣除积分。'}</p><button class="btn secondary" type="button" data-ref-cancel hidden>取消检索</button></div><p data-ref-error class="wrs-error" role="alert"></p>
+  <section class="wrs-loading" data-ref-loading hidden aria-label="文献检索进度"><span class="wrs-loading-spinner" aria-hidden="true"></span><h3>正在检索文献</h3><p data-ref-loading-query></p><p class="wrs-loading-hint">正在查找与研究主题相关的文献，请稍候。</p><div class="wrs-loading-lines" aria-hidden="true"><i></i><i></i><i></i></div></section>
   <div data-ref-results class="wrs-results" aria-busy="false"><div class="wrs-empty">${icon('book',30)}<h3>先找到文献，再核对依据</h3><p>选择需要的题录，添加后核对作者、年份和引用用途。</p></div></div>
   <footer class="wrs-footer"><div><strong data-ref-selection>尚未选择文献</strong><small>仅添加题录与可用摘要，未读取全文，也不会自动确认引用。</small></div><button type="button" class="btn secondary" data-ref-done>完成</button><button type="button" class="btn primary" data-ref-import disabled>添加所选题录</button></footer><details class="wrs-data-use" data-ref-data-use hidden><summary>数据使用说明</summary><p class="wrs-arxiv-attribution" data-ref-arxiv-attribution hidden>${arxivAttribution}</p><p class="wrs-arxiv-attribution" data-ref-pubmed-notice hidden>${pubmedSourceNotice}</p></details></section>`;
  const form=$('form');
@@ -156,12 +157,26 @@ export function mountWritingReferenceSearch({container,mode='search',context={},
   $('[data-ref-results]').innerHTML=items.length?`<div class="wrs-result-heading"><h3>检索结果 <span>${items.length} 篇</span></h3><p>检索词：${esc(lastFilters?.q||'')} · ${esc(referenceSortLabels[lastFilters?.sort]||'相关性')}</p></div><div class="wrs-result-list">${items.map((row,index)=>{const present=already(row);return `<article class="wrs-result ${present?'is-existing':''}"><div class="wrs-result-main"><label class="wrs-result-choice"><input type="checkbox" data-ref-select="${esc(row.id)}" ${present?'disabled':''} ${selected.has(row.id)&&!present?'checked':''}><span><span class="wrs-result-index">${String(index+1).padStart(2,'0')}${row.source==='arxiv'?' · 预印本':''}</span><b>${esc(row.title)}</b><small>${esc(row.authors||'作者未提供')} · ${esc(row.year||'年份未提供')}</small>${row.source==='arxiv'?`<small class="wrs-paper-dates">${row.publishedDate?'首次提交 '+esc(row.publishedDate.slice(0,10))+'（UTC）':''}${row.updatedDate?' · 最近更新 '+esc(row.updatedDate.slice(0,10))+'（UTC）':''}</small>`:''}</span></label><span class="wrs-metadata-label">${present?'已添加':'仅题录 · 未读全文'}</span></div><div class="wrs-result-links">${row.arxivId?`<span class="wrs-arxiv-id">预印本编号：${esc(row.arxivId)}</span>`:''}${row.doi?`<span class="wrs-doi">DOI：${esc(row.doi)}</span>`:''}${row.url?`<a href="${esc(row.url)}" target="_blank" rel="noopener noreferrer">查看文献 ↗</a>`:''}${row.fullTextUrl&&row.fullTextUrl!==row.url?`<a href="${esc(row.fullTextUrl)}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a>`:''}${row.openAccess?'<span class="wrs-open-access">开放获取</span>':''}${row.categories?.length?`<span class="wrs-categories">${esc(row.categories.join(' · '))}</span>`:''}</div>${row.source==='arxiv'?'<p class="wrs-preprint-note">预印本 · 可能尚未经过同行评审。原文将在新页面打开，尚未自动读取全文。</p>':''}${row.abstract?`<details class="wrs-abstract"><summary>查看摘要（非全文）</summary><p>${esc(row.abstract)}</p></details>`:''}</article>`;}).join('')}</div>`:`<div class="wrs-empty">${icon('search',30)}<h3>暂未找到匹配文献</h3><p>可减少检索词、扩大年份范围，或尝试对应的英文关键词。</p><button type="button" class="btn secondary" data-ref-retry>重新检索</button></div>`;
   updateSelection();
  }
- function setBusy(value){busy=value;$('[data-ref-cancel]').hidden=!value;$('[data-ref-results]').setAttribute('aria-busy',String(value));form.querySelector('button[type=submit]').textContent=value?'更换条件重新检索':'检索文献';updateSelection();}
+ function updateSearchAction(){
+  const button=form.querySelector('button[type=submit]');let changed=false;
+  if(busy){try{changed=JSON.stringify(filtersFrom(form))!==JSON.stringify(lastFilters);}catch{changed=true;}}
+  button.disabled=importBusy||busy&&!changed;
+  button.setAttribute('aria-busy',String(busy));
+  button.innerHTML=busy&&!changed?'<span class="wrs-button-spinner" aria-hidden="true"></span>检索中…':icon('search',16)+(busy?'按新条件检索':'检索文献');
+ }
+ function setBusy(value){
+  busy=value;$('.writing-reference-search').classList.toggle('is-searching',value);
+  $('[data-ref-cancel]').hidden=!value;$('[data-ref-loading]').hidden=!value;
+  const result=$('[data-ref-results]');result.hidden=value;result.setAttribute('aria-busy',String(value));
+  $('[data-ref-loading-query]').textContent=value?'检索主题：'+lastFilters.q:'';
+  updateSearchAction();updateSelection();
+ }
  async function search(filters){
   if(!current()||importBusy)return;
   try{filters=filters||filtersFrom(form);}catch(error){message(error.message,true);return;}
+  if(busy&&JSON.stringify(filters)===JSON.stringify(lastFilters))return;
   controller?.abort();clearTimeout(timer);const request=++sequence,abort=new AbortController();controller=abort;let timedOut=false;
-  lastFilters={...filters};selected.clear();clearError();setBusy(true);message(`正在检索“${filters.q}”…`);
+  lastFilters={...filters};selected.clear();clearError();setBusy(true);message('正在检索文献，请稍候…');
   timer=setTimeout(()=>{timedOut=true;abort.abort();},filters.source==='arxiv'?32000:20000);
   try{
    const response=await fetcher('/api/literature/search?'+new URLSearchParams(filters),{method:'GET',credentials:'same-origin',cache:'no-store',signal:abort.signal,headers:{Accept:'application/json'}});
@@ -180,6 +195,7 @@ export function mountWritingReferenceSearch({container,mode='search',context={},
   }finally{if(current()&&request===sequence){clearTimeout(timer);setBusy(false);controller=null;}}
  }
  listen(form.querySelector('[name=sort]'),'change',updateSourceControls);
+ listen(form,'input',updateSearchAction);listen(form,'change',updateSearchAction);
  listen(form,'submit',event=>{event.preventDefault();void search();});
  listen($('[data-ref-cancel]'),'click',()=>{sequence++;clearTimeout(timer);controller?.abort();controller=null;setBusy(false);message('已取消本次检索，可以调整关键词后重新查询。');});
  listen($('[data-ref-done]'),'click',close);
@@ -195,8 +211,10 @@ export function mountWritingReferenceSearch({container,mode='search',context={},
  });
  listen(win,'hashchange',dispose);listen(container.closest('dialog'),'close',dispose);
  if(win.MutationObserver){observer=new win.MutationObserver(()=>{if(alive&&!container.isConnected)dispose();});observer.observe(container.ownerDocument.body,{childList:true,subtree:true});}
- if(container.closest('dialog')?.open)form.querySelector('[name=q]').focus();
- const ready=loadSources().then(()=>autoSearch&&current()&&!sequence&&form.querySelector('[name=q]').value.trim().length>=2?search():undefined);
+ if(container.closest('dialog')?.open&&!autoSearch)form.querySelector('[name=q]').focus({preventScroll:true});
+ const capabilities=loadSources();
+ const initialSearch=autoSearch&&current()&&form.querySelector('[name=q]').value.trim().length>=2?search():Promise.resolve();
+ const ready=Promise.all([capabilities,initialSearch]);
  if(autoSearch&&(!form.querySelector('[name=q]').value.trim()||form.querySelector('[name=q]').value.trim().length<2))message('请先填写论文题目或研究关键词，再开始推荐检索。');
  dispose.ready=ready;dispose.search=()=>search();return dispose;
 }

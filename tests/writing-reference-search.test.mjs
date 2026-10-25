@@ -14,7 +14,7 @@ function fixture(options={}){
  for(const key of ['window','document','location','AbortController'])globalThis[key]=dom.window[key];
  const calls=[],imports=[];let stop;
  const base={container:document.getElementById('search-host'),context:{title:'Education feedback',keywords:'learning, education'},getExisting:()=>[],onImport:rows=>imports.push(rows),fetcher:async(url,init)=>{calls.push({url,init});return reply(results());}};
- const setup=extra=>{const settings={...base,...options,...extra},fetcher=settings.fetcher;settings.fetcher=(url,init)=>url==='/api/capabilities'?Promise.resolve(reply({academicSearchSources:options.availableSources||['crossref','europepmc'],academicSearchSourceStatus:options.sourceStatus||[]})):fetcher(url,init);return stop=mountWritingReferenceSearch(settings);};
+ const setup=extra=>{const settings={...base,...options,...extra},fetcher=settings.fetcher;settings.fetcher=(url,init)=>url==='/api/capabilities'?(options.capabilitiesFetcher?options.capabilitiesFetcher(url,init):Promise.resolve(reply({academicSearchSources:options.availableSources||['crossref','europepmc'],academicSearchSourceStatus:options.sourceStatus||[]}))):fetcher(url,init);return stop=mountWritingReferenceSearch(settings);};
  const $=selector=>document.querySelector(selector);
  return {dom,calls,imports,$,setup,close(){stop?.();document.querySelector('#workspace-dialog')?.dispatchEvent(new dom.window.Event('close'));dom.window.close();}};
 }
@@ -166,7 +166,7 @@ test('an older request cannot replace newer results even if the network ignores 
  pending[1].resolve(reply(results([paper({title:'Newer result',id:'new',sourceId:'new'})])));await settle();pending[0].resolve(reply(results([paper({title:'Older result'})])));await settle();assert.match(f.$('.wrs-results').textContent,/Newer result/);assert.doesNotMatch(f.$('.wrs-results').textContent,/Older result/);f.close();
 });
 test('cancel clears loading immediately and ignored-abort results cannot be imported',async()=>{
- let complete,signal;const f=fixture({fetcher:(url,init)=>new Promise(resolve=>{complete=resolve;signal=init.signal;})}),stop=f.setup();await stop.ready;submit(f);f.$('[data-ref-cancel]').click();assert.equal(signal.aborted,true);assert.equal(f.$('[data-ref-results]').getAttribute('aria-busy'),'false');assert.match(f.$('[data-ref-status]').textContent,/已取消/);complete(reply(results()));await settle();assert.equal(f.$('[data-ref-select]'),null);assert.equal(f.imports.length,0);f.close();
+ let complete,signal;const f=fixture({fetcher:(url,init)=>new Promise(resolve=>{complete=resolve;signal=init.signal;})}),stop=f.setup();await stop.ready;submit(f);f.$('[data-ref-cancel]').click();assert.equal(signal.aborted,true);assert.equal(f.$('[data-ref-results]').getAttribute('aria-busy'),'false');assert.equal(f.$('[data-ref-loading]').hidden,true);assert.equal(f.$('[data-ref-results]').hidden,false);assert.equal(f.$('button[type=submit]').textContent,'检索文献');assert.equal(f.$('button[type=submit]').disabled,false);assert.match(f.$('[data-ref-status]').textContent,/已取消/);complete(reply(results()));await settle();assert.equal(f.$('[data-ref-select]'),null);assert.equal(f.imports.length,0);f.close();
 });
 test('route changes and removal of the modal abort requests without painting another page',async()=>{
  let complete,signal;const f=fixture({fetcher:(url,init)=>new Promise(resolve=>{complete=resolve;signal=init.signal;})}),stop=f.setup();await stop.ready;submit(f);location.hash='#home';window.dispatchEvent(new window.HashChangeEvent('hashchange'));assert.equal(signal.aborted,true);f.$('#workspace-dialog-body').innerHTML='<h2>其他页面</h2>';complete(reply(results()));await settle();assert.equal(f.$('#workspace-dialog-body').textContent,'其他页面');assert.equal(f.imports.length,0);f.close();
@@ -199,4 +199,28 @@ test('a full local library rejects the entire addition and retains the selected 
   const before=Array.from({length:200},(_,i)=>({id:'local-'+i,title:'Existing paper '+i,year:'2020',scope:'metadata',text:'',tags:[],notes:[]}));localStorage.setItem(literatureKey,JSON.stringify(before));globalThis.fetch=async url=>reply(url==='/api/capabilities'?{academicSearchSources:['crossref','europepmc']}:results());
   dispose=openLiteratureSearch({modal:(_,html)=>{f.$('#workspace-dialog-body').innerHTML=html;},notify:()=>{}});await dispose.ready;input(f,'[name=q]','education methods');submit(f);await settle();choose(f);f.$('[data-ref-import]').click();await settle();assert.match(f.$('[data-ref-error]').textContent,/已保存 200 篇文献/);assert.equal(f.$('[data-ref-select]').checked,true);assert.deepEqual(JSON.parse(localStorage.getItem(literatureKey)),before);
  }finally{dispose?.();globalThis.fetch=previousFetch;f.close();}
+});
+
+
+test('recommendations immediately search and visibly wait without blocking on capability discovery',async()=>{
+ let finishCapabilities,finishSearch;const requests=[];
+ const f=fixture({mode:'recommend',capabilitiesFetcher:()=>new Promise(resolve=>finishCapabilities=resolve),fetcher:(url,init)=>{requests.push({url,init});return new Promise(resolve=>finishSearch=resolve);}}),stop=f.setup();
+ try{
+  assert.equal(requests.length,1,'the real query must start before the optional capability response');
+  assert.equal(f.$('[data-ref-loading]').hidden,false);assert.equal(f.$('[data-ref-results]').hidden,true);
+  assert.equal(f.$('[data-ref-results]').getAttribute('aria-busy'),'true');assert.match(f.$('[data-ref-loading]').textContent,/正在检索文献/);assert.match(f.$('[data-ref-loading-query]').textContent,/Education feedback/);
+  assert.match(f.$('[data-ref-status]').textContent,/正在检索文献/);assert.equal(f.$('button[type=submit]').textContent,'检索中…');assert.equal(f.$('button[type=submit]').disabled,true);assert.notEqual(document.activeElement,f.$('[name=q]'));
+  assert.equal(f.$('[data-ref-error]').textContent,'');submit(f);assert.equal(requests.length,1,'repeated identical submissions must not restart the query');
+  finishSearch(reply(results()));await settle();assert.equal(f.$('[data-ref-loading]').hidden,true);assert.equal(f.$('[data-ref-results]').hidden,false);assert.match(f.$('.wrs-result').textContent,/Research methods/);assert.equal(f.$('button[type=submit]').disabled,false);
+  finishCapabilities(reply({academicSearchSources:['crossref']}));await stop.ready;assert.equal(requests.length,1);assert.equal(f.imports.length,0);
+ }finally{finishCapabilities?.(reply({}));f.close();}
+});
+
+test('changing conditions allows a new query while ignored older responses cannot dismiss its waiting state',async()=>{
+ const pending=[],f=fixture({fetcher:(url,init)=>new Promise(resolve=>pending.push({url,init,resolve}))}),stop=f.setup();
+ try{await stop.ready;submit(f);assert.equal(f.$('button[type=submit]').disabled,true);assert.equal(f.$('[data-ref-loading]').hidden,false);
+  input(f,'[name=q]','new search conditions');assert.equal(f.$('button[type=submit]').disabled,false);assert.equal(f.$('button[type=submit]').textContent,'按新条件检索');submit(f);assert.equal(pending.length,2);assert.equal(pending[0].init.signal.aborted,true);
+  pending[0].resolve(reply(results([paper({title:'Obsolete result'})])));await settle();assert.equal(f.$('[data-ref-loading]').hidden,false);assert.equal(f.$('[data-ref-results]').hidden,true);assert.match(f.$('[data-ref-loading-query]').textContent,/new search conditions/);assert.equal(f.$('[data-ref-select]'),null);
+  pending[1].resolve(reply(results([paper({title:'Current result'})])));await settle();assert.equal(f.$('[data-ref-loading]').hidden,true);assert.match(f.$('.wrs-results').textContent,/Current result/);assert.doesNotMatch(f.$('.wrs-results').textContent,/Obsolete result/);
+ }finally{f.close();}
 });
