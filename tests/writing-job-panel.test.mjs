@@ -20,6 +20,14 @@ function capturePolls(f){
  return {pending,run(){const entry=pending.entries().next().value;assert.ok(entry,'expected an automatic status-read timer');pending.delete(entry[0]);entry[1]();}};
 }
 
+test('continuous recovery keeps its progress view and does not ask for another purchase',async t=>{
+ const f=fixture(t),polls=capturePolls(f);f.setRecord({id:'writing-1',operation:'draft',kind:'article',status:'running',continuous:true,stage:'auto_recovering',completedUnits:5,totalUnits:8,recovery:{automaticRetries:1}});await f.panel.generate();assert.match(f.container.querySelector('[data-wj-stage]').textContent,/正在自动恢复.*已自动恢复 1 次/);assert.equal(f.container.querySelector('[data-wj-units]').textContent,'5 / 8 个单元');const progress=f.container.querySelector('.wf-job-progress');f.setRecord({id:'writing-1',operation:'draft',kind:'article',status:'running',continuous:true,stage:'agent_running',completedUnits:6,totalUnits:8,recovery:{automaticRetries:2}});polls.run();await until(()=>f.container.querySelector('[data-wj-units]').textContent==='6 / 8 个单元');assert.equal(f.container.querySelector('.wf-job-progress'),progress);assert.match(f.container.querySelector('[data-wj-stage]').textContent,/已自动恢复 2 次/);assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);assert.equal(f.calls.filter(row=>row.path==='/writing/quote').length,1);
+});
+
+test('an explicit generation click after a partial failure quotes and resumes the saved job in one action',async t=>{
+ const f=fixture(t);f.setRecord({id:'writing-1',kind:'article',operation:'draft',status:'failed',completedUnits:5,totalUnits:8,error:'旧任务达到执行上限'});await f.panel.generate();const state=f.panel.getState();assert.equal(f.container.querySelector('[data-wj-units]').textContent,'5 / 8 个单元');f.panel.dispose();const restored=f.mount(state);await restored.generate();const posts=f.calls.filter(row=>row.path==='/writing/jobs');assert.equal(posts.length,2);assert.equal(posts[1].data.resumeFromJobId,'writing-1');assert.equal(f.container.querySelector('[data-wj-start]'),null);
+});
+
 test('writing quote and job carry the selected account project separately from the canonical model snapshot',async t=>{
  const ref=projectReference('alice','project-a'),f=fixture(t,{projectRef:ref});await f.panel.open();assert.equal(f.calls.find(row=>row.path==='/writing/quote').data.projectId,'project-a');assert.equal(f.panel.getState().projectRef,ref);f.consent();f.click('[data-wj-start]');await until(()=>f.panel.getState().itemId==='writing-1');const posted=f.calls.find(row=>row.path==='/writing/jobs').data;assert.equal(posted.projectId,'project-a');assert.deepEqual(posted.snapshot,snapshot());
 });
