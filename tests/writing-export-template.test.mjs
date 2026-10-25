@@ -137,3 +137,14 @@ for(const nativeAPI of [true,false])test('direct writing entry resolves the sign
  const zip=await JSZip.loadAsync(f.artifacts[0].bytes);assert.match(await zip.file('word/styles.xml').async('string'),/仿宋/);
  assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
 });
+
+for(const kind of Object.keys(writingStandards))test(kind+' actual default export works without uploading or downloading any template first',async t=>{
+ const f=await fixture(t,{kind});f.q('[data-wf-template-reset]').click();await until(()=>f.q('[data-wf-template-reset]')===null);
+ f.q('#wf-body-draft').click();await until(()=>!f.q('#wf-body-draft').disabled);assert.equal(f.artifacts.length,1,f.q('#writing-status').textContent);
+ assert.equal(f.calls.some(row=>row.path.startsWith('/api/files/')),false);assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
+ const zip=await JSZip.loadAsync(f.artifacts[0].bytes),styles=await zip.file('word/styles.xml').async('string'),normal=styles.match(/w:styleId="PKNormal"[^>]*>([\s\S]*?)<\/w:style>/)?.[1];assert.ok(normal);assert.ok(normal.includes('w:val="'+(kind==='article'?21:24)+'"'));assert.ok(f.q('[data-wf-export-template] h3').textContent.includes('（默认）'));
+});
+
+test('practice can download a real generic DOCX from its template entry',async t=>{
+ const f=await fixture(t,{kind:'practice'});f.q('[data-wf-template-download]').click();await until(()=>f.downloads.length===1);assert.equal(f.artifacts.length,1);const zip=await JSZip.loadAsync(f.artifacts[0].bytes),xml=await zip.file('word/document.xml').async('string');assert.ok(xml.includes('{{标题}}'));assert.ok(xml.includes('{{正文}}'));assert.ok(xml.includes('{{作者}}'));assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
+});

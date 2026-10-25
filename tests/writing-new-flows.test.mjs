@@ -166,3 +166,33 @@ test('adopted article diagrams survive account-shaped drafts and history, and re
  const prior=flowDraft('article','result',{contentMode:'rich',outlineConfirmed:true});localStorage.setItem(keys.drafts,JSON.stringify([prior]));f.mount(prior.id);f.$('[data-wf-generate="draft"]').click();await settle();let saved=f.save();assert.deepEqual(saved.writingFlow.figures,[figure]);assert.match(f.$('[data-wf-field="body"]').value,/〔图片1〕/);assert.match(f.$('[data-wf-figures]').textContent,/拟开展的概念比较/);assert.ok(f.$('[data-wf-figures] svg'));f.$('[data-wf-version]').click();const version=f.save().writingFlow.versions[0];assert.deepEqual(version.figures,[figure]);f.input('[data-wf-field="body"]','手动整理的纯文字。');assert.equal(f.$('[data-wf-figures]').textContent,'');f.$('[data-wf-restore="'+version.id+'"]').click();saved=f.save();assert.deepEqual(saved.writingFlow.figures,[figure]);assert.match(saved.writingFlow.canonicalBody,/\[figure:fig-article\]/);clearEditor();disposeWritingFlows();f.mount(saved.id);assert.ok(f.$('[data-wf-figures] svg'));assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);
  }finally{f.close();}
 });
+
+test('practice keeps outline progress beside its button, restores the original task and adopts a completed outline without resubmission',async()=>{
+ let item={id:'practice-outline',kind:'practice',operation:'outline',status:'running',completedUnits:0,totalUnits:1,output:null};
+ const f=fixture({kind:'practice',api:async(path,data)=>{if(path==='/auth/me')return{user:{id:'alice'}};if(path==='/writing/capabilities')return{ready:true};if(path==='/writing/quote')return quote();if(path==='/writing/jobs')return{item:data.operation==='outline'?item:{...completed('draft'),kind:'practice',output:{text:'根据实际记录生成的实践报告正文'}}};if(path==='/writing/jobs/practice-outline')return{item};throw Error(path);}});
+ try{
+  const prior=flowDraft('practice','result',{outline:[],outlineConfirmed:false,contentMode:'rich'});localStorage.setItem(keys.drafts,JSON.stringify([prior]));f.mount(prior.id);
+  f.$('[data-wf-generate="outline"]').click();await settle();
+  assert.equal(f.$('[data-wj-progress-status]').closest('[data-wf-outline-ai]'),f.$('[data-wf-outline-ai]'));
+  assert.equal(f.$('[data-wf-ai]').hidden,true);assert.match(f.$('[data-wf-outline-ai]').textContent,/正在生成提纲/);
+  const saved=f.save();assert.equal(saved.writingFlow.jobs.outline.itemId,item.id);
+  clearEditor();disposeWritingFlows();f.mount(saved.id);await settle();
+  assert.equal(f.$('[data-wf-practice-outline]').open,true);assert.match(f.$('[data-wf-outline-ai]').textContent,/正在生成提纲/);
+  assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);assert.ok(f.$('[data-wf-recover="outline"]'));
+  item={...item,status:'completed',completedUnits:1,output:{text:'已完成实践报告提纲',chapters:[{id:'actual-process',title:'实际过程与记录',targetWords:100,sections:[{id:'observations',title:'实际观察',targetWords:100,presentation:{table:true}}]},{id:'reflection',title:'问题分析与反思',targetWords:100,sections:[]}]}};
+  f.$('[data-wj-refresh]').click();await settle();
+  const adopted=f.save().writingFlow;assert.equal(adopted.jobs.outline.appliedItemId,item.id);assert.deepEqual(adopted.outline.map(row=>row.title),['实际过程与记录','问题分析与反思']);assert.equal(adopted.outline[0].presentation.table,true);assert.equal(adopted.body,prior.writingFlow.body);
+  f.$('[data-wf-confirm-outline]').click();f.$('[data-wf-generate="draft"]').click();await settle();
+  assert.equal(f.save().writingFlow.body,'根据实际记录生成的实践报告正文');assert.deepEqual(f.calls.filter(row=>row.path==='/writing/jobs').map(row=>row.data.operation),['outline','draft']);
+ }finally{f.close();}
+});
+
+test('a completed unadopted practice outline is read instead of charged again when inputs have changed',async()=>{
+ const f=fixture({kind:'practice',api:async(path)=>{if(path==='/auth/me')return{user:{id:'alice'}};if(path==='/writing/jobs/old-practice-outline')return{item:{id:'old-practice-outline',kind:'practice',operation:'outline',status:'completed',completedUnits:1,totalUnits:1,output:{text:'旧条件的提纲',chapters:[{id:'old',title:'旧条件章节',targetWords:200}]}}};throw Error('Must not quote or submit: '+path);}});
+ try{const prior=flowDraft('practice','result',{outline:[],outlineConfirmed:false}),snapshot=writingFlowSnapshot('practice',prior.writingFlow);prior.writingFlow.title='用户修改后的实践题目';prior.writingFlow.jobs.outline={itemId:'old-practice-outline',ownerId:'alice',status:'completed',snapshot,contextKey:JSON.stringify(snapshot)};localStorage.setItem(keys.drafts,JSON.stringify([prior]));f.mount(prior.id);await settle();assert.match(f.$('[data-wf-outline-ai]').textContent,/信息已有修改/);assert.equal(f.$('[data-wj-apply]').disabled,true);f.$('[data-wf-generate="outline"]').click();await settle();assert.equal(f.calls.some(row=>row.path==='/writing/quote'||row.path==='/writing/jobs'),false);assert.equal(f.save().writingFlow.outline.length,0);}finally{f.close();}
+});
+
+test('practice reopens an acknowledged-command boundary by key without silently submitting another outline',async()=>{
+ const f=fixture({kind:'practice',api:async(path)=>{if(path==='/auth/me')return{user:{id:'alice'}};if(path==='/writing/jobs/by-key/saved-practice-command')return{item:{id:'recovered-outline',kind:'practice',operation:'outline',status:'completed',completedUnits:1,totalUnits:1,output:{text:'原任务已完成',chapters:[{id:'actual',title:'实践过程与反思',targetWords:200}]}}};throw Error('Must only read recovery state: '+path);}});
+ try{const prior=flowDraft('practice','result',{outline:[],outlineConfirmed:false}),snapshot=writingFlowSnapshot('practice',prior.writingFlow);prior.writingFlow.jobs.outline={commandKey:'saved-practice-command',ownerId:'alice',snapshot,contextKey:JSON.stringify(snapshot)};localStorage.setItem(keys.drafts,JSON.stringify([prior]));f.mount(prior.id);await settle();assert.equal(f.save().writingFlow.jobs.outline.appliedItemId,'recovered-outline');assert.equal(f.save().writingFlow.outline[0].title,'实践过程与反思');assert.equal(f.calls.some(row=>row.path==='/writing/quote'||row.path==='/writing/jobs'),false);}finally{f.close();}
+});

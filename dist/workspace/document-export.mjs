@@ -63,7 +63,7 @@ export function bindDocumentExports(prefix,getText,getTitle,status,{expectedUser
    }else if(options.documentKind==='writing'&&format==='docx'){
     status.textContent='1 / 3 · 正在读取模板要求并检查文档结构…';
     options={...options,template:await templateBytes(options.template,owner)};if(!current())return;
-    const profile=options.template?await api.inspectThesisDocxTemplate?.(options.template.bytes):api.defaultWritingTemplateProfile?.();if(!current())return;
+    const profile=options.template?await api.inspectThesisDocxTemplate?.(options.template.bytes):api.defaultWritingTemplateProfile?.(options.writingKind);if(!current())return;
     if(!draft&&profile?.requirements?.ambiguities?.length)throw Error('所选模板含冲突的格式要求，请先核对模板后再导出。');
     let docx=await api.createWritingDocx(text,options);if(!current())return;
     const verifyContent=bytes=>api.inspectThesisExportContent?.(bytes,text,options);

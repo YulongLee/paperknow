@@ -1,3 +1,4 @@
+import {writingDefaultTemplateSpec} from '../dist/workspace/writing-template-catalog.mjs';
 import JSZip from 'jszip';
 import {DOMParser,XMLSerializer} from '@xmldom/xmldom';
 import {defaultThesisTemplateProfile,defaultWritingTemplateProfile,prepareThesisDocxTemplate} from './thesis-template-profile.js';
@@ -144,8 +145,8 @@ async function fillTemplateSlot(source,body,rules,metadata){
  const document=parse(await readXml(source.file('word/document.xml'))),root=document.getElementsByTagNameNS(W,'body')[0];
  const slot=children(root,'p').find(n=>/^\s*\{\{(?:正文|PAPERKNOW_CONTENT)\}\}\s*$/.test(texts(n)));if(!slot)return false;
  const area=slotContentArea(root,slot,rules.page),wrapped=parse(`<w:body xmlns:w="${W}" xmlns:r="${R}" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">${fitTables(body,area.width,area.height,rules.styles.Normal)}</w:body>`);
- const values={'论文题目':metadata.title||'','标题':metadata.title||'','学校':metadata.institution||'','作者':metadata.author||'','学位':metadata.level||'','专业':metadata.major||'','指导教师':metadata.supervisor||''};
- for(const para of document.getElementsByTagNameNS(W,'p')){const value=texts(para);if(!/\{\{(?:论文题目|标题|学校|作者|学位|专业|指导教师)\}\}/.test(value))continue;const nodes=[...para.getElementsByTagNameNS(W,'t')];if(nodes.length){nodes[0].textContent=value.replace(/\{\{([^}]+)\}\}/g,(raw,key)=>Object.hasOwn(values,key)?String(values[key]):raw);for(const node of nodes.slice(1))node.textContent='';}}
+ const values={'论文题目':metadata.title||'','标题':metadata.title||'','学校':metadata.institution||'','单位':metadata.institution||'','作者':metadata.author||'','学位':metadata.level||'','专业':metadata.major||'','指导教师':metadata.supervisor||''};
+ for(const para of document.getElementsByTagNameNS(W,'p')){const value=texts(para);if(!/\{\{(?:论文题目|标题|学校|单位|作者|学位|专业|指导教师)\}\}/.test(value))continue;const nodes=[...para.getElementsByTagNameNS(W,'t')];if(nodes.length){nodes[0].textContent=value.replace(/\{\{([^}]+)\}\}/g,(raw,key)=>Object.hasOwn(values,key)?String(values[key]):raw);for(const node of nodes.slice(1))node.textContent='';}}
  for(const n of children(wrapped.documentElement))root.insertBefore(document.importNode(n,true),slot);root.removeChild(slot);
  if(rules.bodyPageNumbers)await applyExplicitBodyPageNumbers(source,document,(metadata.chapterTitles||[]).find(title=>!abstract(title)&&!referenceHeading(title)),rules);
  return finishPreservedTemplate(source,document,rules,metadata);
@@ -307,12 +308,12 @@ async function refreshSampleChapterHeaders(source,document,placement,styles,chap
 }
 async function fillRecognizedTemplate(source,rules,metadata,placement,{frontGroups,contentGroups,headings}){
  const document=parse(await readXml(source.file('word/document.xml'))),root=document.getElementsByTagNameNS(W,'body')[0],sourceNodes=children(root),stylePart=await relatedPart(source,'styles','word/styles.xml'),styles=source.file(stylePart)?parse(await readXml(source.file(stylePart))):parse(`<w:styles xmlns:w="${W}"/>`),used=new Set();
- const values={'论文题目':metadata.title||'','标题':metadata.title||'','学校':metadata.institution||'','作者':metadata.author||'','学位':metadata.level||'','专业':metadata.major||'','指导教师':metadata.supervisor||''};
+ const values={'论文题目':metadata.title||'','标题':metadata.title||'','学校':metadata.institution||'','单位':metadata.institution||'','作者':metadata.author||'','学位':metadata.level||'','专业':metadata.major||'','指导教师':metadata.supervisor||''};
  // Replace only explicit metadata tokens in retained source nodes. Generated
  // prose remains literal, including research discussing template syntax.
  const removed=new Set();for(const region of placement.regions)for(let i=region.startIndex;i<region.endIndex;i++)removed.add(sourceNodes[i]);
  const coverEnd=Math.min(...placement.regions.filter(row=>/^(?:abstract_|toc$|body$)/.test(row.kind)).map(row=>row.startIndex));
- for(const [index,node]of sourceNodes.entries()){if(removed.has(node))continue;for(const para of node.localName==='p'?[node,...node.getElementsByTagNameNS(W,'p')]:node.getElementsByTagNameNS(W,'p')){const value=texts(para);if(!/\{\{(?:论文题目|标题|学校|作者|学位|专业|指导教师)\}\}/.test(value)){if(index<coverEnd)fillKnownCoverField(para,metadata);continue;}const nodes=[...para.getElementsByTagNameNS(W,'t')];if(nodes.length){nodes[0].textContent=value.replace(/\{\{([^}]+)\}\}/g,(raw,key)=>Object.hasOwn(values,key)?String(values[key]):raw);for(const child of nodes.slice(1))child.textContent='';}}}
+ for(const [index,node]of sourceNodes.entries()){if(removed.has(node))continue;for(const para of node.localName==='p'?[node,...node.getElementsByTagNameNS(W,'p')]:node.getElementsByTagNameNS(W,'p')){const value=texts(para);if(!/\{\{(?:论文题目|标题|学校|单位|作者|学位|专业|指导教师)\}\}/.test(value)){if(index<coverEnd)fillKnownCoverField(para,metadata);continue;}const nodes=[...para.getElementsByTagNameNS(W,'t')];if(nodes.length){nodes[0].textContent=value.replace(/\{\{([^}]+)\}\}/g,(raw,key)=>Object.hasOwn(values,key)?String(values[key]):raw);for(const child of nodes.slice(1))child.textContent='';}}}
  const regions=[...placement.regions].sort((a,b)=>b.startIndex-a.startIndex);
  for(const region of regions){
   const original=sourceNodes.slice(region.startIndex,region.endIndex),anchor=sourceNodes[region.startIndex];if(!anchor)throw Error('模板正文定位已变化，请重新选择模板。');let body='';
@@ -376,10 +377,10 @@ async function mergeGeneratedFigureImages(original,target,document,reserved){
  return {count,relationships};
 }
 
-export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},template=null,submission=false,academicReport=false,chapterTitles=metadata.chapterTitles||[]}={}){
+export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},template=null,submission=false,academicReport=false,writingKind,chapterTitles=metadata.chapterTitles||[]}={}){
  const original=await JSZip.loadAsync(bytes),doc=parse(await readXml(original.file('word/document.xml'))),nodes=children(doc.getElementsByTagNameNS(W,'body')[0]).filter(n=>n.localName!=='sectPr');
  if(nodes.length!==blocks.length)throw Error('论文段落结构不一致，未导出不完整文件。');
- let profile=academicReport?defaultWritingTemplateProfile():defaultThesisTemplateProfile(),source,placement;
+ let profile=academicReport?defaultWritingTemplateProfile(writingKind):defaultThesisTemplateProfile(),source,placement;
  if(template){if(template.status==='unavailable'||!template.bytes)throw Error('所选论文模板不可用，请重新上传模板或明确切换为通用模板。');const prepared=await prepareThesisDocxTemplate(template.bytes);profile=prepared.profile;source=await JSZip.loadAsync(prepared.bytes);}
  if(source){const stylePart=await relatedPart(source,'styles','word/styles.xml');placement=analyzeThesisTemplatePlacement(parse(await readXml(source.file('word/document.xml'))),source.file(stylePart)?parse(await readXml(source.file(stylePart))):null);if(placement.mode==='ambiguous')throw Error(placement.warnings[0]||'无法可靠识别模板正文区域，请使用独立 {{正文}} 占位符。');}
  const output=source&&placement.mode!=='rules_only'?source:new JSZip(),generatedImages=await mergeGeneratedFigureImages(original,output,doc,source);
@@ -422,7 +423,8 @@ export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},t
  const footer=`<w:ftr xmlns:w="${W}"><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:eastAsia="宋体"/><w:sz w:val="18"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${run('1')}<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>`;
  zip.file('word/pk-footer.xml',footer);
  const header=references.references.match(/<w:headerReference[^>]+\/>/g)?.join('')||'',customFooter=references.references.match(/<w:footerReference[^>]+\/>/g)?.join('')||'';
- const documentBody=academicReport?p(title,'Title')+front.join('')+body+section(page,{header,refs:customFooter}):cover(title,metadata)+sectionBreak(section(page,{cover:true}))+front.join('')+contents(headings,width)+sectionBreak(section(page,{front:true}))+body+section(page,{header,refs:customFooter});
+ const fields=writingDefaultTemplateSpec(writingKind)?.fields||[],labels={institution:writingKind==='article'?'作者单位':'学校',author:'作者',major:'专业',supervisor:'指导教师'},info=fields.filter(key=>String(metadata[key]||'').trim()).map(key=>p(labels[key]+'：'+String(metadata[key]),'Abstract')).join('');
+ const documentBody=academicReport?p(title,'Title')+(!source?info:'')+front.join('')+body+section(page,{header,refs:customFooter}):cover(title,metadata)+sectionBreak(section(page,{cover:true}))+front.join('')+contents(headings,width)+sectionBreak(section(page,{front:true}))+body+section(page,{header,refs:customFooter});
  zip.file('word/document.xml',`<w:document xmlns:w="${W}" xmlns:r="${R}" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>${documentBody}</w:body></w:document>`);
  const originalStylePart=source?await relatedPart(source,'styles','word/styles.xml'):null,styles=source?.file(originalStylePart)?parse(await readXml(source.file(originalStylePart))):parse(`<w:styles xmlns:w="${W}"><w:docDefaults><w:rPrDefault><w:rPr>${rPr(rules.styles.Normal)}</w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>${pPr(rules.styles.Normal)}</w:pPr></w:pPrDefault></w:docDefaults></w:styles>`);
  for(const n of [...styles.getElementsByTagNameNS(W,'style')])if(/^PK(?:Normal|Title|FrontHeading|Heading[123]|Abstract|References|TableText|Code|TOC[123]|TOC|TOCTitle|Header|FigureCaption|TableCaption|ReferenceHeading|AcknowledgementHeading|AppendixHeading)$/.test(n.getAttributeNS(W,'styleId')))n.parentNode.removeChild(n);

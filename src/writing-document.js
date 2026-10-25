@@ -1,3 +1,4 @@
+import {writingDefaultTemplateSpec,writingDefaultTemplateMetadata} from '../dist/workspace/writing-template-catalog.mjs';
 import JSZip from 'jszip';
 import {PDFDocument,rgb} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
@@ -132,4 +133,10 @@ export async function createWritingPdf(text,fontBytes){
   y-=12;
  }
  pages.forEach((page,index)=>{const label=`${index+1} / ${pages.length}`;page.drawText(label,{x:(595.28-font.widthOfTextAtSize(label,9))/2,y:32,size:9,font,color:rgb(.45,.45,.45)});});return pdf.save();
+}
+
+export async function createWritingTemplateDocx(kind){
+ const spec=writingDefaultTemplateSpec(kind);if(!spec)throw Error('未找到对应的通用写作模板。');
+ const metadata=writingDefaultTemplateMetadata(kind);
+ return createWritingDocx(metadata.title+'\n{{正文}}',{documentKind:spec.kind==='writing'?'thesis':'writing',writingKind:spec.kind,metadata});
 }
