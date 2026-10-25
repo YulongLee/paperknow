@@ -4,7 +4,7 @@ import {createBillingService} from './billing-service.mjs';
 import {createModelBudget} from './model-budget.mjs';
 import {initializeThesisSchema,thesisError,thesisPublicError,thesisTransaction,assertThesisAccountQuota} from './thesis-model.mjs';
 import {assertThesisSettings} from './thesis-service.mjs';
-import {thesisOutlineTask,parseThesisOutline} from './thesis-outline-model.mjs';
+import {thesisOutlineTask,parseThesisOutline,validateThesisOutlineCandidate} from './thesis-outline-model.mjs';
 import {runAgentTask} from './agent-runtime.mjs';
 
 const validUsage=value=>Number.isSafeInteger(value)&&value>=0;
@@ -24,7 +24,7 @@ export function startThesisOutlineWorker(db,config={}){
    const claimed=transaction(()=>{if(db.prepare("SELECT 1 FROM thesis_outline_runs WHERE status='running' AND id!=? LIMIT 1").get(row.id))return false;if(!db.prepare("UPDATE thesis_outline_runs SET status='running',stage='preparing',updated_at=? WHERE id=? AND status='queued'").run(clock(),row.id).changes)return false;db.prepare("UPDATE jobs SET status='running',stage='preparing',attempt=1,updated_at=? WHERE id=? AND status='queued'").run(clock(),row.id);modelBudget.start(row.id,1);return true;});if(!claimed)return;
    assertThesisSettings(await config.getAgentSettings?.());runtime=assertThesisSettings(await config.getAgentSettings?.(row.settings_version));if(runtime.version!==row.settings_version)throw thesisError(503,'原提纲生成配置版本不可用，请联系管理员');
    const snapshot=JSON.parse(row.snapshot),budget=Number.isSafeInteger(config.thesisOutlineMaxTokens)&&config.thesisOutlineMaxTokens>=1000&&config.thesisOutlineMaxTokens<=200000?config.thesisOutlineMaxTokens:200000,maxTurns=Math.min(3,Math.max(1,Number(runtime.maxTurns)||3)),maxOutputTokens=Math.min(8000,Math.max(32,Number(runtime.maxOutputTokens)||4096));
-   const output=await(config.agentTaskRunner||runAgentTask)({settings:{...runtime,maxTurns,maxOutputTokens,maxTotalTokens:budget},task:thesisOutlineTask(snapshot),signal:controller.signal,onStage:stage=>{if(!running())return;const safe=typeof stage==='string'&&/^[a-z][a-z0-9_-]{0,60}$/i.test(stage)?stage:'agent_running';db.prepare('UPDATE thesis_outline_runs SET stage=?,updated_at=? WHERE id=?').run(safe,clock(),row.id);db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(safe,clock(),row.id);}});
+   const output=await(config.agentTaskRunner||runAgentTask)({settings:{...runtime,maxTurns,maxOutputTokens,maxTotalTokens:budget},task:thesisOutlineTask(snapshot),validateOutlineOutput:candidate=>validateThesisOutlineCandidate(candidate,snapshot),signal:controller.signal,onStage:stage=>{if(!running())return;const safe=typeof stage==='string'&&/^[a-z][a-z0-9_-]{0,60}$/i.test(stage)?stage:'agent_running';db.prepare('UPDATE thesis_outline_runs SET stage=?,updated_at=? WHERE id=?').run(safe,clock(),row.id);db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(safe,clock(),row.id);}});
    account(output?.usage);if(controller.signal.aborted||!running())return;
    if(!validUsage(output?.usage?.input)||!validUsage(output?.usage?.output)||output.usage.input+output.usage.output===0)throw thesisError(502,'模型未返回可核算的用量，提纲未标记完成');
    if(output.usage.input+output.usage.output>budget||output.usage.output>maxTurns*maxOutputTokens||Number.isFinite(output.costUsd)&&output.costUsd>runtime.maxCostUsd)throw thesisError(429,'提纲生成超过模型执行预算，结果未提交，预占权益将释放','execution_budget');

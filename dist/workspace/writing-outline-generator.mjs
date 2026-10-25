@@ -5,7 +5,7 @@ import {validThesisQuote} from './thesis-online.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const active=item=>['queued','running'].includes(item?.status);
 const statusText={queued:'正在排队',running:'正在生成提纲',completed:'提纲已生成',failed:'提纲生成未完成',cancelled:'已停止生成'};
-const stages={queued:'等待 AI 服务处理',preparing:'整理主题与研究资料',checking_input:'检查提交内容',checking_output:'检查生成提纲',agent_running:'根据主题组织章节',agent_tools:'整理研究依据',completed:'请先预览，再使用提纲',failed:'未生成可用提纲，原有提纲未改动。',cancelled:'原有提纲未改动'};
+const stages={queued:'等待 AI 服务处理',preparing:'整理主题与研究资料',checking_input:'检查提交内容',checking_output:'检查生成提纲',checking_outline:'正在检查提纲',repairing_outline:'正在自动完善提纲，无需重新提交',outline_ready:'提纲检查通过，正在保存',agent_running:'根据主题组织章节',agent_tools:'整理研究依据',completed:'请先预览，再使用提纲',failed:'未生成可用提纲，原有提纲未改动。',cancelled:'原有提纲未改动'};
 const abortError=()=>Object.assign(new Error('页面已切换'),{name:'AbortError'});
 
 // The server owns the durable job and billing. This controller never replaces the local outline on submission or polling.

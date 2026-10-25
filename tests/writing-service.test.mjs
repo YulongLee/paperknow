@@ -78,7 +78,7 @@ test('worker exposes complete-candidate validation only to writing tasks and per
  }});f.pay();const created=await f.submit('quick','draft',shortSnapshot());await f.writing.tick();const item=(await f.request('/writing/jobs/'+created.value.item.id)).value.item;assert.equal(item.status,'completed',JSON.stringify(item));assert.equal(item.output.sections[0].wordCount,200);assert.equal(calls,1);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);
 });
 
-test('thesis method and outline handlers receive no writing-submission callback',async t=>{
+test('outline handlers keep the separate writing-output callback disabled',async t=>{
  const f=await fixture(t,{agentTaskRunner:async({task,validateWritingOutput})=>{assert.equal(task.skill,'thesis-outline');assert.equal(validateWritingOutput,undefined);return outline();}});const created=await f.submit('proposal','outline');await f.writing.tick();assert.equal((await f.request('/writing/jobs/'+created.value.item.id)).value.item.status,'completed');
 });
 
@@ -104,4 +104,18 @@ for(const kind of ['proposal','article','quick','taskbook','course','practice','
   const corrected=wrapped({complete:true,text:prose(200)+'[source:source]',source_ids:['source'],missing_evidence:[]},{trace});assert.equal(validateWritingOutput(corrected).valid,true);return corrected;
  }});f.pay();const text='这是用户确认的可读研究材料，明确描述数字阅读服务的研究范围、方法和资料边界。',data={...snapshot(),materials:[{id:'source',name:'已确认的研究记录',text,confirmed:true},{id:'second',name:'已确认的补充记录',text:text+'第二份材料。',confirmed:true}]},created=await f.submit(kind,'draft',data);assert.equal(created.status,202,JSON.stringify(created));await f.writing.tick();
  const item=(await f.request('/writing/jobs/'+created.value.item.id)).value.item;assert.equal(item.status,'completed',JSON.stringify(item));assert.equal(calls,1);assert.deepEqual(item.output.sourceIds,['source']);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);assert.equal(f.db.prepare('SELECT count(*) n FROM jobs').get().n,1);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,1);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,1);
+});
+
+for(const kind of ['summary','proposal','taskbook','article','course','practice','quick'])test(kind+' outline corrects invalid structure inside one run with one final credit settlement',async t=>{
+ let calls=0,f;f=await fixture(t,{agentTaskRunner:async({task,validateOutlineOutput,validateWritingOutput,onStage})=>{
+  calls++;assert.equal(task.skill,'thesis-outline');assert.equal(typeof validateOutlineOutput,'function');assert.equal(validateWritingOutput,undefined);
+  const invalid=outline(),bad=JSON.parse(invalid.text);delete bad.chapters[0].sections;const rejected=validateOutlineOutput({...invalid,text:JSON.stringify(bad)});assert.equal(rejected.valid,false);assert.equal(rejected.feedback.field,'chapters[0].sections');onStage('repairing_outline');
+  const row=f.db.prepare('SELECT id,status,stage FROM writing_runs').get();assert.equal(row.status,'running');assert.equal(row.stage,'repairing_outline');assert.equal(f.billing.balance('alice').held,10);assert.equal(f.billing.balance('alice').balance,200);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);
+  assert.equal(validateOutlineOutput(outline()).valid,true);onStage('outline_ready');return {...outline(),submitted:true,finishReason:'submitted'};
+ }});f.pay();const data={...snapshot(),references:[{id:'a',title:'只有题录的合成文献 A',confirmed:true},{id:'b',title:'只有题录的合成文献 B',confirmed:true}]},created=await f.submit(kind,'outline',data);assert.equal(created.status,202,JSON.stringify(created));await f.writing.tick();await f.writing.tick();
+ const item=(await f.request('/writing/jobs/'+created.value.item.id)).value.item;assert.equal(item.status,'completed',JSON.stringify(item));assert.equal(item.completedUnits,1);assert.equal(item.output.chapters.reduce((sum,row)=>sum+row.targetWords,0),200);assert.equal(calls,1);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,1);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,1);assert.equal(f.db.prepare('SELECT count(*) n FROM usage').get().n,1);
+});
+
+test('cancelling outline repair releases the same reservation and cannot save a late corrected outline',async t=>{
+ let started,resolve;const ready=new Promise(done=>started=done),f=await fixture(t,{agentTaskRunner:async({validateOutlineOutput,onStage})=>{assert.equal(validateOutlineOutput({...outline(),text:'{}'}).valid,false);onStage('repairing_outline');started();return new Promise(done=>resolve=done);}});f.pay();const created=await f.submit('summary','outline'),tick=f.writing.tick();await ready;const id=created.value.item.id;await f.request('/writing/jobs/'+id+'/cancel',{});resolve(outline());await tick;const item=(await f.request('/writing/jobs/'+id)).value.item;assert.equal(item.status,'cancelled');assert.equal(item.output,null);assert.equal(f.billing.balance('alice').balance,200);assert.equal(f.billing.balance('alice').held,0);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);
 });
