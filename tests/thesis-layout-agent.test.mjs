@@ -40,9 +40,9 @@ test('instructions embedded in a template cannot authorize tools or change manus
 test('contradictory written requirements are explicitly unresolved',async()=>{
  const profile=await inspectThesisDocxTemplate(await template('页面设置：上边距为2.8厘米。\n页面设置：上边距为3.0厘米。'));assert.equal(profile.requirements.ambiguities.length,1);assert.equal(profile.rules.page.top,1587);
 });
-test('missing table names and equation numbers cannot be reported as complete template compliance',async()=>{
+test('missing table names require facts while independent equations receive stable automatic numbers',async()=>{
  const bytes=await template(notes+'\n表1（表的编号和表题应置于表上方）（居中 宋体 五号 粗体）\n公式的编号右端对齐。'),profile=await inspectThesisDocxTemplate(bytes),input=await createWritingDocx(source.replace('表 1 方案比较\n','')+'\n$$x^2+y^2=z^2$$',{documentKind:'thesis'}),out=await runThesisLayoutAgent(input,{profile});
- assert.equal(out.report.status,'review_required');assert.ok(out.report.unresolved.some(row=>row.id==='missing_table_captions'));assert.ok(out.report.unresolved.some(row=>row.id==='missing_equation_numbers'));assert.equal((await inspectThesisLayout(out.bytes,profile)).mismatchCount,0);
+ assert.equal(out.report.status,'review_required');assert.ok(out.report.unresolved.some(row=>row.id==='missing_table_captions'));assert.ok(!out.report.unresolved.some(row=>row.id==='missing_equation_numbers'));const xml=await(await JSZip.loadAsync(out.bytes)).file('word/document.xml').async('string');assert.match(xml,/PKEquationNumber/);assert.match(xml,/（1）/);await inspectThesisExportContent(out.bytes,source.replace('表 1 方案比较\n','')+'\n$$x^2+y^2=z^2$$');assert.equal((await runThesisLayoutAgent(out.bytes,{profile})).report.iterations.length,1);assert.equal((await inspectThesisLayout(out.bytes,profile)).mismatchCount,0);
 });
 test('page text check catches missing Chinese glyphs even when DOCX text is complete',()=>{
  const text='基于深度学习的羊脸识别系统研究方法与实验结果'.repeat(10);assert.equal(compareRenderedThesisText(text,text).status,'passed');assert.equal(compareRenderedThesisText(text,'研究方法'.repeat(10)).status,'failed');

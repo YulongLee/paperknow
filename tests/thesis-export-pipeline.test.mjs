@@ -19,7 +19,7 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{reso
 const settle=async()=>{for(let index=0;index<8;index++)await new Promise(resolve=>setImmediate(resolve));};
 async function until(predicate,message='operation did not settle',timeout=8000){const start=Date.now();while(!predicate()){if(Date.now()-start>timeout)assert.fail(message);await new Promise(resolve=>setTimeout(resolve,5));}}
 
-async function fixture(t,{qualityRecord=quality(),template=null,changeDocx=null,renderResult=null,renderError=null,renderWait=null,getOptionsWait=null,documentWait=null,ownerId='alice',sourceText=text,submission=false,docxOnly=false,roguePdf=false}={}){
+async function fixture(t,{qualityRecord=quality(),template=null,changeDocx=null,renderResult=null,renderError=null,renderWait=null,getOptionsWait=null,documentWait=null,ownerId='alice',sourceText=text,submission=false,docxOnly=false,roguePdf=false,onNeedsCompletion}={}){
  endDraftScope();
  const dom=new JSDOM(`<main>${documentExportButtons('thesis-test',{submission,docxOnly})}<p id="status" role="status"></p></main>`,{url:'https://paperknow.test/workspace.html#thesis/synthetic-thesis'}),previous=Object.fromEntries(['window','document','location','fetch'].map(key=>[key,{own:Object.hasOwn(globalThis,key),value:globalThis[key]}]));
  for(const key of ['window','document','location'])globalThis[key]=dom.window[key];
@@ -48,7 +48,7 @@ async function fixture(t,{qualityRecord=quality(),template=null,changeDocx=null,
   auditThesisExport:input=>{const report=writingDocument.auditThesisExport(input);checks.push(report);return report;},
  };
  bindDocumentExports('thesis-test',()=>currentText,()=>currentTitle,status,{
-  docxOnly,isCurrent:()=>current,
+  docxOnly,onNeedsCompletion,isCurrent:()=>current,
   loadDocument:async()=>{if(documentWait)await documentWait.promise;return api;},
   loadFont:async()=>{fontCalls++;throw Error('thesis export must not load legacy PDF font');},
   getDocumentOptions:async()=>{optionsCalls++;if(getOptionsWait)await getOptionsWait.promise;return options;},
@@ -203,4 +203,8 @@ for(const format of ['docx','pdf'])test(`final template-added pending fields are
 test('final pending-marker count includes input and template fields exactly once instead of adding both audit totals',async t=>{
  const sourceText=text.replace('FINAL_BODY_PARAGRAPH_20261023：','【待补充：研究观察原件】FINAL_BODY_PARAGRAPH_20261023：'),f=await fixture(t,{template:await missingTemplateRegions(),sourceText});
  try{assert.equal(writingDocument.auditThesisExport({text:sourceText,metadata:{citationRanges:[]}}).counts.unresolvedPlaceholders,1);f.click('docx');await f.complete();assert.equal(f.downloads.length,1);const result=await writingDocument.inspectThesisExportContent(f.generated[0].bytes,sourceText);assert.equal(result.unresolvedPlaceholders,3);assert.equal(f.checks[0].counts.unresolvedPlaceholders,3);assert.equal(f.checks[0].checks.find(row=>row.id==='unresolved_placeholders').count,3);assert.equal(f.sourceText,sourceText);}finally{f.close();}
+});
+
+test('formal missing-material checks open the completion workflow instead of requiring an outside Word edit',async t=>{
+ let details;const f=await fixture(t,{submission:true,docxOnly:true,onNeedsCompletion:async value=>{details=value;}});f.click('docx');await f.complete();assert.ok(details.report.submission.issues.length);assert.equal(f.downloads.length,0);assert.equal(f.rendered.length,0);assert.match(f.status.textContent,/补充窗口/);assert.doesNotMatch(f.status.textContent,/自行修改|可编辑初稿继续修改/);
 });
