@@ -7,12 +7,12 @@
  #app .report-shared-sidebar .brand-symbol img{width:34px;height:34px}
  #app .report-shared-sidebar .brand small{font-size:10px;letter-spacing:1px;color:var(--report-muted);margin-top:3px}
  #app .report-shared-sidebar nav{min-height:0;flex:1;overflow-y:auto;padding-bottom:8px;scrollbar-width:thin}
- #app .report-shared-sidebar .nav-caption{font-size:11px;font-weight:500;color:#8490a3;letter-spacing:.5px;margin:20px 0 7px;padding:0 13px}
+ #app .report-shared-sidebar .nav-caption{font-size:12px;font-weight:600;color:var(--pk-nav-caption,#58677c);letter-spacing:.5px;margin:20px 0 7px;padding:0 13px}
  #app .report-shared-sidebar .nav-caption:first-child{margin-top:0}
- #app .report-shared-sidebar .nav-link{min-height:40px;padding:9px 13px;font-size:14px;line-height:1.4;color:var(--report-muted);border-radius:9px;gap:11px;margin:2px 0;font-weight:400}
- #app .report-shared-sidebar .nav-link svg{width:18px;height:18px;stroke-width:1.65}
- #app .report-shared-sidebar .nav-link:hover{background:var(--report-soft);color:var(--report-text)}
- #app .report-shared-sidebar .nav-link.active{background:var(--report-tint);color:var(--report-blue);font-weight:600}
+ #app .report-shared-sidebar .nav-link{min-height:40px;padding:9px 13px;font-size:15px;line-height:1.4;color:var(--pk-nav-text,#334155);border-radius:9px;gap:11px;margin:2px 0;font-weight:500}
+ #app .report-shared-sidebar .nav-link svg{width:18px;height:18px;stroke-width:1.9}
+ #app .report-shared-sidebar .nav-link:is(:hover,:focus-visible){background:var(--report-soft);color:var(--report-text)}
+ #app .report-shared-sidebar .nav-link.active{background:var(--report-tint);color:var(--pk-nav-active,#1d4ed8);font-weight:600}
  #app .report-shared-profile{border-top:1px solid var(--report-line);padding:16px 6px 0;margin-top:16px}
  #app .report-shared-profile a{font-size:13px;color:var(--report-text);gap:10px}
  #app .report-shared-profile small{font-size:11px;color:var(--report-muted)}

@@ -9,7 +9,7 @@
 #app .hub-sidebar .nav-link{font-size:16px;line-height:1.4;padding:11px 13px;gap:12px;min-height:44px;margin:3px 0}
 #app .hub-sidebar .nav-link svg{width:20px;height:20px}
 #app .hub-sidebar .nav-link span{white-space:nowrap}
-#app .hub-sidebar .nav-caption{font-size:12px;letter-spacing:.5px;margin:19px 0 8px;color:#7689a4}
+#app .hub-sidebar .nav-caption{font-size:12px;letter-spacing:.5px;margin:19px 0 8px;color:var(--pk-nav-caption,#58677c)}
 #app .hub-sidebar .nav-caption:first-child{margin-top:0}
 #app .hub-profile-trigger b{font-size:14px}#app .hub-profile-trigger small{font-size:12px}
 #app .hub-workspace .sidebar-toggle{display:inline-flex!important;align-items:center;justify-content:center;width:36px;height:36px;background:#f5f7fb;border-radius:8px;color:#5d7392}
