@@ -178,3 +178,18 @@ test('single-unit outline repair keeps a visible waiting bar and updates stages 
  f.setRecord({id:'writing-1',operation:'outline',status:'running',stage:'repairing_outline',completedUnits:0,totalUnits:1});polls.run();await until(()=>/正在自动完善提纲/.test(f.container.querySelector('[data-wj-stage]').textContent));assert.equal(f.container.firstElementChild,section);assert.equal(f.container.querySelector('[data-wj-progressbar]'),bar);assert.equal(f.container.querySelector('[data-wj-start]'),null);assert.equal(f.calls.some(row=>row.path==='/writing/jobs'),false);
  f.setRecord({id:'writing-1',operation:'outline',status:'completed',stage:'completed',completedUnits:1,totalUnits:1,output:{text:'已完成的合成提纲',sourceIds:[]}});polls.run();await until(()=>!!f.container.querySelector('[data-wj-apply]'));assert.equal(f.container.querySelector('[data-wj-progressbar]').classList.contains('is-indeterminate'),false);assert.equal(f.container.querySelector('[data-wj-progress-fill]').style.width,'100%');assert.equal(polls.pending.size,0);
 });
+
+for(const source of ['credits','bundle','membership','free'])test('direct wj generation submits once using '+source+' and exposes no fee confirmation',async t=>{
+ const f=fixture(t,{getQuote:()=>({type:'agent',source,creditCost:source==='credits'?10:0,title:'测试用量',token:'direct-token',expiresAt:new Date(Date.now()+60000).toISOString()})});
+ await f.panel.generate();const posts=f.calls.filter(row=>row.path==='/writing/jobs');assert.equal(posts.length,1);assert.equal(posts[0].data.billingToken,'direct-token');assert.equal(posts[0].data.consent,true);assert.ok(posts[0].data.clientKey);assert.equal(f.container.querySelector('[data-wj-consent]'),null);assert.equal(f.container.querySelector('[data-wj-start]'),null);
+});
+test('direct wj generation immediately waits and blocks repeat clicks while checking usage',async t=>{
+ let release;const wait=new Promise(resolve=>release=resolve),f=fixture(t,{beforeApi:async path=>{if(path==='/writing/quote')await wait;}});
+ const first=f.panel.generate();await until(()=>f.panel.busy());assert.equal(f.container.querySelector('[data-wj-result-window]').getAttribute('aria-busy'),'true');await f.panel.generate();release();await first;assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);
+});
+test('direct wj generation displays specific billing errors without reopening a confirmation',async t=>{
+ const f=fixture(t,{beforeApi:async path=>{if(path==='/writing/jobs')throw Object.assign(Error('积分不足，本次需要 10 积分'),{status:402});}});await f.panel.generate();assert.match(f.container.querySelector('[role="alert"]').textContent,/积分不足.*10/);assert.equal(f.container.querySelector('[data-wj-start]'),null);assert.ok(f.panel.getState().commandKey);
+});
+test('direct wj generation reuses an active recovered task without requesting or reserving another job',async t=>{
+ const f=fixture(t);f.setRecord({id:'writing-1',operation:'draft',kind:'article',status:'running',totalUnits:3,completedUnits:1});await f.panel.generate();await f.panel.generate();assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);assert.equal(f.calls.filter(row=>row.path==='/writing/quote').length,1);
+});

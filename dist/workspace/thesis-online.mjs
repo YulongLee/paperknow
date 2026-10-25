@@ -50,7 +50,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  const saveKey=crypto.randomUUID(),hasProjectSelector=typeof arguments[0]?.getProjectRef==='function';
  const resolvedProjectId=()=>hasProjectSelector?resolveAccountProjectId(String(getProjectRef()||''),user?.id):item?.projectId||null;
  const projectPayload=()=>{const projectId=resolvedProjectId();return projectId||hasProjectSelector?{projectId}:{};};
- let commandKey=null,pendingFocus=null,researchBaseVersion=null,draftRestored=false,draftRevision=null,draftStorageError='';
+ let commandKey=null,commandSignature='',pendingFocus=null,researchBaseVersion=null,draftRestored=false,draftRevision=null,draftStorageError='';
  const win=container.ownerDocument.defaultView||window;
  let accountSnapshotChoice=null,chapterPresentation=null,templateSelectionMade=false,templateMessage='',templateRefreshPending=false,templatePickerBaseline;
  const disclosureState=new Map();
@@ -230,7 +230,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
    return {blocked:different&&!acknowledged,different,acknowledged,local,current,account,localKey,accountKey,differences,token:JSON.stringify([item.id,item.version,localKey,accountKey])};
   }catch(error){return {blocked:true,error:error.message||'暂时无法读取前四步信息，请返回核对后重试。'};}
  }
- function requireCurrentSnapshot(){const binding=snapshotBinding();if(binding.blocked){quote=null;throw Error(binding.error||'前四步已更新，请先同步，或明确选择继续使用账户已保存的信息，再确认生成费用。');}return binding;}
+ function requireCurrentSnapshot(){const binding=snapshotBinding();if(binding.blocked){quote=null;throw Error(binding.error||'前四步已更新，请先同步，或明确选择继续使用账户已保存的信息，再生成。');}return binding;}
  function snapshotDriftPanel(){
   const binding=snapshotBinding();if(!binding.blocked&&!binding.acknowledged)return '';
   const disabled=busy||running(item)||dirty();
@@ -242,17 +242,33 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  function generationNotes(){
   return `<p>最多 ${Number(cap?.limits?.maxChapters)||30} 章 · 目标上限 ${(Number(cap?.limits?.maxTargetWords)||80000).toLocaleString('zh-CN')} 字。研究资料与文献正文可选，只有题录也可按已确认的题目、方法与提纲生成待核对初稿。</p><p>缺少的研究数据、结论依据和可核对引文会保留待补充标记，不会虚构已完成的实验、调查或文献内容。有来源正文时使用相应片段，不等同于全文研读或在线文献核验。</p>`;
  }
+ async function generateThesis(action){
+  if(!cap?.ready||running(item)||dirty())throw Error('请先保存修改并确认服务可用。');
+  const binding=requireCurrentSnapshot(),version=item.version;
+  quote=null;generationConsent=false;
+  const agreed=await api('/theses/'+encodeURIComponent(id)+'/quote',{version,action});
+  if(!validThesisQuote(agreed))throw Error('暂时无法核对本次用量，请重试。');
+  await owner();
+  if(!validThesisQuote(agreed)||item.version!==version||running(item)||dirty()||requireCurrentSnapshot().token!==binding.token)throw Error('论文信息或本次用量已变化，请核对后重新生成。');
+  const signature=JSON.stringify([id,version,action,binding.token]);
+  if(commandSignature!==signature){commandKey=crypto.randomUUID();commandSignature=signature;}
+  try{const value=await api('/theses/'+encodeURIComponent(id)+'/'+action,{version,clientKey:commandKey,billingToken:agreed.token,consent:true});takeItem(value.item);commandKey=null;commandSignature='';notice(action==='resume'?'已继续生成未完成章节。':'已开始分章生成，可在这里查看真实进度。');}
+  catch(error){try{await refresh();}catch{}throw error;}
+ }
+ async function startCompletion(){
+  const agreed=completionDraft.quote;
+  if(!agreed||!validThesisQuote(agreed)||agreed.version!==item.version||dirty()||running(item))throw Error('资料已有变化，请重新生成。');
+  await owner();
+  if(!validThesisQuote(agreed)||agreed!==completionDraft.quote||agreed.version!==item.version||dirty()||running(item))throw Error('论文信息已变化，请核对后重新生成。');
+  const result=await api('/theses/'+encodeURIComponent(id)+'/generate',{version:item.version,completion:true,clientKey:agreed.clientKey,billingToken:agreed.token,consent:true});takeItem(result.item);completionDraft.recheckRunId=item.job.id;completionDraft.quote=null;completionDraft.open=false;persistDraft();notice('自动完善任务已提交，完成后将自动重新检查终稿。');
+ }
  function controls(){
   if(!item)return '';
   const binding=snapshotBinding(),active=running(item),hasText=(item.chapters||[]).some(chapter=>String(chapter.text||'').trim()),resumable=item.job?.canResume===true||['failed','cancelled'].includes(item.job?.status)&&item.status!=='draft';
   return `<section class="thesis-run-controls"><div><span class="thesis-service-state ${cap?.ready?'ready':''}">${cap?.ready?'分章生成可用':'分章生成暂未开放'}</span><p>${escape(cap?.ready?'按已确认的提纲逐章生成。':cap?.reason||'正在核对 AI 服务状态。保存与手动编辑仍可使用。')}</p></div>
    ${!active&&item.status!=='completed'&&thesisStatus(item)!=='completed'&&!assessThesisEvidence(item.snapshot).ready?`<section class="thesis-source-gap" role="status"><h3>可生成待核对初稿</h3><p>第二步的研究资料上传可选。只有题录也可以继续生成；缺少的研究数据和依据会在正文中保留待补充标记，不会虚构已完成的实验或调查。</p><p>也可在第三步展开已选文献，补充来源摘要或有权使用的正文，以细化论证。仅有题录不代表已读取原文，补充和保存资料不会扣费。</p>${typeof onReferences==='function'?'<button type="button" class="btn secondary" data-thesis-references>可选：补充文献摘要或正文</button>':''}</section>`:''}
-   <div class="thesis-action-row">${active?'<button type="button" class="btn secondary" data-thesis-cancel '+(busy?'disabled':'')+'>停止生成</button>':`${!hasText||item.status==='draft'?'<button type="button" class="btn '+(quote?'secondary':'primary')+'" data-thesis-quote="generate" '+(!cap?.ready||busy||dirty()||binding.blocked?'disabled':'')+'>'+(quote?'重新读取费用':hasText?'生成完整新版本':'生成论文')+'</button>':''}${resumable?'<button type="button" class="btn '+(quote?'secondary':'primary')+'" data-thesis-quote="resume" '+(!cap?.ready||busy||dirty()||binding.blocked?'disabled':'')+'>'+(quote?'重新读取恢复费用':'恢复未完成章节')+'</button>':''}`}<button type="button" class="btn secondary" data-thesis-refresh ${busy?'disabled':''}>读取最新状态</button></div>
-   ${quote?`<div class="thesis-charge" role="region" aria-label="确认任务费用"><h3>${quoteAction==='resume'?'恢复生成':'开始生成'} · ${escape(quote.title)}</h3><strong>${escape(costText(quote))}</strong>
-    <details class="generation-disclosure thesis-generation-details"><summary data-thesis-disclosure="fees">费用与资料说明<span class="generation-disclosure-hint">点击查看</span></summary><div class="generation-disclosure-body">
-     ${quoteAction==='generate'&&(item.chapters||[]).some(chapter=>String(chapter.text||'').trim())?'<p>本次将按照当前资料重新生成全部章节，并更新最新正文；已经保存的历史版本继续保留。</p>':''}<p>成功后结算；失败或取消会释放本次预占。恢复任务按本次新报价结算。报价在 ${escape(new Date(quote.expiresAt).toLocaleTimeString('zh-CN'))} 到期。</p>${generationNotes()}<p>选中输入及生成结果会由阿里云内容安全服务审核。</p>
-     <label><input type="checkbox" data-thesis-consent ${generationConsent?'checked':''} ${busy?'disabled':''}> 我确认有权使用本次论文信息及所选资料（如有），并同意交由 AI 服务处理。生成内容为待核对初稿，事实、引文、待补充标记与学术规范需要我自行核对。</label>
-    </div></details><div class="thesis-action-row"><button type="button" class="btn primary" data-thesis-start ${busy||!generationConsent||dirty()||binding.blocked?'disabled':''}>${submittingGeneration?'正在提交…':quoteAction==='resume'?'恢复生成':'开始生成'}</button><button type="button" class="btn secondary" data-thesis-dismiss ${busy?'disabled':''}>取消</button></div></div>`:`<details class="generation-disclosure thesis-service-details"><summary data-thesis-disclosure="service">生成说明<span class="generation-disclosure-hint">点击查看</span></summary><div class="generation-disclosure-body">${generationNotes()}</div></details>`}</section>`;
+   <div class="thesis-action-row">${active?'<button type="button" class="btn secondary" data-thesis-cancel '+(busy?'disabled':'')+'>停止生成</button>':`${!hasText||item.status==='draft'?'<button type="button" class="btn primary" data-thesis-quote="generate" '+(!cap?.ready||busy||dirty()||binding.blocked?'disabled':'')+'>'+(hasText?'生成完整新版本':'生成论文')+'</button>':''}${resumable?'<button type="button" class="btn primary" data-thesis-quote="resume" '+(!cap?.ready||busy||dirty()||binding.blocked?'disabled':'')+'>'+'恢复未完成章节'+'</button>':''}`}<button type="button" class="btn secondary" data-thesis-refresh ${busy?'disabled':''}>读取最新状态</button></div>
+   <details class="generation-disclosure thesis-service-details"><summary data-thesis-disclosure="service">生成说明<span class="generation-disclosure-hint">点击查看</span></summary><div class="generation-disclosure-body">${generationNotes()}</div></details></section>`;
  }
  function progress(){
   const job=item.job,complete=Number(job?.completedSections)||0,total=Number(job?.totalSections)||0,percent=total?Math.min(100,Math.floor(complete/total*100)):0;
@@ -408,14 +424,14 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  function renderCompletion(){const host=$('[data-thesis-completion-host]');if(!host)return;host.innerHTML=completionPanelHTML(item,completionDraft,{busy:busy||running(item),costText});bindCompletion();}
  function bindCompletion(){bindCompletionPanel($('[data-thesis-completion]'),completionDraft,{busy:()=>busy||running(item),changed:()=>{persistDraft();updateExportButtons();},render:renderCompletion,recheck:()=>$('#thesis-online-docx')?.click(),
   importFile:async(file,purpose,status)=>{if(busy||running(item))return;busy=true;updateExportButtons();try{await owner();const {importWorkspaceDocument}=await import('./document-import.mjs');const parsed=await importWorkspaceDocument(file,status,{projectId:item.projectId});if(!current())return;await owner();if(!parsed.text?.trim())throw Error('未读取到正文，请选择其他文件。');if(parsed.text.length>50000)throw Error('单份补充资料最多 50,000 字符，请选取与缺项有关的内容。');if(purpose==='reference')completionDraft.reference={title:file.name.replace(/\.[^.]+$/,''),authors:'',year:'',doi:'',text:parsed.text};else {if(completionDraft.materials.length>=10)throw Error('本次最多补充 10 份材料。');completionDraft.materials.push({name:file.name,text:parsed.text});}completionDraft.dirty=true;completionDraft.quote=null;completionDraft.requestKey=null;persistDraft();notice(purpose==='reference'?'文献正文已读取，请核对真实题名、作者与年份后加入。':'材料已读取，保存后由系统用于完善正文。');}catch(error){failure(error);}finally{busy=false;if(current())render();}},
-  prepare:()=>mutate(async()=>{if(running(item)||edits.size||researchEdits||coverEdits)throw Error('请先保存当前章节或研究信息，再补充终稿资料。');if(Object.values(completionDraft.reference).some(value=>String(value).trim()))throw Error('请先点击“加入这篇文献”，保存文献题录与正文。');completionDraft.quote=null;if(completionDraft.dirty||item.snapshot?.requirements?.deliveryVersion!==1){completionDraft.requestKey??=crypto.randomUUID();const result=await api('/theses/'+encodeURIComponent(id)+'/completion',completionPayload(completionDraft,item.version));takeItem(result.item);completionDraft.dirty=false;completionDraft.materials=[];completionDraft.references=[];completionDraft.supplement='';completionDraft.acknowledgements='';completionDraft.requestKey=null;persistDraft();}try{const value=await api('/theses/'+encodeURIComponent(id)+'/quote',{version:item.version,action:'generate',completion:true,issueCodes:completionDraft.issues});if(!validThesisQuote(value)||!Array.isArray(value.completion?.chapterTitles)||!value.completion.chapterTitles.length)throw Error('自动完善报价不完整，请重新获取。');completionDraft.quote={...value,version:item.version,clientKey:crypto.randomUUID()};completionDraft.open=true;notice('资料已保存，请确认本次费用，系统将完善相关章节并自动检查终稿。');}catch(error){if(error.status===422&&/没有需要 AI/.test(error.message)){completionRecheckNow=true;notice('信息已保存，正在重新检查并排版。');}else throw error;}}),
-  start:()=>mutate(async()=>{const agreed=completionDraft.quote;if(!agreed||!validThesisQuote(agreed)||agreed.version!==item.version||dirty()||running(item))throw Error('资料或报价已变化，请重新获取自动完善费用。');const result=await api('/theses/'+encodeURIComponent(id)+'/generate',{version:item.version,completion:true,clientKey:agreed.clientKey,billingToken:agreed.token,consent:true});takeItem(result.item);completionDraft.recheckRunId=item.job.id;completionDraft.quote=null;completionDraft.open=false;persistDraft();notice('自动完善任务已提交，完成后将自动重新检查终稿。');},{generation:true})});}
+  prepare:()=>mutate(async()=>{if(running(item)||edits.size||researchEdits||coverEdits)throw Error('请先保存当前章节或研究信息，再补充终稿资料。');if(Object.values(completionDraft.reference).some(value=>String(value).trim()))throw Error('请先点击“加入这篇文献”，保存文献题录与正文。');completionDraft.quote=null;if(completionDraft.dirty||item.snapshot?.requirements?.deliveryVersion!==1){completionDraft.requestKey??=crypto.randomUUID();const result=await api('/theses/'+encodeURIComponent(id)+'/completion',completionPayload(completionDraft,item.version));takeItem(result.item);completionDraft.dirty=false;completionDraft.materials=[];completionDraft.references=[];completionDraft.supplement='';completionDraft.acknowledgements='';completionDraft.requestKey=null;persistDraft();}try{const value=await api('/theses/'+encodeURIComponent(id)+'/quote',{version:item.version,action:'generate',completion:true,issueCodes:completionDraft.issues});if(!validThesisQuote(value)||!Array.isArray(value.completion?.chapterTitles)||!value.completion.chapterTitles.length)throw Error('自动完善报价不完整，请重新获取。');completionDraft.quote={...value,version:item.version,clientKey:crypto.randomUUID()};completionDraft.open=true;await startCompletion();}catch(error){if(error.status===422&&/没有需要 AI/.test(error.message)){completionRecheckNow=true;notice('信息已保存，正在重新检查并排版。');}else throw error;}},{generation:true}),
+  start:()=>mutate(startCompletion,{generation:true})});}
  function bind(){
   bindCompletion();
   $('[data-thesis-review-latest]')?.addEventListener('click',()=>{const scroller=$('[data-thesis-review-scroll]');if(scroller)scroller.scrollTop=scroller.scrollHeight;});
   $('[data-thesis-reload]')?.addEventListener('click',()=>void load());
   $('[data-thesis-create]')?.addEventListener('click',()=>void mutate(async()=>{
-   const snapshot=getSnapshot(),templateFileId=getTemplateFileId?.();const value=await api('/theses',{clientKey:saveKey,snapshot,...projectPayload(),...(templateFileId?{exportTemplateFileId:templateFileId}:{})});takeItem(value.item);onSaved?.(item.id,item);notice('已保存到账户。生成前还需确认任务费用与资料用途。');
+   const snapshot=getSnapshot(),templateFileId=getTemplateFileId?.();const value=await api('/theses',{clientKey:saveKey,snapshot,...projectPayload(),...(templateFileId?{exportTemplateFileId:templateFileId}:{})});takeItem(value.item);onSaved?.(item.id,item);notice('已保存到账户，可直接点击生成论文。');
   }));
   $('[data-thesis-refresh]')?.addEventListener('click',()=>void mutate(async()=>{await refresh();quote=null;notice(dirty()?'已读取最新状态。未保存文字仍保留，请核对后保存。':'已读取最新账户状态。');}));
   container.querySelectorAll('[data-research-field]').forEach(input=>input.addEventListener('input',()=>{
@@ -437,26 +453,11 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   $('[data-thesis-use-account]')?.addEventListener('click',()=>{if(busy||running(item)||dirty())return;const binding=snapshotBinding();if(binding.error||!binding.different)return;accountSnapshotChoice={version:item.version,localKey:binding.localKey,accountKey:binding.accountKey};quote=null;notice('已明确选择本次使用账户已保存的信息。前四步修改尚未同步；请核对下方账户信息后重新确认费用。');render();});
   container.querySelectorAll('[data-thesis-sync],[data-thesis-sync-primary]').forEach(button=>button.addEventListener('click',()=>void mutate(async()=>{
    if(dirty()||running(item))throw Error('请先保存章节和研究信息。');
-   const snapshot=getSnapshot();canonicalSnapshot(snapshot);if(!window.confirm('将使用前四步的信息替换账户的研究信息、资料与提纲，账户中独立补充的内容请先核对。已有章节历史版本会保留，新的生成需要重新确认费用。确认同步？'))return;
+   const snapshot=getSnapshot();canonicalSnapshot(snapshot);if(!window.confirm('将使用前四步的信息替换账户的研究信息、资料与提纲，账户中独立补充的内容请先核对。已有章节历史版本会保留，同步后可点击生成。确认同步？'))return;
    const value=await api('/theses/'+encodeURIComponent(id),{version:item.version,snapshot,...projectPayload()});takeItem(value.item);accountSnapshotChoice=null;quote=null;notice('已同步前四步确认资料与新提纲，原章节历史版本继续保留。请核对后重新确认生成费用。');
   })));
   $('[data-thesis-references]')?.addEventListener('click',()=>{if(busy||running(item)||dirty()){notice('请先保存当前编辑内容后再返回参考文献。');return;}onReferences?.();});
-  container.querySelectorAll('[data-thesis-quote]').forEach(button=>button.addEventListener('click',()=>void mutate(async()=>{
-   if(!cap?.ready||running(item)||dirty())throw Error('请先保存修改并确认服务可用。');
-   const binding=requireCurrentSnapshot();
-   quote=null;generationConsent=false;const value=await api('/theses/'+encodeURIComponent(id)+'/quote',{version:item.version,action:button.dataset.thesisQuote});if(!validThesisQuote(value))throw Error('报价不完整或已过期，请重新获取费用。');if(requireCurrentSnapshot().token!==binding.token)throw Error('论文信息已变化，请重新核对资料并确认费用。');quote={...value,version:item.version,snapshotBinding:binding.token};generationConsent=true;quoteAction=button.dataset.thesisQuote;commandKey=crypto.randomUUID();notice('费用已就绪，可直接开始生成。');
-  })));
-  $('[data-thesis-consent]')?.addEventListener('change',event=>{generationConsent=event.target.checked;const start=$('[data-thesis-start]');if(start)start.disabled=!generationConsent||busy||dirty()||snapshotBinding().blocked;});
-  $('[data-thesis-dismiss]')?.addEventListener('click',()=>{quote=null;render();});
-  $('[data-thesis-start]')?.addEventListener('click',()=>{
-   if(!generationConsent||!$('[data-thesis-consent]')?.checked||!quote)return;
-   const agreed=quote,action=quoteAction,key=commandKey;
-   void mutate(async()=>{
-    if(!generationConsent||!validThesisQuote(agreed)||agreed.version!==item.version||running(item)||dirty()||requireCurrentSnapshot().token!==agreed.snapshotBinding){quote=null;throw Error('报价或论文版本已变化，请重新确认费用。');}
-    try{const value=await api('/theses/'+encodeURIComponent(id)+'/'+action,{version:item.version,clientKey:key,billingToken:agreed.token,consent:true});takeItem(value.item);notice(action==='resume'?'已提交恢复，将继续未完成章节。':'已提交分章生成，可在这里查看真实进度。');}
-    catch(error){try{await refresh();}catch{}throw error;}finally{quote=null;}
-   },{generation:true});
-  });
+  container.querySelectorAll('[data-thesis-quote]').forEach(button=>button.addEventListener('click',()=>void mutate(()=>generateThesis(button.dataset.thesisQuote),{generation:true})));
   $('[data-thesis-cancel]')?.addEventListener('click',()=>void mutate(async()=>{const value=await api('/theses/'+encodeURIComponent(id)+'/cancel',{version:item.version});takeItem(value.item);quote=null;notice('已发送停止请求，已完成章节会保留。');}));
   container.querySelectorAll('[data-thesis-chapter]').forEach(button=>button.addEventListener('click',()=>{if(busy)return;selected=button.dataset.thesisChapter;persistDraft();editorError='';historyChapter=null;historyItems=null;historyPreview=null;render();}));
   $('[data-thesis-history]')?.addEventListener('click',()=>void mutate(async()=>{

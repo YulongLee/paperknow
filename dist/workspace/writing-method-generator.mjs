@@ -12,7 +12,7 @@ const abortError=()=>Object.assign(new Error('页面已切换'),{name:'AbortErro
 export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getContextKey,getProjectRef=()=>'',onApply,onJobChange,onCommandChange,onPreviewChange,pendingPreview=null,pendingJobId=null,pendingContextKey=null,pendingClientKey=null,isCurrent=()=>true}={}){
  if(!container)throw new TypeError('缺少方法建议生成区域');
  const doc=container.ownerDocument,win=doc.defaultView;
- let alive=true,opened=false,epoch=0,timer=null,busy=false,user=null,accountId=null,cap=null,quote=null,item=null,snapshot=null,contextKey=pendingContextKey,jobId=pendingJobId||null,clientKey=pendingClientKey||null,commandPending=!!pendingClientKey,consent=false,disclosureOpen=false,ambiguous=!!pendingClientKey&&!pendingJobId,message='',error='',loadError=false,applied=false,previewText=typeof pendingPreview?.text==='string'?pendingPreview.text:'',previewJobId=pendingPreview?.jobId?String(pendingPreview.jobId):null;
+ let alive=true,opened=false,direct=false,epoch=0,timer=null,busy=false,user=null,accountId=null,cap=null,quote=null,item=null,snapshot=null,contextKey=pendingContextKey,jobId=pendingJobId||null,clientKey=pendingClientKey||null,commandPending=!!pendingClientKey,consent=false,disclosureOpen=false,ambiguous=!!pendingClientKey&&!pendingJobId,message='',error='',loadError=false,applied=false,previewText=typeof pendingPreview?.text==='string'?pendingPreview.text:'',previewJobId=pendingPreview?.jobId?String(pendingPreview.jobId):null;
  let submitting=false,startedAt=null,clockTimer=null,syncError=false,backgroundReading=false;
  let projectRef='';try{const pending=JSON.parse(pendingContextKey);if(typeof pending?.projectRef==='string'&&typeof pending?.contextKey==='string'&&Object.keys(pending).length===2)projectRef=pending.projectRef;}catch{}
  const controllers=new Set();
@@ -100,7 +100,7 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
     if(drift)body+='<p class="writing-outline-ai-warning writing-method-ai-warning" role="status">论文主题或研究资料已有变化。请先核对当前信息，再重新生成；这份结果不会直接替换当前补充说明。</p>';
     if(item||submitting)body+=progressMarkup();
     if(completed)body+=`<div class="writing-outline-ai-preview writing-method-ai-preview"><label for="writing-method-ai-result">拟开展的研究方法建议（可编辑）</label><textarea id="writing-method-ai-result" data-scroll-key="writing-method-ai-preview" rows="12" maxlength="12000">${esc(text)}</textarea><p>生成内容尚未应用。你可以先修改建议，再点击“填入补充说明”。该方案仅供拟开展研究参考，不代表已经完成研究。</p></div>`;
-    if(quote&&!item){body+=`<div class="writing-outline-ai-charge writing-method-ai-charge"><strong>${esc(costText())}</strong><details class="generation-disclosure" data-method-ai-disclosure ${disclosureOpen?'open':''}><summary data-method-ai-disclosure-summary tabindex="0">费用与资料说明<span class="generation-disclosure-hint">查看详情</span></summary><div class="generation-disclosure-body"><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；方法建议与后续提纲、正文生成分别计费。</p><p>选中输入及生成结果会由阿里云内容安全服务审核。</p><label class="writing-outline-ai-consent writing-method-ai-consent"><input type="checkbox" data-method-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容交由 AI 服务处理以生成拟开展的研究方案，并确认本次费用。</label></div></details></div>`;}
+    if(quote&&!item&&!direct){body+=`<div class="writing-outline-ai-charge writing-method-ai-charge"><strong>${esc(costText())}</strong><details class="generation-disclosure" data-method-ai-disclosure ${disclosureOpen?'open':''}><summary data-method-ai-disclosure-summary tabindex="0">费用与资料说明<span class="generation-disclosure-hint">查看详情</span></summary><div class="generation-disclosure-body"><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；方法建议与后续提纲、正文生成分别计费。</p><p>选中输入及生成结果会由阿里云内容安全服务审核。</p><label class="writing-outline-ai-consent writing-method-ai-consent"><input type="checkbox" data-method-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容交由 AI 服务处理以生成拟开展的研究方案，并确认本次费用。</label></div></details></div>`;}
     body+='<div class="writing-outline-ai-actions writing-method-ai-actions">';
     if(running)body+=`<button type="button" class="btn secondary" data-method-ai-refresh ${busy?'disabled':''}>读取最新状态</button><button type="button" class="btn secondary" data-method-ai-cancel ${busy?'disabled':''}>停止生成</button>`;
     else if(completed)body+=`<button type="button" class="btn primary" data-method-ai-apply ${busy||drift||!text.trim()?'disabled':''}>${applied?'再次填入补充说明':'填入补充说明'}</button><button type="button" class="btn secondary" data-method-ai-new ${busy?'disabled':''}>重新生成</button>`;
@@ -122,8 +122,8 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
   $('[data-method-ai-consent]')?.addEventListener('change',event=>{consent=event.target.checked;const button=$('[data-method-ai-start]');if(button)button.disabled=busy||!consent||!contextMatches();});
   $('[data-method-ai-start]')?.addEventListener('click',()=>void start());
   $('[data-method-ai-requote]')?.addEventListener('click',()=>void prepare());
-  $('[data-method-ai-new]')?.addEventListener('click',()=>void prepare({newCommand:true}));
-  $('[data-method-ai-reload]')?.addEventListener('click',()=>void (!user||loadError||jobId&&!item||commandPending&&!item?open({fresh:true}):prepare()));
+  $('[data-method-ai-new]')?.addEventListener('click',()=>void prepare({newCommand:true,generate:direct}));
+  $('[data-method-ai-reload]')?.addEventListener('click',()=>void (direct?generate():!user||loadError||jobId&&!item||commandPending&&!item?open({fresh:true}):prepare()));
   $('[data-method-ai-refresh]')?.addEventListener('click',()=>void refresh());
   $('[data-method-ai-cancel]')?.addEventListener('click',()=>void cancel());
   $('[data-method-ai-apply]')?.addEventListener('click',()=>void apply());
@@ -147,19 +147,21 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
   if(!validThesisQuote(value))throw Error('费用信息不完整或已过期，请重新获取费用。');
   quote=value;if(!preserveCommand)clientKey=win.crypto.randomUUID();consent=true;ambiguous=preserveCommand&&commandPending;message=preserveCommand?'上次任务尚未确认创建。请重新确认费用后重试同一任务；若后台已接收，会读取原任务。':'费用已就绪，可直接点击“生成方法建议”。';
  }
- async function prepare({newCommand=false}={}){
-  if(ambiguous&&!newCommand){message='请先重试本次提交以确认结果，避免重复创建任务。';render();return;}
-  return run(async token=>{
-   await owner(token);const brief=getSnapshot?.();if(!brief||!String(brief.title||'').trim())throw Error('请先填写论文主题，再生成方法建议。');
+ async function prepareSnapshot(token){
+   const brief=getSnapshot?.();if(!brief||!String(brief.title||'').trim())throw Error('请先填写论文主题，再生成方法建议。');
    if(commandPending){await onCommandChange?.(null,{contextKey});if(!usable(token))return;}
    snapshot=structuredClone(brief);snapshot.outline=[];snapshot.bodySections=[];bindProject();item=null;jobId=null;quote=null;clientKey=null;commandPending=false;ambiguous=false;applied=false;loadError=false;previewText='';previewJobId=null;startedAt=null;syncError=false;notifyPreview();notifyJob();
    await loadQuote(token);
-  });
  }
- async function open({fresh=false}={}){
+ async function prepare({newCommand=false,generate=false}={}){
+  if(ambiguous&&!newCommand){message='请先读取原任务状态，避免重复创建任务。';render();return;}
+  if(generate)direct=true;
+  return run(async token=>{await owner(token);await prepareSnapshot(token);if(generate&&usable(token))await submit(token);},{submission:generate});
+ }
+ async function open({fresh=false,generate=false,reuseExisting=false}={}){
   if(!current())return;
   const reauthenticate=fresh||loadError||!!accountId;
-  opened=true;epoch++;busy=true;backgroundReading=false;submitting=false;error='';loadError=false;message='';clearPoll();clearClock();abortRequests();const token=epoch;render();
+  opened=true;epoch++;busy=true;backgroundReading=false;submitting=generate;error='';loadError=false;message='';clearPoll();clearClock();abortRequests();const token=epoch;render();
   try{
    const next=await authenticate({fresh:reauthenticate,token});if(!usable(token))return;
    if(accountId&&String(next?.id)!==accountId)changedAccount();
@@ -177,16 +179,16 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
     const brief=getSnapshot?.();if(!brief||!String(brief.title||'').trim())throw Error('请先填写论文主题，再生成方法建议。');
     snapshot=structuredClone(brief);snapshot.outline=[];snapshot.bodySections=[];bindProject();item=null;await loadQuote(token);
    }
+   if(generate&&item&&!active(item)&&(!reuseExisting||applied))await prepareSnapshot(token);
+   if(generate&&usable(token)&&quote&&!item)await submit(token);
   }catch(failure){if(usable(token)&&failure.name!=='AbortError'){loadError=true;setError(failure);}}
-  finally{if(usable(token)){busy=false;render();schedule();}}
+  finally{if(usable(token)){busy=false;submitting=false;render();schedule();}}
  }
- async function start(){
-  if(!consent||!quote)return;if(!contextMatches()){setError('论文主题或研究资料已变化，请重新核对信息并生成。');render();return;}
-  return run(async token=>{
+ async function submit(token){
    await owner(token);
    if(!consent||!contextMatches())throw Error('论文信息已变化，请重新核对并生成。');
    if(!validThesisQuote(quote)&&!ambiguous){quote=null;throw Error('费用确认已过期，请重新获取费用。');}
-   await onCommandChange?.(clientKey,{contextKey});if(!usable(token))return;commandPending=true;if(!contextMatches())throw Error('保存期间论文信息已变化，请重新核对后再生成。');
+   await onCommandChange?.(clientKey,{contextKey});if(!usable(token))return;commandPending=true;await owner(token);if(!usable(token))return;if(!contextMatches()||!validThesisQuote(quote))throw Error('保存期间论文信息或本次用量已变化，请重新生成。');
    try{
     const value=await request('/theses/methods',{snapshot,...projectPayload(),clientKey,billingToken:quote.token,consent:true},token);takeItem(value.item);quote=null;consent=false;ambiguous=false;message='已提交方法建议生成，原有补充说明保持不变。';
    }catch(failure){
@@ -194,8 +196,12 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
     else{ambiguous=false;quote=null;consent=false;}
     throw failure;
    }
-  },{submission:true});
  }
+ async function start(){
+  if(!consent||!quote)return;if(!contextMatches()){setError('论文主题或研究资料已变化，请重新核对信息并生成。');render();return;}
+  return run(submit,{submission:true});
+ }
+ async function generate({reuseExisting=false}={}){if(!current()||busy&&!backgroundReading)return;direct=true;return open({fresh:true,generate:true,reuseExisting});}
  async function read(token){await owner(token);if(!jobId)return;const expected=jobId,value=await request('/theses/methods/'+encodeURIComponent(expected),undefined,token);takeItem(value.item,expected);}
  async function refresh(){return run(async token=>{await read(token);message='已读取最新任务状态。';},{reading:true});}
  async function cancel(){return run(async token=>{await owner(token);if(!jobId||!active(item))return;const expected=jobId,value=await request('/theses/methods/'+encodeURIComponent(expected)+'/cancel',{},token);takeItem(value.item,expected);message='已发送停止请求，原有补充说明保持不变。';});}
@@ -214,5 +220,5 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
  }
  function visibility(){if(!doc.hidden)schedule();scheduleClock();}
  doc.addEventListener('visibilitychange',visibility);
- return {open,dispose(){if(!alive)return;alive=false;opened=false;epoch++;clearPoll();clearClock();abortRequests();doc.removeEventListener('visibilitychange',visibility);},busy:()=>current()&&busy,hasWork:()=>current()&&busy};
+ return {open,generate,dispose(){if(!alive)return;alive=false;opened=false;epoch++;clearPoll();clearClock();abortRequests();doc.removeEventListener('visibilitychange',visibility);},busy:()=>current()&&busy,hasWork:()=>current()&&(busy||active(item))};
 }

@@ -12,7 +12,7 @@ const abortError=()=>Object.assign(new Error('页面已切换'),{name:'AbortErro
 export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getContextKey,getProjectRef=()=>'',onApply,onJobChange,onCommandChange,pendingJobId=null,pendingContextKey=null,pendingClientKey=null,isCurrent=()=>true}={}){
  if(!container)throw new TypeError('缺少提纲生成区域');
  const doc=container.ownerDocument,win=doc.defaultView;
- let alive=true,opened=false,epoch=0,timer=null,busy=false,user=null,accountId=null,cap=null,quote=null,item=null,snapshot=null,contextKey=pendingContextKey,jobId=pendingJobId||null,clientKey=pendingClientKey||null,commandPending=!!pendingClientKey,consent=false,disclosureOpen=false,ambiguous=!!pendingClientKey&&!pendingJobId,message='',error='',loadError=false,applied=false;
+ let alive=true,opened=false,direct=false,epoch=0,timer=null,busy=false,user=null,accountId=null,cap=null,quote=null,item=null,snapshot=null,contextKey=pendingContextKey,jobId=pendingJobId||null,clientKey=pendingClientKey||null,commandPending=!!pendingClientKey,consent=false,disclosureOpen=false,ambiguous=!!pendingClientKey&&!pendingJobId,message='',error='',loadError=false,applied=false;
  let submitting=false,startedAt=null,clockTimer=null,syncError=false,backgroundReading=false,renderedProgressSignature=null;
  let projectRef='';try{const pending=JSON.parse(pendingContextKey);if(typeof pending?.projectRef==='string'&&typeof pending?.contextKey==='string'&&Object.keys(pending).length===2)projectRef=pending.projectRef;}catch{}
  const controllers=new Set();
@@ -98,7 +98,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
     if(drift)body+='<p class="writing-outline-ai-warning" role="status">论文主题或研究资料已有变化。请先核对当前信息，再重新生成；这份结果不会直接替换当前提纲。</p>';
     if(item||submitting)body+=progressMarkup();
     if(text)body+=`<div class="writing-outline-ai-preview"><label for="writing-outline-ai-result">AI 提纲预览</label><textarea id="writing-outline-ai-result" data-scroll-key="writing-outline-ai-preview" readonly rows="14">${esc(text)}</textarea><p>生成内容尚未应用。使用后，你仍可上传其他提纲或逐项编辑章节。</p></div>`;
-    if(quote&&!item){body+=`<div class="writing-outline-ai-charge"><strong>${esc(costText())}</strong><details class="generation-disclosure" data-outline-ai-disclosure ${disclosureOpen?'open':''}><summary data-outline-ai-disclosure-summary tabindex="0">费用与资料说明<span class="generation-disclosure-hint">查看详情</span></summary><div class="generation-disclosure-body"><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；提纲生成与后续正文生成分别计费。</p><p>选中输入及生成结果会由阿里云内容安全服务审核。</p><label class="writing-outline-ai-consent"><input type="checkbox" data-outline-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容交由 AI 服务处理，并确认本次费用。</label></div></details></div>`;}
+    if(quote&&!item&&!direct){body+=`<div class="writing-outline-ai-charge"><strong>${esc(costText())}</strong><details class="generation-disclosure" data-outline-ai-disclosure ${disclosureOpen?'open':''}><summary data-outline-ai-disclosure-summary tabindex="0">费用与资料说明<span class="generation-disclosure-hint">查看详情</span></summary><div class="generation-disclosure-body"><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；提纲生成与后续正文生成分别计费。</p><p>选中输入及生成结果会由阿里云内容安全服务审核。</p><label class="writing-outline-ai-consent"><input type="checkbox" data-outline-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容交由 AI 服务处理，并确认本次费用。</label></div></details></div>`;}
     body+='<div class="writing-outline-ai-actions">';
     if(running)body+=`<button type="button" class="btn secondary" data-outline-ai-refresh ${busy?'disabled':''}>读取最新状态</button><button type="button" class="btn secondary" data-outline-ai-cancel ${busy?'disabled':''}>停止生成</button>`;
     else if(text)body+=`<button type="button" class="btn primary" data-outline-ai-apply ${busy||drift?'disabled':''}>${applied?'再次使用这份 AI 提纲':'使用这份 AI 提纲'}</button><button type="button" class="btn secondary" data-outline-ai-new ${busy?'disabled':''}>重新生成</button>`;
@@ -119,8 +119,8 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
   $('[data-outline-ai-consent]')?.addEventListener('change',event=>{consent=event.target.checked;const button=$('[data-outline-ai-start]');if(button)button.disabled=busy||!consent||!contextMatches();});
   $('[data-outline-ai-start]')?.addEventListener('click',()=>void start());
   $('[data-outline-ai-requote]')?.addEventListener('click',()=>void prepare());
-  $('[data-outline-ai-new]')?.addEventListener('click',()=>void prepare({newCommand:true}));
-  $('[data-outline-ai-reload]')?.addEventListener('click',()=>void (!user||loadError||jobId&&!item||commandPending&&!item?open({fresh:true}):prepare()));
+  $('[data-outline-ai-new]')?.addEventListener('click',()=>void prepare({newCommand:true,generate:direct}));
+  $('[data-outline-ai-reload]')?.addEventListener('click',()=>void (direct?generate():!user||loadError||jobId&&!item||commandPending&&!item?open({fresh:true}):prepare()));
   $('[data-outline-ai-refresh]')?.addEventListener('click',()=>void refresh());
   $('[data-outline-ai-cancel]')?.addEventListener('click',()=>void cancel());
   $('[data-outline-ai-apply]')?.addEventListener('click',()=>void apply());
@@ -144,19 +144,21 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
   if(!validThesisQuote(value))throw Error('费用信息不完整或已过期，请重新获取费用。');
   quote=value;if(!preserveCommand)clientKey=win.crypto.randomUUID();consent=true;ambiguous=preserveCommand&&commandPending;message=preserveCommand?'上次任务尚未确认创建。请重新确认费用后重试同一任务；若后台已接收，会读取原任务。':'费用已就绪，可直接点击“生成提纲”。';
  }
- async function prepare({newCommand=false}={}){
-  if(ambiguous&&!newCommand){message='请先重试本次提交以确认结果，避免重复创建任务。';render();return;}
-  return run(async token=>{
-   await owner(token);const brief=getSnapshot?.();if(!brief||!String(brief.title||'').trim())throw Error('请先填写论文主题，再生成提纲。');
+ async function prepareSnapshot(token){
+   const brief=getSnapshot?.();if(!brief||!String(brief.title||'').trim())throw Error('请先填写论文主题，再生成提纲。');
    if(commandPending){await onCommandChange?.(null,{contextKey});if(!usable(token))return;}
    snapshot=structuredClone(brief);snapshot.outline=[];snapshot.bodySections=[];bindProject();item=null;jobId=null;quote=null;clientKey=null;commandPending=false;ambiguous=false;applied=false;loadError=false;startedAt=null;syncError=false;notifyJob();
    await loadQuote(token);
-  });
  }
- async function open({fresh=false}={}){
+ async function prepare({newCommand=false,generate=false}={}){
+  if(ambiguous&&!newCommand){message='请先读取原任务状态，避免重复创建任务。';render();return;}
+  if(generate)direct=true;
+  return run(async token=>{await owner(token);await prepareSnapshot(token);if(generate&&usable(token))await submit(token);},{submission:generate});
+ }
+ async function open({fresh=false,generate=false,reuseExisting=false}={}){
   if(!current())return;
   const reauthenticate=fresh||loadError||!!accountId;
-  opened=true;epoch++;busy=true;backgroundReading=false;submitting=false;error='';loadError=false;message='';clearPoll();clearClock();abortRequests();const token=epoch;render();
+  opened=true;epoch++;busy=true;backgroundReading=false;submitting=generate;error='';loadError=false;message='';clearPoll();clearClock();abortRequests();const token=epoch;render();
   try{
    const next=await authenticate({fresh:reauthenticate,token});if(!usable(token))return;
    if(accountId&&String(next?.id)!==accountId)changedAccount();
@@ -174,16 +176,16 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
     const brief=getSnapshot?.();if(!brief||!String(brief.title||'').trim())throw Error('请先填写论文主题，再生成提纲。');
     snapshot=structuredClone(brief);snapshot.outline=[];snapshot.bodySections=[];bindProject();item=null;await loadQuote(token);
    }
+   if(generate&&item&&!active(item)&&(!reuseExisting||applied))await prepareSnapshot(token);
+   if(generate&&usable(token)&&quote&&!item)await submit(token);
   }catch(failure){if(usable(token)&&failure.name!=='AbortError'){loadError=true;setError(failure);}}
-  finally{if(usable(token)){busy=false;render();schedule();}}
+  finally{if(usable(token)){busy=false;submitting=false;render();schedule();}}
  }
- async function start(){
-  if(!consent||!quote)return;if(!contextMatches()){setError('论文主题或研究资料已变化，请重新核对信息并生成。');render();return;}
-  return run(async token=>{
+ async function submit(token){
    await owner(token);
    if(!consent||!contextMatches())throw Error('论文信息已变化，请重新核对并生成。');
    if(!validThesisQuote(quote)&&!ambiguous){quote=null;throw Error('费用确认已过期，请重新获取费用。');}
-   await onCommandChange?.(clientKey,{contextKey});if(!usable(token))return;commandPending=true;if(!contextMatches())throw Error('保存期间论文信息已变化，请重新核对后再生成。');
+   await onCommandChange?.(clientKey,{contextKey});if(!usable(token))return;commandPending=true;await owner(token);if(!usable(token))return;if(!contextMatches()||!validThesisQuote(quote))throw Error('保存期间论文信息或本次用量已变化，请重新生成。');
    try{
     const value=await request('/theses/outlines',{snapshot,...projectPayload(),clientKey,billingToken:quote.token,consent:true},token);takeItem(value.item);quote=null;consent=false;ambiguous=false;message='已提交提纲生成，原有提纲保持不变。';
    }catch(failure){
@@ -191,8 +193,12 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
     else{ambiguous=false;quote=null;consent=false;}
     throw failure;
    }
-  },{submission:true});
  }
+ async function start(){
+  if(!consent||!quote)return;if(!contextMatches()){setError('论文主题或研究资料已变化，请重新核对信息并生成。');render();return;}
+  return run(submit,{submission:true});
+ }
+ async function generate({reuseExisting=false}={}){if(!current()||busy&&!backgroundReading)return;direct=true;return open({fresh:true,generate:true,reuseExisting});}
  async function read(token){await owner(token);if(!jobId)return;const expected=jobId,value=await request('/theses/outlines/'+encodeURIComponent(expected),undefined,token);takeItem(value.item,expected);}
  async function refresh(){return run(async token=>{await read(token);message='已读取最新任务状态。';},{reading:true});}
  async function cancel(){return run(async token=>{await owner(token);if(!jobId||!active(item))return;const expected=jobId,value=await request('/theses/outlines/'+encodeURIComponent(expected)+'/cancel',{},token);takeItem(value.item,expected);message='已发送停止请求，原有提纲保持不变。';});}
@@ -211,5 +217,5 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
  }
  function visibility(){if(!doc.hidden)schedule();scheduleClock();}
  doc.addEventListener('visibilitychange',visibility);
- return {open,dispose(){if(!alive)return;alive=false;opened=false;epoch++;clearPoll();clearClock();abortRequests();doc.removeEventListener('visibilitychange',visibility);},busy:()=>current()&&busy,hasWork:()=>current()&&busy};
+ return {open,generate,dispose(){if(!alive)return;alive=false;opened=false;epoch++;clearPoll();clearClock();abortRequests();doc.removeEventListener('visibilitychange',visibility);},busy:()=>current()&&busy,hasWork:()=>current()&&(busy||active(item))};
 }

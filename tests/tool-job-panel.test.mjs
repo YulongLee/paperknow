@@ -175,3 +175,18 @@ test('submission immediately shows a waiting state and blocks repeated starts un
  const f=fixture(t,{initialJob:running,beforeApi:path=>path==='/tool-runs/jobs'?new Promise(resolve=>{release=resolve;}):Promise.resolve()});await f.panel.open();f.click('[data-tj-start]');await until(()=>!!release);
  assert.match(f.container.querySelector('[data-tj-wait-title]').textContent,/正在提交/);assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);f.click('[data-tj-start]');release();await until(()=>!!f.container.querySelector('[data-tj-refresh]'));assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,1);
 });
+
+for(const source of ['credits','bundle','membership','free'])test('direct tj generation submits once using '+source+' and exposes no fee confirmation',async t=>{
+ const f=fixture(t,{getQuote:()=>({type:'agent',source,creditCost:source==='credits'?10:0,title:'测试用量',token:'direct-token',expiresAt:new Date(Date.now()+60000).toISOString()})});
+ await f.panel.generate();const posts=f.requests.filter(row=>row.path==='/tool-runs/jobs');assert.equal(posts.length,1);assert.equal(posts[0].data.billingToken,'direct-token');assert.equal(posts[0].data.consent,true);assert.ok(posts[0].data.clientKey);assert.equal(f.container.querySelector('[data-tj-consent]'),null);assert.equal(f.container.querySelector('[data-tj-start]'),null);
+});
+test('direct tj generation immediately waits and blocks repeat clicks while checking usage',async t=>{
+ let release;const wait=new Promise(resolve=>release=resolve),f=fixture(t,{beforeApi:async path=>{if(path==='/tool-runs/quote')await wait;}});
+ const first=f.panel.generate();await until(()=>f.panel.busy());assert.equal(f.container.querySelector('[data-tj-result]').getAttribute('aria-busy'),'true');await f.panel.generate();release();await first;assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs').length,1);
+});
+test('direct tj generation displays specific billing errors without reopening a confirmation',async t=>{
+ const f=fixture(t,{beforeApi:async path=>{if(path==='/tool-runs/jobs')throw Object.assign(Error('积分不足，本次需要 10 积分'),{status:402});}});await f.panel.generate();assert.match(f.container.querySelector('[role="alert"]').textContent,/积分不足.*10/);assert.equal(f.container.querySelector('[data-tj-start]'),null);assert.ok(f.panel.getState().commandKey);
+});
+test('direct tj generation reuses an active recovered task without requesting or reserving another job',async t=>{
+ const f=fixture(t);f.setJob({id:'job-alice',operation:'ppt',kind:'presentation',status:'running',totalUnits:3,completedUnits:1});await f.panel.generate();await f.panel.generate();assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs').length,1);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,1);
+});

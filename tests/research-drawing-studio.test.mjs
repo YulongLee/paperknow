@@ -10,14 +10,14 @@ const until=async check=>{for(let i=0;i<120;i++){if(check())return;await new Pro
 const baseForm=()=>({title:'【合成验收】研究技术路线',prompt:'从研究问题、资料收集、分析方法到研究结论，画一张清晰的流程示意图。',language:'中文',figureType:'flowchart',aspectRatio:'16:9',palette:'academic'});
 const imageOutput=()=>({text:'科研图片已生成，请核对。',image:{artifactId:'image-alice',downloadUrl:'/api/artifacts/image-alice/download',fileName:'合成验收.png',mimeType:'image/png',width:1600,height:900},artifacts:[{id:'image-alice',name:'合成验收.png',kind:'png',role:'image',downloadUrl:'/api/artifacts/image-alice/download'}],sourceIds:[],requiresReview:true});
 const completedJob=()=>({id:'job-alice',kind:'research',operation:'image',status:'completed',title:'【合成验收】科研流程',createdAt:new Date().toISOString(),completedUnits:1,totalUnits:1,snapshot:researchDrawingSnapshot(baseForm()),output:imageOutput()});
-function fixture(t,{mode='basic',owner='alice',jobs=[],stored,storageFails=false,artifactBlob,initialize}={}){
+function fixture(t,{mode='basic',owner='alice',jobs=[],stored,storageFails=false,artifactBlob,initialize,beforeApi}={}){
  const dom=new JSDOM('<main class="dashboard"><div id="drawing"></div></main>',{url:'https://paperknow.cn/workspace.html#category/research'}),w=dom.window,container=w.document.querySelector('#drawing'),requests=[],downloads=[],created=[],revoked=[],notices=[];
  let identity=owner,job=completedJob(),blobRead=artifactBlob||(()=>Promise.resolve(new Blob([pngFixture(1600,900)],{type:'application/octet-stream'})));
  w.URL.createObjectURL=blob=>{created.push(blob);return 'blob:https://paperknow.cn/fixture-'+created.length;};w.URL.revokeObjectURL=value=>revoked.push(value);w.HTMLAnchorElement.prototype.click=function(){downloads.push({href:this.href,name:this.download});};
  if(stored!==undefined)w.localStorage.setItem(researchDrawingDraftKey+':'+mode+':'+(owner||'guest'),stored);
  if(storageFails)w.Storage.prototype.setItem=function(){throw Error('fixture storage full');};
  const api=async(path,data,options={})=>{requests.push({path,data:data===undefined?undefined:structuredClone(data),headers:options.headers,owner:identity});
-  if(path==='/auth/me'){if(!identity)throw Object.assign(Error('请先登录'),{status:401});return {user:{id:identity}};}
+  await beforeApi?.(path,data);if(path==='/auth/me'){if(!identity)throw Object.assign(Error('请先登录'),{status:401});return {user:{id:identity}};}
   if(path==='/tool-runs/jobs'&&data===undefined)return {items:structuredClone(jobs)};
   if(path==='/tool-runs/capabilities')return {ready:true,researchImages:{ready:true}};
   if(path==='/tool-runs/quote')return {type:'agent',source:'credits',creditCost:10,title:'科研绘图',token:'fixture-image-quote',expiresAt:new Date(Date.now()+60000).toISOString()};
@@ -68,15 +68,14 @@ test('professional domain choices send their own semantic category without claim
  const f=fixture(t,{mode:'professional'});await f.mount.ready;assert.equal(f.container.querySelectorAll('details[data-rd-group]').length,12);f.click('[data-rd-figure="cell-mechanism"]');f.click('[data-rd-example]');const value=f.mount.getSnapshot();assert.equal(value.mode,'professional');assert.equal(value.context.categoryId,'biomedicine');assert.equal(value.context.figureType,'cell-mechanism');assert.match(value.text,/细胞信号/);assert.doesNotMatch(f.container.textContent,/已接入.*(?:Blender|AutoCAD|BioRender)|可运行仿真/);assert.match(f.container.textContent,/不执行仿真/);
 });
 
-test('drawing generation previews its quote with default confirmation, submits only after its explicit start click, and adopts an owned binary',async t=>{
- const f=fixture(t);await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-consent]'));assert.match(f.container.textContent,/10 科研积分/);assert.equal(f.container.querySelector('[data-tj-consent]').checked,true);assert.equal(f.container.querySelector('[data-tj-start]').disabled,false);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);
- f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-apply]'));const starts=f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data);assert.equal(starts.length,1);assert.equal(starts[0].data.operation,'image');assert.equal(starts[0].data.kind,'research');assert.equal(starts[0].data.snapshot.text,baseForm().prompt);assert.equal(starts[0].headers['X-PaperKnow-User'],'alice');
+test('drawing directly generates once and adopts an owned binary',async t=>{
+ const f=fixture(t);await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-apply]'));const starts=f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data);assert.equal(starts.length,1);assert.equal(starts[0].data.operation,'image');assert.equal(starts[0].data.kind,'research');assert.equal(starts[0].data.snapshot.text,baseForm().prompt);assert.equal(starts[0].headers['X-PaperKnow-User'],'alice');
  f.click('[data-tj-apply]');await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));assert.equal(f.created.length,1);assert.equal(f.created[0].type,'image/png');assert.match(f.container.querySelector('[data-rd-generated-image]').src,/^blob:/);assert.equal(f.requests.find(row=>row.path.startsWith('/api/artifacts/')).headers['X-PaperKnow-User'],'alice');assert.match(f.requests.find(row=>row.path.startsWith('/api/artifacts/')).path,/expectedUserId=alice/);
  f.click('[data-rd-download]');await until(()=>f.downloads.length===1);assert.equal(f.downloads[0].name,'合成验收.png');const raw=f.w.localStorage.getItem(researchDrawingDraftKey+':basic:alice');assert.doesNotMatch(raw,/blob:|provider\.example|imageBase64|image-alice|downloadUrl|fixture-image/);f.mount.dispose();assert.equal(f.revoked.length,1);
 });
 
-test('changing a prompt after a fee quote immediately removes consent and stops stale submission',async t=>{
- const f=fixture(t);await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-consent]'));assert.equal(f.container.querySelector('[data-tj-consent]').checked,true);assert.equal(f.container.querySelector('[data-tj-start]').disabled,false);const before=f.requests.length;f.enter('[data-rd-prompt]','修改后的研究问题和绘图内容');assert.equal(f.container.querySelector('[data-tj-consent]').checked,false);assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);assert.match(f.container.textContent,/输入已有修改/);assert.equal(f.requests.length,before);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);
+test('changing a prompt during usage checking stops stale direct submission',async t=>{
+ let release;const f=fixture(t,{beforeApi:async path=>{if(path==='/tool-runs/quote')await new Promise(resolve=>release=resolve);}});await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!release);f.enter('[data-rd-prompt]','修改后的研究问题和绘图内容');release();await until(()=>!f.container.querySelector('[data-tj-result-window]')||f.container.querySelector('[data-tj-result-window]').getAttribute('aria-busy')!=='true');assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);assert.equal(f.container.querySelector('[data-rd-prompt]').value,'修改后的研究问题和绘图内容');
 });
 
 test('a full browser store stops before charging or submitting and preserves editable input',async t=>{
@@ -97,7 +96,7 @@ test('account changes while downloading a preview clear private history and neve
 });
 
 test('account changes also clear a recovered private prompt and any fee or result content from the old task panel',async t=>{
- const f=fixture(t,{jobs:[completedJob()]});await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-consent]'));assert.match(f.container.querySelector('[data-rd-prompt]').value,/研究问题/);f.setOwner('bob');f.click('[data-rd-history-refresh]');await until(()=>/账户已变化/.test(f.container.querySelector('[data-rd-status]').textContent));assert.equal(f.container.querySelector('[data-rd-prompt]').value,'');assert.equal(f.container.querySelector('[data-rd-title]').value,'');assert.equal(f.container.querySelector('[data-rd-job]').textContent,'');assert.equal(f.container.querySelector('[data-rd-job]').hidden,true);assert.doesNotMatch(f.container.textContent,/合成验收.*研究技术路线|fixture-image-quote/);
+ const f=fixture(t,{jobs:[completedJob()]});await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-apply]'));assert.match(f.container.querySelector('[data-rd-prompt]').value,/研究问题/);f.setOwner('bob');f.click('[data-rd-history-refresh]');await until(()=>/账户已变化/.test(f.container.querySelector('[data-rd-status]').textContent));assert.equal(f.container.querySelector('[data-rd-prompt]').value,'');assert.equal(f.container.querySelector('[data-rd-title]').value,'');assert.equal(f.container.querySelector('[data-rd-job]').textContent,'');assert.equal(f.container.querySelector('[data-rd-job]').hidden,true);assert.doesNotMatch(f.container.textContent,/合成验收.*研究技术路线|fixture-image-quote/);
 });
 
 test('leaving while an image body is arriving never paints or downloads its late result',async t=>{
@@ -155,24 +154,10 @@ test('professional search understands software/domain/scene combinations and cle
 });
 
 
-test('drawing opt-out survives same-input panel redraws and prevents even a directly dispatched start action',async t=>{
- const f=fixture(t);await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-consent]'));
- const choice=f.container.querySelector('[data-tj-consent]');assert.equal(choice.checked,true);choice.checked=false;choice.dispatchEvent(new f.w.Event('change',{bubbles:true}));
- assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);
- f.enter('[data-rd-title]',baseForm().title);
- assert.equal(f.container.querySelector('[data-tj-consent]').checked,false,'redrawing an unchanged snapshot must not undo an explicit opt-out');
- assert.equal(f.container.querySelector('[data-tj-start]').disabled,true);
- f.container.querySelector('[data-tj-start]').dispatchEvent(new f.w.MouseEvent('click',{bubbles:true}));
- await until(()=>!!f.container.querySelector('.tool-job-error'));
- assert.equal(f.container.querySelector('[data-tj-consent]').checked,false);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);
- f.consent();assert.equal(f.container.querySelector('[data-tj-start]').disabled,false);f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-apply]'));
- assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,1);
+test('drawing double-clicks while checking usage cannot submit duplicate jobs',async t=>{
+ let release;const f=fixture(t,{beforeApi:async path=>{if(path==='/tool-runs/quote')await new Promise(resolve=>release=resolve);}});await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!release);f.click('[data-rd-generate]');await new Promise(resolve=>setTimeout(resolve,10));release();await until(()=>!!f.container.querySelector('[data-tj-apply]'));assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,1);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,1);assert.equal(f.container.querySelector('[data-tj-consent]'),null);
 });
 
-test('professional image generation inherits the ready default confirmation without auto-submitting its quote',async t=>{
- const f=fixture(t,{mode:'professional'});await f.mount.ready;f.click('[data-rd-figure="cell-mechanism"]');f.click('[data-rd-example]');f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-consent]'));
- assert.equal(f.container.querySelector('[data-tj-consent]').checked,true);assert.equal(f.container.querySelector('[data-tj-start]').disabled,false);assert.match(f.container.textContent,/10 科研积分/);
- assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,1);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);
- f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-apply]'));
- const starts=f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data);assert.equal(starts.length,1);assert.equal(starts[0].data.operation,'image');assert.equal(starts[0].data.snapshot.mode,'professional');assert.equal(starts[0].data.snapshot.context.figureType,'cell-mechanism');assert.equal(starts[0].data.consent,true);
+test('professional image generation directly submits the chosen scene once',async t=>{
+ const f=fixture(t,{mode:'professional'});await f.mount.ready;f.click('[data-rd-figure="cell-mechanism"]');f.click('[data-rd-example]');f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-apply]'));const starts=f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data);assert.equal(starts.length,1);assert.equal(starts[0].data.operation,'image');assert.equal(starts[0].data.snapshot.mode,'professional');assert.equal(starts[0].data.snapshot.context.figureType,'cell-mechanism');assert.equal(starts[0].data.consent,true);assert.equal(f.container.querySelector('[data-tj-start]'),null);
 });

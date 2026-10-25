@@ -53,8 +53,7 @@ bootstrap.close();
 
 async function adopt(f){
  f.$('#outline-ai-generate').click();await settle();
- const consent=f.$('[data-outline-ai-consent]');if(consent){consent.checked=true;consent.dispatchEvent(new window.Event('change'));}
- const start=f.$('[data-outline-ai-start]');assert.ok(start,'The actual outline controller must offer its generation action');assert.equal(start.disabled,false);start.click();await settle();
+ assert.equal(f.$('[data-outline-ai-start]'),null);
  const apply=f.$('[data-outline-ai-apply]');assert.ok(apply,'The actual controller must reach a completed preview');assert.equal(apply.disabled,false);apply.click();await settle();
 }
 const savedFlags=row=>flags(row?.presentation);

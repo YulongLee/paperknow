@@ -85,9 +85,7 @@ export async function mountOnlineWorkspace(root,requestedView,ctx={},params=new 
   const valid=quote&&quote.type===type&&['free','membership','bundle','credits'].includes(quote.source)&&typeof quote.title==='string'&&quote.title.trim()&&typeof quote.token==='string'&&quote.token.length>0&&quote.token.length<=4096&&Number.isSafeInteger(quote.creditCost)&&quote.creditCost>=0&&(quote.source==='credits'?quote.creditCost>0:quote.creditCost===0)&&Number.isFinite(Date.parse(quote.expiresAt));
   if(!valid)throw Error('暂时无法核对本次任务费用，请稍后重试。');
   if(Date.parse(quote.expiresAt)<=Date.now())throw Error('本次报价已过期，请重新提交并确认最新费用。');
-  const charge=quote.source==='free'?'本次免费，不扣除积分或权益次数。':quote.source==='credits'?`本次使用 ${quote.creditCost} 科研积分。`:`本次使用${quote.source==='membership'?'会员':'套餐'}权益 1 次，不扣科研积分。`;
-  const accepted=await ask(`${retry?'重新执行':'提交'}「${quote.title}」：${charge}提交后先预占，成功后结算；失败或取消会释放预占。${retry?'本次重试将按新报价结算。':''}\n选中输入及生成结果会由阿里云内容安全服务审核。`,{title:'确认任务与费用',cancel:'取消提交',confirm:retry?'确认重试':'确认提交'});
-  if(!accepted||!alive)return null;
+  if(!alive)return null;
   if(Date.parse(quote.expiresAt)<=Date.now())throw Error('本次报价已过期，请重新提交并确认最新费用。');
   return {billingQuote:quote.token};
  }
