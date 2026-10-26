@@ -43,11 +43,12 @@ export function mountOnlineThesis({id,ctx={},container=document.querySelector('.
 export function mountThesisLibrary({ctx={},container=document.querySelector('.dashboard')}={}){
  return mountThesisStage({ctx,container,standalone:true,library:true});
 }
-export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjectRef=()=>'',getTemplateFileId,onTemplateSaved,onSaved,onReferences,onTemplateSettings,standalone=false,library=false}={}){
+export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjectRef=()=>'',getTemplateFileId,onTemplateSaved,onSaved,onReferences,onTemplateSettings,autoCreate=false,createKey,onCreateKey,standalone=false,library=false}={}){
  for(const previous of [...instances])if(previous.container===container)previous.dispose();
  let alive=true,user=null,item=null,cap=null,busy=false,submittingGeneration=false,timer=null,selected=null,quote=null,generationConsent=false,quoteAction='generate',message='',loadError='',items=[],editorError='',loaded=false,researchEdits=null,historyChapter=null,historyItems=null,historyPreview=null;
  const controllers=new Set(),edits=new Map();
- const saveKey=crypto.randomUUID(),hasProjectSelector=typeof arguments[0]?.getProjectRef==='function';
+ const saveKey=createKey||crypto.randomUUID(),hasProjectSelector=typeof arguments[0]?.getProjectRef==='function';
+ let savingConfirmed=false;
  const resolvedProjectId=()=>hasProjectSelector?resolveAccountProjectId(String(getProjectRef()||''),user?.id):item?.projectId||null;
  const projectPayload=()=>{const projectId=resolvedProjectId();return projectId||hasProjectSelector?{projectId}:{};};
  let commandKey=null,commandSignature='',pendingFocus=null,researchBaseVersion=null,draftRestored=false,draftRevision=null,draftStorageError='';
@@ -208,6 +209,14 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  function snapshotSummary(snapshot){
   const profile=snapshot.profile||{},materials=snapshot.materials||[],refs=snapshot.references||[],leaves=(snapshot.outline||[]).filter(row=>!isOutlineReferenceChapter(row)).flatMap(row=>row.sections?.length?row.sections:[row]),presentations=leaves.map(row=>({title:row.title,labels:snapshot.requirements?.contentMode==='rich'?[['table','数据表'],['image','图片'],['formula','公式'],['code','代码']].filter(([key])=>row.presentation?.[key]===true).map(([,label])=>label):[]}));
   return `<div class="thesis-summary"><div><small>论文信息总览</small><strong>${escape(snapshot.title||'未填写')}</strong><p>${[profile.level,profile.discipline||profile.major,profile.language].filter(Boolean).map(escape).join(' · ')} · 目标 ${Number(profile.targetWords||0).toLocaleString('zh-CN')} 字</p></div><div class="thesis-summary-counts"><span><b>${snapshot.outline?.length||0}</b>论文章节</span><span><b>${materials.length}</b>研究资料</span><span><b>${refs.length}</b>参考来源</span></div></div><details class="thesis-sources"><summary>核对将保存与使用的研究资料</summary><p>研究问题：${escape(profile.researchQuestion||'暂未补充（可选）')}<br>研究方法：${escape(profile.method||'暂未补充（可选）')}</p>${materials.map(row=>`<div><b>${escape(row.name)}</b><small>${escape(row.purpose||'研究背景')} · ${String(row.text||'').length.toLocaleString('zh-CN')} 字符 · 用户提供</small></div>`).join('')}${refs.map(row=>`<div><b>${escape(row.title)}</b><small>${escape(row.sourceLabel||'用户导入')} · ${row.scope==='abstract'?'含来源摘要（非全文）':row.text?'含参考正文':'仅元数据，不代表已读取原文'} · 未经系统核验</small></div>`).join('')}${!materials.length&&!refs.length?'<p>研究资料与文献正文可选，可先生成待核对初稿，也可补充来源摘要或正文。缺少的数据和依据会保留待补充标记，不会虚构已完成的实验、问卷或统计结果。</p>':''}</details>${presentations.some(row=>row.labels.length)?`<details class="thesis-presentations"><summary>核对逐节呈现选择</summary>${presentations.map(row=>`<p><b>${escape(row.title)}</b>：${row.labels.length?row.labels.join('、'):'段落文字'}</p>`).join('')}</details>`:''}`;
+ }
+ function studioBrief(){
+  const summary=snapshotSummary(item.snapshot||{title:item.title,profile:item.profile,outline:item.outline})+researchForm();
+  return autoCreate&&!standalone?`<details class="thesis-information-drawer" data-thesis-view-key="information-overview"><summary>论文信息总览<span>查看题目、提纲与研究资料</span></summary>${summary}</details>`:summary;
+ }
+ function studioOverview(){
+  const direct=autoCreate&&!standalone,brief=`<section class="thesis-studio-brief" aria-label="论文信息总览">${studioBrief()}</section>`,run=`<aside class="thesis-studio-run" aria-label="撰写与任务进度">${controls()}${progress()}</aside>`;
+  return `<div class="thesis-studio-overview${direct?' thesis-studio-direct':''}">${direct?run+brief:brief+run}</div>`;
  }
  function canonicalSnapshot(value){
   if(!value||typeof value!=='object'||Array.isArray(value))throw Error('前四步信息不完整，请返回核对后重新打开。');
@@ -411,7 +420,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   captureView();
   const prefix=standalone?toolBanner('writing',{title:library?'我的账户论文':'毕业论文',label:library?'AI 写作 · 账户论文':'AI 写作 · 毕业论文',description:'从确认提纲，到分章写作、核对与导出。让每一步研究，都留下可以继续完善的版本。',extraClass:'writing-task-banner writing-task-writing detail-service-banner thesis-studio-banner',actions:`<a class="btn secondary" href="${library?'#tool/writing':'#theses'}">${library?'新建毕业论文':'账户论文'}</a><a class="btn secondary" href="#category/writing">返回 AI 写作</a>`}):'';
   let body='';
-  if(!loaded&&!loadError)body='<div class="thesis-loading" role="status">正在读取账户与服务状态…</div>';
+  if(!loaded&&!loadError)body=`<div class="thesis-loading" role="status">${savingConfirmed?'正在保存已确认的提纲，即将进入正文生成…':'正在读取账户与服务状态…'}</div>`;
   else if(loadError)body=`<section class="thesis-login"><h3>暂时无法读取</h3><p>${escape(loadError)}</p><button type="button" class="btn secondary" data-thesis-reload>重新读取</button></section>`;
   else if(!user)body=loginPanel();
   else if(library)body=items.length?`<div class="thesis-library">${items.map(row=>`<a href="#thesis/${encodeURIComponent(row.id)}"><span class="thesis-symbol">▤</span><div><h2>${escape(row.title||'未命名论文')}</h2><p>${escape(row.profile?.level||'')} · ${escape(row.profile?.discipline||'')} · ${escape(labels[thesisStatus(row)]||'已保存')}</p><small>${escape(row.updatedAt?new Date(row.updatedAt).toLocaleString('zh-CN'):'账户保存')} · 版本 ${Number(row.version)||1}</small></div><span>继续写作 →</span></a>`).join('')}</div>`:'<section class="thesis-login"><span class="thesis-symbol">▤</span><h3>从第一篇账户论文开始</h3><p>完成毕业论文前四步并保存到账户，即可在这里继续写作。</p><a class="btn primary" href="#tool/writing">新建毕业论文</a></section>';
@@ -419,7 +428,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
    let snapshot;try{snapshot=getSnapshot?.();}catch(error){body=`<p class="thesis-error">${escape(error.message)}</p>`;}
    if(snapshot)body=`${snapshotSummary(snapshot)}<section class="thesis-save-account"><div><h3>先保存已确认的信息</h3><p>将以上论文资料保存到当前账户，不会开始生成或扣费。</p></div><button type="button" class="btn primary" data-thesis-create ${busy?'disabled':''}>${busy?'正在保存…':'保存到账户，继续生成'}</button></section>`;
    else if(!body)body='<section class="thesis-login"><h3>请先选择一篇账户论文</h3><p>从账户论文列表打开已有论文，或从毕业论文前四步确认研究信息。</p><a class="btn secondary" href="#theses">查看账户论文</a></section>';
-  }else body=`${snapshotDriftPanel()}${typeof onTemplateSettings!=='function'?`<section class="thesis-template-knowledge" data-thesis-template-knowledge><h3>精准知识补充</h3>${thesisTemplatePanel(item.exportTemplate,{legacyName:!item.exportTemplate&&!templateSelectionMade&&/\.docx$/i.test(item.snapshot?.requirements?.format||'')?item.snapshot.requirements.format:'',prefix:'thesis-online',busy})}</section>`:''}<div class="thesis-studio-overview"><section class="thesis-studio-brief" aria-label="论文信息总览">${snapshotSummary(item.snapshot||{title:item.title,profile:item.profile,outline:item.outline})}${researchForm()}</section><aside class="thesis-studio-run" aria-label="撰写与任务进度">${controls()}${progress()}</aside></div><div class="thesis-workspace-heading"><div><small>章节工作区</small><h2>逐章写作，逐步完善</h2></div><p>对照研究依据核对正文，保存后再导出。</p></div>${chapterEditor()}${orphanedDrafts()}<section class="thesis-export"><div><small>文档交付</small><h3>完成检查，导出论文</h3><p>系统将核对摘要、关键词、章节、引用与模板内容，再生成实际页面。发现缺项会引导补充材料，由系统完善相关章节后重新检查；研究事实与学校要求仍需本人最终确认。</p></div>${coverForm()}<div class="thesis-action-row">${documentExportButtons('thesis-online',{submission:true})}</div><p class="thesis-export-mode-note">初稿可继续编辑；终稿需补齐信息并通过内容与格式检查。</p><p role="status" data-thesis-export-status></p><div data-thesis-completion-host>${completionPanelHTML(item,completionDraft,{busy:busy||running(item),costText})}</div></section>`;
+  }else body=`${snapshotDriftPanel()}${typeof onTemplateSettings!=='function'?`<section class="thesis-template-knowledge" data-thesis-template-knowledge><h3>精准知识补充</h3>${thesisTemplatePanel(item.exportTemplate,{legacyName:!item.exportTemplate&&!templateSelectionMade&&/\.docx$/i.test(item.snapshot?.requirements?.format||'')?item.snapshot.requirements.format:'',prefix:'thesis-online',busy})}</section>`:''}${studioOverview()}<div class="thesis-workspace-heading"><div><small>章节工作区</small><h2>逐章写作，逐步完善</h2></div><p>对照研究依据核对正文，保存后再导出。</p></div>${chapterEditor()}${orphanedDrafts()}<section class="thesis-export"><div><small>文档交付</small><h3>完成检查，导出论文</h3><p>系统将核对摘要、关键词、章节、引用与模板内容，再生成实际页面。发现缺项会引导补充材料，由系统完善相关章节后重新检查；研究事实与学校要求仍需本人最终确认。</p></div>${coverForm()}<div class="thesis-action-row">${documentExportButtons('thesis-online',{submission:true})}</div><p class="thesis-export-mode-note">初稿可继续编辑；终稿需补齐信息并通过内容与格式检查。</p><p role="status" data-thesis-export-status></p><div data-thesis-completion-host>${completionPanelHTML(item,completionDraft,{busy:busy||running(item),costText})}</div></section>`;
   container.innerHTML=`${prefix}<div class="thesis-online-shell"><div data-thesis-notice role="status" aria-live="polite">${escape(message)}</div>${body}${!library?`<div class="thesis-bottom-actions"><a href="#theses">查看账户论文 →</a></div>`:''}</div>`;
   bind();const templateStatus=$('[data-template-status]');if(templateStatus)templateStatus.textContent=templateMessage;restoreView();schedule();
  }
@@ -433,7 +442,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   $('[data-thesis-review-latest]')?.addEventListener('click',()=>{const scroller=$('[data-thesis-review-scroll]');if(scroller)scroller.scrollTop=scroller.scrollHeight;});
   $('[data-thesis-reload]')?.addEventListener('click',()=>void load());
   $('[data-thesis-create]')?.addEventListener('click',()=>void mutate(async()=>{
-   const snapshot=getSnapshot(),templateFileId=getTemplateFileId?.();const value=await api('/theses',{clientKey:saveKey,snapshot,...projectPayload(),...(templateFileId?{exportTemplateFileId:templateFileId}:{})});takeItem(value.item);onSaved?.(item.id,item);notice('已保存到账户，可直接点击生成论文。');
+   await createAccountDraft();
   }));
   $('[data-thesis-refresh]')?.addEventListener('click',()=>void mutate(async()=>{await refresh();quote=null;notice(dirty()?'已读取最新状态。未保存文字仍保留，请核对后保存。':'已读取最新账户状态。');}));
   container.querySelectorAll('[data-research-field]').forEach(input=>input.addEventListener('input',()=>{
@@ -508,6 +517,19 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   if(item){bindDocumentExports('thesis-online',({draft}={})=>current()&&!dirty()?thesisDocumentText(bibliographyItem(),{submission:!draft}):'',()=>item.title||'论文正文',$('[data-thesis-export-status]'),{expectedUserId:user?.id,docxOnly:true,isCurrent:current,onNeedsCompletion:async details=>{setCompletionIssues(completionDraft,details);renderCompletion();},getDocumentOptions:async({draft}={})=>{if(!Object.hasOwn(item,'exportTemplate'))return {documentKind:'thesis',requireSupplementCheck:true,submission:!draft,metadata:thesisExportMetadata(bibliographyItem(),{submission:!draft}),quality:item.quality,template:null};await owner();const value=await api('/theses/'+encodeURIComponent(id)+'/export-template');if(value.exportTemplate?.status==='unavailable')throw Error('所选 Word 模板暂不可读取，请重新上传或恢复默认后导出。');if(value.version!==item.version)throw Error('论文版本已变化，请读取最新状态后再导出。');return {documentKind:'thesis',requireSupplementCheck:true,submission:!draft,metadata:thesisExportMetadata(bibliographyItem(),{submission:!draft}),quality:item.quality,template:value.exportTemplate};}});updateExportButtons();if(!busy&&!running(item)&&(completionRecheckNow||completionDraft.recheckRunId===item.job?.id&&item.job?.status==='completed')){completionRecheckNow=false;completionDraft.recheckRunId=null;persistDraft();queueMicrotask(()=>{if(current()&&!dirty())$('#thesis-online-docx')?.click();});}}
  }
  function updateExportButtons(){const disabled=busy||dirty()||!thesisDocumentText(item);for(const selector of ['#thesis-online-docx','#thesis-online-draft']){const button=$(selector);if(button)button.disabled=disabled;}}
+ async function createAccountDraft({recover=false}={}){
+  if(recover){await onCreateKey?.(saveKey);if(!current())return;}
+  await owner();if(!current())return;
+  let value;
+  if(recover){try{value=await api('/theses/by-key/'+encodeURIComponent(saveKey));}catch(error){if(error.status!==404)throw error;}}
+  if(!value){
+   const snapshot=getSnapshot(),templateFileId=getTemplateFileId?.();canonicalSnapshot(snapshot);
+   await owner();if(!current())return;
+   value=await api('/theses',{clientKey:saveKey,snapshot,...projectPayload(),...(templateFileId?{exportTemplateFileId:templateFileId}:{})});
+  }
+  await owner();if(!current())return;
+  takeItem(value.item);await onSaved?.(item.id,item);notice(recover?'提纲已保存，可直接生成论文。':'已保存到账户，可直接点击生成论文。');
+ }
  async function load(){
   loadError='';loaded=false;render();
   try{
@@ -517,6 +539,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
     else{
      if(id)await refresh();
      try{const value=await api('/capabilities');cap=value.thesis||{ready:false,reason:'论文生成服务暂未配置，仍可保存和手动编辑。'};}catch(error){if(error.status===401)throw error;cap={ready:false,reason:'暂时无法核对 AI 服务；仍可保存和手动编辑。'};}
+     if(autoCreate&&!item&&typeof getSnapshot==='function'){savingConfirmed=true;busy=true;render();try{await createAccountDraft({recover:true});}finally{busy=false;savingConfirmed=false;}}
     }
    }
    loaded=true;

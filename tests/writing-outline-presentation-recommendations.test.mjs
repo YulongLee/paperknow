@@ -124,7 +124,7 @@ test('recommended AI controls and user corrections reach the actual saved thesis
  const service=createThesisService(db),retained=[{id:'intro',title:'第一章 研究背景',text:'已保存的合成正文不能因提纲推荐而删除。'}],versions=[{id:'existing-version',text:'已保存的合成历史版本。'}],f=fixture(t,{service,initial:draft({bodySections:retained,versions})});
  f.mount();await adopt(f);f.input(controls('flow','image'),false,'change');f.input(controls('comparison','formula'),true,'change');let saved=f.save();
  assert.deepEqual(saved.bodySections,retained);assert.deepEqual(saved.versions,versions);
- f.$('#outline-confirm').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'5');const create=f.$('[data-thesis-create]');assert.ok(create);create.click();await settle();
+ f.$('#outline-confirm').click();await settle();assert.equal(f.$('.dashboard').dataset.writingStage,'5');assert.equal(f.$('[data-thesis-create]'),null);await settle();
  const request=f.calls.find(row=>row.path==='/theses'&&row.data);assert.ok(request,'The real thesis stage must send the configured outline');
  const stored=db.prepare('SELECT id FROM theses').get();assert.ok(stored,f.$('.dashboard').textContent);const item=service.get(stored.id,f.user),plan=thesisPlan(item.snapshot);
  assert.equal(item.snapshot.requirements.contentMode,'rich');

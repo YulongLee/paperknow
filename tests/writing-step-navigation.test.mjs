@@ -230,7 +230,7 @@ for(const initialY of [4000,400])test(`confirming a long outline ${initialY>1000
  const f=fixture(),calls=[],scrolls=[],position={y:initialY};
  try{
   f.ctx.session=async()=>({status:'ready',user:{id:'transition-fixture'}});
-  f.ctx.api=async(path,data)=>{calls.push({path,data});if(path==='/capabilities')return {thesis:{ready:false}};throw Error('Unexpected request '+path);};
+  f.ctx.api=async(path,data)=>{calls.push({path,data});if(path==='/auth/me')return {user:{id:'transition-fixture'}};if(path==='/capabilities')return {thesis:{ready:false}};if(path.startsWith('/theses/by-key/'))throw Object.assign(Error('not found'),{status:404});if(path==='/theses'&&data)return {item:{id:'transition-paper',version:1,title:data.snapshot.title,profile:data.snapshot.profile,snapshot:data.snapshot,outline:data.snapshot.outline,status:'draft',job:null,chapters:data.snapshot.outline.map(row=>({id:row.id,title:row.title,version:0,status:'pending',text:'',sourceIds:[]}))}};throw Error('Unexpected request '+path);};
   mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','长提纲切换合成验收');f.$('#writing-generate').click();await confirmThesisResearch();applyThesisOutline();
   f.$('#writing-save').click();const before=JSON.parse(localStorage.getItem('paperknow-drafts'))[0],root=f.$('.dashboard'),heading=f.$('.preview-heading'),win=f.dom.window;
   Object.defineProperties(win,{scrollY:{configurable:true,get:()=>position.y},scrollX:{configurable:true,get:()=>0},innerHeight:{configurable:true,value:800}});
@@ -238,11 +238,11 @@ for(const initialY of [4000,400])test(`confirming a long outline ${initialY>1000
   root.getBoundingClientRect=()=>({top:80-position.y,bottom:5280-position.y,height:5200,left:0,right:1000,width:1000});
   heading.getBoundingClientRect=()=>({top:600-position.y,bottom:640-position.y,height:40,left:0,right:1000,width:1000});
   const focus=document.activeElement;f.$('#outline-confirm').click();await settle();await settle();
-  assert.equal(root.dataset.writingStage,'5');assert.ok(f.$('[data-thesis-create]'),'the account save action is actually rendered');assert.equal(f.$('#thesis-online-stage').hidden,false);
+  assert.equal(root.dataset.writingStage,'5');assert.equal(f.$('[data-thesis-create]'),null);assert.ok(f.$('[data-thesis-quote]'),'the generation action is directly rendered');assert.equal(f.$('[data-thesis-view-key="information-overview"]').open,false);assert.equal(f.$('#thesis-online-stage').hidden,false);
   const rect=heading.getBoundingClientRect();assert.ok(rect.bottom>0&&rect.top<win.innerHeight,'the next step must be within the viewport instead of above a blank reserved area');
   if(initialY<1000){assert.equal(position.y,initialY);assert.equal(scrolls.length,0,'an already visible next step must not jump');}else{assert.ok(position.y<initialY);assert.ok(scrolls.every(row=>row.behavior==='instant'),'no animated intermediate page jumps');}
   assert.equal(document.activeElement,focus,'revealing the next step does not move focus');
   f.$('#writing-final-save').click();const after=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.deepEqual(after.outlineText.split('\n').map(line=>line.trim()),before.outlineText.split('\n').map(line=>line.trim()));assert.deepEqual(after.outlineRows,before.outlineRows);assert.equal(after.outlineConfirmed,true);assert.equal(after.workflowStage,5);
-  assert.ok(calls.every(row=>row.path==='/capabilities'),'confirming only loads service state, without creating a paper, quoting or generating');
+  assert.equal(calls.filter(row=>row.path==='/theses'&&row.data).length,1,'confirming automatically saves the account record once');assert.ok(calls.every(row=>!/quote|generate/.test(row.path)),'confirming does not bill or generate');assert.equal(after.thesisId,'transition-paper');assert.ok(after.thesisCreateKey);
  }finally{f.close();}
 });
