@@ -112,6 +112,6 @@ test('text outline import succeeds and an import finishing after a draft switch 
   const pending=new Promise(done=>{resolve=done;});f.selectFile('#outline-file',{name:'old-outline.txt',size:100,text:()=>pending});
   clearEditor();localStorage.removeItem('paperknow-drafts');location.hash='tool/writing?new=other';mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','新的独立论文');
   resolve('第一章 不能跨论文覆盖\n1.1 先前论文的内容');await settle();
-  assert.equal(f.$('#writing-title').value,'新的独立论文');assert.doesNotMatch(f.$('#outline-paper').textContent,/不能跨论文覆盖/);assert.equal(f.$('#outline-builder-status').textContent,'请选择一种方式创建或替换提纲。');assert.equal(f.save().outlineText,'');
+  assert.equal(f.$('#writing-title').value,'新的独立论文');assert.doesNotMatch(f.$('#outline-paper').textContent,/不能跨论文覆盖/);assert.equal(f.$('#outline-builder-status').textContent,'请选择 AI 生成专属提纲或上传已有提纲。');assert.equal(f.save().outlineText,'');
  }finally{f.close();}
 });

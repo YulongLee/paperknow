@@ -96,7 +96,7 @@
 .writing-detail-commercial .writing-research-body{padding-top:16px;margin-top:16px;border-top:1px solid var(--pk-border,#e7edf5)}
 .writing-detail-commercial .writing-research-body>p,.writing-detail-commercial .writing-research-body>small{display:block;font-size:11px;line-height:1.9;color:var(--pk-muted,#8b9ab0);margin:0 0 14px}
 .writing-detail-commercial .writing-research-body>small{margin:12px 0 0}
-.writing-detail-commercial .outline-source-actions:has(#outline-manual-trigger){grid-template-columns:repeat(3,minmax(0,1fr))}
+
 .writing-detail-commercial #outline-ai-generate{border-color:color-mix(in srgb,var(--detail-accent) 42%,#dfe7f3);background:linear-gradient(125deg,#f2f6ff,#fff)}
 .writing-detail-commercial .writing-outline-ai-panel{margin:18px 0 0}
 .writing-detail-commercial .writing-outline-ai-shell{border:1px solid #ccdcff;border-radius:12px;padding:22px;background:linear-gradient(125deg,#f5f8ff,#fff);color:var(--pk-text,#2e405e)}
@@ -135,7 +135,7 @@
 .writing-detail-commercial .knowledge-method-draft-foot{margin-top:10px;color:var(--pk-muted,#8493aa);font-size:12px}
 .writing-detail-commercial .writing-method-ai-panel{margin-top:18px}.writing-detail-commercial .writing-method-ai-panel .writing-outline-ai-shell{box-shadow:none}
 @media(max-width:640px){.dashboard.writing-detail-commercial[data-writing-stage="2"] #knowledge-ai .knowledge-ai-actions>.btn{flex:1 1 auto}.writing-detail-commercial #knowledge-ai .knowledge-ai-actions .knowledge-usage{flex-basis:100%;margin-left:0}}
-@media(max-width:760px){.writing-detail-commercial .outline-source-actions:has(#outline-manual-trigger){grid-template-columns:minmax(0,1fr)}.writing-detail-commercial .writing-outline-ai-shell{padding:16px}.writing-detail-commercial .writing-outline-ai-actions .btn{width:100%}}
+@media(max-width:760px){.writing-detail-commercial .writing-outline-ai-shell{padding:16px}.writing-detail-commercial .writing-outline-ai-actions .btn{width:100%}}
 
 /* Keep the thesis wizard scoped to its active step, including generated decoration. */
 #app .dashboard.thesis-sequential :is([hidden],[hidden] *){display:none!important;visibility:hidden!important}
