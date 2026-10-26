@@ -49,7 +49,7 @@ export function personalServiceState(cap,key){
  const ready=configured&&['free','paid'].includes(mode)&&rule.available===true;
  return {ready,label:ready?'已开放':'待配置'};
 }
-const taskLink=(key,cap={})=>['polish','review'].includes(key)?cap.tools?.ready===true?serviceRoutes[key]:cap.ai===true?'#tasks?scope=account&type='+key:'':key==='agent'?(runtimeReady(cap)?'#category/writing':cap.agent===true?'#tasks?scope=account&view=agent':''):serviceRoutes[key]||'';
+const taskLink=(key,cap={})=>['polish','review'].includes(key)?cap.tools?.ready===true?serviceRoutes[key]:cap.ai===true?serviceRoutes[key]:'':key==='agent'?(runtimeReady(cap)?'#category/writing':cap.agent===true?'#tool/agent':''):serviceRoutes[key]||'';
 function quotaRows(items,esc,{usable=true,cap={}}={}){
  const rows=Array.isArray(items)?items:[];
  return rows.length?`<ul class="member-quota-rows">${rows.map(item=>`<li><span>${esc(item?.title||'服务项目')}</span><span>包含 ${countValue(item?.quantity)} 次 · 已用 ${countValue(item?.used)} · 预占 ${countValue(item?.held)} · 剩余 ${countValue(item?.remaining)}</span>${usable&&personalServiceState(cap,item?.key).ready&&Number.isSafeInteger(item?.remaining)&&item.remaining>0&&taskLink(item?.key,cap)?`<a href="${taskLink(item.key,cap)}">使用服务 →</a>`:''}</li>`).join('')}</ul>`:'<p class="muted">次数使用记录暂不可用，请稍后刷新核对。</p>';

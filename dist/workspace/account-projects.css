@@ -93,6 +93,16 @@
 #app .account-project-hub>.account-originals .management-section-heading p{font-size:12px;color:#8797ad}
 #app .account-project-hub>.account-originals .management-empty{padding:22px 14px;min-height:0}
 #app .account-project-hub>.account-originals .row{font-size:12px}
+#app .account-original-rows{min-width:0}
+#app .account-original-window{max-height:360px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#b5c4da transparent}
+#app .account-original-window:focus-visible{outline:2px solid var(--pk-blue,#246bfd);outline-offset:3px}
+#app .account-original-row{box-sizing:border-box;min-height:68px;gap:16px}
+#app .account-original-copy{min-width:0;flex:1}
+#app .account-original-copy>b{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;max-width:100%;overflow-wrap:anywhere}
+#app .account-original-copy>br{display:none}
+#app .account-original-copy>small{display:block;margin-top:4px}
+#app .account-original-row>.actions{flex-shrink:0;flex-wrap:wrap}
+.hub-theme-dark #app .account-original-window{scrollbar-color:#576d91 transparent}
 #app .account-workspace .account-project-dialog{width:min(640px,calc(100vw - 32px));max-width:640px;max-height:calc(100dvh - 40px);margin:auto;padding:0;border:1px solid #dfe7f2;border-radius:18px;background:#fff;box-shadow:0 28px 90px #11294e38;overflow:auto;overscroll-behavior:contain}
 #app .account-project-dialog:not([open]){display:none}
 #app .account-project-dialog::backdrop{background:#162d4d66;backdrop-filter:blur(4px)}

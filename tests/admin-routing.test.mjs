@@ -48,7 +48,7 @@ test('owner identity must be verified before server grants admin page access',as
 
 test('legacy account links resolve inside the main workspace without open redirects',async t=>{
   const f=await fixture(t);
-  const routes={projects:'/workspace.html#projects?scope=account',tasks:'/workspace.html#tasks?scope=account',results:'/workspace.html#assets?scope=account',admin:'/admin.html',agent:'/workspace.html#tasks?scope=account&view=agent'};
+  const routes={projects:'/workspace.html#projects?scope=account',tasks:'/workspace.html#tasks?scope=account',results:'/workspace.html#assets?scope=account',admin:'/admin.html',agent:'/workspace.html#tool/agent'};
   for(const [view,destination] of Object.entries(routes)){
     const response=await f.get('/service.html?view='+view);assert.equal(response.status,302);assert.equal(response.headers.get('location'),destination);
   }

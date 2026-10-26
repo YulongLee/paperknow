@@ -18,6 +18,8 @@ export function workspaceJobHref(row){
  if(row?.status==='completed'&&safe(row.result_id))return'#assets?scope=account&result='+encodeURIComponent(row.result_id);
  if(['thesis','thesis_outline','thesis_method'].includes(row?.type))return'#tool/writing';
  if(row?.type==='writing')return writingNames[row.writing_kind||row.kind]?'#tool/'+(row.writing_kind||row.kind):'#category/writing';
+ if(['polish','review','agent'].includes(row?.type))return'#tool/'+row.type;
+ if(row?.type==='compare')return'#category/detection';
  if(row?.type==='document_translation')return'#tool/translation';
  if(row?.type==='document_parse'||row?.type==='parse')return'#projects?scope=account';
  if(row?.type==='tool_run'){

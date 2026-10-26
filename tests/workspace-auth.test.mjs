@@ -75,6 +75,14 @@ async function fixture(fetcher,{hash='#account',allReports=async()=>[],setup}={}
  return {dom,document:dom.window.document,storage,paymentCalls,reads,api:dom.window.workspaceAuthTest,close(){dom.window.disposeOnlineThesis();timers.forEach(clearTimeout);dom.window.close();}};
 }
 
+for(const hash of ['#tool/agent?project=p1','#tasks?scope=account&view=agent&project=p1'])test('research assistant opens as a function and preserves project context from '+hash,async()=>{
+ const calls=[],fetcher=async(path,options={})=>{calls.push({path,options});let value={items:[]};if(path==='/api/auth/me')value={user:signedIn};else if(path==='/api/capabilities')value={ai:true,agent:true};else if(path==='/api/projects')value={items:[{id:'p1',title:'研究项目'}]};else if(path==='/api/projects/p1')value={item:{id:'p1',title:'研究项目'},files:[],jobs:[],results:[],drafts:[],theses:[]};return{ok:true,status:200,json:async()=>value};};
+ const f=await fixture(fetcher,{hash,setup:w=>{w.renderOnlinePersonal=async()=>false;w.isCurrentRouteChange=(event,url)=>event.newURL===url;}});try{
+  for(let i=0;i<80&&!f.document.querySelector('#agent-form');i++)await new Promise(resolve=>setTimeout(resolve,5));
+  assert.ok(f.document.querySelector('#agent-form'),JSON.stringify({text:f.document.querySelector('.dashboard')?.textContent,calls:calls.map(row=>row.path),hash:f.dom.window.location.hash}));assert.equal(f.dom.window.location.hash,'#tool/agent?project=p1');assert.equal(f.document.querySelector('#agent-project').value,'p1');assert.equal(f.document.querySelector('.workspace-scope-tabs'),null);assert.equal(f.document.querySelector('[data-tool-category]').dataset.toolCategory,'literature');assert.equal(f.document.querySelector('#task-form'),null);assert.match(f.document.querySelector('.dashboard').textContent,/科研智能助手/);assert.equal(calls.some(call=>call.options.body||call.path==='/api/billing/quote'),false);
+ }finally{f.close();}
+});
+
 test('tool, account and cloud-asset navigation avoid local summaries while search still reads newly saved drafts',async()=>{
  const f=await fixture(async()=>response(401));
  try{

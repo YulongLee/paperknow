@@ -4,7 +4,7 @@ export function accountDestination(view, result) {
     home: '/workspace.html#home',
     projects: '/workspace.html#projects?scope=account',
     tasks: '/workspace.html#tasks?scope=account',
-    agent: '/workspace.html#tasks?scope=account&view=agent',
+    agent: '/workspace.html#tool/agent',
     results: '/workspace.html#assets?scope=account',
     usage: '/workspace.html#account?view=usage',
     membership: '/workspace.html#membership?scope=account',
