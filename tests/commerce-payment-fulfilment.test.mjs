@@ -90,7 +90,7 @@ test('a paid or disabled detector policy cannot sell an unusable specialist pack
 test('legacy AI availability cannot sell degree-specific writing when the required versioned Agent is disabled',async t=>{
  const f=fixture(t),owner=f.seed();f.config.getAgentSettings=()=>({enabled:false});
  assert.equal(f.billing.rules().services.find(item=>item.key==='agent').available,true);
- const writing=f.billing.toolRules().services.filter(item=>item.group==='AI 写作');assert.equal(writing.length,16);assert.ok(writing.every(item=>!item.available));
+ const writing=f.billing.toolRules().services.filter(item=>item.group==='AI 写作');assert.equal(writing.length,17);assert.ok(writing.every(item=>!item.available));
  for(const item of writing)assert.throws(()=>f.billing.quote(owner,{type:'agent',serviceKey:item.key}),{status:503});
  for(const offer of specialistBundleOffers.filter(item=>item.group==='writing')){
   assert.equal(f.payments.options().products.find(item=>item.id===offer.id).purchasable,false);

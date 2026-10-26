@@ -8,7 +8,7 @@ import {initializeThesisSchema,thesisAgentTask,parseThesisSection,validateThesis
 import {assertThesisSettings} from './thesis-service.mjs';
 import {runAgentTask} from './agent-runtime.mjs';
 import {createThesisContinuity} from './thesis-continuity.mjs';
-import {classifyThesisRetry} from './thesis-execution-policy.mjs';
+import {classifyThesisRetry,thesisExecutionSettings} from './thesis-execution-policy.mjs';
 import {createWritingQualityRunner} from './writing-quality-runner.mjs';
 import {fitOptionalWritingQuality} from './writing-quality-storage.mjs';
 import {thesisManualBackMatter} from '../dist/workspace/thesis-delivery.mjs';
@@ -66,7 +66,7 @@ export function startThesisWorker(db,config={}){
     db.prepare("UPDATE theses SET status='running',version=version+1,updated_at=? WHERE id=? AND current_run_id=?").run(clock(),run.thesis_id,run.id);modelBudget.start(run.id,run.attempt);return true;});
    if(!claimed)return;
    assertThesisSettings(await config.getAgentSettings?.());
-   runtime=assertThesisSettings(await config.getAgentSettings?.(run.settings_version));
+   runtime=thesisExecutionSettings(assertThesisSettings(await config.getAgentSettings?.(run.settings_version)),JSON.parse(run.settings_meta||'{}').executionMaxCostUsd);
    if(!running())return;
    if(runtime.version!==run.settings_version)throw thesisError(503,'原生成配置版本不可用，请联系管理员');
    const snapshot=JSON.parse(run.snapshot),plan=JSON.parse(run.plan),baseline=run.input_tokens+run.output_tokens;

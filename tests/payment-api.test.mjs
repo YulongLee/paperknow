@@ -112,7 +112,7 @@ test('public catalogue contains approved credit tiers and only fully priced publ
 test('public payment options expose scoped service prices without runtime or merchant settings',async t=>{
  const f=await fixture(t);await f.channel();
  const response=await f.request('/api/payments/options',{cookie:''});
- assert.equal(response.status,200);assert.equal(response.value.toolBilling.services.length,32);assert.deepEqual(response.value.toolBilling.services.map(service=>service.key),toolBillingServiceTypes.map(service=>service.key));assert.equal(new Set(response.value.toolBilling.services.map(service=>service.key)).size,32);
+ assert.equal(response.status,200);assert.equal(response.value.toolBilling.services.length,toolBillingServiceTypes.length);assert.deepEqual(response.value.toolBilling.services.map(service=>service.key),toolBillingServiceTypes.map(service=>service.key));assert.equal(new Set(response.value.toolBilling.services.map(service=>service.key)).size,toolBillingServiceTypes.length);
  for(const service of response.value.toolBilling.services){
   assert.deepEqual(Object.keys(service).sort(),['available','creditCost','effectiveCreditCost','effectiveMode','group','key','mode','title']);
  }

@@ -38,6 +38,38 @@ test('one submission repairs a failed section and settles one original purchase 
  assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_chapter_versions').get().n,2);
 });
 
+test('a one-dollar thesis execution accepts a 75-cent section and freezes that ceiling without changing the shared Agent',async t=>{
+ const seen=[],f=fixture(t,{thesisMaxCallCostUsd:1,agentTaskRunner:async args=>{seen.push(args.settings.maxCostUsd);return result(args.task,{costUsd:.75});}});
+ const item=await f.generate(await f.create());f.config.thesisMaxCallCostUsd=.2;
+ await f.start().tick();assert.equal(f.get(item.id).status,'completed');assert.deepEqual(seen,[1,1]);assert.equal(f.config.getAgentSettings().maxCostUsd,.5);
+ assert.equal(JSON.parse(f.db.prepare('SELECT settings_meta FROM thesis_runs WHERE id=?').get(item.job.id).settings_meta).executionMaxCostUsd,1);
+ assert.equal(f.db.prepare('SELECT unit_cost_micros FROM thesis_execution_budgets WHERE run_id=?').get(item.job.id).unit_cost_micros,1000000);
+ assert.equal(f.billing.balance(f.user.id).balance,190);
+});
+
+test('raising a thesis execution to one dollar does not remove the new cost ceiling or create an automatic paid retry beyond it',async t=>{
+ let calls=0;const f=fixture(t,{thesisMaxCallCostUsd:1,agentTaskRunner:async args=>{calls++;return result(args.task,{costUsd:1.01});}});
+ const item=await f.generate(await f.create());await f.start().tick();assert.equal(f.get(item.id).status,'failed');assert.equal(calls,1);
+ assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);
+});
+
+test('explicit resume adopts the new thesis-only ceiling, preserves the old budget and completed units, and settles once',async t=>{
+ let calls=0;const seen=[],f=fixture(t,{agentTaskRunner:async args=>{
+  calls++;seen.push({unit:args.task.context.unit.id,cost:args.settings.maxCostUsd});
+  if(calls===2)throw Object.assign(Error('Synthetic old cost boundary'),{code:'cost_budget',status:502,usage:{input:1000,output:100},costUsd:.51});
+  return result(args.task,{costUsd:calls>2?.75:.1});
+ }});
+ const item=await f.generate(await f.create()),worker=f.start();await worker.tick();let current=f.get(item.id);
+ assert.equal(current.status,'failed');assert.equal(current.job.completedSections,1);assert.equal(f.billing.balance(f.user.id).balance,200);
+ f.config.thesisMaxCallCostUsd=1;
+ const quote=await f.api('/api/theses/'+item.id+'/quote',{version:current.version,action:'resume'});
+ await f.api('/api/theses/'+item.id+'/resume',{version:current.version,clientKey:randomUUID(),consent:true,billingToken:quote.token});
+ await worker.tick();current=f.get(item.id);assert.equal(current.status,'completed');assert.equal(calls,3);
+ assert.deepEqual(seen.map(row=>row.cost),[.5,.5,1]);assert.equal(seen[1].unit,seen[2].unit);assert.notEqual(seen[0].unit,seen[2].unit);
+ assert.deepEqual(f.db.prepare('SELECT attempt,unit_cost_micros FROM thesis_execution_budgets ORDER BY attempt').all().map(row=>({...row})),[{attempt:1,unit_cost_micros:500000},{attempt:2,unit_cost_micros:1000000}]);
+ assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,1);assert.equal(f.billing.balance(f.user.id).balance,190);
+});
+
 test('one charged delivery job saves body then both abstracts, and free cover updates do not invalidate manuscript review or settle again',async t=>{
  const sequence=[],f=fixture(t,{agentTaskRunner:async({task})=>{
   const unit=task.context.unit;sequence.push(unit.frontMatter||'body');if(!unit.frontMatter)return result(task);

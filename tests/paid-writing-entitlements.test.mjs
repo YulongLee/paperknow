@@ -24,10 +24,48 @@ function fixture(t,{beforeBilling}={}){
  t.after(async()=>{if(worker)await worker.stop();db.close();});return{db,user,other,config,billing,grant,request,create,quote,generate,get:id=>theses.get(id,user),start(){return worker=startThesisWorker(db,config);}};
 }
 
-test('all sixteen degree-specific identities come from normalized profiles, while auxiliary operations and researchers retain generic billing',()=>{
+test('degree-specific identities and researcher theses are distinct while auxiliary operations retain generic billing',()=>{
  for(const [level,id]of levels)for(const [kind,key]of [['thesis','thesis'],['proposal','proposal'],['taskbook','taskbook'],['summary','literature-review']])assert.equal(writingBillingKey(kind,'draft',{profile:{level}}),key+'-'+id);
  for(const operation of ['outline','method','abstract'])for(const kind of ['thesis','proposal','summary','taskbook'])assert.equal(writingBillingKey(kind,operation,snapshot()),null);
- assert.equal(writingBillingKey('thesis','draft',snapshot('研究工作者')),null);assert.equal(writingBillingKey('article','draft',snapshot()),null);assert.equal(writingBillingKey('thesis','draft',{profile:{level:'bachelor'}}),null);
+ assert.equal(writingBillingKey('thesis','draft',snapshot('研究工作者')),'thesis-researcher');assert.equal(writingBillingKey('article','draft',snapshot()),null);assert.equal(writingBillingKey('thesis','draft',{profile:{level:'bachelor'}}),null);
+});
+
+function thesisPrice(f,amount=1000){const policy=f.billing.toolRules();return f.billing.saveToolRules({version:policy.version,services:policy.services.map(({key,mode,creditCost})=>({key,mode:key.startsWith('thesis-')?'paid':mode,creditCost:key.startsWith('thesis-')?amount:creditCost}))});}
+function fund(f){const id=randomUUID(),at=new Date().toISOString();f.db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run(id,f.user.id,'credits-1000','paid',at);f.db.prepare('INSERT INTO payment_credit_ledger VALUES(?,?,?,?,?,?)').run(id,f.user.id,'credits-1000',1000,'purchase',at);}
+
+test('a configured 1000-credit thesis price covers every identity without changing outline or proposal prices',async t=>{
+ for(const [level,key]of [...levels,['研究工作者','researcher']]){const f=fixture(t);fund(f);thesisPrice(f);const item=await f.create(level),q=await f.quote(item);
+  assert.equal(q.serviceKey,'thesis-'+key);assert.equal(q.creditCost,1000);assert.equal(q.source,'credits');
+  assert.equal(f.billing.quote(f.user,{type:'agent'}).creditCost,10);assert.equal(f.billing.quote(f.user,{type:'agent',serviceKey:'proposal-bachelor'}).creditCost,10);
+  await f.generate(item,q);assert.equal(f.billing.balance(f.user.id).held,1000);await f.start().tick();assert.equal(f.get(item.id).status,'completed');assert.equal(f.billing.balance(f.user.id).balance,200);
+ }
+});
+
+test('1000-credit pricing still chooses a matching package first and invalidates unreserved older prices',async t=>{
+ const f=fixture(t);fund(f);const original=await f.create('本科'),oldQuote=await f.quote(original);thesisPrice(f);
+ await assert.rejects(f.generate(original,oldQuote),error=>[402,409].includes(error.status));assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);
+ const order=f.grant([{key:'thesis-bachelor',title:'本科论文',quantity:1}]),q=await f.quote(original);assert.equal(q.source,'bundle');assert.equal(q.creditCost,0);
+ await f.generate(original,q);await f.start().tick();assert.equal(f.billing.entitlements(f.user.id).bundleUsage[order][0].used,1);assert.equal(f.billing.balance(f.user.id).balance,1200);
+ const next=await f.create('本科'),credits=await f.quote(next);assert.equal(credits.source,'credits');assert.equal(credits.creditCost,1000);
+});
+
+test('failed 1000-credit generation releases its hold and a retried resume settles the same job once',async t=>{
+ const f=fixture(t);fund(f);thesisPrice(f);const item=await f.create('本科');
+ f.config.agentTaskRunner=async()=>{throw Error('Synthetic unavailable provider');};await f.generate(item,await f.quote(item));const worker=f.start();await worker.tick();
+ const failed=f.get(item.id);assert.equal(failed.status,'failed');assert.equal(f.billing.balance(f.user.id).balance,1200);assert.equal(f.billing.balance(f.user.id).held,0);
+ const q=await f.quote(failed,'resume'),key=randomUUID(),body={version:failed.version,clientKey:key,billingToken:q.token,consent:true};
+ f.config.agentTaskRunner=async({task})=>success(task);
+ const first=await f.request('/api/theses/'+item.id+'/resume',body),again=await f.request('/api/theses/'+item.id+'/resume',body);assert.equal(first.item.job.id,again.item.job.id);
+ assert.equal(f.billing.balance(f.user.id).held,1000);await worker.tick();assert.equal(f.get(item.id).status,'completed');assert.equal(f.billing.balance(f.user.id).balance,200);
+ assert.deepEqual(f.db.prepare('SELECT status,credits FROM billing_reservations ORDER BY attempt').all().map(row=>({...row})),[{status:'released',credits:1000},{status:'settled',credits:1000}]);
+ assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,1);
+});
+
+test('the previous complete pricing catalogue gains researcher theses once and preserves all existing prices',t=>{
+ const old=toolBillingServiceTypes.filter(row=>row.key!=='thesis-researcher').map(({key})=>({key,mode:'paid',creditCost:37}));
+ const f=fixture(t,{beforeBilling(db){db.exec('CREATE TABLE tool_pricing_policy(id INTEGER PRIMARY KEY,rules TEXT,version INTEGER,updated_at TEXT)');db.prepare('INSERT INTO tool_pricing_policy VALUES(1,?,7,?)').run(JSON.stringify(old),'2026-10-01T00:00:00Z');}});
+ const migrated=f.billing.toolRules();assert.equal(migrated.version,8);for(const row of old){const got=migrated.services.find(item=>item.key===row.key);assert.equal(got.creditCost,37);assert.equal(got.mode,'paid');}
+ assert.equal(migrated.services.find(row=>row.key==='thesis-researcher').mode,'inherit');createBillingService(f.db,f.config);assert.equal(f.billing.toolRules().version,8);
 });
 
 test('graduation packages settle one matching degree quota only after a complete worker result and then fall back to paid credits',async t=>{

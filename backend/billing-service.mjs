@@ -80,11 +80,11 @@ export function createBillingService(db,config={}){
  CREATE TRIGGER IF NOT EXISTS billing_quotes_admin_identity_protect BEFORE UPDATE ON billing_quotes WHEN NEW.source_grant_id IS NOT OLD.source_grant_id BEGIN SELECT RAISE(ABORT,'管理会员报价身份不可修改'); END;
  CREATE TRIGGER IF NOT EXISTS billing_reservations_admin_identity_protect BEFORE UPDATE ON billing_reservations WHEN NEW.source_grant_id IS NOT OLD.source_grant_id BEGIN SELECT RAISE(ABORT,'管理会员预占身份不可修改'); END;`);
  db.prepare('INSERT OR IGNORE INTO tool_pricing_policy(id,rules,version,updated_at) VALUES(1,?,1,?)').run(JSON.stringify(toolBillingServiceTypes.map(({key})=>defaultToolRule(key))),clock());
- // Only the two exact, validated historic catalogues are extended. Unknown keys,
+ // Only exact, validated historic catalogues are extended. Unknown keys,
  // duplicate/missing old entries and malformed modes remain closed for inspection.
  const previousToolPolicy=db.prepare('SELECT rules,version FROM tool_pricing_policy WHERE id=1').get();
  try{
-  const old=JSON.parse(previousToolPolicy.rules),base=toolBillingServiceTypes.filter(item=>!['AI 写作','免费检测'].includes(item.group)).map(item=>item.key),known=[base,base.filter(key=>key!=='research-image')];
+  const old=JSON.parse(previousToolPolicy.rules),base=toolBillingServiceTypes.filter(item=>!['AI 写作','免费检测'].includes(item.group)).map(item=>item.key),known=[base,base.filter(key=>key!=='research-image'),toolBillingServiceTypes.filter(item=>item.key!=='thesis-researcher').map(item=>item.key)];
   const shape=Array.isArray(old)&&old.every(item=>isObject(item)&&Object.keys(item).length===3&&Object.keys(item).every(key=>['key','mode','creditCost'].includes(key))&&['inherit','free','paid','disabled'].includes(item.mode)&&(item.mode==='paid'?Number.isSafeInteger(item.creditCost)&&item.creditCost>=1&&item.creditCost<=100000:item.creditCost===null));
   const legacy=shape&&known.some(version=>old.length===version.length&&new Set(old.map(item=>item.key)).size===version.length&&old.every(item=>version.includes(item.key)));
   if(legacy){const present=new Set(old.map(item=>item.key)),added=toolBillingServiceTypes.filter(item=>!present.has(item.key)).map(({key})=>defaultToolRule(key));

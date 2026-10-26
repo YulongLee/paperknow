@@ -6,7 +6,7 @@ import {createBillingService} from './billing-service.mjs';
 import {writingBillingKey} from '../dist/workspace/writing-billing-catalog.mjs';
 import {createModelBudget} from './model-budget.mjs';
 import {agentSettingsReady} from './agent-settings.mjs';
-import {sectionWordsForRuntime} from './thesis-execution-policy.mjs';
+import {sectionWordsForRuntime,thesisExecutionSettings} from './thesis-execution-policy.mjs';
 import {createThesisContinuity} from './thesis-continuity.mjs';
 import {createThesisExportTemplates} from './thesis-export-template.mjs';
 import {initializeThesisSchema,normalizeThesisSnapshot,thesisPlan,thesisHash,thesisLimits,thesisFullText,thesisError,thesisTransaction,assertThesisAccountQuota,assertThesisChapterCapacity,isThesisReferenceChapter,thesisManualSourceIds} from './thesis-model.mjs';
@@ -139,7 +139,8 @@ export function createThesisService(db,config={}){
   const hash=thesisHash({action,id,snapshotHash:row.snapshot_hash,...(input.completion?{completion:true}:{}),...(action==='resume'?{runId:currentRun?.id}: {})});
   const old=command(user,input,hash);if(old)return response({item:serialize(own(id,user))});
   expected(input,row);if(active.has(row.status))fail(409,'当前论文正在生成，请先等待或取消');
-  const snapshot=JSON.parse(row.snapshot),enabled=await settings(),runtime=action==='resume'?await settings(currentRun?.settings_version):enabled;
+  const snapshot=JSON.parse(row.snapshot),enabled=await settings(),originalRuntime=action==='resume'?await settings(currentRun?.settings_version):enabled;
+  const runtime=thesisExecutionSettings(originalRuntime,config.thesisMaxCallCostUsd??(action==='resume'?JSON.parse(currentRun?.settings_meta||'{}').executionMaxCostUsd:undefined));
   const validatedPlan=thesisPlan(snapshot,config.thesisContinuousEnabled===true?{...config,thesisSectionWords:sectionWordsForRuntime(runtime,snapshot.profile.language,thesisLimits(config).sectionWords)}:config);let plan=action==='generate'?validatedPlan:null;const completionQuote=input.billingToken?db.prepare('SELECT plan FROM thesis_completion_quotes WHERE token=?').get(input.billingToken):null,completion=completionQuote?JSON.parse(completionQuote.plan):null;if(Boolean(completion)!==Boolean(input.completion)||completion&&action!=='generate')fail(409,'本次操作与完善费用确认不一致，请重新获取费用');if(completion){const planned=thesisCompletionPlan(db,row,validatedPlan,completion.issueCodes);if(planned.fingerprint!==completion.fingerprint)fail(409,'原论文或处理配置已变化，请重新确认完善费用');plan=planned.plan;}
   return response(thesisTransaction(db,()=>{const current=own(id,user),existing=command(user,input,hash);if(existing)return {item:serialize(current)};expected(input,current);if(active.has(current.status))fail(409,'论文已经在生成中');admission(user,{billingToken:input.billingToken,billingType:'agent',serviceKey:writingBillingKey('thesis','draft',snapshot)});
    const confirmed=db.prepare('SELECT * FROM thesis_generation_quotes WHERE token=? AND user_id=?').get(typeof input.billingToken==='string'?input.billingToken:'',user.id);
@@ -153,14 +154,15 @@ export function createThesisService(db,config={}){
     if(String(runtime.version)!==run.settings_version)fail(503,'原生成配置版本不可用，请联系管理员');
     runId=run.id;const nextAttempt=run.attempt+1;
     assertThesisAccountQuota(db,user.id,512,config);
-    db.prepare("UPDATE thesis_runs SET status='queued',stage='queued',error=NULL,attempt=?,updated_at=? WHERE id=?").run(nextAttempt,at,runId);
+    const resumedMeta={...JSON.parse(run.settings_meta),executionMaxCostUsd:runtime.maxCostUsd};
+    db.prepare("UPDATE thesis_runs SET status='queued',stage='queued',error=NULL,attempt=?,settings_meta=?,updated_at=? WHERE id=?").run(nextAttempt,JSON.stringify(resumedMeta),at,runId);
     db.prepare("UPDATE thesis_checkpoints SET status='pending',error=NULL,missing_evidence='[]',updated_at=? WHERE run_id=? AND status!='completed'").run(at,runId);
     db.prepare("UPDATE jobs SET status='queued',stage='queued',error=NULL,updated_at=? WHERE id=?").run(at,runId);
     billing.reserve(user,runId,nextAttempt,'agent',input.billingToken,writingBillingKey('thesis','draft',snapshot));
    }else{
     assertThesisAccountQuota(db,user.id,Math.max(512,Buffer.byteLength(current.snapshot)+Buffer.byteLength(JSON.stringify(plan)))+plan.length*512+512,config);
     runId=randomUUID();
-    const safeMeta={version:runtime.version,engine:String(runtime.engine||'claude-agent-sdk'),model:String(runtime.model),maxTurns:runtime.maxTurns??null,maxOutputTokens:runtime.maxOutputTokens??null,continuous:config.thesisContinuousEnabled===true,qualityReview:config.writingQualityEnabled===true,supplementCheck:config.supplementCheckEnabled===true,skillCompositionVersion:1,...(completion?{completion:{baseline:completion.baseline,chapterTitles:completion.chapterTitles}}:{})};
+    const safeMeta={version:runtime.version,engine:String(runtime.engine||'claude-agent-sdk'),model:String(runtime.model),maxTurns:runtime.maxTurns??null,maxOutputTokens:runtime.maxOutputTokens??null,executionMaxCostUsd:runtime.maxCostUsd,continuous:config.thesisContinuousEnabled===true,qualityReview:config.writingQualityEnabled===true,supplementCheck:config.supplementCheckEnabled===true,skillCompositionVersion:1,...(completion?{completion:{baseline:completion.baseline,chapterTitles:completion.chapterTitles}}:{})};
     db.prepare('INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(runId,user.id,current.project_id,'thesis','queued','queued',JSON.stringify({thesisId:id,settingsVersion:runtime.version}),`thesis:${input.clientKey}`,hash,at,at);
     db.prepare('INSERT INTO thesis_runs(id,thesis_id,user_id,snapshot,snapshot_hash,plan,settings_version,settings_meta,status,stage,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(runId,id,user.id,current.snapshot,current.snapshot_hash,JSON.stringify(plan),runtime.version,JSON.stringify(safeMeta),'queued','queued',at,at);
     for(const unit of plan)db.prepare('INSERT INTO thesis_checkpoints(run_id,unit_id,chapter_id,position,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(runId,unit.id,unit.chapterId,unit.position,at,at);

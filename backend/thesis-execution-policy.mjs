@@ -13,6 +13,14 @@ const bytes=(value,ceiling)=>{
  return Math.min(ceiling,Buffer.byteLength(serialized));
 };
 
+// A thesis-only operator ceiling is frozen into the execution attempt. It
+// changes neither the shared Agent configuration nor an already-running run.
+export function thesisExecutionSettings(settings,maxCostUsd){
+ if(maxCostUsd===undefined)return settings;
+ if(typeof maxCostUsd!=='number'||!Number.isFinite(maxCostUsd)||maxCostUsd<.01||maxCostUsd>5)fail('论文单次模型执行费用上限应为 0.01～5 美元');
+ return {...settings,maxCostUsd};
+}
+
 export function sectionWordsForRuntime(settings={},language='中文',configured=1800){
  const ceiling=integer(configured,1800,200,2500),output=integer(settings.maxOutputTokens,4096,32,16384);
  // Leave room for the full JSON envelope, evidence IDs, missing-evidence notes

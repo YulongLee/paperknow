@@ -1,10 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {computeThesisRunBudget,sectionWordsForRuntime,classifyThesisRetry} from '../backend/thesis-execution-policy.mjs';
+import {computeThesisRunBudget,sectionWordsForRuntime,classifyThesisRetry,thesisExecutionSettings} from '../backend/thesis-execution-policy.mjs';
+import {environmentConfig} from '../backend/config.mjs';
 
 const settings={maxTurns:12,maxOutputTokens:4096};
 const snapshot={title:'用于预算规划的合成论文',profile:{language:'中文',targetWords:8000},requirements:{},outline:[{title:'背景'},{title:'方法'},{title:'讨论'}],materials:[],references:[]};
 const plan=count=>Array.from({length:count},(_,position)=>({id:'unit-'+position,targetWords:1000,position}));
+
+test('a thesis-specific dollar ceiling changes only a copied runtime and rejects invalid configuration',()=>{
+ const shared={...settings,maxCostUsd:.5,version:'frozen-model',model:'synthetic',apiKey:'synthetic-only'};
+ assert.equal(thesisExecutionSettings(shared),shared);
+ assert.deepEqual(thesisExecutionSettings(shared,1),{...shared,maxCostUsd:1});assert.equal(shared.maxCostUsd,.5);
+ assert.equal(environmentConfig({PK_THESIS_MAX_CALL_COST_USD:'1',PK_AGENT_MAX_COST_USD:'.5'}).thesisMaxCallCostUsd,1);
+ assert.equal(environmentConfig({}).thesisMaxCallCostUsd,undefined);
+ for(const limit of [0,-1,5.01,NaN,Infinity,'1',null])assert.throws(()=>thesisExecutionSettings(shared,limit),error=>error.status===400);
+});
 
 test('a complete multi-unit thesis gets a bounded run budget instead of the same fixed short-task window',()=>{
  const small=computeThesisRunBudget({snapshot,plan:plan(2),settings}),large=computeThesisRunBudget({snapshot,plan:plan(20),settings});
