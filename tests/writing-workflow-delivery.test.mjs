@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {mountWritingFlow,disposeWritingFlows} from '../dist/workspace/writing-flows.mjs';
-import {writingFlowSpecs} from '../dist/workspace/writing-flow-model.mjs';
+import {writingFlowSpecs,writingFlowSnapshot} from '../dist/workspace/writing-flow-model.mjs';
 import {assessWritingDelivery,writingDeliveryMarkup} from '../dist/workspace/writing-delivery.mjs';
 import {clearEditor,flushEditorDraft} from '../dist/workspace/edit-guard.mjs';
 import {list,keys,endDraftScope} from '../dist/workspace/state.mjs';
@@ -52,4 +52,24 @@ for(const kind of Object.keys(writingFlowSpecs))test(kind+' manuscript export ha
 
 test('idea supplementation uses its supported ideas operation and refreshes the manuscript snapshot',async()=>{
  const f=fixture('idea');try{f.row.writingFlow.body='选题方向【待补充：资源条件】';localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();f.$('#wf-body-docx').click();f.input('[data-wf-supplement]','研究范围为公开图像数据，拟比较两种识别方法。');f.$('[data-wf-complete]').click();await settle();const posted=f.calls.filter(row=>row.path==='/writing/jobs');assert.equal(posted.length,1);assert.equal(posted[0].data.operation,'ideas');assert.equal(posted[0].data.completion,undefined);assert.ok(posted[0].data.snapshot.materials.some(row=>row.text.includes('拟比较两种识别方法')));assert.equal(f.save().ideaCandidates.length,3);assert.ok(f.save().bodyInputKey);assert.match(f.$('.wf-delivery-state').textContent,/未发现缺项/);}finally{f.close();}
+});
+
+test('proposal basic information has no writing requirement input and knowledge owns the single requirement field',()=>{
+ const f=fixture('proposal');try{f.row.writingFlow.stage=0;localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();assert.equal(f.$('[data-wf-field="instructions"]'),null);assert.equal(f.$('[data-wf-field="proposalRequirements"]'),null);assert.doesNotMatch(f.$('#writing-form').textContent,/写作要求（可选）/);f.$('#writing-form').dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true}));assert.equal(f.save().stage,1);assert.equal(document.querySelectorAll('[data-wf-field="proposalRequirements"]').length,1);assert.equal(f.$('[data-wf-field="instructions"]'),null);assert.match(f.$('[data-wf-field="proposalRequirements"]').closest('label').textContent,/写作要求/);assert.equal(f.$('[data-wf-field="proposalRequirements"]').maxLength,12000);assert.equal(f.calls.length,0);}finally{f.close();}
+});
+
+test('existing proposal requirements appear together in knowledge without invalidating a confirmed manuscript or its saved input key',()=>{
+ const f=fixture('proposal');try{Object.assign(f.row.writingFlow,{instructions:'基本信息中已填写的研究范围',proposalRequirements:'学校要求说明可行性与计划',bodyInputKey:JSON.stringify(writingFlowSnapshot('proposal',{...f.row.writingFlow,instructions:'基本信息中已填写的研究范围',proposalRequirements:'学校要求说明可行性与计划'}))});const before=structuredClone(f.row.writingFlow),snapshot=writingFlowSnapshot('proposal',before);localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();f.settings();assert.equal(f.$('[data-wf-field="proposalRequirements"]').value,before.instructions+'\n\n'+before.proposalRequirements);let saved=f.save();assert.deepEqual(writingFlowSnapshot('proposal',saved),snapshot);assert.equal(saved.outlineConfirmed,true);assert.equal(saved.bodyInputKey,before.bodyInputKey);assert.equal(saved.body,before.body);assert.equal(saved.instructions,before.instructions);assert.equal(saved.proposalRequirements,before.proposalRequirements);clearEditor();disposeWritingFlows();f.mount();f.settings();assert.equal(f.$('[data-wf-field="proposalRequirements"]').value,before.instructions+'\n\n'+before.proposalRequirements);assert.deepEqual(writingFlowSnapshot('proposal',f.save()),snapshot);assert.equal(f.calls.length,0);}finally{f.close();}
+});
+
+test('editing or clearing the single knowledge requirement replaces both old proposal inputs and relocks only dependent steps',()=>{
+ for(const value of ['按新要求说明研究范围与方法','']){const f=fixture('proposal');try{Object.assign(f.row.writingFlow,{instructions:'旧基础要求',proposalRequirements:'旧学校要求'});localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();f.settings();f.input('[data-wf-field="proposalRequirements"]',value);const saved=f.save(),text=writingFlowSnapshot('proposal',saved).requirements.instructions;assert.equal(saved.instructions,value);assert.equal(saved.proposalRequirements,'');assert.doesNotMatch(text,/旧基础要求|旧学校要求/);if(value)assert.equal(text.split(value).length-1,1);assert.equal(saved.outlineConfirmed,false);assert.equal(saved.unlocked,1);assert.equal(saved.body,f.row.writingFlow.body);assert.equal(f.$('[data-writing-step="5"]').disabled,true);clearEditor();disposeWritingFlows();f.mount();assert.equal(f.$('[data-wf-field="proposalRequirements"]').value,value);assert.equal(f.calls.length,0);}finally{f.close();}}
+});
+
+test('long proposal requirements retain the former writing limit and whitespace across save and reopen without entering research materials',()=>{
+ const f=fixture('proposal');try{f.mount();f.settings();const text='研究范围与交付要求。'.repeat(400)+'\n';f.input('[data-wf-field="proposalRequirements"]',text);let saved=f.save();assert.equal(saved.instructions,text);assert.equal(saved.proposalRequirements,'');assert.equal(saved.materials.length,0);assert.ok(writingFlowSnapshot('proposal',saved).requirements.instructions.includes(text.trim()));clearEditor();disposeWritingFlows();f.mount();assert.equal(f.$('[data-wf-field="proposalRequirements"]').value,text);saved=f.save();assert.equal(saved.instructions,text);assert.equal(saved.materials.length,0);assert.equal(f.calls.length,0);}finally{f.close();}
+});
+
+test('opening historical proposal requirements with leading blanks and Windows newlines does not rewrite an unchanged task snapshot',()=>{
+ const f=fixture('proposal');try{Object.assign(f.row.writingFlow,{instructions:'\n原有研究范围\r\n第二行要求\r\n',proposalRequirements:'学校补充条件\r\n'});const before=writingFlowSnapshot('proposal',f.row.writingFlow);localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();f.settings();const saved=f.save();assert.deepEqual(writingFlowSnapshot('proposal',saved),before);assert.equal(saved.instructions,f.row.writingFlow.instructions);assert.equal(saved.proposalRequirements,f.row.writingFlow.proposalRequirements);assert.equal(saved.outlineConfirmed,true);assert.equal(f.calls.length,0);}finally{f.close();}
 });

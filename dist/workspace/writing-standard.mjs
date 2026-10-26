@@ -13,6 +13,16 @@ export const writingStandards=Object.freeze({
 });
 export const writingStandardSpec=kind=>writingStandards[kind]||null;
 export const writingStandardFields=kind=>Object.fromEntries(['Template','TemplateText','Requirements','Metadata','ExportTemplate','ExportTemplateSelectionMade'].map(suffix=>[suffix[0].toLowerCase()+suffix.slice(1),(kind==='proposal'?'proposal':'document')+suffix]));
+// Display historical proposal inputs together without rewriting frozen task snapshots.
+// An actual edit can replace both old inputs with the single writing instruction.
+export function writingStandardRequirements(kind,data={}){
+ const current=String(data[writingStandardFields(kind).requirements]||'');
+ if(kind!=='proposal')return current;
+ const previous=String(data.instructions||'');
+ if(!current.trim())return previous||current;
+ if(!previous.trim())return current;
+ return previous.trim()===current.trim()?previous:previous+'\n\n'+current;
+}
 // An export-only choice must not change the writing brief or invalidate its outline.
 // The explicit flag distinguishes restoring the generic format from an old draft
 // that should continue to use the template selected in the materials step.

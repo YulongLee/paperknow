@@ -1,5 +1,5 @@
 import {writingDefaultTemplateSpec} from './writing-template-catalog.mjs';
-import {writingStandardSpec,writingStandardFields,writingExportTemplate} from './writing-standard.mjs';
+import {writingStandardSpec,writingStandardFields,writingExportTemplate,writingStandardRequirements} from './writing-standard.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function writingStandardPanel(kind,data,{compact=false}={}){
  const spec=writingStandardSpec(kind);if(!spec)return '';
@@ -14,6 +14,6 @@ export function writingStandardPanel(kind,data,{compact=false}={}){
   <input type="file" data-template-file data-no-file-library accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
   <p class="wf-muted" data-template-status role="status" aria-live="polite">模板支持 DOCX，最大 2MB。保留明确的正文区域或独立的 {{正文}} 占位符。</p>
   ${cover}${recognition}
-  <label class="wf-field"><span>${spec.authority}补充要求（可选）</span><textarea data-wf-field="${fields.requirements}" rows="3" maxlength="3000" placeholder="如栏目顺序、篇幅、引用格式、交付要求等。">${esc(data[fields.requirements]||'')}</textarea></label>${data[fields.templateText]?`<details class="wf-drawer"><summary>撰写栏目与要求（可编辑）</summary><textarea data-wf-field="${fields.templateText}" rows="6" maxlength="6000">${esc(data[fields.templateText]||'')}</textarea><p class="wf-muted">只作为结构与填写要求使用；示例、签名与评审意见不会自动成为正文事实。</p></details>`:''}<details class="wf-drawer"><summary>${spec.title}撰写要点与规范参考</summary><dl class="wf-standard-guide">${spec.guidance.map(([title,text])=>`<dt>${esc(title)}</dt><dd>${esc(text)}</dd>`).join('')}</dl><p class="wf-muted">具体要求以${spec.authority}当前规定为准。通用模板不代替官方表格或投稿模板。</p>${spec.sources.map(([title,url])=>`<a href="${url}" target="_blank" rel="noopener noreferrer">${esc(title)} ↗</a>`).join('<br>')}</details>
+  <label class="wf-field"><span>${kind==='proposal'?'写作要求（可选）':spec.authority+'补充要求（可选）'}</span><textarea data-wf-field="${fields.requirements}" rows="3" maxlength="${kind==='proposal'?12000:3000}" placeholder="如栏目顺序、篇幅、引用格式、交付要求等。">${esc(writingStandardRequirements(kind,data))}</textarea></label>${data[fields.templateText]?`<details class="wf-drawer"><summary>撰写栏目与要求（可编辑）</summary><textarea data-wf-field="${fields.templateText}" rows="6" maxlength="6000">${esc(data[fields.templateText]||'')}</textarea><p class="wf-muted">只作为结构与填写要求使用；示例、签名与评审意见不会自动成为正文事实。</p></details>`:''}<details class="wf-drawer"><summary>${spec.title}撰写要点与规范参考</summary><dl class="wf-standard-guide">${spec.guidance.map(([title,text])=>`<dt>${esc(title)}</dt><dd>${esc(text)}</dd>`).join('')}</dl><p class="wf-muted">具体要求以${spec.authority}当前规定为准。通用模板不代替官方表格或投稿模板。</p>${spec.sources.map(([title,url])=>`<a href="${url}" target="_blank" rel="noopener noreferrer">${esc(title)} ↗</a>`).join('<br>')}</details>
  </section>`;
 }
