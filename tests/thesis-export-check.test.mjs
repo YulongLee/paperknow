@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {auditThesisExport} from '../src/thesis-export-check.js';
 import {thesisDocumentPresentation} from '../dist/workspace/thesis-document.mjs';
+import {thesisExportMetadata} from '../dist/workspace/thesis-template.mjs';
 
 const completedQuality = (overrides = {}) => ({status:'completed',stale:false,coverage:{totalCharacters:100,reviewedCharacters:100,complete:true},reviews:[{status:'completed',outcome:'no_ai_findings',findings:[]}],consistency:{status:'no_deterministic_issues',findings:[]},...overrides});
 const check = (report, id) => report.checks.find(row => row.id === id);
@@ -134,10 +135,10 @@ test('a report can be serialized without including any raw manuscript, user meta
  assert.doesNotMatch(JSON.stringify(result),/PRIVATE/);assert.ok(JSON.stringify(result).length<12000);assert.ok(result.checks.every(row=>['passed','review_required','not_checked'].includes(row.status)));assert.ok(result.warnings.every(row=>typeof row.message==='string'&&typeof row.code==='string'));
 });
 
-test('partial generated chapter presentation is never described as a complete manuscript', () => {
+test('partial chapter status is checked from saved chapter metadata without injecting a warning into the manuscript', () => {
  const snapshot={title:'测试论文',outline:[{id:'one',title:'第一章 引言'},{id:'two',title:'第二章 研究方法'}],references:[],materials:[]};
- const presentation=thesisDocumentPresentation(snapshot,[{id:'one',title:'第一章 引言',text:'这是已保存的一章正文。'}]),result=clean({text:presentation.text,metadata:{title:snapshot.title,citationRanges:presentation.citationRanges}});
- assert.equal(check(result,'incomplete_manuscript').status,'review_required');assert.match(check(result,'incomplete_manuscript').message,/部分章节尚未完成/);assert.equal(result.status,'review_required');
+ const chapters=[{id:'one',title:'第一章 引言',text:'这是已保存的一章正文。'}],presentation=thesisDocumentPresentation(snapshot,chapters),metadata=thesisExportMetadata({snapshot,chapters}),result=clean({text:presentation.text,metadata});
+ assert.doesNotMatch(presentation.text,/部分章节尚未完成|不代表完整论文/);assert.equal(check(result,'incomplete_manuscript').status,'review_required');assert.match(check(result,'incomplete_manuscript').message,/第二章 研究方法/);assert.equal(result.status,'review_required');
 });
 
 test('English draft placeholders and an empty template profile are reported with public wording', () => {

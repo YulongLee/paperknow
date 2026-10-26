@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
-import {presentThesisDocument} from '../dist/workspace/thesis-document.mjs';
+import {presentThesisDocument,thesisChapterCompletion} from '../dist/workspace/thesis-document.mjs';
 import {createWritingDocx} from '../src/writing-document.js';
 import {thesisSnapshotFromDraft} from '../dist/workspace/writing-model.mjs';
 import {normalizeThesisSnapshot,thesisAgentTask,thesisFullText,compileThesisReferences,thesisManualSourceIds} from '../backend/thesis-model.mjs';
@@ -46,9 +46,9 @@ test('a retained source marker or partial bibliography cannot suppress its canon
  }
 });
 
-test('partial exports clearly name missing body chapters without treating empty reference metadata as missing prose',()=>{
+test('missing chapter diagnostics stay outside manuscript prose and empty reference metadata is not missing prose',()=>{
  const value=snapshot();value.outline.push({id:'chapter-2',title:'尚未完成的方法章'},{id:'refs',title:'参考文献',kind:'references'});const rows=[...chapters(),{id:'chapter-2',title:'尚未完成的方法章',text:''},{id:'refs',title:'参考文献',kind:'references',text:''}],before=structuredClone({value,rows});
- const text=presentThesisDocument(value,rows);assert.match(text,/部分章节尚未完成/);assert.match(text,/本文仅包含当前已保存的章节草稿，不代表完整论文。尚未完成：尚未完成的方法章。/);assert.doesNotMatch(text,/尚未完成：.*参考文献/);assert.deepEqual({value,rows},before);
+ const text=presentThesisDocument(value,rows);assert.doesNotMatch(text,/部分章节尚未完成|本文仅包含当前已保存的章节草稿|不代表完整论文|尚未完成：/);assert.deepEqual(thesisChapterCompletion(value,rows),{expected:2,completed:1,missing:[{id:'chapter-2',title:'尚未完成的方法章'}]});assert.match(text,/原始笔记/);assert.deepEqual({value,rows},before);
  assert.doesNotMatch(presentThesisDocument(snapshot(),chapters()),/部分章节尚未完成/);delete value.outline;assert.doesNotMatch(presentThesisDocument(value,rows),/部分章节尚未完成/);
 });
 

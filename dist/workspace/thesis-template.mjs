@@ -1,5 +1,5 @@
 import {reuseStoredOriginal} from './file-selection.mjs';
-import {thesisDocumentPresentation} from './thesis-document.mjs';
+import {thesisDocumentPresentation,thesisChapterCompletion} from './thesis-document.mjs';
 import {thesisEnglishTitle} from './thesis-delivery.mjs';
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const thesisTemplateMaxBytes=2*1024*1024;
@@ -13,7 +13,7 @@ export function thesisExportMetadata(value={},options={}){
  const snapshot=value.snapshot||value,profile=snapshot.profile||value.profile||{},requirements=snapshot.requirements||{};
  const chapterTitles=(value.chapters||snapshot.outline||value.outlineRows||[]).filter(row=>row.level===undefined||Number(row.level)===1).map(row=>String(row.title||'').trim()).filter(Boolean);
  const title=String(value.title||snapshot.title||''),presentation=Array.isArray(value.chapters)?thesisDocumentPresentation(snapshot,value.chapters,{title,...options}):null,citationRanges=presentation?.citationRanges;
- return {title,...(thesisEnglishTitle(value.chapters)?{englishTitle:thesisEnglishTitle(value.chapters)}:{}),level:String(profile.level||value.degree||''),major:String(profile.major||profile.discipline||value.major||''),institution:String(requirements.institution||value.institution||''),supervisor:String(requirements.supervisor||value.supervisor||''),author:String(value.author||requirements.author||''),...(value.exportMetadata||{}),chapterTitles,...(citationRanges?{citationRanges}:{}),...(presentation?.figures?.length?{figures:presentation.figures}:{})};
+ return {title,...(thesisEnglishTitle(value.chapters)?{englishTitle:thesisEnglishTitle(value.chapters)}:{}),level:String(profile.level||value.degree||''),major:String(profile.major||profile.discipline||value.major||''),institution:String(requirements.institution||value.institution||''),supervisor:String(requirements.supervisor||value.supervisor||''),author:String(value.author||requirements.author||''),...(value.exportMetadata||{}),chapterTitles,...(Array.isArray(value.chapters)&&Array.isArray(snapshot.outline)?{chapterCompletion:thesisChapterCompletion(snapshot,value.chapters)}:{}),...(citationRanges?{citationRanges}:{}),...(presentation?.figures?.length?{figures:presentation.figures}:{})};
 }
 export function templateSelectionFailureMessage(error){
  const reason=typeof error?.message==='string'&&error.message.trim()?error.message.trim():'模板保存未完成，请重试。';

@@ -79,12 +79,17 @@ export function renderThesisCitations(text,bibliography){
 
 // This is a document presentation only. Stored chapter text and its source IDs
 // remain unchanged so edits, evidence checks and historic versions stay traceable.
+export function thesisChapterCompletion(snapshot={},chapters=[]){
+ const expected=(Array.isArray(snapshot.outline)?snapshot.outline:[]).filter(chapter=>chapter&&!isOutlineReferenceChapter(chapter));
+ const written=(Array.isArray(chapters)?chapters:[]).filter(row=>row&&stripThesisOwnedHeadings(String(row.text||''),[String(row.title||'')]).trim());
+ const missing=expected.filter(chapter=>!written.some(row=>chapter.id&&row.id?chapter.id===row.id:String(chapter.title||'').trim()===String(row.title||'').trim())).map(chapter=>({id:String(chapter.id||''),title:String(chapter.title||'未命名章节')}));
+ return {expected:expected.length,completed:expected.length-missing.length,missing};
+}
 export function presentThesisDocument(snapshot={},chapters=[],options={}){return thesisDocumentPresentation(snapshot,chapters,options).text;}
 export function thesisDocumentPresentation(snapshot={},chapters=[],{title=snapshot.title,submission=false}={}){
  const rows=chapters.filter(row=>String(row?.text||'').trim()).slice().sort((a,b)=>(thesisFrontMatterKind(a)==='abstract_zh'?-2:thesisFrontMatterKind(a)==='abstract_en'?-1:0)-(thesisFrontMatterKind(b)==='abstract_zh'?-2:thesisFrontMatterKind(b)==='abstract_en'?-1:0));
  const figures=normalizeThesisFigures(rows.flatMap(row=>{const used=new Set([...String(row.text||'').matchAll(/\[figure:([^\]]+)\]/g)].map(match=>match[1]));return (row.figures||[]).filter(figure=>used.has(figure.id));}));
  if(!rows.length)return {text:'',citationRanges:[]};
- const missingChapters=(Array.isArray(snapshot.outline)?snapshot.outline:[]).filter(chapter=>!isOutlineReferenceChapter(chapter)&&!rows.some(row=>chapter.id&&row.id?chapter.id===row.id:String(chapter.title||'').trim()===String(row.title||'').trim()));
  const bibliographyModel=buildThesisBibliography(snapshot,chapters),references=new Map((snapshot.references||[]).filter(row=>row?.confirmed===true).map(row=>[row.id,row]));
  const render=text=>renderThesisCitations(text,bibliographyModel),unknown=bibliographyModel.unresolved.length>0;
  const referenceChapters=rows.filter(isOutlineReferenceChapter),normalize=value=>String(value??'').replace(/\s+/g,' ').trim();
@@ -96,10 +101,6 @@ export function thesisDocumentPresentation(snapshot={},chapters=[],{title=snapsh
  const semanticBody=text=>{const raw=String(text),citationRanges=[];let value='',cursor=0;for(const match of raw.matchAll(/\[source:([^\]]+)\]/g)){value+=raw.slice(cursor,match.index);const label=render(match[0]),start=value.length;value+=label;if(referenceNumbers.has(match[1]))citationRanges.push({start,end:value.length,number:referenceNumbers.get(match[1])});cursor=match.index+match[0].length;}value+=raw.slice(cursor);return {text:value,citationRanges};};
  const renderChapter=row=>{const title=String(row.title||'');let text=stripThesisOwnedHeadings(row.text,[title]);if(thesisFrontMatterKind(row)==='abstract_en')text=text.replace(/^(?:英文题目|English title)\s*[:：].*\n*/im,'');return [title,semanticBody(text)];};
  const manuscript=rows.filter(row=>!isOutlineReferenceChapter(row)),front=manuscript.filter(thesisFrontMatterKind).flatMap(renderChapter),body=manuscript.filter(row=>!thesisFrontMatterKind(row)).flatMap(renderChapter);
- // Keep the disclosure in the body, after its first heading. Placing it
- // before abstracts caused the template renderer to move intact paragraphs
- // across source anchors and correctly fail the strict order check.
- const disclosure=missingChapters.length?['部分章节尚未完成','本文仅包含当前已保存的章节草稿，不代表完整论文。尚未完成：'+missingChapters.map(row=>row.title||'未命名章节').join('、')+'。']:[];
  const bibliography=bibliographyModel.references.map(row=>row.label+' '+row.text);
  const bibliographyTitle=snapshot.profile?.language==='English'?'References':'参考文献';
  // Canonical references always follow citation order. Keep differing manual
@@ -107,7 +108,9 @@ export function thesisDocumentPresentation(snapshot={},chapters=[],{title=snapsh
  const referenceNotes=referenceChapters.filter(row=>!canonicalReferenceChapter(row)).map(row=>render(row.text).replace(/\[(\d+)\]/g,'〔文献$1〕'));
  const materialList=submission?[]:[...bibliographyModel.materials.map(row=>row.label+' '+row.name+(row.purpose?'（'+row.purpose+'）':'')),...bibliographyModel.associatedMaterials.map(row=>row.label+' '+row.name+(row.purpose?'（'+row.purpose+'）':'')+'（关联来源，当前正文未标注）')];
  const uncitedList=submission?[]:bibliographyModel.uncitedReferences.map(row=>row.label+' '+row.text);
- const parts=[title,...front,...(body.length?[body[0],...disclosure,...body.slice(1)]:disclosure),...(bibliography.length?[bibliographyTitle,...bibliography]:[]),...(materialList.length?['研究材料来源（用户提供，待人工核对）',...materialList]:[]),...(uncitedList.length?['待引用文献（尚未在正文引用）','以下为已选题录，尚未建立正文引用；未因选中而认定已读取或已支持正文论断。',...uncitedList]:[]),...(referenceNotes.length?['参考文献整理原文（待核对）',...referenceNotes]:[]),...(unknown?['引用核对提示','正文含有未匹配的来源标记，请补充并核对来源后再用于提交。']:[])].filter(part=>part&&typeof part==='object'?Boolean(part.text):Boolean(part));
+ // Workflow diagnostics belong to export metadata and the completion panel,
+ // never to manuscript paragraphs or the generated table of contents.
+ const parts=[title,...front,...body,...(bibliography.length?[bibliographyTitle,...bibliography]:[]),...(materialList.length?['研究材料来源（用户提供，待人工核对）',...materialList]:[]),...(uncitedList.length?['待引用文献（尚未在正文引用）','以下为已选题录，尚未建立正文引用；未因选中而认定已读取或已支持正文论断。',...uncitedList]:[]),...(referenceNotes.length?['参考文献整理原文（待核对）',...referenceNotes]:[]),...(unknown?['引用核对提示','正文含有未匹配的来源标记，请补充并核对来源后再用于提交。']:[])].filter(part=>part&&typeof part==='object'?Boolean(part.text):Boolean(part));
  let rawText='';const rawRanges=[];for(const part of parts){if(rawText)rawText+='\n\n';const offset=rawText.length;rawText+=typeof part==='object'?part.text:String(part);if(typeof part==='object')rawRanges.push(...part.citationRanges.map(range=>({...range,start:range.start+offset,end:range.end+offset})));}
  // Match writing-document.documentLines before exposing UTF-16 offsets. Only
  // characters removed before a range change its position; ordinary [n] text,

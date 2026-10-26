@@ -9,5 +9,5 @@ export function thesisCompletionNeeds(item={}){
  });
  return {chapters:chapters.filter(row=>row.needsContent||row.needsTableTitles),hasSavedText:(item.chapters||[]).some(row=>String(row.text||'').trim()),hasReferenceText:(item.snapshot?.references||[]).some(row=>row.confirmed&&String(row.text||'').trim())};
 }
-export const completionIssueCodes=new Set(['supplement_check','abstract_zh','abstract_en','keywords_zh','keywords_en','english_title','reference_minimum','foreign_references','citations_missing','citation_provenance','references_not_cited','unresolved_sources','duplicate_paragraphs','duplicate_headings','review_findings','table_captions','table_numbers','raw_formula']);
+export const completionIssueCodes=new Set(['incomplete_manuscript','supplement_check','abstract_zh','abstract_en','keywords_zh','keywords_en','english_title','reference_minimum','foreign_references','citations_missing','citation_provenance','references_not_cited','unresolved_sources','duplicate_paragraphs','duplicate_headings','review_findings','table_captions','table_numbers','raw_formula']);
 export const safeCompletionIssues=value=>Array.isArray(value)?[...new Set(value.filter(code=>completionIssueCodes.has(code)))].sort():[];

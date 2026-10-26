@@ -191,7 +191,12 @@ export function auditThesisExport({text, metadata = {}, templateProfile = null, 
  const characters = value.length, nonWhitespaceCharacters = value.replace(/\s/gu, '').length;
  const bodyCharacters = lines.filter(line => line.section === 'body' && !line.heading && line.text.trim() !== String(data.title || '').trim()).map(line => line.text).join('').replace(/\s/gu, '').length;
  add('body_present', '正文内容', bodyCharacters ? 'passed' : 'review_required', bodyCharacters ? `已读取本次导出的 ${characters} 个字符。` : '本次导出没有可检查的正文。', {count: characters});
- if (lines.some(line => !line.literal && line.text.trim() === '部分章节尚未完成')) add('incomplete_manuscript', '论文章节完整性', 'review_required', '当前导出正文标记为部分章节尚未完成；请核对章节后再作为完整论文交付。', {count: 1});
+ const completion=data.chapterCompletion;
+ if(isObject(completion)){
+  const expected=safeCount(completion.expected),completed=safeCount(completion.completed),missing=Array.isArray(completion.missing)?completion.missing:null;
+  if(expected===null||completed===null||!missing||completed>expected||expected-completed!==missing.length||missing.some(row=>!isObject(row)||typeof row.title!=='string'||!row.title.trim()))add('incomplete_manuscript','论文章节完整性','review_required','章节完成记录暂不可核对，请重新读取论文状态后再导出终稿。',{count:1});
+  else add('incomplete_manuscript','论文章节完整性',missing.length?'review_required':'passed',missing.length?`还有 ${missing.length} 个章节需要完善：${missing.slice(0,MAX_DETAILS).map(row=>row.title).join('、')}。请在补充窗口提供所需信息，由系统完善后重新检查。`:`已核对 ${expected} 个提纲章节，均已保存内容。`,{count:missing.length});
+ }else if(lines.some(line=>!line.literal&&line.text.trim()==='部分章节尚未完成'))add('incomplete_manuscript','论文章节完整性','review_required','旧版文档含章节未完成提示，请读取最新论文状态后重新检查。',{count:1});
  if (limited) add('audit_scope', '检查范围', 'review_required', `正文超过 ${MAX_TEXT} 个字符，本次仅检查前 ${MAX_TEXT} 个字符，不能据此确认全文。`, {count: MAX_TEXT});
  add('unresolved_placeholders', '待补充标记', markers.placeholders ? 'review_required' : 'passed', markers.placeholders ? `正文有 ${markers.placeholders} 处待补充或待核对标记，请补齐后再交付。` : '未发现明确的待补充或待核对占位标记。', {count: markers.placeholders});
  add('unresolved_sources', '来源标记', markers.sources ? 'review_required' : 'passed', markers.sources ? `正文有 ${markers.sources} 处未编排的来源标记，请核对参考文献后再交付。` : '未发现未编排的来源标记。', {count: markers.sources});

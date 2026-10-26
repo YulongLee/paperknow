@@ -91,7 +91,7 @@ test('final placeholder scanning joins same-paragraph formatted runs while retai
  const result=await inspectThesisExportContent(changed,simpleText);assert.equal(result.unresolvedPlaceholders,1);
 });
 
-test('editable partial drafts keep both abstracts before their disclosure and preserve every paragraph in default and recognized school templates',async()=>{
+test('editable partial drafts omit workflow disclosures and preserve abstracts, citations and every paragraph in default and school templates',async()=>{
  const snapshot={title:'合成初稿导出顺序验收',outline:[{id:'zh',title:'摘要'},{id:'en',title:'Abstract'},{id:'body',title:'第一章 研究方法'},{id:'pending',title:'第二章 研究结果'},{id:'ack',title:'致谢'}],materials:[],references:[{id:'r1',title:'合成来源',authors:'合成作者',year:'2026',confirmed:true}]};
  const chapters=[{id:'zh',title:'摘要',text:'中文摘要内容完整保留。\n关键词：初稿；导出；验证'},{id:'en',title:'Abstract',text:'An English abstract for a synthetic export test.\nKey words: draft; export; validation'},{id:'body',title:'第一章 研究方法',text:'这一段正文必须保留[source:r1]。\n【待补充：真实研究记录】\n| 项目 | 说明 |\n| --- | --- |\n| 方法 | 拟开展方案 |\n```python\ndef draft(x):\n    return x + 1\n```\n正文中的数学表达式 $x^2+1$ 保留。'}],item={title:snapshot.title,snapshot,chapters},before=structuredClone(item),presentation=thesisDocumentPresentation(snapshot,chapters),metadata=thesisExportMetadata(item);
  const template=await createWritingDocx('合成大学本科毕业论文\n论文题目：{{论文题目}}\n摘要\n这里是学校模板的中文摘要样例，需要用论文内容替换。\nAbstract\nThis is the school abstract example, to be replaced by the author.\n目录\n第一章 模板正文\n这里是学校模板正文样例，包含待替换内容。\n参考文献\n[1] 模板参考文献。\n致谢\n模板原有致谢样例。');
@@ -99,9 +99,10 @@ test('editable partial drafts keep both abstracts before their disclosure and pr
   const bytes=await write(presentation.text,{metadata,template:templateOption}),result=await inspectThesisExportContent(bytes,presentation.text,{metadata});
   assert.equal(result.status,'passed');assert.ok(result.unresolvedPlaceholders>0,'Pending evidence remains visible without blocking an editable draft');
  }
- assert.ok(presentation.text.indexOf('Abstract')<presentation.text.indexOf('部分章节尚未完成'));
- assert.ok(presentation.text.indexOf('第一章 研究方法\n\n')<presentation.text.indexOf('部分章节尚未完成'));
- assert.ok(presentation.text.indexOf('部分章节尚未完成')<presentation.text.indexOf('这一段正文必须保留'));
+ assert.doesNotMatch(presentation.text,/部分章节尚未完成|本文仅包含当前已保存的章节草稿|不代表完整论文|尚未完成：/);
+ assert.ok(presentation.text.indexOf('Abstract')<presentation.text.indexOf('第一章 研究方法\n\n'));
+ assert.ok(presentation.text.indexOf('第一章 研究方法\n\n')<presentation.text.indexOf('这一段正文必须保留'));
+ assert.deepEqual(metadata.chapterCompletion.missing.map(row=>row.title),['第二章 研究结果','致谢']);
  for(const range of presentation.citationRanges)assert.equal(presentation.text.slice(range.start,range.end),'['+range.number+']');
  assert.deepEqual(item,before,'Export ordering must never change saved chapters or research sources');
 });
