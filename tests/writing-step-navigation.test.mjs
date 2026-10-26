@@ -238,7 +238,7 @@ for(const initialY of [4000,400])test(`confirming a long outline ${initialY>1000
   root.getBoundingClientRect=()=>({top:80-position.y,bottom:5280-position.y,height:5200,left:0,right:1000,width:1000});
   heading.getBoundingClientRect=()=>({top:600-position.y,bottom:640-position.y,height:40,left:0,right:1000,width:1000});
   const focus=document.activeElement;f.$('#outline-confirm').click();await settle();await settle();
-  assert.equal(root.dataset.writingStage,'5');assert.equal(f.$('[data-thesis-create]'),null);assert.ok(f.$('[data-thesis-quote]'),'the generation action is directly rendered');assert.equal(f.$('[data-thesis-view-key="information-overview"]').open,false);assert.equal(f.$('#thesis-online-stage').hidden,false);
+  assert.equal(root.dataset.writingStage,'5');assert.equal(f.$('[data-thesis-create]'),null);assert.ok(f.$('[data-thesis-quote]'),'the generation action is directly rendered');assert.equal(f.$('[data-thesis-view-key="information-overview"]').open,true);assert.equal(f.$('#thesis-online-stage').hidden,false);
   const rect=heading.getBoundingClientRect();assert.ok(rect.bottom>0&&rect.top<win.innerHeight,'the next step must be within the viewport instead of above a blank reserved area');
   if(initialY<1000){assert.equal(position.y,initialY);assert.equal(scrolls.length,0,'an already visible next step must not jump');}else{assert.ok(position.y<initialY);assert.ok(scrolls.every(row=>row.behavior==='instant'),'no animated intermediate page jumps');}
   assert.equal(document.activeElement,focus,'revealing the next step does not move focus');
