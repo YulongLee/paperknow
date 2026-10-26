@@ -59,15 +59,15 @@ async function fixture(t,{kind='proposal',failSave=false,delayUpload=false,accou
  await mount();
  return {dom,fields,calls,artifacts,downloads,releaseUpload,ctx,get cloud(){return cloud;},mount,
   q:selector=>document.querySelector(selector),local:()=>list(keys.drafts)[0].writingFlow,
-  settings(){document.querySelector('[data-wf-standard-edit]')?.click();assert.ok(document.querySelector('[data-wf-knowledge] [data-template-file]'));},
-  result(){document.querySelector('[data-writing-step="'+spec.steps.length+'"]').click();assert.ok(document.querySelector('[data-wf-standard-summary]'));},
-  select(file){document.querySelector('[data-wf-standard-edit]')?.click();const input=document.querySelector('[data-template-file]');Object.defineProperty(input,'files',{value:[file],configurable:true});input.dispatchEvent(new window.Event('change',{bubbles:true}));}
+  settings(){document.querySelector('[data-writing-step="'+((spec.panels.includes('materials')?spec.panels.indexOf('materials'):0)+1)+'"]').click();assert.ok(document.querySelector('[data-wf-knowledge] [data-template-file]'));},
+  result(){document.querySelector('[data-writing-step="'+spec.steps.length+'"]').click();assert.equal(document.querySelectorAll('[data-wf-export] [data-document-export]').length,2);assert.equal(document.querySelector('[data-wf-export] [data-template-file]'),null);},
+  select(file){document.querySelector('[data-writing-step="'+((spec.panels.includes('materials')?spec.panels.indexOf('materials'):0)+1)+'"]').click();const input=document.querySelector('[data-template-file]');Object.defineProperty(input,'files',{value:[file],configurable:true});input.dispatchEvent(new window.Event('change',{bubbles:true}));}
  };
 }
 
 for(const kind of Object.keys(writingStandards))test(kind+' can replace its export format without changing the confirmed writing snapshot',async t=>{
  const f=await fixture(t,{kind}),before=structuredClone(f.cloud.payload.writingFlow),file=await templateFile();
- assert.ok(f.q('[data-wf-standard-summary]'));assert.equal(document.querySelectorAll('[data-template-file]').length,0);f.settings();assert.equal(document.querySelectorAll('[data-template-file]').length,1);
+ assert.ok(f.q('[data-wf-export]'));assert.equal(f.q('[data-wf-standard-summary]'),null);assert.equal(document.querySelectorAll('[data-template-file]').length,0);f.settings();assert.equal(document.querySelectorAll('[data-template-file]').length,1);
  let opened=0;f.q('[data-template-file]').showPicker=()=>opened++;f.q('[data-wf-template-choose]').click();assert.equal(opened,1);
  f.select(file);assert.equal(f.q('[data-writing-step="'+writingFlowSpecs[kind].steps.length+'"]').disabled,true);
  await until(()=>!f.q('[data-wf-template-choose]').disabled);
@@ -80,7 +80,7 @@ for(const kind of Object.keys(writingStandards))test(kind+' can replace its expo
  assert.doesNotMatch(f.q('[data-wf-export]').textContent,/当前正文来自此前版本/);
  assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
  await f.mount();assert.equal(f.local()[f.fields.exportTemplate].source.fileId,'new-template');
- assert.equal(f.q('[aria-current="step"]').dataset.writingStep,String(saved.stage+1));f.result();assert.match(f.q('[data-wf-standard-summary] h3').textContent,/新开题排版/);
+ assert.equal(f.q('[aria-current="step"]').dataset.writingStep,String(saved.stage+1));f.result();assert.equal(writingExportTemplate(kind,f.local()).source.name,'新开题排版.docx');
 });
 
 test('the actual final export reads the replacement template from the cloud and applies its font and margin',async t=>{
@@ -101,7 +101,7 @@ test('restoring the generic export format survives reopening without discarding 
  await until(()=>f.q('[data-wf-template-reset]')===null);
  assert.equal(writingExportTemplate('proposal',f.local()),null);
  assert.deepEqual(writingFlowSnapshot('proposal',f.local()),writingFlowSnapshot('proposal',before));
- await f.mount();assert.equal(writingExportTemplate('proposal',f.local()),null);f.result();assert.match(f.q('[data-wf-standard-summary] h3').textContent,/通用开题报告模板/);
+ await f.mount();assert.equal(writingExportTemplate('proposal',f.local()),null);f.result();assert.equal(f.q('[data-wf-export] [data-template-file]'),null);
  assert.equal(f.local().outlineConfirmed,true);assert.equal(f.local().body,before.body);
 });
 
@@ -147,7 +147,7 @@ for(const kind of Object.keys(writingStandards))test(kind+' actual default expor
  const f=await fixture(t,{kind});f.settings();f.q('[data-wf-template-reset]').click();await until(()=>f.q('[data-wf-template-reset]')===null);f.result();
  f.q('#wf-body-draft').click();await until(()=>!f.q('#wf-body-draft').disabled);assert.equal(f.artifacts.length,1,f.q('#writing-status').textContent);
  assert.equal(f.calls.some(row=>row.path.startsWith('/api/files/')),false);assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
- const zip=await JSZip.loadAsync(f.artifacts[0].bytes),styles=await zip.file('word/styles.xml').async('string'),normal=styles.match(/w:styleId="PKNormal"[^>]*>([\s\S]*?)<\/w:style>/)?.[1];assert.ok(normal);assert.ok(normal.includes('w:val="'+(kind==='article'?21:24)+'"'));assert.ok(f.q('[data-wf-standard-summary] h3').textContent.includes('（默认）'));
+ const zip=await JSZip.loadAsync(f.artifacts[0].bytes),styles=await zip.file('word/styles.xml').async('string'),normal=styles.match(/w:styleId="PKNormal"[^>]*>([\s\S]*?)<\/w:style>/)?.[1];assert.ok(normal);assert.ok(normal.includes('w:val="'+(kind==='article'?21:24)+'"'));assert.equal(f.q('[data-wf-standard-summary]'),null);assert.equal(writingExportTemplate(kind,f.local()),null);
 });
 
 test('practice can download a real generic DOCX from its template entry',async t=>{

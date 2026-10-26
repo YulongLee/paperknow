@@ -26,12 +26,12 @@ test('draft upload failure retains the previous template and legacy filenames ar
 
 const isVisible=node=>!!node&&!node.closest('[hidden],.is-stage-hidden');
 const finalDraft=()=>({...draft(),workflowStage:5,workflowUnlockedStage:5,bodySections:[{id:'c1',title:'第一章 绪论',text:'已经填写的正文内容，不应因格式切换丢失。'}]});
-function openDraftSettings(f){if(!isVisible(f.q('#writing-knowledge-template')))f.q('#writing-final-template [data-template-manage],#writing-local-template [data-template-manage]')?.click();assert.ok(isVisible(f.q('#writing-knowledge-template')));}
+function openDraftSettings(f){if(!isVisible(f.q('#writing-knowledge-template')))f.q('[data-writing-step="2"]').click();assert.ok(isVisible(f.q('#writing-knowledge-template')));}
 async function returnFinal(f){f.q('[data-writing-step="5"]').click();await waitFor(()=>f.q('[data-thesis-create]'));}
 
-test('precise knowledge owns the only template chooser and final delivery returns to it before account save',async t=>{
+test('precise knowledge owns the only template chooser and final delivery has no duplicate template upload',async t=>{
  const f=draftFixture(t,{stored:finalDraft()});await waitFor(()=>f.q('[data-thesis-create]'));
- assert.ok(isVisible(f.q('#writing-final-template')));assert.equal(f.q('#writing-final-template [data-template-file]'),null);
+ assert.equal(f.q('#writing-final-template'),null);assert.equal(f.q('#writing-final-template [data-template-file]'),null);
  assert.equal([...document.querySelectorAll('[data-template-panel]')].filter(isVisible).length,0);
  openDraftSettings(f);const host=f.q('#writing-knowledge-template');assert.ok(host.closest('#writing-material-review'));
  assert.equal([...document.querySelectorAll('[data-template-panel]')].filter(isVisible).length,1);
@@ -40,19 +40,19 @@ test('precise knowledge owns the only template chooser and final delivery return
  const before=structuredClone(f.saved());select(f,'#writing-knowledge-template [data-template-file]',file());
  await waitFor(()=>f.saved()?.exportTemplate?.source?.fileId==='draft-template'&&!f.q('#writing-knowledge-template [data-template-choose]').disabled);
  assert.equal(f.saved().outlineConfirmed,true);assert.deepEqual(f.saved().outlineRows,before.outlineRows);assert.deepEqual(f.saved().bodySections,before.bodySections);assert.deepEqual(f.saved().knowledgeFiles,[]);
- assert.match(host.textContent,/新学校模板.docx/);await returnFinal(f);f.q('[data-thesis-create]').click();await waitFor(()=>f.item?.id==='t1'&&f.q('.thesis-export [data-template-summary]'));
+ assert.match(host.textContent,/新学校模板.docx/);await returnFinal(f);f.q('[data-thesis-create]').click();await waitFor(()=>f.item?.id==='t1'&&f.q('.thesis-export'));
  assert.equal(f.calls.find(call=>call.path==='/theses'&&call.data).data.exportTemplateFileId,'draft-template');
  assert.equal([...document.querySelectorAll('[data-template-panel]')].filter(isVisible).length,0);assert.equal(isVisible(f.q('#writing-final-template')),false);
- f.q('.thesis-export [data-template-manage]').click();assert.ok(isVisible(host));assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
+ f.q('[data-writing-step="2"]').click();assert.ok(isVisible(host));assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
 });
-test('final draft template replacement, default restore and reopening preserve text, outline and prior saved template',async t=>{
+test('knowledge template replacement, default restore and reopening preserve text, outline and prior saved template',async t=>{
  const f=draftFixture(t,{stored:finalDraft()});await waitFor(()=>f.q('[data-thesis-create]'));
- const before=structuredClone(f.saved());assert.match(f.q('#writing-final-template').textContent,/原学校模板.docx/);
+ const before=structuredClone(f.saved());assert.match(f.q('#writing-knowledge-template').textContent,/原学校模板.docx/);
  select(f,'#writing-knowledge-template [data-template-file]',file());await waitFor(()=>f.saved()?.exportTemplate?.source?.fileId==='draft-template'&&!f.q('[data-template-choose]').disabled);
  clearEditor();mountWriting(undefined,undefined,f.ctx);await returnFinal(f);
- assert.match(f.q('#writing-final-template').textContent,/新学校模板.docx/);assert.ok(isVisible(f.q('#writing-final-template')));
+ assert.match(f.q('#writing-knowledge-template').textContent,/新学校模板.docx/);assert.equal(f.q('#writing-final-template'),null);
  openDraftSettings(f);f.q('#writing-knowledge-template [data-template-clear]').click();await waitFor(()=>f.saved()?.exportTemplate===null&&!f.q('#writing-knowledge-template [data-template-choose]').disabled);
- assert.match(f.q('#writing-final-template').textContent,/通用学位论文模板（默认）/);assert.deepEqual(f.saved().bodySections,before.bodySections);assert.deepEqual(f.saved().outlineRows,before.outlineRows);assert.equal(f.saved().outlineConfirmed,true);
+ assert.match(f.q('#writing-knowledge-template').textContent,/通用学位论文模板（默认）/);assert.deepEqual(f.saved().bodySections,before.bodySections);assert.deepEqual(f.saved().outlineRows,before.outlineRows);assert.equal(f.saved().outlineConfirmed,true);
  assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
 });
 test('account template replacement tolerates unrelated generation version updates using the original template identity',async t=>{
@@ -70,17 +70,17 @@ test('an account template changed in another page during upload is not overwritt
 
 test('legacy manual writing uses the shared knowledge selector and keeps its body after a format change',async t=>{
  const stored={...finalDraft(),workflowStage:4,workflowUnlockedStage:4,writingEditorState:{manualWriting:true}},f=draftFixture(t,{stored});
- const local=f.q('#writing-local-template');assert.ok(isVisible(local));assert.ok(f.q('#body-docx'));assert.equal(f.q('#body-pdf'),null);assert.equal(f.q('#body-export'),null);assert.equal(local.querySelector('[data-template-file]'),null);
+ const local=f.q('.thesis-local-exports');assert.ok(isVisible(local));assert.equal(f.q('#writing-local-template'),null);assert.ok(f.q('#body-draft'));assert.ok(f.q('#body-docx'));assert.equal(f.q('#body-pdf'),null);assert.equal(f.q('#body-export'),null);assert.equal(local.querySelector('[data-template-file]'),null);
  const before=structuredClone(f.saved());openDraftSettings(f);select(f,'#writing-knowledge-template [data-template-file]',file());await waitFor(()=>f.saved()?.exportTemplate?.source?.fileId==='draft-template'&&!f.q('#writing-knowledge-template [data-template-choose]').disabled);
- assert.match(local.textContent,/新学校模板.docx/);assert.deepEqual(f.saved().bodySections,before.bodySections);assert.deepEqual(f.saved().outlineRows,before.outlineRows);assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
+ assert.match(f.q('#writing-knowledge-template').textContent,/新学校模板.docx/);assert.deepEqual(f.saved().bodySections,before.bodySections);assert.deepEqual(f.saved().outlineRows,before.outlineRows);assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
 });
-test('failed final-step template upload keeps the currently selected school template and usable chooser',async t=>{
+test('failed knowledge-step template upload keeps the currently selected school template and usable chooser',async t=>{
  const f=draftFixture(t,{failure:true,stored:finalDraft()});await waitFor(()=>f.q('[data-thesis-create]'));
  select(f,'#writing-knowledge-template [data-template-file]',file());await waitFor(()=>/原有模板保持不变/.test(f.q('#writing-status')?.textContent||'')&&!f.q('#writing-knowledge-template [data-template-choose]').disabled);
- assert.ok(isVisible(f.q('#writing-knowledge-template')));assert.match(f.q('#writing-final-template').textContent,/原学校模板.docx/);assert.match(f.q('#writing-knowledge-template [data-template-status]').textContent,/原有模板保持不变/);assert.equal(f.saved().exportTemplate.source.fileId,'old-template');assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
+ assert.ok(isVisible(f.q('#writing-knowledge-template')));assert.match(f.q('#writing-knowledge-template').textContent,/原学校模板.docx/);assert.match(f.q('#writing-knowledge-template [data-template-status]').textContent,/原有模板保持不变/);assert.equal(f.saved().exportTemplate.source.fileId,'old-template');assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
 });
 
-test('saving account waits for a pending final template upload and later creates with the newly selected template',async t=>{
+test('saving account waits for a pending knowledge template upload and later creates with the newly selected template',async t=>{
  const f=draftFixture(t,{stored:finalDraft()});await waitFor(()=>f.q('[data-thesis-create]'));
  const before=structuredClone(f.saved());let releaseRead,readStarted=false;const readGate=new Promise(resolve=>{releaseRead=resolve;});
  const pendingFile={name:'新学校模板.docx',size:fixtureBytes.length,arrayBuffer:async()=>{readStarted=true;await readGate;return fixtureBytes.buffer;}};
@@ -90,7 +90,7 @@ test('saving account waits for a pending final template upload and later creates
  assert.equal(f.calls.some(call=>call.path==='/theses'&&call.data),false);
  assert.equal(f.saved().exportTemplate.source.fileId,'old-template');assert.deepEqual(f.saved().bodySections,before.bodySections);assert.deepEqual(f.saved().outlineRows,before.outlineRows);
  releaseRead();await waitFor(()=>f.saved()?.exportTemplate?.source?.fileId==='draft-template'&&!f.q('#writing-knowledge-template [data-template-choose]').disabled);
- f.q('[data-thesis-create]').click();await waitFor(()=>f.item?.id==='t1'&&f.q('.thesis-export [data-template-summary]'));
+ f.q('[data-thesis-create]').click();await waitFor(()=>f.item?.id==='t1'&&f.q('.thesis-export'));
  const creates=f.calls.filter(call=>call.path==='/theses'&&call.data);assert.equal(creates.length,1);assert.equal(creates[0].data.exportTemplateFileId,'draft-template');assert.equal(f.item.exportTemplate.source.fileId,'draft-template');assert.equal(f.calls.some(call=>/quote|generate|resume/.test(call.path)),false);
 });
 

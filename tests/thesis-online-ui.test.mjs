@@ -439,20 +439,17 @@ test('reusing a reference at a caret inside an existing token preserves that tok
  }finally{f.close();}
 });
 
-test('standalone thesis keeps the only template picker in knowledge and final delivery only links back',async()=>{
+test('standalone thesis keeps the only template picker in knowledge and final delivery has exactly two DOCX modes',async()=>{
  const f=fixture();try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;
  assert.equal(document.querySelectorAll('[data-template-file]').length,1);
  assert.ok(f.$('[data-template-file]').closest('[data-thesis-template-knowledge]'));
  assert.equal(f.$('.thesis-export [data-template-file]'),null);
- let scrolled=0;f.$('[data-thesis-template-knowledge]').scrollIntoView=()=>scrolled++;
- f.$('.thesis-export [data-template-manage]').click();assert.equal(scrolled,1);
- assert.equal(document.activeElement,f.$('[data-template-choose]'));
+ assert.equal(f.$('.thesis-export [data-template-manage]'),null);assert.equal(f.$('.thesis-export [data-template-summary]'),null);assert.deepEqual([...document.querySelectorAll('.thesis-export [data-document-export]')].map(node=>node.dataset.documentExport),['draft','docx']);
  assert.equal(f.calls.some(row=>/quote|generate/.test(row.path)),false);
  }finally{f.close();}
 });
-test('embedded thesis returns format settings to the parent knowledge step instead of mounting a duplicate picker',async()=>{
+test('embedded thesis exports without a duplicate template picker',async()=>{
  const f=fixture();let returned=0;try{const panel=mountThesisStage({id:'t1',ctx:f.ctx,container:f.$('.dashboard'),onTemplateSettings:()=>returned++});await panel.ready;
- assert.equal(f.$('[data-template-file]'),null);assert.ok(f.$('[data-template-summary]'));
- f.$('[data-template-manage]').click();assert.equal(returned,1);assert.equal(f.calls.some(row=>/quote|generate/.test(row.path)),false);
+ assert.equal(f.$('[data-template-file]'),null);assert.equal(f.$('[data-template-summary]'),null);assert.deepEqual([...document.querySelectorAll('.thesis-export [data-document-export]')].map(node=>node.dataset.documentExport),['draft','docx']);assert.equal(returned,0);assert.equal(f.calls.some(row=>/quote|generate/.test(row.path)),false);
  }finally{f.close();}
 });

@@ -131,11 +131,11 @@ test('thesis format settings live in step two and returning from final preserves
  assert.equal(document.querySelectorAll('[data-template-file]').length,1);
  assert.ok($('[data-template-file]').closest('#writing-material-review'));
  assert.equal($('#writing-final-template [data-template-file]'),null);
- $('#writing-final-template [data-template-manage]').click();assert.equal($('.dashboard').dataset.writingStage,'2');
+ assert.equal($('#writing-final-template'),null);$('[data-writing-step="2"]').click();assert.equal($('.dashboard').dataset.writingStage,'2');
  let opened=0;$('#writing-knowledge-template [data-template-file]').showPicker=()=>opened++;$('#writing-knowledge-template [data-template-choose]').click();assert.equal(opened,1);$('#writing-knowledge-template [data-template-file]').dispatchEvent(new window.Event('cancel'));
  assert.equal(flushEditorDraft(),true);const saved=JSON.parse(localStorage.getItem('paperknow-drafts'))[0];assert.equal(saved.outlineConfirmed,true);
  saved.exportTemplate={version:1,status:'ready',source:{fileId:'existing-template',name:'已保存学校模板.docx',size:100,sha256:'a'.repeat(64)}};saved.exportTemplateSelectionMade=true;localStorage.setItem('paperknow-drafts',JSON.stringify([saved]));clearEditor();mountWriting(saved.id,undefined,ctx);
- assert.match($('#writing-knowledge-template').textContent,/已保存学校模板.docx/);assert.match($('#writing-final-template').textContent,/已保存学校模板.docx/);assert.equal(document.querySelectorAll('[data-template-file]').length,1);
+ assert.match($('#writing-knowledge-template').textContent,/已保存学校模板.docx/);assert.equal($('#writing-final-template'),null);assert.equal(document.querySelectorAll('[data-template-file]').length,1);
  assert.equal(flushEditorDraft(),true);assert.equal(JSON.parse(localStorage.getItem('paperknow-drafts'))[0].outlineConfirmed,true);
  }finally{clearEditor();dom.window.close();}
 });
