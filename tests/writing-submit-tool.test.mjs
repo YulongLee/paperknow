@@ -47,6 +47,17 @@ test('only a complete strictly accepted candidate survives an SDK max-turns ackn
  await assert.rejects(()=>execute(async function*(options,f){const response=decode(await options.mcpServers.paperknow.instance._registeredTools.submit_writing_output.handler({candidate:f.candidate(310)}));assert.equal(response.accepted,false);yield{...success,subtype:'error_max_turns',is_error:true,result:''};}),/回合上限/);
 });
 
+test('expression polishing stays inside the original execution and frozen submission without altering facts, math or citations',async()=>{
+ let candidate;
+ const output=await execute(async function*(options,f){
+  assert.match(options.systemPrompt,/学术表达润色/);assert.match(options.systemPrompt,/组织论述—表达自检—局部润色—提交/);
+  assert.equal(options.maxBudgetUsd,settings.maxCostUsd);assert.equal(options.maxTurns,settings.maxTurns);
+  candidate=f.candidate();candidate.sections[0].text='ResNet-18 的样本量为 120，准确率为 94.2%，p=0.032，指标为 $F_1=2PR\/(P+R)$。【待补充：外部验证记录】'+'研'.repeat(140)+'[source:source-1]';
+  const accepted=decode(await options.mcpServers.paperknow.instance._registeredTools.submit_writing_output.handler({candidate}));assert.equal(accepted.accepted,true);yield{...success,result:'ACK'};
+ });
+ assert.deepEqual(JSON.parse(output.text),candidate);assert.ok(output.skills.some(s=>s.id==='academic-expression'));assert.equal(output.providerRequests,1);assert.deepEqual(output.trace.map(row=>row.tool),['read_material','submit_writing_output']);
+});
+
 test('a controlled writing task cannot fall back to a successful direct final without submission',async()=>{
  for(const amend of [{},{total_cost_usd:undefined},{modelUsage:{fixture:{inputTokens:0,outputTokens:0}}}]){
   await assert.rejects(()=>execute(async function*(_options,f){yield{...success,result:JSON.stringify(f.candidate()),...amend};}),/未通过完整结果提交校验/);

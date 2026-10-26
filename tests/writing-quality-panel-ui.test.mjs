@@ -9,6 +9,12 @@ const snapshot={title:'期刊文章检查',profile:{level:'研究工作者',lang
 const quality=(overrides={})=>({status:'completed',checkedAt:'2026-10-22T10:00:00Z',citations:{items:[{id:'r1',metadataStatus:'matched',reason:'公开题录信息已对应。',claimSupport:'not_checked'}],summary:{matched:1}},consistency:{status:'no_deterministic_issues',findings:[],totalFindings:0,truncated:false},reviews:[{status:'completed',outcome:'no_ai_findings',checkedSections:1,checkedCharacters:500,findings:[],limitations:[]}],coverage:{totalSections:1,totalCharacters:500,reviewedCharacters:500,reviewedBatches:1,totalBatches:1,complete:true},limitations:[],...overrides});
 const record=(overrides={})=>({id:'writing-1',kind:'article',operation:'draft',status:'running',stage:'verifying_citations',completedUnits:1,totalUnits:1,output:null,...overrides});
 
+test('expression hints use a professional label and escape the exact manuscript quote and suggestion',()=>{
+ const finding={sectionTitle:'研究方法',category:'language_expression',quote:'此外，<img src=x onerror=1>原句',explanation:'段落衔接重复。',suggestion:'保留 94.2% 与引用，<script>不执行</script>。'};
+ const dom=new JSDOM(writingQualityPanel(quality({consistency:{status:'review_required',findings:[finding],totalFindings:1,truncated:false}})));
+ try{assert.match(dom.window.document.body.textContent,/学术表达/);assert.match(dom.window.document.body.textContent,/94.2%/);assert.equal(dom.window.document.querySelectorAll('img,script').length,0);assert.ok(dom.window.document.querySelector('blockquote').textContent.includes('<img'));}finally{dom.window.close();}
+});
+
 function fixture(t,{item=record()}={}){
  const dom=new JSDOM('<main class="dashboard"><div id="job"></div></main>',{url:'https://example.test/workspace.html#tool/article'}),container=dom.window.document.querySelector('#job');
  const style=dom.window.document.createElement('style');style.textContent=readFileSync(new URL('../dist/workspace/thesis-detail-commercial.css',import.meta.url),'utf8')+'\n'+readFileSync(new URL('../dist/workspace/writing-flows.css',import.meta.url),'utf8');dom.window.document.head.append(style);

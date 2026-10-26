@@ -56,9 +56,9 @@ test('compositions reject arbitrary paths, objects, primary-task injection and e
 test('planning, drafting and review receive small stage-specific compositions',()=>{
  assert.deepEqual(writingSkillIdsForTask({skill:'thesis-method'}),['scientific-critical-thinking']);
  assert.deepEqual(writingSkillIdsForTask({skill:'thesis-outline'}),['scientific-writing','scientific-critical-thinking']);
- assert.deepEqual(writingSkillIdsForTask({skill:'thesis-section'}),['scientific-writing','citation-management']);
- assert.deepEqual(writingSkillIdsForTask({skill:'writing-task',operation:'draft',kind:'summary'}),['scientific-writing','literature-review','citation-management']);
- assert.deepEqual(writingSkillIdsForTask({skill:'writing-review'}),['peer-review','scientific-critical-thinking','citation-management']);
+ assert.deepEqual(writingSkillIdsForTask({skill:'thesis-section'}),['scientific-writing','academic-expression','citation-management']);
+ assert.deepEqual(writingSkillIdsForTask({skill:'writing-task',operation:'draft',kind:'summary'}),['scientific-writing','literature-review','academic-expression','citation-management']);
+ assert.deepEqual(writingSkillIdsForTask({skill:'writing-review'}),['peer-review','scientific-critical-thinking','citation-management','academic-expression']);
  assert.deepEqual(writingSkillIdsForTask({skill:'writing-task',operation:'questionnaire'}),['scientific-critical-thinking']);
  for(const operation of ['ideas','method'])assert.deepEqual(writingSkillIdsForTask({skill:'writing-task',operation}),['scientific-critical-thinking']);
  assert.equal(writingSkillIdsForTask({skill:'writing-task',operation:'outline'}).includes('peer-review'),false);

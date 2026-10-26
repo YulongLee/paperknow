@@ -8,7 +8,7 @@ export function assessWritingDelivery({kind,text='',snapshot={},quality,qualityC
  const known=new Set([...(snapshot.materials||[]),...(snapshot.references||[])].map(row=>row.id));
  if([...text.matchAll(/\[source:([^\]]+)\]/g)].some(match=>!known.has(match[1])))add('references','存在无法对应的引用来源，请补充原文与真实题录，由系统重新整理引用。',true);
  if(kind==='summary'&&text.trim()&&!(snapshot.references||[]).some(row=>row.text?.trim())&&!(snapshot.materials||[]).some(row=>row.text?.trim()))add('references','文献综述需要可引用的摘要或正文，请补充实际文献内容。',true);
- if(qualityCurrent){for(const row of [...(quality?.consistency?.findings||[]),...(quality?.reviews||[]).flatMap(review=>review.findings||[])])if(typeof row.quote==='string'&&row.quote.trim()&&text.includes(row.quote)){const material=['unresolved_placeholder','source_support','unknown_citation'].includes(row.category);add(row.category||'review',(material?'请补充与此处有关的真实资料：':'系统将整理此处的表达与衔接：')+row.quote.slice(0,160),material);}}
+ if(qualityCurrent){for(const row of [...(quality?.consistency?.findings||[]),...(quality?.reviews||[]).flatMap(review=>review.findings||[])])if(row.category!=='language_expression'&&typeof row.quote==='string'&&row.quote.trim()&&text.includes(row.quote)){const material=['unresolved_placeholder','source_support','unknown_citation'].includes(row.category);add(row.category||'review',(material?'请补充与此处有关的真实资料：':'系统将整理此处的表达与衔接：')+row.quote.slice(0,160),material);}}
  if(requireSupplementCheck&&!supplementCheckReady(quality,{current:qualityCurrent}))add('supplement_check','补充内容尚未通过本次完整检查，请保存材料并自动完善后复查。',true);
  return {ready:!issues.length,issues:issues.slice(0,40),hasText:!!text.trim(),supplementCheck:quality?.supplementCheck,stale:!qualityCurrent};
 }
