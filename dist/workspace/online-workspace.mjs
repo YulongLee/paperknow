@@ -129,7 +129,7 @@ export async function mountOnlineWorkspace(root,requestedView,ctx={},params=new 
   },5000);
  }
 
-function legacyTaskFeature(type){const entry={polish:['学术润色','#tool/polish'],review:['导师意见修改','#tool/review'],compare:['材料比对','#category/detection'],agent:['科研智能助手','#tool/agent']}[type];if(!entry)return null;const project=params.get('project');return{title:entry[0],href:entry[1]+(project?'?project='+encodeURIComponent(project):'')};}
+function legacyTaskFeature(type){const choices={polish:['学术润色','#tool/polish'],review:['导师意见修改','#tool/review'],compare:['材料比对','#category/detection'],agent:['科研智能助手','#tool/agent']},entry=Object.hasOwn(choices,type)?choices[type]:null;if(!entry)return null;const project=params.get('project');return{title:entry[0],href:entry[1]+(project?'?project='+encodeURIComponent(project):'')};}
 function originalRows(){
  const timestamp=row=>{const time=Date.parse(row.created_at??row.createdAt);return Number.isFinite(time)?time:0;};
  const rows=[...scopedItems(files)].sort((a,b)=>timestamp(b)-timestamp(a));

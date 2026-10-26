@@ -347,6 +347,7 @@ test('member review action opens its function without a second task-center creat
 
 test('invalid task type links cannot recreate a form or inject a feature destination',async t=>{
  const f=await fixture(t,{view:'tasks',params:'type=javascript%3Aalert(1)',ai:false});
+ for(const type of ['javascript:alert(1)','constructor','__proto__','toString']){await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'tasks',f.ctx,new f.w.URLSearchParams({type}));assert.equal(f.doc.querySelector('[data-task-feature-link]'),null);}
  assert.equal(f.doc.querySelector('[data-task-feature-link]'),null);assert.equal(f.doc.querySelector('#task-form'),null);assert.equal(f.doc.querySelector('#agent-form'),null);assert.equal(f.calls.some(call=>call.body),false);
 });
 
