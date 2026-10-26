@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import {PassThrough,Readable} from 'node:stream';
 import {randomUUID} from 'node:crypto';
 import {database} from '../backend/database.mjs';
 import {createAPI} from '../backend/api.mjs';
@@ -10,6 +11,7 @@ import {startThesisOutlineWorker} from '../backend/thesis-outline-worker.mjs';
 import {startWorker} from '../backend/worker.mjs';
 import {normalizeThesisOutlineSnapshot,thesisOutlineTask,parseThesisOutline} from '../backend/thesis-outline-model.mjs';
 import {registeredAgentSkills,loadAgentSkill} from '../backend/skills/index.mjs';
+import {runAgentTask} from '../backend/agent-runtime.mjs';
 
 const runtime={enabled:true,engine:'claude-agent-sdk',baseURL:'https://agent.example.test',model:'outline-test-model',apiKey:'test-only-outline-secret',version:'outline-saved-version',maxTurns:3,maxOutputTokens:4096,maxCostUsd:.1,timeoutMs:30000};
 const brief=(title='高校图书馆数字阅读服务优化研究')=>({title,profile:{level:'本科',targetWords:8000},materials:[],references:[],outline:[]});
@@ -56,4 +58,46 @@ test('runtime execution protection failures release paid outline holds and never
 
 test('thesis outline receives the same strict repair validator and settles only the accepted result',async t=>{
  let calls=0,f;f=await fixture(t,{agentTaskRunner:async({validateOutlineOutput,onStage})=>{calls++;assert.equal(typeof validateOutlineOutput,'function');const bad=output();bad.text='{"complete":true,"chapters":[]}';const rejected=validateOutlineOutput(bad);assert.equal(rejected.valid,false);assert.equal(rejected.feedback.reason,'chapter_count');onStage('repairing_outline');assert.equal(f.db.prepare('SELECT stage FROM thesis_outline_runs').get().stage,'repairing_outline');assert.equal(f.billing.balance('alice').held,10);assert.equal(validateOutlineOutput(output()).valid,true);onStage('outline_ready');return {...output(),submitted:true,finishReason:'submitted'};}});f.pay();const created=await f.submit();await f.outline.tick();await f.outline.tick();const item=(await f.request('/theses/outlines/'+created.value.item.id)).value.item;assert.equal(item.status,'completed');assert.equal(calls,1);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,1);
+});
+
+for(const turns of [1,5,12])test(`outline honors the pinned ${turns}-turn administrator limit without changing time, token or cost limits`,async t=>{
+ const pinned={...runtime,maxTurns:turns};let execution,switched=false;
+ const f=await fixture(t,{getAgentSettings:version=>version===runtime.version||!switched?pinned:{...runtime,version:'new-current-settings',maxTurns:2},agentTaskRunner:async options=>{execution=options;return output();}});
+ // Submit with the original version, then change only the current configuration.
+ f.pay();const created=await f.submit();switched=true;
+ await f.outline.tick();const item=(await f.request('/theses/outlines/'+created.value.item.id)).value.item;
+ assert.equal(item.status,'completed');assert.equal(execution.settings.maxTurns,turns);
+ assert.equal(execution.settings.maxCostUsd,pinned.maxCostUsd);assert.equal(execution.settings.timeoutMs,pinned.timeoutMs);
+ assert.equal(execution.settings.maxOutputTokens,pinned.maxOutputTokens);assert.equal(execution.settings.maxTotalTokens,200000);
+ assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);
+});
+
+test('paid outline uses the real SDK to read three material segments and repair a rejected candidate after the old three-turn cutoff',{timeout:30000},async t=>{
+ const pinned={...runtime,baseURL:'https://outline-multiturn.example.com/anthropic',maxTurns:12},calls=[],stages=[],candidate=JSON.parse(output().text),sourceId='segmented-outline-source';
+ const requestImpl=(options,callback)=>{
+  const request=new PassThrough(),parts=[];request.on('data',part=>parts.push(part));request.on('end',()=>{
+   const body=JSON.parse(Buffer.concat(parts));
+   if(options.path.endsWith('/count_tokens')){const response=Readable.from(['{"input_tokens":10}']);response.statusCode=200;response.headers={'content-type':'application/json'};callback(response);return;}
+   calls.push(body);const step=calls.length;if(step>5){request.destroy(Error('Unexpected additional provider request'));return;}
+   const bad=structuredClone(candidate);delete bad.chapters[0].sections;
+   const block=step<=3?{type:'tool_use',id:'read-'+step,name:'mcp__paperknow__read_material',input:{id:sourceId,offset:(step-1)*12,limit:12}}:{type:'tool_use',id:'submit-'+step,name:'mcp__paperknow__submit_writing_output',input:{candidate:step===4?bad:candidate}};
+   const id='outline-multiturn-'+step,usage={input_tokens:100*step,output_tokens:100,cache_read_input_tokens:0,cache_creation_input_tokens:0};let data,type;
+   if(body.stream){
+    const events=[{type:'message_start',message:{id,type:'message',role:'assistant',model:body.model,content:[],stop_reason:null,stop_sequence:null,usage:{...usage,output_tokens:0}}},{type:'content_block_start',index:0,content_block:{type:'tool_use',id:block.id,name:block.name,input:{}}},{type:'content_block_delta',index:0,delta:{type:'input_json_delta',partial_json:JSON.stringify(block.input)}},{type:'content_block_stop',index:0},{type:'message_delta',delta:{stop_reason:'tool_use',stop_sequence:null},usage},{type:'message_stop'}];
+    data=events.map(value=>'event: '+value.type+'\ndata: '+JSON.stringify(value)+'\n\n').join('');type='text/event-stream';
+   }else{data=JSON.stringify({id,type:'message',role:'assistant',model:body.model,content:[block],stop_reason:'tool_use',stop_sequence:null,usage});type='application/json';}
+   const response=Readable.from([data]);response.statusCode=200;response.headers={'content-type':type};callback(response);
+  });return request;
+ };
+ const f=await fixture(t,{getAgentSettings:()=>pinned,agentTaskRunner:options=>runAgentTask({...options,onStage:stage=>{stages.push(stage);options.onStage?.(stage);},dependencies:{lookup:async()=>[{address:'8.8.8.8',family:4}],httpsRequest:requestImpl}})});
+ f.pay();const created=await f.submit({...brief(),materials:[{id:sourceId,name:'分段研究记录（合成验收）',text:'这是用于本地协议回归的合成图书馆数字阅读研究资料，不代表真实调查或实测结论。'.repeat(3),confirmed:true}]});
+ assert.equal(created.status,202);await f.outline.tick();const item=(await f.request('/theses/outlines/'+created.value.item.id)).value.item;
+ assert.equal(item.status,'completed',JSON.stringify({item,calls:calls.length,stages}));assert.equal(calls.length,5);
+ assert.ok(stages.includes('repairing_outline'));assert.ok(stages.includes('outline_ready'));assert.equal(item.output.chapters.length,3);
+ assert.deepEqual(item.usage,{input:1500,output:500,incomplete:false});
+ assert.equal(f.billing.balance('alice').held,0);assert.equal(f.billing.balance('alice').balance,190);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations WHERE job_id=?').get(item.id).n,1);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM results WHERE job_id=?').get(item.id).n,1);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM usage WHERE job_id=?').get(item.id).n,1);
+ assert.match(JSON.stringify(calls[4].messages),/invalid_sections/);
 });
