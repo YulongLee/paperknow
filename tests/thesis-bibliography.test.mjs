@@ -91,7 +91,7 @@ test('export presentation normalizes CRLF and forbidden controls before calculat
 });
 
 test('known journal and book publication facts follow publication-year-locator order without invented fields',()=>{
- assert.equal(formatThesisReference({authors:'作者',title:'文献',documentType:'journal',journal:'期刊',year:'2026',volume:'12',issue:'3',pages:'45-49'}),'作者. 文献[J]. 期刊, 2026, 12(3): 45-49');
- assert.equal(formatThesisReference({authors:'作者',title:'图书',documentType:'book',publisher:'出版社',year:'2026',pages:'12-15'}),'作者. 图书[M]. 出版社, 2026: 12-15');
- assert.equal(formatThesisReference({authors:'作者',title:'旧题录',year:'2026'}),'作者. 旧题录. 2026');assert.equal(formatThesisReference({title:'缺少年份',documentType:'journal',journal:'原刊'}),'缺少年份[J]. 原刊');
+ assert.equal(formatThesisReference({authors:'作者',title:'文献',documentType:'journal',journal:'期刊',year:'2026',volume:'12',issue:'3',pages:'45-49'}),'作者. 文献[J]. 期刊, 2026, 12(3): 45-49.');
+ assert.equal(formatThesisReference({authors:'作者',title:'图书',documentType:'book',publisher:'出版社',year:'2026',pages:'12-15'}),'作者. 图书[M]. 出版社, 2026: 12-15.');
+ assert.equal(formatThesisReference({authors:'作者',title:'旧题录',year:'2026'}),'作者. 旧题录. 2026.');assert.equal(formatThesisReference({title:'缺少年份',documentType:'journal',journal:'原刊'}),'缺少年份[J]. 原刊.');
 });

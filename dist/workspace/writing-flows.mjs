@@ -11,7 +11,7 @@ import {assessWritingDelivery,writingDeliveryMarkup} from './writing-delivery.mj
 import {projectPickerOptions} from './project-directory.mjs';
 import {importWorkspaceDocument,documentImportContinuesInBackground} from './document-import.mjs';
 import {download as exportFile,icon} from './ui.mjs';
-import {presentThesisDocument} from './thesis-document.mjs';
+import {presentThesisDocument,thesisDocumentPresentation,withBibliographicMetadata} from './thesis-document.mjs';
 import {writingDetailHeading} from './writing-catalog.mjs';
 import {writingFlowKind,writingFlowSpec,migrateWritingFlow,writingFlowSnapshot,flowOutlineRows,flowAllocate,flowWordSuggestions,flowDefaultWords,journalTiers,articleResearchTypes,ideaAdvancedFields} from './writing-flow-model.mjs';
 import {parseCitationImport} from './citation-import.mjs';
@@ -64,10 +64,11 @@ export function mountWritingFlow({kind,container=document.querySelector('.dashbo
    if(!alive()||!scope.isCurrent())throw new DOMException('页面已切换','AbortError');
    owner=me.user?.id;
   }
-  return {documentKind:'writing',writingKind:kind,requireSupplementCheck:kind!=='idea',quality:data.quality,qualityCurrent:data.qualityText===canonicalText()&&data.bodyInputKey===inputKey(),expectedUserId:owner,...(standard?{template:writingExportTemplate(kind,data)}:{}),metadata:{title:data.title,major:data.major,level:data.level,...(standard?data[standardFields.metadata]||{}:{}),chapterTitles:data.outline.map(row=>row.title),figures:currentFigures()}};
+  return {documentKind:'writing',writingKind:kind,requireSupplementCheck:kind!=='idea',quality:data.quality,qualityCurrent:data.qualityText===canonicalText()&&data.bodyInputKey===inputKey(),expectedUserId:owner,...(standard?{template:writingExportTemplate(kind,data)}:{}),metadata:{title:data.title,major:data.major,level:data.level,...(standard?data[standardFields.metadata]||{}:{}),chapterTitles:data.outline.map(row=>row.title),citationRanges:exportPresentation().citationRanges,figures:currentFigures()}};
  }
  function sourceRows(){const rows=[...(data.presentation?.sources||[])],seen=new Set(rows.map(row=>row.marker));for(const row of thesisEditorPresentation(data.sourceSnapshot||{},usedSourceIds().map(id=>'[source:'+id+']').join('')).sources)if(!seen.has(row.marker)){seen.add(row.marker);rows.push(row);}return rows;}
- function exportText(){const raw=restoreThesisEditorText(resultText(),data.presentation).text,snap=data.sourceSnapshot||{materials:[],references:[]};return presentThesisDocument({...snap,title:data.title,outline:[]},[{title:'',text:raw,sourceIds:usedSourceIds(raw),figures:currentFigures()}]);}
+ function exportPresentation(){const raw=restoreThesisEditorText(resultText(),data.presentation).text,snap=withBibliographicMetadata(data.sourceSnapshot||{materials:[],references:[]},data.references);return thesisDocumentPresentation({...snap,title:data.title,outline:[]},[{title:'',text:raw,sourceIds:usedSourceIds(raw),figures:currentFigures()}]);}
+ function exportText(){return exportPresentation().text;}
  function save({quiet=true,captureUI=true}={}){if(!alive()||(parsing&&!documentImportContinuesInBackground(container)))return false;if(captureUI)capture();try{const entries=list(keys.drafts),before=entries.find(row=>row.id===savedId)||old||{},at=new Date().toISOString(),item={...before,id:savedId||crypto.randomUUID(),tool:kind==='idea'?'topic':kind,title:String(data.title||'').trim()||'未命名'+spec.title,projectId:data.projectId||'',degree:data.level||'本科',major:data.major||'',targetWords:data.targetWords||1000,language:data.language||'中文',stage:resultText()?'body':'draft',text:resultText()||data.outline?.map(row=>row.title).join('\n')||data.abstract||'',html:esc(resultText()).split('\n').map(line=>'<p>'+line+'</p>').join(''),createdAt:before.createdAt||at,updatedAt:at,writingFlow:structuredClone(data),writingResume:true,date:new Date().toLocaleString('zh-CN')};
    const next=entries.map(row=>writingFlowKind(row.tool)===kind&&String(row.projectId||'')===String(item.projectId||'')&&row.id!==item.id?{...row,writingResume:false}:row),index=next.findIndex(row=>row.id===item.id);if(index>=0)next[index]=item;else next.unshift(item);write(keys.drafts,next);savedId=item.id;if(captureUI)markEditorSaved();const status=$('#writing-status');if(status)status.textContent=hasDraftScope()?'编辑已暂存，请保存到账户同步。':quiet?'草稿已自动保存到当前浏览器。':'当前版本已保存，可在文件管理继续编辑。';return true;
   }catch{const status=$('#writing-status');if(status)status.textContent='草稿保存失败，当前编辑仍保留，请先导出备份。';return false;}}

@@ -1,17 +1,48 @@
 import {normalizeThesisFigures} from './thesis-figure.mjs';
 import {isOutlineReferenceChapter} from './outline-word-budget.mjs';
 import {thesisFrontMatterKind,stripThesisOwnedHeadings} from './thesis-delivery.mjs';
+import {citationMetadataFields,recoverCitationMetadata} from './citation-import.mjs';
 
-const bibliographyFields=['id','title','authors','year','doi','url','documentType','journal','publisher','publicationSource','volume','issue','pages','venue','accessedAt','sourceLabel'];
+const bibliographyFields=[...new Set(['id','title','authors','year','doi','url','venue','sourceLabel',...citationMetadataFields])];
 export function thesisReferenceMetadata(row={}){
- return Object.fromEntries(bibliographyFields.filter(key=>typeof row[key]==='string'&&row[key].trim()).map(key=>[key,row[key].trim()]));
+ const restored=recoverCitationMetadata(row),result={...restored,...Object.fromEntries(bibliographyFields.filter(key=>typeof row[key]==='string'&&row[key].trim()).map(key=>[key,row[key].trim()]))};
+ if(restored.citationText)result.citationText=restored.citationText;else delete result.citationText;
+ if(Array.isArray(row.authorNames))result.authorNames=row.authorNames.slice(0,100).flatMap(name=>{if(typeof name==='string'&&name.trim())return[{literal:name.trim().slice(0,1000)}];if(!name||typeof name!=='object'||Array.isArray(name))return[];const value=Object.fromEntries(['literal','family','given'].filter(key=>typeof name[key]==='string'&&name[key].trim()).map(key=>[key,name[key].trim().slice(0,1000)]));return value.literal||value.family?[value]:[];});
+ return result;
 }
-export function formatThesisReference(row={}){
+function legacyThesisReference(row={}){
  const codes={journal:'J',article:'J','journal-article':'J',book:'M',thesis:'D',dissertation:'D',conference:'C',patent:'P',standard:'S',yearbook:'M',newspaper:'N',preprint:'Z',report:'R',chapter:'M'},kind=row.documentType||row.type,code=Object.hasOwn(codes,kind)?codes[kind]:null;
  const title=(row.title||'文献信息待补全')+(code?'['+code+']':''),locator=[row.volume||'',row.issue?'('+row.issue+')':'',row.pages?': '+row.pages:''].join('');
  const publicationName=row.journal||row.venue||row.publicationSource,book=code==='M'||code==='D'||code==='R'||code==='S';
  const publication=book&&row.publisher?[row.publisher,row.year].filter(Boolean).join(', ')+(row.pages?': '+row.pages:''):publicationName?[publicationName,row.year,locator].filter(Boolean).join(', '):row.publisher?[row.publisher,row.year,locator].filter(Boolean).join(', '):[row.year,locator].filter(Boolean).join('. ');
  return [row.authors,title,publication,row.doi?'DOI: '+row.doi:'',row.url].filter(Boolean).join('. ');
+}
+function referenceAuthors(row){
+ const raw=Array.isArray(row.authorNames)&&row.authorNames.length?row.authorNames:String(row.authors||'').split(/[;；、]|(?<=[\p{Script=Han}]),\s*(?=[\p{Script=Han}])/u).filter(Boolean);
+ const names=raw.map(value=>{const name=typeof value==='string'?{literal:value.trim()}:value;if(name.literal){const parts=name.literal.match(/^([^,]+),\s*(.+)$/);if(!parts||/[\p{Script=Han}]/u.test(name.literal))return name.literal;return western(parts[1],parts[2]);}if(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test((name.family||'')+(name.given||'')))return(name.family||'')+(name.given||'');return western(name.family,name.given);});
+ function western(family='',given=''){return [family,given.split(/[\s-]+/u).map(part=>part.match(/\p{L}/u)?.[0]?.toUpperCase()||'').filter(Boolean).join(' ')].filter(Boolean).join(' ');}
+ return names.slice(0,3).join(', ')+(names.length>3?(/[\p{Script=Han}]/u.test(names.join(''))?', 等':', et al.'):'');
+}
+// One numeric bibliography formatter serves the thesis and every manuscript
+// workflow. Valid imported GB/T entries retain their complete supplied record.
+export function formatThesisReference(input={}){
+ const row=thesisReferenceMetadata(input);if(row.citationText)return row.citationText;
+ const codes={journal:'J',article:'J','journal-article':'J','article-journal':'J',book:'M',thesis:'D',dissertation:'D',conference:'C','conference-paper':'C','paper-conference':'C',patent:'P',standard:'S',yearbook:'M',newspaper:'N',preprint:'PP',report:'R',chapter:'M',webpage:'EB',dataset:'DS',database:'DB',archive:'A',map:'CM',collection:'G',software:'CP'};
+ const kind=row.documentType||input.type,code=Object.hasOwn(codes,kind)?codes[kind]:null,year=/^\d{4}$/.test(row.year||'')?row.year:'',online=row.medium==='OL'||['preprint','webpage','dataset','database','software'].includes(kind)&&!!row.url,medium=online?'/OL':'',title=(row.title||'文献信息待补全')+(code?'['+code+medium+']':''),author=referenceAuthors({...input,...row}),part=['conference','chapter'].includes(kind),container=part?row.publicationSource||row.journal||row.venue:'',locator=(row.volume||'')+(row.issue?'('+row.issue+')':'')+(row.pages?': '+row.pages:'');
+ const publication=kind==='journal'||code==='J'?[row.journal||row.venue||row.publicationSource,year,locator].filter(Boolean).join(', ').replace(/, : /,': '):[row.publicationPlace?(row.publicationPlace+(row.publisher?': '+row.publisher:'')):row.publisher||(!part?row.publicationSource||row.journal||row.venue:''),year].filter(Boolean).join(', ')+(row.pages?': '+row.pages:'');
+ let edition=row.edition||'';if(/^\d+$/.test(edition)){const n=Number(edition),suffix=n%100>=11&&n%100<=13?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th');edition=/[\p{Script=Han}]/u.test((row.title||'')+(row.publisher||''))?edition+'版':edition+suffix+' ed.';}
+ const doi=String(row.doi||'').replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').replace(/^doi\s*:\s*/i,'');let url='';try{const parsed=new URL(row.url);if(['http:','https:'].includes(parsed.protocol)&&!parsed.username&&!parsed.password&&(!doi||!parsed.href.toLowerCase().endsWith('/'+doi.toLowerCase())))url=parsed.href;}catch{}
+ const date=online&&/^\d{4}-\d{2}-\d{2}$/.test(row.accessedAt||'')?'['+row.accessedAt+']':'',parts=[author,part?title+(container?'// '+container:''):title,edition,publication+date,doi?'DOI: '+doi:'',url],values=parts.filter(Boolean);
+ return values.length===1&&!code?values[0]:values.map(value=>/[.。!?！？]$/.test(value)?value:value+'.').join(' ');
+}
+
+// Export-only recovery fills missing catalog fields from the same confirmed
+// source. It never adds citations, replaces known facts or edits a task snapshot.
+export function withBibliographicMetadata(snapshot={},candidates=[]){
+ if(!Array.isArray(candidates)||!candidates.length)return snapshot;
+ const rows=new Map(),ambiguous=new Set(),identity=value=>String(value||'').normalize('NFKC').replace(/\s+/g,' ').trim().toLowerCase(),doi=value=>identity(value).replace(/^https?:\/\/(?:dx\.)?doi\.org\//,'').replace(/^doi\s*:\s*/,'');
+ for(const row of candidates)if(row?.confirmed===true&&typeof row.id==='string'){if(rows.has(row.id))ambiguous.add(row.id);rows.set(row.id,row);}
+ return {...snapshot,references:(snapshot.references||[]).map(row=>{const candidate=rows.get(row.id);if(!candidate||ambiguous.has(row.id)||identity(row.title)!==identity(candidate.title)||row.doi&&candidate.doi&&doi(row.doi)!==doi(candidate.doi))return row;const extra=thesisReferenceMetadata(candidate),next={...row};for(const key of ['authors','year','doi','url',...citationMetadataFields])if(!String(next[key]||'').trim()&&extra[key])next[key]=extra[key];return next;})};
 }
 
 // Numeric citations are assigned only by markers in prose, never by the order
@@ -59,7 +90,7 @@ export function thesisDocumentPresentation(snapshot={},chapters=[],{title=snapsh
  const referenceChapters=rows.filter(isOutlineReferenceChapter),normalize=value=>String(value??'').replace(/\s+/g,' ').trim();
  const canonicalReferenceChapter=row=>{
   const lines=String(row.text).split(/\r?\n/).map(line=>line.trim()).filter(Boolean);if(!lines.length)return false;
-  return lines.every(line=>{const match=line.match(/^\[source:([^\]]+)\]\s*(.*)$/);return match&&references.has(match[1])&&normalize(match[2])===normalize(formatThesisReference(references.get(match[1])));});
+  return lines.every(line=>{const match=line.match(/^\[source:([^\]]+)\]\s*(.*)$/);return match&&references.has(match[1])&&[formatThesisReference(references.get(match[1])),legacyThesisReference(references.get(match[1])),legacyThesisReference(Object.fromEntries(['title','authors','year','doi','url'].map(key=>[key,references.get(match[1])[key]])))].some(value=>normalize(match[2])===normalize(value));});
  };
  const referenceNumbers=new Map(bibliographyModel.references.map(row=>[row.id,row.number]));
  const semanticBody=text=>{const raw=String(text),citationRanges=[];let value='',cursor=0;for(const match of raw.matchAll(/\[source:([^\]]+)\]/g)){value+=raw.slice(cursor,match.index);const label=render(match[0]),start=value.length;value+=label;if(referenceNumbers.has(match[1]))citationRanges.push({start,end:value.length,number:referenceNumbers.get(match[1])});cursor=match.index+match[0].length;}value+=raw.slice(cursor);return {text:value,citationRanges};};
@@ -70,7 +101,7 @@ export function thesisDocumentPresentation(snapshot={},chapters=[],{title=snapsh
  // across source anchors and correctly fail the strict order check.
  const disclosure=missingChapters.length?['部分章节尚未完成','本文仅包含当前已保存的章节草稿，不代表完整论文。尚未完成：'+missingChapters.map(row=>row.title||'未命名章节').join('、')+'。']:[];
  const bibliography=bibliographyModel.references.map(row=>row.label+' '+row.text);
- const bibliographyTitle=referenceChapters.some(canonicalReferenceChapter)?'参考文献':'已使用的参考文献（用户确认，待核对原文）';
+ const bibliographyTitle=snapshot.profile?.language==='English'?'References':'参考文献';
  // Canonical references always follow citation order. Keep differing manual
  // bibliography text as clearly separate notes, never as a second numeric list.
  const referenceNotes=referenceChapters.filter(row=>!canonicalReferenceChapter(row)).map(row=>render(row.text).replace(/\[(\d+)\]/g,'〔文献$1〕'));

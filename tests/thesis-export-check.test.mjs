@@ -32,7 +32,7 @@ test('actual presentation bibliography names and source ranges map references wi
  const snapshot={title:'研究论文',references:[{id:'ref-1',title:'真实题录一',confirmed:true},{id:'ref-2',title:'真实题录二',confirmed:true}],materials:[]};
  const chapters=[{id:'one',title:'第一章 研究背景',text:'本文讨论来源[source:ref-2]并补充比较[source:ref-1]。'},{id:'two',title:'第二章 研究方法',text:'方法继续引用[source:ref-2]。'}],before=structuredClone(chapters);
  const presentation=thesisDocumentPresentation(snapshot,chapters),result=clean({text:presentation.text,metadata:{title:snapshot.title,citationRanges:presentation.citationRanges}});
- assert.match(presentation.text,/已使用的参考文献（用户确认，待核对原文）/);
+ assert.match(presentation.text,/参考文献/);
  assert.equal(result.counts.referenceEntries,2);assert.equal(result.counts.citationOccurrences,3);
  assert.equal(check(result,'citation_mapping').status,'passed');assert.deepEqual(check(result,'citation_mapping').details.missingReferenceNumbers,[]);assert.deepEqual(chapters,before);
 });

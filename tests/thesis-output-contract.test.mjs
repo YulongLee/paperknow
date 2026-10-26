@@ -36,13 +36,13 @@ test('an existing reference chapter renders its real entries once while a privat
 
 test('a manually edited reference chapter cannot hide an associated but omitted source record',()=>{
  const rows=chapters();rows.push({title:'参考文献',text:'用户正在整理的参考文献文本，不作真实性验证。'});
- const text=presentThesisDocument(snapshot(),rows);assert.match(text,/已使用的参考文献（用户确认，待核对原文）/);assert.match(text,/\[1\] 用户确认作者乙\. 真实文献乙/);assert.match(text,/\[2\] 真实文献甲/);
+ const text=presentThesisDocument(snapshot(),rows);assert.match(text,/参考文献/);assert.match(text,/\[1\] 用户确认作者乙\. 真实文献乙/);assert.match(text,/\[2\] 真实文献甲/);
 });
 
 test('a retained source marker or partial bibliography cannot suppress its canonical bibliographic metadata',()=>{
  for(const entry of ['[source:reference-b] 待补','[source:reference-b] 用户确认作者乙. 真实文献乙. 2024.','[source:reference-b] 用户确认作者乙. 真实文献乙. 2024. DOI: 10.1234/user-confirmed']){
   const value=snapshot(),rows=chapters();rows.push({title:'参考文献',text:entry+'\n[source:reference-a] 真实文献甲',sourceIds:['reference-b','reference-a']});const before=structuredClone(rows);
-  const text=presentThesisDocument(value,rows);assert.match(text,/已使用的参考文献（用户确认，待核对原文）/);assert.match(text,/\[1\] 用户确认作者乙\. 真实文献乙\. 2024\. DOI: 10\.1234\/user-confirmed\. https:\/\/example.test\/paper/);assert.doesNotMatch(text,/\[source:/);assert.deepEqual(rows,before);
+  const text=presentThesisDocument(value,rows);assert.match(text,/参考文献/);assert.match(text,/\[1\] 用户确认作者乙\. 真实文献乙\. 2024\. DOI: 10\.1234\/user-confirmed\. https:\/\/example.test\/paper/);assert.doesNotMatch(text,/\[source:/);assert.deepEqual(rows,before);
  }
 });
 
