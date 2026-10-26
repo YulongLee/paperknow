@@ -1,4 +1,5 @@
 import {writingDefaultTemplateSpec,writingDefaultTemplateMetadata} from '../dist/workspace/writing-template-catalog.mjs';
+import {highlightDraftReviewMarkers} from './writing-draft-review.js';
 import JSZip from 'jszip';
 import {PDFDocument,rgb} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
@@ -32,7 +33,7 @@ function tableCells(text){
  const ranges=[];let cursor=0;for(const part of inlineParts(text)){if(part.formula)ranges.push([cursor,cursor+part.text.length]);cursor+=part.text.length;}
  const cells=[];let current='',code=0,hasPipe=false;
  for(let index=0;index<text.length;index++){const char=text[index];if(char==='`'&&!escaped(text,index)){let length=1;while(text[index+length]==='`')length++;code=code===length?0:code||length;current+='`'.repeat(length);index+=length-1;continue;}if(char==='|'&&!code&&!escaped(text,index)&&!ranges.some(([start,end])=>index>=start&&index<end)){cells.push(current.trim());current='';hasPipe=true;}else current+=char;}
- if(!hasPipe)return null;cells.push(current.trim());if(text.trim().startsWith('|'))cells.shift();if(text.trim().endsWith('|')&&!escaped(text.trim(),text.trim().length-1))cells.pop();return cells.map(value=>value.replace(/\\\|/g,'|'));
+ if(!hasPipe)return null;cells.push(current.trim());if(text.trim().startsWith('|'))cells.shift();if(text.trim().endsWith('|')&&!escaped(text.trim(),text.trim().length-1))cells.pop();return cells.map(value=>inlineParts(value).map(part=>part.formula?part.text:part.text.replace(/\\\|/g,'|')).join(''));
 }
 function documentBlocks(value,figures=[],{thesis=false}={}){
  const lines=documentLines(value),blocks=[],byId=new Map(figures.map(figure=>[figure.id,figure])),usedFigures=new Set();let fence=null;
@@ -59,11 +60,9 @@ function figureCaption(block){return `图 ${block.number} ${thesisFigureTitle(bl
 const inspectFigurePng=inspectThesisFigurePng;
 export async function createWritingDocx(text,options={}){
  const figures=normalizeThesisFigures(options.metadata?.figures??options.figures);
- if(['thesis','writing'].includes(options.documentKind))return applyThesisDocumentTemplate(await createWritingDocx(text,{figures,figureRasterizer:options.figureRasterizer,thesisSource:true}),{...options,academicReport:options.documentKind==='writing',blocks:documentBlocks(text,figures,{thesis:true})});
+ if(['thesis','writing'].includes(options.documentKind)){const bytes=await applyThesisDocumentTemplate(await createWritingDocx(text,{figures,figureRasterizer:options.figureRasterizer,thesisSource:true}),{...options,academicReport:options.documentKind==='writing',blocks:documentBlocks(text,figures,{thesis:true})});return options.submission?bytes:highlightDraftReviewMarkers(bytes);}
  const zip=new JSZip(),blocks=documentBlocks(text,figures,{thesis:options.thesisSource===true}),formulas=new Map(),images=[];let imageBytes=0;
- // The current OMML converter emits vertical-bar fences as operator runs. Keep
- // their TeX until native delimiter semantics are verified across Word readers.
- async function math(raw){if(formulas.has(raw))return formulas.get(raw);let markup;try{const renderer=await formulaRenderer();const mathml=renderer.renderFormulaMathML(raw);if(/<mo\b[^>]*>(?:\||‖|&#x(?:7c|2016);)<\/mo>/i.test(mathml))throw Error('unverified Word fence');markup=renderer.mathmlToOmml(mathml,{fontSize:12,color:'203659'});}catch{markup=wordRun(raw);}formulas.set(raw,markup);return markup;}
+ async function math(raw){if(formulas.has(raw))return formulas.get(raw);let markup;try{const renderer=await formulaRenderer();markup=renderer.mathmlToOmml(renderer.renderFormulaMathML(raw),{fontSize:12,color:'000000'});}catch{markup=wordRun(raw);}formulas.set(raw,markup);return markup;}
  async function runs(value,literal=false,properties=''){if(literal)return wordRun(value,properties);const result=[];for(const part of inlineParts(value))result.push(part.formula?await math(part.formula):wordRun(part.text,properties));return result.join('');}
  async function paragraph({text,level=3,literal=false},extra=''){return `<w:p><w:pPr>${level===0?'<w:jc w:val="center"/>':level<3?`<w:pStyle w:val="Heading${level}"/>`:''}<w:spacing w:after="120"/>${extra}</w:pPr>${await runs(text,literal,level===0?'<w:b/><w:sz w:val="36"/>':'')}</w:p>`;}
  const body=[];for(const block of blocks){
