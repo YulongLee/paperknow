@@ -54,7 +54,7 @@ bootstrap.close();
 async function adopt(f){
  f.$('#outline-ai-generate').click();await settle();
  assert.equal(f.$('[data-outline-ai-start]'),null);
- const apply=f.$('[data-outline-ai-apply]');assert.ok(apply,'The actual controller must reach a completed preview');assert.equal(apply.disabled,false);apply.click();await settle();
+ assert.equal(f.$('[data-outline-ai-apply]'),null);assert.equal(f.$('#writing-outline-ai-result'),null);assert.equal(f.$('#writing-outline-ai-panel').hidden,true);assert.equal(f.save().outlineSource,'model');
 }
 const savedFlags=row=>flags(row?.presentation);
 const allBoxes=()=>[...document.querySelectorAll('[data-outline-presentation]')];

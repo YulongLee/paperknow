@@ -28,12 +28,32 @@ function fixture(t,{guest=false,pendingJobId,pendingContextKey,pendingClientKey,
 
 const click=(f,selector)=>{const node=f.$(selector);assert.ok(node,'Missing '+selector);node.click();};
 
+test('an immediately completed paid response fills the outline without a second user action',async t=>{
+ const f=fixture(t,{onRequest:path=>path==='/theses/outlines'?{item:completed}:undefined});await f.controller.generate();
+ assert.equal(f.applies.length,1);assert.equal(f.applies[0].item.id,completed.id);assert.equal(f.container.hidden,true);assert.equal(f.$('#writing-outline-ai-result'),null);assert.equal(f.$('[data-outline-ai-apply]'),null);assert.equal(f.calls.filter(row=>row.path==='/theses/outlines').length,1);assert.equal(f.commands.at(-1).key,null);
+});
+
+test('a restored completed job fills the same context without quoting or submitting another task',async t=>{
+ const f=fixture(t);f.controller.dispose();f.setItem(completed);const restored=f.w.outlineTest.mountWritingOutlineGenerator({...f.options,pendingJobId:completed.id,pendingContextKey:JSON.stringify(f.getBrief())});t.after(()=>restored.dispose());await restored.open();
+ assert.equal(f.applies.length,1);assert.equal(f.container.hidden,true);assert.equal(f.calls.filter(row=>row.path==='/billing/quote'||row.path==='/theses/outlines').length,0);
+});
+
+test('an account change after reading completion is checked again before automatic adoption',async t=>{
+ let readCompleted=false;const f=fixture(t,{onRequest:path=>{if(path==='/theses/outlines/outline-1'){readCompleted=true;return {item:completed};}if(path==='/auth/me'&&readCompleted)return {user:{id:'u2'}};}});await f.controller.open();await f.charge();await f.tick();
+ assert.equal(f.applies.length,0);assert.match(f.container.textContent,/登录账户已变化/);assert.equal(f.$('#writing-outline-ai-result'),null);
+});
+
+test('retrying recovery-key cleanup does not apply the same completed outline twice',async t=>{
+ let failCleanup=true,f;f=fixture(t,{onApply:()=>{f.setBrief({...f.getBrief(),outline:[{title:'已自动填入的新结构'}]});return true;},onCommandChange:key=>{if(key===null&&failCleanup)throw Error('合成进度保存失败');}});await f.controller.open();await f.charge();f.setItem(completed);await f.tick();assert.equal(f.applies.length,1);assert.match(f.container.textContent,/合成进度保存失败/);failCleanup=false;click(f,'[data-outline-ai-retry]');await settle(()=>f.container.hidden);
+ assert.equal(f.applies.length,1);assert.equal(f.calls.filter(row=>row.path==='/theses/outlines').length,1);
+});
+
 test('opening quotes the current topic without submitting, defaults to ready consent after a valid quote and strips existing body and outline',async t=>{
  const f=fixture(t);await f.controller.open();assert.equal(f.container.hidden,false);assert.match(f.container.textContent,/城市通勤行为的影响因素研究/);assert.match(f.container.textContent,/10 科研积分/);assert.match(f.container.textContent,/1 份资料/);assert.match(f.container.textContent,/1 篇参考文献/);assert.equal(f.$('[data-outline-ai-consent]').checked,true);assert.equal(f.$('[data-outline-ai-start]').disabled,false);assert.equal(f.$('[data-outline-ai-start]').textContent,'生成提纲');assert.equal(f.calls.filter(call=>call.path==='/theses/outlines').length,0);await f.charge();const posted=f.calls.find(call=>call.path==='/theses/outlines').data;assert.equal(posted.consent,true);assert.equal(posted.billingToken,'signed-quote');assert.deepEqual(Array.from(posted.snapshot.outline),[]);assert.deepEqual(Array.from(posted.snapshot.bodySections),[]);assert.equal(posted.snapshot.profile.method,'');assert.equal(posted.snapshot.requirements,'采用学校提纲格式');assert.equal(f.applies.length,0);assert.equal(f.jobs.at(-1).id,'outline-1');assert.equal(f.jobs.at(-1).contextKey,JSON.stringify(f.getBrief()));
 });
 
-test('queued polling renders a plain escaped preview and only an explicit apply updates the caller',async t=>{
- const f=fixture(t);await f.controller.open();await f.charge();f.setItem({...completed,output:{text:completed.output.text+'\n<script>unsafe()</script>'}});await f.tick();assert.equal(f.$('#writing-outline-ai-result').readOnly,true);assert.match(f.$('#writing-outline-ai-result').value,/<script>unsafe\(\)<\/script>/);assert.equal(f.$('script'),null);assert.equal(f.applies.length,0);assert.equal(f.container.hidden,false);click(f,'[data-outline-ai-apply]');await settle(()=>f.applies.length===1&&f.container.hidden);assert.match(f.applies[0].text,/第一章/);assert.equal(f.calls.filter(call=>call.path==='/theses/outlines').length,1);assert.equal([...f.timers.values()].filter(timer=>timer.delay===2000).length,0);
+test('a completed polled outline automatically updates the caller once without a preview or adoption button',async t=>{
+ const f=fixture(t);await f.controller.open();await f.charge();f.setItem({...completed,output:{text:completed.output.text+'\n<script>unsafe()</script>'}});await f.tick();assert.equal(f.$('#writing-outline-ai-result'),null);assert.equal(f.$('[data-outline-ai-apply]'),null);assert.equal(f.$('script'),null);assert.equal(f.applies.length,1);assert.equal(f.container.hidden,true);assert.match(f.applies[0].text,/第一章/);assert.match(f.applies[0].text,/<script>unsafe\(\)<\/script>/);assert.equal(f.calls.filter(call=>call.path==='/theses/outlines').length,1);assert.equal(f.timers.size,0);
 });
 
 test('a failed model task shows its actual error without overwriting or inventing a fallback outline',async t=>{
@@ -44,16 +64,16 @@ test('cancel is owner checked, calls the real cancellation route and preserves t
  const f=fixture(t);await f.controller.open();await f.charge();click(f,'[data-outline-ai-cancel]');await settle(()=>!f.controller.busy());assert.equal(f.calls.filter(call=>call.path==='/theses/outlines/outline-1/cancel').length,1);assert.match(f.container.textContent,/已停止生成/);assert.equal(f.applies.length,0);assert.equal(f.getBrief().outline[0].title,'原有章节');assert.equal([...f.timers.values()].filter(timer=>timer.delay===2000).length,0);
 });
 
-test('restoring a saved running job reads it and polls without a quote or a second paid submission',async t=>{
- const f=fixture(t,{pendingJobId:'outline-1',pendingContextKey:'original-brief'});await f.controller.open();assert.equal(f.calls.some(call=>call.path==='/billing/quote'),false);assert.equal(f.calls.some(call=>call.path==='/theses/outlines'),false);assert.match(f.container.textContent,/未重复提交或扣费/);f.setItem(completed);await f.tick();assert.ok(f.$('#writing-outline-ai-result'));assert.equal(f.$('[data-outline-ai-apply]').disabled,true);assert.match(f.container.textContent,/论文主题或研究资料已有变化/);assert.equal(f.applies.length,0);
+test('restoring a running job keeps polling but never adopts a completed result for a changed context',async t=>{
+ const f=fixture(t,{pendingJobId:'outline-1',pendingContextKey:'original-brief'});await f.controller.open();assert.equal(f.calls.some(call=>call.path==='/billing/quote'),false);assert.equal(f.calls.some(call=>call.path==='/theses/outlines'),false);assert.match(f.container.textContent,/未重复提交或扣费/);f.setItem(completed);await f.tick();assert.equal(f.$('#writing-outline-ai-result'),null);assert.equal(f.$('[data-outline-ai-apply]'),null);assert.match(f.container.textContent,/论文主题或研究资料已(?:有)?变化/);assert.equal(f.applies.length,0);
 });
 
-test('changing the topic after completion blocks apply even through the old enabled handler',async t=>{
- const f=fixture(t);await f.controller.open();await f.charge();f.setItem(completed);await f.tick();f.setBrief({...f.getBrief(),title:'另一个主题'});click(f,'[data-outline-ai-apply]');await new Promise(resolve=>setTimeout(resolve,2));assert.equal(f.applies.length,0);assert.equal(f.container.hidden,false);
+test('a topic change before completion prevents automatic replacement of the current outline',async t=>{
+ const f=fixture(t);await f.controller.open();await f.charge();f.setItem(completed);f.setBrief({...f.getBrief(),title:'另一个主题'});await f.tick();assert.equal(f.applies.length,0);assert.equal(f.container.hidden,false);assert.match(f.container.textContent,/未替换当前提纲/);assert.equal(f.$('[data-outline-ai-apply]'),null);
 });
 
-test('live auth is checked again before apply and a switched account cannot apply the previous result',async t=>{
- const f=fixture(t);await f.controller.open();await f.charge();f.setItem(completed);await f.tick();f.setUser({id:'u2'});click(f,'[data-outline-ai-apply]');await settle(()=>!f.controller.busy());assert.equal(f.applies.length,0);assert.equal(f.$('#writing-outline-ai-result'),null);assert.match(f.container.textContent,/登录账户已变化/);assert.ok(f.$('.writing-outline-ai-login a'));
+test('live auth is checked before automatic adoption and a switched account cannot receive the previous result',async t=>{
+ const f=fixture(t);await f.controller.open();await f.charge();f.setItem(completed);f.setUser({id:'u2'});await f.tick();assert.equal(f.applies.length,0);assert.equal(f.$('#writing-outline-ai-result'),null);assert.match(f.container.textContent,/登录账户已变化/);assert.ok(f.$('.writing-outline-ai-login a'));
 });
 
 test('ambiguous transport failure retries the exact same command and preserves it when the panel is reopened',async t=>{
@@ -64,16 +84,16 @@ test('disposing aborts outstanding requests and stale completion cannot mutate o
  let finish,signal;const f=fixture(t,{onRequest:(path,_data,options)=>{if(path==='/theses/outlines/capabilities'){signal=options.signal;return new Promise(resolve=>{finish=resolve;});}}});const opening=f.controller.open();await settle(()=>!!finish);const markup=f.container.innerHTML;f.setCurrent(false);f.controller.dispose();assert.equal(signal.aborted,true);await opening;finish({ready:true});await new Promise(resolve=>setTimeout(resolve,1));assert.equal(f.container.innerHTML,markup);assert.equal(f.applies.length,0);assert.equal(f.calls.filter(call=>call.path==='/billing/quote').length,0);assert.equal(f.timers.size,0);
 });
 
-test('preview redraw preserves the active textarea caret, internal scroll and live viewport when apply is declined',async t=>{
- const f=fixture(t,{onApply:()=>false});await f.controller.open();await f.charge();f.setItem(completed);await f.tick();const preview=f.$('#writing-outline-ai-result');preview.focus({preventScroll:true});preview.setSelectionRange(5,9,'backward');preview.scrollTop=40;f.position.y=1250;const calls=[],focus=f.w.HTMLElement.prototype.focus;f.w.HTMLElement.prototype.focus=function(options){calls.push(options);return focus.call(this,options);};click(f,'[data-outline-ai-apply]');await settle(()=>!f.controller.busy());const next=f.$('#writing-outline-ai-result');assert.notEqual(next,preview);assert.equal(f.doc.activeElement,next);assert.equal(next.selectionStart,5);assert.equal(next.selectionEnd,9);assert.equal(next.selectionDirection,'backward');assert.equal(next.scrollTop,40);assert.equal(f.position.y,1250);assert.ok(calls.length>0);assert.ok(calls.every(options=>options?.preventScroll===true));assert.equal(f.applies.length,1);assert.equal(f.container.hidden,false);
+test('retrying a failed outline save preserves the editing position without showing a raw preview',async t=>{
+ const f=fixture(t,{onApply:()=>false});await f.controller.open();await f.charge();f.setItem(completed);await f.tick();const entry=f.$('#outside-entry');entry.focus({preventScroll:true});entry.setSelectionRange(1,3,'backward');f.position.y=1250;click(f,'[data-outline-ai-retry]');await settle(()=>!f.controller.busy());assert.equal(f.$('#writing-outline-ai-result'),null);assert.equal(f.doc.activeElement,entry);assert.equal(entry.selectionStart,1);assert.equal(entry.selectionEnd,3);assert.equal(f.position.y,1250);assert.equal(f.applies.length,2);assert.equal(f.container.hidden,false);assert.equal(f.calls.filter(call=>call.path==='/theses/outlines').length,1);
 });
 
 test('the guest login panel preserves local content and never quotes or submits a task',async t=>{
  const f=fixture(t,{guest:true});await f.controller.open();assert.ok(f.$('.writing-outline-ai-login a'));assert.match(f.container.textContent,/已有提纲和当前浏览器草稿会保留/);assert.equal(f.calls.length,0);assert.equal(f.applies.length,0);assert.equal(f.getBrief().outline[0].title,'原有章节');
 });
 
-test('a declined replace confirmation keeps the completed preview open and does not generate again',async t=>{
- const f=fixture(t,{onApply:()=>false});await f.controller.open();await f.charge();f.setItem(completed);await f.tick();click(f,'[data-outline-ai-apply]');await settle(()=>!f.controller.busy());assert.equal(f.applies.length,1);assert.equal(f.container.hidden,false);assert.ok(f.$('#writing-outline-ai-result'));assert.equal(f.calls.filter(call=>call.path==='/theses/outlines').length,1);
+test('a failed automatic save can retry the already paid result without another generation or preview',async t=>{
+ let writable=false;const f=fixture(t,{onApply:()=>writable});await f.controller.open();await f.charge();f.setItem(completed);await f.tick();assert.equal(f.applies.length,1);assert.equal(f.container.hidden,false);assert.match(f.container.textContent,/未能保存.*无需重新生成或重复扣费/);assert.equal(f.$('#writing-outline-ai-result'),null);writable=true;click(f,'[data-outline-ai-retry]');await settle(()=>f.applies.length===2&&f.container.hidden);assert.equal(f.calls.filter(call=>call.path==='/theses/outlines').length,1);assert.equal(f.calls.filter(call=>call.path==='/billing/quote').length,1);
 });
 
 test('the idempotent command is persisted before submission and a recreated controller finds an acknowledged job before any new quote',async t=>{
@@ -93,9 +113,8 @@ test('failed command persistence prevents the paid submission instead of risking
  const f=fixture(t,{onCommandChange:()=>{throw Error('草稿保存失败，请先备份');}});await f.controller.open();await f.charge();assert.equal(f.calls.filter(call=>call.path==='/theses/outlines').length,0);assert.match(f.container.textContent,/草稿保存失败，请先备份/);assert.equal(f.applies.length,0);
 });
 
-test('legacy outline job metadata is hidden in queued and completed previews without changing research content',async t=>{
- const f=fixture(t);await f.controller.open();await f.charge();f.setItem({...queued,model:'private-model-id',engine:'codex_sdk',provider:'private-provider'});await f.tick();assert.doesNotMatch(f.container.textContent,/private-model-id|codex_sdk|private-provider|使用模型/);assert.match(f.container.textContent,/等待 AI 服务处理/);
- const text='第一章 机器学习模型研究\n1.1 公开研究中的 OpenAI 方法比较';f.setItem({...completed,model:'private-model-id',engine:'codex_sdk',provider:'private-provider',output:{text}});await f.tick();assert.doesNotMatch(f.container.textContent,/private-model-id|codex_sdk|private-provider|使用模型/);assert.equal(f.$('#writing-outline-ai-result').value,text);assert.equal(f.applies.length,0);
+test('automatic adoption preserves research text without displaying private model metadata',async t=>{
+ const f=fixture(t);await f.controller.open();await f.charge();f.setItem({...queued,model:'private-model-id',engine:'codex_sdk',provider:'private-provider'});await f.tick();assert.doesNotMatch(f.container.textContent,/private-model-id|codex_sdk|private-provider|使用模型/);const text='第一章 机器学习模型研究\n1.1 公开研究中的 OpenAI 方法比较';f.setItem({...completed,model:'private-model-id',engine:'codex_sdk',provider:'private-provider',output:{text}});await f.tick();assert.equal(f.$('#writing-outline-ai-result'),null);assert.equal(f.applies.length,1);assert.equal(f.applies[0].text,text);assert.equal(f.container.hidden,true);
 });
 
 
@@ -117,8 +136,8 @@ test('a restored missing outline command keeps its persisted project binding and
 });
 
 
-test('an imported outline result keeps its frozen encoded context while the same account project uses its raw ID',async t=>{
- const f=fixture(t),encoded=projectReference('u1','project-a');f.setProjectRef(encoded);await f.controller.open();await f.charge();const frozenContext=f.jobs.at(-1).contextKey;f.controller.dispose();f.setItem(completed);beginDraftScope({ownerId:'u1',projectRows:[{id:'project-a',title:'Original project'},{id:'project-b',title:'Another project'}]});t.after(endDraftScope);f.setProjectRef('project-a');const restored=f.w.outlineTest.mountWritingOutlineGenerator({...f.options,pendingJobId:'outline-1',pendingContextKey:frozenContext});t.after(()=>restored.dispose());await restored.open();assert.equal(f.$('[data-outline-ai-apply]').disabled,false);assert.equal(f.jobs.at(-1).contextKey,frozenContext);assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,1);assert.equal(f.calls.filter(row=>row.path==='/theses/outlines').length,1);f.setProjectRef(projectReference('other-user','project-a'));click(f,'[data-outline-ai-apply]');assert.equal(f.applies.length,0);assert.ok(f.$('[data-outline-ai-apply]').disabled);f.setProjectRef('project-b');await restored.open();click(f,'[data-outline-ai-apply]');assert.equal(f.applies.length,0);assert.ok(f.$('[data-outline-ai-apply]').disabled);f.setProjectRef('project-a');await restored.open();click(f,'[data-outline-ai-apply]');await settle(()=>f.applies.length===1);assert.equal(f.calls.filter(row=>row.path==='/theses/outlines').length,1);assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,1);
+test('a restored completed outline automatically adopts for an equivalent encoded or raw account project',async t=>{
+ const f=fixture(t),encoded=projectReference('u1','project-a');f.setProjectRef(encoded);await f.controller.open();await f.charge();const frozenContext=f.jobs.at(-1).contextKey;f.controller.dispose();f.setItem(completed);beginDraftScope({ownerId:'u1',projectRows:[{id:'project-a',title:'Original project'},{id:'project-b',title:'Another project'}]});t.after(endDraftScope);f.setProjectRef('project-a');const restored=f.w.outlineTest.mountWritingOutlineGenerator({...f.options,pendingJobId:'outline-1',pendingContextKey:frozenContext});t.after(()=>restored.dispose());await restored.open();assert.equal(f.applies.length,1);assert.equal(f.container.hidden,true);assert.equal(f.jobs.at(-1).contextKey,frozenContext);assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,1);assert.equal(f.calls.filter(row=>row.path==='/theses/outlines').length,1);
 });
 
 test('different local outline project refs do not compare equal when neither is an account project',async t=>{
@@ -203,7 +222,7 @@ for(const status of [403,404])test(`a ${status} outline status response stops au
 });
 
 test('completed, failed and cancelled outline tasks remove active indicators and all clock and polling timers',async t=>{
- for(const terminal of [completed,{...queued,status:'failed',stage:'failed',error:'合成失败原因'}, {...queued,status:'cancelled',stage:'cancelled'}]){const f=fixture(t);await f.controller.open();await f.charge();progressUI(f,'queued');f.setItem(terminal);await f.tick();assert.equal(f.controller.busy(),false);noActiveOutlineIndicators(f);assert.equal(f.timers.size,0);assert.equal(f.$('#outside-entry').value,'既有内容');assert.equal(f.applies.length,0);if(terminal.status==='completed')assert.equal(f.$('#writing-outline-ai-result').value,completed.output.text);else assert.equal(f.$('#writing-outline-ai-result'),null);}
+ for(const terminal of [completed,{...queued,status:'failed',stage:'failed',error:'合成失败原因'}, {...queued,status:'cancelled',stage:'cancelled'}]){const f=fixture(t);await f.controller.open();await f.charge();progressUI(f,'queued');f.setItem(terminal);await f.tick();assert.equal(f.controller.busy(),false);noActiveOutlineIndicators(f);assert.equal(f.timers.size,0);assert.equal(f.$('#outside-entry').value,'既有内容');assert.equal(f.applies.length,terminal.status==='completed'?1:0);assert.equal(f.$('#writing-outline-ai-result'),null);if(terminal.status==='completed')assert.equal(f.container.hidden,true);}
 });
 
 test('closing and disposing an active outline panel clear its timers without cancelling or resubmitting the background job',async t=>{

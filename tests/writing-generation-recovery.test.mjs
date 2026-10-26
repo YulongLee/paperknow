@@ -52,14 +52,15 @@ for(const kind of ['method','outline']){
   await f.submit();assert.equal(f.calls.filter(call=>call.path===f.route).length,1);assert.equal(f.commands.length,1);assert.equal(f.applied.length,0);
  });
 
- test(`${kind}: network recovery resumes the saved command and edited preview without a new quote or submission`,async t=>{
+ test(`${kind}: network recovery resumes the saved output without a new quote or submission`,async t=>{
   const edited='用户编辑且尚未应用的方法建议';
   const f=fixture(t,kind,{sessionFailure:true,pendingClientKey:'saved-command',pendingPreview:kind==='method'?{jobId:'saved-job',text:edited}:null});
   await f.controller.open();f.setOnline(true);await f.reload();
   assert.ok(f.calls.some(call=>call.path===f.route+'/by-key/saved-command'));
   assert.equal(f.calls.filter(call=>call.path==='/billing/quote'||call.path===f.route).length,0);
-  assert.equal(f.commands.length,0);assert.equal(f.applied.length,0);
-  const preview=f.container.querySelector(`#writing-${kind}-ai-result`);assert.ok(preview);assert.equal(preview.value,kind==='method'?edited:f.item.output.text);
+  const preview=f.container.querySelector(`#writing-${kind}-ai-result`);
+  if(kind==='outline'){assert.equal(f.commands.length,1);assert.equal(f.commands[0].key,null);assert.deepEqual(f.applied,[f.item.output.text]);assert.equal(preview,null);assert.equal(f.container.hidden,true);}
+  else{assert.equal(f.commands.length,0);assert.equal(f.applied.length,0);assert.ok(preview);assert.equal(preview.value,edited);}
   assert.equal(f.doc.querySelector('#manual').value,'用户已有说明，不应被覆盖');
  });
 
@@ -70,7 +71,9 @@ for(const kind of ['method','outline']){
   assert.equal(f.calls.filter(call=>call.path===f.route+'/saved-job'||call.path==='/billing/quote'||call.path===f.route).length,0);
   await f.reload();assert.match(f.container.textContent,/登录账户已变化/);
   assert.equal(f.calls.filter(call=>call.path===f.route+'/saved-job'||call.path==='/billing/quote'||call.path===f.route).length,0);
-  f.setUser({id:'u1'});await f.reload();assert.ok(f.container.querySelector(`#writing-${kind}-ai-result`));
-  assert.equal(f.calls.filter(call=>call.path===f.route+'/saved-job').length,1);assert.equal(f.commands.length,0);assert.equal(f.applied.length,0);
+  f.setUser({id:'u1'});await f.reload();
+  if(kind==='outline'){assert.equal(f.container.querySelector(`#writing-${kind}-ai-result`),null);assert.equal(f.container.hidden,true);assert.deepEqual(f.applied,[f.item.output.text]);assert.equal(f.commands.length,1);assert.equal(f.commands[0].key,null);}
+  else{assert.ok(f.container.querySelector(`#writing-${kind}-ai-result`));assert.equal(f.commands.length,0);assert.equal(f.applied.length,0);}
+  assert.equal(f.calls.filter(call=>call.path===f.route+'/saved-job').length,1);
  });
 }
