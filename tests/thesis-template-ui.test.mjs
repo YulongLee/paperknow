@@ -31,3 +31,11 @@ test('template selection failures keep the concrete reason and explain how to ch
  const conflict=templateSelectionFailureMessage(Object.assign(Error('导出模板已在其他页面更新'),{status:409}));
  assert.match(conflict,/未覆盖其他页面的模板选择/);assert.doesNotMatch(conflict,/原有模板保持不变/);
 });
+
+// Final delivery exposes the selected format but keeps all mutations in knowledge.
+test('template summary is read-only and directs the user back to knowledge without an extra file input',()=>{
+ const dom=new JSDOM(thesisTemplatePanel(descriptor,{prefix:'delivery',summaryOnly:true})),root=dom.window.document;
+ assert.match(root.body.textContent,/学校格式.docx/);assert.match(root.body.textContent,/返回精准知识补充/);
+ assert.equal(root.querySelector('input,[data-template-choose],[data-template-clear],[data-template-download]'),null);
+ assert.ok(root.querySelector('[data-template-manage]'));dom.window.close();
+});

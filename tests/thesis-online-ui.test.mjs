@@ -438,3 +438,21 @@ test('reusing a reference at a caret inside an existing token preserves that tok
   const before=f.$('[data-thesis-editor]');before.setSelectionRange(6,6);f.$('[data-thesis-cite-insert="r1"]').click();const after=f.$('[data-thesis-editor]');assert.equal(after.value,'原有论述〔文献1〕〔文献1〕，新的论述。');assert.equal(after.selectionStart,after.value.lastIndexOf('〔文献1〕'));f.$('[data-thesis-save-chapter]').click();await settle();assert.equal(f.calls.find(row=>row.path==='/theses/t1/chapters/c1'&&row.data).data.text,'原有论述[source:r1][source:r1]，新的论述。');
  }finally{f.close();}
 });
+
+test('standalone thesis keeps the only template picker in knowledge and final delivery only links back',async()=>{
+ const f=fixture();try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;
+ assert.equal(document.querySelectorAll('[data-template-file]').length,1);
+ assert.ok(f.$('[data-template-file]').closest('[data-thesis-template-knowledge]'));
+ assert.equal(f.$('.thesis-export [data-template-file]'),null);
+ let scrolled=0;f.$('[data-thesis-template-knowledge]').scrollIntoView=()=>scrolled++;
+ f.$('.thesis-export [data-template-manage]').click();assert.equal(scrolled,1);
+ assert.equal(document.activeElement,f.$('[data-template-choose]'));
+ assert.equal(f.calls.some(row=>/quote|generate/.test(row.path)),false);
+ }finally{f.close();}
+});
+test('embedded thesis returns format settings to the parent knowledge step instead of mounting a duplicate picker',async()=>{
+ const f=fixture();let returned=0;try{const panel=mountThesisStage({id:'t1',ctx:f.ctx,container:f.$('.dashboard'),onTemplateSettings:()=>returned++});await panel.ready;
+ assert.equal(f.$('[data-template-file]'),null);assert.ok(f.$('[data-template-summary]'));
+ f.$('[data-template-manage]').click();assert.equal(returned,1);assert.equal(f.calls.some(row=>/quote|generate/.test(row.path)),false);
+ }finally{f.close();}
+});

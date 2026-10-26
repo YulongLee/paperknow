@@ -59,30 +59,32 @@ async function fixture(t,{kind='proposal',failSave=false,delayUpload=false,accou
  await mount();
  return {dom,fields,calls,artifacts,downloads,releaseUpload,ctx,get cloud(){return cloud;},mount,
   q:selector=>document.querySelector(selector),local:()=>list(keys.drafts)[0].writingFlow,
-  select(file){const input=document.querySelector('[data-template-file]');Object.defineProperty(input,'files',{value:[file],configurable:true});input.dispatchEvent(new window.Event('change',{bubbles:true}));}
+  settings(){document.querySelector('[data-wf-standard-edit]')?.click();assert.ok(document.querySelector('[data-wf-knowledge] [data-template-file]'));},
+  result(){document.querySelector('[data-writing-step="'+spec.steps.length+'"]').click();assert.ok(document.querySelector('[data-wf-standard-summary]'));},
+  select(file){document.querySelector('[data-wf-standard-edit]')?.click();const input=document.querySelector('[data-template-file]');Object.defineProperty(input,'files',{value:[file],configurable:true});input.dispatchEvent(new window.Event('change',{bubbles:true}));}
  };
 }
 
 for(const kind of Object.keys(writingStandards))test(kind+' can replace its export format without changing the confirmed writing snapshot',async t=>{
  const f=await fixture(t,{kind}),before=structuredClone(f.cloud.payload.writingFlow),file=await templateFile();
- assert.ok(f.q('[data-wf-export-template]'));assert.equal(document.querySelectorAll('[data-template-file]').length,1);
+ assert.ok(f.q('[data-wf-standard-summary]'));assert.equal(document.querySelectorAll('[data-template-file]').length,0);f.settings();assert.equal(document.querySelectorAll('[data-template-file]').length,1);
  let opened=0;f.q('[data-template-file]').showPicker=()=>opened++;f.q('[data-wf-template-choose]').click();assert.equal(opened,1);
- f.select(file);assert.equal(f.q('#wf-body-docx').disabled,true);
+ f.select(file);assert.equal(f.q('[data-writing-step="'+writingFlowSpecs[kind].steps.length+'"]').disabled,true);
  await until(()=>!f.q('[data-wf-template-choose]').disabled);
  const saved=f.cloud.payload.writingFlow;
  assert.equal(saved[f.fields.exportTemplate].source.fileId,'new-template');
  assert.equal(saved[f.fields.template].source.fileId,'original');
- assert.equal(saved.body,before.body);assert.equal(saved.outlineConfirmed,true);assert.equal(saved.stage,before.stage);assert.equal(saved.unlocked,before.unlocked);
+ assert.equal(saved.body,before.body);assert.equal(saved.outlineConfirmed,true);assert.equal(saved.stage,writingFlowSpecs[kind].panels.includes('materials')?writingFlowSpecs[kind].panels.indexOf('materials'):0);assert.equal(saved.unlocked,before.unlocked);
  assert.deepEqual(saved.outline,before.outline);assert.deepEqual(writingFlowSnapshot(kind,saved),writingFlowSnapshot(kind,before));
- assert.match(f.q('[data-wf-export-template] h3').textContent,/新开题排版/);
+ assert.match(f.q('[data-wf-standard] h3').textContent,/新开题排版/);f.result();
  assert.doesNotMatch(f.q('[data-wf-export]').textContent,/当前正文来自此前版本/);
  assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
  await f.mount();assert.equal(f.local()[f.fields.exportTemplate].source.fileId,'new-template');
- assert.equal(f.q('[aria-current="step"]').dataset.writingStep,String(before.stage+1));
+ assert.equal(f.q('[aria-current="step"]').dataset.writingStep,String(saved.stage+1));f.result();assert.match(f.q('[data-wf-standard-summary] h3').textContent,/新开题排版/);
 });
 
 test('the actual final export reads the replacement template from the cloud and applies its font and margin',async t=>{
- const f=await fixture(t),file=await templateFile();f.select(file);await until(()=>!f.q('[data-wf-template-choose]').disabled);
+ const f=await fixture(t),file=await templateFile();f.select(file);await until(()=>!f.q('[data-wf-template-choose]').disabled);f.result();
  f.q('#wf-body-docx').click();await until(()=>!f.q('#wf-body-docx').disabled);
  assert.equal(f.artifacts.length,1,f.q('#writing-status').textContent);assert.equal(f.downloads.length,1);
  assert.ok(f.calls.some(row=>row.path==='/api/files/new-template/download?expectedUserId=alice'));
@@ -95,16 +97,16 @@ test('the actual final export reads the replacement template from the cloud and 
 });
 
 test('restoring the generic export format survives reopening without discarding the earlier writing requirements',async t=>{
- const f=await fixture(t),before=structuredClone(f.cloud.payload.writingFlow);f.q('[data-wf-template-reset]').click();
+ const f=await fixture(t),before=structuredClone(f.cloud.payload.writingFlow);f.settings();f.q('[data-wf-template-reset]').click();
  await until(()=>f.q('[data-wf-template-reset]')===null);
  assert.equal(writingExportTemplate('proposal',f.local()),null);
  assert.deepEqual(writingFlowSnapshot('proposal',f.local()),writingFlowSnapshot('proposal',before));
- await f.mount();assert.equal(writingExportTemplate('proposal',f.local()),null);assert.match(f.q('[data-wf-export-template] h3').textContent,/通用开题报告模板/);
+ await f.mount();assert.equal(writingExportTemplate('proposal',f.local()),null);f.result();assert.match(f.q('[data-wf-standard-summary] h3').textContent,/通用开题报告模板/);
  assert.equal(f.local().outlineConfirmed,true);assert.equal(f.local().body,before.body);
 });
 
 test('cancelling a replacement and rejecting an invalid file retain the template, body and confirmed outline',async t=>{
- const f=await fixture(t),before=structuredClone(f.local()),input=f.q('[data-template-file]');
+ const f=await fixture(t),before=structuredClone(f.local());f.settings();const input=f.q('[data-template-file]');
  input.showPicker=()=>{};f.q('[data-wf-template-choose]').click();input.dispatchEvent(new window.Event('cancel'));assert.equal(f.calls.some(row=>row.path==='/files'),false);
  f.select({name:'不支持.txt',size:1,arrayBuffer:async()=>new Uint8Array([1]).buffer});await until(()=>!f.q('[data-wf-template-choose]').disabled);
  assert.match(f.q('[data-wf-error]').textContent,/仅支持 DOCX/);assert.equal(writingExportTemplate('proposal',f.local()).source.fileId,'original');
@@ -123,16 +125,16 @@ test('a failed account save rolls back the export selection and allows retry wit
 test('template upload exposes a busy state and prevents an export from racing the new format',async t=>{
  const f=await fixture(t,{delayUpload:true}),file=await templateFile();f.select(file);
  await until(()=>f.calls.some(row=>row.path==='/files'));
- assert.equal(f.q('[data-wf-standard]').getAttribute('aria-busy'),'true');assert.equal(f.q('#wf-body-docx').disabled,true);assert.equal(f.q('[data-wf-field="body"]').disabled,true);
- f.q('#wf-body-docx').click();assert.equal(f.artifacts.length,0);
+ assert.equal(f.q('[data-wf-standard]').getAttribute('aria-busy'),'true');assert.equal(f.q('[data-writing-step="5"]').disabled,true);
+ f.q('[data-writing-step="5"]').click();assert.equal(f.q('#wf-body-docx'),null);assert.equal(f.artifacts.length,0);
  f.releaseUpload();await until(()=>!f.q('[data-wf-template-choose]').disabled);
- assert.equal(f.q('[data-wf-standard]').getAttribute('aria-busy'),'false');assert.equal(f.q('#wf-body-docx').disabled,false);
+ assert.equal(f.q('[data-wf-standard]').getAttribute('aria-busy'),'false');f.result();assert.equal(f.q('#wf-body-docx').disabled,false);
 });
 
 
 for(const nativeAPI of [true,false])test('direct writing entry resolves the signed-in export account '+(nativeAPI?'with':'without')+' an injected API client',async t=>{
  const f=await fixture(t,{account:false}),file=await templateFile();if(!nativeAPI)delete f.ctx.api;f.select(file);await until(()=>!f.q('[data-wf-template-choose]').disabled);
- assert.equal(f.local()[f.fields.exportTemplate].source.fileId,'new-template');
+ assert.equal(f.local()[f.fields.exportTemplate].source.fileId,'new-template');f.result();
  f.q('#wf-body-docx').click();await until(()=>!f.q('#wf-body-docx').disabled);
  assert.equal(f.artifacts.length,1,f.q('#writing-status').textContent);assert.equal(f.downloads.length,1);
  assert.ok(f.calls.some(row=>row.path==='/api/files/new-template/download?expectedUserId=alice'));
@@ -142,12 +144,12 @@ for(const nativeAPI of [true,false])test('direct writing entry resolves the sign
 });
 
 for(const kind of Object.keys(writingStandards))test(kind+' actual default export works without uploading or downloading any template first',async t=>{
- const f=await fixture(t,{kind});f.q('[data-wf-template-reset]').click();await until(()=>f.q('[data-wf-template-reset]')===null);
+ const f=await fixture(t,{kind});f.settings();f.q('[data-wf-template-reset]').click();await until(()=>f.q('[data-wf-template-reset]')===null);f.result();
  f.q('#wf-body-draft').click();await until(()=>!f.q('#wf-body-draft').disabled);assert.equal(f.artifacts.length,1,f.q('#writing-status').textContent);
  assert.equal(f.calls.some(row=>row.path.startsWith('/api/files/')),false);assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
- const zip=await JSZip.loadAsync(f.artifacts[0].bytes),styles=await zip.file('word/styles.xml').async('string'),normal=styles.match(/w:styleId="PKNormal"[^>]*>([\s\S]*?)<\/w:style>/)?.[1];assert.ok(normal);assert.ok(normal.includes('w:val="'+(kind==='article'?21:24)+'"'));assert.ok(f.q('[data-wf-export-template] h3').textContent.includes('（默认）'));
+ const zip=await JSZip.loadAsync(f.artifacts[0].bytes),styles=await zip.file('word/styles.xml').async('string'),normal=styles.match(/w:styleId="PKNormal"[^>]*>([\s\S]*?)<\/w:style>/)?.[1];assert.ok(normal);assert.ok(normal.includes('w:val="'+(kind==='article'?21:24)+'"'));assert.ok(f.q('[data-wf-standard-summary] h3').textContent.includes('（默认）'));
 });
 
 test('practice can download a real generic DOCX from its template entry',async t=>{
- const f=await fixture(t,{kind:'practice'});f.q('[data-wf-template-download]').click();await until(()=>f.downloads.length===1);assert.equal(f.artifacts.length,1);const zip=await JSZip.loadAsync(f.artifacts[0].bytes),xml=await zip.file('word/document.xml').async('string');assert.ok(xml.includes('{{标题}}'));assert.ok(xml.includes('{{正文}}'));assert.ok(xml.includes('{{作者}}'));assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
+ const f=await fixture(t,{kind:'practice'});f.settings();f.q('[data-wf-template-download]').click();await until(()=>f.downloads.length===1);assert.equal(f.artifacts.length,1);const zip=await JSZip.loadAsync(f.artifacts[0].bytes),xml=await zip.file('word/document.xml').async('string');assert.ok(xml.includes('{{标题}}'));assert.ok(xml.includes('{{正文}}'));assert.ok(xml.includes('{{作者}}'));assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
 });
