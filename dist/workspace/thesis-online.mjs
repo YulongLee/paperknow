@@ -8,7 +8,7 @@ import {thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,openThesis
 import {toolBanner} from './tool-banner.mjs';
 import {withBibliographicMetadata,presentThesisDocument,buildThesisBibliography} from './thesis-document.mjs';
 import {isOutlineReferenceChapter} from './outline-word-budget.mjs';
-import {normalizeThesisFigures,renderThesisFigureSvg} from './thesis-figure.mjs';
+import {normalizeThesisFigures,thesisFigureTitle,renderThesisFigureSvg} from './thesis-figure.mjs';
 import {thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount} from './thesis-editor-presentation.mjs';
 import {thesisCoverFields,thesisFrontMatterKind,thesisManualBackMatter} from './thesis-delivery.mjs';
 
@@ -348,7 +348,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   const used=new Set([...String(text||'').matchAll(/\[figure:([^\]]+)\]/g)].map(row=>row[1]));
   let figures;try{figures=normalizeThesisFigures(chapterFigureCache(chapter,historyChapter===chapter?.id?historyPreview?.figures||[]:[]).filter(row=>used.has(row.id)));}catch{return '<p class="thesis-error">本章插图暂不可读取，请重新读取任务状态后再导出。</p>';}
   if(!figures.length)return '';
-  return `<section class="thesis-figure-gallery" aria-label="本章插图"><h4>本章插图</h4><p>与正文中的图片标记对应。请核对图中逻辑与来源；删除整行图片标记可移除该图。</p>${figures.map((figure,index)=>`<figure>${renderThesisFigureSvg(figure).svg}<figcaption><b>图 ${index+1} ${escape(figure.title)}</b>${figure.caption?'<span>'+escape(figure.caption)+'</span>':''}</figcaption></figure>`).join('')}</section>`;
+  return `<section class="thesis-figure-gallery" aria-label="本章插图"><h4>本章插图</h4><p>与正文中的图片标记对应。请核对图中逻辑与来源；删除整行图片标记可移除该图。</p>${figures.map((figure,index)=>`<figure>${renderThesisFigureSvg(figure).svg}<figcaption><b>图 ${index+1} ${escape(thesisFigureTitle(figure.title))}</b>${figure.caption?'<span>'+escape(figure.caption)+'</span>':''}</figcaption></figure>`).join('')}</section>`;
  }
  function chapterLanguage(row){return thesisFrontMatterKind(row)==='abstract_en'?'English':thesisFrontMatterKind(row)==='abstract_zh'?'中文':item.profile?.language||item.snapshot?.profile?.language||'中文';}
  function textMeasure(row=item.chapters?.find(chapter=>chapter.id===selected)){return /english|英文|英语/i.test(chapterLanguage(row))?'词':'字';}

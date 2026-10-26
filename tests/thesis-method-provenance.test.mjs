@@ -39,7 +39,7 @@ test('a proposal informs method prose without entering source selection or citat
  assert.equal(task.context.requirements.researchPlan.text,proposal.text);
  assert.match(task.instructions,/requirements\.researchPlan.*拟开展研究方案/);
  assert.match(task.instructions,/不属于 confirmedSources/);
- assert.match(task.instructions,/结果、实验、访谈、统计章节若缺真实数据，撰写拟开展的验证步骤/);assert.match(task.instructions,/绝不能补造/);assert.match(task.instructions,/draft=true/);
+ assert.match(task.instructions,/结果、实验、访谈、统计章节若缺真实数据，整理验证方案、指标定义、分析框架及局限/);assert.match(task.instructions,/绝不能补造/);assert.match(task.instructions,/draft=true/);
  assert.equal(task.materials.length,1);
  assert.equal(task.materials.some(row=>row.id===proposal.jobId),false);
  assert.equal(task.context.confirmedSources.some(row=>row.id===proposal.jobId),false);

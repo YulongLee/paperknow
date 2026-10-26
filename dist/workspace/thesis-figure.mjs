@@ -32,6 +32,14 @@ export function normalizeThesisFigures(input){
  if(!Array.isArray(input)||input.length>limits.figures)fail('图片集合须为不超过 128 张的数组');
  const ids=new Set();return input.map(value=>{const figure=normalizeThesisFigure(value);if(ids.has(figure.id))fail('图片编号不能重复');ids.add(figure.id);return figure;});
 }
+// Compatibility for saved figures carrying a redundant generation-status suffix.
+// Preserve raw records, substantive qualifications, captions and graph labels.
+export function thesisFigureTitle(value){
+ const original=String(value),status='(?:拟开展|拟实施|拟采用|待验证|建议稿|初稿|草稿|proposed|draft)',suffix=new RegExp('\\s*[（(]\\s*'+status+'(?:\\s*[,，、/；;]\\s*'+status+')*\\s*[）)]\\s*$','iu');
+ let title=original;
+ while(suffix.test(title))title=title.replace(suffix,'');
+ return title.trim()||original;
+}
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[char]));
 const crcTable=Uint32Array.from({length:256},(_,value)=>{for(let bit=0;bit<8;bit++)value=value&1?0xedb88320^(value>>>1):value>>>1;return value>>>0;});
 function pngCrc(bytes,start,end){let crc=0xffffffff;for(let index=start;index<end;index++)crc=crcTable[(crc^bytes[index])&255]^(crc>>>8);return (crc^0xffffffff)>>>0;}
@@ -94,7 +102,7 @@ export function layoutThesisFigure(input){
 }
 export function renderThesisFigureSvg(input){
  const {figure,width,height,nodes,edges}=layoutThesisFigure(input),byId=new Map(nodes.map(node=>[node.id,node])),markerId=`pkfigure-${figure.id}-arrow`,titleId=`pkfigure-${figure.id}-title`,descriptionId=`pkfigure-${figure.id}-desc`;
- const parts=[`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${titleId} ${descriptionId}" font-family="Times New Roman, Noto Serif CJK SC, Songti SC, SimSun, serif"><title id="${titleId}">${escape(figure.title)}</title><desc id="${descriptionId}">${escape([figure.caption,...figure.nodes.map(node=>node.label),...figure.edges.map(edge=>`${byId.get(edge.from).label} → ${byId.get(edge.to).label}${edge.label?`：${edge.label}`:''}`)].filter(Boolean).join('；'))}</desc><defs><marker id="${markerId}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0 0 L8 4 L0 8 Z" fill="#111111"/></marker></defs><rect width="${width}" height="${height}" fill="#ffffff"/>`];
+ const parts=[`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${titleId} ${descriptionId}" font-family="Times New Roman, Noto Serif CJK SC, Songti SC, SimSun, serif"><title id="${titleId}">${escape(thesisFigureTitle(figure.title))}</title><desc id="${descriptionId}">${escape([figure.caption,...figure.nodes.map(node=>node.label),...figure.edges.map(edge=>`${byId.get(edge.from).label} → ${byId.get(edge.to).label}${edge.label?`：${edge.label}`:''}`)].filter(Boolean).join('；'))}</desc><defs><marker id="${markerId}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0 0 L8 4 L0 8 Z" fill="#111111"/></marker></defs><rect width="${width}" height="${height}" fill="#ffffff"/>`];
  for(const edge of edges)parts.push(`<polyline points="${edge.points.map(point=>point.join(',')).join(' ')}" fill="none" stroke="#111111" stroke-width="1.5" stroke-linejoin="miter" marker-end="url(#${markerId})"/>`);
  for(const node of nodes)parts.push(`<g data-node-id="${node.id}"><rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" fill="#ffffff" stroke="#111111" stroke-width="1.5"/>${textLines(node.lines,node.x+node.width/2,node.y+(node.height-node.lines.length*29)/2+22)}</g>`);
  for(const edge of edges)if(edge.labelLines.length)parts.push(textLines(edge.labelLines,edge.labelX,edge.labelY,{size:18,step:24,halo:true}));
