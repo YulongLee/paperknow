@@ -25,6 +25,7 @@ export function artifactVisibilityConditions(db){
   conditions.push("NOT (source_type='presentation' AND EXISTS (SELECT 1 FROM tool_runs r WHERE r.id=artifacts.source_id AND r.user_id=artifacts.user_id AND r.operation='ppt' AND r.status!='completed'))");
  }
  if(exists('web_similarity_runs'))conditions.push("NOT (source_type='detection' AND EXISTS (SELECT 1 FROM web_similarity_runs r JOIN jobs j ON j.id=r.id WHERE r.id=artifacts.source_id AND r.user_id=artifacts.user_id AND (j.status!='completed' OR r.input_artifact_id=artifacts.id)))");
+ if(exists('aigc_detections'))conditions.push("NOT (source_type='detection' AND EXISTS (SELECT 1 FROM aigc_detections r WHERE r.id=artifacts.source_id AND r.user_id=artifacts.user_id AND (r.status!='completed' OR r.input_artifact_id=artifacts.id)))");
  return conditions;
 }
 
@@ -58,8 +59,9 @@ export function createArtifactService(db,config={}){
  const requireStorage=()=>{if(!storageReady())fail(503,'成果云存储暂不可用，请稍后重试；文件不会写入服务器');return config.storage;};
  const own=(id,user)=>{const row=db.prepare('SELECT * FROM artifacts WHERE id=? AND user_id=?').get(id,user.id);if(!row)fail(404,'成果文件不存在');return row;};
  const hasToolRuns=()=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tool_runs'").get());
+ const hasAigcRuns=()=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='aigc_detections'").get());
  const hasWebRuns=()=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='web_similarity_runs'").get());
- const pendingPresentation=row=>row.source_type==='research'&&hasToolRuns()&&Boolean(db.prepare("SELECT 1 FROM tool_runs WHERE id=? AND user_id=? AND operation='image' AND status!='completed'").get(row.source_id,row.user_id))||row.source_type==='presentation'&&hasToolRuns()&&Boolean(db.prepare("SELECT 1 FROM tool_runs WHERE id=? AND user_id=? AND operation='ppt' AND status!='completed'").get(row.source_id,row.user_id))||row.source_type==='detection'&&hasWebRuns()&&Boolean(db.prepare("SELECT 1 FROM web_similarity_runs r JOIN jobs j ON j.id=r.id WHERE r.id=? AND r.user_id=? AND (j.status!='completed' OR r.input_artifact_id=?)").get(row.source_id,row.user_id,row.id));
+ const pendingPresentation=row=>row.source_type==='research'&&hasToolRuns()&&Boolean(db.prepare("SELECT 1 FROM tool_runs WHERE id=? AND user_id=? AND operation='image' AND status!='completed'").get(row.source_id,row.user_id))||row.source_type==='presentation'&&hasToolRuns()&&Boolean(db.prepare("SELECT 1 FROM tool_runs WHERE id=? AND user_id=? AND operation='ppt' AND status!='completed'").get(row.source_id,row.user_id))||row.source_type==='detection'&&hasWebRuns()&&Boolean(db.prepare("SELECT 1 FROM web_similarity_runs r JOIN jobs j ON j.id=r.id WHERE r.id=? AND r.user_id=? AND (j.status!='completed' OR r.input_artifact_id=?)").get(row.source_id,row.user_id,row.id))||row.source_type==='detection'&&hasAigcRuns()&&Boolean(db.prepare("SELECT 1 FROM aigc_detections WHERE id=? AND user_id=? AND (status!='completed' OR input_artifact_id=?)").get(row.source_id,row.user_id,row.id));
  const serialize=serializeArtifact;
  const usage=user=>{const row=db.prepare("SELECT coalesce(sum(bytes),0) bytes,count(*) count FROM artifacts WHERE user_id=? AND status!='deleted'").get(user.id);return {...row,maxBytes:limits.maxAccountBytes,maxFiles:limits.maxFiles,maxFileBytes:limits.maxFileBytes};};
  const checkAccount=(expected,user)=>{if(expected!==undefined&&expected!==user.id)fail(409,'登录账户已变化，请刷新后重新导出');};

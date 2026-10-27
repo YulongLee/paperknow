@@ -6,7 +6,7 @@ export const toolBannerCategories=Object.freeze({
   literature:{title:'AI 研读',icon:'book',description:'管理文献、检索资料、研读正文，并整理翻译内容。'},
   reduce:{title:'降重复率',icon:'pen',description:'对照真实来源，逐段整理表达与引用，保留修改记录。'},
   aigc:{title:'降AI率',icon:'file',description:'先核对观点与来源，再逐段整理你自己的学术表达。'},
-  detection:{title:'免费查重',icon:'shield',description:'将论文与自备材料比对，定位匹配段落与来源证据。'},
+  detection:{title:'论文检测',icon:'shield',description:'上传论文，检测重复率与 AI 生成特征，生成可核对的论文检测报告。'},
   ppt:{title:'PPT 创作',icon:'chart',description:'从研究材料到清晰汇报，逐页制作与编辑演示文稿。'},
   format:{title:'格式排版',icon:'file',description:'上传 DOCX，按规范检查、排版与整理文档格式。'},
   research:{title:'科研工具',icon:'grid',description:'整理研究数据，制作图表、记录专业绘图需求与编辑公式。'},

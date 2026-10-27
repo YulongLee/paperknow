@@ -11,7 +11,7 @@ export const workspaceJobActive=row=>['preparing','queued','running'].includes(t
 export const workspaceJobStatusLabel=status=>({draft:'草稿',partial:'部分完成',preparing:'保存中',queued:'排队中',running:'处理中',completed:'已完成',failed:'失败',cancelled:'已取消',interrupted:'已中断',needs_materials:'待补充资料',budget_exceeded:'额度不足'})[status]||'状态待核对';
 export function workspaceJobHref(row){
  const safe=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(value);
- if(row?.type==='aigc_detection'&&safe(row.id))return'#category/aigc?view=detection&report='+encodeURIComponent(row.id);
+ if(row?.type==='aigc_detection'&&safe(row.id))return'#category/detection?view=ai&report='+encodeURIComponent(row.id);
  if(row?.type==='web_similarity'&&safe(row.id))return'#category/detection?view=web&report='+encodeURIComponent(row.id);
  if(row?.type==='thesis'&&safe(row.thesis_id))return'#thesis/'+encodeURIComponent(row.thesis_id);
  if(row?.type==='tool_run'&&(row.tool_operation==='ppt'||row.operation==='ppt'||row.tool_kind==='presentation'||row.kind==='presentation')&&safe(row.id))return'#tool/ppt?job='+encodeURIComponent(row.id);

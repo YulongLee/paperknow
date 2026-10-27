@@ -1,7 +1,7 @@
 export const feedbackKey='paperknow-help-feedback';
 export const feedbackTypes=['功能问题','使用咨询','体验建议','其他'];
-export const helpCategories=[{"id":"start","title":"新手入门","description":"创建项目与管理成果","icon":"book","color":"blue"},{"id":"writing","title":"写作与修改","description":"大纲编辑与内容保存","icon":"pen","color":"purple"},{"id":"literature","title":"AI 研读","description":"原文解读、问答与翻译","icon":"file","color":"mint"},{"id":"detection","title":"免费查重","description":"上传要求与报告解读","icon":"search","color":"orange"},{"id":"files","title":"文件与导出","description":"Word、PDF 与 PPT","icon":"upload","color":"blue"},{"id":"data","title":"账户与数据","description":"偏好设置与备份恢复","icon":"settings","color":"purple"}];
-export const relatedFeatures=['未选择','工作台与项目','文件管理','任务中心','AI 写作','AI 研读','降重复率','降 AI 率','免费查重','PPT 创作','科研工具','格式排版','会员与用量','设置与备份','其他'];
+export const helpCategories=[{"id":"start","title":"新手入门","description":"创建项目与管理成果","icon":"book","color":"blue"},{"id":"writing","title":"写作与修改","description":"大纲编辑与内容保存","icon":"pen","color":"purple"},{"id":"literature","title":"AI 研读","description":"原文解读、问答与翻译","icon":"file","color":"mint"},{"id":"detection","title":"论文检测","description":"上传要求与报告解读","icon":"search","color":"orange"},{"id":"files","title":"文件与导出","description":"Word、PDF 与 PPT","icon":"upload","color":"blue"},{"id":"data","title":"账户与数据","description":"偏好设置与备份恢复","icon":"settings","color":"purple"}];
+export const relatedFeatures=['未选择','工作台与项目','文件管理','任务中心','AI 写作','AI 研读','降重复率','降 AI 率','论文检测','PPT 创作','科研工具','格式排版','会员与用量','设置与备份','其他'];
 export const articles=[
   {
     "id": "start-project",
@@ -25,7 +25,7 @@ export const articles=[
     "tags": "入门 工具 开始",
     "summary": "从目标选择工具，保存后到文件管理继续处理。",
     "steps": [
-      "选择 AI 写作、AI 研读、免费查重或其他相关工具。",
+      "选择 AI 写作、AI 研读、论文检测或其他相关工具。",
       "按页面提示填写真实研究信息，核对页面标注的当前可用范围。",
       "编辑并保存内容，再到「文件管理」重新打开；任务中心查看已记录的实际操作。"
     ],
@@ -59,7 +59,7 @@ export const articles=[
       "选择当前段落或全部原文，每次最多 32,000 字符、单段最多 3,500 字符；核对处理范围后，点击生成即可开始。",
       "生成候选后逐段查看差异，核对数字、术语和引用，采纳后进入导出稿。草稿自动保存，主动保存版本可保留历史。"
     ],
-    "note": "AI 候选不直接覆盖原稿；未采纳保留原文。可导出 DOCX、PDF、TXT 与备份。AI 文本鉴别为独立功能，只展示分段标签与置信分，不提供学校指定的全篇论文 AI 率，也不承诺检测分数下降或审核通过。",
+    "note": "AI 候选不直接覆盖原稿；未采纳保留原文。可导出 DOCX、PDF、TXT 与备份。论文检测包含重复率与 AI 率两项。AI 检测展示疑似片段占比、分段标签与置信分；结果不替代学校指定报告。",
     "action": "#category/reduce",
     "actionLabel": "前往降重复率"
   },
@@ -91,7 +91,7 @@ export const articles=[
     ],
     "note": "联网查重为有限片段抽样检索，不覆盖全部互联网、封闭学术库或付费全文；未发现匹配不代表不存在重复。不等同于知网、万方或维普；语义相似度和全篇 AI 率不纳入本报告。",
     "action": "#category/detection",
-    "actionLabel": "前往免费查重"
+    "actionLabel": "前往论文检测"
   },
   {
     "id": "detection-citation",
@@ -245,7 +245,7 @@ export const articles=[
   }
 ];
 export function searchHelp(query='',category='all'){const tokens=query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);return articles.filter(a=>(category==='all'||a.category===category)&&tokens.every(t=>[a.title,helpCategories.find(c=>c.id===a.category)?.title||'',a.tags,a.summary,...a.steps,a.note].join(' ').toLocaleLowerCase().includes(t)));}
-export function normalizeFeedback(raw={}){if(!raw||typeof raw!=='object'||Array.isArray(raw))raw={};const oldFeatures={'文献与研读':'AI 研读','修改与润色':'降重复率','论文检测':'免费查重'};return {type:feedbackTypes.includes(raw.type)?raw.type:feedbackTypes[0],feature:relatedFeatures.includes(raw.feature)?raw.feature:(Object.hasOwn(oldFeatures,raw.feature)?oldFeatures[raw.feature]:relatedFeatures[0]),content:typeof raw.content==='string'?raw.content.slice(0,3000):'',savedAt:typeof raw.savedAt==='string'?raw.savedAt:''};}
+export function normalizeFeedback(raw={}){if(!raw||typeof raw!=='object'||Array.isArray(raw))raw={};const oldFeatures={'文献与研读':'AI 研读','修改与润色':'降重复率','免费查重':'论文检测'};return {type:feedbackTypes.includes(raw.type)?raw.type:feedbackTypes[0],feature:relatedFeatures.includes(raw.feature)?raw.feature:(Object.hasOwn(oldFeatures,raw.feature)?oldFeatures[raw.feature]:relatedFeatures[0]),content:typeof raw.content==='string'?raw.content.slice(0,3000):'',savedAt:typeof raw.savedAt==='string'?raw.savedAt:''};}
 export function feedbackText(value){const v=normalizeFeedback(value);if(!v.content.trim())throw Error('请先填写问题描述。');return `PaperKnow 反馈草稿（本地，尚未发送）\n反馈类型：${v.type}\n相关功能：${v.feature}\n\n问题描述：\n${v.content.trim()}\n\n此文本由用户本地导出，不代表已向 PaperKnow 提交。`;} 
 
 export function parseFeedbackDraft(raw){if(raw===null||raw===undefined||raw==='')return normalizeFeedback();const value=typeof raw==='string'?JSON.parse(raw):raw;if(!value||typeof value!=='object'||Array.isArray(value)||['type','feature','content','savedAt'].some(key=>value[key]!==undefined&&typeof value[key]!=='string')||typeof value.content==='string'&&value.content.length>3000)throw Error('反馈草稿结构异常，已停止覆盖。');return normalizeFeedback(value);}

@@ -35,3 +35,26 @@ test('HTTP creates asynchronous owner-scoped record, supports reload history and
 test('ambiguous provider failure becomes safe failed record; identical text is never automatically repeated',async t=>{
  let calls=0;const f=await fixture(t,{client:{async detect(){calls++;throw new Error('AccessKey unit-aigc-secret private server stack');}}});const submitted=await f.submit(),failed=await f.wait(submitted.value.id);assert.equal(failed.value.status,'failed');assert.equal(failed.value.conclusive,false);assert.equal(failed.value.verdict,'undetermined');assert.doesNotMatch(JSON.stringify(failed.value),/AccessKey|unit-aigc|private server|stack/);assert.equal((await f.submit()).value.id,failed.value.id);assert.equal(calls,1);
 });
+
+test('submitted paper and its standard AI report survive reload in private OSS without another detector call',async t=>{
+ const objects=new Map(),f=await fixture(t,{client:{async detect(content){f.calls.push(content);return{label:content.startsWith('A')?'aigc':'ugc',confidence:91};}},config:{ossBucket:'private-test',ossEndpoint:'https://oss-cn-shanghai.aliyuncs.com',ossRegion:'cn-shanghai',ossAccessKeyId:'unit-id',ossAccessKeySecret:'unit-secret',ossClient:{async put(key,value){objects.set(key,Buffer.from(value));},async get(key){return{content:objects.get(key)};},async delete(key){objects.delete(key);}}}});
+ const text='A'.repeat(5000)+'B'.repeat(100),first=await f.submit({text,title:'完整论文送检版本'}),id=first.value.id;
+ await f.wait(id);const report=await f.request('/aigc-detections/'+id+'/report');assert.equal(report.status,200);assert.equal(report.value.text,text);assert.equal(report.value.title,'完整论文送检版本');assert.equal(report.value.item.reportReady,true);assert.equal(f.calls.length,2);
+ assert.equal((await f.request('/aigc-detections/'+id+'/report',undefined,f.users.bob)).status,404);assert.equal((await f.request('/aigc-detections/'+id+'/report',undefined,null)).status,401);
+ const files=(await f.request('/artifacts')).value.items;assert.equal(files.length,1);assert.equal(files[0].kind,'html');const stored=f.db.prepare('SELECT input_artifact_id FROM aigc_detections WHERE id=?').get(id);assert.equal((await f.request('/artifacts/'+stored.input_artifact_id+'/download?expectedUserId=alice')).status,409);
+ const downloaded=await fetch(f.base+'/api/artifacts/'+files[0].id+'/download?expectedUserId=alice',{headers:{Cookie:f.users.alice.cookie}}),html=await downloaded.text();assert.equal(downloaded.status,200);assert.match(html,/论文 AI 率检测报告/);assert.match(html,/98\.0%/);assert.match(html,/完整论文送检版本/);assert.match(html,/按整段标签统计/);assert.doesNotMatch(html,/private-aigc|unit-secret/);
+ const cached=await f.submit({text,title:'未送检的另一个标题'});assert.equal(cached.value.id,id);assert.equal(cached.value.title,'完整论文送检版本');assert.equal((await f.request('/aigc-detections/'+id+'/report')).value.text,text);assert.equal(f.calls.length,2);
+ const artifact=f.db.prepare('SELECT * FROM artifacts WHERE id=?').get(stored.input_artifact_id);objects.set(artifact.storage_key,Buffer.from('tampered'));assert.equal((await f.request('/aigc-detections/'+id+'/report')).status,503);assert.equal(f.calls.length,2);
+});
+
+test('report publication can recover after storage failure without a paid recheck',async t=>{
+ const objects=new Map();let rejectHtml=true;
+ const f=await fixture(t,{config:{ossBucket:'private-test',ossEndpoint:'https://oss-cn-shanghai.aliyuncs.com',ossRegion:'cn-shanghai',ossAccessKeyId:'unit-id',ossAccessKeySecret:'unit-secret',ossClient:{async put(key,value){if(rejectHtml&&key.endsWith('.html'))throw Error('synthetic archive failure');objects.set(key,Buffer.from(value));},async get(key){return{content:objects.get(key)};},async delete(key){objects.delete(key);}}}});
+ const id=(await f.submit({title:'报告恢复测试'})).value.id;await f.wait(id);assert.equal((await f.request('/aigc-detections/'+id+'/report')).status,503);assert.equal(f.calls.length,1);
+ rejectHtml=false;const recovered=await f.request('/aigc-detections/'+id+'/report');assert.equal(recovered.status,200);assert.equal(recovered.value.item.reportReady,true);assert.equal(f.calls.length,1);assert.equal((await f.request('/artifacts')).value.items.length,1);
+});
+
+test('an unavailable input archive stops before detector dispatch and publishes no incomplete report',async t=>{
+ const f=await fixture(t,{config:{ossBucket:'private-test',ossEndpoint:'https://oss-cn-shanghai.aliyuncs.com',ossRegion:'cn-shanghai',ossAccessKeyId:'unit-id',ossAccessKeySecret:'unit-secret',ossClient:{async put(){throw Error('synthetic input failure');},async get(){throw Error('not stored');},async delete(){}}}});
+ const id=(await f.submit({title:'原文保存失败'})).value.id,failed=await f.wait(id);assert.equal(failed.value.status,'failed');assert.match(failed.value.error,/未开始 AI 检测/);assert.equal(f.calls.length,0);assert.equal((await f.request('/artifacts')).value.items.length,0);assert.equal((await f.request('/aigc-detections/'+id+'/report')).status,404);
+});

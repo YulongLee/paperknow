@@ -65,14 +65,14 @@ export function revisionComparisonInputFromReport(report){
 /** Read-only transfer: routes contain only an ID, never manuscript or source text. */
 export async function loadRevisionComparisonHandoff(ctx,{windowObject=globalThis.window,isCurrent=()=>true,readLocalReport=async id=>(await import('../precheck/store.mjs')).repository.get('reports',id)}={}){
  const initialHash=windowObject?.location?.hash,route=handoffRoute(initialHash);
- if(!route)fail('请先在免费查重的完整报告中点击“按重复来源降重”，再读取这份结果。');
+ if(!route)fail('请先在论文检测的完整报告中点击“按重复来源降重”，再读取这份结果。');
  const assertCurrent=()=>{if(!isCurrent()||windowObject?.location?.hash!==initialHash)fail('页面或文稿已变化，本次查重结果未载入。');};
  assertCurrent();let report;
  if(route.kind==='web'){
   if(typeof ctx?.api!=='function')fail('暂时无法读取账户查重结果，请重新进入降重功能。');
   let before,response,after;
   try{before=await ctx.api('/auth/me');assertCurrent();if(!before?.user?.id)fail('请登录保存该报告的账户后重试。');response=await ctx.api('/web-similarity/'+encodeURIComponent(route.id)+'/report');assertCurrent();after=await ctx.api('/auth/me');assertCurrent();}
-  catch(error){assertCurrent();if(/请登录/.test(error.message||''))throw error;fail('暂时无法读取这份账户查重结果，请返回免费查重读取原任务后重试。');}
+  catch(error){assertCurrent();if(/请登录/.test(error.message||''))throw error;fail('暂时无法读取这份账户查重结果，请返回论文检测读取原任务后重试。');}
   if(after?.user?.id!==before.user.id||response?.ownerId!==before.user.id)fail('登录账户已变化或报告所属账户无法核对，本次结果未载入。');
   report=response.report;
  }else{

@@ -199,7 +199,7 @@ test('all sixteen degree quotas require their own real runtime and exact service
 });
 
 test('purchased degree and detection quotas link to all exact services only when ready with available quota',async()=>{
- const routes=[...degreeQuotaRoutes,{key:'detection-similarity',href:'#category/detection?view=web',runtime:'webSimilarity'},{key:'detection-aigc',href:'#category/aigc?view=detection',runtime:'aigcDetection'}],items=routes.map(item=>({key:item.key,title:item.key,quantity:2,used:0,held:0,remaining:2}));
+ const routes=[...degreeQuotaRoutes,{key:'detection-similarity',href:'#category/detection?view=web',runtime:'webSimilarity'},{key:'detection-aigc',href:'#category/detection?view=ai',runtime:'aigcDetection'}],items=routes.map(item=>({key:item.key,title:item.key,quantity:2,used:0,held:0,remaining:2}));
  for(const scenario of ['ready','runtime-off','paused','unavailable','exhausted','expired','future']){
   const capabilities={ai:false,agent:false,tools:{ready:false},...Object.fromEntries(['thesis','writing','webSimilarity','aigcDetection'].map(key=>[key,{ready:scenario!=='runtime-off'}])),toolBilling:{services:routes.map(item=>({key:item.key,effectiveMode:scenario==='paused'?'disabled':item.key.startsWith('detection-')?'free':'paid',available:scenario!=='unavailable'}))}};
   const bundle={orderId:'degree-quota-'+scenario,title:'已购真实学位与检测服务',startsAt:scenario==='future'?'2098-01-01':'2020-01-01',expiresAt:scenario==='expired'?'2021-01-01':'2099-01-01',items:items.map(item=>({...item,remaining:scenario==='exhausted'?0:2}))},calls=[];

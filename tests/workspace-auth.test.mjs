@@ -272,7 +272,7 @@ test('homepage research navigation matches the rendered workspace and report sid
  const f=await fixture(async()=>response(401));
  const home=new JSDOM(homeSource,{url:'https://paperknow.cn/'});
  try{
-  const expected=[['writing','AI 写作'],['literature','AI 研读'],['reduce','降重复率'],['aigc','降AI率'],['detection','免费查重'],['ppt','PPT 创作'],['format','格式排版'],['research','科研工具']]
+  const expected=[['writing','AI 写作'],['literature','AI 研读'],['reduce','降重复率'],['aigc','降AI率'],['detection','论文检测'],['ppt','PPT 创作'],['format','格式排版'],['research','科研工具']]
    .map(([key,label])=>({key,label,path:`/workspace.html#category/${key}`}));
   const homepage=[...home.window.document.querySelectorAll('#main-nav [data-research-category]')]
    .map(link=>({key:link.dataset.researchCategory,label:link.textContent.trim(),path:link.pathname+link.hash}));

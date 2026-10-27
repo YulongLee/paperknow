@@ -446,7 +446,7 @@ test('metered AI text detection tasks return to the owned result, cancel through
   if(path==='/api/aigc-detections/aigc-running/cancel'){assert.deepEqual(JSON.parse(options.body),{expectedUserId:'u1'});rows=rows.map(row=>row.id==='aigc-running'?{...row,status:'cancelled'}:row);return{ok:true,status:200,json:async()=>({id:'aigc-running',status:'failed'})};}
   return undefined;
  }});
- assert.match(f.doc.querySelector('#job-list').textContent,/AI 文本鉴别/);assert.ok([...f.doc.querySelectorAll('a')].some(link=>link.getAttribute('href')==='#category/aigc?view=detection&report=aigc-running'));assert.equal(f.doc.querySelector('[data-job="aigc-failed"][data-action="retry"]'),null);
+ assert.match(f.doc.querySelector('#job-list').textContent,/AI 文本鉴别/);assert.ok([...f.doc.querySelectorAll('a')].some(link=>link.getAttribute('href')==='#category/detection?view=ai&report=aigc-running'));assert.equal(f.doc.querySelector('[data-job="aigc-failed"][data-action="retry"]'),null);
  f.doc.querySelector('[data-job="aigc-running"][data-action="cancel"]').click();await settle(()=>f.doc.querySelector('.tag.cancelled'));assert.equal(f.calls.some(call=>call.path==='/api/jobs/aigc-running/cancel'),false);
 });
 

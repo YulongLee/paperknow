@@ -33,3 +33,10 @@ test('unknown labels remain explicit and are not reported as human-written or ze
 test('date normalization keeps only valid public record dates and omits internal fields',()=>{
  const item=normalizeAigcResult(result({createdAt:'2026-10-19T06:00:00+08:00',updatedAt:'<script>',model:'private-model'}));assert.equal(item.createdAt,'2026-10-18T22:00:00.000Z');assert.equal(item.updatedAt,'');assert.equal(item.model,undefined);
 });
+
+test('AI coverage is weighted by verified chunk characters and never by confidence',async()=>{
+ const {aigcLabelCoverage}=await import('../dist/workspace/aigc-detection-model.mjs');
+ const item=result({characters:10,parts:[{index:0,start:0,end:9,characters:9,label:'aigc',confidence:11},{index:1,start:9,end:10,characters:1,label:'ugc',confidence:99}]});
+ assert.equal(aigcLabelCoverage(item).ratio,.9);assert.match(aigcReportHtml(item),/90\.0%/);assert.doesNotMatch(aigcReportHtml(item),/11%|55\.0%/);
+ for(const invalid of [result({status:'running'}),result({verdict:'undetermined'}),result({parts:[{index:0,start:0,end:4,characters:4,label:'aigc',confidence:90},{index:1,start:5,end:8,characters:3,label:'ugc',confidence:91}]})])assert.equal(aigcLabelCoverage(invalid).available,false);
+});

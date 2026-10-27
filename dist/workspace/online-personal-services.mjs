@@ -34,7 +34,7 @@ const serviceRoutes={
  'revision-reduce':'#category/reduce','revision-aigc':'#category/aigc','revision-dual':'#category/reduce',
  'presentation-ai':'#tool/ppt','presentation-proposal':'#tool/ppt?mode=proposal','presentation-thesis':'#tool/ppt?mode=thesis',
  'research-chart':'#category/research','research-diagram':'#category/research','research-formula':'#category/research','research-image':'#category/research?mode=professional','format-advice':'#category/format',
- 'detection-similarity':'#category/detection?view=web','detection-aigc':'#category/aigc?view=detection'
+ 'detection-similarity':'#category/detection?view=web','detection-aigc':'#category/detection?view=ai'
 };
 for(const degree of ['junior','bachelor','master','doctor'])for(const [key,tool] of [['thesis','writing'],['proposal','proposal'],['taskbook','taskbook'],['literature-review','summary']])serviceRoutes[key+'-'+degree]=`#tool/${tool}?level=${degree}&new=package-${key}-${degree}`;
 const runtimeReady=cap=>cap.thesis?.ready===true||cap.writing?.ready===true||cap.tools?.ready===true;

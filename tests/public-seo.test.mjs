@@ -10,7 +10,7 @@ import {createServer} from '../server.mjs';
 const origin='https://paperknow.cn';
 const refreshedPages=new Set(['/','/features/ai-writing/','/features/ai-reading/','/features/reduce-ai/','/features/similarity-check/','/features/ppt/','/guides/paper-outline/','/guides/research-ppt/','/guides/research-charts/','/about/','/help/','/status/']);
 const formatUpdatedPages=new Set(['/','/features/format/','/guides/docx-format/','/about/','/status/']);
-const expectedModifiedAt=slug=>slug==='/features/ai-writing/'?'2026-10-25':formatUpdatedPages.has(slug)?'2026-10-22':refreshedPages.has(slug)?'2026-10-21':['/features/research-tools/','/privacy/'].includes(slug)?'2026-10-19':['/features/','/guides/'].includes(slug)?'2026-10-15':'2026-10-18';
+const expectedModifiedAt=slug=>slug==='/features/similarity-check/'?'2026-10-27':slug==='/features/ai-writing/'?'2026-10-25':formatUpdatedPages.has(slug)?'2026-10-22':refreshedPages.has(slug)?'2026-10-21':['/features/research-tools/','/privacy/'].includes(slug)?'2026-10-19':['/features/','/guides/'].includes(slug)?'2026-10-15':'2026-10-18';
 const features={
   'ai-writing':'writing','ai-reading':'literature','reduce-similarity':'reduce',
   'reduce-ai':'aigc','similarity-check':'detection','ppt':'ppt',
@@ -276,6 +276,6 @@ test('public capability copy reflects shipped AI workflows while retaining real 
  assert.match(text('/status/'),/2026 年 10 月 21 日/);assert.match(text('/status/'),/学校指定.*AI 率.*未接入/);
  assert.match(text('/features/ai-reading/'),/整篇.*中英互译/);
  assert.match(text('/features/reduce-ai/'),/分段.*置信分/);assert.match(text('/features/reduce-ai/'),/不是论文 AI 字数占比|不代表论文 AI 字数占比/);
- assert.match(text('/features/similarity-check/'),/本次.*公开网页正文/);assert.match(text('/features/similarity-check/'),/不等于全网覆盖/);
+ assert.match(text('/features/similarity-check/'),/本次.*公开网页正文/);assert.match(text('/features/similarity-check/'),/不覆盖全部互联网|不等于全网覆盖/);
  for(const slug of Object.keys(features).map(name=>`/features/${name}/`))assert.doesNotMatch(text(slug),/AMiner|MinerU|阿里云|GPT|Claude|Gemini/);
 });
