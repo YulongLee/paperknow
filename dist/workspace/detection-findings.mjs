@@ -9,7 +9,7 @@ export function similarityFindingSummary(report){
 export function aigcFindingSummary(item,text){
  if(!text||Array.from(text).length!==item.characters||!aigcLabelCoverage(item).available)return '';
  const locations=aigcLocations(text,item.parts);if(!locations.total)return '';
- return `<section class="detection-findings" aria-label="疑似AI原文定位"><h4>疑似范围与原文定位</h4><p>疑似范围涉及 ${locations.total} 段原文。点击查看对应文字和上下文；结论仍以实际送检片段为单位。</p><ol>${locations.visible.slice(0,5).map(row=>`<li><strong>原文第 ${row.number} 段</strong><p>${esc(row.excerpt)}</p><button class="btn secondary" type="button" data-aigc-location="${row.target}">查看疑似范围原文</button></li>`).join('')}</ol>${locations.total>5?'<p>此处列出前5段，更多定位见完整报告。</p>':''}</section>`;
+ return `<section class="detection-findings" aria-label="疑似AI原文定位"><h4>疑似范围与原文定位</h4><p>疑似范围涉及 ${locations.total} 段原文。点击查看对应文字和上下文；结论仍以实际送检片段为单位。</p><ol>${locations.visible.slice(0,5).map(row=>`<li><strong>原文第 ${row.number} 段</strong><p>${esc(row.excerpt)}</p><button class="btn secondary" type="button" data-aigc-location="${row.target}">查看原文与逐句建议</button></li>`).join('')}</ol>${locations.total>5?'<p>此处列出前5段，更多定位见完整报告。</p>':''}</section>`;
 }
 export function locateReportFrame(frame,fragment,isCurrent){
  frame.addEventListener('load',()=>{
