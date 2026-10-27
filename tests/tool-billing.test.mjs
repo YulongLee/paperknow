@@ -23,8 +23,8 @@ function fixture(t,{available=true,beforeBilling}={}){
  t.after(()=>db.close());return {db,billing,config,user,other,job,base,configure,order,quote,reserve,tx,advance:n=>time+=n};
 }
 
-test('writing prices inherit existing agent amounts while complimentary detection keeps its free policy',t=>{
- const f=fixture(t);f.base('paid',10);f.order('credits');const rules=f.billing.toolRules();assert.equal(rules.version,1);assert.equal(rules.services.length,toolBillingServiceTypes.length);assert.ok(rules.services.filter(s=>!s.key.startsWith('detection-')).every(s=>s.mode==='inherit'&&s.creditCost===null&&s.effectiveMode==='paid'&&s.effectiveCreditCost===10&&s.available));assert.ok(rules.services.filter(s=>s.key.startsWith('detection-')).every(s=>s.mode==='free'&&s.effectiveMode==='free'&&s.effectiveCreditCost===null&&!s.available));assert.deepEqual(f.billing.rules().services.map(s=>s.key),['polish','review','agent']);
+test('writing prices inherit existing agent amounts while detection defaults to its dedicated 500-credit tariff',t=>{
+ const f=fixture(t);f.base('paid',10);f.order('credits');const rules=f.billing.toolRules();assert.equal(rules.version,1);assert.equal(rules.services.length,toolBillingServiceTypes.length);assert.ok(rules.services.filter(s=>!s.key.startsWith('detection-')).every(s=>s.mode==='inherit'&&s.creditCost===null&&s.effectiveMode==='paid'&&s.effectiveCreditCost===10&&s.available));assert.ok(rules.services.filter(s=>s.key.startsWith('detection-')).every(s=>s.mode==='paid'&&s.creditCost===500&&s.effectiveMode==='paid'&&s.effectiveCreditCost===500&&!s.available));assert.deepEqual(f.billing.rules().services.map(s=>s.key),['polish','review','agent']);
  for(const {key}of toolBillingServiceTypes.filter(s=>!s.key.startsWith('detection-'))){const q=f.quote(key);assert.equal(q.type,'agent');assert.equal(q.serviceKey,key);assert.equal(q.creditCost,10);assert.equal(q.toolPolicyVersion,1);}assert.equal(f.billing.balance(f.user.id).held,0);
 });
 

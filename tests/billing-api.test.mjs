@@ -1,3 +1,4 @@
+import {enableFreeDetection} from './fixtures/detection-pricing.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -94,7 +95,7 @@ test('free service success does not consume a previously bought membership allow
 });
 
 test('saving service pricing returns product availability from the same committed policy',async t=>{
- const f=await fixture(t);
+ const f=await fixture(t);enableFreeDetection(f.db);
  const before=(await f.request('/admin/payments',{cookie:f.admin.cookie})).value;
  assert.equal(before.catalog.find(item=>item.id==='credits-200').purchasable,false);
  const save=await f.request('/admin/billing',{cookie:f.admin.cookie,data:{version:before.billing.version,services:before.billing.services.map(({key})=>({key,mode:'paid',creditCost:10}))}});

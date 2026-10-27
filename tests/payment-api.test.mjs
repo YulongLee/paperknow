@@ -1,3 +1,4 @@
+import {enableFreeDetection} from './fixtures/detection-pricing.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -48,7 +49,7 @@ test('closed payment channels and unpublished membership products reject creatio
 });
 
 test('a configured channel with only free services reports missing credit pricing and never creates a payment',async t=>{
- const f=await fixture(t);await f.channel();
+ const f=await fixture(t);enableFreeDetection(f.db);await f.channel();
  const state=(await f.request('/api/admin/payments',{cookie:f.admin.cookie})).value;
  assert.equal((await f.request('/api/admin/billing',{cookie:f.admin.cookie,data:{version:state.billing.version,services:billingServiceTypes.map(({key})=>({key,mode:'free',creditCost:null}))}})).status,200);
  const options=(await f.request('/api/payments/options',{cookie:''})).value;

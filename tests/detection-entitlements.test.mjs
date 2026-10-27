@@ -1,3 +1,4 @@
+import {enableFreeDetection} from './fixtures/detection-pricing.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -14,7 +15,7 @@ import {webSimilarityDay,webSimilarityLimits} from '../backend/web-similarity-mo
 
 const paragraph='数字化研究需要保留可核对的原始材料，并通过清晰的文字记录研究过程，使分析结论建立在真实证据与可复现的方法之上。';
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
-function fixture(t,{cloud,storage:storageOverrides={},...overrides}={}){
+function fixture(t,{cloud,storage:storageOverrides={},paid=false,...overrides}={}){
  const db=database(':memory:'),objects=new Map(),calls=[];
  for(const id of ['alice','bob'])db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run(id,id+'@example.invalid',id,null,'user',new Date().toISOString());
  const storage={provider:'aliyun_oss',bucket:'unit-private',prefix:'paperknow/',async putArtifact(id,user,kind,buffer){const key=`paperknow/users/${user}/exports/${id}.${kind}`;objects.set(key,Buffer.from(buffer));return key;},async readArtifact(row){if(!objects.has(row.storage_key))throw Error('missing object');return Buffer.from(objects.get(row.storage_key));},async removeArtifact(row){objects.delete(row.storage_key);},...storageOverrides};
@@ -22,7 +23,7 @@ function fixture(t,{cloud,storage:storageOverrides={},...overrides}={}){
   aigcDetectionClient:{ready:true,async detect(text){calls.push('aigc');return cloud?cloud(text):{label:'ugc',confidence:96};}},
   webSimilaritySearch:{async search(){calls.push('search');return{searched:true,sources:[{url:'https://public.example.org/source',title:'实际来源'}],usage:{inputTokens:5,outputTokens:1}};}},
   webSimilaritySourceReader:async()=>({url:'https://public.example.org/source',title:'实际来源',text:paragraph,contentHash:digest(paragraph),fetchedAt:new Date().toISOString()}),...overrides};
- config.billing=createBillingService(db,config);
+ config.billing=createBillingService(db,config);if(!paid)enableFreeDetection(db,config.billing);
  const billing=config.billing,user={id:'alice'},workers=[];
  function grant(key,quantity=2,owner=user){
   const id=randomUUID(),at=new Date().toISOString(),until=new Date(Date.now()+86400000).toISOString(),items=[{key,title:key==='detection-aigc'?'AI 文本鉴别':'PaperKnow 来源比对',quantity}];
@@ -36,8 +37,8 @@ function fixture(t,{cloud,storage:storageOverrides={},...overrides}={}){
  function aigc(){return createAigcDetectionService(db,config);}
  function web(){const service=createWebSimilarityService(db,config),worker=startWebSimilarityWorker(db,config);workers.push(worker);config.cancelWebSimilarity=id=>worker.cancel(id);return{service,worker};}
  t.after(async()=>{for(const w of workers)await w.stop();db.close();});
- const submitAigc=(service,extra={},owner=user)=>service.handle({path:'/api/aigc-detections',method:'POST',user:owner,readBody:async()=>({text:paragraph,consent:true,expectedUserId:owner.id,idempotencyKey:randomUUID(),...extra})});
- const submitWeb=(service,extra={},owner=user)=>service.handle({path:'/api/web-similarity',method:'POST',user:owner,readBody:async()=>({text:paragraph,title:'真实来源核对',consent:true,expectedUserId:owner.id,idempotencyKey:randomUUID(),...extra})});
+ const submitAigc=(service,extra={},owner=user)=>service.handle({path:'/api/aigc-detections',method:'POST',user:owner,readBody:async()=>({text:paragraph,consent:true,expectedUserId:owner.id,idempotencyKey:randomUUID(),...(paid?{pricingVersion:billing.toolRules().version,expectedCreditCost:500}:{}),...extra})});
+ const submitWeb=(service,extra={},owner=user)=>service.handle({path:'/api/web-similarity',method:'POST',user:owner,readBody:async()=>({text:paragraph,title:'真实来源核对',consent:true,expectedUserId:owner.id,idempotencyKey:randomUUID(),...(paid?{pricingVersion:billing.toolRules().version,expectedCreditCost:500}:{}),...extra})});
  return{db,config,billing,user,calls,objects,grant,used,aigc,web,submitAigc,submitWeb};
 }
 
@@ -84,10 +85,10 @@ test('web source failure, queued cancellation, failed input storage and restart 
  }
 });
 
-test('detector billing policy cannot turn the existing free entry into an automatic credit charge',async t=>{
+test('a stale free page cannot confirm a newly paid detector tariff',async t=>{
  const f=fixture(t);const current=f.billing.toolRules();f.billing.saveToolRules({version:current.version,services:current.services.map(({key,mode,creditCost})=>({key,mode:key.startsWith('detection-')?'paid':mode,creditCost:key.startsWith('detection-')?10:creditCost}))});
- const service=f.aigc(),{service:web}=f.web();assert.equal(service.capabilities().ready,false);assert.equal(web.capabilities().ready,false);
- await assert.rejects(f.submitAigc(service),{status:503});await assert.rejects(f.submitWeb(web),{status:503});assert.equal(f.calls.length,0);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM aigc_detections').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM web_similarity_runs').get().n,0);
+ const service=f.aigc(),{service:web}=f.web();assert.equal(service.capabilities().ready,true);assert.equal(web.capabilities().ready,true);
+ await assert.rejects(f.submitAigc(service),{status:409});await assert.rejects(f.submitWeb(web),{status:409});assert.equal(f.calls.length,0);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM aigc_detections').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM web_similarity_runs').get().n,0);
 });
 
 test('another account uses its free detector access without consuming the first account package',async t=>{
@@ -187,4 +188,35 @@ test('whitespace-only AIGC segments do not create an extra provider call or bloc
  const item=(await service.handle({path:'/api/aigc-detections/'+created.value.id,method:'GET',user:f.user})).value;
  assert.equal(item.status,'completed');assert.equal(item.completedParts,2);assert.equal(f.calls.length,1);assert.equal(f.used(order).used,1);assert.equal(f.used(order).held,0);
  assert.equal(item.conclusive,true);assert.equal(item.verdict,'ugc');assert.deepEqual(item.counts,{aigc:0,ugc:1,undetermined:0});assert.equal(item.parts[0].skipped,true);assert.equal(item.parts[0].label,'undetermined');assert.equal(item.parts[0].confidence,null);assert.deepEqual(item.parts.map(({start,end})=>[start,end]),[[0,5000],[5000,5100]]);
+});
+
+function credit(f,amount=2000,owner=f.user){const id=randomUUID(),at=new Date().toISOString();f.db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run(id,owner.id,'credits-1000','paid',at);f.db.prepare('INSERT INTO payment_credit_ledger VALUES(?,?,?,?,?,?)').run(id,owner.id,'credits-1000',amount,'purchase',at);}
+
+test('both detectors default to 500 credits and insufficient funds create no task or upstream call',async t=>{
+ for(const key of ['detection-aigc','detection-similarity']){const f=fixture(t,{paid:true}),service=key==='detection-aigc'?f.aigc():f.web().service,cap=service.capabilities();assert.equal(cap.ready,true);assert.equal(cap.pointsCharged,true);assert.equal(cap.creditCost,500);assert.equal(cap.consentRequired,false);await assert.rejects(key==='detection-aigc'?f.submitAigc(service):f.submitWeb(service),{status:402});for(const table of ['jobs','billing_reservations','billing_quotes',key==='detection-aigc'?'aigc_detections':'web_similarity_runs'])assert.equal(f.db.prepare('SELECT count(*) n FROM '+table).get().n,0);assert.equal(f.calls.length,0);}
+});
+
+test('AIGC credit-funded submissions settle exactly 500 once and bypass every trial allowance',async t=>{
+ const f=fixture(t,{paid:true,aigcDetectionUserDailyLimit:1,aigcDetectionUserDailyCharacters:100,aigcDetectionGlobalDailyCalls:1,aigcDetectionGlobalDailyBillingUnits:1});credit(f,2000);const service=f.aigc(),key=randomUUID(),first=await f.submitAigc(service,{idempotencyKey:key});await service.waitForIdle();assert.equal(f.billing.balance(f.user.id).available,1500);assert.equal(f.db.prepare('SELECT credits FROM billing_reservations WHERE job_id=?').get(first.value.id).credits,500);assert.equal((await f.submitAigc(service,{idempotencyKey:key})).value.id,first.value.id);assert.equal((await f.submitAigc(service)).value.id,first.value.id);assert.equal(f.billing.balance(f.user.id).available,1500);
+ for(let i=0;i<3;i++){const item=await f.submitAigc(service,{text:paragraph+'新增正文'+i});await service.waitForIdle();assert.equal((await service.handle({path:'/api/aigc-detections/'+item.value.id,method:'GET',user:f.user})).value.status,'completed');}
+ assert.equal(f.billing.balance(f.user.id).available,0);assert.equal(f.calls.length,4);await assert.rejects(f.submitAigc(service,{text:paragraph+'余额不足'}),{status:402});const day=webSimilarityDay();assert.equal(detectionTrialUsage(f.db,'detection-aigc',{since:day.start,until:day.end,userId:f.user.id}).n,0);
+});
+
+test('web credit-funded submissions exceed the old daily count and settle once per new paper',async t=>{
+ const f=fixture(t,{paid:true});credit(f,2500);const {service,worker}=f.web();let first;
+ for(let i=0;i<4;i++){const item=await f.submitWeb(service,{text:paragraph+'独立论文'+i});first??=item;assert.equal(includedDetectionHeld(f.db,f.user.id,item.value.item.id,'detection-similarity'),true);await worker.tick();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(item.value.item.id).status,'completed');}
+ assert.equal(f.billing.balance(f.user.id).available,500);const calls=f.calls.length;assert.equal((await f.submitWeb(service,{text:paragraph+'独立论文0'})).value.item.id,first.value.item.id);assert.equal(f.calls.length,calls);assert.equal(f.billing.balance(f.user.id).available,500);const day=webSimilarityDay();assert.equal(detectionTrialUsage(f.db,'detection-similarity',{since:day.start,until:day.end,userId:f.user.id}).n,0);
+});
+
+test('an exact detection package wins first; exhausted or unrelated allowances fall back to 500 credits',async t=>{
+ for(const key of ['detection-aigc','detection-similarity']){const f=fixture(t,{paid:true});credit(f,1000);const own=f.grant(key,1),other=f.grant(key==='detection-aigc'?'detection-similarity':'detection-aigc',4),generic=f.grant('agent',4),pair=key==='detection-aigc'?null:f.web(),service=pair?.service||f.aigc();const run=async extra=>{const created=key==='detection-aigc'?await f.submitAigc(service,extra):await f.submitWeb(service,extra);if(pair)await pair.worker.tick();else await service.waitForIdle();return key==='detection-aigc'?created.value.id:created.value.item.id;};
+ const one=await run({});assert.equal(f.used(own).used,1);assert.equal(f.billing.balance(f.user.id).available,1000);assert.equal(f.db.prepare('SELECT source FROM billing_reservations WHERE job_id=?').get(one).source,'bundle');const two=await run({text:paragraph+'第二篇论文'});assert.equal(f.billing.balance(f.user.id).available,500);assert.equal(f.db.prepare('SELECT credits FROM billing_reservations WHERE job_id=?').get(two).credits,500);assert.equal(f.used(other).used,0);assert.equal(f.used(generic).used,0);}
+});
+
+test('failed AIGC and cancelled web checks release their 500-credit holds',async t=>{
+ const f=fixture(t,{paid:true,cloud:async()=>{throw Error('synthetic failed provider');}});credit(f,1000);const ai=f.aigc(),created=await f.submitAigc(ai);await ai.waitForIdle();assert.equal(f.billing.balance(f.user.id).available,1000);assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(created.value.id).status,'released');const {service}=f.web(),web=await f.submitWeb(service);assert.equal(f.billing.balance(f.user.id).held,500);await service.handle({path:'/api/web-similarity/'+web.value.item.id+'/cancel',method:'POST',user:f.user,readBody:async()=>({expectedUserId:f.user.id})});assert.equal(f.billing.balance(f.user.id).available,1000);assert.equal(f.billing.balance(f.user.id).held,0);
+});
+
+test('stale tariff and another owner never reserve credits; cached results remain readable after a price change',async t=>{
+ const f=fixture(t,{paid:true});credit(f,1000);const ai=f.aigc();for(const extra of [{pricingVersion:undefined,expectedCreditCost:undefined},{pricingVersion:1,expectedCreditCost:0},{pricingVersion:999,expectedCreditCost:500}])await assert.rejects(f.submitAigc(ai,extra),{status:409});assert.equal(f.calls.length,0);assert.equal(f.billing.balance(f.user.id).held,0);const item=await f.submitAigc(ai);await ai.waitForIdle();const policy=f.billing.toolRules();f.billing.saveToolRules({version:policy.version,services:policy.services.map(({key,mode,creditCost})=>({key,mode,creditCost:key==='detection-aigc'?600:creditCost}))});assert.equal((await f.submitAigc(ai,{expectedCreditCost:0})).value.id,item.value.id);assert.equal(f.billing.balance(f.user.id).available,500);
 });

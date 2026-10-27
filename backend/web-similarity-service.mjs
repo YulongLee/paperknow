@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {digest} from './auth.mjs';
 import {createArtifactService,initializeArtifactSchema} from './artifact-service.mjs';
 import {webSearchConfigured} from './web-similarity-search.mjs';
-import {detectionFreeEntryReady,reserveIncludedDetection,includedDetectionHeld,detectionTrialUsage} from './detection-entitlements.mjs';
+import {detectionEntryReady,detectionPricing,assertDetectionPrice,reserveDetection,includedDetectionHeld,detectionTrialUsage} from './detection-entitlements.mjs';
 import {webSimilarityLimits,webSimilarityVersion,webSimilarityInput,planWebQueries,webSimilarityDay,webSimilarityFileName,webSimilarityFail as fail} from './web-similarity-model.mjs';
 
 export function initializeWebSimilaritySchema(db){
@@ -22,7 +22,7 @@ export function initializeWebSimilaritySchema(db){
 }
 const storageReady=config=>config.storage?.provider==='aliyun_oss'&&typeof config.storage.bucket==='string'&&typeof config.storage.prefix==='string'&&typeof config.storage.putArtifact==='function'&&typeof config.storage.readArtifact==='function'&&typeof config.storage.removeArtifact==='function';
 export const webSimilarityReady=config=>webSearchConfigured(config)&&storageReady(config);
-export function webSimilarityCapabilities(config){const ready=webSimilarityReady(config)&&detectionFreeEntryReady(config.billing,'detection-similarity');return{ready,...webSimilarityLimits,pointsCharged:false,bundleUsageSupported:Boolean(config.billing),consentRequired:true,reason:ready?'':'联网来源查重暂未开放，可先使用本地材料比对。'};}
+export function webSimilarityCapabilities(config){const ready=webSimilarityReady(config)&&detectionEntryReady(config.billing,'detection-similarity');return{ready,...webSimilarityLimits,...detectionPricing(config.billing,'detection-similarity'),bundleUsageSupported:Boolean(config.billing),consentRequired:false,reason:ready?'':'联网来源查重暂未开放，可先使用本地材料比对。'};}
 const safeId=value=>typeof value==='string'&&/^[-A-Za-z0-9_]{1,120}$/.test(value);
 const readingByStorage=new WeakMap();
 export async function readWebSimilarityArtifact(db,config,id,userId){
@@ -99,6 +99,7 @@ export function createWebSimilarityService(db,config={}){
    if(existing){if(existing.type!=='web_similarity'||existing.input_hash!==hash)fail(409,'请求编号已用于其他内容，请重新确认正文。');return{id:existing.id,existing:true};}
    const duplicate=db.prepare("SELECT j.id FROM jobs j JOIN web_similarity_runs r ON r.id=j.id WHERE j.user_id=? AND j.type='web_similarity' AND j.input_hash=? AND (j.status IN ('preparing','queued','running','completed') OR r.queries_attempted>0) AND (j.status IN ('preparing','queued','running') OR j.created_at>=?) ORDER BY j.created_at DESC LIMIT 1").get(user.id,hash,new Date(Date.now()-86400000).toISOString());
    if(duplicate)return{id:duplicate.id,existing:true};
+   assertDetectionPrice(input,config.billing,'detection-similarity');
    if(!webSimilarityReady(config))fail(503,webSimilarityCapabilities(config).reason);
    if(db.prepare("SELECT 1 FROM jobs WHERE user_id=? AND type='web_similarity' AND status IN ('preparing','queued','running')").get(user.id))fail(409,'你已有一项联网查重正在处理，请完成后再提交。');
    if(db.prepare("SELECT count(*) n FROM jobs WHERE type='web_similarity' AND status IN ('preparing','queued','running')").get().n>=webSimilarityLimits.maxQueued)fail(429,'联网查重当前繁忙，请稍后再试。');
@@ -106,7 +107,7 @@ export function createWebSimilarityService(db,config={}){
    db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,'web_similarity','preparing','saving_input','{}',?,?,?,?)").run(id,user.id,input.idempotencyKey,hash,at,at);
    const coverage={sampledParagraphs:plan.sampledParagraphs,totalParagraphs:plan.totalParagraphs,queries:plan.queries.length,candidateSources:0,fetchedSources:0,failedSources:0,searchComplete:false};
    db.prepare('INSERT INTO web_similarity_runs(id,user_id,title,characters,queries_reserved,coverage,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(id,user.id,input.title,input.characters,plan.queries.length,JSON.stringify(coverage),at,at);
-   reserveIncludedDetection(config.billing,user,id,'detection-similarity');
+   reserveDetection(config.billing,user,id,'detection-similarity');
    if(!includedDetectionHeld(db,user.id,id,'detection-similarity')){
     const day=webSimilarityDay(),window={since:day.start,until:day.end,excludeId:id};
     if(detectionTrialUsage(db,'detection-similarity',{...window,userId:user.id}).n>=webSimilarityLimits.userDailyLimit)fail(429,'今日联网查重次数已用完，请明日再试。');

@@ -17,7 +17,7 @@ const keys=new Set(billingServiceTypes.map(item=>item.key)),toolKeys=new Set(too
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const isObject=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const detectionKeys=new Set(['detection-similarity','detection-aigc']);
-const defaultToolRule=key=>({key,mode:detectionKeys.has(key)?'free':'inherit',creditCost:null});
+const defaultToolRule=key=>({key,mode:detectionKeys.has(key)?'paid':'inherit',creditCost:detectionKeys.has(key)?500:null});
 const validItems=value=>{
  if(!Array.isArray(value)||value.length>20)return [];
  const seen=new Set();
@@ -84,7 +84,7 @@ export function createBillingService(db,config={}){
  // duplicate/missing old entries and malformed modes remain closed for inspection.
  const previousToolPolicy=db.prepare('SELECT rules,version FROM tool_pricing_policy WHERE id=1').get();
  try{
-  const old=JSON.parse(previousToolPolicy.rules),base=toolBillingServiceTypes.filter(item=>!['AI 写作','免费检测'].includes(item.group)).map(item=>item.key),known=[base,base.filter(key=>key!=='research-image'),toolBillingServiceTypes.filter(item=>item.key!=='thesis-researcher').map(item=>item.key)];
+  const old=JSON.parse(previousToolPolicy.rules),base=toolBillingServiceTypes.filter(item=>!['AI 写作','免费检测','论文检测'].includes(item.group)).map(item=>item.key),known=[base,base.filter(key=>key!=='research-image'),toolBillingServiceTypes.filter(item=>item.key!=='thesis-researcher').map(item=>item.key)];
   const shape=Array.isArray(old)&&old.every(item=>isObject(item)&&Object.keys(item).length===3&&Object.keys(item).every(key=>['key','mode','creditCost'].includes(key))&&['inherit','free','paid','disabled'].includes(item.mode)&&(item.mode==='paid'?Number.isSafeInteger(item.creditCost)&&item.creditCost>=1&&item.creditCost<=100000:item.creditCost===null));
   const legacy=shape&&known.some(version=>old.length===version.length&&new Set(old.map(item=>item.key)).size===version.length&&old.every(item=>version.includes(item.key)));
   if(legacy){const present=new Set(old.map(item=>item.key)),added=toolBillingServiceTypes.filter(item=>!present.has(item.key)).map(({key})=>defaultToolRule(key));
@@ -170,7 +170,7 @@ export function createBillingService(db,config={}){
   if(item.mode==='paid'||detectionKeys.has(item.serviceKey)&&item.mode==='free'){
    if(item.mode==='paid'){source='credits';creditCost=item.creditCost;}
    for(const candidate of ['membership','bundle']){
-    const availableGrants=grants(user.id,candidate),options=item.serviceKey?(item.mode==='free'?[item.serviceKey]:[item.serviceKey,item.key]):[item.key];let chosen;for(const key of options){const grant=availableGrants.find(grant=>grantQuota(grant,key,now)?.remaining>0);if(grant){chosen={grant,key};break;}}
+    const availableGrants=grants(user.id,candidate),options=item.serviceKey?(item.mode==='free'||detectionKeys.has(item.serviceKey)?[item.serviceKey]:[item.serviceKey,item.key]):[item.key];let chosen;for(const key of options){const grant=availableGrants.find(grant=>grantQuota(grant,key,now)?.remaining>0);if(grant){chosen={grant,key};break;}}
     if(chosen){source=candidate;sourceOrderId=chosen.grant.orderId;entitlementKey=chosen.key;creditCost=0;break;}
    }
    if(source==='credits'&&totals(user.id).available<creditCost)fail(402,'可用积分不足，请充值或选择有效权益');

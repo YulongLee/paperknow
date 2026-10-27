@@ -1,7 +1,7 @@
 import {createAigcReportArchive,aigcReportStorageReady} from './aigc-detection-report.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {createAigcDetectionClient,aigcDetectionConfigured,aigcDetectionDefaults,aigcDetectionLimits,aigcDetectionError,prepareAigcText} from './aigc-detection-client.mjs';
-import {detectionFreeEntryReady,reserveIncludedDetection,includedDetectionHeld,detectionTrialUsage} from './detection-entitlements.mjs';
+import {detectionEntryReady,detectionPricing,assertDetectionPrice,reserveDetection,includedDetectionHeld,detectionTrialUsage} from './detection-entitlements.mjs';
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const validId=value=>typeof value==='string'&&/^[-A-Za-z0-9_]{1,120}$/.test(value);
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
@@ -24,8 +24,8 @@ export function initializeAigcDetectionSchema(db){
  if(!db.prepare('PRAGMA table_info(aigc_detections)').all().some(row=>row.name==='billing_job_id'))db.exec('ALTER TABLE aigc_detections ADD COLUMN billing_job_id TEXT'+(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='jobs'").get()?' REFERENCES jobs(id)':''));
 }
 export function aigcDetectionCapabilities(config={}){
- const ready=aigcDetectionConfigured(config)&&detectionFreeEntryReady(config.billing,'detection-aigc'),limits=aigcDetectionLimits(config)||aigcDetectionDefaults;
- return{ready,maxCharacters:limits.maxCharacters,maxPartCharacters:limits.maxPartCharacters,maxCalls:Math.ceil(limits.maxCharacters*2/limits.maxPartCharacters),userDailyLimit:limits.userDailyLimit,userDailyCharacters:limits.userDailyCharacters,consentRequired:true,pointsCharged:false,bundleUsageSupported:Boolean(config.billing),reason:ready?'':'文本鉴别暂未开放，请稍后再试。'};
+ const ready=aigcDetectionConfigured(config)&&detectionEntryReady(config.billing,'detection-aigc'),limits=aigcDetectionLimits(config)||aigcDetectionDefaults;
+ return{ready,maxCharacters:limits.maxCharacters,maxPartCharacters:limits.maxPartCharacters,maxCalls:Math.ceil(limits.maxCharacters*2/limits.maxPartCharacters),userDailyLimit:limits.userDailyLimit,userDailyCharacters:limits.userDailyCharacters,consentRequired:false,...detectionPricing(config.billing,'detection-aigc'),bundleUsageSupported:Boolean(config.billing),reason:ready?'':'文本鉴别暂未开放，请稍后再试。'};
 }
 export function createAigcDetectionService(db,config={}, {client}={}){
  initializeAigcDetectionSchema(db);
@@ -57,7 +57,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    await archive.storeInput(id,text);
    for(const part of prepared.parts){
     if(db.isOpen===false)return;
-    if(db.prepare('SELECT status FROM aigc_detections WHERE id=?').get(id)?.status!=='running')return;
+    const funding=db.prepare('SELECT status,billing_job_id,user_id FROM aigc_detections WHERE id=?').get(id);if(funding?.status!=='running')return;if(funding.billing_job_id&&!includedDetectionHeld(db,funding.user_id,id,'detection-aigc'))throw aigcDetectionError('detection_hold_missing',409,'本次检测费用预占已失效，未继续调用检测。');
     if(!part.content.trim()){db.prepare('UPDATE aigc_detections SET completed_parts=completed_parts+1,updated_at=? WHERE id=?').run(new Date().toISOString(),id);continue;}
     const remainingMs=limits.totalTimeoutMs-(Date.now()-started);if(remainingMs<=0)throw aigcDetectionError('aigc_detection_timeout',504,'本次文本鉴别暂未完成，已保留记录，不会自动重复提交。');
     // Mark attempted before the potentially billed call. A timeout or a missing
@@ -90,7 +90,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
   if(method==='GET'){expireStale();return{value:{items:db.prepare('SELECT * FROM aigc_detections WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT 10').all(user.id).map(row=>summarize(row))}};}
   if(method!=='POST')fail(405,'不支持的文本鉴别操作');
   const input=await readBody();
-  if(!plain(input)||Object.keys(input).some(key=>!['text','title','consent','expectedUserId','idempotencyKey'].includes(key)))fail(400,'文本鉴别请求包含不支持的内容');
+  if(!plain(input)||Object.keys(input).some(key=>!['text','title','consent','expectedUserId','idempotencyKey','pricingVersion','expectedCreditCost'].includes(key)))fail(400,'文本鉴别请求包含不支持的内容');
   if(input.expectedUserId!==user.id)fail(409,'登录账户已变化，请刷新后重新确认提交');
   if(input.consent!==true)fail(400,'请确认将本次文本发送至云端鉴别服务');
   if(typeof input.idempotencyKey!=='string'||!/^[-A-Za-z0-9_]{8,100}$/.test(input.idempotencyKey))fail(400,'文本鉴别请求编号无效');
@@ -102,6 +102,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    if(alias){if(alias.input_hash!==hash)fail(409,'此请求编号已用于其他文本，请重新确认提交');return{row:own(alias.detection_id,user),cached:true};}
    const prior=db.prepare('SELECT * FROM aigc_detections WHERE user_id=? AND input_hash=?').get(user.id,hash);
    if(prior){db.prepare('INSERT INTO aigc_detection_requests VALUES(?,?,?,?)').run(user.id,input.idempotencyKey,prior.id,hash);return{row:prior,cached:true};}
+   assertDetectionPrice(input,billing,'detection-aigc');
    if(!aigcDetectionConfigured(config)||cloud.ready===false||typeof cloud.detect!=='function')fail(503,'文本鉴别暂未开放，请稍后再试。');
    if(db.prepare("SELECT count(*) n FROM aigc_detections WHERE user_id=? AND status='running'").get(user.id).n)fail(409,'已有文本正在鉴别，请等待完成后再提交');
    if(db.prepare("SELECT count(*) n FROM aigc_detections WHERE status='running'").get().n>=limits.maxConcurrent)fail(429,'文本鉴别当前繁忙，请稍后再试');
@@ -109,7 +110,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    db.prepare("INSERT INTO aigc_detections(id,user_id,input_hash,status,characters,part_count,reserved_calls,reserved_billing_units,parts,created_at,updated_at) VALUES(?,?,?,'running',?,?,?,?,?,?,?)").run(id,user.id,hash,prepared.characters,parts.length,prepared.calls,prepared.billingUnits,JSON.stringify(parts),created,created);
    db.prepare('UPDATE aigc_detections SET title=? WHERE id=?').run(input.title?.trim()||'送检论文',id);
    db.prepare('INSERT INTO aigc_detection_requests VALUES(?,?,?,?)').run(user.id,input.idempotencyKey,id,hash);
-   reserveIncludedDetection(billing,user,id,'detection-aigc',{createJob:()=>{
+   reserveDetection(billing,user,id,'detection-aigc',{createJob:()=>{
     db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,attempt,created_at,updated_at) VALUES(?,?,'aigc_detection','running','detecting','{}',?,?,1,?,?)").run(id,user.id,'aigc:'+id,hash,created,created);
     db.prepare('UPDATE aigc_detections SET billing_job_id=? WHERE id=?').run(id,id);
    }});

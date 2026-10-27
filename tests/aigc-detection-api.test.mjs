@@ -1,3 +1,4 @@
+import {enableFreeDetection} from './fixtures/detection-pricing.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from '../server.mjs';
@@ -5,11 +6,11 @@ import {createSession} from '../backend/auth.mjs';
 
 async function fixture(t,overrides={}){
  const calls=[],client={ready:true,async detect(content){calls.push(content);return{label:'ugc',confidence:98,requestId:'private-aigc-request'};},...overrides.client};
- const app=createServer({dbPath:':memory:',config:{aigcDetectionEnabled:true,moderationAccessKeyId:'unit-aigc-id',moderationAccessKeySecret:'unit-aigc-secret',aigcDetectionClient:client,...overrides.config}});await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));
+ const app=createServer({dbPath:':memory:',config:{aigcDetectionEnabled:true,moderationAccessKeyId:'unit-aigc-id',moderationAccessKeySecret:'unit-aigc-secret',aigcDetectionClient:client,...overrides.config}});if(!overrides.paid)enableFreeDetection(app.db);await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));
  const base='http://127.0.0.1:'+app.server.address().port,users={};for(const id of ['alice','bob']){app.db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run(id,id+'@example.invalid',id,null,'user',new Date().toISOString());users[id]={id,cookie:'pk_session='+createSession(app.db,id)};}
  t.after(()=>app.close());
  async function request(path,input,user=users.alice,headers={}){const result=await fetch(base+'/api'+path,{method:input===undefined?'GET':'POST',headers:{...(user?{Cookie:user.cookie}:{}),...(input===undefined?{}:{Origin:base,'Content-Type':'application/json'}),...headers},body:input===undefined?undefined:JSON.stringify(input)});return{status:result.status,value:await result.json(),headers:result.headers};}
- const submit=(extra={},user=users.alice,headers={})=>request('/aigc-detections',{text:'合成接口验收文本。'.repeat(50),consent:true,expectedUserId:user?.id,idempotencyKey:crypto.randomUUID(),...extra},user,headers);
+ const submit=(extra={},user=users.alice,headers={})=>request('/aigc-detections',{text:'合成接口验收文本。'.repeat(50),consent:true,expectedUserId:user?.id,idempotencyKey:crypto.randomUUID(),...(overrides.paid?{pricingVersion:app.db.prepare('SELECT version FROM tool_pricing_policy WHERE id=1').get().version,expectedCreditCost:500}:{}),...extra},user,headers);
  async function wait(id,user){for(let n=0;n<100;n++){const item=await request('/aigc-detections/'+id,undefined,user);if(item.value.status!=='running')return item;await new Promise(resolve=>setTimeout(resolve,1));}assert.fail('did not settle');}
  return{...app,calls,users,base,request,submit,wait};
 }
@@ -57,4 +58,9 @@ test('report publication can recover after storage failure without a paid rechec
 test('an unavailable input archive stops before detector dispatch and publishes no incomplete report',async t=>{
  const f=await fixture(t,{config:{ossBucket:'private-test',ossEndpoint:'https://oss-cn-shanghai.aliyuncs.com',ossRegion:'cn-shanghai',ossAccessKeyId:'unit-id',ossAccessKeySecret:'unit-secret',ossClient:{async put(){throw Error('synthetic input failure');},async get(){throw Error('not stored');},async delete(){}}}});
  const id=(await f.submit({title:'原文保存失败'})).value.id,failed=await f.wait(id);assert.equal(failed.value.status,'failed');assert.match(failed.value.error,/未开始 AI 检测/);assert.equal(f.calls.length,0);assert.equal((await f.request('/artifacts')).value.items.length,0);assert.equal((await f.request('/aigc-detections/'+id+'/report')).status,404);
+});
+
+test('paid detector HTTP admission enforces the displayed 500-credit tariff and returns precise insufficient-funds errors',async t=>{
+ const f=await fixture(t,{paid:true}),cap=(await f.request('/capabilities',undefined,null)).value.aigcDetection;assert.equal(cap.pointsCharged,true);assert.equal(cap.creditCost,500);assert.equal(cap.consentRequired,false);assert.equal((await f.submit({pricingVersion:undefined,expectedCreditCost:undefined})).status,409);const poor=await f.submit();assert.equal(poor.status,402);assert.match(poor.value.error,/积分不足/);assert.equal(f.calls.length,0);assert.equal(f.db.prepare('SELECT count(*) n FROM aigc_detections').get().n,0);
+ const id=crypto.randomUUID(),at=new Date().toISOString();f.db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run(id,'alice','credits-1000','paid',at);f.db.prepare('INSERT INTO payment_credit_ledger VALUES(?,?,?,?,?,?)').run(id,'alice','credits-1000',1000,'purchase',at);const created=await f.submit();assert.equal(created.status,202);await f.wait(created.value.id);assert.equal(f.db.prepare('SELECT credits,status FROM billing_reservations WHERE job_id=?').get(created.value.id).credits,500);assert.equal(f.calls.length,1);
 });

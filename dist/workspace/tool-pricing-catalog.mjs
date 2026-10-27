@@ -6,4 +6,4 @@ export const toolBillingServiceTypes=Object.freeze([
  ['presentation-ai','AI PPT','PPT 创作'],['presentation-proposal','开题 PPT','PPT 创作'],['presentation-thesis','毕业 PPT','PPT 创作'],
  ['research-image','AI 科研绘图','科研工具'],['research-chart','科研图表配置','科研工具'],['research-diagram','科研结构示意图','科研工具'],['research-formula','公式辅助','科研工具'],
  ['format-advice','格式建议','格式排版']
-].map(([key,title,group])=>Object.freeze({key,title,group})).concat(writingBillingServiceTypes,[Object.freeze({key:'detection-similarity',title:'PaperKnow 来源比对',group:'免费检测'}),Object.freeze({key:'detection-aigc',title:'AI 文本鉴别',group:'免费检测'})]));
+].map(([key,title,group])=>Object.freeze({key,title,group})).concat(writingBillingServiceTypes,[Object.freeze({key:'detection-similarity',title:'论文重复率检测',group:'论文检测'}),Object.freeze({key:'detection-aigc',title:'论文 AI 率检测',group:'论文检测'})]));

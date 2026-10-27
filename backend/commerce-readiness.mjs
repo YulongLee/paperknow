@@ -3,9 +3,9 @@ export function productDelivery(product,billing){
  if(!billing)return {purchasable:true};
  const services=[...billing.rules().services,...(billing.toolRules?.().services||[]).map(item=>({...item,mode:item.effectiveMode,creditCost:item.effectiveCreditCost}))];
  const included=new Set(['detection-similarity','detection-aigc']);
- // Detection currently has an explicitly free entry, without paid confirmation.
- // A paid detector policy closes that entry; it cannot justify package or credit sales.
- const configured=services.filter(item=>item.mode==='paid'&&!included.has(item.key));
+ // A detector with an executable paid tariff supports both credits and its
+ // exact scoped package allowance. Explicit free configurations remain usable.
+ const configured=services.filter(item=>item.mode==='paid');
  const paid=configured.filter(item=>item.available);
  if(product.entitlementType==='credits'){
   if(!configured.length)return {purchasable:false,unavailableCode:'credit_pricing_missing',unavailableReason:'尚未配置按积分计费的服务，当前暂停充值。'};
@@ -13,10 +13,9 @@ export function productDelivery(product,billing){
  }
  const items=product.entitlementType==='bundle'?product.bundleItems:product.membershipItems;
  if(!Array.isArray(items)||!items.length)return {purchasable:false,unavailableCode:'entitlement_rules_missing',unavailableReason:'服务额度与交付规则尚未配置，当前不可购买。'};
- // These two self-operated checks are also available independently for free.
- // A package may include and account for their scoped allowances, but the
- // service still has to be executable. No other free/unknown key is sellable.
- const deliverable=services.filter(service=>service.available&&(included.has(service.key)?service.mode==='free':service.mode==='paid'));
+ // Keep explicitly configured free detection allowances compatible with
+ // mixed packages. Every other allowance still requires executable paid work.
+ const deliverable=services.filter(service=>service.available&&(included.has(service.key)?['free','paid'].includes(service.mode):service.mode==='paid'));
  if(!items.some(item=>paid.some(service=>service.key===item.key))||items.some(item=>!deliverable.some(service=>service.key===item.key)))return {purchasable:false,unavailableCode:'entitlement_services_unavailable',unavailableReason:'部分服务尚未接通或未开放计费，当前不可购买。'};
  return {purchasable:true};
 }

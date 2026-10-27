@@ -5,7 +5,7 @@ export const webSimilarityLimits=Object.freeze({maxCharacters:20000,maxQueries:3
 export const webSimilarityVersion='public-web-exact-1.0';
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status,webSimilaritySafe:true});};
 export function webSimilarityInput(input,user){
- if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['text','title','expectedUserId','consent','idempotencyKey'].includes(k)))fail(400,'查重请求包含不支持的字段。');
+ if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['text','title','expectedUserId','consent','idempotencyKey','pricingVersion','expectedCreditCost'].includes(k)))fail(400,'查重请求包含不支持的字段。');
  if(input.expectedUserId!==user.id)fail(409,'登录账户已变化，请刷新后重新确认正文。');
  if(input.consent!==true)fail(400,'请先确认将选取的正文片段发送至联网检索服务。');
  if(typeof input.idempotencyKey!=='string'||!/^[-A-Za-z0-9_]{8,100}$/.test(input.idempotencyKey))fail(400,'请求编号无效，请刷新页面。');
@@ -17,7 +17,7 @@ export function webSimilarityInput(input,user){
  const characters=paragraphs.reduce((sum,p)=>sum+countChars(p.text),0);
  if(characters<40)fail(400,'请提供至少 40 个有效正文字符，不含参考文献等排除章节。');
  if(paragraphs.length>300)fail(400,'本次正文段落过多，请分章节提交。');
- return{text,title,parsed,characters,idempotencyKey:input.idempotencyKey};
+ return{text,title,parsed,characters,idempotencyKey:input.idempotencyKey,...(input.pricingVersion!==undefined?{pricingVersion:input.pricingVersion,expectedCreditCost:input.expectedCreditCost}:{})};
 }
 
 // Search selection is deterministic and auditable. It is sampling, never a

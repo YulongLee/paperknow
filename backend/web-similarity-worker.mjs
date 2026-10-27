@@ -7,7 +7,7 @@ import {createBillingService} from './billing-service.mjs';
 import {createWebSimilaritySearch} from './web-similarity-search.mjs';
 import {createWebSourceReader} from './web-similarity-source.mjs';
 import {initializeWebSimilaritySchema,webSimilarityReady,readWebSimilarityArtifact,saveWebSimilarityArtifact,removeWebSimilarityArtifacts} from './web-similarity-service.mjs';
-import {includedDetectionHeld,detectionTrialSearchCount} from './detection-entitlements.mjs';
+import {includedDetectionHeld,detectionWasFunded,detectionPricing,detectionTrialSearchCount} from './detection-entitlements.mjs';
 import {webSimilarityLimits,webSimilarityVersion,planWebQueries,webSimilarityDay,webSimilarityFileName} from './web-similarity-model.mjs';
 
 const safeError=message=>Object.assign(new Error(message),{webSimilaritySafe:true});
@@ -33,6 +33,7 @@ export function startWebSimilarityWorker(db,config={}){
   const timer=setTimeout(()=>controller.abort(),300000);timer.unref?.();let attempted=0;const usages=[];
   try{
    if(!db.prepare("UPDATE jobs SET status='running',stage='reading_input',attempt=attempt+1,updated_at=? WHERE id=? AND status='queued'").run(clock(),job.id).changes)return;
+   if(detectionPricing(config.billing,'detection-similarity').pointsCharged&&!includedDetectionHeld(db,job.user_id,job.id,'detection-similarity'))throw safeError('本次检测费用预占已失效，未继续检索；请查看原任务。');
    if(!webSimilarityReady(config))throw safeError('联网查重暂不可用，请稍后查看任务或联系支持。');
    const payload=await readWebSimilarityArtifact(db,config,job.input_artifact_id,job.user_id);
    if(payload.version!==1||payload.runId!==job.id||typeof payload.text!=='string'||Array.from(payload.text).length>webSimilarityLimits.maxCharacters||payload.title!==job.title)throw safeError('查重输入文件校验未通过，请重新确认正文。');
@@ -46,6 +47,7 @@ export function startWebSimilarityWorker(db,config={}){
     stage(job.id,'searching');
     tx(()=>{
      if(!includedDetectionHeld(db,job.user_id,job.id,'detection-similarity')){
+      if(detectionPricing(config.billing,'detection-similarity').pointsCharged||detectionWasFunded(db,job.user_id,job.id,'detection-similarity'))throw safeError('本次检测费用预占已失效，未继续检索。');
       const day=webSimilarityDay(),window={since:day.start,until:day.end};
       if(detectionTrialSearchCount(db,{...window,userId:job.user_id})>=webSimilarityLimits.userDailyLimit*webSimilarityLimits.maxQueries)throw safeError('今日联网检索次数已达试运行上限，本次未继续检索。');
       if(detectionTrialSearchCount(db,window)>=webSimilarityLimits.globalDailyLimit*webSimilarityLimits.maxQueries)throw safeError('联网检索今日额度已用完，本次未继续检索。');

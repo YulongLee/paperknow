@@ -1,3 +1,4 @@
+import {enableFreeDetection} from './fixtures/detection-pricing.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
@@ -11,10 +12,10 @@ async function fixture(t,overrides={}){
  t.mock.timers.enable({apis:['setInterval']});
  const objects=new Map(),calls=[];
  const config={webSimilarityEnabled:true,aiURL:'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',aiKey:'unit-private-model-key',ossBucket:'private-test',ossEndpoint:'https://oss-cn-shanghai.aliyuncs.com',ossRegion:'cn-shanghai',ossAccessKeyId:'unit-id',ossAccessKeySecret:'unit-secret',ossClient:{async put(key,value){objects.set(key,Buffer.from(value));},async get(key){return{content:objects.get(key)};},async delete(key){objects.delete(key);}},webSimilaritySearch:{async search(q){calls.push(q);return{searched:true,sources:[{title:'实际来源',url:'https://public.example.org/source'}],usage:{inputTokens:20,outputTokens:2}};}},webSimilaritySourceReader:async()=>({url:'https://public.example.org/source',title:'来源',text,contentHash:'synthetic-test',fetchedAt:new Date().toISOString()}),...overrides};
- const app=createServer({dbPath:':memory:',config});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));t.after(()=>app.close());const base='http://127.0.0.1:'+app.server.address().port;
+ const app=createServer({dbPath:':memory:',config});if(!overrides.paid)enableFreeDetection(app.db);await new Promise(r=>app.server.listen(0,'127.0.0.1',r));t.after(()=>app.close());const base='http://127.0.0.1:'+app.server.address().port;
  const users={};for(const id of ['alice','bob']){app.db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run(id,id+'@example.invalid',id,null,'user',new Date().toISOString());users[id]='pk_session='+createSession(app.db,id);}
  async function request(path,input,user='alice',headers={}){const response=await fetch(base+'/api'+path,{method:input===undefined?'GET':'POST',headers:{...(users[user]?{Cookie:users[user]}:{}),...(input===undefined?{}:{Origin:base,'Content-Type':'application/json'}),...headers},body:input===undefined?undefined:JSON.stringify(input)});return{status:response.status,value:await response.json()};}
- const submit=(extra={},user='alice',headers={})=>request('/web-similarity',{text,title:'合成接口测试',consent:true,idempotencyKey:crypto.randomUUID(),expectedUserId:user,...extra},user,headers);
+ const submit=(extra={},user='alice',headers={})=>request('/web-similarity',{text,title:'合成接口测试',consent:true,idempotencyKey:crypto.randomUUID(),expectedUserId:user,...(overrides.paid?{pricingVersion:app.db.prepare('SELECT version FROM tool_pricing_policy WHERE id=1').get().version,expectedCreditCost:500}:{}),...extra},user,headers);
  return{...app,request,submit,calls,async download(id){const response=await fetch(base+'/api/artifacts/'+encodeURIComponent(id)+'/download?expectedUserId=alice',{headers:{Cookie:users.alice}});return{status:response.status,headers:response.headers,bytes:Buffer.from(await response.arrayBuffer())};}};
 }
 test('web checking capabilities, authentication, origin, account and consent boundaries are enforced',async t=>{

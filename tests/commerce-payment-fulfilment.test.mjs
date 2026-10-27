@@ -55,7 +55,7 @@ test('the complete 16-product catalogue offers both payment channels with execut
  const f=fixture(t),options=f.payments.options();assert.equal(options.enabled,true);assert.deepEqual(options.channels.map(item=>[item.provider,item.ready]),[['wechat',true],['alipay',true]]);
  assert.deepEqual(options.products.map(item=>item.id).sort(),[...allOffers.map(item=>item.id),'credits-200','credits-500','credits-1000'].sort());
  for(const offer of allOffers){const actual=options.products.find(item=>item.id===offer.id);assert.equal(actual.purchasable,true,offer.id);assert.equal(actual.priceCents,offer.priceCents);assert.equal(actual.durationDays,offer.durationDays);assert.deepEqual(actual.entitlement[offer.entitlementType==='membership'?'membershipItems':'bundleItems'],offer.membershipItems||offer.bundleItems);}
- const detections=f.billing.toolRules().services.filter(item=>item.key.startsWith('detection-'));assert.equal(detections.length,2);assert.ok(detections.every(item=>item.effectiveMode==='free'&&item.available));
+ const detections=f.billing.toolRules().services.filter(item=>item.key.startsWith('detection-'));assert.equal(detections.length,2);assert.ok(detections.every(item=>item.effectiveMode==='paid'&&item.effectiveCreditCost===500&&item.available));
  const before=f.created.length;const key='unknown-actual-service';f.db.prepare('INSERT INTO products(id,title,status,rules) VALUES(?,?,?,?)').run('unknown-service-bundle','未知权益套餐','active',JSON.stringify({priceCents:100,durationDays:180,entitlementType:'bundle',description:'合成不可执行服务',bundleItems:[{key,title:'尚未接通服务',quantity:1}]}));
  assert.equal(f.payments.options().products.find(item=>item.id==='unknown-service-bundle').purchasable,false);await assert.rejects(f.create(f.seed(),'unknown-service-bundle'),{status:409});assert.equal(f.created.length,before);
 });
@@ -75,9 +75,9 @@ test('basic membership and all seven specialist packages create in both channels
  assert.equal(f.created.length,16);assert.equal(f.db.prepare('SELECT count(*) n FROM payment_credit_ledger').get().n,0);
 });
 
-test('a paid or disabled detector policy cannot sell an unusable specialist package through either payment channel',async t=>{
+test('a disabled detector policy cannot sell an unusable specialist package through either payment channel',async t=>{
  const f=fixture(t),owner=f.seed();
- for(const key of ['detection-similarity','detection-aigc'])for(const mode of ['paid','disabled']){
+ for(const key of ['detection-similarity','detection-aigc'])for(const mode of ['disabled']){
   const rules=f.billing.toolRules();f.billing.saveToolRules({version:rules.version,services:rules.services.map(item=>({key:item.key,mode:item.key===key?mode:item.key.startsWith('detection-')?'free':item.mode,creditCost:item.key===key&&mode==='paid'?10:item.key.startsWith('detection-')?null:item.creditCost}))});
   for(const id of ['bundle-rewrite','bundle-reduce','bundle-dual']){
    assert.equal(f.payments.options().products.find(item=>item.id===id).purchasable,false);
@@ -130,7 +130,7 @@ test('included self-operated detection is accounted against a paid package while
  const f=fixture(t),owner=f.seed(),order=await f.create(owner,'bundle-rewrite','alipay');await f.notify(order);
  for(const [serviceKey,type] of [['detection-similarity','web_similarity'],['detection-aigc','aigc_detection']]){
   for(let index=0;index<2;index++){const q=f.billing.quote(owner,{type:'agent',serviceKey});assert.equal(q.source,'bundle');assert.equal(q.sourceOrderId,order.id);assert.equal(q.creditCost,0);const job=f.job(owner,type);f.tx(()=>f.billing.reserve(owner,job,1,'agent',q.token,serviceKey));f.tx(()=>f.billing.settle(job));}
-  const exhausted=f.billing.quote(owner,{type:'agent',serviceKey});assert.equal(exhausted.source,'free');assert.equal(exhausted.creditCost,0);assert.equal(exhausted.sourceOrderId,null);const quota=f.payments.entitlements(owner).bundles[0].items.find(item=>item.key===serviceKey);assert.deepEqual([quota.used,quota.held,quota.remaining],[2,0,0]);
+  assert.throws(()=>f.billing.quote(owner,{type:'agent',serviceKey}),{status:402});const quota=f.payments.entitlements(owner).bundles[0].items.find(item=>item.key===serviceKey);assert.deepEqual([quota.used,quota.held,quota.remaining],[2,0,0]);
  }
- const independent=f.seed();for(const serviceKey of ['detection-similarity','detection-aigc'])assert.equal(f.billing.quote(independent,{type:'agent',serviceKey}).source,'free');assert.equal(f.billing.balance(owner.id).balance,0);assert.equal(f.billing.balance(independent.id).balance,0);
+ const independent=f.seed();for(const serviceKey of ['detection-similarity','detection-aigc'])assert.throws(()=>f.billing.quote(independent,{type:'agent',serviceKey}),{status:402});assert.equal(f.billing.balance(owner.id).balance,0);assert.equal(f.billing.balance(independent.id).balance,0);
 });
