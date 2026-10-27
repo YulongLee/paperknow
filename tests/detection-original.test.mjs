@@ -6,6 +6,7 @@ import {reportHtml} from '../dist/precheck/export.mjs';
 import {aigcReportHtml} from '../dist/workspace/aigc-report.mjs';
 import {originalParagraphs,aigcLocations} from '../dist/reports/report-locations.mjs';
 import {evidencePreview} from '../dist/precheck/report-highlight.mjs';
+import {locateReportFrame} from '../dist/workspace/detection-findings.mjs';
 const text='本研究使用独立的测试样本评估识别效果，核对实验记录与数据来源，并对不同设置下的结果进行分析。';
 const ai=(raw,parts)=>({id:'test-ai',status:'completed',characters:Array.from(raw).length,partCount:parts.length,completedParts:parts.length,parts,verdict:'mixed'});
 function anchors(doc){for(const a of doc.querySelectorAll('a[href^="#"]'))assert.ok(doc.getElementById(a.hash.slice(1)),a.hash);}
@@ -32,4 +33,10 @@ test('a paragraph spanning mixed chunks points to its actual risk fragment inste
 test('many short paragraphs retain the complete original while bounding clickable index size',()=>{
  const raw='研究。\n'.repeat(700),size=Array.from(raw).length,parts=[{index:0,start:0,end:size,characters:size,label:'aigc',confidence:90}],html=aigcReportHtml(ai(raw,parts),{text:raw}),dom=new JSDOM(html);
  try{const doc=dom.window.document;anchors(doc);assert.equal(doc.querySelectorAll('#report-findings tbody tr').length,300);assert.match(doc.querySelector('#report-findings').textContent,/保留全部送检文字/);assert.equal(doc.querySelector('.aigc-report-text-risk').textContent,raw);assert.ok(Buffer.byteLength(html)<2*1024*1024);}finally{dom.window.close();}
+});
+
+test('source navigation requires a current explicit click and opens outside the sandbox without report text or referrer',()=>{
+ const dom=new JSDOM('<iframe></iframe>',{url:'https://paperknow.test/workspace.html'}),frame=dom.window.document.querySelector('iframe'),opened=[];let current=true;
+ dom.window.open=(...args)=>opened.push(args);frame.contentDocument.body.innerHTML='<a href="https://example.org/paper" target="_blank">来源原文</a><a href="#inside">段落定位</a><p id="inside">私有原文</p>';
+ try{locateReportFrame(frame,'',()=>current);frame.dispatchEvent(new dom.window.Event('load'));assert.equal(opened.length,0);frame.contentDocument.querySelector('a').click();assert.deepEqual(opened,[['https://example.org/paper','_blank','noopener,noreferrer']]);current=false;frame.contentDocument.querySelector('a').click();assert.equal(opened.length,1);}finally{dom.window.close();}
 });
