@@ -1,6 +1,6 @@
 export const feedbackKey='paperknow-help-feedback';
 export const feedbackTypes=['功能问题','使用咨询','体验建议','其他'];
-export const helpCategories=[{"id":"start","title":"新手入门","description":"创建项目与管理成果","icon":"book","color":"blue"},{"id":"writing","title":"写作与修改","description":"大纲编辑与内容保存","icon":"pen","color":"purple"},{"id":"literature","title":"AI 研读","description":"原文解读、问答与翻译","icon":"file","color":"mint"},{"id":"detection","title":"论文检测","description":"上传要求与报告解读","icon":"search","color":"orange"},{"id":"files","title":"文件与导出","description":"Word、PDF 与 PPT","icon":"upload","color":"blue"},{"id":"data","title":"账户与数据","description":"偏好设置与备份恢复","icon":"settings","color":"purple"}];
+export const helpCategories=[{"id":"start","title":"新手入门","description":"创建项目与管理成果","icon":"book","color":"blue"},{"id":"writing","title":"写作与修改","description":"大纲编辑与内容保存","icon":"pen","color":"purple"},{"id":"literature","title":"AI 研读","description":"原文解读、问答与翻译","icon":"file","color":"mint"},{"id":"detection","title":"论文检测","description":"上传要求与报告解读","icon":"search","color":"orange"},{"id":"files","title":"文件与导出","description":"Word、PDF 与 PPT","icon":"upload","color":"blue"},{"id":"data","title":"账户与数据","description":"账户资料导出与隐私设置","icon":"settings","color":"purple"}];
 export const relatedFeatures=['未选择','工作台与项目','文件管理','任务中心','AI 写作','AI 研读','降重复率','降 AI 率','论文检测','PPT 创作','科研工具','格式排版','会员与用量','设置与备份','其他'];
 export const articles=[
   {
@@ -163,25 +163,25 @@ export const articles=[
       "在其他功能中使用「从文件管理选择」，可继续处理已有文件；更换设备后登录同一账户查看已保存的内容。",
       "确认编辑内容已经保存后再离开页面。账户资料可在设置中心导出资料包，原件与生成文件可在文件管理中下载；未保存输入不包含在资料包中。"
     ],
-    "note": "部分历史草稿仍保留在原浏览器，登录不会自动迁移这些记录；如需保留，请在清理网站数据前主动备份或导入。反馈提交后可在帮助与反馈中查看处理状态。",
+    "note": "未保存的临时编辑内容不包含在账户资料包中。需要处理历史资料时可联系支持核对；反馈提交后可在帮助与反馈中查看处理状态。",
     "action": "#settings/data",
-    "actionLabel": "前往数据与备份"
+    "actionLabel": "前往数据与隐私"
   },
   {
     "id": "data-backup",
     "category": "data",
     "faq": "data",
-    "title": "如何备份并恢复工作空间？",
-    "tags": "备份 恢复 JSON 导入 数据",
-    "summary": "先导出本地工作空间备份，恢复时预览并合并新增记录。",
+    "title": "如何导出与管理账户资料？",
+    "tags": "账户资料 导出 JSON 下载 备份 云端 隐私 删除",
+    "summary": "研究资料统一在登录账户中管理，可导出资料包，或在文件管理中下载、整理文件。",
     "steps": [
-      "在设置中心「数据与隐私」按范围导出：账户资料包仅下载到本机，用于查阅与保管，不含原件或生成云文件的二进制内容，这些文件需分别下载；本地工作空间备份 JSON 用于下方合并恢复。",
-      "恢复时选择 PaperKnow 版本 1 备份文件（最大 50 MB），核对新增与重复记录预览。",
-      "确认合并后只新增不存在的编号，重复记录保留当前版本；个人资料与偏好需主动勾选才恢复。"
+      "在设置中心「数据与隐私」点击「导出账户资料包」，下载当前账户的项目、已保存稿件、成果、任务及文件清单。",
+      "需要原件或生成文件的实际内容时，进入「文件管理」下载，也可以按项目整理或批量删除。",
+      "更换设备后登录同一账户继续管理已保存的资料；需要更正个人信息或处理隐私问题时，可进入账户与安全或帮助与反馈。"
     ],
-    "note": "本地备份不等于在线账户数据库备份，也不包含所有上传原件和帮助页反馈草稿。账户资料包不支持导入恢复；浏览器崩溃或断电可能中断本地恢复。",
+    "note": "账户资料包为 JSON 格式，供查阅与保管，不支持导入覆盖账户数据；原件与生成文件需在文件管理中另外下载。",
     "action": "#settings/data",
-    "actionLabel": "管理备份"
+    "actionLabel": "管理账户资料"
   },
   {
     "id": "account-service",

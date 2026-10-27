@@ -11,12 +11,20 @@ function settingsEnvironment(){
  for(const key of ['window','document','localStorage','FormData','location'])globalThis[key]=dom.window[key];
  return {dom,ctx:{apply:()=>{},notify:()=>{},modal:()=>{},exportBackup:async()=>{},restored:async()=>{}}};
 }
-test('backup preview cancellation keeps the viewport floor without restoring or overwriting local records',async()=>{
- const {dom,ctx}=settingsEnvironment(),m=await import('../dist/workspace/settings.mjs');
+test('data and privacy uses one account flow without legacy local backup or restore actions',async()=>{
+ const {dom,ctx}=settingsEnvironment(),m=await import('../dist/workspace/settings.mjs');let localExports=0,restores=0;
  try{
-  const before='[{"id":"local-kept","name":"当前项目"}]';localStorage.setItem('paperknow-projects',before);m.mountSettings(ctx,'data');const root=document.querySelector('.dashboard');let y=1600;const scrolls=[];Object.defineProperty(window,'scrollY',{configurable:true,get:()=>y});window.scrollTo=options=>{scrolls.push(options);y=options.top;};root.getBoundingClientRect=()=>({top:100-y,left:0,width:1200,height:3000});
-  const contents=JSON.stringify({format:'paperknow-workspace-backup',version:1,projects:[],drafts:[],reports:[],literature:[],tasks:[]}),file=document.querySelector('#settings-file');Object.defineProperty(file,'files',{configurable:true,value:[{name:'empty-local-backup.json',size:contents.length,text:async()=>contents}]});await file.onchange({target:file});
-  assert.ok(document.querySelector('#settings-import-cancel'));document.querySelector('#settings-import-cancel').click();assert.equal(document.querySelector('#settings-import-preview').children.length,0);assert.match(document.querySelector('#settings-status').textContent,/已取消/);assert.equal(localStorage.getItem('paperknow-projects'),before);assert.equal(y,1600);assert.equal(scrolls.length,0);assert.match(root.style.minHeight,/2268px/);
+  const saved='[{"id":"legacy-kept","name":"历史研究"}]';localStorage.setItem('paperknow-projects',saved);localStorage.setItem('paperknow-preferences','corrupt-preference');ctx.exportBackup=async()=>localExports++;ctx.restored=async()=>restores++;
+  for(const route of ['data','privacy']){
+   m.mountSettings(ctx,route);
+   assert.match(document.querySelector('.settings-main').textContent,/统一账户.*云端管理/);
+   assert.equal(document.querySelector('input[type=file],#settings-export,#settings-file,#settings-import-preview'),null);
+   assert.doesNotMatch(document.querySelector('.dashboard').textContent,/本地工作空间|本地体验资料|账户与本地资料|从本地备份恢复|导出本地/);
+   for(const href of ['#projects','#assets','#tasks','#account','#help'])assert.ok(document.querySelector('.settings-main a[href="'+href+'"]'));
+   assert.equal(document.querySelector('a[href*="scope=local"]'),null);assert.ok(document.querySelector('#settings-account-export'));
+   assert.equal(m.settingsHasWork(),false);assert.equal(localStorage.getItem('paperknow-projects'),saved);assert.equal(localStorage.getItem('paperknow-preferences'),'corrupt-preference');
+  }
+  assert.equal(localExports,0);assert.equal(restores,0);
  }finally{m.clearSettingsWork();dom.window.close();}
 });
 test('editing one settings category preserves other windows changes and blocks conflicting or corrupt values',async()=>{
@@ -40,7 +48,7 @@ test('account archive export downloads only a valid authenticated archive and ne
  try{
   localStorage.setItem('paperknow-projects','[{"id":"local-1","name":"本地保留"}]');URL.createObjectURL=value=>{blob=value;return 'blob:archive';};URL.revokeObjectURL=()=>{};window.HTMLAnchorElement.prototype.click=()=>downloads++;
   globalThis.fetch=mockArtifactFetch(async(path,options)=>{calls.push([path,options]);return {ok:true,json:async()=>archive};},{userId:'account-1'});m.mountSettings(ctx,'data');await document.querySelector('#settings-account-export').onclick();
-  assert.equal(downloads,1);assert.deepEqual(JSON.parse(await blob.text()),archive);assert.equal(calls[0][0],'/api/account/export');assert.equal(calls[0][1].credentials,'same-origin');assert.equal(calls[0][1].cache,'no-store');assert.match(document.querySelector('#settings-account-status').textContent,/已发起.*下载/);assert.match(document.querySelector('.settings-account-export').textContent,/原件文件需另外下载/);assert.match(document.querySelector('.settings-account-export').textContent,/不能用作本地合并恢复/);assert.match(localStorage.getItem('paperknow-projects'),/本地保留/);
+  assert.equal(downloads,1);assert.deepEqual(JSON.parse(await blob.text()),archive);assert.equal(calls[0][0],'/api/account/export');assert.equal(calls[0][1].credentials,'same-origin');assert.equal(calls[0][1].cache,'no-store');assert.match(document.querySelector('#settings-account-status').textContent,/已发起.*下载/);assert.match(document.querySelector('.settings-account-export').textContent,/原件文件与生成文件的实际内容需在文件管理中另外下载/);assert.match(document.querySelector('.settings-account-export').textContent,/JSON 格式/);assert.equal(document.querySelector('input[type=file]'),null);assert.match(localStorage.getItem('paperknow-projects'),/本地保留/);
   for(const response of [{ok:false,status:401,json:async()=>({error:'Unauthorized'})},{ok:false,status:413,json:async()=>({error:'账户资料超过 100 MB，请分项导出'})},{ok:true,json:async()=>({...archive,scope:'local'})}]){globalThis.fetch=async()=>response;await document.querySelector('#settings-account-export').onclick();assert.equal(downloads,1);assert.equal(document.querySelector('#settings-account-status').classList.contains('error'),true);assert.doesNotMatch(document.querySelector('#settings-account-status').textContent,/已发起/);assert.equal(document.querySelector('#settings-account-export').disabled,false);}
  }finally{globalThis.fetch=request;URL.createObjectURL=create;URL.revokeObjectURL=revoke;window.HTMLAnchorElement.prototype.click=click;m.clearSettingsWork();dom.window.close();}
 });
@@ -50,9 +58,14 @@ test('leaving settings during an account export aborts the request without downl
  try{globalThis.fetch=async(_,options)=>{signal=options.signal;return new Promise(resolve=>{finish=resolve;});};m.mountSettings(ctx,'data');const pending=document.querySelector('#settings-account-export').onclick();assert.equal(m.settingsHasWork(),true);m.clearSettingsWork();assert.equal(signal.aborted,true);finish({ok:true,json:async()=>({})});await pending;assert.equal(m.settingsHasWork(),false);}finally{globalThis.fetch=request;m.clearSettingsWork();dom.window.close();}
 });
 
-test('a replaced settings page ignores late backup-file errors and stale reset confirmations',async()=>{
- const {dom,ctx}=settingsEnvironment(),m=await import('../dist/workspace/settings.mjs');let finish;
- try{ctx.modal=(_,html)=>document.querySelector('#workspace-dialog-body').innerHTML=html;m.mountSettings(ctx,'data');const file=document.querySelector('#settings-file');Object.defineProperty(file,'files',{value:[{name:'delayed.json',size:10,text:()=>new Promise((resolve,reject)=>finish=()=>reject(Error('old parse failure')))}]});const pending=file.onchange({target:file});m.mountSettings(ctx,'writing');const field=document.querySelector('#setting-major');field.value='保留新页面输入';field.dispatchEvent(new window.Event('input',{bubbles:true}));const message=document.querySelector('#settings-status').textContent;finish();await pending;assert.equal(document.querySelector('#setting-major').value,'保留新页面输入');assert.equal(document.querySelector('#settings-status').textContent,message);
- m.mountSettings(ctx);document.querySelector('#settings-reset').click();const oldConfirmation=document.querySelector('#confirm-settings-reset');m.mountSettings(ctx,'writing');document.querySelector('#setting-major').value='新页面未保存专业';oldConfirmation.click();assert.equal(document.querySelector('#setting-major').value,'新页面未保存专业');assert.equal(localStorage.getItem('paperknow-preferences'),null);
- }finally{m.clearSettingsWork();dom.window.close();}
+test('a replaced data page ignores late archive errors and stale reset confirmations',async()=>{
+ const {dom,ctx}=settingsEnvironment(),m=await import('../dist/workspace/settings.mjs'),request=globalThis.fetch;let finish;
+ try{
+  ctx.modal=(_,html)=>document.querySelector('#workspace-dialog-body').innerHTML=html;
+  globalThis.fetch=async()=>new Promise((resolve,reject)=>finish=()=>reject(Error('old archive failure')));
+  m.mountSettings(ctx,'data');const pending=document.querySelector('#settings-account-export').onclick();
+  m.mountSettings(ctx,'writing');const field=document.querySelector('#setting-major');field.value='保留新页面输入';field.dispatchEvent(new window.Event('input',{bubbles:true}));const message=document.querySelector('#settings-status').textContent;finish();await pending;
+  assert.equal(document.querySelector('#setting-major').value,'保留新页面输入');assert.equal(document.querySelector('#settings-status').textContent,message);
+  m.mountSettings(ctx);document.querySelector('#settings-reset').click();const oldConfirmation=document.querySelector('#confirm-settings-reset');m.mountSettings(ctx,'writing');document.querySelector('#setting-major').value='新页面未保存专业';oldConfirmation.click();assert.equal(document.querySelector('#setting-major').value,'新页面未保存专业');assert.equal(localStorage.getItem('paperknow-preferences'),null);
+ }finally{globalThis.fetch=request;m.clearSettingsWork();dom.window.close();}
 });

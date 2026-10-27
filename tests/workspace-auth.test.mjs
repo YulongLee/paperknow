@@ -191,11 +191,12 @@ test('an initial report failure preserves browser drafts and displays a recovera
  }finally{f.close();}
 });
 
-test('a late initial report snapshot cannot overwrite a newer explicit report reload',async()=>{
- const pending=deferredReports();let reads=0,restored;
- const f=await fixture(async()=>response(401),{allReports:()=>++reads===1?pending.promise:Promise.resolve([lateReport]),setup:w=>{w.mountSettings=context=>{restored=context.restored;w.document.querySelector('.dashboard').innerHTML='<p>备份已恢复</p>';};}});
+test('settings data routes retire local restore hooks and ignore late report hydration',async()=>{
+ const pending=deferredReports();let settingsContext,settingsSection;
+ const f=await fixture(async()=>response(401),{allReports:()=>pending.promise,setup:w=>{w.mountSettings=(context,section)=>{settingsContext=context;settingsSection=section;w.document.querySelector('.dashboard').innerHTML='<p>账户数据管理</p>';};}});
  try{
-  f.dom.window.history.replaceState(null,'','/workspace.html#settings');f.api.render();await restored();pending.resolve([]);await settleReports();
+  f.dom.window.history.replaceState(null,'','/workspace.html#settings/data');f.api.render();assert.equal(settingsSection,'data');assert.equal(settingsContext.exportBackup,undefined);assert.equal(settingsContext.restored,undefined);
+  pending.resolve([lateReport]);await settleReports();assert.match(f.document.querySelector('.dashboard').textContent,/账户数据管理/);
   f.dom.window.history.replaceState(null,'','/workspace.html#search/比对报告');f.api.render();assert.match(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
  }finally{f.close();}
 });
@@ -391,15 +392,15 @@ test('phone account identity stays separate from browser preferences and passwor
   await f.api.loadWorkspaceSession();
   assert.equal(f.document.querySelector('.hub-profile-name').textContent,'服务账户');
   assert.match(f.document.querySelector('#workspace-account-session').textContent,/\+8613800000000/);
-  assert.equal(f.document.querySelector('#profile-name').value,'本地昵称');
+  assert.equal(f.document.querySelector('#profile-name'),null);
   assert.match(f.document.querySelector('#account-security').textContent,/已验证/);
   const reset=f.document.querySelector('#account-security a');
   assert.equal(reset.textContent.trim(),'设置密码');
   assert.equal(new URL(reset.href).searchParams.get('next'),'/workspace.html#account');
   assert.equal(new URL(reset.href).searchParams.get('mode'),'reset');
-  f.document.querySelector('#profile-name').value='新的本地昵称';
+  f.document.querySelector('#profile-major').value='计算机科学';
   f.document.querySelector('#profile-form').dispatchEvent(new f.dom.window.Event('submit',{bubbles:true,cancelable:true}));
-  assert.equal(JSON.parse(f.storage.getItem(keys.profile)).name,'新的本地昵称');
+  assert.equal(JSON.parse(f.storage.getItem(keys.profile)).name,'本地昵称');assert.equal(JSON.parse(f.storage.getItem(keys.profile)).major,'计算机科学');assert.doesNotMatch(f.document.querySelector('.workspace-account-layout').textContent,/本地昵称|本地研究偏好|换设备前.*备份/);
   assert.equal(f.document.querySelector('.hub-profile-name').textContent,'服务账户');
   assert.deepEqual(seen,['/api/auth/me']);
  }finally{f.close();}
@@ -412,16 +413,16 @@ test('workspace exposes administration only for the actual administrator role an
  try{await ordinary.api.loadWorkspaceSession();assert.equal(ordinary.document.querySelector('a[href="/admin.html"]'),null);}finally{ordinary.close();}
 });
 
-test('guest links preserve the current workspace location and local data is available before auth resolves',async()=>{
+test('guest links preserve workspace location and research input before auth resolves',async()=>{
  let resolve;let calls=0;
  const f=await fixture(()=>{calls++;return new Promise(done=>resolve=done);});
  try{
-  assert.equal(f.document.querySelector('#profile-name').value,'本地昵称');
-  f.document.querySelector('#profile-name').value='尚未保存的修改';
+  assert.equal(f.document.querySelector('#profile-name'),null);
+  f.document.querySelector('#profile-major').value='尚未保存的修改';
   const shared=f.api.workspaceServiceFetch('/api/auth/me',{});
   resolve(response(401));await shared;
   assert.equal(calls,1);
-  assert.equal(f.document.querySelector('#profile-name').value,'尚未保存的修改');
+  assert.equal(f.document.querySelector('#profile-major').value,'尚未保存的修改');
   assert.equal(f.document.querySelector('.hub-profile-name').textContent,'未登录');
   f.dom.window.history.replaceState(null,'','/workspace.html?preview=1#category/literature?view=reading');
   f.document.querySelector('[data-account-menu]').click();

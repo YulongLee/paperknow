@@ -18,9 +18,9 @@
 - [DOCX 论文格式排版步骤｜检查、应用与副本复核](https://paperknow.cn/guides/docx-format/): 使用 PaperKnow 进行 DOCX 格式检测或智能排版，对照通用或自定义规则检查正文与标题，导出报告或排版副本，再核对目录、分页和复杂对象。
 - [开题与毕业 PPT 制作步骤｜结构、页面与 PPTX 导出](https://paperknow.cn/guides/research-ppt/): 按 PaperKnow AI PPT、开题 PPT 或毕业 PPT 流程，准备主题或真实报告，确认范围与费用后生成草稿，再审核、编辑大纲、页面与备注并导出可编辑 PPTX。
 - [科研基础图表制作步骤｜CSV 输入与 SVG、PNG 导出](https://paperknow.cn/guides/research-charts/): 按 PaperKnow 当前绘图流程整理表头、类别与数值系列，选择基础图表，核对坐标、单位和图例，再导出 SVG、PNG 与 CSV。区分描述统计和显著性检验。
-- [关于 PaperKnow｜论文写作与科研辅助工作台](https://paperknow.cn/about/): 了解 PaperKnow 的产品定位、八项论文与科研工具、当前服务范围，以及本地体验与在线账户的区别。运营名称：oneshowailab-paperknow。
-- [PaperKnow 使用帮助｜登录、保存、上传与成果导出](https://paperknow.cn/help/): 查看 PaperKnow 邮箱手机号登录、本地体验与账户项目、文件上传、备份恢复及成果导出的常见问题和处理步骤。
-- [PaperKnow 数据与隐私说明｜本地资料、账户文件与处理范围](https://paperknow.cn/privacy/): 了解 PaperKnow 本地与账户资料、MinerU 云端 PDF 解析、阿里云内容安全审核、文献检索及私有对象存储的处理范围、确认方式与备份删除边界。
+- [关于 PaperKnow｜论文写作与科研辅助工作台](https://paperknow.cn/about/): 了解 PaperKnow 的产品定位、八项论文与科研工具、当前服务范围，以及统一账户下的资料管理方式。运营名称：oneshowailab-paperknow。
+- [PaperKnow 使用帮助｜登录、保存、上传与成果导出](https://paperknow.cn/help/): 查看 PaperKnow 统一账户、文件管理、资料导出与隐私设置的常见问题和处理步骤。
+- [PaperKnow 数据与隐私说明｜账户资料、云端文件与处理范围](https://paperknow.cn/privacy/): 了解 PaperKnow 统一账户下的资料与文件管理、文档解析、内容审核及文献检索的处理范围，以及资料导出与删除请求的说明。
 - [PaperKnow 服务规则｜使用范围、成果核对与费用状态](https://paperknow.cn/terms/): 了解 PaperKnow 工具当前开放范围、材料使用要求、研究成果核对、导出条件与账户购买规则。
 - [联系 PaperKnow｜产品支持与资料处理问题](https://paperknow.cn/contact/): 通过 contact@oneshowailab.com 联系 PaperKnow，反馈登录、上传、保存和导出问题，或咨询资料处理范围。运营名称：oneshowailab-paperknow。
 - [PaperKnow 功能开放状态｜账户、AI、检索与导出范围](https://paperknow.cn/status/): 查看 PaperKnow 10 项 AI 写作、文献检索研读与翻译、改写、通用 AI 文本鉴别、论文重复率检测、可编辑 PPTX、格式排版与科研绘图公式工具的实际范围。2026 年 10 月 21 日更新。
