@@ -74,3 +74,9 @@ test('polling keeps the progress surface and controls stable while private searc
  let stage='searching';const f=fixture(url=>url==='/api/web-similarity/web-1'?response({item:row('running',{stage,coverage:{queries:3,fetchedSources:2}})}):null,{reportId:'web-1'});
  try{await f.panel.ready;const root=f.$('[data-detection-progress]'),bar=root.querySelector('[role=progressbar]');assert.ok(root);stage='reading_sources';await f.panel.refresh();stage='comparing';await f.panel.refresh();assert.equal(f.$('[data-detection-progress]'),root);assert.equal(root.querySelector('[role=progressbar]'),bar);assert.doesNotMatch(f.$('[data-web-result]').textContent,/searching|reading_sources|comparing|抽样|逐字|取得来源|0%/);assert.equal(f.$('[data-web-download]'),null);}finally{f.close();}
 });
+
+test('completed similarity result opens the chosen original/source comparison without another paid submission',async()=>{
+ const value=report({ratio:.6,similarChars:30,sourceCount:1});value.sections[0].paragraphs[0].matches=[{sourceId:'source-1',range:[0,30],sourceRange:[0,30],excludedRanges:[]}];
+ const f=fixture(url=>url==='/api/web-similarity/web-1'?response({item:row()}):url==='/api/web-similarity/web-1/report'?response({report:value}):null,{reportId:'web-1'});
+ try{await f.panel.ready;const button=f.$('[data-web-location]');assert.ok(button);assert.match(button.closest('.detection-findings').textContent,/真实的研究内容/);button.click();await settle();const frame=f.$('.web-similarity-preview iframe');assert.ok(frame);const dom=new JSDOM(frame.srcdoc);assert.ok(dom.window.document.getElementById(button.dataset.webLocation));assert.ok(dom.window.document.querySelector('.report-pair'));dom.window.close();assert.equal(f.calls.some(call=>call.body),false);}finally{f.close();}
+});

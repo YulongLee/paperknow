@@ -140,3 +140,8 @@ test('AI failed tasks do not publish partial label tables or a success percentag
  const f=fixture((url,body)=>url==='/api/aigc-detections'&&!body?response({items:[item]}):url==='/api/aigc-detections/task-1'?response(item):null);
  try{await f.panel.ready;assert.equal(f.$('.aigc-detection-table'),null);assert.equal(f.$('[data-aigc-coverage]'),null);assert.doesNotMatch(f.$('[data-aigc-result]').textContent,/88 \/ 100/);assert.match(f.$('[data-aigc-result]').textContent,/预占费用已释放/);}finally{f.close();}
 });
+
+test('saved AI original exposes paragraph entry points and opens the exact risk location without new detection',async()=>{
+ const raw='原文第一段需要核对。\n原文第二段保留上下文。',size=Array.from(raw).length,item=complete({characters:size,reportAvailable:true,parts:[{index:0,start:0,end:size,characters:size,label:'aigc',confidence:88}]}),f=fixture((url,body)=>url==='/api/aigc-detections'&&!body?response({items:[item]}):url==='/api/aigc-detections/task-1'?response(item):url==='/api/aigc-detections/task-1/report'?response({item,text:raw,title:'送检原稿'}):null);
+ try{await f.panel.ready;const button=f.$('[data-aigc-location]');assert.ok(button);assert.match(button.closest('.detection-findings').textContent,/原文第一段需要核对/);button.click();await settle();const frame=f.$('.aigc-report-preview iframe');assert.ok(frame);const dom=new JSDOM(frame.srcdoc);assert.ok(dom.window.document.getElementById(button.dataset.aigcLocation));assert.equal(dom.window.document.querySelector('.aigc-report-text-risk').textContent,raw);dom.window.close();assert.equal(f.calls.some(call=>call.body),false);}finally{f.close();}
+});
