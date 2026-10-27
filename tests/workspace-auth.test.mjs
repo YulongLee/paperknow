@@ -1,3 +1,4 @@
+import {mountRevisionReportEntry} from '../dist/workspace/revision-report-entry.mjs';
 import * as thesisCompletion from '../dist/workspace/thesis-completion-panel.mjs';
 import {thesisCoverFields,thesisFrontMatterKind,thesisManualBackMatter} from '../dist/workspace/thesis-delivery.mjs';
 import {helpKnowledgeMarkup,bindHelpKnowledge} from '../dist/workspace/help.mjs';
@@ -309,7 +310,7 @@ test('direct AI-rate navigation mounts the AI reduction service and updates the 
 
 test('real AI reduction entry keeps its own heading, theme and selection across shared revision routes',()=>{
  const dom=new JSDOM('<div class="breadcrumb"><strong></strong></div><main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#category/aigc',runScripts:'outside-only'});
- Object.assign(dom.window,{projectPickerOptions,captureDraftScope,workspaceJobLabel,workspaceResultTitle,workspaceJobError,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),mountAigcDetection,ensureAigcStyle,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,buildThesisBibliography,withBibliographicMetadata,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
+ Object.assign(dom.window,{mountRevisionReportEntry,projectPickerOptions,captureDraftScope,workspaceJobLabel,workspaceResultTitle,workspaceJobError,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),mountAigcDetection,ensureAigcStyle,revisionStrategy,openRevisionReport,normalizeConfirmedRevisionReport,reportSources,validateRevisionProtection,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,buildThesisBibliography,withBibliographicMetadata,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,...revisionModel,keys,esc,icon,toolBanner,list:()=>[],projects:()=>[],formatDate:()=>''});
  try{
   Object.assign(dom.window,{normalizeRevisionComparison,compareRevisionDocument,revisionComparisonMarkup,openRevisionSources,loadRevisionComparisonHandoff,hasRevisionComparisonHandoff});
   vm.runInContext('(function(){'+revisionSource+'\nglobalThis.mountActualRevision=mountRevision;})()',dom.getInternalVMContext());
@@ -322,7 +323,7 @@ test('real AI reduction entry keeps its own heading, theme and selection across 
    assert.equal(query('.tool-banner h1').textContent,'降 AI 率');
    assert.equal(query('.revision-entry-summary [data-revision-selection-title]').textContent,'自然学术表达精修');
    assert.equal(query('.revision-plan-card[aria-pressed="true"]').dataset.revisionPlan,'strong');
-   assert.match(query('[data-revision-plan-status]').textContent,/可生成逐段候选修改.*不预测或承诺/);
+   assert.match(query('[data-revision-plan-status]').textContent,/按检测报告定位修改.*未标记正文保持原样/);
    assert.ok(query('#revision-entry-form'));assert.equal(query('#revision-space'),null);assert.equal(query('[data-revision-bundle-offers]'),null);
   };
   mount('#category/aigc');assertAIPage();

@@ -82,10 +82,10 @@ test('explicit HTML offsets survive report trim and invalid explicit spans are r
  for(const span of [{start:0,end:input.length},{start:-1,end:5},{start,end:start},{start,end:input.length+1},{start:1.5,end:20}])assert.throws(()=>normalizeRevisionReport(report(input,{explicitExcerpts:[span]})),/片段位置/);
 });
 
-test('candidate preview has independent 120-row and 32,000-character limits and reports omitted evidence',()=>{
+test('candidate preview has independent 120-row and 80,000-character limits and reports omitted evidence',()=>{
  const rows=Array.from({length:121},(_,index)=>({id:'p'+index,original:'Observation '+String(index).padStart(3,'0')+' records a distinct synthetic evidence boundary.'})),first=matchRevisionReport(doc(rows),report(rows.map(row=>row.original).join('\n')));
  assert.equal(first.candidates.length,120);assert.equal(first.truncated,true);assert.match(first.warnings.join(' '),/未展示位置未被确认/);assert.ok(first.candidateCharacters<=revisionReportLimits.candidateCharacters);
- const longRows=Array.from({length:24},(_,index)=>({id:'long'+index,original:'Distinct paragraph '+String(index).padStart(3,'0')+': '+String.fromCharCode(65+index).repeat(900)})),second=matchRevisionReport(doc(longRows),report(longRows.map(row=>row.original).join('\n')));assert.ok(second.candidates.length>0&&second.candidates.length<longRows.length);assert.ok(second.candidateCharacters<=32000);assert.equal(second.candidateCharacters,second.candidates.reduce((sum,row)=>sum+row.excerpt.length+row.reportExcerpt.length,0));assert.equal(second.truncated,true);
+ const longRows=Array.from({length:48},(_,index)=>({id:'long'+index,original:'Distinct paragraph '+String(index).padStart(3,'0')+': '+String.fromCharCode(65+index).repeat(900)})),second=matchRevisionReport(doc(longRows),report(longRows.map(row=>row.original).join('\n')));assert.ok(second.candidates.length>0&&second.candidates.length<longRows.length);assert.ok(second.candidateCharacters<=revisionReportLimits.candidateCharacters);assert.equal(second.candidateCharacters,second.candidates.reduce((sum,row)=>sum+row.excerpt.length+row.reportExcerpt.length,0));assert.equal(second.truncated,true);
 });
 
 test('long passages expose a bounded complete excerpt without cutting Unicode compatibility expansions',()=>{
@@ -103,7 +103,7 @@ test('report and document validation rejects oversized or malformed inputs witho
 
 test('confirmed evidence persists only bounded verified snippets and never raw report or unknown fields',()=>{
  const original=doc(),candidate=matchRevisionReport(original,report()).candidates[0],value=normalizeConfirmedRevisionReport(confirmed([candidate],{text:'PRIVATE RAW REPORT',original:'REPORT MUST NOT BECOME ORIGINAL',paragraphIds:['injected'],unknown:'discard'}),original);
- assert.deepEqual(value.paragraphIds,['p1']);assert.deepEqual(value.evidence,[{paragraphId:'p1',excerpt:sample,start:0,end:sample.length,reportExcerpt:sample,reportStart:0,reportEnd:sample.length}]);assert.equal(value.version,1);assert.equal(value.confirmedAt,'2026-10-20T00:00:00.000Z');assert.ok(JSON.stringify(value).length<=10000);assert.doesNotMatch(JSON.stringify(value),/PRIVATE RAW REPORT|MUST NOT BECOME ORIGINAL|discard|injected/);
+ assert.deepEqual(value.paragraphIds,['p1']);assert.deepEqual(value.evidence,[{paragraphId:'p1',excerpt:sample,start:0,end:sample.length,reportExcerpt:sample,reportStart:0,reportEnd:sample.length}]);assert.equal(value.version,1);assert.equal(value.confirmedAt,'2026-10-20T00:00:00.000Z');assert.ok(JSON.stringify(value).length<=revisionReportLimits.confirmedCharacters);assert.doesNotMatch(JSON.stringify(value),/PRIVATE RAW REPORT|MUST NOT BECOME ORIGINAL|discard|injected/);
 });
 
 test('confirmed evidence rejects stale originals, changed report snippets, forged offsets and repeated selections',()=>{
@@ -114,9 +114,9 @@ test('confirmed evidence rejects stale originals, changed report snippets, forge
 });
 
 test('confirmed record limit counts metadata and both excerpts, including escaped serialized characters',()=>{
- const rows=Array.from({length:4},(_,index)=>({id:'p'+index,original:'Evidence '+index+' '+String.fromCharCode(65+index).repeat(1490)})),original=doc(rows),candidates=matchRevisionReport(original,report(rows.map(row=>row.original).join('\n'))).candidates;
- const small=normalizeConfirmedRevisionReport(confirmed(candidates.slice(0,2)),original);assert.ok(JSON.stringify(small).length<10000);assert.throws(()=>normalizeConfirmedRevisionReport(confirmed(candidates),original),/10,000/);
- const quoteText='\\"'.repeat(990)+' bounded source excerpt',quoteDoc=doc([{id:'quoted',original:quoteText}]),quote=matchRevisionReport(quoteDoc,report(quoteText)).candidates[0];assert.ok(quote.excerpt.length<=2000);const value=normalizeConfirmedRevisionReport(confirmed([quote]),quoteDoc);assert.ok(JSON.stringify(value).length<=10000);
+ const rows=Array.from({length:22},(_,index)=>({id:'p'+index,original:'Evidence '+index+' '+String.fromCharCode(34).repeat(1800)})),original=doc(rows),candidates=matchRevisionReport(original,report(rows.map(row=>row.original).join('\n'))).candidates;
+ const small=normalizeConfirmedRevisionReport(confirmed(candidates.slice(0,2)),original);assert.ok(JSON.stringify(small).length<revisionReportLimits.confirmedCharacters);assert.throws(()=>normalizeConfirmedRevisionReport(confirmed(candidates),original),/100,000/);
+ const quoteText='\\"'.repeat(990)+' bounded source excerpt',quoteDoc=doc([{id:'quoted',original:quoteText}]),quote=matchRevisionReport(quoteDoc,report(quoteText)).candidates[0];assert.ok(quote.excerpt.length<=2000);const value=normalizeConfirmedRevisionReport(confirmed([quote]),quoteDoc);assert.ok(JSON.stringify(value).length<=revisionReportLimits.confirmedCharacters);
 });
 
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -193,7 +193,7 @@ test('confirmation is single flight and a failed save preserves checked evidence
 });
 
 test('oversized confirmed selection is rejected before saving and can be reduced without losing the preview',async t=>{
- const paragraphs=Array.from({length:4},(_,index)=>({id:'p'+index,original:'Bounded evidence '+index+' '+String.fromCharCode(65+index).repeat(1490)})),f=uiFixture(t,{document:doc(paragraphs)});f.preview(paragraphs.map(row=>row.original).join('\n'));const boxes=[...f.w.document.querySelectorAll('[data-rr-pick]')];assert.equal(boxes.length,4);for(const box of boxes)box.click();f.click('[data-rr-confirm]');await tick();assert.match(f.$('[data-rr-error]').textContent,/10,000/);assert.equal(f.saved.length,0);assert.equal(f.dialog.open,true);assert.ok(boxes.every(box=>box.checked));boxes[2].click();boxes[3].click();f.click('[data-rr-confirm]');await until(()=>f.saved.length===1);assert.equal(f.saved[0].evidence.length,2);assert.ok(JSON.stringify(f.saved[0]).length<=10000);
+ const paragraphs=Array.from({length:22},(_,index)=>({id:'p'+index,original:'Bounded evidence '+index+' '+String.fromCharCode(34).repeat(1800)})),f=uiFixture(t,{document:doc(paragraphs)});f.preview(paragraphs.map(row=>row.original).join('\n'));const boxes=[...f.w.document.querySelectorAll('[data-rr-pick]')];assert.ok(boxes.length>15);for(const box of boxes)box.click();f.click('[data-rr-confirm]');await tick();assert.match(f.$('[data-rr-error]').textContent,/100,000/);assert.equal(f.saved.length,0);assert.equal(f.dialog.open,true);assert.ok(boxes.every(box=>box.checked));for(const box of boxes.slice(2))box.click();f.click('[data-rr-confirm]');await until(()=>f.saved.length===1);assert.equal(f.saved[0].evidence.length,2);assert.ok(JSON.stringify(f.saved[0]).length<=revisionReportLimits.confirmedCharacters);
 });
 
 test('failed report extraction preserves the pasted report and allows a fresh manual preview',async t=>{

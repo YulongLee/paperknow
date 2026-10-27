@@ -5,6 +5,7 @@ import {buildMathJaxLicenses} from './build-third-party-licenses.mjs';
 await mkdir('dist/precheck/assets',{recursive:true});
 await build({entryPoints:['src/precheck/parsers.js'],bundle:true,platform:'browser',format:'esm',minify:true,target:'es2022',outfile:'dist/precheck/assets/parsers.js',legalComments:'eof'});
 await copyFile('node_modules/pdfjs-dist/build/pdf.worker.min.mjs','dist/precheck/assets/pdf.worker.min.mjs');
+await build({entryPoints:['src/revision-report-parser.js'],bundle:true,platform:'browser',format:'esm',minify:true,target:'es2022',outfile:'dist/workspace/assets/revision-report-parser.js',legalComments:'eof'});
 console.log('PaperKnow document parser built.');
 await mkdir('dist/workspace/assets',{recursive:true});
 await build({entryPoints:['src/analysis-workbook.js'],bundle:true,platform:'browser',format:'esm',minify:true,target:'es2022',outfile:'dist/workspace/assets/analysis-workbook.js',legalComments:'eof'});
