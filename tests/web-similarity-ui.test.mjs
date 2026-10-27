@@ -54,8 +54,8 @@ test('web evidence snippets have strict per-card, per-source and report-wide cod
  const paragraphs=Array.from({length:12},(_,index)=>({id:'p'+index,text:'😀'.repeat(6900),similarChars:6900,matches:sources.map(source=>({sourceId:source.id,range:[0,6900],sourceRange:[0,6900],citationStatus:'unverified'}))}));
  const value=report({sources,sections:[{id:'section',title:'正文',included:true,ratio:1,totalChars:82800,similarChars:82800,paragraphs}]});
  const dom=new JSDOM(reportHtml(value)),counts=new Map();let total=0;
- const cards=[...dom.window.document.querySelectorAll('.report-evidence')].filter(node=>node.querySelector('.report-pair'));
- for(const card of cards){const text=card.querySelector('.report-pair>div:nth-child(2) .report-text').textContent,title=card.querySelector('.report-evidence-head>b').textContent,n=Array.from(text).length;assert.ok(n<=240);total+=n;counts.set(title,(counts.get(title)||0)+n);assert.match(card.textContent,/片段已省略；完整来源请访问原网页/);}
+ const cards=[...dom.window.document.querySelectorAll('.report-source-match')].filter(node=>node.querySelector('.report-source-excerpt mark'));assert.equal(dom.window.document.querySelectorAll('.report-source-match').length,72);
+ for(const card of cards){const text=card.querySelector('.report-source-excerpt mark').textContent,title=card.dataset.sourceId,n=Array.from(text).length;assert.ok(n<=240);total+=n;counts.set(title,(counts.get(title)||0)+n);assert.match(card.textContent,/片段已省略；完整来源请访问原网页/);}
  assert.ok(total>0&&total<=5000);assert.ok([...counts.values()].every(n=>n<=1200));assert.doesNotMatch(dom.window.document.body.textContent,/FULL-WEB-SOURCE-END/);assert.equal(value.sections[0].paragraphs[0].matches[0].sourceRange[1],6900);dom.window.close();
  const local=reportHtml({...value,mode:'local'});assert.match(local,/FULL-WEB-SOURCE-END/);assert.doesNotMatch(local,/片段已省略；完整来源请访问原网页/);
 });
@@ -78,7 +78,7 @@ test('polling keeps the progress surface and controls stable while private searc
 test('completed similarity result opens the chosen original/source comparison without another paid submission',async()=>{
  const value=report({ratio:.6,similarChars:30,sourceCount:1});value.sections[0].paragraphs[0].matches=[{sourceId:'source-1',range:[0,30],sourceRange:[0,30],excludedRanges:[]}];
  const f=fixture(url=>url==='/api/web-similarity/web-1'?response({item:row()}):url==='/api/web-similarity/web-1/report'?response({report:value}):null,{reportId:'web-1'});
- try{await f.panel.ready;const button=f.$('[data-web-location]');assert.ok(button);assert.match(button.closest('.detection-findings').textContent,/真实的研究内容/);button.click();await settle();const frame=f.$('.web-similarity-preview iframe');assert.ok(frame);const dom=new JSDOM(frame.srcdoc);assert.ok(dom.window.document.getElementById(button.dataset.webLocation));assert.ok(dom.window.document.querySelector('.report-pair'));dom.window.close();assert.equal(f.calls.some(call=>call.body),false);}finally{f.close();}
+ try{await f.panel.ready;const button=f.$('[data-web-location]');assert.ok(button);assert.match(button.closest('.detection-findings').textContent,/真实的研究内容/);button.click();await settle();const frame=f.$('.web-similarity-preview iframe');assert.ok(frame);const dom=new JSDOM(frame.srcdoc);assert.ok(dom.window.document.getElementById(button.dataset.webLocation));assert.ok(dom.window.document.querySelector('.report-review-row .report-review-detail'));dom.window.close();assert.equal(f.calls.some(call=>call.body),false);}finally{f.close();}
 });
 
 test('detection entry, preview and export use product names without explaining internal search operations',async()=>{

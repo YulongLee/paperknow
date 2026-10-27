@@ -96,7 +96,7 @@ export function createWebSimilarityService(db,config={}){
   const input=webSimilarityInput(await readBody(),user),plan=planWebQueries(input.parsed),hash=digest(JSON.stringify({version:webSimilarityVersion,text:input.text,title:input.title}));
   const reserved=tx(()=>{
    const existing=db.prepare('SELECT * FROM jobs WHERE user_id=? AND idempotency_key=?').get(user.id,input.idempotencyKey);
-   if(existing){if(existing.type!=='web_similarity'||existing.input_hash!==hash)fail(409,'请求编号已用于其他内容，请重新确认正文。');return{id:existing.id,existing:true};}
+   if(existing){if(existing.type!=='web_similarity'||![hash,digest(JSON.stringify({version:'public-web-exact-1.0',text:input.text,title:input.title}))].includes(existing.input_hash))fail(409,'请求编号已用于其他内容，请重新确认正文。');return{id:existing.id,existing:true};}
    const duplicate=db.prepare("SELECT j.id FROM jobs j JOIN web_similarity_runs r ON r.id=j.id WHERE j.user_id=? AND j.type='web_similarity' AND j.input_hash=? AND (j.status IN ('preparing','queued','running','completed') OR r.queries_attempted>0) AND (j.status IN ('preparing','queued','running') OR j.created_at>=?) ORDER BY j.created_at DESC LIMIT 1").get(user.id,hash,new Date(Date.now()-86400000).toISOString());
    if(duplicate)return{id:duplicate.id,existing:true};
    assertDetectionPrice(input,config.billing,'detection-similarity');

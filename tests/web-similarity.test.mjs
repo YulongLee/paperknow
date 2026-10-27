@@ -75,7 +75,7 @@ test('partial source failures publish explicit limited coverage without using th
 test('cancellation while a search is in flight does not publish late results or replay the unknown request',async t=>{
  const begun=deferred(),resume=deferred();let calls=0;
  const f=await fixture(t,{webSimilaritySearch:{async search(){calls++;begun.resolve();await resume.promise;return{searched:true,sources:[{url:'https://public.example.org/paper',title:'来源'}],usage:{}};}}}),id=(await f.submit()).value.item.id;
- const pending=f.worker.tick();await begun.promise;await f.request('/'+id+'/cancel',{expectedUserId:'alice'});resume.resolve();await pending;await f.worker.tick();assert.equal(f.job(id).status,'cancelled');assert.equal(calls,1);assert.equal(f.objects.size,0);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);
+ const pending=f.worker.tick();await begun.promise;await f.request('/'+id+'/cancel',{expectedUserId:'alice'});resume.resolve();await pending;await f.worker.tick();assert.equal(f.job(id).status,'cancelled');assert.equal(calls,2);assert.equal(f.objects.size,0);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);
 });
 
 test('an interrupted running task becomes visibly failed on restart without repeating billable searches',async t=>{
@@ -106,4 +106,13 @@ test('report reads share two storage slots and rejected readers do not trigger O
  const read=f.config.storage.readArtifact,resume=deferred(),started=deferred();let count=0;
  f.config.storage.readArtifact=async row=>{if(++count===2)started.resolve();await resume.promise;return read(row);};
  const a=f.request('/'+id+'/report'),b=f.request('/'+id+'/report');await started.promise;await rejected(f.request('/'+id+'/report'),429);assert.equal(count,2);resume.resolve();assert.equal((await a).value.report.id,id);assert.equal((await b).value.report.id,id);
+});
+
+test('parallel search and source reads preserve deterministic evidence order and never substitute unread sources',async t=>{
+ let searches=0,searchActive=0,searchPeak=0,readActive=0,readPeak=0;
+ const f=await fixture(t,{webSimilaritySearch:{async search(){const i=searches++;searchActive++;searchPeak=Math.max(searchPeak,searchActive);await new Promise(r=>setTimeout(r,i%2?1:8));searchActive--;return{searched:true,sources:[0,1].map(n=>({title:'来源'+i+'-'+n,url:'https://public.example.org/'+i+'-'+n})),usage:{}};}},webSimilaritySourceReader:async url=>{readActive++;readPeak=Math.max(readPeak,readActive);await new Promise(r=>setTimeout(r,url.endsWith('-0')?8:1));readActive--;if(url.endsWith('2-1'))throw Error('unreadable');return{url,title:url.split('/').at(-1),text:paragraph+url,contentHash:digest(paragraph+url),fetchedAt:new Date().toISOString()};}});
+ const manuscript=Array.from({length:8},(_,i)=>String.fromCharCode(65+i).repeat(50)+paragraph).join('\n\n'),id=(await f.submit({text:manuscript})).value.item.id;
+ await f.worker.tick();assert.equal(f.job(id).status,'completed');assert.equal(searches,6);assert.equal(searchPeak,2);assert.equal(readPeak,3);
+ const report=(await f.request('/'+id+'/report')).value.report,expected=Array.from({length:6},(_,i)=>[i+'-0',i+'-1']).flat().filter(n=>n!=='2-1');
+ assert.deepEqual(report.sources.map(s=>s.title),expected);assert.equal(report.web.failedSources,1);assert.equal(report.sources.some(s=>s.url.endsWith('2-1')),false);assert.equal(report.web.searchComplete,false);
 });

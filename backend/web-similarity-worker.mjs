@@ -1,5 +1,6 @@
+import {concurrentDetection} from './detection-concurrency.mjs';
 import {randomUUID} from 'node:crypto';
-import {parseDocument} from '../dist/precheck/engine.mjs';
+import {parseDocument,countChars} from '../dist/precheck/engine.mjs';
 import {reportHtml} from '../dist/precheck/export.mjs';
 import {compute} from './compute.mjs';
 import {moderateTextOrFail} from './moderated-agent.mjs';
@@ -41,10 +42,10 @@ export function startWebSimilarityWorker(db,config={}){
    const readSource=typeof reader==='function'?reader:(url,options)=>reader.read(url,options);
    const coverage={sampledParagraphs:plan.sampledParagraphs,totalParagraphs:plan.totalParagraphs,queries:plan.queries.length,candidateSources:0,fetchedSources:0,failedSources:0,searchComplete:false};
    stage(job.id,'checking_input');await moderateTextOrFail(config,plan.queries.map(x=>x.excerpt).join('\n'),{kind:'input',signal});
-   const candidates=new Map(),searches=[];
-   for(let i=0;i<plan.queries.length;i++){
+   const candidates=new Map(),searches=[],searchResults=[];
+   stage(job.id,'searching');
+   await concurrentDetection(plan.queries,2,async(query,i)=>{
     if(!active(job.id)||signal.aborted)return;
-    stage(job.id,'searching');
     tx(()=>{
      if(!includedDetectionHeld(db,job.user_id,job.id,'detection-similarity')){
       if(detectionPricing(config.billing,'detection-similarity').pointsCharged||detectionWasFunded(db,job.user_id,job.id,'detection-similarity'))throw safeError('本次检测费用预占已失效，请重新提交。');
@@ -55,32 +56,30 @@ export function startWebSimilarityWorker(db,config={}){
      db.prepare('INSERT INTO web_similarity_attempts VALUES(?,?,?,?)').run(job.id,i,job.user_id,clock());
      db.prepare('UPDATE web_similarity_runs SET queries_attempted=queries_attempted+1,updated_at=? WHERE id=?').run(clock(),job.id);
     });
-    attempted++;
-    try{
-     const result=await search.search(plan.queries[i].excerpt,{signal});
-     usages.push(result.usage||null);
-     searches.push({paragraphId:plan.queries[i].paragraphId,searched:result.searched===true,sourceCount:result.sources?.length||0});
-     // Only structured provider search results reach here. Model answer text is
-     // never used as a URL, evidence, match score or executable instruction.
-     for(const source of (result.sources||[]).slice(0,10)){
-      try{const u=new URL(source.url);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)continue;u.hash='';if(!candidates.has(u.href))candidates.set(u.href,{title:String(source.title||'公开网页').slice(0,300),url:u.href});}catch{}
-     }
-    }catch(error){if(signal.aborted||!active(job.id))return;searches.push({paragraphId:plan.queries[i].paragraphId,searched:false,sourceCount:0});}
-    coverage.candidateSources=candidates.size;saveCoverage(job.id,coverage);
-   }
+    attempted++;usages[i]=null;
+    try{const result=await search.search(query.excerpt,{signal});usages[i]=result.usage||null;searchResults[i]=result.sources||[];searches[i]={paragraphId:query.paragraphId,searched:result.searched===true,sourceCount:result.sources?.length||0};}
+    catch(error){if(signal.aborted||!active(job.id))return;searches[i]={paragraphId:query.paragraphId,searched:false,sourceCount:0};}
+   });
    if(!active(job.id)||signal.aborted)return;
-   if(!candidates.size)throw safeError('本次检测未取得足够的比对资料，未生成检测结论。请稍后重试。');
-   stage(job.id,'reading_sources');const sources=[],sourceStates=[];
-   for(const candidate of [...candidates.values()].slice(0,webSimilarityLimits.maxSources)){
-    if(!active(job.id)||signal.aborted)return;
-    try{
-     const source=await readSource(candidate.url,{signal});
-     if(typeof source?.text!=='string'||source.text.length>100000||Array.from(source.text).length<40)throw safeError('网页正文不足，未纳入比对');
-     if(!sources.some(s=>s.contentHash===source.contentHash&&s.contentHash))sources.push({...source,id:'web-source-'+(sources.length+1),title:source.title||candidate.title,authors:[],year:null,doi:null,kind:'web',provider:'本次可访问的公开网页'});
-     sourceStates.push({url:source.url,title:source.title||candidate.title,status:'fetched',fetchedAt:source.fetchedAt});
-    }catch(error){if(signal.aborted||!active(job.id))return;sourceStates.push({url:error?.code==='web_source_invalid_url'?'':candidate.url,title:candidate.title,status:'unavailable',error:'未能取得可比对正文，未计入相似度。'});}
-    coverage.fetchedSources=sources.length;coverage.failedSources=sourceStates.filter(s=>s.status==='unavailable').length;saveCoverage(job.id,coverage);
+   // Stable query order prevents response timing from choosing the report's evidence.
+   for(const result of searchResults)for(const source of (result||[]).slice(0,10)){
+    try{const u=new URL(source.url);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)continue;u.hash='';if(!candidates.has(u.href))candidates.set(u.href,{title:String(source.title||'公开网页').slice(0,300),url:u.href});}catch{}
    }
+   coverage.candidateSources=candidates.size;saveCoverage(job.id,coverage);
+   if(!candidates.size)throw safeError('本次检测未取得足够的比对资料，未生成检测结论。请稍后重试。');
+   stage(job.id,'reading_sources');const sources=[],sourceStates=[],readResults=[];
+   const selected=[...candidates.values()].slice(0,webSimilarityLimits.maxSources);
+   await concurrentDetection(selected,3,async(candidate,index)=>{
+    if(!active(job.id)||signal.aborted)return;
+    try{const source=await readSource(candidate.url,{signal});if(typeof source?.text!=='string'||source.text.length>100000||countChars(source.text)<40)throw safeError('网页正文不足，未纳入比对');readResults[index]={source,candidate};}
+    catch(error){if(signal.aborted||!active(job.id))return;readResults[index]={candidate,invalidURL:error?.code==='web_source_invalid_url'};}
+   });
+   if(!active(job.id)||signal.aborted)return;
+   for(const result of readResults){if(!result)continue;const {source,candidate}=result;
+    if(source){if(!sources.some(s=>s.contentHash===source.contentHash&&s.contentHash))sources.push({...source,id:'web-source-'+(sources.length+1),title:source.title||candidate.title,authors:[],year:null,doi:null,kind:'web',provider:'本次可访问的公开网页'});sourceStates.push({url:source.url,title:source.title||candidate.title,status:'fetched',fetchedAt:source.fetchedAt});}
+    else sourceStates.push({url:result.invalidURL?'':candidate.url,title:candidate.title,status:'unavailable',error:'未能取得可比对正文，未计入相似度。'});
+   }
+   coverage.fetchedSources=sources.length;coverage.failedSources=sourceStates.filter(s=>s.status==='unavailable').length;saveCoverage(job.id,coverage);
    if(!sources.length)throw safeError('本次检测未取得足够的比对资料，未生成检测结论。请稍后重试。');
    if(!active(job.id)||signal.aborted)return;
    coverage.searchComplete=searches.length===plan.queries.length&&searches.every(s=>s.searched)&&!coverage.failedSources&&candidates.size<=webSimilarityLimits.maxSources;

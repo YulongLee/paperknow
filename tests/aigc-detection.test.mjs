@@ -38,7 +38,7 @@ test('uses the exact official API contract, fixed HTTPS endpoint and no retries'
 
 test('chunks all submitted text with exact Unicode offsets and reserves all billed units up front',()=>{
  const text='研究'.repeat(2500)+'🙂'.repeat(2501),prepared=prepareAigcText(text);
- assert.equal(prepared.characters,7501);assert.equal(prepared.parts.map(part=>part.content).join(''),text);assert.ok(prepared.parts.every(part=>part.content.length<=5000));assert.deepEqual(prepared.parts.map(part=>[part.start,part.end]),[[0,5000],[5000,7500],[7500,7501]]);assert.equal(prepared.calls,3);assert.equal(prepared.billingUnits,11);
+ assert.equal(prepared.characters,7501);assert.equal(prepared.parts.map(part=>part.content).join(''),text);assert.ok(prepared.parts.every(part=>part.content.length<=5000));assert.deepEqual(prepared.parts.map(part=>[part.start,part.end]),[[0,5000],[5000,7500],[7500,7501]]);assert.equal(prepared.calls,1);assert.equal(prepared.billingUnits,5);
  for(const value of ['',null,'   ','\u0000abc','\ud800','x'.repeat(50001)])assert.throws(()=>prepareAigcText(value));
  const whitespace=prepareAigcText(' '.repeat(5000)+'abc');assert.equal(whitespace.calls,1);assert.equal(whitespace.parts.length,2);assert.equal(whitespace.billingUnits,1);
 });
@@ -63,7 +63,7 @@ test('returned DataId must match the exact partition and billing diagnostics sta
 });
 
 test('timeouts mask upstream diagnostics and retain transport slots without paid retry',async()=>{
- const pending=[];let calls=0;const client=createAigcDetectionClient({...configured,aigcDetectionTimeoutMs:5},{client:{callApi(){calls++;return new Promise(resolve=>pending.push(resolve));}}});
+ const pending=[];let calls=0;const client=createAigcDetectionClient({...configured,aigcDetectionTimeoutMs:5},{client:{callApi(){calls++;return calls<=2?new Promise(resolve=>pending.push(resolve)):Promise.resolve(response('ugc',98));}}});
  await assert.rejects(client.detect('test1'),safe('aigc_detection_timeout'));await assert.rejects(client.detect('test2'),safe('aigc_detection_timeout'));await assert.rejects(client.detect('test3'),safe('aigc_detection_busy'));assert.equal(calls,2);for(const resolve of pending)resolve(response());await tick();
  const fail=createAigcDetectionClient(configured,{client:{async callApi(){throw Error('AccessKey unit-aigc-secret private');}}});await assert.rejects(fail.detect('test'),safe('aigc_detection_unavailable'));
 });
@@ -109,8 +109,8 @@ test('stale interrupted rows fail safely and no GET or new key resubmits plainte
 });
 
 test('stale DB rows do not release actual SDK slots or apply late verdicts to failed work',async t=>{
- const pending=[];let calls=0;const client=createAigcDetectionClient(configured,{client:{callApi(){calls++;return new Promise(resolve=>pending.push(resolve));}}}),f=fixture(t,{client});
+ const pending=[];let calls=0;const client=createAigcDetectionClient(configured,{client:{callApi(){calls++;return calls<=2?new Promise(resolve=>pending.push(resolve)):Promise.resolve(response('ugc',98));}}}),f=fixture(t,{client});
  const first=await f.submit({text:'x'.repeat(11000)});f.db.prepare("UPDATE aigc_detections SET updated_at='2000-01-01T00:00:00.000Z' WHERE id=?").run(first.value.id);assert.equal((await f.get(first.value.id)).value.status,'failed');
- await f.submit({text:'second text'},{id:'bob'});const third=await f.submit({text:'third text'},{id:'carol'});await tick();assert.equal(calls,2);assert.equal((await f.get(third.value.id,{id:'carol'})).value.status,'failed');
- for(const resolve of pending)resolve(response('ugc',98));await f.service.waitForIdle();const stale=(await f.get(first.value.id)).value;assert.equal(stale.status,'failed');assert.equal(stale.completedParts,0);assert.equal(stale.conclusive,false);assert.equal(calls,2);
+ await f.submit({text:'second text'},{id:'bob'});const third=await f.submit({text:'third text'},{id:'carol'});await tick();assert.equal(calls,2);assert.equal((await f.get(third.value.id,{id:'carol'})).value.status,'running');
+ for(const resolve of pending)resolve(response('ugc',98));await f.service.waitForIdle();const stale=(await f.get(first.value.id)).value;assert.equal(stale.status,'failed');assert.equal(stale.completedParts,0);assert.equal(stale.conclusive,false);assert.equal(calls,4);assert.equal((await f.get(third.value.id,{id:'carol'})).value.status,'completed');
 });

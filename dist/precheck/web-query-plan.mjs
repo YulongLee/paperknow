@@ -1,7 +1,7 @@
 import {countChars} from './engine.mjs';
 // Shared by the admission preview and server planner: the preview cannot promise
 // a search window that the server will reject. Sampling never means full coverage.
-export function publicWebQueryPlan(parsed,maxQueries=3){
+export function publicWebQueryPlan(parsed,maxQueries=6){
  const paragraphs=parsed.sections.filter(s=>!s.excluded).flatMap(s=>s.paragraphs),windows=[];
  for(const p of paragraphs){
   const chars=Array.from(p.text);
@@ -13,14 +13,15 @@ export function publicWebQueryPlan(parsed,maxQueries=3){
    if(countChars(excerpt)>=24)windows.push({paragraphId:p.id,start,end:start+size,excerpt});
   }
  }
- const chosen=[],seen=new Set(),count=Math.min(maxQueries,windows.length),priority=[];
+ const chosen=[],seen=new Set(),count=Number.isSafeInteger(maxQueries)&&maxQueries>0?Math.min(maxQueries,windows.length):0,priority=[];
  for(let i=0;i<count;i++)priority.push(count===1?0:Math.round(i*(windows.length-1)/(count-1)));
- // Keep the original evenly spaced priority, then fill duplicate slots from
- // remaining real windows without exceeding the existing query limit.
- for(const index of [...priority,...windows.keys()]){
-  const window=windows[index],key=window.excerpt.normalize('NFKC').toLowerCase();
-  if(!seen.has(key)){chosen.push(window);seen.add(key);}
+ // Cover different paragraphs before using a second window from the same one.
+ const order=[...new Set([...priority,...windows.keys()])],paragraphIds=new Set();
+ for(const distinct of [true,false])for(const index of order){
   if(chosen.length>=count)break;
+  const window=windows[index],key=window.excerpt.normalize('NFKC').toLowerCase();
+  if(seen.has(key)||distinct&&paragraphIds.has(window.paragraphId))continue;
+  chosen.push(window);seen.add(key);paragraphIds.add(window.paragraphId);
  }
  return{queries:chosen,totalParagraphs:paragraphs.length,sampledParagraphs:new Set(chosen.map(x=>x.paragraphId)).size};
 }

@@ -1,8 +1,8 @@
 import {parseDocument,countChars} from '../dist/precheck/engine.mjs';
 import {publicWebQueryPlan} from '../dist/precheck/web-query-plan.mjs';
 
-export const webSimilarityLimits=Object.freeze({maxCharacters:20000,maxQueries:3,maxSources:8,userDailyLimit:3,globalDailyLimit:40,maxQueued:10});
-export const webSimilarityVersion='public-web-exact-1.0';
+export const webSimilarityLimits=Object.freeze({maxCharacters:20000,maxQueries:6,maxSources:12,userDailyLimit:3,globalDailyLimit:40,maxQueued:10});
+export const webSimilarityVersion='public-web-exact-2.0';
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status,webSimilaritySafe:true});};
 export function webSimilarityInput(input,user){
  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['text','title','expectedUserId','consent','idempotencyKey','pricingVersion','expectedCreditCost'].includes(k)))fail(400,'查重请求包含不支持的字段。');

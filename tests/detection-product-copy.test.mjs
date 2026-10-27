@@ -18,7 +18,7 @@ test('public reports keep scope and original comparisons without showing process
   assert.match(doc.body.textContent,/本次检测范围受限/);
   assert.doesNotMatch(doc.body.textContent,/联网|抽样|逐字|Unicode|PRIVATE-|公开网页|次检索/);
   assert.equal(doc.querySelector('.report-paragraph .report-text').textContent,text);
-  assert.ok(doc.querySelectorAll('.report-pair mark').length>=2);
+  assert.ok(doc.querySelectorAll('.report-review-row mark').length>=2);
   assert.ok(doc.querySelector('a[href="https://example.org/source"]'));
   assert.equal(JSON.stringify(report),before);
  }finally{dom.window.close();}
@@ -30,7 +30,7 @@ test('user text containing technical terms remains verbatim in original and sour
  const report={...analyzeDocument(parseDocument(text),[source]),mode:'web'},before=JSON.stringify(report),dom=new JSDOM(reportHtml(report));
  try{
   assert.equal(dom.window.document.querySelector('.report-paragraph .report-text').textContent,text);
-  assert.ok([...dom.window.document.querySelectorAll('.report-pair .report-text')].some(node=>node.textContent.startsWith('本研究分析联网查重与抽样检索')));
+  assert.ok([...dom.window.document.querySelectorAll('.report-source-excerpt mark')].some(node=>node.textContent.startsWith('本研究分析联网查重与抽样检索')));
   assert.match(dom.window.document.querySelector('.report-source-title').textContent,/联网查重研究原文/);
   assert.equal(JSON.stringify(report),before);
  }finally{dom.window.close();}

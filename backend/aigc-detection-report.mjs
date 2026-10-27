@@ -1,3 +1,4 @@
+import {aigcInputHash} from './aigc-input-hash.mjs';
 import {digest} from './auth.mjs';
 import {createArtifactService} from './artifact-service.mjs';
 import {aigcReportHtml} from '../dist/workspace/aigc-report.mjs';
@@ -21,7 +22,7 @@ export function createAigcReportArchive(db,config,serialize){
   let bytes;try{bytes=await config.storage.readArtifact(file);}catch{throw unavailable('本次送检原文暂时读取失败，请稍后读取原报告；无需重新检测。');}
   if(!Buffer.isBuffer(bytes)||bytes.length>2*1024*1024||bytes.length!==file.bytes||digest(bytes)!==file.sha256)throw unavailable('送检原文完整性无法核对，请联系支持；不会重新检测。');
   let value;try{value=JSON.parse(bytes.toString('utf8'));}catch{throw unavailable('送检原文格式无法核对，请联系支持。');}
-  if(value.version!==1||value.id!==row.id||typeof value.text!=='string'||Array.from(value.text).length!==row.characters||value.title!==row.title||digest('aigc-v1\0'+value.text)!==row.input_hash)throw unavailable('送检原文与检测记录不一致，已停止报告导出。');
+  if(value.version!==1||value.id!==row.id||typeof value.text!=='string'||Array.from(value.text).length!==row.characters||value.title!==row.title||aigcInputHash(value.text,row.partition_version)!==row.input_hash)throw unavailable('送检原文与检测记录不一致，已停止报告导出。');
   return value;
  }
  async function storeInput(id,text){
