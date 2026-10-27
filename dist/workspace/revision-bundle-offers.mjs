@@ -1,5 +1,5 @@
 import {icon} from './ui.mjs';
-import {bundlePreviewCard,publishedBundleCard} from './commerce-bundle-card.mjs';
+import {bundlePreviewCard,publishedBundleCard,offersByPrice} from './commerce-bundle-card.mjs';
 import {withStableView} from './view-stability.mjs';
 import {specialistRevisionOffers} from './specialist-commercial-offers.mjs';
 
@@ -40,7 +40,11 @@ export function mountRevisionBundleOffers({container,signal,timeoutMs=12000,fetc
   if(!card)return;
   card.outerHTML=product?publishedBundleCard(product,plan,{attributes:cardAttributes(plan)}):placeholder(plan,state);
  }
- function paintAll(state){update(()=>{for(const plan of plans)paint(plan,state);root.querySelector('[data-revision-bundle-catalogue-status]').textContent=state==='failed'?'商品信息暂未取得 · 可继续按次使用':'正在核对商品与权益';});}
+ function orderCards(prices=new Map()){
+  const grid=root.querySelector('[data-revision-bundle-grid]');
+  for(const plan of offersByPrice(plans,plan=>prices.get(sku(plan))??plan.priceCents)){const card=root.querySelector(`[data-revision-bundle-id="${sku(plan)}"]`);if(card)grid.append(card);}
+ }
+ function paintAll(state){update(()=>{for(const plan of plans)paint(plan,state);orderCards();root.querySelector('[data-revision-bundle-catalogue-status]').textContent=state==='failed'?'商品信息暂未取得 · 可继续按次使用':'正在核对商品与权益';});}
  function dispose(){
   if(disposed)return;disposed=true;controller.abort();if(timer!==null)win.clearTimeout(timer);signal?.removeEventListener('abort',dispose);win?.removeEventListener('hashchange',onRoute);if(mounts.get(root)===owner)mounts.delete(root);
  }
@@ -59,8 +63,9 @@ export function mountRevisionBundleOffers({container,signal,timeoutMs=12000,fetc
   const options=await response.json();if(!current())return;
   if(!options||!Array.isArray(options.products)||!Array.isArray(options.channels))throw Error('Invalid catalogue');
   update(()=>{
-   let published=0;
-   for(const plan of plans){const product=publishedProduct(plan,options.products),raw=options.products.filter(item=>item?.id===sku(plan));const state=product?'published':raw.some(item=>item?.status==='active')?'unavailable':'unpublished';paint(plan,state,product);if(product)published++;}
+   let published=0;const prices=new Map();
+   for(const plan of plans){const product=publishedProduct(plan,options.products),raw=options.products.filter(item=>item?.id===sku(plan));const state=product?'published':raw.some(item=>item?.status==='active')?'unavailable':'unpublished';paint(plan,state,product);if(product){published++;prices.set(sku(plan),product.priceCents);}}
+   orderCards(prices);
    root.querySelector('[data-revision-bundle-catalogue-status]').textContent=published?`${published} 个套餐已上架 · 以收银台再次核验为准`:'原有套餐方案仍在 · 当前尚无可购买商品';
   });completed=true;
  }).catch(()=>{if(current()){paintAll('failed');completed=true;}}).finally(()=>{if(timer!==null)win.clearTimeout(timer);});

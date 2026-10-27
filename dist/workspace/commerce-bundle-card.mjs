@@ -1,5 +1,11 @@
 import {esc,icon} from './ui.mjs';
 
+// Sort by the displayed amount; equal prices retain their catalogue order.
+export function offersByPrice(offers,priceOf=offer=>offer.priceCents){
+ const amount=offer=>{const price=priceOf(offer);return Number.isSafeInteger(price)&&price>=0?price:Infinity;};
+ return [...offers].sort((a,b)=>amount(a)-amount(b));
+}
+
 const statusLabels={loading:'正在核对商品',unpublished:'尚未上架',unavailable:'暂不可购买',failed:'商品信息暂未取得'};
 const statusHints={loading:'正在核对商品开放状态与有效期。',unpublished:'套餐尚未上架，有效期与服务开放状态待配置。',unavailable:'当前商品暂不可购买，请等待服务与权益配置完成。',failed:'商品信息暂未取得；所列为方案价，请在详情页再次核对。'};
 const tone=plan=>/^[a-z][a-z0-9-]{0,63}$/.test(plan?.id)?plan.id:'custom';

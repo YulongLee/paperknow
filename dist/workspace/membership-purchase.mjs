@@ -4,7 +4,7 @@ import {withStableView} from './view-stability.mjs';
 import {toolBanner} from './tool-banner.mjs';
 import {icon} from './ui.mjs';
 import {revisionBundlePlans,revisionBundleOffersMarkup,mountRevisionBundleOffers} from './revision-bundle-offers.mjs';
-import {bundlePreviewCard,publishedBundleCard as renderPublishedBundleCard} from './commerce-bundle-card.mjs';
+import {bundlePreviewCard,publishedBundleCard as renderPublishedBundleCard,offersByPrice} from './commerce-bundle-card.mjs';
 const $=s=>document.querySelector(s);
 const escapeHTML=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 let disposeCreditPage=null;
@@ -59,7 +59,8 @@ function publishedBundleCard(product,plan){return renderPublishedBundleCard(prod
 function loadPublishedBundles(dashboard,plans){const section=dashboard.querySelector('[data-bundle-offers]'),status=section.querySelector('[data-bundle-status]');return watchOfferCatalogue(section,options=>{
  const products=options.products.map(product=>validOffer(product,'bundle',options.products)).filter(Boolean);
  const additional=plans===launchBundles?products.filter(product=>!bundleCatalog.some(plan=>product.id==='bundle-'+plan.id)):[];
- let available=additional.length;section.querySelector('[data-bundle-plan-grid]').innerHTML=plans.map((plan,index)=>{const product=products.find(p=>p.id==='bundle-'+plan.id);if(!product)return plans===serviceBundles?'':card(plan,'bundle');available++;return publishedBundleCard(product,plan);}).join('')+additional.map(product=>publishedBundleCard(product,{id:'custom',featured:false})).join('');
+ const offers=[...plans.map(plan=>({plan,product:products.find(p=>p.id==='bundle-'+plan.id)})).filter(offer=>offer.product||plans!==serviceBundles),...additional.map(product=>({product,plan:{id:'custom',featured:false}}))];
+ const available=offers.filter(offer=>offer.product).length;section.querySelector('[data-bundle-plan-grid]').innerHTML=offersByPrice(offers,offer=>offer.product?.priceCents??offer.plan.priceCents).map(({product,plan})=>product?publishedBundleCard(product,plan):card(plan,'bundle')).join('');
  status.textContent=available?'已核对已上架套餐 · 确认商品后进入收银台':plans===serviceBundles?'此历史检测套餐尚未开放，不提供付款入口':'套餐尚未上架 · 请等待正式发布';
  if(plans===serviceBundles&&!available)section.querySelector('[data-bundle-plan-grid]').innerHTML='<div class="account-empty"><h3>历史检测套餐尚未开放</h3><p>PaperKnow 论文重复率检测与本地材料比对可从论文检测进入，检测范围以页面说明为准，无需购买此套餐。</p><a class="btn primary" href="#category/detection">前往 PaperKnow 查重</a></div>';
  section.querySelector('[data-bundle-fineprint]').textContent=available?'已上架套餐的价格、服务项与有效期以后台发布及付款确认页为准；未上架方案仅供比较。':plans===serviceBundles?'此入口只为兼容历史链接保留；已有订单及权益仍可在账户记录中核对。':'未上架套餐仅供比较，需在后台确认有效期及可交付服务后上架。';
@@ -71,7 +72,7 @@ export function mountMemberPlans(){
  const dashboard=$('.dashboard');dashboard.innerHTML=heading('plans')+`<section class="commerce-center-section" data-member-offers><div class="purchase-section-head commerce-center-section-title"><div><span class="commerce-center-eyebrow">MEMBERSHIP</span><h2>为持续研究，选择一份长期支持</h2><p data-member-description>轻量研读、持续修改或多工具协作，按研究节奏选择。每份会员有效期 30 天，不自动续费。</p></div><span class="commerce-center-unit-note" data-member-status role="status">正在核对已上架会员 · 下列为参考方案</span></div><div class="purchase-plans commerce-member-plans commerce-center-plan-grid" data-member-plan-grid>${memberPlans.map(p=>card(p,'member')).join('')}</div></section>`+purchaseWays()+purchaseFAQ();
  const section=dashboard.querySelector('[data-member-offers]');
  return watchOfferCatalogue(section,options=>{
- const products=options.products.map(product=>validOffer(product,'membership',options.products)).filter(Boolean);
+ const products=offersByPrice(options.products.map(product=>validOffer(product,'membership',options.products)).filter(Boolean));
  if(!products.length){section.querySelector('[data-member-status]').textContent='正式会员尚未上架 · 当前为 30 天首发定价方案';return;}
  section.querySelector('[data-member-plan-grid]').innerHTML=card(memberPlans[0],'member')+products.map((product,index)=>publishedMemberCard(product,index)).join('');section.querySelector('[data-member-description]').textContent='以下会员方案来自服务器当前发布的商品，按具体服务范围与有效期选择。';section.querySelector('[data-member-status]').textContent='价格与有效期已核对 · 付款前请再次确认';const notice=dashboard.querySelector('.commerce-center-availability');notice.querySelector('span').innerHTML=icon('shield',16)+'会员商品';notice.querySelector('p').textContent='会员价格、有效期与服务说明已发布，收银台会再次核验。当前不启用自动续费。';
  },()=>{section.querySelector('[data-member-status]').textContent='正式会员信息暂未取得 · 当前仅展示参考方案';});
