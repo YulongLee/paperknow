@@ -410,20 +410,12 @@
 }
 @media(prefers-reduced-motion:reduce){.dashboard :is(.member-stats a,.settings-side-nav a,.help-category){transition:none}}
 
-/* Account exports and browser backups stay visibly separate. */
-.dashboard .settings-account-export{padding:22px;border:1px solid var(--pk-border,#e5ebf3);border-radius:13px;background:var(--pk-surface-soft,#f6f8fc);margin:24px 0}
-.dashboard .settings-data-heading{display:flex;align-items:center;gap:12px}
-.dashboard .settings-data-heading>div{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.dashboard .settings-data-heading h3{margin:0;font-size:16px}
-.dashboard .settings-data-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:11px;background:var(--pk-blue-soft,#edf4ff);color:var(--pk-blue,#246bfd);flex-shrink:0}
-.dashboard .settings-account-export p,.dashboard .settings-privacy-note p{font-size:13px;line-height:1.85;color:var(--pk-muted,#64748b)}
-.dashboard .settings-account-export small{display:block;font-size:12px;line-height:1.8;color:var(--pk-muted,#64748b)}
+/* Account data uses the shared file-management entry. */
+.dashboard .settings-privacy-note p{font-size:13px;line-height:1.85;color:var(--pk-muted,#64748b)}
 .dashboard .settings-data-actions{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:16px 0}
 .dashboard .settings-data-actions a{font-size:13px;line-height:1.8}
-.dashboard #settings-account-status{min-height:20px;font-size:12px;color:var(--pk-blue,#246bfd);overflow-wrap:anywhere;margin:10px 0}
-.dashboard #settings-account-status.error{color:var(--pk-error,#bc3b4b)}
 .dashboard .settings-privacy-note{margin-top:26px;padding-top:18px;border-top:1px solid var(--pk-border,#e5ebf3)}
-@media(max-width:480px){.dashboard .settings-account-export{padding:17px}.dashboard .settings-data-actions{gap:12px}.dashboard .settings-data-actions .btn{width:100%}}
+@media(max-width:480px){.dashboard .settings-data-actions{gap:12px}.dashboard .settings-data-actions .btn{width:100%}}
 
 /* One help page keeps guides, feedback and progress together. */
 .dashboard .help-unified,.dashboard .help-knowledge{display:grid;gap:24px;min-width:0;align-content:start}

@@ -1,4 +1,3 @@
-import {mockArtifactFetch} from './fixtures/artifact-session.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
@@ -21,7 +20,7 @@ test('data and privacy uses one account flow without legacy local backup or rest
    assert.equal(document.querySelector('input[type=file],#settings-export,#settings-file,#settings-import-preview'),null);
    assert.doesNotMatch(document.querySelector('.dashboard').textContent,/本地工作空间|本地体验资料|账户与本地资料|从本地备份恢复|导出本地/);
    for(const href of ['#projects','#assets','#tasks','#account','#help'])assert.ok(document.querySelector('.settings-main a[href="'+href+'"]'));
-   assert.equal(document.querySelector('a[href*="scope=local"]'),null);assert.ok(document.querySelector('#settings-account-export'));
+   assert.equal(document.querySelector('a[href*="scope=local"]'),null);assert.equal(document.querySelector('#settings-account-export,.settings-account-export,#settings-account-status'),null);assert.doesNotMatch(document.querySelector('.settings-main').textContent,/资料包|JSON/);
    assert.equal(m.settingsHasWork(),false);assert.equal(localStorage.getItem('paperknow-projects'),saved);assert.equal(localStorage.getItem('paperknow-preferences'),'corrupt-preference');
   }
   assert.equal(localExports,0);assert.equal(restores,0);
@@ -41,31 +40,10 @@ test('editing one settings category preserves other windows changes and blocks c
  }finally{m.clearSettingsWork();dom.window.close();}
 });
 
-test('account archive export downloads only a valid authenticated archive and never changes browser records',async()=>{
+test('a replaced settings page ignores stale reset confirmations',async()=>{
  const {dom,ctx}=settingsEnvironment(),m=await import('../dist/workspace/settings.mjs');
- const request=globalThis.fetch,create=URL.createObjectURL,revoke=URL.revokeObjectURL,click=window.HTMLAnchorElement.prototype.click;let blob,downloads=0;const calls=[];
- const archive={format:'paperknow-account-archive',version:1,scope:'account',exportedAt:'2026-10-16',account:{id:'account-1',name:'当前账户'},projects:[{id:'p1',title:'真实项目'}],drafts:[],files:[],results:[],jobs:[],feedback:[]};
- try{
-  localStorage.setItem('paperknow-projects','[{"id":"local-1","name":"本地保留"}]');URL.createObjectURL=value=>{blob=value;return 'blob:archive';};URL.revokeObjectURL=()=>{};window.HTMLAnchorElement.prototype.click=()=>downloads++;
-  globalThis.fetch=mockArtifactFetch(async(path,options)=>{calls.push([path,options]);return {ok:true,json:async()=>archive};},{userId:'account-1'});m.mountSettings(ctx,'data');await document.querySelector('#settings-account-export').onclick();
-  assert.equal(downloads,1);assert.deepEqual(JSON.parse(await blob.text()),archive);assert.equal(calls[0][0],'/api/account/export');assert.equal(calls[0][1].credentials,'same-origin');assert.equal(calls[0][1].cache,'no-store');assert.match(document.querySelector('#settings-account-status').textContent,/已发起.*下载/);assert.match(document.querySelector('.settings-account-export').textContent,/原件文件与生成文件的实际内容需在文件管理中另外下载/);assert.match(document.querySelector('.settings-account-export').textContent,/JSON 格式/);assert.equal(document.querySelector('input[type=file]'),null);assert.match(localStorage.getItem('paperknow-projects'),/本地保留/);
-  for(const response of [{ok:false,status:401,json:async()=>({error:'Unauthorized'})},{ok:false,status:413,json:async()=>({error:'账户资料超过 100 MB，请分项导出'})},{ok:true,json:async()=>({...archive,scope:'local'})}]){globalThis.fetch=async()=>response;await document.querySelector('#settings-account-export').onclick();assert.equal(downloads,1);assert.equal(document.querySelector('#settings-account-status').classList.contains('error'),true);assert.doesNotMatch(document.querySelector('#settings-account-status').textContent,/已发起/);assert.equal(document.querySelector('#settings-account-export').disabled,false);}
- }finally{globalThis.fetch=request;URL.createObjectURL=create;URL.revokeObjectURL=revoke;window.HTMLAnchorElement.prototype.click=click;m.clearSettingsWork();dom.window.close();}
-});
-
-test('leaving settings during an account export aborts the request without downloading late data',async()=>{
- const {dom,ctx}=settingsEnvironment(),m=await import('../dist/workspace/settings.mjs'),request=globalThis.fetch;let finish,signal;
- try{globalThis.fetch=async(_,options)=>{signal=options.signal;return new Promise(resolve=>{finish=resolve;});};m.mountSettings(ctx,'data');const pending=document.querySelector('#settings-account-export').onclick();assert.equal(m.settingsHasWork(),true);m.clearSettingsWork();assert.equal(signal.aborted,true);finish({ok:true,json:async()=>({})});await pending;assert.equal(m.settingsHasWork(),false);}finally{globalThis.fetch=request;m.clearSettingsWork();dom.window.close();}
-});
-
-test('a replaced data page ignores late archive errors and stale reset confirmations',async()=>{
- const {dom,ctx}=settingsEnvironment(),m=await import('../dist/workspace/settings.mjs'),request=globalThis.fetch;let finish;
  try{
   ctx.modal=(_,html)=>document.querySelector('#workspace-dialog-body').innerHTML=html;
-  globalThis.fetch=async()=>new Promise((resolve,reject)=>finish=()=>reject(Error('old archive failure')));
-  m.mountSettings(ctx,'data');const pending=document.querySelector('#settings-account-export').onclick();
-  m.mountSettings(ctx,'writing');const field=document.querySelector('#setting-major');field.value='保留新页面输入';field.dispatchEvent(new window.Event('input',{bubbles:true}));const message=document.querySelector('#settings-status').textContent;finish();await pending;
-  assert.equal(document.querySelector('#setting-major').value,'保留新页面输入');assert.equal(document.querySelector('#settings-status').textContent,message);
   m.mountSettings(ctx);document.querySelector('#settings-reset').click();const oldConfirmation=document.querySelector('#confirm-settings-reset');m.mountSettings(ctx,'writing');document.querySelector('#setting-major').value='新页面未保存专业';oldConfirmation.click();assert.equal(document.querySelector('#setting-major').value,'新页面未保存专业');assert.equal(localStorage.getItem('paperknow-preferences'),null);
- }finally{globalThis.fetch=request;m.clearSettingsWork();dom.window.close();}
+ }finally{m.clearSettingsWork();dom.window.close();}
 });
