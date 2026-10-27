@@ -10,7 +10,7 @@ import {createServer} from '../server.mjs';
 const origin='https://paperknow.cn';
 const refreshedPages=new Set(['/','/features/ai-writing/','/features/ai-reading/','/features/reduce-ai/','/features/similarity-check/','/features/ppt/','/guides/paper-outline/','/guides/research-ppt/','/guides/research-charts/','/about/','/help/','/status/']);
 const formatUpdatedPages=new Set(['/','/features/format/','/guides/docx-format/','/about/','/status/']);
-const expectedModifiedAt=slug=>['/features/similarity-check/','/privacy/'].includes(slug)?'2026-10-27':slug==='/features/ai-writing/'?'2026-10-25':formatUpdatedPages.has(slug)?'2026-10-22':refreshedPages.has(slug)?'2026-10-21':['/features/research-tools/','/privacy/'].includes(slug)?'2026-10-19':['/features/','/guides/'].includes(slug)?'2026-10-15':'2026-10-18';
+const expectedModifiedAt=slug=>['/help/','/privacy/'].includes(slug)?'2026-10-28':slug==='/features/similarity-check/'?'2026-10-27':slug==='/features/ai-writing/'?'2026-10-25':formatUpdatedPages.has(slug)?'2026-10-22':refreshedPages.has(slug)?'2026-10-21':['/features/research-tools/','/privacy/'].includes(slug)?'2026-10-19':['/features/','/guides/'].includes(slug)?'2026-10-15':'2026-10-18';
 const features={
   'ai-writing':'writing','ai-reading':'literature','reduce-similarity':'reduce',
   'reduce-ai':'aigc','similarity-check':'detection','ppt':'ppt',
@@ -117,7 +117,7 @@ test('homepage metadata describes shipped research workflows and keeps its own m
   const data=JSON.parse(document.querySelector('script[type="application/ld+json"]').textContent)['@graph'];
   assert.equal(data.find(node=>node['@type']==='WebPage').dateModified,'2026-10-22');
   assert.match(data.find(node=>node['@type']==='WebApplication').description,/毕业论文五步确认与分章生成/);
-  assert.equal(pages.get('/privacy/').document.querySelector('.public-updated').textContent.includes('2026-10-27'),true);
+  assert.equal(pages.get('/privacy/').document.querySelector('.public-updated').textContent.includes(expectedModifiedAt('/privacy/')),true);
   assert.equal(pages.get('/terms/').document.querySelector('.public-updated').textContent.includes('2026-10-18'),true);
 });
 
