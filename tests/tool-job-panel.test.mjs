@@ -9,7 +9,55 @@ const originalSnapshot=()=>({title:'【合成验收】科研方法演示',text:'
 const quote=()=>({type:'agent',source:'credits',title:'演示文稿创作',token:'fixture-quote',creditCost:10,expiresAt:new Date(Date.now()+60000).toISOString()});
 const completedJob=(id='job-alice')=>({id,kind:'presentation',operation:'ppt',status:'completed',completedUnits:1,totalUnits:1,output:{text:'仅属于原账户的合成验收内容',slides:[],sourceIds:[]}});
 const until=async check=>{for(let i=0;i<100;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}assert.ok(check(),'异步界面未达到预期状态');};
-function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),initialOwner='alice',kind='presentation',operation='ppt',initialProjectRef='',getQuote=quote,beforeApi=async()=>{}}={}){
+
+test('opted-in direct results apply and persist once without another adoption click or paid request',async t=>{
+ const f=fixture(t,{autoApply:true,getAdoptionKey:()=> 'unchanged-editor'});await f.panel.generate();
+ assert.equal(f.applies(),1);assert.equal(f.panel.getState().appliedJobId,'job-alice');assert.equal(f.container.querySelector('[data-tj-apply]'),null);
+ assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,1);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/quote').length,1);
+ await f.panel.refresh();const state=f.panel.getState();f.panel.dispose();await f.mount(state).open();assert.equal(f.applies(),1);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,1);
+});
+
+test('automatic adoption rechecks edits after durable state saving and preserves manual fallback',async t=>{
+ let text='initial',release,entered=false,block=true;
+ const f=fixture(t,{autoApply:true,getAdoptionKey:()=>text,onPersist:state=>{if(state.appliedJobId&&block){block=false;entered=true;return new Promise(resolve=>{release=resolve;});}}});
+ const generating=f.panel.generate();await until(()=>entered);text='user edited while saving';release();await generating;
+ assert.equal(f.applies(),0);assert.equal(f.panel.getState().appliedJobId,undefined);assert.match(f.container.textContent,/保留当前编辑/);assert.ok(f.container.querySelector('[data-tj-apply]'));
+ f.click('[data-tj-apply]');await until(()=>f.applies()===1);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,1);
+});
+
+test('failed automatic result saving rolls back adoption and can retry without regenerating',async t=>{
+ let fail=true;
+ const f=fixture(t,{autoApply:true,onPersist:state=>{if(state.appliedJobId&&fail){fail=false;return false;}}});await f.panel.generate();
+ assert.equal(f.applies(),0);assert.equal(f.panel.getState().appliedJobId,undefined);assert.match(f.container.textContent,/保存状态未能记录/);
+ f.click('[data-tj-apply]');await until(()=>f.applies()===1);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,1);
+});
+
+test('legacy completed jobs lacking an editor guard remain readable and require explicit adoption once',async t=>{
+ const f=fixture(t,{autoApply:true,getAdoptionKey:()=> 'current-editor'});f.panel.dispose();const panel=f.mount(f.stateFor());await panel.open();
+ assert.equal(f.applies(),0);assert.ok(f.container.querySelector('[data-tj-apply]'));assert.equal(f.requests.some(r=>r.path==='/tool-runs/quote'||r.path==='/tool-runs/jobs'),false);
+ f.click('[data-tj-apply]');await until(()=>f.applies()===1);
+});
+
+test('a session change during automatic result saving cannot adopt original account output',async t=>{
+ let f;f=fixture(t,{autoApply:true,onPersist:state=>{if(state.appliedJobId)f.setOwner('bob');}});await f.panel.generate();
+ assert.equal(f.applies(),0);assert.doesNotMatch(f.container.textContent,/仅属于原账户的合成验收内容/);assert.equal(f.panel.getState().appliedJobId,undefined);
+});
+
+test('healthy task progress needs no manual refresh button but a read failure exposes recovery',async t=>{
+ let fail=false;const running={...completedJob(),status:'running',output:null};
+ const f=fixture(t,{initialJob:running,beforeApi:path=>{if(fail&&path==='/tool-runs/jobs/job-alice')throw Error('进度读取暂时中断');}});
+ await f.panel.generate();assert.equal(f.container.querySelector('[data-tj-refresh]').hidden,true);assert.equal(f.container.querySelector('[data-tj-cancel]').hidden,false);
+ fail=true;await f.panel.refresh();assert.equal(f.container.querySelector('[data-tj-refresh]').hidden,false);assert.match(f.container.textContent,/进度读取暂时中断/);
+ fail=false;await f.panel.refresh();assert.equal(f.container.querySelector('[data-tj-refresh]').hidden,true);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,1);
+});
+
+test('new-generation cleanup never changes an already active recovered task',async t=>{
+ let preparations=0;const running={...completedJob(),status:'running',output:null};
+ const f=fixture(t,{initialJob:running,beforeGenerate:()=>{preparations++;}});f.panel.dispose();const panel=f.mount(f.stateFor());await panel.generate();
+ assert.equal(preparations,0);assert.equal(f.requests.some(r=>r.path==='/tool-runs/quote'||r.path==='/tool-runs/jobs'),false);
+ assert.deepEqual(panel.getState().snapshot,originalSnapshot());
+});
+function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),initialOwner='alice',kind='presentation',operation='ppt',initialProjectRef='',getQuote=quote,beforeApi=async()=>{},autoApply=false,getAdoptionKey,onPersist,beforeGenerate}={}){
  const dom=new JSDOM('<main class="dashboard"><div id="job"></div></main>',{url:'https://paperknow.cn/workspace.html#category/ppt'}),w=dom.window,container=w.document.querySelector('#job');
  let ownerId=initialOwner,projectRef=initialProjectRef,snapshot=originalSnapshot(),job=structuredClone(initialJob),applies=0;const requests=[],states=[],instances=[];
  const api=async(path,data)=>{await beforeApi(path,data);requests.push({path,data:data===undefined?undefined:structuredClone(data),ownerId});
@@ -21,7 +69,7 @@ function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),ini
   if(path==='/tool-runs/jobs/'+job.id){if(!job.id.endsWith(ownerId))throw Object.assign(Error('任务不存在'),{status:404});return {item:structuredClone(job)};}
   throw Error('测试不允许的请求 '+path);
  };
- const options={container,kind,operation,getSnapshot:()=>snapshot,getProjectRef:()=>projectRef,ctx:{api},onStateChange:state=>states.push(structuredClone(state)),onApply:async(output,item)=>{applies++;return onApply(output,item);}};
+ const options={container,kind,operation,autoApply,getAdoptionKey,beforeGenerate,getSnapshot:()=>snapshot,getProjectRef:()=>projectRef,ctx:{api},onStateChange:state=>{states.push(structuredClone(state));return onPersist?.(state);},onApply:async(output,item)=>{applies++;return onApply(output,item);}};
  const mount=state=>{const panel=mountToolJobPanel({...options,initialState:state});instances.push(panel);return panel;};const panel=mount(initialState);
  t.after(()=>{for(const instance of instances)instance.dispose();w.close();});
  const stateFor=(value=originalSnapshot(),id='job-alice',owner='alice')=>({snapshot:structuredClone(value),contextKey:JSON.stringify(value),ownerId:owner,itemId:id,commandKey:'old-command-key'});
@@ -154,10 +202,10 @@ test('tool explanation stays open through an unchanged-input redraw and a fresh 
 
 test('active tool progress updates keep the waiting window, controls and focus in place',async t=>{
  const running={...completedJob(),status:'queued',output:null,completedUnits:0,totalUnits:4};
- const f=fixture(t,{initialJob:running});await f.panel.open();f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-refresh]'));
- const window=f.container.querySelector('[data-tj-result]'),title=f.container.querySelector('[data-tj-wait-title]'),refresh=f.container.querySelector('[data-tj-refresh]');refresh.focus();window.scrollTop=37;
+ const f=fixture(t,{initialJob:running});await f.panel.open();f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-cancel]'));
+ const window=f.container.querySelector('[data-tj-result]'),title=f.container.querySelector('[data-tj-wait-title]'),refresh=f.container.querySelector('[data-tj-cancel]');refresh.focus();window.scrollTop=37;
  f.setJob({...running,status:'running',completedUnits:2,progress:{stage:'authoring',currentPage:2,totalPages:6}});await f.panel.refresh();
- assert.equal(f.container.querySelector('[data-tj-result]'),window);assert.equal(f.container.querySelector('[data-tj-wait-title]'),title);assert.equal(f.container.querySelector('[data-tj-refresh]'),refresh);assert.equal(f.w.document.activeElement,refresh);assert.equal(window.scrollTop,37);
+ assert.equal(f.container.querySelector('[data-tj-result]'),window);assert.equal(f.container.querySelector('[data-tj-wait-title]'),title);assert.equal(f.container.querySelector('[data-tj-cancel]'),refresh);assert.equal(f.w.document.activeElement,refresh);assert.equal(window.scrollTop,37);
  assert.equal(title.textContent,'正在处理');assert.match(f.container.querySelector('[data-tj-units]').textContent,/2 \/ 4/);assert.match(f.container.querySelector('[data-tj-wait-detail]').textContent,/制作演示页面/);assert.match(f.container.textContent,/自动更新，无需重复点击/);assert.equal(refresh.disabled,false);
  f.setJob({...completedJob(),completedUnits:4,totalUnits:4});await f.panel.refresh();assert.ok(f.container.querySelector('[data-tj-result].generation-result-window'));assert.ok(f.container.querySelector('[data-tj-preview]'));assert.equal(f.container.querySelector('.generation-wait-spinner'),null);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,1);
 });
@@ -166,8 +214,8 @@ test('automatic tool polling neither replaces the panel nor disables its control
  let release,blocked=false;const running={...completedJob(),status:'running',output:null,completedUnits:0};
  const f=fixture(t,{initialJob:running,beforeApi:path=>blocked&&path==='/tool-runs/jobs/job-alice'?new Promise(resolve=>{release=resolve;}):Promise.resolve()}),timers=[];
  const realTimeout=f.w.setTimeout.bind(f.w);f.w.setTimeout=(callback,delay,...args)=>delay===2500?(timers.push(callback),realTimeout(()=>{},100000)):realTimeout(callback,delay,...args);
- await f.panel.open();f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-refresh]'));const panel=f.container.firstElementChild,refresh=f.container.querySelector('[data-tj-refresh]');blocked=true;timers.at(-1)();await until(()=>!!release);
- assert.equal(f.container.firstElementChild,panel);assert.equal(refresh.disabled,false);release();await until(()=>timers.length>1);assert.equal(f.container.firstElementChild,panel);assert.equal(f.container.querySelector('[data-tj-refresh]'),refresh);
+ await f.panel.open();f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-cancel]'));const panel=f.container.firstElementChild,refresh=f.container.querySelector('[data-tj-cancel]');blocked=true;timers.at(-1)();await until(()=>!!release);
+ assert.equal(f.container.firstElementChild,panel);assert.equal(refresh.disabled,false);release();await until(()=>timers.length>1);assert.equal(f.container.firstElementChild,panel);assert.equal(f.container.querySelector('[data-tj-cancel]'),refresh);
 });
 
 test('submission immediately shows a waiting state and blocks repeated starts until the response arrives',async t=>{

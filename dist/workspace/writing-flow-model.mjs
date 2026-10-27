@@ -2,11 +2,11 @@ import {applyOutlinePresentationRecommendations} from './outline-content-recomme
 import {isOutlineReferenceChapter} from './outline-word-budget.mjs';
 import {writingStandardBrief} from './writing-standard.mjs';
 export const writingFlowSpecs=Object.freeze({
- proposal:{title:'开题报告',steps:['基础信息填写','精准知识补充','确定参考文献','确定开题提纲','确认生成版本'],panels:['basic','materials','references','outline','result'],outline:['选题背景与研究意义','研究目标与内容','拟采用的方法与技术路线','研究计划与预期成果']},
- summary:{title:'文献综述',steps:['基础信息填写','确定参考文献','确定综述提纲','确认生成版本'],panels:['basic','references','outline','result'],outline:['综述范围与检索方法','主要研究主题与证据比较','研究局限与未来方向']},
- taskbook:{title:'任务书',steps:['基础信息填写','确定参考文献','确定任务书提纲','确认生成版本'],panels:['basic','references','outline','result'],outline:['任务背景与目标','主要任务与技术要求','进度安排与交付成果']},
- article:{title:'期刊文章',steps:['基础信息填写','精准知识补充','确定参考文献','确定期刊提纲','确认生成版本'],panels:['basic','materials','references','outline','result'],outline:['研究背景与问题','研究依据与方法','讨论、局限与结论']},
- course:{title:'课程作业',steps:['基础信息填写','精准知识补充','确定参考文献','确定课程提纲','确认生成版本'],panels:['basic','materials','references','outline','result'],outline:['任务理解与问题界定','资料与案例分析','讨论与学习总结']},
+ proposal:{title:'开题报告',steps:['基础信息填写','精准知识补充','确定参考文献','确定开题提纲','生成与导出'],panels:['basic','materials','references','outline','result'],outline:['选题背景与研究意义','研究目标与内容','拟采用的方法与技术路线','研究计划与预期成果']},
+ summary:{title:'文献综述',steps:['基础信息填写','确定参考文献','确定综述提纲','生成与导出'],panels:['basic','references','outline','result'],outline:['综述范围与检索方法','主要研究主题与证据比较','研究局限与未来方向']},
+ taskbook:{title:'任务书',steps:['基础信息填写','确定参考文献','确定任务书提纲','生成与导出'],panels:['basic','references','outline','result'],outline:['任务背景与目标','主要任务与技术要求','进度安排与交付成果']},
+ article:{title:'期刊文章',steps:['基础信息填写','精准知识补充','确定参考文献','确定期刊提纲','生成与导出'],panels:['basic','materials','references','outline','result'],outline:['研究背景与问题','研究依据与方法','讨论、局限与结论']},
+ course:{title:'课程作业',steps:['基础信息填写','精准知识补充','确定参考文献','确定课程提纲','生成与导出'],panels:['basic','materials','references','outline','result'],outline:['任务理解与问题界定','资料与案例分析','讨论与学习总结']},
  practice:{title:'实践报告',steps:['基础信息填写','生成实践报告'],panels:['basic','result'],outline:['实践目标与实际过程','实践观察、反思与改进']},
  idea:{title:'课题思路',steps:['基础信息填写','获得题目及研究思路'],panels:['basic','ideas'],outline:[]},
 });

@@ -16,7 +16,7 @@ test('writing catalog preserves all ten real routes and groups while giving each
 });
 
 test('recommended workflow is a real start link with five descriptive steps and an explicitly illustrative document preview',()=>{
- const dom=new JSDOM(catalogNav('writing'));try{const doc=dom.window.document;assert.equal(doc.querySelector('.writing-recommendation-cta').getAttribute('href'),'#tool/writing');assert.deepEqual([...doc.querySelectorAll('.writing-recommendation-steps li>b')].map(node=>node.textContent),['基础信息','资料补充','文献确认','提纲确认','版本预览']);assert.match(doc.querySelector('.writing-recommendation-preview').getAttribute('aria-label'),/示意，并非已生成成果/);assert.match(doc.querySelector('.writing-preview-paper').textContent,/结构示意/);assert.equal(doc.querySelector('.writing-recommendation [aria-current="step"]'),null);assert.equal(doc.querySelector('.writing-recommendation img'),null);}finally{dom.window.close();}
+ const dom=new JSDOM(catalogNav('writing'));try{const doc=dom.window.document;assert.equal(doc.querySelector('.writing-recommendation-cta').getAttribute('href'),'#tool/writing');assert.deepEqual([...doc.querySelectorAll('.writing-recommendation-steps li>b')].map(node=>node.textContent),['基础信息','资料补充','文献确认','提纲确认','生成与导出']);assert.match(doc.querySelector('.writing-recommendation-preview').getAttribute('aria-label'),/示意，并非已生成成果/);assert.match(doc.querySelector('.writing-preview-paper').textContent,/结构示意/);assert.equal(doc.querySelector('.writing-recommendation [aria-current="step"]'),null);assert.equal(doc.querySelector('.writing-recommendation img'),null);}finally{dom.window.close();}
 });
 
 test('catalog retention restores one current task when returning to writing without marking the promotional CTA current',()=>{

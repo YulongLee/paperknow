@@ -53,3 +53,10 @@ export function normalizeAIQuestionnaire(output,requirements={}){
  });
  return{title:text(output.title,200,'问卷标题'),introduction:text(output.introduction,2000,'问卷说明'),questions};
 }
+
+// A compact editor change detector only; it never authorizes access or verifies evidence.
+export function questionnaireEditorKey(content){
+ const questions=(content.questions||[]).map(q=>({id:q.id,type:q.type,title:q.title,options:q.options||[],required:q.required===true}));const text=JSON.stringify({questions,introduction:content.introduction||''});let left=2166136261,right=2654435769;
+ for(let i=0;i<text.length;i++){const point=text.charCodeAt(i);left=Math.imul(left^point,16777619);right=Math.imul(right^point,2246822519);}
+ return 'q1:'+text.length+':'+(left>>>0).toString(16)+':'+(right>>>0).toString(16);
+}
