@@ -7,9 +7,9 @@ const fail=(status,message)=>{throw Object.assign(new Error(message),{status,web
 export function webSimilarityInput(input,user){
  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['text','title','expectedUserId','consent','idempotencyKey','pricingVersion','expectedCreditCost'].includes(k)))fail(400,'查重请求包含不支持的字段。');
  if(input.expectedUserId!==user.id)fail(409,'登录账户已变化，请刷新后重新确认正文。');
- if(input.consent!==true)fail(400,'请先确认将选取的正文片段发送至联网检索服务。');
+ if(input.consent!==true)fail(400,'请确认提交本次论文检测。');
  if(typeof input.idempotencyKey!=='string'||!/^[-A-Za-z0-9_]{8,100}$/.test(input.idempotencyKey))fail(400,'请求编号无效，请刷新页面。');
- if(typeof input.text!=='string'||input.text.length>40000||Array.from(input.text).length>webSimilarityLimits.maxCharacters||/[\x00\ud800-\udfff]/u.test(input.text))fail(400,'联网查重最多支持 20,000 个字符，请按章节提交。');
+ if(typeof input.text!=='string'||input.text.length>40000||Array.from(input.text).length>webSimilarityLimits.maxCharacters||/[\x00\ud800-\udfff]/u.test(input.text))fail(400,'论文重复率检测最多支持 20,000 个字符，请按章节提交。');
  const text=input.text.trim(),title=typeof input.title==='string'?input.title.trim():'未命名论文';
  if(!title||title.length>200||/[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/.test(title))fail(400,'请填写不超过 200 字符的文稿名称。');
  let parsed;try{parsed=parseDocument(text,title);}catch{fail(400,'未找到可比对的正文，请核对上传或粘贴的内容。');}
@@ -24,7 +24,7 @@ export function webSimilarityInput(input,user){
 // claim that every sentence or every public page was searched.
 export function planWebQueries(parsed){
  const plan=publicWebQueryPlan(parsed,webSimilarityLimits.maxQueries);
- if(!plan.queries.length)fail(400,'正文片段过短，暂不能进行联网检索，请合并为完整段落。');
+ if(!plan.queries.length)fail(400,'正文段落过短，请合并为完整段落后再提交。');
  return plan;
 }
 

@@ -4,7 +4,7 @@ import {workspaceJobLabel,workspaceJobStatusLabel,workspaceJobActive,workspaceJo
 
 test('specialized research jobs retain truthful names and their exact recovery route',()=>{
  for(const [row,label,href]of[
-  [{id:'web-owned',type:'web_similarity'},'联网来源查重','#category/detection?view=web&report=web-owned'],
+  [{id:'web-owned',type:'web_similarity'},'论文重复率检测','#category/detection?view=web&report=web-owned'],
   [{id:'aigc-owned',type:'aigc_detection'},'AI 文本鉴别','#category/detection?view=ai&report=aigc-owned'],
   [{id:'thesis-job',type:'thesis',thesis_id:'owned-thesis'},'毕业论文撰写','#thesis/owned-thesis'],
   [{type:'writing',writing_kind:'proposal',writing_operation:'outline'},'开题报告 · 提纲生成','#tool/proposal'],

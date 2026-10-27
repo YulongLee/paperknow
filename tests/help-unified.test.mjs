@@ -7,7 +7,7 @@ import {helpKnowledgeMarkup,bindHelpKnowledge} from '../dist/workspace/help.mjs'
 import {supportContactsMarkup,bindSupportContacts} from '../dist/workspace/support-contacts.mjs';
 import {esc,icon} from '../dist/workspace/ui.mjs';
 import {withStableView} from '../dist/workspace/view-stability.mjs';
-import {workspaceJobLabel,workspaceJobStatusLabel,workspaceJobActive} from '../dist/workspace/workspace-job-model.mjs';
+import {workspaceJobLabel,workspaceResultTitle,workspaceJobError,workspaceJobStatusLabel,workspaceJobActive} from '../dist/workspace/workspace-job-model.mjs';
 
 const onlineCode=(await readFile(new URL('../dist/workspace/online-workspace.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
@@ -17,7 +17,7 @@ async function fixture(t,{guest=false,sessionFailure=false}={}){
  for(const key of ['window','document','location','localStorage','MutationObserver'])globalThis[key]=w[key];
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
  const calls=[],notices=[];let expired=false,identity=guest?null:{id:'help-owner'},sessionUnavailable=sessionFailure,sessionReads=0,records=[{id:'feedback-1',category:'使用咨询',body:'已有的账户反馈',status:'processing',created_at:'2026-10-23T00:00:00Z'}];
- Object.assign(w,{esc,icon,workspaceJobLabel,workspaceJobStatusLabel,workspaceJobActive,withStableView,renderOnlinePersonal,helpKnowledgeMarkup,bindHelpKnowledge,supportContactsMarkup,bindSupportContacts});
+ Object.assign(w,{esc,icon,workspaceJobLabel,workspaceResultTitle,workspaceJobError,workspaceJobStatusLabel,workspaceJobActive,withStableView,renderOnlinePersonal,helpKnowledgeMarkup,bindHelpKnowledge,supportContactsMarkup,bindSupportContacts});
  w.fetch=async(path,options={})=>{
   const body=options.body?JSON.parse(options.body):undefined;calls.push({path,body,options});
   if(path==='/api/auth/me')return {ok:true,status:200,json:async()=>({user:identity})};

@@ -33,8 +33,8 @@ export function startWebSimilarityWorker(db,config={}){
   const timer=setTimeout(()=>controller.abort(),300000);timer.unref?.();let attempted=0;const usages=[];
   try{
    if(!db.prepare("UPDATE jobs SET status='running',stage='reading_input',attempt=attempt+1,updated_at=? WHERE id=? AND status='queued'").run(clock(),job.id).changes)return;
-   if(detectionPricing(config.billing,'detection-similarity').pointsCharged&&!includedDetectionHeld(db,job.user_id,job.id,'detection-similarity'))throw safeError('本次检测费用预占已失效，未继续检索；请查看原任务。');
-   if(!webSimilarityReady(config))throw safeError('联网查重暂不可用，请稍后查看任务或联系支持。');
+   if(detectionPricing(config.billing,'detection-similarity').pointsCharged&&!includedDetectionHeld(db,job.user_id,job.id,'detection-similarity'))throw safeError('本次检测费用预占已失效；请查看原任务。');
+   if(!webSimilarityReady(config))throw safeError('论文重复率检测暂不可用，请稍后查看任务或联系支持。');
    const payload=await readWebSimilarityArtifact(db,config,job.input_artifact_id,job.user_id);
    if(payload.version!==1||payload.runId!==job.id||typeof payload.text!=='string'||Array.from(payload.text).length>webSimilarityLimits.maxCharacters||payload.title!==job.title)throw safeError('查重输入文件校验未通过，请重新确认正文。');
    const parsed=parseDocument(payload.text,payload.title),plan=planWebQueries(parsed),search=config.webSimilaritySearch||createWebSimilaritySearch(config),reader=config.webSimilaritySourceReader||createWebSourceReader();
@@ -47,10 +47,10 @@ export function startWebSimilarityWorker(db,config={}){
     stage(job.id,'searching');
     tx(()=>{
      if(!includedDetectionHeld(db,job.user_id,job.id,'detection-similarity')){
-      if(detectionPricing(config.billing,'detection-similarity').pointsCharged||detectionWasFunded(db,job.user_id,job.id,'detection-similarity'))throw safeError('本次检测费用预占已失效，未继续检索。');
+      if(detectionPricing(config.billing,'detection-similarity').pointsCharged||detectionWasFunded(db,job.user_id,job.id,'detection-similarity'))throw safeError('本次检测费用预占已失效，请重新提交。');
       const day=webSimilarityDay(),window={since:day.start,until:day.end};
-      if(detectionTrialSearchCount(db,{...window,userId:job.user_id})>=webSimilarityLimits.userDailyLimit*webSimilarityLimits.maxQueries)throw safeError('今日联网检索次数已达试运行上限，本次未继续检索。');
-      if(detectionTrialSearchCount(db,window)>=webSimilarityLimits.globalDailyLimit*webSimilarityLimits.maxQueries)throw safeError('联网检索今日额度已用完，本次未继续检索。');
+      if(detectionTrialSearchCount(db,{...window,userId:job.user_id})>=webSimilarityLimits.userDailyLimit*webSimilarityLimits.maxQueries)throw safeError('今日试用次数已用完，请稍后再试。');
+      if(detectionTrialSearchCount(db,window)>=webSimilarityLimits.globalDailyLimit*webSimilarityLimits.maxQueries)throw safeError('今日试用额度已用完，请稍后再试。');
      }
      db.prepare('INSERT INTO web_similarity_attempts VALUES(?,?,?,?)').run(job.id,i,job.user_id,clock());
      db.prepare('UPDATE web_similarity_runs SET queries_attempted=queries_attempted+1,updated_at=? WHERE id=?').run(clock(),job.id);
@@ -69,7 +69,7 @@ export function startWebSimilarityWorker(db,config={}){
     coverage.candidateSources=candidates.size;saveCoverage(job.id,coverage);
    }
    if(!active(job.id)||signal.aborted)return;
-   if(!candidates.size)throw safeError('本次未取得可比对的公开来源，不能据此生成 0% 相似度。请调整正文范围或稍后重试。');
+   if(!candidates.size)throw safeError('本次检测未取得足够的比对资料，未生成检测结论。请稍后重试。');
    stage(job.id,'reading_sources');const sources=[],sourceStates=[];
    for(const candidate of [...candidates.values()].slice(0,webSimilarityLimits.maxSources)){
     if(!active(job.id)||signal.aborted)return;
@@ -81,7 +81,7 @@ export function startWebSimilarityWorker(db,config={}){
     }catch(error){if(signal.aborted||!active(job.id))return;sourceStates.push({url:error?.code==='web_source_invalid_url'?'':candidate.url,title:candidate.title,status:'unavailable',error:'未能取得可比对正文，未计入相似度。'});}
     coverage.fetchedSources=sources.length;coverage.failedSources=sourceStates.filter(s=>s.status==='unavailable').length;saveCoverage(job.id,coverage);
    }
-   if(!sources.length)throw safeError('候选来源均未取得可比对原文，本次未生成相似度。登录、付费、扫描 PDF 或访问受限网页不作为已核验来源。');
+   if(!sources.length)throw safeError('本次检测未取得足够的比对资料，未生成检测结论。请稍后重试。');
    if(!active(job.id)||signal.aborted)return;
    coverage.searchComplete=searches.length===plan.queries.length&&searches.every(s=>s.searched)&&!coverage.failedSources&&candidates.size<=webSimilarityLimits.maxSources;
    stage(job.id,'comparing');
@@ -97,25 +97,25 @@ export function startWebSimilarityWorker(db,config={}){
     ...(!coverage.searchComplete?['部分检索或网页读取未完成，或候选数量超出本次读取上限；本结果的来源范围受限。']:[])
    ]};
    stage(job.id,'saving_report');saveCoverage(job.id,coverage);
-   const jsonId=await saveWebSimilarityArtifact(db,config,job,Buffer.from(JSON.stringify({version:1,report})),webSimilarityFileName(job.title,'_'+job.id+'_联网查重.json'));
+   const jsonId=await saveWebSimilarityArtifact(db,config,job,Buffer.from(JSON.stringify({version:1,report})),webSimilarityFileName(job.title,'_'+job.id+'_论文重复率检测.json'));
    db.prepare('UPDATE web_similarity_runs SET report_artifact_id=? WHERE id=?').run(jsonId,job.id);
    if(!active(job.id)||signal.aborted)return;
-   const htmlId=await saveWebSimilarityArtifact(db,config,job,Buffer.from(reportHtml(report)),webSimilarityFileName(job.title,'_'+job.id+'_联网查重.html'));
+   const htmlId=await saveWebSimilarityArtifact(db,config,job,Buffer.from(reportHtml(report)),webSimilarityFileName(job.title,'_'+job.id+'_论文重复率检测.html'));
    db.prepare('UPDATE web_similarity_runs SET html_artifact_id=? WHERE id=?').run(htmlId,job.id);
    if(!active(job.id)||signal.aborted)return;
    tx(()=>{
     if(!active(job.id))return;
     const id=randomUUID(),at=clock();
-    db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(id,job.user_id,null,job.id,'web_similarity',job.title+' · 联网来源查重',JSON.stringify({webSimilarityId:job.id,reportId:job.id,characters:report.totalChars,ratio:report.ratio,matchedCharacters:report.similarChars,sourceCount:report.sourceCount,coverage,scope:'本次检索取得的公开网页正文；非全网或学校数据库覆盖'}),at);
+    db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(id,job.user_id,null,job.id,'web_similarity',job.title+' · 论文重复率检测',JSON.stringify({webSimilarityId:job.id,reportId:job.id,characters:report.totalChars,ratio:report.ratio,matchedCharacters:report.similarChars,sourceCount:report.sourceCount,coverage,scope:'本次纳入的比对资料；不保证覆盖全部文献'}),at);
     db.prepare("UPDATE jobs SET status='completed',stage='completed',result_id=?,updated_at=? WHERE id=? AND status='running'").run(id,at,job.id);
     billing.settle(job.id);
    });
   }catch(error){
-   const message=signal.aborted?'本次查重处理超时或被中断，未保存不完整报告，也未自动重新检索。':error?.webSimilaritySafe||error?.moderationSafe?error.message:'联网来源查重未能完成，请稍后查看记录或联系支持；未生成不完整相似度。';
+   const message=signal.aborted?'本次检测超时或中断，未生成完整报告，预占权益将释放。':error?.webSimilaritySafe||error?.moderationSafe?error.message:'论文重复率检测未能完成，请稍后查看记录或联系支持；未生成不完整相似度。';
    tx(()=>{db.prepare("UPDATE jobs SET status='failed',stage='failed',error=?,updated_at=? WHERE id=? AND status='running'").run(message.slice(0,240),clock(),job.id);billing.release(job.id);});
   }finally{
    clearTimeout(timer);
-   tx(()=>{if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status==='running')db.prepare("UPDATE jobs SET status='failed',stage='interrupted',error='查重被中断，未自动重复联网请求，也未生成完整报告。',updated_at=? WHERE id=?").run(clock(),job.id);if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status!=='completed')billing.release(job.id);});
+   tx(()=>{if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status==='running')db.prepare("UPDATE jobs SET status='failed',stage='interrupted',error='本次检测被中断，未生成完整报告，预占权益将释放。',updated_at=? WHERE id=?").run(clock(),job.id);if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status!=='completed')billing.release(job.id);});
    if(attempted){
     db.prepare('UPDATE web_similarity_runs SET usage=?,updated_at=? WHERE id=?').run(JSON.stringify(usages),clock(),job.id);
     const tokens=key=>usages.length===attempted&&usages.every(u=>Number.isSafeInteger(u?.[key])&&u[key]>=0)?usages.reduce((n,u)=>n+u[key],0):null;

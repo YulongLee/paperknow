@@ -62,9 +62,9 @@ test('idempotency and same-input duplicate requests do not resubmit searches or 
 
 test('unavailable source bodies and generated-only URLs never turn into a zero-percent success',async t=>{
  const f=await fixture(t,{webSimilaritySourceReader:async()=>{throw Error('secret upstream diagnostic');}}),id=(await f.submit()).value.item.id;await f.worker.tick();
- assert.equal(f.job(id).status,'failed');assert.match(f.job(id).error,/未取得可比对原文/);assert.doesNotMatch(f.job(id).error,/secret|upstream/);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);assert.equal(f.objects.size,0);
+ assert.equal(f.job(id).status,'failed');assert.match(f.job(id).error,/未取得足够的比对资料/);assert.doesNotMatch(f.job(id).error,/secret|upstream/);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);assert.equal(f.objects.size,0);
  await rejected(f.request('/'+id+'/report'),409);
- const empty=await fixture(t,{webSimilaritySearch:{async search(){return{searched:false,sources:[],usage:{}};}}}),second=(await empty.submit()).value.item.id;await empty.worker.tick();assert.equal(empty.job(second).status,'failed');assert.match(empty.job(second).error,/不能据此生成 0%/);
+ const empty=await fixture(t,{webSimilaritySearch:{async search(){return{searched:false,sources:[],usage:{}};}}}),second=(await empty.submit()).value.item.id;await empty.worker.tick();assert.equal(empty.job(second).status,'failed');assert.match(empty.job(second).error,/未生成检测结论/);
 });
 
 test('partial source failures publish explicit limited coverage without using the failed text in the denominator or hits',async t=>{
