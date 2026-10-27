@@ -50,7 +50,7 @@ test('an old failed five-unit draft resumes only its remaining three units under
 test('an explicit administrator whole-document cap stays binding and cannot be replenished by retries',async t=>{
  const f=fixture(t,{config:{writingMaxRunCostUsd:.5}}),item=await f.submit();await f.worker.tick();assert.equal(f.get(item.id).status,'failed');assert.equal(f.get(item.id).completedUnits,5);assert.equal(f.calls.length,6);const row=f.db.prepare('SELECT * FROM writing_execution_budgets WHERE run_id=?').get(item.id);assert.equal(row.cost_limit_micros,500000);assert.equal(f.billing.balance('alice').balance,200);
 });
-for(const kind of ['proposal','article','taskbook','practice','quick'])test(kind+' uses the same continuous multi-unit path',async t=>{
+for(const kind of ['proposal','article','taskbook','practice'])test(kind+' uses the same continuous multi-unit path',async t=>{
  const f=fixture(t,{kind}),item=await f.submit();await f.worker.tick();assert.equal(f.get(item.id).status,'completed',f.get(item.id).error);assert.equal(f.get(item.id).completedUnits,8);assert.equal(f.billing.balance('alice').balance,190);assert.deepEqual(f.settlements,[item.id]);
 });
 test('a truncated JSON candidate automatically recovers without accepting a malformed checkpoint',async t=>{

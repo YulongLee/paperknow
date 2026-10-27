@@ -1,7 +1,7 @@
 import {toolBanner} from './tool-banner.mjs';
 import {writingFeatureIdentities,getWritingFeatureIdentity,writingFeatureStyle} from './writing-feature-identities.mjs';
 const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-export const catalog=[['writing','毕业论文','论文与报告'],['proposal','开题报告','论文与报告'],['summary','文献综述','论文与报告'],['taskbook','任务书','论文与报告'],['article','期刊文章','论文与报告'],['course','课程作业','论文与报告'],['practice','实践报告','论文与报告'],['idea','课题思路','研究准备'],['questionnaire','问卷设计','研究准备'],['analysis','数据分析','研究准备'],['quick','快速写作','研究准备']];
+export const catalog=[['writing','毕业论文','论文与报告'],['proposal','开题报告','论文与报告'],['summary','文献综述','论文与报告'],['taskbook','任务书','论文与报告'],['article','期刊文章','论文与报告'],['course','课程作业','论文与报告'],['practice','实践报告','论文与报告'],['idea','课题思路','研究准备'],['questionnaire','问卷设计','研究准备'],['analysis','数据分析','研究准备']];
 const descriptions=Object.fromEntries(Object.values(writingFeatureIdentities).map(feature=>[feature.title,feature.description]));
 const capabilityGlyphs={
  writing:{path:'M5 3h10l4 4v14H5zM15 3v5h4M8 12h8M8 16h5'},
@@ -13,8 +13,7 @@ const capabilityGlyphs={
  practice:{path:'M4 7h16v14H4zM8 7V3h8v4M4 12c5 3 11 3 16 0M10 13h4v3h-4z'},
  idea:{path:'M8 15c-5-4-3-12 4-12s9 8 4 12l-1 3H9zM9 21h6M12 8v6M9 11h6'},
  questionnaire:{path:'M5 3h14v18H5zM8 8h1M12 8h4M8 12h1M12 12h4M8 16h1M12 16h4'},
- analysis:{path:'M3 3v18h18M7 17v-5M12 17V7M17 17V4M6 8l5-4 5 1 4-3'},
- quick:{path:'m14 2-10 12h7l-1 8L21 9h-8z'}
+ analysis:{path:'M3 3v18h18M7 17v-5M12 17V7M17 17V4M6 8l5-4 5 1 4-3'}
 };
 function capabilityIcon(key,size=23){return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${capabilityGlyphs[key]?.path||capabilityGlyphs.writing.path}"/></svg>`;}
 const workflowSteps=['基础信息','资料补充','文献确认','提纲确认','版本预览'];

@@ -6,6 +6,9 @@ import {allocateOutlineWordBudget,isOutlineReferenceChapter} from '../dist/works
 import {researchWordCount,checkTextLength} from './text-length.mjs';
 import {requestedIdeaCount,requestedQuestionCount,requestedScalePoints,normalizeAIQuestionnaire} from '../dist/workspace/questionnaire-model.mjs';
 export const writingKinds=Object.freeze({proposal:'开题报告',summary:'文献综述',taskbook:'任务书',article:'期刊文章',course:'课程作业',practice:'实践报告',idea:'课题思路',quick:'快速写作',questionnaire:'问卷设计'});
+// Keep the historic parser/worker identity for saved manuscripts and in-flight runs.
+export const activeWritingKinds=Object.freeze(Object.fromEntries(Object.entries(writingKinds).filter(([key])=>key!=='quick')));
+export function assertNewWritingKind(kind){if(kind==='quick')throw thesisError(410,'快速写作已移除，请在 AI 写作中选择具体场景；已保存文稿仍可查看和导出。');}
 export const writingOperations=Object.freeze(['method','outline','draft','abstract','ideas','questionnaire']);
 const fail=(status,message,code)=>{throw thesisError(status,message,code);};
 const readableWritingSources=evidence=>evidence.sources.filter(source=>source.text.replace(/^【来源 [^\n]*，以下仅为选取片段】\n?/gm,'').replace(/\s/g,'').length>=20);

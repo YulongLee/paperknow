@@ -9,10 +9,11 @@ export const writingFlowSpecs=Object.freeze({
  course:{title:'课程作业',steps:['基础信息填写','精准知识补充','确定参考文献','确定课程提纲','确认生成版本'],panels:['basic','materials','references','outline','result'],outline:['任务理解与问题界定','资料与案例分析','讨论与学习总结']},
  practice:{title:'实践报告',steps:['基础信息填写','生成实践报告'],panels:['basic','result'],outline:['实践目标与实际过程','实践观察、反思与改进']},
  idea:{title:'课题思路',steps:['基础信息填写','获得题目及研究思路'],panels:['basic','ideas'],outline:[]},
- quick:{title:'快速写作',steps:['输入标题 / 关键字','生成摘要','生成提纲','生成文章'],panels:['basic','abstract','outline','result'],outline:['主题与背景','内容展开','讨论与结语']}
 });
 export const writingFlowKind=kind=>kind==='topic'?'idea':kind;
-export function writingFlowSpec(kind){return writingFlowSpecs[writingFlowKind(kind)];}
+// Read/edit compatibility for saved files; never an advertised or new AI scene.
+const legacyQuickSpec=Object.freeze({title:'历史文稿',steps:['输入标题 / 关键字','生成摘要','生成提纲','已保存正文'],panels:['basic','abstract','outline','result'],outline:['主题与背景','内容展开','讨论与结语']});
+export function writingFlowSpec(kind){return writingFlowSpecs[writingFlowKind(kind)]||(kind==='quick'?legacyQuickSpec:undefined);}
 export const flowText=value=>String(value??'').trim();
 const flowLevel=value=>flowText(value)==='科研人员'?'研究工作者':flowText(value)||'本科';
 const flowLanguage=value=>/^(?:英文|英语|english)$/i.test(flowText(value))?'English':flowText(value)||'中文';

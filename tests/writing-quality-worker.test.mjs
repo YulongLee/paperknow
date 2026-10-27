@@ -28,7 +28,7 @@ function fixture(t,extra={}){
  return {db,user,billing,worker,service,config,request,submit,get:id=>service.get(id,user)};
 }
 
-for(const kind of ['proposal','summary','taskbook','article','course','practice','idea','quick'])test(kind+' result retains imported publication metadata for later Word export without retaining source bodies',async t=>{
+for(const kind of ['proposal','summary','taskbook','article','course','practice','idea'])test(kind+' result retains imported publication metadata for later Word export without retaining source bodies',async t=>{
  const ris='TY  - JOUR\nTI  - Synthetic bibliographic study\nAU  - Smith, Jane Mary\nPY  - 2026\nJO  - Synthetic Journal\nVL  - 18\nIS  - 2\nSP  - 101\nEP  - 112\nDO  - 10.1234/synthetic-bibliography\nAB  - Private supplied reading text, not part of the bibliography.\nER  -\n';
  const reference={...parseCitationImport(ris).items[0],id:'r1',confirmed:true},data={...snapshot(),materials:[],references:[reference]},f=fixture(t,{writingQualityEnabled:false,agentTaskRunner:async({task})=>({text:JSON.stringify({complete:true,text:'拟'.repeat(task.context.unit.targetWords)+'[source:r1]',source_ids:['r1'],missing_evidence:[]}),usage:{input:200,output:100},costUsd:.001,trace:[{tool:'read_material',status:'completed',materialId:'r1'}],finishReason:'end_turn'})});
  const item=await f.submit(kind,data);await f.worker.tick();assert.equal(f.get(item.id).status,'completed',JSON.stringify(f.get(item.id)));
@@ -41,7 +41,7 @@ for(const kind of ['proposal','summary','taskbook','article','course','practice'
  assert.ok(xml.includes(citation));assert.match(xml,/w:anchor="PKRef_1"/);assert.doesNotMatch(xml,/\[source:|Private supplied reading text/);
 });
 
-for(const kind of ['proposal','article','quick','taskbook','course','practice','summary'])test(kind+' draft and independent review complete within one purchase without changing the manuscript',async t=>{
+for(const kind of ['proposal','article','taskbook','course','practice','summary'])test(kind+' draft and independent review complete within one purchase without changing the manuscript',async t=>{
  const skills=[],seen=[],f=fixture(t,{agentTaskRunner:async args=>{skills.push(args.task.skill);seen.push(args.settings);if(args.task.skill==='writing-review'){const output=review(args.task);assert.equal(typeof args.validateReviewOutput,'function');assert.equal((await args.validateReviewOutput(output)).valid,true);return output;}const output=draft(args.task);assert.equal(typeof args.validateWritingOutput,'function');assert.equal((await args.validateWritingOutput(output)).valid,true);return output;}});
  const item=await f.submit(kind);assert.equal(f.billing.balance(f.user.id).held,10);await f.worker.tick();const done=f.get(item.id);
  assert.equal(done.status,'completed',JSON.stringify(done));assert.deepEqual(skills,['writing-task','writing-review']);assert.equal(done.output.quality.status,'completed');assert.equal(done.output.quality.coverage.complete,true);assert.equal(done.output.quality.reviews[0].findings[0].grounding,'exact_manuscript_quote');

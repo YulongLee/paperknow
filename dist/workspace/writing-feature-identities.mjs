@@ -11,12 +11,12 @@ const definitions=[
  ['idea','课题思路','研究准备','amber','#c69c4c','获得候选题目与研究思路','选题比较 · 研究思路','选题思路'],
  ['questionnaire','问卷设计','研究准备','lilac','#9b7eb8','从问卷设计到答卷收集与分析','可编辑问卷 · 真实答卷报告','问卷调查'],
  ['analysis','数据分析','研究准备','indigo','#6484b8','上传数据，核对统计与分析结果','真实数据 · 描述统计报告','真实数据'],
- ['quick','快速写作','研究准备','rose','#bf7c8d','从标题到摘要、提纲与文章','摘要提纲 · 可编辑正文','快速起步']
 ];
 const mix=(hex,weight,toward)=>'#'+[1,3,5].map(at=>Math.round(parseInt(hex.slice(at,at+2),16)*weight+toward*(1-weight)).toString(16).padStart(2,'0')).join('');
 export const writingFeatureIdentities=Object.freeze(Object.fromEntries(definitions.map(([key,title,group,tone,accent,description,output,tag])=>[key,Object.freeze({
  key,title,group,tone,accent,soft:mix(accent,.1,255),ink:mix(accent,.68,0),art:`/workspace/assets/writing-${key}-v1.webp`,description,output,tag
 })])));
 export const writingFeatureKeys=Object.freeze(definitions.map(([key])=>key));
-export function getWritingFeatureIdentity(id){const key=id==='topic'?'idea':id;return Object.hasOwn(writingFeatureIdentities,key)?writingFeatureIdentities[key]:writingFeatureIdentities.writing;}
+const legacyQuickIdentity=Object.freeze({...writingFeatureIdentities.writing,key:'quick',title:'历史文稿',description:'查看与编辑已保存的文稿',output:'已保存正文',tag:'历史内容'});
+export function getWritingFeatureIdentity(id){if(id==='quick')return legacyQuickIdentity;const key=id==='topic'?'idea':id;return Object.hasOwn(writingFeatureIdentities,key)?writingFeatureIdentities[key]:writingFeatureIdentities.writing;}
 export function writingFeatureStyle(id){const feature=getWritingFeatureIdentity(id);return `--task-accent:${feature.accent};--task-soft:${feature.soft};--task-ink:${feature.ink}`;}

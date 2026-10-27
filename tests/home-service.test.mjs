@@ -162,7 +162,7 @@ test('homepage keeps sample results and unpublished desktop files clearly identi
  assert.ok(d.querySelector('a[href="/workspace.html#home"]'));
  assert.equal(d.querySelector('[data-download-platform]'),null,'old unavailable modal has been removed');
  d.querySelector('#status-button').click();
- assert.match(d.querySelector('#home-dialog-body').textContent,/11 类写作流程/);
+ assert.match(d.querySelector('#home-dialog-body').textContent,/10 类写作流程/);
  assert.match(d.querySelector('#home-dialog-body').textContent,/OpenAlex、arXiv/);
  assert.match(d.querySelector('#home-dialog-body').textContent,/进入功能确认/);
  assert.doesNotMatch(d.querySelector('#home-dialog-body').textContent,/尚未接入|AI 尚未接入|待开放/);

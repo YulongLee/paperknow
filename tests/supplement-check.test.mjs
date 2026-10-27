@@ -62,7 +62,7 @@ function fixture(t,{kind='proposal',thesis=false}={}){
  const submit=async(snap=snapshot(),completion)=>{const data={kind,operation:'draft',snapshot:snap,...(completion?{completion}:{})},quote=await request('/api/writing/quote',data);return(await request('/api/writing/jobs',{...data,clientKey:randomUUID(),billingToken:quote.token,consent:true})).item;};
  return{db,user,billing,calls,worker,request,submit,setMissing:value=>{missing=value;},get:id=>service.get(id,user)};
 }
-for(const kind of ['proposal','summary','taskbook','article','course','practice','quick'])test(kind+' includes a real supplemental check and a full body review in one settlement',async t=>{
+for(const kind of ['proposal','summary','taskbook','article','course','practice'])test(kind+' includes a real supplemental check and a full body review in one settlement',async t=>{
  const f=fixture(t,{kind}),item=await f.submit();await f.worker.tick();const done=f.get(item.id);assert.equal(done.status,'completed',done.error);assert.equal(done.output.quality.supplementCheck.status,'final_ready');assert.equal(supplementCheckReady(done.output.quality),true);assert.ok(f.calls.some(row=>row.task.context.operation==='supplement-check'));assert.equal(f.billing.balance('owner').balance,190);assert.equal(f.billing.balance('owner').held,0);
 });
 test('insufficient supplements stop before rewriting, release the fee, persist the report and can resume from the exact original draft',async t=>{

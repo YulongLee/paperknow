@@ -69,7 +69,7 @@ $('#desktop-download-retry')?.addEventListener('click',loadDesktopReleases);
 loadDesktopReleases();
 function capabilityStatus(ready){return ready===true?'当前可用':ready===false?'暂不可用':'进入功能确认';}
 $('#status-button').addEventListener('click',()=>{openDialog('PaperKnow 功能与服务',`<p>从研究资料到论文与演示成果，在同一工作台完成。在线服务状态来自当前服务信息，具体额度与处理要求请在提交任务前确认。</p><div class="status-list">${[
- ['AI 写作','11 类写作流程，覆盖论文、开题、综述与日常学术写作',serviceCapabilities?.writing?.ready],
+ ['AI 写作','10 类写作流程，覆盖论文、开题、综述与日常学术写作',serviceCapabilities?.writing?.ready],
  ['毕业论文五步流程','研究信息、知识补充、参考文献、提纲与论文撰写逐步确认',serviceCapabilities?.thesis?.ready],
  ['文献检索','检索 OpenAlex、arXiv 等学术来源，整理参考文献',serviceCapabilities?.academicSearch],
  ['文献研读与改写','结合材料研读、整理摘要、润色与修改建议',serviceCapabilities?.tools?.ready],

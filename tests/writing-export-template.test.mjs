@@ -65,7 +65,7 @@ async function fixture(t,{kind='proposal',failSave=false,delayUpload=false,accou
  };
 }
 
-for(const kind of Object.keys(writingStandards))test(kind+' can replace its export format without changing the confirmed writing snapshot',async t=>{
+for(const kind of Object.keys(writingStandards).filter(kind=>kind!=='quick'))test(kind+' can replace its export format without changing the confirmed writing snapshot',async t=>{
  const f=await fixture(t,{kind}),before=structuredClone(f.cloud.payload.writingFlow),file=await templateFile();
  assert.ok(f.q('[data-wf-export]'));assert.equal(f.q('[data-wf-standard-summary]'),null);assert.equal(document.querySelectorAll('[data-template-file]').length,0);f.settings();assert.equal(document.querySelectorAll('[data-template-file]').length,1);
  let opened=0;f.q('[data-template-file]').showPicker=()=>opened++;f.q('[data-wf-template-choose]').click();assert.equal(opened,1);
@@ -143,7 +143,7 @@ for(const nativeAPI of [true,false])test('direct writing entry resolves the sign
  assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
 });
 
-for(const kind of Object.keys(writingStandards))test(kind+' actual default export works without uploading or downloading any template first',async t=>{
+for(const kind of Object.keys(writingStandards).filter(kind=>kind!=='quick'))test(kind+' actual default export works without uploading or downloading any template first',async t=>{
  const f=await fixture(t,{kind});f.settings();f.q('[data-wf-template-reset]').click();await until(()=>f.q('[data-wf-template-reset]')===null);f.result();
  f.q('#wf-body-draft').click();await until(()=>!f.q('#wf-body-draft').disabled);assert.equal(f.artifacts.length,1,f.q('#writing-status').textContent);
  assert.equal(f.calls.some(row=>row.path.startsWith('/api/files/')),false);assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);

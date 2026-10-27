@@ -21,7 +21,7 @@ function webpMetadata(bytes){
  return {...size,alpha};
 }
 
-test('all eleven independent writing illustrations are present, unique, transparent and within a practical download budget',async()=>{
+test('all ten independent writing illustrations are present, unique, transparent and within a practical download budget',async()=>{
  const digests=new Set(),paths=new Set();let total=0;
  for(const key of writingFeatureKeys){
   const feature=writingFeatureIdentities[key];assert.match(feature.art,/^\/workspace\/assets\/writing-[a-z]+-v1\.webp$/);assert.equal(feature.art,`/workspace/assets/writing-${key}-v1.webp`);assert.equal(paths.has(feature.art),false);paths.add(feature.art);
@@ -29,5 +29,5 @@ test('all eleven independent writing illustrations are present, unique, transpar
   const image=webpMetadata(bytes);assert.ok(image.width>=256&&image.width<=1024,`${key} should have enough detail without excessive dimensions`);assert.ok(image.height>=256&&image.height<=1024);assert.ok(image.width/image.height>=.75&&image.width/image.height<=1.33,`${key} should fit the shared illustration slot`);assert.equal(image.alpha,true,`${key} must preserve its transparent background`);
   const digest=createHash('sha256').update(bytes).digest('hex');assert.equal(digests.has(digest),false,`${key} must have its own illustration`);digests.add(digest);
  }
- assert.equal(paths.size,11);assert.equal(digests.size,11);assert.ok(total<=2*1024*1024,'the full illustration set should remain lightweight');assert.equal(getWritingFeatureIdentity('topic').art,writingFeatureIdentities.idea.art);
+ assert.equal(paths.size,10);assert.equal(digests.size,10);assert.ok(total<=2*1024*1024,'the full illustration set should remain lightweight');assert.equal(getWritingFeatureIdentity('topic').art,writingFeatureIdentities.idea.art);
 });

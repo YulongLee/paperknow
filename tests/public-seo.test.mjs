@@ -112,7 +112,7 @@ test('share metadata and structured data agree with canonical URLs without fabri
 test('homepage metadata describes shipped research workflows and keeps its own modification date',()=>{
   const {document}=pages.get('/'),description=meta(document,'description');
   assert.equal(document.title,'PaperKnow科研助手');
-  for(const capability of ['11 项','文献检索','翻译','改写','公开网络来源比对','通用 AI 文本鉴别','PPTX','科研绘图','公式'])assert.ok(description.includes(capability),capability);
+  for(const capability of ['10 项','文献检索','翻译','改写','公开网络来源比对','通用 AI 文本鉴别','PPTX','科研绘图','公式'])assert.ok(description.includes(capability),capability);
   assert.doesNotMatch(description,/待接入|尚未开放|在线 AI 与检索能力以实际开放状态为准/);
   const data=JSON.parse(document.querySelector('script[type="application/ld+json"]').textContent)['@graph'];
   assert.equal(data.find(node=>node['@type']==='WebPage').dateModified,'2026-10-22');
@@ -265,7 +265,7 @@ test('unknown public paths return real 404s and unsupported methods stay rejecte
 
 test('public capability copy reflects shipped AI workflows while retaining real evidence and external service boundaries',()=>{
  const text=slug=>pages.get(slug).document.querySelector('main').textContent;
- assert.match(text('/features/ai-writing/'),/11 项流程|11 项/);
+ assert.match(text('/features/ai-writing/'),/10 项流程|10 项/);
  assert.doesNotMatch(text('/features/ai-writing/'),/其他十项.*仍.*本地模板/);
  assert.match(text('/features/ai-reading/'),/逐段翻译|按段.*对应/);assert.match(text('/features/ai-reading/'),/原文摘录|原文依据/);
  assert.doesNotMatch(text('/features/ai-reading/'),/AI 理解和自动翻译尚未开放/);
