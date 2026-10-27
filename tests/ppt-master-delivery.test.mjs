@@ -9,6 +9,7 @@ import {createSession} from '../backend/auth.mjs';
 import {createStorage} from '../backend/storage.mjs';
 import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
 import {startToolRunWorker} from '../backend/tool-run-worker.mjs';
+import {createPptMasterRuntime,getPptMasterRuntimeStatus} from '../backend/ppt-master-runtime.mjs';
 
 const runtime={enabled:true,engine:'claude-agent-sdk',baseURL:'https://synthetic-runtime.example.invalid',model:'private-synthetic-model',apiKey:'private-synthetic-key',version:'ppt-delivery-fixture',maxTurns:12,maxOutputTokens:4096,maxCostUsd:.5,timeoutMs:30000};
 const source='【合成测试资料】样本来自三次测量。处理流程保持原始顺序，引用标记为 [1]。';
@@ -44,11 +45,54 @@ async function fixture(t,extra={}){
  const call=(path,data,user='alice')=>fetch(base+(path.startsWith('/api/')?path:'/api'+path),{method:data===undefined?'GET':'POST',headers:{...(user?{Cookie:users[user].cookie}:{}),...(data===undefined?{}:{Origin:base,'Content-Type':'application/json'})},body:data===undefined?undefined:JSON.stringify(data)});
  async function request(path,data,user){const response=await call(path,data,user);return{status:response.status,value:await response.json()};}
  function pay(){billing.saveRules({version:billing.rules().version,services:billingServiceTypes.map(({key})=>({key,mode:'paid',creditCost:10}))});const id=randomUUID(),at=new Date().toISOString();db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run(id,'alice','credits-200','paid',at);db.prepare('INSERT INTO payment_credit_ledger VALUES(?,?,?,?,?,?)').run(id,'alice','credits-200',200,'purchase',at);}
- async function submit(){const value=input(),quoted=await request('/tool-runs/quote',value);assert.equal(quoted.status,200,JSON.stringify(quoted.value));const command={...value,clientKey:randomUUID(),billingToken:quoted.value.token,consent:true},created=await request('/tool-runs/jobs',command);assert.equal(created.status,202,JSON.stringify(created.value));return{...created.value.item,command};}
+ async function submit(value=input(),options={}){const quoted=await request('/tool-runs/quote',value);assert.equal(quoted.status,200,JSON.stringify(quoted.value));const command={...value,...options,clientKey:randomUUID(),billingToken:quoted.value.token,consent:true},created=await request('/tool-runs/jobs',command);assert.equal(created.status,202,JSON.stringify(created.value));return{...created.value.item,command};}
  const eventCount=(kind,id)=>db.prepare('SELECT count(*) n FROM billing_events e JOIN billing_reservations r ON r.id=e.reservation_id WHERE e.kind=? AND r.job_id=?').get(kind,id).n;
  return{db,objects,uploads,removals,hooks,config,billing,call,request,pay,submit,eventCount,get worker(){return worker;},authorCalls:()=>authorCalls,rendererCalls:()=>rendererCalls,newGate(){const waiting=gate();gates.push(waiting);return waiting;},async restart(){await worker.stop();worker=startToolRunWorker(db,config);return worker;}};
 }
 function uncharged(f,id){assert.equal(f.billing.balance('alice').balance,200);assert.equal(f.billing.balance('alice').held,0);assert.equal(f.eventCount('settle',id),0);assert.equal(f.eventCount('release',id),1);assert.equal(f.db.prepare('SELECT count(*) n FROM results WHERE job_id=?').get(id).n,0);}
+
+test('twelve-page content repairs the exact second batch and delivers all pages with one settlement',async t=>{
+ const tasks=[];let rendered=0,nativeProof;
+ const f=await fixture(t,{agentTaskRunner:async args=>{
+  tasks.push({operation:args.task.context.operation,unit:args.task.context.unit?.id,page:args.task.context.design?.current.id});
+  if(args.task.context.operation==='ppt'&&args.task.context.unit.start===6){
+   const bad=result({slides:[{id:'slide-7',title:'未完整的候选',body:'不得持久化的候选正文',layout:'content',notes:''}],sourceIds:args.task.materials.map(s=>s.id)},args.task.materials);
+   for(let i=0;i<8;i++)assert.equal(args.validateToolOutput(bad).feedback.presentation.expectedCount,6);
+  }
+  return author(args);
+ },pptMasterRenderer:async({slides})=>{rendered++;assert.deepEqual(slides.map(s=>s.id),Array.from({length:12},(_,i)=>'slide-'+(i+1)));if(getPptMasterRuntimeStatus().ready){nativeProof=await createPptMasterRuntime().render({slides});assert.equal(nativeProof.validation.slideCount,12);assert.ok(nativeProof.validation.nativeShapeCount>=12);return nativeProof;}return{pptx:fixtureBuffer};}});
+ f.pay();const value=input();value.snapshot.context.pages=12;const job=await f.submit(value);await f.worker.tick();
+ const completed=(await f.request('/tool-runs/jobs/'+job.id)).value.item;
+ assert.equal(completed.status,'completed',JSON.stringify(completed));assert.equal(completed.output.slides.length,12);assert.equal(completed.completedUnits,2);assert.equal(completed.progress.completedPages,12);assert.equal(rendered,1);
+ assert.deepEqual(tasks.filter(t=>t.operation==='ppt').map(t=>t.unit),['unit-0','unit-1']);assert.equal(tasks.filter(t=>t.operation==='ppt-master-slide').length,12);
+ const diagnostic=f.db.prepare('SELECT code,metrics FROM tool_diagnostics WHERE run_id=?').get(job.id),metrics=JSON.parse(diagnostic.metrics);
+ assert.equal(diagnostic.code,'ppt_completed_after_repair');assert.equal(metrics.presentationValidation.rejected,8);assert.equal(metrics.presentationValidation.recent.length,6);
+ for(const r of metrics.presentationValidation.recent){assert.equal(r.code,'ppt_page_count');assert.equal(r.unitId,'unit-1');assert.equal(r.expectedCount,6);assert.equal(r.actualCount,1);}
+ assert.doesNotMatch(diagnostic.metrics,/未完整|候选正文|private|apiKey/);assert.equal(completed.output.presentationValidation,undefined);
+ if(nativeProof){const zip=await JSZip.loadAsync(f.uploads.find(u=>u.key.endsWith('.pptx')).buffer);assert.equal(Object.keys(zip.files).filter(n=>/^ppt\/slides\/slide\d+\.xml$/.test(n)).length,12);assert.match(await zip.file('ppt/notesSlides/notesSlide12.xml').async('string'),/合成资料/);}
+ const archive=f.uploads.find(u=>u.key.endsWith('.zip')),zip=await JSZip.loadAsync(archive.buffer);assert.equal(Object.keys(zip.files).filter(n=>/^slides\/slide-\d+\.svg$/.test(n)).length,12);
+ assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);assert.equal(f.eventCount('settle',job.id),1);
+});
+
+test('second-batch failure records safe repair causes and explicit resume skips the saved first six pages',async t=>{
+ const units=[];let fail=true;
+ const f=await fixture(t,{agentTaskRunner:async args=>{
+  if(args.task.context.operation==='ppt'){
+   units.push(args.task.context.unit.id);
+   if(fail&&args.task.context.unit.start===6){
+    const bad=result({complete:false,slides:[],sourceIds:args.task.materials.map(s=>s.id)},args.task.materials);assert.equal(args.validateToolOutput(bad).feedback.presentation.code,'ppt_completion');
+    throw Object.assign(Error('AI 已达到回合上限，结果未完成'),{code:'turn_limit',status:502,usage:{input:20,output:10},costUsd:.001});
+   }
+  }
+  return author(args);
+ },pptMasterRenderer:async({slides})=>{assert.equal(slides.length,12);return{pptx:fixtureBuffer};}});
+ f.pay();const value=input();value.snapshot.context.pages=12;const job=await f.submit(value);await f.worker.tick();
+ const failed=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(failed.status,'failed');assert.equal(failed.completedUnits,1);uncharged(f,job.id);assert.equal(f.uploads.length,0);
+ const diagnostic=f.db.prepare('SELECT code,metrics FROM tool_diagnostics WHERE run_id=?').get(job.id);assert.equal(diagnostic.code,'turn_limit');assert.equal(JSON.parse(diagnostic.metrics).presentationValidation.recent[0].code,'ppt_completion');
+ fail=false;const resumed=await f.submit(value,{resumeFromJobId:job.id});await f.worker.tick();const completed=(await f.request('/tool-runs/jobs/'+resumed.id)).value.item;
+ assert.equal(completed.status,'completed',JSON.stringify(completed));assert.deepEqual(units,['unit-0','unit-1','unit-1']);assert.equal(completed.output.slides.length,12);
+ assert.equal(f.eventCount('settle',job.id),0);assert.equal(f.eventCount('release',job.id),1);assert.equal(f.eventCount('settle',resumed.id),1);assert.equal(f.billing.balance('alice').balance,190);
+});
 
 test('unavailable presentation generation rejects the quote before reserving points or creating work',async t=>{
  const f=await fixture(t,{pptMasterEnabled:false});f.pay();const capabilities=await f.request('/tool-runs/capabilities');assert.equal(capabilities.value.ready,true);assert.equal(capabilities.value.presentation.ready,false);

@@ -1,4 +1,5 @@
 import {normalizeRevisionReportContext,revisionReportChangeAllowed} from '../dist/workspace/revision-report-context.mjs';
+import {presentationContentTask} from './presentation-content-task.mjs';
 import {formulaSvgMarkup} from '../src/research-formula-core.js';
 import {thesisError,thesisHash} from './thesis-model.mjs';
 import {researchFigureSelection} from './research-figure-selection.mjs';
@@ -134,6 +135,7 @@ function revisionComparisonRanges(snapshot,unit){
 export function toolRunTask(value,unit,completed=[]){
  const {snapshot:s,operation}=value;
  validateChatHistory(s.context,operation);
+ if(operation==='ppt')return presentationContentTask(value,unit,completed);
  const comparisonRanges=operation==='rewrite'?revisionComparisonRanges(s,unit):[],sources=comparisonRanges.length?s.materials.filter(m=>comparisonRanges.some(range=>range.sourceId===m.id)):unit.ranges?s.materials.filter(m=>unit.ranges.some(r=>r.sourceId===m.id)):s.materials;
  const context={operation,title:s.title,requirements:s.requirements,language:s.language,mode:s.mode,question:s.question,options:s.context,unit,sources:sources.map(({id,name,text})=>({id,name,characters:text.length})),previous:completed.map(r=>({titles:r.slides?.map(v=>v.title)||[]})),outputSchema:schemas[operation]};
  let readingInstructions='';
@@ -189,6 +191,8 @@ export function restoreReadingCheckpoint(output,value,unit,position){
 // Do not discard all combining marks: accents can change real written words.
 const revisionChanged=(original,revised)=>original.replace(/[\s\p{Default_Ignorable_Code_Point}]/gu,'')!==revised.replace(/[\s\p{Default_Ignorable_Code_Point}]/gu,'');
 function revisionOutputError(message,details){const error=thesisError(502,message);error.revisionFeedback=details;throw error;}
+function presentationOutputError(message,details){const error=thesisError(502,message);error.presentationFeedback=details;throw error;}
+function presentationField(value,max,min,page,field){try{return string(value,max,min);}catch(error){presentationOutputError(error.message,{code:'ppt_field',page,field,maxCharacters:max,minCharacters:min,...(typeof value==='string'?{actualCharacters:value.length}:{invalidType:true})});}}
 function parseRevisionParagraph(row,original,changed,index){
  const action=row.action===undefined&&revisionChanged(original.original,changed)?'revise':row.action;
  if(!['revise','retain'].includes(action))revisionOutputError('未修改的段落须以 retain 明确保留并说明原因；修改段落使用 revise',{code:'revision_action',paragraphIndex:index+1});
@@ -213,13 +217,13 @@ export function restoreRevisionCheckpoint(output,value,unit,position){
 }
 export function parseToolOutput(result,value,unit){
  let body;try{body=JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}catch{fail('生成结果不是完整内容，原稿已保留',502);}
- if(!plain(body)||body.complete!==true)fail('本次处理未完成，请补充资料后重试',422);
+ if(!plain(body)||body.complete!==true){if(value.operation==='ppt'&&plain(body))presentationOutputError('本批演示内容未声明完成。补齐本批全部页面与字段后提交 complete:true（布尔值）；此标记不表示整套已排版或研究已实施',{code:'ppt_completion',requiredComplete:true,completionScope:'current_batch',expectedCount:unit.count,firstPage:unit.start+1,lastPage:unit.start+unit.count});fail('本次处理未完成，请补充资料后重试',422);}
  const {operation,snapshot:s}=value,read=new Set((result.trace||[]).filter(r=>r.tool==='read_material'&&r.status==='completed').map(r=>r.materialId));
  const sourceIds=array(body.sourceIds||[],20);if(new Set(sourceIds).size!==sourceIds.length||sourceIds.some(id=>typeof id!=='string'||!read.has(id)||!s.materials.some(m=>m.id===id)))fail('结果引用了未读取或不属于本次的来源',502);
  const comparisonRanges=operation==='rewrite'?revisionComparisonRanges(s,unit):[];
  if(['read','answer','ppt','diagram','formula','format'].includes(operation)||comparisonRanges.length){
   const required=comparisonRanges.length?comparisonRanges:unit.ranges||s.materials.map(m=>({sourceId:m.id,start:0,end:m.text.length}));
-  for(const range of required){const spans=(result.trace||[]).filter(r=>r.tool==='read_material'&&r.status==='completed'&&r.materialId===range.sourceId).map(r=>[r.offset||0,(r.offset||0)+(r.limit||6000)]).sort((a,b)=>a[0]-b[0]);let covered=range.start;for(const [start,end]of spans)if(start<=covered)covered=Math.max(covered,end);if(covered<range.end)fail('本单元尚未完整读取来源 '+range.sourceId+' 的 '+range.start+'～'+range.end+' 字符，请按该范围读取后再提交',502);}
+  for(const range of required){const spans=(result.trace||[]).filter(r=>r.tool==='read_material'&&r.status==='completed'&&r.materialId===range.sourceId).map(r=>[r.offset||0,(r.offset||0)+(r.limit||6000)]).sort((a,b)=>a[0]-b[0]);let covered=range.start;for(const [start,end]of spans)if(start<=covered)covered=Math.max(covered,end);if(covered<range.end){const message='本单元尚未完整读取来源 '+range.sourceId+' 的 '+range.start+'～'+range.end+' 字符，请按该范围读取后再提交';if(operation==='ppt'){let at=range.start;const missing=[];for(const [start,end]of mergedSourceSpans(spans,range.end)){if(start>at)missing.push([at,Math.min(start,range.end)]);at=Math.max(at,end);}if(at<range.end)missing.push([at,range.end]);const reads=missing.flatMap(([start,end])=>Array.from({length:Math.ceil((end-start)/8000)},(_,i)=>({id:range.sourceId,offset:start+i*8000,limit:Math.min(8000,end-start-i*8000)})));presentationOutputError(message,{code:'ppt_source_read',missingReads:reads});}fail(message,502);}}
  }
  if(comparisonRanges.length&&(sourceIds.length!==comparisonRanges.length||comparisonRanges.some(range=>!sourceIds.includes(range.sourceId))))fail('来源改写结果缺少本单元实际读取的指定对照文章编号',502);
  let out={sourceIds,requiresReview:true};
@@ -238,8 +242,10 @@ export function parseToolOutput(result,value,unit){
   out={...out,[field]:resultRows,text:resultRows.map(r=>r[operation==='rewrite'?'revised':'translation']).join('\n\n'),...(operation==='translate'?{targetLanguage:s.language}:{factsVerified:false,protectionVersion:revisionProtectionVersion})};
  }else if(operation==='ppt'){
   if(s.materials.length&&!sourceIds.length)fail('演示内容尚未关联实际读取的材料，结果未采用',502);
-  const slides=array(body.slides,30);if(slides.length!==unit.count)fail('演示页数与确认的数量不一致',502);
-  out={...out,slides:slides.map((row,i)=>{const page=unit.start+i+1;if(!plain(row)||row.id!=='slide-'+page||!['cover','content','twoColumn','closing'].includes(row.layout)||page===1&&row.layout!=='cover'||page===s.context.pages&&row.layout!=='closing')fail('演示页码或版式不正确',502);if(s.context.notesMode!==undefined&&typeof row.notes!=='string')fail('演讲备注必须为文本，未生成备注时也应返回空字符串',502);const title=string(row.title,120),notes=string(row.notes||'',s.context.notesMode==='none'?0:s.context.notesMode==='detailed'?500:s.context.notesMode==='concise'?120:1600,0);if(s.context.outlineTitles&&row.title!==s.context.outlineTitles[page-1])fail('演示标题与已确认的自定义提纲不一致，结果未采用',502);return{id:row.id,title,body:string(row.body,1400),layout:row.layout,notes};})};out.text=out.slides.map(r=>r.title+'\n'+r.body).join('\n\n');
+  const requiredSlideIds=Array.from({length:unit.count},(_,i)=>'slide-'+(unit.start+i+1));
+  if(!Array.isArray(body.slides)||body.slides.length>30)presentationOutputError('生成结果列表不正确',{code:'ppt_page_count',expectedCount:unit.count,requiredSlideIds});
+  const slides=body.slides;if(slides.length!==unit.count)presentationOutputError('演示页数与确认的数量不一致',{code:'ppt_page_count',expectedCount:unit.count,actualCount:slides.length,requiredSlideIds,firstPage:unit.start+1,lastPage:unit.start+unit.count});
+  out={...out,slides:slides.map((row,i)=>{const page=unit.start+i+1,allowedLayouts=page===1?['cover']:page===s.context.pages?['closing']:['content','twoColumn'];if(!plain(row)||row.id!=='slide-'+page||!allowedLayouts.includes(row.layout))presentationOutputError('演示页码或版式不正确',{code:'ppt_page_identity',page,expectedId:'slide-'+page,allowedLayouts});if(s.context.notesMode!==undefined&&typeof row.notes!=='string')presentationOutputError('演讲备注必须为文本，未生成备注时也应返回空字符串',{code:'ppt_field',page,field:'notes',invalidType:true});const title=presentationField(row.title,120,1,page,'title'),notes=presentationField(row.notes||'',s.context.notesMode==='none'?0:s.context.notesMode==='detailed'?500:s.context.notesMode==='concise'?120:1600,0,page,'notes');if(s.context.outlineTitles&&row.title!==s.context.outlineTitles[page-1])presentationOutputError('演示标题与已确认的自定义提纲不一致，结果未采用',{code:'ppt_outline_title',page,field:'title'});return{id:row.id,title,body:presentationField(row.body,1400,1,page,'body'),layout:row.layout,notes};})};out.text=out.slides.map(r=>r.title+'\n'+r.body).join('\n\n');
  }else if(operation==='diagram'){
   if(!plain(body.diagram))fail('结构图结果不完整',502);const nodes=array(body.diagram.nodes,30).map(r=>({id:string(r?.id,60),label:string(r?.label,100)})),ids=new Set(nodes.map(r=>r.id));if(nodes.length<2||ids.size!==nodes.length||nodes.some(r=>!/^[A-Za-z0-9_-]+$/.test(r.id)))fail('结构图节点无效',502);
   const edges=array(body.diagram.edges,60).map(r=>{if(!ids.has(r?.from)||!ids.has(r?.to)||r.from===r.to)fail('结构图关系引用了不存在的节点',502);return{from:r.from,to:r.to,label:string(r.label||'',60,0)};});if(!edges.length)fail('结构图缺少节点关系',502);out={...out,diagram:{title:string(body.diagram.title,120),nodes,edges},text:nodes.map(n=>n.label).join(' → ')};
@@ -252,7 +258,7 @@ export function parseToolOutput(result,value,unit){
  }else{out={...out,text:string(body.text,10000),suggestions:array(body.suggestions,60).map((r,i)=>({id:'s'+(i+1),location:string(r?.location,200),issue:string(r?.issue,1000),action:string(r?.action,1000)}))};}
  return out;
 }
-export function validateToolCandidate(result,value,unit){try{parseToolOutput(result,value,unit);return{valid:true};}catch(error){return{valid:false,feedback:{code:'invalid_tool_output',rule:error.message,...(error.revisionFeedback?{revision:error.revisionFeedback}:{})}};}}
+export function validateToolCandidate(result,value,unit){try{parseToolOutput(result,value,unit);return{valid:true};}catch(error){return{valid:false,feedback:{code:'invalid_tool_output',rule:error.message,...(error.revisionFeedback?{revision:error.revisionFeedback}:{}),...(error.presentationFeedback?{presentation:error.presentationFeedback}:{})}};}}
 export function joinToolOutputs(operation,completed,plan=[]){
  const sourceIds=[...new Set(completed.flatMap(r=>r.sourceIds||[]))],out={text:completed.map(r=>r.text).join('\n\n'),sourceIds,requiresReview:true};
  if(operation==='ppt')return{...out,slides:completed.flatMap(r=>r.slides)};

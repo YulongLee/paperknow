@@ -10,6 +10,15 @@ const candidate={complete:true,text:'这是合成示例的受控正文。[source
 const result={type:'result',subtype:'success',is_error:false,stop_reason:'end_turn',modelUsage:{fixture:{inputTokens:9999,outputTokens:9999}},permission_denials:[]};
 const validator=async({text,trace})=>({valid:JSON.stringify(JSON.parse(text))===JSON.stringify(candidate)&&trace.some(x=>x.tool==='read_material'&&x.status==='completed'&&x.materialId==='source-A')});
 
+test('presentation submissions retain controlled tools and completion while excluding prose length compression instructions',async()=>{
+ for(const operation of ['ppt','ppt-master-slide']){
+  const provider=providerFixture(),presentation={...task,skill:'tool-task',context:{operation}},submission={complete:true,slides:[]};let options;
+  const output=await runAgentTask({settings,task:presentation,validateToolOutput:({text,trace})=>({valid:JSON.parse(text).complete===true&&trace.some(r=>r.tool==='read_material')}),dependencies:{lookup,httpsRequest:provider.requestImpl,query:args=>{options=args.options;return(async function*(){await primeProvider(options);const tools=options.mcpServers.paperknow.instance._registeredTools;await tools.read_material.handler({id:'source-A'});assert.equal(JSON.parse((await tools.submit_writing_output.handler({candidate:submission})).content[0].text).accepted,true);yield{...result,total_cost_usd:.001,result:'ACK'};})();}}});
+  assert.match(options.systemPrompt,/按 presentationRequirements.batch/);assert.match(options.systemPrompt,/已有读取记录继续有效/);assert.doesNotMatch(options.systemPrompt,/按 target\/count 比例压缩到区间中部/);
+  assert.deepEqual(options.allowedTools,['mcp__paperknow__read_material','mcp__paperknow__submit_writing_output']);assert.equal(options.maxTurns,1);assert.equal(options.maxBudgetUsd,.1);assert.equal(provider.calls.length,1);assert.equal(output.text,JSON.stringify(submission));
+ }
+});
+
 test('accepted complete candidate finishes locally with real upstream usage and no extra paid dispatch',async()=>{
  const provider=providerFixture({usage:{input_tokens:4,cache_creation_input_tokens:3,cache_read_input_tokens:7,output_tokens:5}});let options;
  const output=await runAgentTask({settings,task,validateWritingOutput:validator,dependencies:{lookup,httpsRequest:provider.requestImpl,query:args=>{options=args.options;return(async function*(){

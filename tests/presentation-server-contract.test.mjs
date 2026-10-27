@@ -32,3 +32,43 @@ test('historical snapshots preserve absent new fields, stable hashes and the pre
 test('historical client snapshots still round trip with no implicit new note or outline setting',()=>{const base={title:'合成旧版答辩',material:'用户提供的合成论文材料，用于验证历史任务恢复。',prompt:'依据输入材料制作汇报。',pages:6,minutes:10,author:'旧版作者',school:'',advisor:'',theme:'academic',degree:'本科',scenario:'毕业论文答辩',language:'中文',slides:[]},snapshot=presentationSnapshot(base,'thesis','premium'),restored=restorePresentationSnapshot(snapshot,base),again=presentationSnapshot(restored,'thesis','premium');assert.equal(Object.hasOwn(snapshot.context,'notesMode'),false);assert.equal(Object.hasOwn(snapshot.context,'outlineTitles'),false);assert.deepEqual(again,snapshot);assert.equal(normalizeToolRequest({kind:'presentation',operation:'ppt',snapshot}).snapshot.context.author,'旧版作者');});
 
 test('explicit note contracts reject non-string generated notes instead of coercing them to empty text',()=>{for(const mode of ['none','concise','detailed']){const value=normalizeToolRequest(request({notesMode:mode})),unit=toolRunPlan(value)[0];for(const notes of [false,0,null]){const result=response(value,unit,{notes});assert.throws(()=>parseToolOutput(result,value,unit),/备注|结构/,mode+' '+String(notes));}}});
+
+test('second content batch unambiguously submits six global pages with a current-batch completion flag',()=>{
+ const input=request({notesMode:'concise'});input.snapshot.text='合'.repeat(13392);
+ const value=normalizeToolRequest(input),unit=toolRunPlan(value)[1],task=toolRunTask(value,unit,[{slides:[{title:'以前批次'}]}]);
+ const {batch,totalDeckPages}=task.context.presentationRequirements;
+ assert.equal(totalDeckPages,12);assert.equal(batch.outputSlideCount,6);assert.equal(batch.firstPage,7);assert.equal(batch.lastPage,12);
+ assert.deepEqual(batch.requiredSlideIds,['slide-7','slide-8','slide-9','slide-10','slide-11','slide-12']);
+ assert.deepEqual(task.context.outputSchema.slides.map(s=>s.id),batch.requiredSlideIds);
+ assert.deepEqual(batch.pages.map(s=>s.allowedLayouts),[...Array.from({length:5},()=>['content','twoColumn']),['closing']]);
+ assert.equal(task.context.outputSchema.complete,true);assert.match(task.instructions,/complete是“当前批次/);assert.match(task.instructions,/每个分段读取一次/);
+ assert.doesNotMatch(task.instructions,/翻译|改写|Mermaid|LaTeX|target\/count/);
+ assert.deepEqual(task.context.sourceReadPlan,[{id:'original',offset:0,limit:8000},{id:'original',offset:8000,limit:5392}]);
+ assert.equal(task.context.previous[0].titles[0],'以前批次');assert.deepEqual(task.materials,value.snapshot.materials);
+});
+
+test('batch validation points to exact missing pages, completion, identity and oversized field without changing output',()=>{
+ const value=normalizeToolRequest(request({notesMode:'concise'})),unit=toolRunPlan(value)[1],good=response(value,unit),ids=JSON.parse(good.text).slides.map(s=>s.id);
+ for(const count of [1,5,12]){
+  const bad=change(good,b=>{b.slides=Array.from({length:count},()=>b.slides[0]);}),before=bad.text,checked=validateToolCandidate(bad,value,unit);
+  assert.equal(checked.valid,false);assert.deepEqual(checked.feedback.presentation,{code:'ppt_page_count',expectedCount:6,actualCount:count,requiredSlideIds:ids,firstPage:7,lastPage:12});assert.equal(bad.text,before);
+ }
+ for(const complete of [false,'true',undefined]){
+  const checked=validateToolCandidate(change(good,b=>{b.complete=complete;}),value,unit);
+  assert.equal(checked.feedback.presentation.code,'ppt_completion');assert.equal(checked.feedback.presentation.requiredComplete,true);assert.equal(checked.feedback.presentation.completionScope,'current_batch');assert.equal(checked.feedback.presentation.expectedCount,6);
+ }
+ for(const mutate of [b=>{b.slides[0].id='slide-1';},b=>{b.slides[0].layout='closing';}]){
+  const checked=validateToolCandidate(change(good,mutate),value,unit);assert.deepEqual(checked.feedback.presentation,{code:'ppt_page_identity',page:7,expectedId:'slide-7',allowedLayouts:['content','twoColumn']});
+ }
+ const oversized=change(good,b=>{b.slides[2].notes='注'.repeat(121);}),before=oversized.text,checked=validateToolCandidate(oversized,value,unit);
+ assert.deepEqual(checked.feedback.presentation,{code:'ppt_field',page:9,field:'notes',maxCharacters:120,minCharacters:0,actualCharacters:121});assert.equal(oversized.text,before);
+ assert.equal(validateToolCandidate(good,value,unit).valid,true);
+});
+
+test('missing source feedback requests only unread spans and cannot turn an unread candidate into a pass',()=>{
+ const input=request();input.snapshot.text='合'.repeat(13392);const value=normalizeToolRequest(input),unit=toolRunPlan(value)[1],good=response(value,unit);
+ const partial={...good,trace:[{tool:'read_material',status:'completed',materialId:'original',offset:0,limit:8000},{tool:'read_material',status:'completed',materialId:'original',offset:10000,limit:3392}]};
+ const checked=validateToolCandidate(partial,value,unit);assert.equal(checked.valid,false);assert.deepEqual(checked.feedback.presentation,{code:'ppt_source_read',missingReads:[{id:'original',offset:8000,limit:2000}]});
+ assert.equal(validateToolCandidate({...partial,trace:[...partial.trace,{tool:'read_material',status:'completed',materialId:'original',offset:8000,limit:2000}]},value,unit).valid,true);
+ const forged={...good,trace:good.trace.map(r=>({...r,materialId:'another-source'}))};assert.equal(validateToolCandidate(forged,value,unit).valid,false);
+});
