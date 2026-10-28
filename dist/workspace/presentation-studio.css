@@ -1,0 +1,127 @@
+/* PPT creation and delivery share one ordered workspace. */
+.dashboard .ppt-commercial.ppt-studio{--studio-blue:#2864eb;--studio-ink:#233551;--studio-muted:#65748b;--studio-line:#dfe7f3;--studio-surface:#fff;--studio-tint:#f4f7fd;gap:18px}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-rail{margin-bottom:0}
+.dashboard .ppt-commercial.ppt-studio .ppt-rail-item{min-height:108px;padding:20px 22px;background:var(--studio-surface);border-color:var(--studio-line)}
+.dashboard .ppt-commercial.ppt-studio .ppt-rail-item.active{background:#f1f6ff;border-color:#88abf8;box-shadow:0 0 0 1px #88abf8}
+.dashboard .ppt-commercial.ppt-studio .ppt-entry-copy>small{display:none}
+.dashboard .ppt-commercial.ppt-studio .ppt-entry-copy>strong{color:var(--studio-ink);font-size:17px;font-weight:650}
+.dashboard .ppt-commercial.ppt-studio .ppt-entry-copy>span{color:var(--studio-muted);font-size:12px;line-height:1.6}
+.dashboard .ppt-commercial.ppt-studio .ppt-entry-icon{width:46px;height:46px;flex-basis:46px;border:1px solid #dce7fc;border-radius:13px;background:#edf3ff;color:var(--studio-blue)}
+.dashboard .ppt-commercial.ppt-studio .ppt-entry-tag{font-size:10px;color:var(--studio-muted);background:var(--studio-tint)}
+.dashboard .ppt-commercial.ppt-studio .ppt-rail-bottom{padding:12px 2px;margin:0;color:var(--studio-muted)}
+.dashboard .ppt-commercial.ppt-studio .ppt-rail-download{color:#405d89}
+.dashboard .ppt-commercial.ppt-studio .ppt-rail-faq{margin:0 0 16px}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-main{min-width:0}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-banner{margin:0 0 18px;background:#f5f8fd;border-color:var(--studio-line);color:#5b6f8e;font-size:12px;line-height:1.8}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-card{padding:30px;border-color:var(--studio-line);box-shadow:0 4px 22px #23355104}
+.dashboard .ppt-commercial.ppt-studio .ppt-compose-heading h2{font-size:21px;color:var(--studio-ink);font-weight:650}
+.dashboard .ppt-commercial.ppt-studio .ppt-compose-heading p{color:var(--studio-muted);font-size:13px}
+.dashboard .ppt-commercial.ppt-studio .ppt-compose-number{background:#edf3ff;color:var(--studio-blue);border-color:#dce7fc}
+.dashboard .ppt-commercial.ppt-studio .ppt-compose-tag{color:#4c6d9c;background:#f2f6fc;border-color:#e1e9f5}
+.dashboard .ppt-commercial.ppt-studio .ppt-ai-input{background:#f9fbff;border-color:#dce6f5}
+.dashboard .ppt-commercial.ppt-studio .ppt-ai-input>textarea{min-height:132px;font-size:14px;color:var(--studio-ink);line-height:1.8}
+.dashboard .ppt-commercial.ppt-studio .ppt-ai-field-label,.dashboard .ppt-commercial.ppt-studio .ppt-start-settings>label,.dashboard .ppt-commercial.ppt-studio .ppt-label,.dashboard .ppt-commercial.ppt-studio .ppt-more label{font-size:13px;color:#354964;font-weight:550}
+.dashboard .ppt-commercial.ppt-studio .ppt-ai-tools{color:var(--studio-muted);gap:13px}
+.dashboard .ppt-commercial.ppt-studio .ppt-ai-tools button{color:#3e5e8c;font-size:12px}
+.dashboard .ppt-commercial.ppt-studio .ppt-tool-meta{color:var(--studio-muted)}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-file-state{color:#6b7b93;font-size:12px;background:#f3f6fb}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-file-state.has-material{color:#276b56;background:#eef8f3}
+.dashboard .ppt-commercial.ppt-studio .ppt-settings-heading{font-size:15px;color:var(--studio-ink);margin:26px 0 15px;font-weight:650}
+.dashboard .ppt-commercial.ppt-studio .ppt-start-settings{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin:0 0 22px}
+.dashboard .ppt-commercial.ppt-studio .ppt-start-settings>label:first-child{grid-column:auto}
+.dashboard .ppt-commercial.ppt-studio .ppt-start-settings>label:nth-child(2){grid-column:span 2}
+.dashboard .ppt-commercial.ppt-studio .ppt-start-settings input,.dashboard .ppt-commercial.ppt-studio .ppt-start-settings select{font-size:13px;min-height:42px;color:#263d5d}
+.dashboard .ppt-commercial.ppt-studio .ppt-quick-presets{padding:16px 0 22px;border-bottom:1px solid #e7edf6;margin-bottom:24px}
+.dashboard .ppt-commercial.ppt-studio .ppt-quick-presets button{font-size:12px;color:#536884;background:#f8fafd;border:1px solid #e1e8f3}
+.dashboard .ppt-commercial.ppt-studio .ppt-section-title,.dashboard .ppt-commercial.ppt-studio .ppt-template-label{color:var(--studio-ink);font-size:17px;font-weight:650}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-template-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-template{border-color:var(--studio-line);box-shadow:none}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-template.selected{border-color:#6f9aff;box-shadow:0 0 0 1px #6f9aff;background:#f4f8ff}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-template>span:last-child>b{font-size:12px;color:#334d70}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-template>span:last-child>small{color:#6e819c}
+.dashboard .ppt-commercial.ppt-studio .ppt-template-art{min-height:120px;padding:19px;aspect-ratio:16/9}
+.dashboard .ppt-commercial.ppt-studio .ppt-template-art b{font-size:17px}
+.dashboard .ppt-commercial.ppt-studio .ppt-filter-groups p,.dashboard .ppt-commercial.ppt-studio .ppt-template-boundary{color:var(--studio-muted);font-size:12px}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-actions{padding-top:22px;margin-top:24px;border-top-color:var(--studio-line)}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-actions>.ppt-action-note{font-size:12px;color:var(--studio-muted)}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-actions>.btn.primary{background:var(--studio-blue);border-color:var(--studio-blue);font-size:14px;min-height:44px;box-shadow:0 4px 12px #2864eb1a}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-actions>.btn.secondary{font-size:13px;min-height:44px}
+.dashboard .ppt-commercial.ppt-studio .ppt-plan b{color:#2b476e;font-weight:600}
+.dashboard .ppt-commercial.ppt-studio .ppt-plan strong{color:#4d6992}
+.dashboard .ppt-commercial.ppt-studio .ppt-plan span{color:var(--studio-muted)}
+.dashboard .ppt-commercial.ppt-studio .ppt-plan.active{border-color:#a0bbf5;background:#f4f8ff}
+.dashboard .ppt-commercial.ppt-studio [data-ppt-job-slot]:empty{display:none}
+.dashboard .ppt-commercial.ppt-studio .ppt-ai-job{margin:20px 0 0}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-workspace{min-width:0;padding:28px;border:1px solid var(--studio-line);border-radius:16px;background:var(--studio-surface);margin:22px 0 0;scroll-margin-top:88px}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-empty{display:flex;align-items:center;gap:18px;min-height:120px;background:linear-gradient(115deg,#fff,#f6f9ff)}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-placeholder-icon{display:grid;place-items:center;width:56px;height:56px;flex:0 0 56px;border:1px solid #dfe8fa;background:#edf3ff;color:#7091c5;border-radius:15px}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-empty h2{margin:0 0 5px;font-size:17px;color:#3b5275}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-empty p{font-size:13px;color:var(--studio-muted);margin:0;line-height:1.8}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:22px}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-eyebrow{font-size:11px;color:#5578ac;letter-spacing:.08em}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-heading h2{font-size:23px;line-height:1.5;color:var(--studio-ink);margin:7px 0;overflow-wrap:anywhere}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-heading p{font-size:13px;color:var(--studio-muted);margin:0}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-tabs{display:flex;align-items:center;gap:7px;padding:6px;background:var(--studio-tint);border:1px solid #e5ebf5;border-radius:10px;margin-bottom:20px;flex-wrap:wrap}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-tabs button{display:flex;align-items:center;justify-content:center;gap:7px;border:1px solid transparent;border-radius:7px;padding:10px 17px;background:transparent;font:inherit;font-size:13px;font-weight:550;color:#647691;cursor:pointer}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-tabs button[aria-pressed=true]{background:var(--studio-surface);border-color:#dfe7f3;color:var(--studio-blue);box-shadow:0 2px 7px #263b5808}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-tabs>span{margin-left:auto;font-size:12px;color:#75849a;padding:0 10px}
+.dashboard .ppt-commercial.ppt-studio [data-ppt-result-panel][hidden],.dashboard .ppt-commercial.ppt-studio .ppt-result-version-note[hidden]{display:none!important}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-version-note{font-size:13px;line-height:1.8;padding:12px 15px;border:1px solid #efdfbd;background:#fffaf0;color:#876235;border-radius:8px;margin:0 0 18px}
+.dashboard .ppt-commercial.ppt-studio .ppt-generated-file{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:16px 18px;margin:0;border:1px solid #e3eaf4;border-radius:10px;background:#fcfdff}
+.dashboard .ppt-commercial.ppt-studio .ppt-generated-summary{display:flex;align-items:center;gap:13px;min-width:0}
+.dashboard .ppt-commercial.ppt-studio .ppt-generated-summary>svg{flex:0 0 24px;color:#567eae}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-saved{font-size:11px;color:#38715f}
+.dashboard .ppt-commercial.ppt-studio .ppt-generated-file h3{font-size:15px;color:var(--studio-ink);margin:3px 0;overflow-wrap:anywhere}
+.dashboard .ppt-commercial.ppt-studio .ppt-generated-file p{font-size:12px;color:var(--studio-muted);margin:0}
+.dashboard .ppt-commercial.ppt-studio .ppt-generated-file .ppt-actions{gap:10px;flex-shrink:0;margin:0}
+.dashboard .ppt-commercial.ppt-studio .ppt-generated-file .btn.primary{background:var(--studio-blue);border-color:var(--studio-blue);font-size:13px}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-more{font-size:12px;color:#617692;position:relative}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-more summary{cursor:pointer;min-height:40px;display:flex;align-items:center;padding:8px}
+.dashboard .ppt-commercial.ppt-studio .ppt-result-more>div{display:grid;gap:8px;padding:8px 0 0}
+.dashboard .ppt-commercial.ppt-studio .presentation-viewer:not(.is-expanded){padding:20px;background:var(--studio-tint);border-color:var(--studio-line);border-radius:12px;margin:18px 0 0}
+.dashboard .ppt-commercial.ppt-studio .presentation-viewer:not(.is-expanded) .presentation-viewer-stage{max-width:1000px;margin:auto}
+.dashboard .ppt-commercial.ppt-studio .presentation-viewer-heading strong{font-size:15px}
+.dashboard .ppt-commercial.ppt-studio .ppt-generated-boundary,.dashboard .ppt-commercial.ppt-studio .ppt-content-boundary{font-size:12px;color:var(--studio-muted);line-height:1.8;margin:14px 0 18px}
+.dashboard .ppt-commercial.ppt-studio .ppt-content-grid{display:grid;grid-template-columns:210px minmax(0,1fr);gap:22px;align-items:start}
+.dashboard .ppt-commercial.ppt-studio .ppt-page-navigation{background:#f7f9fd;border:1px solid #e2e9f4;border-radius:10px;padding:17px 12px}
+.dashboard .ppt-commercial.ppt-studio .ppt-page-navigation h2{margin:0 6px 12px;font-size:14px;color:#354d6e}
+.dashboard .ppt-commercial.ppt-studio .ppt-outline{max-height:580px;overflow:auto;overscroll-behavior:contain;display:grid;gap:6px}
+.dashboard .ppt-commercial.ppt-studio .ppt-outline button{display:flex;align-items:center;gap:9px;text-align:left;width:100%;min-height:48px;padding:10px;border:1px solid transparent;border-radius:7px;background:transparent;color:#627694;cursor:pointer}
+.dashboard .ppt-commercial.ppt-studio .ppt-outline button>span{font-size:11px;color:#7187a6;flex-shrink:0}
+.dashboard .ppt-commercial.ppt-studio .ppt-outline button>b{font-size:12px;line-height:1.5;font-weight:500;overflow-wrap:anywhere}
+.dashboard .ppt-commercial.ppt-studio .ppt-outline button[aria-current=page]{border-color:#d6e3ff;background:#edf3ff;color:#285fce}
+.dashboard .ppt-commercial.ppt-studio .ppt-page-workbench{min-width:0}
+.dashboard .ppt-commercial.ppt-studio .ppt-content-preview{padding:18px;border:1px solid #dfe7f3;border-radius:10px;background:#f6f8fc}
+.dashboard .ppt-commercial.ppt-studio .ppt-content-preview-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;color:#425a7c;margin-bottom:12px;font-size:13px}
+.dashboard .ppt-commercial.ppt-studio .ppt-content-preview-heading>span{color:var(--studio-muted);font-size:12px}
+.dashboard .ppt-commercial.ppt-studio #ppt-live-preview{max-width:720px;margin:auto}
+.dashboard .ppt-commercial.ppt-studio .ppt-thumbnails{max-width:720px;margin:12px auto 0}
+.dashboard .ppt-commercial.ppt-studio .ppt-page-editor{padding:22px 0 0;border:0;box-shadow:none;border-radius:0;background:transparent;margin:0}
+.dashboard .ppt-commercial.ppt-studio .ppt-page-editor h2{font-size:17px;color:var(--studio-ink)}
+.dashboard .ppt-commercial.ppt-studio .ppt-page-editor .ppt-label{font-size:13px}
+.dashboard .ppt-commercial.ppt-studio .ppt-editor-grid{grid-template-columns:minmax(0,1fr)}
+.dashboard .ppt-commercial.ppt-studio .ppt-page-editor .ppt-actions{gap:8px;flex-wrap:wrap}
+.dashboard .ppt-commercial.ppt-studio .ppt-page-editor .btn{font-size:12px}
+.dashboard .ppt-commercial.ppt-studio button:focus-visible,.dashboard .ppt-commercial.ppt-studio summary:focus-visible{outline:3px solid #a5c1ff;outline-offset:3px}
+@media(max-width:1100px){.dashboard .ppt-commercial.ppt-studio .ppt-mode-template-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard .ppt-commercial.ppt-studio .ppt-content-grid{grid-template-columns:170px minmax(0,1fr)}.dashboard .ppt-commercial.ppt-studio .ppt-result-tabs>span{display:none}.dashboard .ppt-commercial.ppt-studio .ppt-generated-file{align-items:flex-start;flex-wrap:wrap}}
+@media(max-width:760px){.dashboard .ppt-commercial.ppt-studio .ppt-mode-card,.dashboard .ppt-commercial.ppt-studio .ppt-result-workspace{padding:20px}.dashboard .ppt-commercial.ppt-studio .ppt-rail-item{padding:16px;min-height:145px}.dashboard .ppt-commercial.ppt-studio .ppt-start-settings{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.dashboard .ppt-commercial.ppt-studio .ppt-start-settings>label:nth-child(2){grid-column:auto}.dashboard .ppt-commercial.ppt-studio .ppt-start-settings input,.dashboard .ppt-commercial.ppt-studio .ppt-start-settings select{font-size:16px}.dashboard .ppt-commercial.ppt-studio .ppt-content-grid{grid-template-columns:minmax(0,1fr)}.dashboard .ppt-commercial.ppt-studio .ppt-outline{display:flex;max-height:none;overflow-x:auto}.dashboard .ppt-commercial.ppt-studio .ppt-outline button{width:160px;flex:0 0 160px}.dashboard .ppt-commercial.ppt-studio .ppt-result-heading h2{font-size:20px}.dashboard .ppt-commercial.ppt-studio .ppt-result-heading{align-items:flex-start;flex-wrap:wrap}.dashboard .ppt-commercial.ppt-studio .ppt-result-empty{align-items:flex-start}.dashboard .ppt-commercial.ppt-studio .ppt-result-placeholder-icon{width:42px;height:42px;flex-basis:42px}.dashboard .ppt-commercial.ppt-studio .ppt-generated-file .ppt-actions{flex-wrap:wrap;flex-shrink:1}.dashboard .ppt-commercial.ppt-studio .presentation-viewer:not(.is-expanded){padding:12px}.dashboard .ppt-commercial.ppt-studio .ppt-page-editor .hub-card-heading{align-items:flex-start;flex-wrap:wrap}.dashboard .ppt-commercial.ppt-studio .ppt-content-preview-heading{align-items:flex-start;flex-wrap:wrap}}
+@media(max-width:480px){.dashboard .ppt-commercial.ppt-studio .ppt-rail-item{display:flex;min-height:98px}.dashboard .ppt-commercial.ppt-studio .ppt-start-settings{grid-template-columns:minmax(0,1fr)}.dashboard .ppt-commercial.ppt-studio .ppt-mode-template-grid{grid-template-columns:minmax(0,1fr)}.dashboard .ppt-commercial.ppt-studio .ppt-result-tabs button{flex:1;padding:11px 7px}.dashboard .ppt-commercial.ppt-studio .ppt-generated-file .ppt-actions{width:100%}.dashboard .ppt-commercial.ppt-studio .ppt-generated-file .btn.primary{width:100%}.dashboard .ppt-commercial.ppt-studio .ppt-result-empty{gap:12px}.dashboard .ppt-commercial.ppt-studio .ppt-result-placeholder-icon{display:none}}
+.hub-theme-dark .dashboard .ppt-commercial.ppt-studio{--studio-ink:#e0e9f7;--studio-muted:#a2b3cc;--studio-line:#30445f;--studio-surface:#17273d;--studio-tint:#1b2d46}
+.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-rail-item,.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-mode-card,.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-result-empty{background:#17273d}
+.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-rail-item.active,.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-ai-input,.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-mode-banner,.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-generated-file,.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-content-preview,.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-page-navigation{background:#1b2d46;border-color:#30445f}
+.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-start-settings>label,.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-start-settings input,.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-start-settings select,.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-label,.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-more label{color:#d1dff2}
+
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-card{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-card>*{grid-column:1/-1;min-width:0}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-card>.ppt-ai-input,.dashboard .ppt-commercial.ppt-studio .ppt-mode-card>.ppt-material-review,.dashboard .ppt-commercial.ppt-studio .ppt-mode-card>.ppt-mode-drop{grid-column:auto;margin-top:0;align-self:stretch}
+.dashboard .ppt-commercial.ppt-studio .ppt-mode-card>.ppt-material-review{padding:18px 20px;border:1px solid #e2e9f4;border-radius:12px;background:#fcfdff;margin-bottom:0}
+.dashboard .ppt-commercial.ppt-studio .ppt-material-review summary{font-size:13px;color:#3a547a;margin-bottom:14px}
+.dashboard .ppt-commercial.ppt-studio .ppt-material-review textarea{min-height:140px;max-height:280px;font-size:13px;line-height:1.8}
+.dashboard .ppt-commercial.ppt-studio .ppt-material-review p{font-size:12px;color:#72839b;margin:10px 0}
+.dashboard .ppt-commercial.ppt-studio .ppt-ai-input>textarea{min-height:178px}
+.dashboard .ppt-commercial.ppt-studio .ppt-edit-exports{font-size:12px;color:#617692}
+.dashboard .ppt-commercial.ppt-studio .ppt-edit-exports summary{cursor:pointer;padding:10px}
+.dashboard .ppt-commercial.ppt-studio .ppt-edit-exports>div{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+@media(max-width:1000px){.dashboard .ppt-commercial.ppt-studio .ppt-mode-card{grid-template-columns:minmax(0,1fr)}.dashboard .ppt-commercial.ppt-studio .ppt-mode-card>.ppt-material-review{margin-top:18px}.dashboard .ppt-commercial.ppt-studio .ppt-ai-input>textarea{min-height:132px}}
+.hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-mode-card>.ppt-material-review{background:#1b2d46;border-color:#30445f}
+@media(max-width:760px){.dashboard .ppt-commercial.ppt-studio .ppt-mode-actions{flex-flow:column nowrap;align-items:stretch}.dashboard .ppt-commercial.ppt-studio .ppt-mode-actions>.ppt-action-note{max-width:none;margin-right:0;flex:none}.dashboard .ppt-commercial.ppt-studio .ppt-mode-actions>.btn{flex:none;width:100%;min-width:0;align-self:stretch}}
