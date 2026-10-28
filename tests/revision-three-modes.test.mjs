@@ -76,3 +76,11 @@ test('an account change after submission cannot automatically adopt or export th
 test('report editing retains leading and trailing whitespace outside its marked original',async t=>{
  const f=fixture(t);f.click('[data-product-input="paste"]');f.input('#revision-service-text','  '+paragraphs[0]+'  \n\n  '+paragraphs[1]+'  ');f.click('[data-rrp-input="paste"]');f.input('[data-rrp-paste]','原文片段：'+paragraphs[1]);f.submit();await settle(()=>!f.$('[data-product-result]').hidden);assert.equal(f.$('[data-product-revised]').textContent,'  '+paragraphs[0]+'  \n\n  '+revised(paragraphs[1])+'  ');
 });
+
+test('switching modes clears export notices and a later result cannot inherit a previous saved-file message',async t=>{
+ const f=fixture(t);f.choose('paragraph');f.input('#revision-service-text',paragraphs[0]);f.submit();await settle(()=>!f.$('[data-product-result]').hidden);f.click('#revision-product-export-docx');await settle(()=>/已下载/.test(f.$('[data-product-export-status]').textContent));const oldButton=f.$('#revision-product-export-docx');
+ f.choose('dual');assert.equal(oldButton.isConnected,false);assert.equal(f.$('[data-product-export-status]').textContent,'');f.choose('paragraph');f.submit();await settle(()=>!f.$('[data-product-result]').hidden);assert.equal(f.$('[data-product-export-status]').textContent,'');f.click('#revision-product-export-docx');await settle(()=>f.downloads.length===2);
+});
+test('an export finishing after a mode switch cannot show its result in a different manuscript',async t=>{
+ let finish;const f=fixture(t,{dependencies:{downloadFile:async()=>new Promise(resolve=>finish=resolve)}});f.choose('paragraph');f.input('#revision-service-text',paragraphs[0]);f.submit();await settle(()=>!f.$('[data-product-result]').hidden);f.click('#revision-product-export-docx');await settle(()=>!!finish);f.choose('dual');finish({message:'OLD RESULT SAVED'});await new Promise(r=>setTimeout(r,4));assert.equal(f.$('[data-product-export-status]').textContent,'');assert.equal(f.$('[data-product-result]').hidden,true);
+});
