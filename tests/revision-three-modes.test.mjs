@@ -49,8 +49,34 @@ for(const kind of ['similarity','aigc']){
   const request=f.calls.find(c=>c.path==='/tool-runs/jobs').data;assert.equal(request.snapshot.context.plan,'dual');assert.equal(toolBillingIdentity(request).serviceKey,'revision-dual');assert.equal(request.snapshot.text,paragraphs.join('\n\n'));assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);assert.equal(f.draft().original,paragraphs.join('\n\n'));assert.ok(f.draft().paragraphs.every(p=>p.accepted));
  });
 }
+for(const kind of ['similarity','aigc']){
+ for(const mode of ['report','paragraph','dual'])test(kind+' '+mode+' workflow follows one submission through live progress and a saved result without rebuilding its steps',async t=>{
+  const f=fixture(t,{kind,queued:true,dependencies:{importDocument:async()=>({text:paragraphs.join('\n\n')})}});
+  const nativeTimeout=f.w.setTimeout.bind(f.w);f.w.setTimeout=(fn,delay,...args)=>nativeTimeout(fn,delay===2500?4:delay,...args);
+  f.choose(mode);const root=f.$('[data-revision-workflow]'),buttons=[...root.querySelectorAll('button')];assert.equal(root.dataset.currentStep,'1');
+  if(mode==='dual'){f.file();await settle(()=>/已读取/.test(f.$('#revision-service-file-status').textContent));}
+  else{if(mode==='report')f.click('[data-product-input="paste"]');f.input('#revision-service-text',paragraphs.join('\n\n'));}
+  assert.equal(root.dataset.currentStep,'2');assert.equal(f.$('[data-revision-workflow-step="result"]').disabled,true);
+  if(mode==='report'){assert.match(buttons[1].textContent,/报告/);f.click('[data-rrp-input="paste"]');f.input('[data-rrp-paste]','原文片段：'+paragraphs[1]);}
+  let locations=0;const target=mode==='report'?f.$('.revision-report-preparation'):f.$('#revision-service-requirements');target.scrollIntoView=()=>locations++;buttons[1].click();assert.equal(locations,1);assert.equal(f.calls.length,0,'step navigation cannot quote or submit');
+  f.submit();f.submit();await settle(()=>root.dataset.phase==='queued');assert.equal(root.dataset.currentStep,'3');assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);
+  const job=[...f.jobs.values()][0],input=f.$('#revision-service-text');job.status='running';await settle(()=>root.dataset.phase==='running');assert.deepEqual([...root.querySelectorAll('button')],buttons);assert.equal(f.$('#revision-service-text'),input);
+  job.status='completed';job.output=job._output;job.completedUnits=1;await settle(()=>root.dataset.phase==='complete');assert.equal(root.dataset.currentStep,'4');assert.equal(f.$('[data-product-result]').hidden,false);assert.equal(f.$('[data-revision-workflow-step="result"]').disabled,false);
+  const result=f.$('[data-product-result]');result.scrollIntoView=()=>locations++;buttons[3].click();assert.equal(locations,2);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);assert.equal(f.$('[data-tj-start]'),null);assert.equal(f.$('[data-tj-consent]'),null);
+ });
+ test(kind+' workflow preserves the previous result while changed requirements or report basis return to review',async t=>{
+  const f=fixture(t,{kind});f.click('[data-product-input="paste"]');f.input('#revision-service-text',paragraphs.join('\n\n'));f.click('[data-rrp-input="paste"]');f.input('[data-rrp-paste]','原文片段：'+paragraphs[1]);f.submit();await settle(()=>!f.$('[data-product-result]').hidden);
+  const root=f.$('[data-revision-workflow]'),result=f.$('[data-product-revised]').textContent;assert.equal(root.dataset.currentStep,'4');
+  f.click('[data-rrp-provider="cnki"]');assert.equal(root.dataset.currentStep,'2');assert.match(f.$('[data-revision-workflow-hint]').textContent,/尚未重新处理/);assert.equal(f.$('[data-product-revised]').textContent,result);assert.equal(f.$('[data-revision-workflow-step="result"]').disabled,false);
+  f.input('#revision-service-requirements','保留术语与全部数据。');assert.equal(root.dataset.currentStep,'2');assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);
+ });
+ test(kind+' workflow does not mark a blocked paid start as a completed result',async t=>{
+  const f=fixture(t,{kind,quoteError:'积分不足，本次需要 500 积分'});f.choose('paragraph');f.input('#revision-service-text',paragraphs[0]);f.submit();await settle(()=>/积分不足/.test(f.$('.tool-job-error')?.textContent||''));
+  assert.equal(f.$('[data-revision-workflow]').dataset.phase,'blocked_start');assert.equal(f.$('[data-revision-workflow]').dataset.currentStep,'2');assert.equal(f.$('[data-revision-workflow-step="result"]').disabled,true);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);f.input('#revision-service-requirements','保留术语');assert.equal(f.$('[data-revision-workflow]').dataset.currentStep,'2');assert.doesNotMatch(f.$('[data-revision-workflow-hint]').textContent,/上次修改结果/);
+ });
+}
 test('waiting locks form and all three modes, and cancel unlocks without applying a partial result',async t=>{
- const f=fixture(t,{queued:true});f.choose('paragraph');f.input('#revision-service-text',paragraphs[0]);f.submit();await settle(()=>!!f.$('[data-tj-cancel]'));assert.equal(f.$('[data-product-start]').disabled,true);assert.ok([...f.root.querySelectorAll('[data-report-basis]')].every(b=>b.disabled));assert.equal(f.$('[data-product-result]').hidden,true);f.click('[data-tj-cancel]');await settle(()=>!f.$('[data-product-start]').disabled);assert.ok(f.draft().paragraphs.every(p=>!p.accepted));assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);
+ const f=fixture(t,{queued:true});f.choose('paragraph');f.input('#revision-service-text',paragraphs[0]);f.submit();await settle(()=>!!f.$('[data-tj-cancel]'));assert.equal(f.$('[data-product-start]').disabled,true);assert.ok([...f.root.querySelectorAll('[data-report-basis]')].every(b=>b.disabled));assert.equal(f.$('[data-product-result]').hidden,true);f.click('[data-tj-cancel]');await settle(()=>!f.$('[data-product-start]').disabled);assert.ok(f.draft().paragraphs.every(p=>!p.accepted));assert.equal(f.$('[data-revision-workflow]').dataset.phase,'cancelled');assert.equal(f.$('[data-revision-workflow-step="result"]').disabled,true);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);
 });
 test('protected facts reject the whole result and preserve the complete original',async t=>{
  const f=fixture(t,{transform:output=>({...output,paragraphs:output.paragraphs.map(p=>({...p,revised:p.revised.replace('24','99')}))})});f.choose('paragraph');f.input('#revision-service-text',paragraphs.join('\n\n'));f.submit();await settle(()=>/整批尚未采用/.test(f.$('.tool-job-error')?.textContent||''));assert.equal(f.$('[data-product-result]').hidden,true);assert.ok(f.draft().paragraphs.every(p=>!p.accepted&&p.suggestion===p.original));
