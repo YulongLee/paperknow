@@ -11,3 +11,8 @@
 /* Give the native Safari number field enough text space beside pagination. */
 #app .dashboard .formula-studio .fs-page-controls input{appearance:textfield;-webkit-appearance:none;box-sizing:border-box;flex:0 0 42px;width:42px;min-width:42px;height:28px;min-height:28px;padding:3px!important;font-size:12px;line-height:20px;color:#456184;text-align:center}
 #app .dashboard .formula-studio .fs-page-controls input::-webkit-inner-spin-button,#app .dashboard .formula-studio .fs-page-controls input::-webkit-outer-spin-button{appearance:none;-webkit-appearance:none;margin:0}
+
+/* Async formula thumbnails share one fixed box before and after SVG layout. */
+.formula-studio .fs-template-equation{height:80px;min-height:80px;max-height:80px;flex:none}
+.formula-studio .fs-preview{height:320px;min-height:320px;max-height:320px;overscroll-behavior:contain}
+@media(max-width:720px){.formula-studio .fs-preview{height:240px;min-height:240px;max-height:240px}}

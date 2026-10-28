@@ -87,6 +87,21 @@ test('history only displays image jobs and retrieves an existing owned image wit
  f.click('[data-rd-copy-input]');await until(()=>f.container.querySelector('[data-rd-prompt]').value===baseForm().prompt);assert.equal(f.mount.getSnapshot().context.figureType,'flowchart');assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,0);
 });
 
+test('unchanged drawing history refreshes retain the same controls and nested scroll position',async t=>{
+ const f=fixture(t,{jobs:[completedJob()]});await f.mount.ready;
+ const target=f.container.querySelector('[data-rd-history]'),button=target.querySelector('[data-rd-history-item]');target.scrollTop=70;button.focus();
+ await f.mount.refreshHistory();
+ assert.equal(target.querySelector('[data-rd-history-item]'),button);assert.equal(target.scrollTop,70);assert.equal(f.w.document.activeElement,button);
+ f.click('[data-rd-history-filter="active"]');assert.equal(target.querySelector('[data-rd-history-item]'),null);
+ f.click('[data-rd-history-filter="all"]');assert.ok(target.querySelector('[data-rd-history-item]'));
+});
+
+test('owned image previews reserve validated intrinsic dimensions before image decode',async t=>{
+ const f=fixture(t,{jobs:[completedJob()]});await f.mount.ready;f.click('[data-rd-history-item]');
+ await until(()=>!!f.container.querySelector('img[data-rd-generated-image]'));
+ const image=f.container.querySelector('img[data-rd-generated-image]');assert.equal(image.getAttribute('width'),'1600');assert.equal(image.getAttribute('height'),'900');assert.match(image.src,/^blob:/);
+});
+
 test('a failed historical task preserves the current prompt and can deliberately restore its original input for retry',async t=>{
  const failed={...completedJob(),status:'failed',error:'生成未完成，请重试',output:null},f=fixture(t,{jobs:[failed]});f.setJob(failed);await f.mount.ready;f.enter('[data-rd-prompt]','尚未提交的另一份描述，不应被历史任务自动覆盖');f.click('[data-rd-history-item]');await until(()=>!!f.container.querySelector('[data-tj-resume]'));assert.equal(f.container.querySelector('[data-rd-prompt]').value,'尚未提交的另一份描述，不应被历史任务自动覆盖');assert.equal(f.container.querySelector('[data-tj-resume]').disabled,true);assert.equal(f.container.querySelector('[data-rd-recover-input]').hidden,false);f.click('[data-rd-recover-input]');await until(()=>f.container.querySelector('[data-rd-prompt]').value===baseForm().prompt);assert.equal(f.container.querySelector('[data-tj-resume]').disabled,false);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote'||row.path==='/tool-runs/jobs'&&row.data).length,0);
 });

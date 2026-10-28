@@ -78,7 +78,7 @@ test('overlapping formula entries share one module load and cached redraws mount
  loading.resolve(h.modules.formula);const [firstResult,currentResult]=await Promise.all([first,second]);
  assert.equal(firstResult,null);assert.equal(h.calls.mounts.length,1);
  assert.equal(h.calls.mounts[0].container,currentHost);assert.equal(currentResult,h.calls.mounts[0].lifecycle);
- h.click('[data-mode="formula"]');
+ h.click('[data-mode="data"]');h.click('[data-mode="formula"]');
  assert.equal(h.calls.formulaLoads,1);assert.equal(h.calls.mounts.length,2);
  assert.ok(h.q('[data-mounted-studio="formula"]'));assert.equal(h.calls.disposals.length,1);
 });
@@ -181,6 +181,26 @@ test('clean research navigation and disposal avoid synchronously writing unchang
  const h=harness(t,{mode:'data'});h.mount();let writes=0;const original=h.w.Storage.prototype.setItem;
  h.w.Storage.prototype.setItem=function(key,value){if(key===deliveryModel.researchSessionKey)writes++;return original.call(this,key,value);};
  assert.equal(h.w.lifecycle.researchRouteGuard(),true);assert.equal(h.w.lifecycle.researchRouteGuard(),true);h.dispose();assert.equal(writes,0);
+});
+
+test('a cold drawing or formula import keeps an accessible reserved workspace until ready',async t=>{
+ for(const kind of ['drawing','formula']){
+  const loading=deferred(),h=harness(t,{mode:kind==='drawing'?'basic':'formula',...(kind==='drawing'?{loadDrawing:()=>loading.promise}:{loadFormula:()=>loading.promise})});
+  const ready=h.mount(),host=h.q('[data-research-'+(kind==='drawing'?'drawing':'formula')+'-host]');
+  assert.equal(host.getAttribute('aria-busy'),'true');assert.ok(host.querySelector('.research-studio-skeleton'));
+  assert.match(host.querySelector('[role="status"]').textContent,/正在加载/);assert.equal(host.querySelectorAll('.research-studio-placeholder-pane').length,kind==='drawing'?3:2);
+  loading.resolve(h.modules[kind]);await ready;
+  assert.equal(host.getAttribute('aria-busy'),'false');assert.equal(host.querySelector('.research-studio-skeleton'),null);assert.ok(host.querySelector('[data-mounted-studio]'));
+ }
+});
+
+test('clicking the already active research category does not replace the editor or restart loading',async t=>{
+ for(const kind of ['drawing','formula']){
+  const mode=kind==='drawing'?'basic':'formula',h=harness(t,{mode});await h.mount();
+  const host=h.q('[data-mounted-studio]'),count=h.calls.mounts.length;
+  h.click('[data-mode="'+mode+'"]');h.click('[data-mode="'+mode+'"]');await flush();
+  assert.equal(h.q('[data-mounted-studio]'),host);assert.equal(h.calls.mounts.length,count);assert.equal(h.calls.disposals.length,0);
+ }
 });
 test('research changes persist once and identical formula disposal callbacks do not rewrite the session',async t=>{
  const h=harness(t,{mode:'formula'});await h.mount();let writes=0;const original=h.w.Storage.prototype.setItem;
