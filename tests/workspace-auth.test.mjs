@@ -53,6 +53,18 @@ const keys={profile:'paperknow-local-profile',preferences:'paperknow-preferences
 const response=(status,user)=>({status,ok:status>=200&&status<300,json:async()=>({user})});
 const signedIn={id:'researcher-1',name:'服务账户',email:null,phone:'+8613800000000',phoneVerifiedAt:'2026-10-15T00:00:00Z',hasPassword:false};
 
+test('same-owner detection recovery markers never remount another active view, while foreign-owner changes still follow the session path',async()=>{
+ const f=await fixture(async url=>url==='/api/auth/me'?response(200,signedIn):{ok:true,status:200,json:async()=>({items:[]})});
+ try{
+  await f.api.loadWorkspaceSession();const w=f.dom.window;let mounts=0;
+  w.mountTool=()=>{mounts++;f.document.querySelector('.dashboard').innerHTML='<textarea id="detection-workflow-draft">尚未提交的论文正文</textarea>';return true;};
+  w.history.replaceState(null,'','#tool/writing');f.api.render();const input=f.document.querySelector('#detection-workflow-draft');input.focus();input.setSelectionRange(3,3);const before=mounts;
+  for(const prefix of ['paperknow-web-similarity-last:','paperknow-aigc-last:'])w.dispatchEvent(new w.StorageEvent('storage',{key:prefix+signedIn.id,newValue:'{"itemId":"other-task"}',storageArea:f.storage}));
+  assert.equal(mounts,before);assert.equal(f.document.querySelector('#detection-workflow-draft'),input);assert.equal(f.document.activeElement,input);assert.equal(input.selectionStart,3);assert.equal(input.value,'尚未提交的论文正文');
+  w.dispatchEvent(new w.StorageEvent('storage',{key:'paperknow-aigc-last:another-owner',newValue:'{"itemId":"private-task"}',storageArea:f.storage}));assert.equal(mounts,before+1);
+ }finally{f.close();}
+});
+
 async function fixture(fetcher,{hash='#account',allReports=async()=>[],setup}={}){
  const dom=new JSDOM('<div id="app"></div>',{url:'https://paperknow.cn/workspace.html'+hash,runScripts:'outside-only'});
  const paymentCalls=[];

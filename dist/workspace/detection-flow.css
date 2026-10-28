@@ -10,3 +10,28 @@
 .detection-faq details{padding:13px 0;border-bottom:1px solid #e7ecf3}.detection-faq details:last-child{border:0;padding-bottom:0}.detection-faq summary{font-size:12px;font-weight:600;color:#42526b;cursor:pointer}.detection-faq p,.web-similarity-history-note{font-size:12px;color:#64748b;line-height:1.8}.web-similarity-history-note{margin:0 0 12px}
 @media(max-width:1050px){.doc-tool-detection .detection-method-cards{gap:9px}.detection-method-cards>a{padding:13px;gap:9px}.detection-method-cards>a>span{width:33px;height:33px}.detection-method-cards b{font-size:14px}}
 @media(max-width:760px){.doc-tool-detection .detection-method-cards{grid-template-columns:1fr;margin:16px 0}.detection-method-cards>a{padding:15px}.detection-method-cards small,.detection-method-cards em{font-size:12px}.detection-method-cards em{margin-top:2px}.detection-scope-preview li{flex-wrap:wrap;gap:4px}.detection-flow-steps{gap:8px;font-size:11px}.detection-flow-steps li+li:before{margin-right:8px}.detection-upload-panel{padding:13px}.detection-upload-panel .web-similarity-file{padding:15px}.detection-scope-preview{padding:13px}}
+.aigc-detection>[data-detection-workflow-host],.web-similarity>[data-detection-workflow-host]{grid-column:1/-1;min-width:0}
+.detection-workflow{margin:0;color:#2c405e}
+.detection-workflow-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 3px 10px;font-size:13px}
+.detection-workflow-heading>strong{font-size:14px;font-weight:600}
+.detection-workflow-heading>span{font-size:12px;color:#71829a}
+.detection-workflow .detection-workflow-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;list-style:none;padding:8px;margin:0;border:1px solid #dfe7f4;border-radius:14px;background:#fff;box-shadow:0 4px 16px #1e3e7806}
+.detection-workflow-steps li{min-width:0;margin:0;padding:0;list-style:none}
+.detection-workflow .detection-workflow-steps button{width:100%;min-height:78px;display:flex;align-items:center;gap:10px;box-sizing:border-box;padding:13px 12px;border:0;border-radius:9px;background:transparent;text-align:left;font:inherit;color:#64748b;cursor:pointer}
+.detection-workflow-steps button>span{display:grid;place-items:center;width:32px;height:32px;flex-shrink:0;border-radius:9px;background:#edf2fa;font-size:12px;font-weight:700;color:inherit}
+.detection-workflow-steps button>div{min-width:0}
+.detection-workflow-steps b{display:block;color:inherit;font-size:13px;line-height:1.7;font-weight:600}
+.detection-workflow .detection-workflow-steps small{display:block;margin-top:4px;color:inherit;font-size:11px;line-height:1.6;font-weight:400}
+.detection-workflow .detection-workflow-steps button.is-active{background:#edf3ff;color:#2966ee}
+.detection-workflow-steps button.is-active>span{background:#326bfa;color:#fff}
+.detection-workflow .detection-workflow-steps button.is-completed{color:#25866b}
+.detection-workflow-steps button.is-completed>span{background:#e5f5ee;color:#25866b}
+.detection-workflow .detection-workflow-steps button:disabled{cursor:default;opacity:1}
+.detection-workflow .detection-workflow-steps button.is-active:disabled{opacity:1}
+.detection-workflow-steps button:focus-visible{outline:3px solid #b8cdf7;outline-offset:1px}
+.detection-workflow-hint{box-sizing:border-box;min-height:42px;margin:9px 0 0;padding:8px 12px;border-left:3px solid #b5caf6;border-radius:0 6px 6px 0;background:#f2f6fe;color:#58708f;font-size:12px;line-height:1.8}
+.detection-workflow[data-phase=failed] .detection-workflow-hint,.detection-workflow[data-phase=cancelled] .detection-workflow-hint,.detection-workflow[data-phase=recovering] .detection-workflow-hint{background:#fff8ee;border-color:#e9c58b;color:#8e6536}
+.detection-workflow[data-phase=complete] .detection-workflow-hint{background:#f0faf5;border-color:#9dd6bc;color:#397860}
+.hub-theme-dark .detection-workflow{color:#cfddf1}.hub-theme-dark .detection-workflow .detection-workflow-steps{background:#1c2b42;border-color:#354b6c}.hub-theme-dark .detection-workflow .detection-workflow-steps button{color:#acbdd5}.hub-theme-dark .detection-workflow .detection-workflow-steps button.is-active{background:#233d63;color:#a6c3ff}.hub-theme-dark .detection-workflow-steps button>span{background:#2b405e}.hub-theme-dark .detection-workflow-hint{background:#203451;color:#b4c9e6;border-color:#4e78b7}
+@media(max-width:760px){.detection-workflow .detection-workflow-steps{grid-template-columns:repeat(2,minmax(0,1fr))}.detection-workflow .detection-workflow-steps button{min-height:76px;padding:11px 10px}.detection-workflow-hint{min-height:60px}}
+@media(prefers-reduced-motion:reduce){.detection-workflow *{scroll-behavior:auto}}
