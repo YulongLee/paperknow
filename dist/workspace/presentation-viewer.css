@@ -2,3 +2,11 @@
 
 
 .presentation-viewer.is-expanded{position:fixed;inset:12px;z-index:10000;margin:0;display:flex;flex-direction:column;overflow:auto;box-shadow:0 0 0 20px #182e4bcc}.presentation-viewer.is-expanded .presentation-viewer-stage{flex:1;min-height:0;aspect-ratio:auto}.presentation-viewer.is-expanded .presentation-viewer-controls,.presentation-viewer.is-expanded .presentation-viewer-heading,.presentation-viewer.is-expanded .presentation-viewer-pages{flex-shrink:0}
+
+.presentation-viewer-stage iframe{pointer-events:none}.presentation-viewer-stage:focus-visible{outline:3px solid #8bafff;outline-offset:3px}.presentation-viewer-stage>[data-pv-wait].is-error{padding:24px;text-align:center}.presentation-viewer-stage>[data-pv-wait].is-error p{max-width:520px;color:#7c3f26;font-size:15px;line-height:1.8}
+
+.ppt-generated-file{scroll-margin-top:84px}
+
+.ppt-editor-workspace>.ppt-preview-column{min-width:0;max-width:100%}@media(max-width:720px){.ppt-editor-workspace.doc-tool-ppt{grid-template-columns:minmax(0,1fr)}.ppt-editor-workspace .ppt-fields,.ppt-editor-workspace .ppt-fields.four,.ppt-start-settings{grid-template-columns:minmax(0,1fr)}}
+
+@media(max-width:600px){.presentation-viewer-pages button{flex-basis:44px;height:44px}}

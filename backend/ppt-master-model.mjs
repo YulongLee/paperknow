@@ -45,7 +45,7 @@ export function pptMasterDesignPlan(value,slides,options={}){
  const accepted=slides.map(semanticSlide);if(accepted.some((slide,index)=>slide.id!=='slide-'+(index+1)))fail('PPT Master 页面顺序不一致');
  const sourceIds=originalSourceIds(value,options.sourceIds??options.originalSources);
  const theme=Object.hasOwn(themes,s.context?.theme)?s.context.theme:'academic';
- const fontFamily=/^(?:en|english|英语|英文)/i.test(s.language||'')?'Aptos':'Microsoft YaHei';
+ const fontFamily=/^(?:en|english|英语|英文)/i.test(s.language||'')?'Arial':'Microsoft YaHei';
  const author=s.context?.author??'';if(typeof author!=='string'||author.length>100||/[\u0000-\u001f\u2028\u2029]/u.test(author))fail('PPT Master 作者署名应为不超过100字符的单行文字');
  return {version:1,engine:'ppt-master',canvas:{width:1280,height:720,viewBox:'0 0 1280 720'},theme,palette:{...themes[theme]},typography:{fontFamily,title:46,body:26,caption:16},sourceIds,metadata:{author:author.trim()},
   motif:'标题区保持稳定左边界与短强调线；每页使用相同字体、色板与右下角页码。封面、内容和结尾用面积与留白改变节奏。',

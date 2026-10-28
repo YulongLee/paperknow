@@ -3,7 +3,7 @@ import {DOMParser} from '@xmldom/xmldom';
 const paragraphs=slide=>slide.body.split(/\r?\n/).map(text=>text.trim()).filter(Boolean);
 export function presentationChartRows(slide){
  const rows=paragraphs(slide).map(text=>{const match=text.match(/^([^：:\n]{1,40})[：:]\s*(\d+(?:\.\d+)?)\s*(%|％|ms|s|秒|毫秒|个|次|人|MB|GB|分|分数)?(?:\s*\[\d+\])?$/u);return match?{text,label:match[1],value:Number(match[2]),unit:match[3]||''}:null;});
- if(rows.length<2||rows.length>6||rows.some(row=>!row||!Number.isFinite(row.value)||row.value<0)||new Set(rows.map(row=>row.unit.replace('％','%'))).size!==1||rows.every(row=>row.value===0))return null;
+ if(rows.length<2||rows.length>6||rows.some(row=>!row||!row.unit||!Number.isFinite(row.value)||row.value<0)||new Set(rows.map(row=>row.unit.replace('％','%'))).size!==1||rows.every(row=>row.value===0))return null;
  if(['%','％'].includes(rows[0].unit)&&rows.some(row=>row.value>100))return null;return rows;
 }
 export function presentationVisualKind(slide){
@@ -38,14 +38,16 @@ export function presentationVisualArrangement(slide,plan,bodySize,titleSize,wrap
  if(kind==='cover'&&plan.metadata?.author)rows.push({id:'presentation-author',text:'作者：'+plan.metadata.author,role:'body'});
  const blocks=[{id:'slide-title',text:slide.title,role:'title',x:72,y:top,w:kind==='cover'?744:1136,h:titleHeight,size:titleSize,lines:titleLines}];let art='';
  const wrapBody=(text,space)=>{const at=text.search(/[：:]/u);return at>0&&at<30&&wrap(text.slice(0,at+1),bodySize,space).length===1?[text.slice(0,at+1),...wrap(text.slice(at+1),bodySize,space)]:wrap(text,bodySize,space);};
- const add=(row,x,y,w,h)=>{const wrapped=wrapBody(row.text,w-24);if(wrapped.length*bodySize*1.5+16>h)return false;blocks.push({...row,x,y,w,h,size:bodySize,lines:wrapped,boldFirst:/[：:]$/.test(wrapped[0])});return true;};
+ const add=(row,x,y,w,h,inline=false)=>{const wrapped=inline?wrap(row.text,bodySize,w-24):wrapBody(row.text,w-24);if(wrapped.length*bodySize*1.5+16>h)return false;blocks.push({...row,x,y,w,h,size:bodySize,lines:wrapped,boldFirst:/[：:]$/.test(wrapped[0])});return true;};
  if(kind==='cover'||kind==='illustration'){
   let y=bodyTop;for(const row of rows){const h=wrapBody(row.text,688).length*bodySize*1.5+16;if(!add(row,72,y,712,h)||y+h>bottom)return null;y+=h+16;}
-  art=`<circle cx="1045" cy="355" r="159" fill="${p.secondary}"/><circle cx="1045" cy="355" r="128" fill="none" stroke="${p.divider}" stroke-width="2"/>`+glyph(slide.title+' '+slide.body,936,246,218,p)+`<rect x="940" y="540" width="210" height="6" fill="${p.accent}"/>`;
+  const center=kind==='cover'?355:(bodyTop+bottom)/2,radius=kind==='cover'?159:Math.min(159,(bottom-bodyTop)/2-12),size=Math.min(218,radius*1.4);
+  if(radius<40)return null;
+  art=`<circle cx="1045" cy="${center}" r="${radius}" fill="${p.secondary}"/><circle cx="1045" cy="${center}" r="${radius*0.8}" fill="none" stroke="${p.divider}" stroke-width="2"/>`+glyph(slide.title+' '+slide.body,1045-size/2,center-size/2,size,p)+`<rect x="940" y="${center+radius+16}" width="210" height="6" fill="${p.accent}"/>`;
  }else if(kind==='bars'){
   const chart=presentationChartRows(slide),max=['%','％'].includes(chart[0].unit)?100:Math.max(...chart.map(row=>row.value)),height=(bottom-bodyTop)/rows.length;
   if(height<bodySize*1.5+34)return null;
-  rows.forEach((row,i)=>{const y=bodyTop+i*height;art+=`<rect x="84" y="${y+height-20}" width="1088" height="12" rx="6" fill="${p.secondary}"/>${chart[i].value>0?`<rect x="84" y="${y+height-20}" width="${Number((1088*chart[i].value/max).toFixed(2))}" height="12" rx="6" fill="${i===chart.length-1?p.primary:p.accent}"/>`:''}`;});
+  rows.forEach((row,i)=>{const y=bodyTop+i*height;art+=`<rect x="84" y="${y+height-20}" width="1088" height="12" rx="6" fill="${p.secondary}"/>${(chart[i].value/max)*1088>=0.000001?`<rect x="84" y="${y+height-20}" width="${Number(((chart[i].value/max)*1088).toFixed(6))}" height="12" rx="6" fill="${i===chart.length-1?p.primary:p.accent}"/>`:''}`;});
   for(const [i,row]of rows.entries())if(!add(row,72,bodyTop+i*height,1136,height-28))return null;
  }else{
   const horizontal=kind==='process'&&rows.length<=4,cols=horizontal?rows.length:kind==='process'?1:rows.length===2?2:rows.length===4?2:3,count=Math.ceil(rows.length/cols),gap=kind==='process'?38:24,w=(1136-gap*(cols-1))/cols,available=(bottom-bodyTop-24*(count-1))/count,desired=horizontal?Math.max(...rows.map(row=>wrapBody(row.text,w-48).length*bodySize*1.5+118)):cols>1?Math.max(...rows.map(row=>wrapBody(row.text,w-48).length*bodySize*1.5+102)):available,h=Math.min(available,Math.max(count===1?270:190,desired)),offset=count===1?Math.max(0,(available-h)/3):0;
@@ -54,7 +56,7 @@ export function presentationVisualArrangement(slide,plan,bodySize,titleSize,wrap
    art+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="${p.secondary}" stroke="${p.divider}" stroke-width="1"/>`;
    const iconSize=vertical?Math.min(48,h-12):horizontal?64:48,ix=x+20,iy=vertical?y+(h-iconSize)/2:y+18;art+=glyph(row.text,ix,iy,iconSize,p);
    const bx=vertical?x+88:x+12,by=vertical?y+4:y+iconSize+30,bw=vertical?w-108:w-24,bh=vertical?h-8:h-iconSize-38;
-   if(!add(row,bx,by,bw,bh))return null;
+   if(!add(row,bx,by,bw,bh,vertical))return null;
    if(kind==='process'&&horizontal&&i<rows.length-1)art+=arrow(Number((x+w+5).toFixed(2)),Number((y+52).toFixed(2)),Number((x+w+gap-5).toFixed(2)),Number((y+52).toFixed(2)),p);
    if(kind==='process'&&vertical&&i<rows.length-1)art+=`<line x1="112" y1="${y+h}" x2="112" y2="${y+h+18}" stroke="${p.accent}" stroke-width="2"/><polygon points="106,${y+h+15} 112,${y+h+23} 118,${y+h+15}" fill="${p.accent}"/>`;
   }

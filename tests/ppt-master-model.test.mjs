@@ -55,5 +55,5 @@ test('matching text cannot be hidden by the same paint color, a later rectangle 
 
 test('the design lock validates evidence refs, full page count and page order',()=>{
  const f=fixture();assert.throws(()=>pptMasterDesignPlan(f.value,f.slides.slice(0,5)),/页数/);assert.throws(()=>pptMasterDesignPlan(f.value,[f.slides[1],f.slides[0],...f.slides.slice(2)]),/顺序/);assert.throws(()=>pptMasterDesignPlan(f.value,f.slides,{sourceIds:['private-other-source']}),/来源/);
- const english=pptMasterDesignPlan({...f.value,snapshot:{...f.value.snapshot,language:'英文'}},f.slides);assert.equal(english.typography.fontFamily,'Aptos');
+ const english=pptMasterDesignPlan({...f.value,snapshot:{...f.value.snapshot,language:'英文'}},f.slides);assert.equal(english.typography.fontFamily,'Arial');
 });

@@ -6,9 +6,17 @@ const xml=value=>String(value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','
 const width=(value,size)=>Array.from(value).reduce((sum,ch)=>sum+(ch===' '?0.3:/[\u2E80-\uFFFF]/u.test(ch)?1:/[MW@#%]/.test(ch)?0.85:/[ilI.,:;'!|]/.test(ch)?0.3:0.56)*size,0);
 function lines(text,size,space){
  const result=[];let line='';
- for(const ch of Array.from(text.replace(/\s+/gu,' ').trim())){if(line&&width(line+ch,size)>space){if(/[，。；：、！？,.!?;:）)\]】]/u.test(ch)&&line.length>1){const chars=Array.from(line),last=chars.pop();result.push(chars.join(''));line=last;}else{result.push(line);line='';}}line+=ch;}
- if(line)result.push(line);return result;
+ const flush=()=>{if(line.trim())result.push(line.trimEnd());line='';};
+ const append=ch=>{if(line&&width(line+ch,size)>space){if(/[，。；：、！？,.!?;:）)\]】]/u.test(ch)&&Array.from(line).length>1){const chars=Array.from(line),last=chars.pop();result.push(chars.join('').trimEnd());line=last;}else flush();}if(line||ch!==' ')line+=ch;};
+ // Keep ordinary English words together; long identifiers and CJK text still
+ // wrap at readable character boundaries without changing any source wording.
+ for(const token of text.replace(/\s+/gu,' ').trim().match(/[A-Za-z0-9_]+(?:[-./'][A-Za-z0-9_]+)*| +|./gu)||[]){
+  if(/^[A-Za-z0-9_]/.test(token)&&width(token,size)<=space){if(line&&width(line+token,size)>space)flush();line+=token;}
+  else for(const ch of Array.from(token))append(ch);
+ }
+ flush();return result;
 }
+
 function arrangement(slide,plan,composition,bodySize,titleSize){
  const content=pptMasterVisibleContent(slide,plan),title=content[0],footer=content.at(-1),body=content.slice(1,-1),titleLines=lines(title.text,titleSize,1112),titleHeight=titleLines.length*titleSize*1.5+16;
  const top=composition==='cover'||composition==='ending'?92:44,bodyTop=top+titleHeight+24,bottom=624;
