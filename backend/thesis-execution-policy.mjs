@@ -1,6 +1,10 @@
 // Pure admission/planning policy. These estimates never replace the runtime's
 // request reservation, actual provider usage, or administrator's explicit cap.
-const runFloor=400000,runCeiling=2000000;
+// A complete manuscript contains many independent, metered model executions.
+// Keep the relay's per-execution bound separate from the whole-paper pool.
+export const thesisCallTokenCeiling=2000000;
+export const thesisRunTokenCeiling=100000000;
+const runFloor=400000;
 const fail=(message,code='invalid_execution_budget')=>{throw Object.assign(new Error(message),{status:400,code});};
 const integer=(value,fallback,min,max)=>{
  if(value===undefined||value===null||value==='')return fallback;
@@ -31,11 +35,12 @@ export function sectionWordsForRuntime(settings={},language='中文',configured=
  return Math.min(ceiling,capacity);
 }
 
-export function computeThesisRunBudget({snapshot={},plan,settings={},config={}}={}){
+export function computeThesisRunBudget({snapshot={},plan,settings={},config={},reviewAllowance=1}={}){
  // Explicit operator limits always win, including a cap below the default.
- if(config.thesisMaxRunTokens!==undefined&&config.thesisMaxRunTokens!==null&&config.thesisMaxRunTokens!=='')return integer(config.thesisMaxRunTokens,runFloor,1000,runCeiling);
+ if(config.thesisMaxRunTokens!==undefined&&config.thesisMaxRunTokens!==null&&config.thesisMaxRunTokens!=='')return integer(config.thesisMaxRunTokens,runFloor,1000,thesisRunTokenCeiling);
  if(!Array.isArray(plan)||!plan.length||plan.length>120)fail('论文生成单元数量无效');
  const turns=integer(settings.maxTurns,6,1,12),output=integer(settings.maxOutputTokens,4096,32,16384);
+ const reviews=integer(reviewAllowance,1,0,24);
  const sources=[...(Array.isArray(snapshot.materials)?snapshot.materials:[]),...(Array.isArray(snapshot.references)?snapshot.references:[])].filter(row=>row?.confirmed===true&&typeof row.text==='string'&&row.text.trim());
  // The chapter selector supplies at most ten sources and two 1200-character
  // excerpts per source. Count their maximum bounded content, never whole PDFs.
@@ -48,8 +53,14 @@ export function computeThesisRunBudget({snapshot={},plan,settings={},config={}}=
  const expectedTurns=Math.min(turns,sources.length>4?4:sources.length?3:2);
  const requestBytes=18000+metadata+evidence+priorContext;
  const perUnit=requestBytes*expectedTurns+output*expectedTurns;
- const estimate=Math.ceil((plan.length*perUnit*1.25+perUnit)/1000)*1000;
- return Math.max(runFloor,Math.min(runCeiling,estimate));
+ // Reserve repair headroom and all planned review/supplement passes up front.
+ // Reviews read saved manuscript excerpts rather than just a single section.
+ // Dollar ceilings remain independently frozen and enforced by the ledger.
+ const words=Number.isSafeInteger(snapshot.profile?.targetWords)?snapshot.profile.targetWords:8000;
+ const manuscriptBytes=Math.min(120000,words*(/english|英文|英语/i.test(snapshot.profile?.language||'中文')?6:3));
+ const reviewTokens=Math.max(perUnit,(18000+manuscriptBytes)*Math.min(turns,3)+output*Math.min(turns,3));
+ const estimate=Math.ceil((plan.length*perUnit*1.5+reviews*reviewTokens)/1000)*1000;
+ return Math.max(runFloor,Math.min(thesisRunTokenCeiling,estimate));
 }
 
 export function classifyThesisRetry(error){
@@ -65,7 +76,7 @@ export function classifyThesisRetry(error){
  const admission=error?.executionBudget;
  if(code==='budget_exceeded'&&status===429&&usageKnown&&admission?.reason==='request_reservation'&&admission.inFlightTokens===0&&Number.isSafeInteger(admission.limitTokens)&&admission.limitTokens>0&&Number.isSafeInteger(admission.usedTokens)&&admission.usedTokens===usage.input+usage.output&&admission.usedTokens<=admission.limitTokens&&Number.isSafeInteger(admission.requestTokens)&&admission.requestTokens>0){
   const required=admission.usedTokens+admission.requestTokens;
-  if(Number.isSafeInteger(required)&&required>admission.limitTokens&&required<=runCeiling)return {retryable:true,reason:'request_window',minimumTokens:Math.min(runCeiling,Math.ceil(required*1.25))};
+  if(Number.isSafeInteger(required)&&required>admission.limitTokens&&required<=thesisCallTokenCeiling)return {retryable:true,reason:'request_window',minimumTokens:Math.min(thesisCallTokenCeiling,Math.ceil(required*1.25))};
  }
  // Cancellation, access boundaries, moderation, evidence violations and cost
  // ceilings must not turn into an automatic second paid provider dispatch.

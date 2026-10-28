@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {computeThesisRunBudget,sectionWordsForRuntime,classifyThesisRetry,thesisExecutionSettings} from '../backend/thesis-execution-policy.mjs';
+import {computeThesisRunBudget,sectionWordsForRuntime,classifyThesisRetry,thesisExecutionSettings,thesisRunTokenCeiling} from '../backend/thesis-execution-policy.mjs';
 import {environmentConfig} from '../backend/config.mjs';
 
 const settings={maxTurns:12,maxOutputTokens:4096};
@@ -18,20 +18,20 @@ test('a thesis-specific dollar ceiling changes only a copied runtime and rejects
 
 test('a complete multi-unit thesis gets a bounded run budget instead of the same fixed short-task window',()=>{
  const small=computeThesisRunBudget({snapshot,plan:plan(2),settings}),large=computeThesisRunBudget({snapshot,plan:plan(20),settings});
- assert.equal(small,400000);assert.ok(large>small);assert.ok(large<=2000000);
- assert.equal(computeThesisRunBudget({snapshot,plan:plan(120),settings}),2000000);
+ assert.equal(small,400000);assert.ok(large>small);assert.ok(large>2000000&&large<=thesisRunTokenCeiling);
+ assert.ok(computeThesisRunBudget({snapshot,plan:plan(120),settings})>large);
 });
 
 test('operator-specified run caps are exact and invalid caps cannot silently widen to a default',()=>{
- for(const cap of [1000,10000,400000,750000,2000000])assert.equal(computeThesisRunBudget({snapshot,plan:plan(120),settings,config:{thesisMaxRunTokens:cap}}),cap);
- for(const cap of [999,2000001,-1,NaN,Infinity,'not-a-budget'])assert.throws(()=>computeThesisRunBudget({snapshot,plan:plan(20),settings,config:{thesisMaxRunTokens:cap}}),error=>error.status===400);
+ for(const cap of [1000,10000,400000,750000,2000000,10000000,thesisRunTokenCeiling])assert.equal(computeThesisRunBudget({snapshot,plan:plan(120),settings,config:{thesisMaxRunTokens:cap}}),cap);
+ for(const cap of [999,thesisRunTokenCeiling+1,-1,NaN,Infinity,'not-a-budget'])assert.throws(()=>computeThesisRunBudget({snapshot,plan:plan(20),settings,config:{thesisMaxRunTokens:cap}}),error=>error.status===400);
 });
 
 test('evidence and context inform admission estimates without incorporating unconfirmed materials or whole source files',()=>{
  const sparse=computeThesisRunBudget({snapshot,plan:plan(6),settings});
  const confirmed={...snapshot,materials:[{id:'synthetic',confirmed:true,text:'合成研究材料。'.repeat(100000)}]};
  const full=computeThesisRunBudget({snapshot:confirmed,plan:plan(6),settings});
- assert.ok(full>sparse);assert.ok(full<=2000000);
+ assert.ok(full>sparse);assert.ok(full<=thesisRunTokenCeiling);
  assert.equal(computeThesisRunBudget({snapshot:{...confirmed,materials:[{...confirmed.materials[0],confirmed:false}]},plan:plan(6),settings}),sparse);
  assert.equal(computeThesisRunBudget({snapshot:{...confirmed,materials:[{...confirmed.materials[0],text:confirmed.materials[0].text.slice(0,2400)}]},plan:plan(6),settings}),full);
  assert.throws(()=>computeThesisRunBudget({snapshot,plan:[],settings}),error=>error.status===400);
@@ -44,6 +44,15 @@ test('section sizing preserves configured ceilings and leaves space for JSON and
  assert.equal(sectionWordsForRuntime({...settings,maxOutputTokens:16384},'中文',1800),1800);
  assert.ok(sectionWordsForRuntime({...settings,maxOutputTokens:2048},'中文',1800)<chinese);
  for(const maxOutputTokens of [32,128,768])assert.throws(()=>sectionWordsForRuntime({maxOutputTokens},'中文'),error=>error.status===400&&error.code==='output_budget_too_small');
+});
+
+test('a source-heavy 32-unit paper funds body repairs and its planned reviews before freezing',()=>{
+ const full={...snapshot,profile:{language:'中文',targetWords:20000},materials:[{confirmed:true,text:'合成资料。'.repeat(3000)},{confirmed:true,text:'资料。'.repeat(800)}]};
+ const body=computeThesisRunBudget({snapshot:full,plan:plan(32),settings,reviewAllowance:0});
+ const reviewed=computeThesisRunBudget({snapshot:full,plan:plan(32),settings,reviewAllowance:12});
+ assert.ok(body>32*(149006+7795)+2*(170687+11617));assert.ok(reviewed>body+12*100000);
+ assert.ok(reviewed<=thesisRunTokenCeiling);
+ assert.equal(computeThesisRunBudget({snapshot:full,plan:plan(32),settings,reviewAllowance:12,config:{thesisMaxRunTokens:2000000}}),2000000);
 });
 
 test('automatic repair is limited to explicit recoverable output failures with known positive usage',()=>{

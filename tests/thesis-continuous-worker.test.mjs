@@ -95,7 +95,35 @@ test('an 8000-character manuscript can finish beyond the former 400k window with
  let calls=0;const f=fixture(t,{agentTaskRunner:async({task})=>{calls++;return result(task,{usage:{input:30000,output:1500}});}});
  const item=await f.generate(await f.create(snapshot(8000,20)));await f.start().tick();const done=f.get(item.id);
  assert.equal(done.status,'completed');assert.equal(done.job.attempt,1);assert.equal(calls,20);assert.equal(done.job.completedSections,20);assert.ok(done.job.inputTokens>400000);
- const budget=f.db.prepare('SELECT token_limit FROM thesis_execution_budgets WHERE run_id=?').get(item.job.id);assert.ok(budget.token_limit>400000&&budget.token_limit<=2000000);
+ const budget=f.db.prepare('SELECT token_limit FROM thesis_execution_budgets WHERE run_id=?').get(item.job.id);assert.ok(budget.token_limit>400000&&budget.token_limit<=100000000);
+});
+
+test('a 32-unit source-backed manuscript finishes realistic late-chapter usage, two repairs and full review with one settlement',async t=>{
+ const seen=[],failed=new Set();let reviews=0;
+ const f=fixture(t,{writingQualityEnabled:true,thesisMaxCallCostUsd:1,citationVerifier:{verify:async()=>({items:[],summary:{},limitations:[],requests:0})},agentTaskRunner:async args=>{
+  const {task,settings:runtime}=args;assert.ok(runtime.maxTotalTokens<=2000000);
+  if(task.skill==='writing-review'){reviews++;return {text:JSON.stringify({complete:true,findings:[],limitations:['合成用量回放不评估真实模型质量']}),usage:{input:70000,output:1000},costUsd:.15,trace:[]};}
+  const unit=task.context.unit;seen.push({id:unit.id,window:runtime.maxTotalTokens});
+  if([9,25].includes(seen.length)&&!failed.has(unit.id)){failed.add(unit.id);throw Object.assign(Error('Synthetic turn limit'),{status:502,code:'turn_limit',usage:{input:170687,output:11617},costUsd:.4});}
+  const output=result(task,{usage:{input:149006,output:7795},costUsd:.368722});
+  if(unit.frontMatter){const text=unit.frontMatter==='abstract_en'?'English title: A Synthetic Classroom Design\n\n'+('This study describes a proposed design without measured results. '.repeat(25))+'\nKey words: classroom; feedback; design':'这是一项课堂反馈方案设计研究。'.repeat(30)+'\n关键词：课堂；反馈；设计';output.text=JSON.stringify({complete:true,draft:false,text,source_ids:[],missing_evidence:[]});}
+  return output;
+ }});
+ const value=snapshot(20000,15);value.outline=value.outline.map((chapter,index)=>({...chapter,sections:[{id:'s'+index+'a',title:'研究单元甲'+index,targetWords:Math.ceil(chapter.targetWords/2)},{id:'s'+index+'b',title:'研究单元乙'+index,targetWords:Math.floor(chapter.targetWords/2)}]}));value.materials=[{id:'synthetic-evidence',name:'合成事实材料',text:'这是合成测试资料。'.repeat(1600),confirmed:true}];
+ const item=await f.generate(await f.create(prepareThesisDeliverySnapshot(value)));await f.start().tick();const done=f.get(item.id);
+ assert.equal(done.status,'completed');assert.equal(done.job.attempt,1);assert.equal(done.job.completedSections,32);assert.equal(done.job.recovery.automaticRetries,2);
+ assert.ok(done.job.inputTokens>4000000);assert.equal(seen.length,34);assert.equal(new Set(seen.map(row=>row.id)).size,32);
+ assert.ok(seen.every(row=>row.window===480000));assert.ok(reviews>0);assert.equal(done.quality.coverage.complete,true);
+ assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='reserve'").get().n,1);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,1);assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.billing.balance(f.user.id).held,0);
+});
+
+test('an automatic retry receives the actual server validation feedback instead of repeating a blind fresh prompt',async t=>{
+ let calls=0;const f=fixture(t,{agentTaskRunner:async args=>{
+  calls++;if(calls===1){const tooShort=result(args.task),body=JSON.parse(tooShort.text);body.text='短【待核对：文献依据】';const checked=args.validateThesisOutput({...tooShort,text:JSON.stringify(body)});assert.equal(checked.valid,false);assert.ok(checked.feedback.count<checked.feedback.min);throw Object.assign(Error('Synthetic turn limit after a short candidate'),{status:502,code:'turn_limit',usage:{input:1000,output:100},costUsd:.01});}
+  if(calls===2){assert.equal(args.task.context.retryFeedback.code,'incomplete');assert.ok(args.task.context.retryFeedback.count<args.task.context.retryFeedback.min);assert.match(args.task.instructions,/过短补足论证/);}
+  return result(args.task);
+ }});
+ const item=await f.generate(await f.create());await f.start().tick();assert.equal(f.get(item.id).status,'completed');assert.equal(calls,3);assert.equal(f.billing.balance(f.user.id).balance,190);
 });
 
 test('a 23-unit manuscript automatically recovers a preflight window failure after nine saved units and charges once',async t=>{

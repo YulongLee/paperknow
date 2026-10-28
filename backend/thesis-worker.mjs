@@ -8,7 +8,7 @@ import {initializeThesisSchema,thesisAgentTask,parseThesisSection,validateThesis
 import {assertThesisSettings} from './thesis-service.mjs';
 import {runAgentTask} from './agent-runtime.mjs';
 import {createThesisContinuity} from './thesis-continuity.mjs';
-import {classifyThesisRetry,thesisExecutionSettings} from './thesis-execution-policy.mjs';
+import {classifyThesisRetry,thesisExecutionSettings,thesisCallTokenCeiling} from './thesis-execution-policy.mjs';
 import {createWritingQualityRunner} from './writing-quality-runner.mjs';
 import {fitOptionalWritingQuality} from './writing-quality-storage.mjs';
 import {thesisManualBackMatter} from '../dist/workspace/thesis-delivery.mjs';
@@ -105,7 +105,7 @@ export function startThesisWorker(db,config={}){
     if(supplementCheck.status!=='materials_ready')throw thesisError(422,supplementCheck.status==='needs_materials'?'补充资料仍有缺项，请查看补充内容检查；原稿与已上传资料已保留。':'补充资料检查尚未完成，请稍后重试；原稿与材料已保留。','needs_materials');
    }
    for(const unit of plan){
-    let retries=0,minimumTokens=0;
+    let retries=0,minimumTokens=0,retryFeedback=null;
     while(true){
     if(stopped)throw thesisError(503,'服务停止中断了任务');
     if(!running())return;
@@ -114,7 +114,7 @@ export function startThesisWorker(db,config={}){
     if(!running())return;
     const complete=db.prepare("SELECT * FROM thesis_checkpoints WHERE run_id=? AND status='completed' ORDER BY position").all(run.id);
     const contextSections=completionMode?[...savedBaseline.filter(row=>!targetChapters.has(row.chapter_id)).map(row=>({...row,unit_id:'saved::'+row.chapter_id})),...complete]:complete;const task=thesisAgentTask(snapshot,unit,contextSections),maxTurns=Math.min(continuous?12:6,Math.max(1,Number(runtime.maxTurns)||3)),maxOutputTokens=Math.min(continuous?16384:8000,Math.max(32,Number(runtime.maxOutputTokens)||4096));
-    if(retries)task.instructions+='上一次输出未通过本节校验。本次按既定字数范围一次提交紧凑、完整的候选；不要重复字数检查后再输出全文，不追求精确等于目标，不编造依据。';
+    if(retries){task.instructions+='上一次执行未完成。本次只处理当前单元：根据 retryFeedback 中服务器给出的校验反馈修正完整候选；过短补足论证，过长精简完整句段，不追求精确等于目标，不编造依据。';if(retryFeedback)task.context.retryFeedback=retryFeedback;}
     // The runtime relay enforces maxTotalTokens against the complete actual SDK
     // request, including system instructions, tool schemas and growing history.
     const totals=db.prepare('SELECT input_tokens,output_tokens FROM thesis_runs WHERE id=?').get(run.id),spent=totals.input_tokens+totals.output_tokens-baseline;
@@ -124,7 +124,7 @@ export function startThesisWorker(db,config={}){
     try{
      if(continuous)reservation=transaction(()=>continuity.reserve(run,unit.id,{remainingUnits:plan.length-complete.length,settings:runtime,minimumTokens}));
      if(!writeRunning(()=>db.prepare('UPDATE thesis_runs SET provider_calls=provider_calls+1 WHERE id=? AND attempt=?').run(run.id,run.attempt)))throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
-     dispatched=true;result=await runner({settings:{...runtime,maxTurns,maxOutputTokens,...(reservation?{maxTotalTokens:reservation.maxTotalTokens,maxCostUsd:reservation.maxCostUsd}:{maxTotalTokens:limits.maxRunTokens-spent})},task,validateThesisOutput:candidate=>validateThesisCandidate(candidate,snapshot,unit),signal:controller.signal,onStage:stage});
+     dispatched=true;result=await runner({settings:{...runtime,maxTurns,maxOutputTokens,...(reservation?{maxTotalTokens:reservation.maxTotalTokens,maxCostUsd:reservation.maxCostUsd}:{maxTotalTokens:Math.min(thesisCallTokenCeiling,limits.maxRunTokens-spent)})},task,validateThesisOutput:candidate=>{const checked=validateThesisCandidate(candidate,snapshot,unit);if(!checked.valid){const value=checked.feedback;retryFeedback={code:value.code,rule:value.rule,...Object.fromEntries(['count','target','min','max'].filter(key=>Number.isSafeInteger(value[key])&&value[key]>=0).map(key=>[key,value[key]]))};}return checked;},signal:controller.signal,onStage:stage});
      if(!ownsAttempt(run)){if(reservation){transaction(()=>continuity.finish(reservation.id,{usage:result?.usage,costUsd:result?.costUsd,errorCode:'cancelled'}));finishedReservation=true;}return;}
      if(!knownUsage(result?.usage))throw thesisError(502,'模型未返回可核算的用量，当前章节未标记完成，请联系管理员后重试','usage_unknown');
      writeAttempt(()=>{db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE id=? AND attempt=?').run(result.usage.input,result.usage.output,clock(),run.id,run.attempt);db.prepare('UPDATE thesis_checkpoints SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE run_id=? AND unit_id=?').run(result.usage.input,result.usage.output,clock(),run.id,unit.id);});

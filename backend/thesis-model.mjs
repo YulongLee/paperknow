@@ -5,6 +5,7 @@ import {isOutlineReferenceChapter} from '../dist/workspace/outline-word-budget.m
 import {presentThesisDocument,formatThesisReference} from '../dist/workspace/thesis-document.mjs';
 import {assessThesisEvidence} from '../dist/workspace/thesis-evidence.mjs';
 import {researchWordCount} from './text-length.mjs';
+import {thesisRunTokenCeiling} from './thesis-execution-policy.mjs';
 import {normalizeThesisFigure} from '../dist/workspace/thesis-figure.mjs';
 import {thesisFrontMatterKind,thesisManualBackMatter,prepareThesisDeliverySnapshot,stripThesisOwnedHeadings} from '../dist/workspace/thesis-delivery.mjs';
 
@@ -17,7 +18,7 @@ const id=(value,fallback)=>{const result=str(value===undefined||value===null||va
 const unique=(items,label)=>{if(new Set(items.map(item=>item.id)).size!==items.length)fail(400,`${label}编号不能重复`);return items;};
 export function initializeThesisSchema(db){db.exec(readFileSync(new URL('./thesis-schema.sql',import.meta.url),'utf8'));const columns=new Set(db.prepare('PRAGMA table_info(thesis_runs)').all().map(row=>row.name));for(const [name,type] of [['usage_known','INTEGER NOT NULL DEFAULT 1'],['provider_calls','INTEGER NOT NULL DEFAULT 0'],['quality','TEXT']])if(!columns.has(name))db.exec(`ALTER TABLE thesis_runs ADD COLUMN ${name} ${type}`);if(!db.prepare('PRAGMA table_info(theses)').all().some(row=>row.name==='export_template'))db.exec('ALTER TABLE theses ADD COLUMN export_template TEXT');if(!db.prepare('PRAGMA table_info(theses)').all().some(row=>row.name==='export_metadata'))db.exec('ALTER TABLE theses ADD COLUMN export_metadata TEXT');for(const table of ['thesis_checkpoints','thesis_chapter_versions'])if(!db.prepare(`PRAGMA table_info(${table})`).all().some(row=>row.name==='figures'))db.exec(`ALTER TABLE ${table} ADD COLUMN figures TEXT NOT NULL DEFAULT '[]'`);}
 export const thesisHash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-export function thesisLimits(config={}){return {maxChapters:30,maxSections:integer(config.thesisMaxSections,120,1,120),maxTargetWords:integer(config.thesisMaxTargetWords,80000,500,80000),sectionWords:integer(config.thesisSectionWords,1800,200,2500),maxSourceCharacters:integer(config.thesisMaxSourceCharacters,100000,1000,200000),maxRunTokens:integer(config.thesisMaxRunTokens,400000,1000,2000000),maxChapterVersions:200};}
+export function thesisLimits(config={}){return {maxChapters:30,maxSections:integer(config.thesisMaxSections,120,1,120),maxTargetWords:integer(config.thesisMaxTargetWords,80000,500,80000),sectionWords:integer(config.thesisSectionWords,1800,200,2500),maxSourceCharacters:integer(config.thesisMaxSourceCharacters,100000,1000,200000),maxRunTokens:integer(config.thesisMaxRunTokens,400000,1000,thesisRunTokenCeiling),maxChapterVersions:200};}
 export const isThesisReferenceChapter=isOutlineReferenceChapter;
 function legacyOutline(input){
  const rows=Array.isArray(input.outlineRows)?input.outlineRows:[],out=[];

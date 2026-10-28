@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
-import {computeThesisRunBudget} from './thesis-execution-policy.mjs';
+import {computeThesisRunBudget,thesisCallTokenCeiling,thesisRunTokenCeiling} from './thesis-execution-policy.mjs';
+import {migrateThesisTokenCeiling} from './thesis-continuity-schema.mjs';
 
 const scale=1000000,maxCost=50;
 const fail=(status,message,code)=>{throw Object.assign(new Error(message),{status,code});};
@@ -12,10 +13,11 @@ const validCost=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0
 const unitName=value=>{if(typeof value!=='string'||!value||value.length>400||/[\x00-\x1f\x7f]/.test(value))fail(400,'论文执行单元标识无效','invalid_execution_unit');return value;};
 
 export function createThesisContinuity(db,config={}){
+ migrateThesisTokenCeiling(db);
  db.exec(`CREATE TABLE IF NOT EXISTS thesis_execution_budgets(
   run_id TEXT NOT NULL REFERENCES thesis_runs(id),attempt INTEGER NOT NULL CHECK(attempt>=1),
   user_id TEXT NOT NULL REFERENCES users(id),settings_version TEXT NOT NULL,unit_ids TEXT NOT NULL,review_allowance INTEGER NOT NULL CHECK(review_allowance>=1 AND review_allowance<=24),
-  token_limit INTEGER NOT NULL CHECK(token_limit>=1000 AND token_limit<=2000000),
+  token_limit INTEGER NOT NULL CHECK(token_limit>=1000 AND token_limit<=${thesisRunTokenCeiling}),
   cost_limit_micros INTEGER NOT NULL CHECK(cost_limit_micros>=10000 AND cost_limit_micros<=50000000),unit_cost_micros INTEGER NOT NULL CHECK(unit_cost_micros>=10000 AND unit_cost_micros<=5000000),
   recoveries INTEGER NOT NULL DEFAULT 0,last_recovery_dispatch_count INTEGER NOT NULL DEFAULT -1,
   last_reason TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(run_id,attempt)
@@ -74,11 +76,11 @@ export function createThesisContinuity(db,config={}){
   if(!Array.isArray(plan)||!plan.length||plan.length>120||new Set(plan.map(unit=>unitName(unit?.id))).size!==plan.length)fail(400,'论文执行计划无效','invalid_execution_unit');
   const perUnit=settings.maxCostUsd;
   if(typeof perUnit!=='number'||!Number.isFinite(perUnit)||perUnit<.01||perUnit>5)fail(400,'论文单节成本预算无效','invalid_execution_budget');
-  const tokenLimit=computeThesisRunBudget({snapshot,plan,settings,config});
   const words=Number.isSafeInteger(snapshot.profile?.targetWords)&&snapshot.profile.targetWords>0?snapshot.profile.targetWords:plan.reduce((sum,unit)=>sum+(Number.isSafeInteger(unit.targetWords)&&unit.targetWords>0?unit.targetWords:0),0)||500;
   const baseReviews=Math.max(1,Math.ceil(words*(/english|英文|英语/i.test(snapshot.profile?.language||'中文')?6:1.2)/22000),Math.ceil(plan.length/12));
   const supplementReviews=config.supplementCheckEnabled===true&&JSON.parse(row.settings_meta||'{}').supplementCheck===true?Math.ceil(words*(/english|英文|英语/i.test(snapshot.profile?.language||'中文')?6:1.5)/10000)+Math.ceil(plan.length/6):0;
   const reviewAllowance=Math.min(24,baseReviews+supplementReviews*(JSON.parse(row.settings_meta||'{}').completion?2:1));
+  const tokenLimit=computeThesisRunBudget({snapshot,plan,settings,config,reviewAllowance});
   let costLimit=Math.min(maxCost,perUnit*(plan.length*1.25+reviewAllowance));
   if(config.thesisMaxRunCostUsd!==undefined&&config.thesisMaxRunCostUsd!==null){const cap=Number(config.thesisMaxRunCostUsd);if(!Number.isFinite(cap)||cap<.01||cap>maxCost)fail(400,'论文总成本上限应为 0.01～50 美元','invalid_execution_budget');costLimit=Math.min(costLimit,cap);}
   const at=clock();db.prepare('INSERT INTO thesis_execution_budgets(run_id,attempt,user_id,settings_version,unit_ids,review_allowance,token_limit,cost_limit_micros,unit_cost_micros,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(row.id,row.attempt,row.user_id,row.settings_version,JSON.stringify(plan.map(unit=>unit.id)),reviewAllowance,tokenLimit,micros(costLimit),micros(perUnit),at,at);
@@ -95,7 +97,7 @@ export function createThesisContinuity(db,config={}){
   if(kind==='review'&&db.prepare("SELECT count(*) n FROM thesis_execution_dispatches WHERE run_id=? AND attempt=? AND kind='review'").get(row.id,row.attempt).n>=saved.review_allowance)fail(429,'本篇论文已达到预先确认的审校批次数量','retry_limit');
   const state=summarize(saved);
   if(state.inFlight)fail(409,'当前论文已有尚未结束的模型调用','execution_in_flight');
-  if(!Number.isSafeInteger(minimumTokens)||minimumTokens<0||minimumTokens>2000000)fail(400,'论文执行单元的请求空间无效','invalid_execution_budget');
+  if(!Number.isSafeInteger(minimumTokens)||minimumTokens<0||minimumTokens>thesisCallTokenCeiling)fail(400,'论文执行单元的请求空间无效','invalid_execution_budget');
   if(minimumTokens>state.remainingTokens)fail(429,'本篇论文剩余执行额度不足以继续当前章节，已保留完成章节','budget_exceeded');
   if(state.remainingTokens<1000)fail(429,'本篇论文已达到执行预算，已保留完成章节','budget_exceeded');
   const unitCost=settings.maxCostUsd;
@@ -108,8 +110,11 @@ export function createThesisContinuity(db,config={}){
   // Unknown usage still holds this bounded reservation. Neither a retry nor
   // extra context may widen the frozen whole-paper or per-call dollar caps.
   const turns=Number.isSafeInteger(settings.maxTurns)&&settings.maxTurns>=1&&settings.maxTurns<=12?settings.maxTurns:6;
-  const contextHeadroom=Math.min(turns*40000,Math.ceil(state.remainingTokens/4*2.5));
-  const tokens=Math.min(state.remainingTokens,Math.max(120000,contextHeadroom,minimumTokens,Math.ceil(state.remainingTokens/Math.max(remainingUnits,4)*2.5)));
+  // Late chapters need the same request-history space as early ones. Derive
+  // the normal window from the frozen original pool, never the shrinking
+  // balance. A larger whole-paper pool must not exceed the relay's call cap.
+  const contextHeadroom=Math.min(turns*40000,Math.ceil(saved.token_limit/4*2.5));
+  const tokens=Math.min(state.remainingTokens,thesisCallTokenCeiling,Math.max(120000,contextHeadroom,minimumTokens));
   const id=randomUUID(),at=clock();db.prepare("INSERT INTO thesis_execution_dispatches(id,run_id,attempt,user_id,unit_id,kind,unit_attempt,status,reserved_tokens,reserved_cost_micros,charged_tokens,charged_cost_micros,created_at) VALUES(?,?,?,?,?,?,?,'reserved',?,?,?,?,?)").run(id,row.id,row.attempt,row.user_id,unitId,kind,used+1,tokens,cost,tokens,cost,at);
   db.prepare('UPDATE thesis_execution_budgets SET updated_at=? WHERE run_id=? AND attempt=?').run(at,row.id,row.attempt);
   return {id,maxTotalTokens:tokens,maxCostUsd:amount(cost),unitAttempt:used+1,kind,unitId};

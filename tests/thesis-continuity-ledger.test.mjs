@@ -153,7 +153,19 @@ test('fresh context headroom uses the original pool and a rejected window can be
  assert.deepEqual(f.db.prepare('SELECT * FROM thesis_execution_dispatches WHERE id=?').get(one.id),row);
  f.ledger.finish(next.id,{usage:{input:100,output:100},costUsd:.001});
  const remaining=f.ledger.summary(f.run()).remainingTokens;
- assert.throws(()=>f.reserve('u-1',{minimumTokens:remaining+1}),error=>error.code==='budget_exceeded');
+ assert.throws(()=>f.reserve('u-1',{minimumTokens:remaining+1}),error=>error.code===(remaining>=2000000?'invalid_execution_budget':'budget_exceeded'));
  for(const minimumTokens of [-1,1.5,2000001,NaN])assert.throws(()=>f.reserve('u-1',{minimumTokens}),error=>error.code==='invalid_execution_budget');
  assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_execution_dispatches').get().n,2,'Denied headroom must not dispatch or create a reservation');
+});
+
+test('large whole-paper pools retain the relay call ceiling and stable late-chapter headroom',t=>{
+ const f=fixture(t,{thesisMaxRunTokens:10000000}),initial=f.init(),windows=[];
+ for(let index=0;index<20;index++){
+  const dispatch=f.reserve('u-'+index,{remainingUnits:20-index});windows.push(dispatch.maxTotalTokens);
+  assert.ok(dispatch.maxTotalTokens<=2000000);
+  f.ledger.finish(dispatch.id,{usage:{input:149006,output:7795},costUsd:.368722});
+ }
+ assert.ok(windows.every(window=>window===480000));assert.equal(f.ledger.summary(f.run()).tokenLimit,initial.tokenLimit);
+ const review=f.ledger.reserve(f.run(),'review-1',{remainingUnits:1,settings,kind:'review'});
+ assert.equal(review.maxTotalTokens,480000);assert.equal(review.maxCostUsd,.5);
 });
