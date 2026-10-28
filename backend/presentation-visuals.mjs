@@ -8,7 +8,7 @@ export function presentationChartRows(slide){
 }
 export function presentationVisualKind(slide){
  const n=paragraphs(slide).length;if(slide.layout==='cover')return 'cover';if(slide.layout==='closing')return 'closing';
- if(n<2||n>6)return null;if(presentationChartRows(slide))return 'bars';
+ if(!n)return null;if(n===1||n>6)return 'illustration';if(presentationChartRows(slide))return 'bars';
  if(/流程|步骤|技术路线|工作流|pipeline|workflow|steps|procedure/i.test(slide.title))return 'process';
  if(/架构|系统结构|组成|模块|framework|architecture|components/i.test(slide.title))return 'architecture';
  if(/对比|比较|差异|优势|contrast|compar|versus/i.test(slide.title)||slide.layout==='twoColumn')return 'comparison';
@@ -39,7 +39,7 @@ export function presentationVisualArrangement(slide,plan,bodySize,titleSize,wrap
  const blocks=[{id:'slide-title',text:slide.title,role:'title',x:72,y:top,w:kind==='cover'?744:1136,h:titleHeight,size:titleSize,lines:titleLines}];let art='';
  const wrapBody=(text,space)=>{const at=text.search(/[：:]/u);return at>0&&at<30&&wrap(text.slice(0,at+1),bodySize,space).length===1?[text.slice(0,at+1),...wrap(text.slice(at+1),bodySize,space)]:wrap(text,bodySize,space);};
  const add=(row,x,y,w,h)=>{const wrapped=wrapBody(row.text,w-24);if(wrapped.length*bodySize*1.5+16>h)return false;blocks.push({...row,x,y,w,h,size:bodySize,lines:wrapped,boldFirst:/[：:]$/.test(wrapped[0])});return true;};
- if(kind==='cover'){
+ if(kind==='cover'||kind==='illustration'){
   let y=bodyTop;for(const row of rows){const h=wrapBody(row.text,688).length*bodySize*1.5+16;if(!add(row,72,y,712,h)||y+h>bottom)return null;y+=h+16;}
   art=`<circle cx="1045" cy="355" r="159" fill="${p.secondary}"/><circle cx="1045" cy="355" r="128" fill="none" stroke="${p.divider}" stroke-width="2"/>`+glyph(slide.title+' '+slide.body,936,246,218,p)+`<rect x="940" y="540" width="210" height="6" fill="${p.accent}"/>`;
  }else if(kind==='bars'){

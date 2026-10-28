@@ -137,6 +137,11 @@ test('presentation progress distinguishes completed pages from content batches a
  f.setJob({...job,status:'failed',error:'PPTMaster provider failed at /tmp/private with api_key'});await panel.refresh();assert.doesNotMatch(f.container.textContent,/PPTMaster|provider|api_key|\/tmp\/private/);assert.match(f.container.textContent,/原稿与任务仍保留/);assert.ok(f.container.querySelector('[data-tj-resume]'));
 });
 
+test('completed task preview reads the actual owned pages outside the file-action row without starting generation',async t=>{
+ const job=completedJob();job.output.presentation={artifactId:'owned-deck',previewArtifactId:'owned-preview',fileName:'合成演示.pptx',pageCount:6};const f=fixture(t,{initialJob:job}),reads=[];f.w.fetch=async(url,options)=>{reads.push({url,options});return{ok:true,headers:new Headers(),text:async()=>Array.from({length:6},(_,i)=>'<section class="page"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><text x="72" y="90">真实版式 '+i+'</text></svg></section>').join('')};};
+ await f.mount(f.stateFor()).open();f.click('[data-tj-online-preview]');await until(()=>f.container.querySelector('iframe')?.srcdoc.includes('真实版式 0'));const viewer=f.container.querySelector('[data-tj-viewer]');assert.equal(viewer.closest('.tool-job-presentation-file'),null);assert.equal(reads.length,1);assert.equal(reads[0].url,'/api/artifacts/owned-preview/download?expectedUserId=alice');f.container.querySelector('[data-pv-next]').click();assert.match(f.container.querySelector('iframe').srcdoc,/真实版式 1/);assert.equal(reads.length,1);assert.equal(f.requests.some(r=>r.path==='/tool-runs/jobs'||r.path==='/tool-runs/quote'),false);
+});
+
 test('presentation rejects external file URLs and never turns them into download controls',async t=>{
  const job=completedJob();job.output.presentation={artifactId:'bad-url',downloadUrl:'https://untrusted.example/download'};const f=fixture(t,{initialJob:job}),panel=f.mount(f.stateFor());await panel.open();assert.equal(f.container.querySelector('[data-tj-download]'),null);assert.doesNotMatch(f.container.innerHTML,/untrusted.example/);
 });
