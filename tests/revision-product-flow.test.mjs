@@ -175,3 +175,8 @@ test('one click on each reduction choice updates the visible flow and keeps prep
  }
  assert.equal(f.calls.length,0);assert.equal(f.draft(),undefined);
 });
+
+test('the selected mode label keeps readable text and hidden labels stay hidden under existing path-card styles',async()=>{
+ const css=await readFile(new URL('../dist/workspace/revision-detection-refresh.css',import.meta.url),'utf8')+'\n'+await readFile(new URL('../dist/workspace/revision-report-entry.css',import.meta.url),'utf8'),dom=new JSDOM('<style>'+css+'</style><div class="dashboard revision-refresh"><section class="revision-path-grid revision-report-basis"><button class="selected"><span class="revision-basis-selected">已选择</span></button><button><span class="revision-basis-selected" hidden>已选择</span></button></section></div>');
+ try{const labels=dom.window.document.querySelectorAll('.revision-basis-selected'),active=dom.window.getComputedStyle(labels[0]);assert.equal(active.color,'rgb(255, 255, 255)');assert.equal(active.marginRight,'0px');assert.equal(dom.window.getComputedStyle(labels[1]).display,'none');}finally{dom.window.close();}
+});

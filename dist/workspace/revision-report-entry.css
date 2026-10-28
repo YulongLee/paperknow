@@ -9,5 +9,5 @@
 @media(max-width:650px){.dashboard.revision-refresh #revision-entry-form .revision-report-preparation .revision-report-source{align-items:stretch;flex-direction:column}}
 
 .dashboard.revision-refresh .revision-report-basis button{position:relative;padding-right:80px}
-.dashboard.revision-refresh .revision-basis-selected{position:absolute;right:16px;top:18px;padding:3px 8px;border-radius:6px;background:var(--revision-accent,#4078ec);color:#fff;font-size:11px;line-height:1.6;pointer-events:none}
+.dashboard.revision-refresh .revision-report-basis>button>.revision-basis-selected{position:absolute;right:16px;top:18px;padding:3px 8px;border-radius:6px;background:var(--revision-accent,#4078ec);color:#fff;font-size:11px;line-height:1.6;margin:0;pointer-events:none}
 .dashboard.revision-refresh .revision-basis-selected[hidden]{display:none!important}
