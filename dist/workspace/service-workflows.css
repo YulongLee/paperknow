@@ -1,0 +1,28 @@
+/* Shared commercial presentation for the PPT and document-format workflows. */
+#app .dashboard .tool-operation-workflow{display:block;box-sizing:border-box;margin:22px 0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;color:#2c405e;min-width:0}
+#app .tool-operation-workflow .tool-workflow-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 3px 10px}
+#app .tool-operation-workflow .tool-workflow-heading>strong{font-size:14px;font-weight:600;line-height:1.8;color:#2c405e}
+#app .tool-operation-workflow .tool-workflow-heading>span{font-size:12px;color:#71829a}
+#app .dashboard .tool-operation-workflow .tool-workflow-steps{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px!important;list-style:none;padding:8px!important;margin:0!important;border:1px solid #dfe7f4!important;border-radius:14px!important;background:#fff;box-shadow:0 4px 16px #1e3e7806;overflow:visible}
+#app .tool-operation-workflow .tool-workflow-steps>li{display:block;min-width:0;margin:0;padding:0}
+#app .tool-operation-workflow .tool-workflow-steps button{position:relative;display:flex;align-items:center;gap:10px;width:100%;min-height:78px;box-sizing:border-box;margin:0;padding:13px 12px;border:0;border-radius:9px;background:transparent;box-shadow:none;text-align:left;font:inherit;color:#64748b;cursor:pointer;transform:none}
+#app .tool-operation-workflow .tool-workflow-steps button:after{display:none}
+#app .tool-operation-workflow .tool-workflow-steps button>span[data-ppt-workflow-number],#app .tool-operation-workflow .format-step>b{display:grid;place-items:center;flex:0 0 32px;box-sizing:border-box;width:32px;height:32px;margin:0;padding:0;border:0;border-radius:9px;background:#edf2fa;font-size:12px;line-height:1.6;font-weight:700;color:inherit}
+#app .tool-operation-workflow .tool-workflow-steps button>div,#app .tool-operation-workflow .format-step>span{display:block;min-width:0;color:inherit}
+#app .tool-operation-workflow .tool-workflow-steps button>div>b,#app .tool-operation-workflow .format-step strong{display:block;margin:0;color:inherit;font-size:13px;line-height:1.7;font-weight:600}
+#app .tool-operation-workflow .tool-workflow-steps small{display:block;margin-top:4px;color:inherit;font-size:11px;line-height:1.6;font-weight:400;white-space:normal}
+#app .tool-operation-workflow .tool-workflow-steps button.is-active{background:#edf3ff;color:#2966ee}
+#app .tool-operation-workflow .tool-workflow-steps button.is-active>span[data-ppt-workflow-number],#app .tool-operation-workflow .format-step.is-active>b{background:#326bfa;color:#fff}
+#app .tool-operation-workflow .tool-workflow-steps button.is-completed{color:#25866b}
+#app .tool-operation-workflow .tool-workflow-steps button.is-completed>span[data-ppt-workflow-number],#app .tool-operation-workflow .format-step.is-completed>b{background:#e5f5ee;color:#25866b}
+#app .tool-operation-workflow .tool-workflow-steps button:disabled{opacity:1;cursor:default}
+#app .tool-operation-workflow .tool-workflow-steps button:focus-visible{outline:3px solid #b8cdf7;outline-offset:1px}
+#app .tool-operation-workflow .tool-workflow-hint{box-sizing:border-box;min-height:42px;margin:9px 0 0;padding:8px 12px;border-left:3px solid #b5caf6;border-radius:0 6px 6px 0;background:#f2f6fe;color:#58708f;font-size:12px;line-height:1.8}
+#app .tool-operation-workflow[data-phase=complete] .tool-workflow-hint{background:#f0faf5;border-color:#9dd6bc;color:#397860}
+#app .tool-operation-workflow:is([data-phase=failed],[data-phase=blocked_start],[data-phase=cancelled]) .tool-workflow-hint{background:#fff8ee;border-color:#e9c58b;color:#8e6536}
+.hub-theme-dark #app .tool-operation-workflow .tool-workflow-heading>strong{color:#cfddf1}
+.hub-theme-dark #app .dashboard .tool-operation-workflow .tool-workflow-steps{background:#1c2b42;border-color:#354b6c!important}
+.hub-theme-dark #app .tool-operation-workflow .tool-workflow-steps button{color:#acbdd5}
+.hub-theme-dark #app .tool-operation-workflow .tool-workflow-steps button.is-active{background:#233d63;color:#a6c3ff}
+.hub-theme-dark #app .tool-operation-workflow .tool-workflow-hint{background:#203451;color:#b4c9e6;border-color:#4e78b7}
+@media(max-width:760px){#app .dashboard .tool-operation-workflow .tool-workflow-steps{grid-template-columns:repeat(2,minmax(0,1fr))}#app .tool-operation-workflow .tool-workflow-steps button{min-height:76px;padding:11px 10px}#app .tool-operation-workflow .tool-workflow-hint{min-height:60px}}
