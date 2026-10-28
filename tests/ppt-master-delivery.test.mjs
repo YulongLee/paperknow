@@ -26,7 +26,7 @@ function author({task,validateToolOutput}){
  }else{
   assert.equal(task.context.operation,'ppt-master-slide');
   const {current}=task.context.design;
-  const svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="'+current.role+'"><rect id="background" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>'+task.context.visibleContent.map((row,index)=>{const footer=row.role==='footer',y=footer?670:40+index*170,h=footer?40:140,size=row.role==='title'?44:footer?16:26;return '<g id="'+row.id+'" data-pptx-bounds="60 '+y+' 1160 '+h+'"><text x="72" y="'+(y+(footer?24:60))+'" font-family="Microsoft YaHei" font-size="'+size+'" fill="#173E48">'+xml(row.text)+'</text></g>';}).join('')+'</svg>';
+  const svg=task.context.startingSvg||'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="'+current.role+'"><rect id="background" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>'+task.context.visibleContent.map((row,index)=>{const footer=row.role==='footer',y=footer?670:40+index*170,h=footer?40:140,size=row.role==='title'?44:footer?16:26;return '<g id="'+row.id+'" data-pptx-bounds="60 '+y+' 1160 '+h+'"><text x="72" y="'+(y+(footer?24:60))+'" font-family="Microsoft YaHei" font-size="'+size+'" fill="#173E48">'+xml(row.text)+'</text></g>';}).join('')+'</svg>';
   output=result({slide:structuredClone(task.context.outputSchema.slide),svg,sourceIds:[task.materials[0].id]},task.materials);
  }
  assert.equal(validateToolOutput(output).valid,true,JSON.stringify(validateToolOutput(output)));
@@ -50,6 +50,11 @@ async function fixture(t,extra={}){
  return{db,objects,uploads,removals,hooks,config,billing,call,request,pay,submit,eventCount,get worker(){return worker;},authorCalls:()=>authorCalls,rendererCalls:()=>rendererCalls,newGate(){const waiting=gate();gates.push(waiting);return waiting;},async restart(){await worker.stop();worker=startToolRunWorker(db,config);return worker;}};
 }
 function uncharged(f,id){assert.equal(f.billing.balance('alice').balance,200);assert.equal(f.billing.balance('alice').held,0);assert.equal(f.eventCount('settle',id),0);assert.equal(f.eventCount('release',id),1);assert.equal(f.db.prepare('SELECT count(*) n FROM results WHERE job_id=?').get(id).n,0);}
+
+test('text-only page redesigns retain the content diagram and settle once without further model repair',async t=>{
+ let visualPages=0,calls=0;const f=await fixture(t,{agentTaskRunner:async args=>{calls++;const output=author(args);if(args.task.context.operation==='ppt-master-slide'){const candidate=JSON.parse(output.text);candidate.svg=candidate.svg.replace(/<g id="visual-[^"]+">[\s\S]*?<\/g>/g,'');output.text=JSON.stringify(candidate);assert.equal(args.validateToolOutput(output).valid,true);}return output;},pptMasterRenderer:async({slides})=>{visualPages=slides.filter(s=>s.visualKind&&s.svg.includes('id="visual-'+s.visualKind+'"')).length;return{pptx:fixtureBuffer};}});
+ f.pay();const job=await f.submit();await f.worker.tick();const item=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(item.status,'completed');assert.equal(visualPages,5);assert.equal(calls,7);assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.eventCount('release',job.id),0);const metrics=JSON.parse(f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(job.id).metrics);assert.equal(metrics.presentationLayout.validatedPages,5);assert.equal(metrics.presentationLayout.aiPages,1);
+});
 
 test('twelve-page content repairs the exact second batch and delivers all pages with one settlement',async t=>{
  const tasks=[];let rendered=0,nativeProof;

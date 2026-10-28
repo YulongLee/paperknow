@@ -1,11 +1,12 @@
 import {pptMasterVisibleContent,validatePptMasterVisibleText} from './ppt-master-model.mjs';
 import {validatePptMasterSvg} from './ppt-master-runtime.mjs';
+import {presentationVisualArrangement} from './presentation-visuals.mjs';
 
 const xml=value=>String(value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[ch]));
 const width=(value,size)=>Array.from(value).reduce((sum,ch)=>sum+(ch===' '?0.3:/[\u2E80-\uFFFF]/u.test(ch)?1:/[MW@#%]/.test(ch)?0.85:/[ilI.,:;'!|]/.test(ch)?0.3:0.56)*size,0);
 function lines(text,size,space){
  const result=[];let line='';
- for(const ch of Array.from(text.replace(/\s+/gu,' ').trim())){if(line&&width(line+ch,size)>space){result.push(line);line='';}line+=ch;}
+ for(const ch of Array.from(text.replace(/\s+/gu,' ').trim())){if(line&&width(line+ch,size)>space){if(/[，。；：、！？,.!?;:）)\]】]/u.test(ch)&&line.length>1){const chars=Array.from(line),last=chars.pop();result.push(chars.join(''));line=last;}else{result.push(line);line='';}}line+=ch;}
  if(line)result.push(line);return result;
 }
 function arrangement(slide,plan,composition,bodySize,titleSize){
@@ -26,7 +27,9 @@ function arrangement(slide,plan,composition,bodySize,titleSize){
 // still passes the same geometry, exact-text and SVG security gates.
 export function validatedPresentationLayout(value,slide,plan){
  const page=plan.slides.find(row=>row.id===slide.id);if(!page)throw Error('页面设计计划缺失');
- let blocks;
+ let blocks,visual=null;
+ for(const [bodySize,titleSize]of [[26,page.role==='cover'?48:40],[24,36],[22,32]]){visual=presentationVisualArrangement(slide,plan,bodySize,titleSize,lines);if(visual){blocks=visual.blocks;break;}}
+ if(!blocks)
  for(const composition of [...new Set([page.composition,'editorial'])]){
   for(const [bodySize,titleSize] of [[26,page.role==='cover'?52:44],[24,38],[22,32]]){blocks=arrangement(slide,plan,composition,bodySize,titleSize);if(blocks)break;}
   if(blocks)break;
@@ -38,7 +41,8 @@ export function validatedPresentationLayout(value,slide,plan){
  if(page.composition==='spotlight'&&body.length){const row=body[0];decoration+=`<rect id="highlight-field" data-pptx-role="decoration" x="${row.x}" y="${row.y}" width="${row.w}" height="${row.h}" fill="${p.secondary}"/>`;}
  if(page.composition==='sequence')for(const [index,row]of body.entries())decoration+=`<circle id="sequence-node-${index}" data-pptx-role="decoration" cx="52" cy="${row.y+row.size}" r="4" fill="${p.accent}"/>`;
  if(page.composition==='editorial')for(const [index,row]of body.slice(0,-1).entries())decoration+=`<line id="editorial-rule-${index}" data-pptx-role="decoration" x1="84" y1="${row.y+row.h+5}" x2="1196" y2="${row.y+row.h+5}" stroke="${p.divider}" stroke-width="1"/>`;
- const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="${page.role}"><rect id="background" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="${ending?p.primary:p.background}"/>${decoration}${blocks.map(row=>`<g id="${row.id}" data-pptx-bounds="${row.x} ${row.y} ${row.w} ${row.h}">${row.lines.map((text,index)=>`<text x="${row.x+12}" y="${row.y+row.size+8+index*row.size*1.5}" font-family="${font}" font-size="${row.size}"${row.role==='title'?' font-weight="700"':''} fill="${ending?'#FFFFFF':row.role==='footer'?p.muted:p.text}">${xml(text)}</text>`).join('')}</g>`).join('')}</svg>`;
+ if(visual)decoration=`<rect id="theme-bar" data-pptx-role="decoration" x="40" y="48" width="8" height="64" fill="${p.accent}"/>`+visual.decoration;
+ const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="${page.role}"><rect id="background" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="${ending?p.primary:p.background}"/>${decoration}${blocks.map(row=>`<g id="${row.id}" data-pptx-bounds="${row.x} ${row.y} ${row.w} ${row.h}">${row.lines.map((text,index)=>`<text x="${row.x+12}" y="${row.y+row.size+8+index*row.size*1.5}" font-family="${font}" font-size="${row.size}"${row.role==='title'||row.boldFirst&&index===0?' font-weight="700"':''} fill="${ending?'#FFFFFF':row.role==='footer'?p.muted:p.text}">${xml(text)}</text>`).join('')}</g>`).join('')}</svg>`;
  const checked=validatePptMasterSvg(svg);validatePptMasterVisibleText(checked,slide,plan);
- return {...Object.fromEntries(['id','title','body','layout','notes'].map(key=>[key,slide[key]??''])),svg:checked,sourceIds:[...plan.sourceIds],evidenceSourceIds:[...plan.sourceIds],authorSourceIds:[],composition:page.composition,layoutMethod:'validated',requiresReview:true};
+ return {...Object.fromEntries(['id','title','body','layout','notes'].map(key=>[key,slide[key]??''])),svg:checked,sourceIds:[...plan.sourceIds],evidenceSourceIds:[...plan.sourceIds],authorSourceIds:[],composition:page.composition,visualKind:visual?.kind||null,layoutMethod:'validated',requiresReview:true};
 }

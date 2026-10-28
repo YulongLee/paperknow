@@ -3,6 +3,7 @@ import {pptMasterDesignPlan,pptMasterSlideTask,parsePptMasterSlideOutput,validat
 import {toolStorageCheck} from './tool-run-service.mjs';
 import {savePresentationDelivery} from './presentation-delivery.mjs';
 import {validatedPresentationLayout} from './presentation-layout.mjs';
+import {presentationVisualRetained} from './presentation-visuals.mjs';
 import {presentationGenerationStatus} from './presentation-readiness.mjs';
 export {presentationGenerationStatus} from './presentation-readiness.mjs';
 
@@ -23,10 +24,14 @@ export async function generatePptMasterPresentation(db,config,{row,value,output,
    continue;
   }
   let baseline=null;try{baseline=validatedPresentationLayout(value,slide,plan);}catch(error){if(error.code!=='ppt_layout_capacity')throw error;}
-  const task=pptMasterSlideTask(value,slide,plan,slides);if(baseline){task.context.startingSvg=baseline.svg;task.instructions+='\ncontext.startingSvg 是已通过完整校验的当前页面。以它为起点调整视觉；保持 data-pptx-page-role、所有内容组 ID、文字和 bounds 契约。先确保页面可交付，再改善构图；不要反复重新设计。';}
+  const task=pptMasterSlideTask(value,slide,plan,slides);if(baseline){task.context.startingSvg=baseline.svg;task.context.visualKind=baseline.visualKind;task.instructions+='\ncontext.startingSvg 是已通过完整校验的当前页面，已按内容绘制可编辑图示。以它为起点调整视觉；保持 visual-* 图示组、图形、所有内容组 ID、文字和 bounds 契约，不得退化为纯文字。流程箭头仅表达页面明确的流程，数据条仅表达页面已有的同单位数值，禁止添加数据、结论或无依据的关系。先确保页面可交付，再改善构图；不要反复重新设计。';}
   let parsed;
-  try{if(validatedOnly){if(!baseline)throw Object.assign(Error('当前页文字过密，无法安全完成排版'),{code:'ppt_layout_capacity',status:422});parsed=baseline;onLayout({method:'validated',page:index+1,reason:recoveryReason});}else{const generated=await runAuthor(task,candidate=>validatePptMasterSlideCandidate(candidate,value,slide,plan));check();parsed=parsePptMasterSlideOutput(generated,value,slide,plan);onLayout({method:'ai',page:index+1});}}
+  try{if(validatedOnly){if(!baseline)throw Object.assign(Error('当前页文字过密，无法安全完成排版'),{code:'ppt_layout_capacity',status:422});parsed=baseline;onLayout({method:'validated',page:index+1,reason:recoveryReason});}else{const generated=await runAuthor(task,candidate=>validatePptMasterSlideCandidate(candidate,value,slide,plan));check();parsed=parsePptMasterSlideOutput(generated,value,slide,plan);}}
   catch(error){check();if(error.presentationFallbackSafe!==true||!baseline)throw error;parsed=baseline;validatedOnly=true;recoveryReason=error.code;onLayout({method:'validated',page:index+1,reason:error.code});}
+  // A safe text-only candidate is still visually incomplete. Preserve the
+  // content-derived editable diagram without spending another repair call.
+  if(baseline?.visualKind&&!presentationVisualRetained(parsed.svg,baseline.visualKind)){parsed=baseline;onLayout({method:'validated',page:index+1,reason:'ppt_visual_restored'});}
+  if(parsed.layoutMethod!=='validated')onLayout({method:'ai',page:index+1});
   const json=JSON.stringify(parsed);
   toolStorageCheck(db,row.user_id,Buffer.byteLength(json),config);
   db.prepare('INSERT INTO tool_checkpoints(run_id,unit_id,position,output,created_at) VALUES(?,?,?,?,?)').run(row.id,unitId,1000+index,json,new Date().toISOString());slides.push(parsed);
