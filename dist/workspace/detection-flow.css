@@ -26,7 +26,7 @@
 .detection-workflow-steps button.is-active>span{background:#326bfa;color:#fff}
 .detection-workflow .detection-workflow-steps button.is-completed{color:#25866b}
 .detection-workflow-steps button.is-completed>span{background:#e5f5ee;color:#25866b}
-.detection-workflow .detection-workflow-steps button:disabled{cursor:default;opacity:1}
+#app .detection-workflow .detection-workflow-steps button:disabled{cursor:default;opacity:1}
 .detection-workflow .detection-workflow-steps button.is-active:disabled{opacity:1}
 .detection-workflow-steps button:focus-visible{outline:3px solid #b8cdf7;outline-offset:1px}
 .detection-workflow-hint{box-sizing:border-box;min-height:42px;margin:9px 0 0;padding:8px 12px;border-left:3px solid #b5caf6;border-radius:0 6px 6px 0;background:#f2f6fe;color:#58708f;font-size:12px;line-height:1.8}
