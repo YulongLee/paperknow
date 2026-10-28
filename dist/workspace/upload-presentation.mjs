@@ -35,8 +35,13 @@ export function installUploadPresentation(root){
   if(records.has(input)){refresh(input);return;}
   // Existing button-triggered inputs must stay hidden, including outline and
   // template uploads. Do not create a second entry for them.
-  if(input.hidden||input.matches('.ppt-inline-file,[data-upload-presentation="off"]'))return;
   const label=input.closest('label'),zone=label?.matches(zones)?label:null;
+  if(input.hidden||input.matches('.ppt-inline-file,[data-upload-presentation="off"]'))return;
+  // Button-shaped upload labels already have their own visible action. Keep
+  // their native input over that action rather than nesting a second picker.
+  if(!zone&&label?.matches('.btn,.format-upload')){
+   label.classList.add('pk-upload-button');input.classList.add('pk-upload-button-native');return;
+  }
   if(!input.hasAttribute('aria-label')&&!input.labels?.length)input.setAttribute('aria-label','选择文件');
   input.classList.add('pk-upload-native');
   let host,action,name,size,selection;

@@ -50,6 +50,11 @@
  margin:0!important;padding:0!important;border:0!important;border-radius:inherit;opacity:0!important;cursor:pointer;font-size:16px;
 }
 :is(#app,dialog) .pk-file-control:has(>input[hidden]){display:none!important}
+:is(#app,dialog) label.pk-upload-button{position:relative;overflow:hidden;cursor:pointer}
+:is(#app,dialog) label.pk-upload-button:focus-within{outline:3px solid #9ebdf680;outline-offset:3px}
+:is(#app,dialog) label.pk-upload-button input.pk-upload-button-native[type=file]:not([hidden]){position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;margin:0!important;padding:0!important;opacity:0!important;cursor:pointer}
+:is(#app,dialog) label.pk-upload-button:has(input:disabled){opacity:.6;cursor:not-allowed}
+:is(#app,dialog) label.rev-source-upload:has(.pk-file-control){display:block;padding:0;border:0;background:transparent}
 :is(#app,dialog) :is(.pk-upload-zone,.pk-file-control).pk-upload-disabled{cursor:not-allowed;box-shadow:none;border-color:#dce3ed;background:#f5f7fa}
 :is(#app,dialog) .pk-upload-disabled :is(.pk-file-action,.pk-upload-action){color:#8794a8;background:#f2f5f9;border-color:#dfe5ee}
 :is(#app,dialog) .pk-upload-disabled input.pk-upload-native[type=file]{cursor:not-allowed}

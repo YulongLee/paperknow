@@ -35,8 +35,9 @@ test('new dialogs, disabled controls and re-enabled uploads update without re-mo
  root.innerHTML='<input type="file" accept=".csv">';await flush();assert.equal(root.querySelectorAll('.pk-file-control').length,1);
 });
 test('hidden outline/template buttons retain their single entry, and filenames are inert text',async t=>{
- const {root,w}=fixture(t,'<input type="file" hidden id="outline"><input class="ppt-inline-file" type="file"><label class="btn">上传模板<input type="file" hidden data-template-file></label><input type="file" id="visible" multiple>');
+ const {root,w}=fixture(t,'<input type="file" hidden id="outline"><input class="ppt-inline-file" type="file"><label class="btn">上传模板<input type="file" hidden data-template-file></label><label class="btn secondary format-upload">上传DOCX样例<input type="file" id="sample" accept=".docx"></label><input type="file" id="visible" multiple>');
  assert.equal(root.querySelectorAll('.pk-file-control').length,1);assert.equal(root.querySelector('#outline').parentElement,root);assert.equal(root.querySelector('[data-template-file]').hidden,true);
+ assert.equal(root.querySelector('#sample').parentElement.classList.contains('pk-upload-button'),true);assert.equal(root.querySelector('#sample').closest('.pk-file-control'),null);assert.equal(root.querySelector('#sample').accept,'.docx');assert.equal(root.querySelector('#sample').hidden,false);
  choose(w,root.querySelector('#visible'),['<img src=x onerror=alert(1)>.txt','第二份.txt']);
  assert.equal(root.querySelector('img'),null);assert.match(root.querySelector('.pk-upload-name').textContent,/等 2 个文件/);
  root.querySelector('#outline').hidden=false;await flush();assert.equal(root.querySelectorAll('.pk-file-control').length,2);
