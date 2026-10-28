@@ -1,6 +1,6 @@
 import {withStableView} from './view-stability.mjs';
 import {readRevisionReportFile} from './revision-report-import.mjs';
-import {reportSources,normalizeRevisionReport,matchRevisionReport,normalizeConfirmedRevisionReport} from './revision-report-model.mjs';
+import {reportSources,revisionReportProviders,normalizeRevisionReport,matchRevisionReport,normalizeConfirmedRevisionReport} from './revision-report-model.mjs';
 import {detectRevisionReportKind} from './revision-marked-html.mjs';
 import {listOwnedRevisionReports,loadOwnedRevisionReport} from './revision-owned-report.mjs';
 import {createDocumentServiceClient} from './document-services-client.mjs';
@@ -17,10 +17,19 @@ export function mountRevisionReportEntry({root,kind,ctx,getDocument,getOriginalT
  const prior=root.querySelector('.revision-path-grid');if(prior)prior.replaceWith(basis);else root.querySelector('.revision-entry-heading').after(basis);root.querySelector('.rev-entry-handoff')?.remove();
  const host=document.createElement('section');host.className='revision-report-preparation';host.setAttribute('aria-label','检测报告与修改位置');host.innerHTML=`<header><div><small>02 · 检测依据</small><h3>${kind==='aigc'?'AI检测全文报告':'重复率全文检测报告'}</h3><p>选择报告后核对标记位置，再开始针对性修改。</p></div></header><div class="revision-report-input-tabs" role="group" aria-label="检测报告输入方式"><button type="button" class="active" data-rrp-input="file">上传报告</button><button type="button" data-rrp-input="account">选择本站报告</button><button type="button" data-rrp-input="paste">粘贴标注摘录</button></div><div data-rrp-pane="file"><label class="revision-report-upload">上传PDF / HTML / ZIP全文报告<input type="file" data-rrp-file accept=".pdf,.html,.htm,.zip,.txt,.docx"><small>ZIP最大30MB；PDF最大20MB、100页。请使用含正文标记的全文报告。</small></label><div data-rrp-archive hidden><label>选择压缩包内的全文报告<select data-rrp-archive-file></select></label><button type="button" class="btn secondary" data-rrp-archive-read>读取所选报告</button></div></div><div data-rrp-pane="account" hidden><p>直接使用当前账户已有报告，不重新检测或扣费。</p><button type="button" class="btn secondary" data-rrp-list>读取账户报告</button><div data-rrp-owned-list></div></div><div data-rrp-pane="paste" hidden><label>报告明确标注的原文摘录<textarea data-rrp-paste rows="5" maxlength="100000" placeholder="例如：原文片段：报告中标记的那段文字。仅检测分数无法确定修改位置。"></textarea></label></div><label class="revision-report-source">报告来源<select data-rrp-source>${Object.entries(reportSources).map(([id,name])=>`<option value="${id}"${id==='other'?' selected':''}>${esc(name.replace(/（[^）]*）$/u,''))}</option>`).join('')}</select></label><div class="revision-report-progress" data-rrp-progress hidden role="status" aria-live="polite"><span class="revision-report-spinner" aria-hidden="true"></span><span data-rrp-progress-label>正在读取报告…</span></div><p data-rrp-status role="status">尚未选择检测报告。</p><div data-rrp-original-switch hidden><p>报告包含另一版正文，可使用对应原文继续；当前准备内容不会自动替换。</p><button type="button" class="btn secondary" data-rrp-use-original>使用报告中的原文</button><button type="button" class="btn secondary" data-rrp-restore-original hidden>恢复上一次准备原文</button></div><p data-rrp-error role="alert"></p><div class="revision-report-prepare-actions"><button type="button" class="btn secondary" data-rrp-locate>核对报告标记与原文</button><button type="button" class="btn secondary" data-rrp-cancel hidden>停止读取</button></div><section data-rrp-matches hidden><header><h4>本次针对性修改范围</h4><span data-rrp-count></span></header><p>已默认选择可唯一对应的位置；重复出现的相同文字需要选择具体位置。</p><div class="revision-report-targets" data-rrp-targets></div></section>`;
  form.querySelector('.revision-entry-submit').before(host);const $=selector=>host.querySelector(selector);
+ let providers=null;
+ if(productModes){
+  $('[data-rrp-source]').closest('label').hidden=true;$('[data-rrp-source]').value='paperknow';
+  providers=document.createElement('section');providers.className='revision-report-providers';providers.setAttribute('aria-label','支持的检测报告');
+  providers.innerHTML=`<h3>选择检测报告</h3><p>${kind==='aigc'?'AI率':'重复率'}检测全文报告支持以下五类来源，请同时提供对应论文原文。</p><div class="revision-report-provider-options" role="group" aria-label="检测报告类型">${revisionReportProviders.map(provider=>`<button type="button" data-rrp-provider="${provider.id}" title="${provider.name}检测报告">${provider.label}</button>`).join('')}</div><p class="revision-report-provider-help">支持 PDF、HTML、ZIP 全文报告；仅有检测分数无法定位修改内容。</p>`;
+  const header=form.querySelector(':scope > header');if(header)header.after(providers);else form.prepend(providers);
+  providers.querySelectorAll('[data-rrp-provider]').forEach(button=>button.onclick=()=>{if(!current()||button.disabled)return;$('[data-rrp-source]').value=button.dataset.rrpProvider;$('[data-rrp-source]').dispatchEvent(new win.Event('change',{bubbles:true}));});
+ }
+ function syncProviders(){providers?.querySelectorAll('[data-rrp-provider]').forEach(button=>{const selected=button.dataset.rrpProvider===$('[data-rrp-source]').value;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));});}
  const status=text=>{if(current())$('[data-rrp-status]').textContent=text;},error=text=>{if(current())$('[data-rrp-error]').textContent=text;};
  function busy(value,message='正在读取报告…'){reading=value;if(!current())return;$('[data-rrp-progress]').hidden=!value;$('[data-rrp-cancel]').hidden=!value;$('[data-rrp-progress-label]').textContent=message;$('[data-rrp-locate]').disabled=value;}
  function invalidate(){candidates=[];selected.clear();matchedFingerprint='';lastReport=null;$('[data-rrp-matches]').hidden=true;error('');}
- function renderMode(){host.hidden=mode!=='report';basis.querySelectorAll('[data-report-basis]').forEach(button=>{const active=button.dataset.reportBasis===mode;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));button.querySelector('.revision-basis-selected').hidden=!active;});onModeChange(mode);}
+ function renderMode(){host.hidden=mode!=='report';if(providers)providers.hidden=mode!=='report';syncProviders();basis.querySelectorAll('[data-report-basis]').forEach(button=>{const active=button.dataset.reportBasis===mode;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));button.querySelector('.revision-basis-selected').hidden=!active;});onModeChange(mode);}
  basis.querySelectorAll('[data-report-basis]').forEach(button=>button.onclick=()=>{
   if(!current()||button.dataset.reportBasis===mode)return;
   withStableView(root,()=>{if(reading){generation++;parseController?.abort();busy(false);}mode=button.dataset.reportBasis;renderMode();onStateChange();});
@@ -33,7 +42,7 @@ export function mountRevisionReportEntry({root,kind,ctx,getDocument,getOriginalT
   if(!candidates.length)status(parsed.markState==='none'?'这份报告没有标记需要针对性修改的内容；可保留原文，或选择仅优化表达。':'尚未找到可核对的标记位置。请检查原文是否一致，使用全文报告或粘贴明确标注的原文摘录。');else status(`已定位 ${new Set(candidates.map(c=>c.paragraphId)).size} 段、${candidates.length} 处报告标记。${result.truncated?'定位范围较多，请按章节分批核对，未展示位置不会处理。':''}`);return result;
  }
  function adopt(result){
-  parsed=result;sourceOwner=result.ownerId||null;invalidate();if(result.source)$('[data-rrp-source]').value=result.source;
+  parsed=result;sourceOwner=result.ownerId||null;invalidate();if(result.source)$('[data-rrp-source]').value=result.source;syncProviders();
   if(result.originalText&&!getOriginalText().trim())adoptOriginal(result.originalText,{title:result.title,fileName:result.fileName});
   const currentText=getOriginalText();$('[data-rrp-original-switch]').hidden=!result.originalText||currentText.replace(/\s/g,'')===result.originalText.replace(/\s/g,'');
   status('报告已读取，正在核对修改位置。');try{locate();}catch{status('报告已读取；请先提供论文原文，再核对标记位置。');}onStateChange();
@@ -51,7 +60,7 @@ export function mountRevisionReportEntry({root,kind,ctx,getDocument,getOriginalT
  $('[data-rrp-archive-read]').onclick=()=>{const choice=$('[data-rrp-archive-file]').value;if(!archive||choice===''||!archive.files[Number(choice)])return error('请选择压缩包中的全文报告。');const file=archive.files[Number(choice)];void read(new win.File([file.bytes],file.name),archive.styles);};
  $('[data-rrp-cancel]').onclick=()=>{generation++;parseController?.abort();busy(false);status('已停止读取报告，原文保持不变。');};
  $('[data-rrp-paste]').oninput=()=>{parsed={text:$('[data-rrp-paste]').value,format:'paste',explicitExcerpts:[],markedOnly:true,kind:detectRevisionReportKind($('[data-rrp-paste]').value),fileName:'粘贴的报告摘录'};sourceOwner=null;invalidate();onStateChange();};
- $('[data-rrp-source]').onchange=()=>{invalidate();onStateChange();};
+ $('[data-rrp-source]').onchange=()=>{invalidate();syncProviders();onStateChange();};
  $('[data-rrp-targets]').onchange=e=>{const box=e.target.closest('[data-rrp-pick]');if(!box)return;box.checked?selected.add(box.dataset.rrpPick):selected.delete(box.dataset.rrpPick);updateCount();};
  $('[data-rrp-locate]').onclick=()=>{try{error('');if(parsed?.kind&&parsed.kind!==kind)throw Error('报告类型与当前修改功能不一致，请选择对应的检测报告。');locate();}catch(e){error(e.message);}};
  async function useOwned(reportId,ownerId){const ticket=++generation;parseController?.abort();busy(true,'正在读取账户报告…');try{const value=await loadOwnedRevisionReport(api,kind,reportId,ownerId,()=>current()&&ticket===generation);if(current()&&ticket===generation)adopt(value);}catch(e){if(current()&&ticket===generation)error(e.message);}finally{if(current()&&ticket===generation)busy(false);}}
@@ -69,5 +78,5 @@ export function mountRevisionReportEntry({root,kind,ctx,getDocument,getOriginalT
   if(!current()||mode!=='report'||fingerprint(getDocument())!==fingerprint(doc))throw Error('原文、报告或处理方式已变化，请重新核对后继续。');if(!parsed)throw Error('请先提供对应的全文检测报告。');if(parsed.kind&&parsed.kind!==kind)throw Error('报告类型与当前修改功能不一致。');if(fingerprint(doc)!==matchedFingerprint)locate(doc);
   if(!selected.size)throw Error(candidates.some(c=>c.ambiguous)?'报告摘录有多个相同位置，请选择具体修改位置。':'没有可核对的报告标记，请检查全文报告与论文原文是否一致。');
   return normalizeConfirmedRevisionReport({source:$('[data-rrp-source]').value,kind,fileName:parsed.fileName,evidence:candidates.filter(c=>selected.has(c.id)),confirmedAt:new Date().toISOString()},doc);
- },dispose(){live=false;generation++;parseController?.abort();client.dispose();basis.remove();host.remove();}};
+ },dispose(){live=false;generation++;parseController?.abort();client.dispose();basis.remove();host.remove();providers?.remove();}};
 }

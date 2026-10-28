@@ -1,4 +1,11 @@
 export const reportSources=Object.freeze({paperknow:'PaperKnow（用户提供）',cnki:'知网（用户声明）',wanfang:'万方（用户声明）',vip:'维普（用户声明）',gzd:'格子达（用户声明）',other:'其他报告（用户声明）'});
+export const revisionReportProviders=Object.freeze([
+ Object.freeze({id:'paperknow',label:'降PaperKnow报告',name:'PaperKnow'}),
+ Object.freeze({id:'cnki',label:'降知W报告',name:'知网'}),
+ Object.freeze({id:'vip',label:'降维P报告',name:'维普'}),
+ Object.freeze({id:'wanfang',label:'降万F报告',name:'万方'}),
+ Object.freeze({id:'gzd',label:'降格子D报告',name:'格子达'})
+]);
 export const revisionReportLimits=Object.freeze({rawText:100000,candidates:120,candidateCharacters:80000,confirmedCharacters:100000,excerpt:2000});
 const fail=message=>{throw Error(message);},plain=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const controls=/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/;

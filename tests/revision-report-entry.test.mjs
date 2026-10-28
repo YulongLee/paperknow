@@ -9,10 +9,10 @@ const plain='另一段未标记的论文内容，应当完整保留，不应被�
 const tick=()=>new Promise(r=>setTimeout(r,0));
 async function until(check){for(let i=0;i<100;i++){if(check())return;await tick();}assert.ok(check(),'report entry did not settle');}
 function aiResponse(text){const p=prepareAigcText(text);return{ownerId:'owner',text,item:{id:'ai-1',title:'本站合成论文',status:'completed',analysisVersion:'paragraph-v2',characters:p.characters,partCount:p.parts.length,completedParts:p.parts.length,parts:p.parts.map(({content,...part},i)=>({...part,label:i?'ugc':'aigc',confidence:95}))}};}
-function fixture(t,{text=marked+'\n\n'+plain,kind='similarity',reader,api,hash,initialMode}={}){
+function fixture(t,{text=marked+'\n\n'+plain,kind='similarity',reader,api,hash,initialMode,productModes=false}={}){
  const dom=new JSDOM('<main><header class="revision-entry-heading"></header><form id="revision-entry-form"><textarea id="original"></textarea><div class="revision-entry-submit"></div></form></main>',{url:'https://paperknow.test/workspace.html'+(hash||'#category/'+(kind==='aigc'?'aigc':'reduce'))}),w=dom.window,root=w.document.querySelector('main'),$=s=>root.querySelector(s),calls=[],notices=[];let title='自有合成论文';$('#original').value=text;
  const getDocument=()=>createRevision({title,text:$('#original').value,mode:kind==='aigc'?'reduce':'rewrite'},'preview','now');
- const entry=mountRevisionReportEntry({root,kind,initialMode,ctx:{notify:s=>notices.push(s),api:async(...args)=>{calls.push(args);return api?api(...args):{user:{id:'owner'}};}},getOriginalText:()=>$('#original').value,getDocument,adoptOriginal:(value,info)=>{$('#original').value=value;title=info.title||title;},...(reader?{readFile:reader}:{})});
+ const entry=mountRevisionReportEntry({root,kind,initialMode,productModes,ctx:{notify:s=>notices.push(s),api:async(...args)=>{calls.push(args);return api?api(...args):{user:{id:'owner'}};}},getOriginalText:()=>$('#original').value,getDocument,adoptOriginal:(value,info)=>{$('#original').value=value;title=info.title||title;},...(reader?{readFile:reader}:{})});
  const click=s=>{assert.ok($(s),s);$(s).click();},input=(s,value)=>{$(s).value=value;$(s).dispatchEvent(new w.Event('input',{bubbles:true}));};
  const file=(name='report.html')=>{Object.defineProperty($('[data-rrp-file]'),'files',{configurable:true,value:[new w.File(['synthetic'],name)]});$('[data-rrp-file]').dispatchEvent(new w.Event('change',{bubbles:true}));};
  t.after(()=>{entry.dispose();dom.window.close();});return{entry,w,$,root,calls,notices,getDocument,click,input,file};
@@ -61,4 +61,13 @@ test('changing the reduction mode stops a pending report read and ignores its la
  finish({text:'原文片段：'+marked,originalText:marked,kind:'similarity',format:'html',explicitExcerpts:[marked]});await tick();await tick();
  assert.equal(f.$('#original').value,plain);assert.equal(f.$('[data-rrp-pick]'),null);assert.equal(await f.entry.prepare(f.getDocument()),null);
  f.click('[data-report-basis="report"]');assert.equal(f.entry.mode,'report');assert.equal(f.$('[data-rrp-progress]').hidden,true);assert.equal(f.$('[data-rrp-locate]').disabled,false);await assert.rejects(()=>f.entry.prepare(f.getDocument()),/提供.*报告/);assert.equal(f.calls.length,0);
+});
+
+test('all five visible source choices preserve exact report selection in AI and similarity requests',async t=>{
+ for(const kind of ['aigc','similarity'])for(const source of ['paperknow','cnki','vip','wanfang','gzd']){
+  const f=fixture(t,{kind,productModes:true});f.click('[data-rrp-provider="'+source+'"]');f.click('[data-rrp-input="paste"]');f.input('[data-rrp-paste]','原文片段：'+marked);const confirmed=await f.entry.prepare(f.getDocument());assert.equal(confirmed.source,source);assert.equal(confirmed.kind,kind);assert.deepEqual(confirmed.paragraphIds,['p0']);assert.equal(f.calls.length,0);
+ }
+});
+test('reading an owned report synchronizes its PaperKnow source with the visible provider selection',async t=>{
+ const response=aiResponse(marked+'\n\n'+plain),f=fixture(t,{kind:'aigc',productModes:true,hash:'#category/aigc?aigcReport=ai-1',api:async path=>path==='/auth/me'?{user:{id:'owner'}}:response});f.click('[data-rrp-provider="cnki"]');f.click('.revision-report-handoff');await until(()=>!!f.$('[data-rrp-pick]'));assert.equal(f.$('[data-rrp-provider="paperknow"]').getAttribute('aria-pressed'),'true');assert.equal(f.$('[data-rrp-provider="cnki"]').getAttribute('aria-pressed'),'false');assert.equal((await f.entry.prepare(f.getDocument())).source,'paperknow');
 });
