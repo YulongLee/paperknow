@@ -17,8 +17,10 @@ export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapsho
  let disclosureQuote=null,disclosureOpen=false,qualityViewKey=null,qualityOpen=false;
  const controllers=new Set(),current=()=>live&&container.isConnected&&isCurrent();
  const contextKey=(value,ref=String(getProjectRef()||''),revision=getCompletion())=>revision?JSON.stringify({snapshot:value,projectRef:ref,completion:revision}):ref?JSON.stringify({snapshot:value,projectRef:ref}):JSON.stringify(value);
+ const sameFeature=value=>(!value?.kind||value.kind===kind)&&(!value?.operation||value.operation===operation);
+ const resumable=value=>sameFeature(value)&&['failed','cancelled'].includes(value?.status)&&['draft','questionnaire'].includes(value?.operation)&&value.completedUnits>0;
  const equivalentProjectRef=(before,current)=>{if(before===current){if(before)resolveAccountProjectId(before,identity?.id);return true;}if(!before||!current||!identity?.id)return false;const previousId=resolveAccountProjectId(before,identity.id),currentId=resolveAccountProjectId(current,identity.id);return !!previousId&&previousId===currentId;};
- const same=()=>{try{const before=String(state.projectRef||''),selected=String(getProjectRef()||'');return equivalentProjectRef(before,selected)&&key===contextKey(getSnapshot(),before)&&(!getAdoptionKey||state.adoptionKey===undefined||state.adoptionKey===getAdoptionKey());}catch{return false;}};
+ const same=()=>{try{const before=String(state.projectRef||''),selected=String(getProjectRef()||'');return sameFeature(item)&&equivalentProjectRef(before,selected)&&key===contextKey(getSnapshot(),before)&&(!getAdoptionKey||state.adoptionKey===undefined||state.adoptionKey===getAdoptionKey());}catch{return false;}};
  const projectPayload=()=>{const projectId=resolveAccountProjectId(state.projectRef||'',identity?.id);return projectId?{projectId}:state.resumeFromJobId&&state.projectId?{projectId:state.projectId}:{};};
  const persist=async()=>{const saved=await onStateChange?.({...state,contextKey:key,snapshot,itemId:item?.id||state.itemId||null,ownerId:identity?.id||state.ownerId||null});if(saved===false)throw Error(item?.id?'任务恢复信息保存失败。原任务仍保留，请先重试保存或读取原任务，避免重复提交。':'生成任务恢复信息未能保存，请重试保存后再生成；尚未提交新的任务。');if(!current())throw Object.assign(Error('页面已切换'),{name:'AbortError'});};
  const stopPoll=()=>{if(timer!==null)win.clearTimeout(timer);timer=null;};
@@ -62,7 +64,7 @@ export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapsho
   const $=s=>container.querySelector(s);$('[data-wj-close]').onclick=()=>{opened=false;container.hidden=true;};$('[data-wj-auth-retry]')?.addEventListener('click',()=>void open({recoverOnly:recoveryOnly}));
   $('[data-wj-consent]')?.addEventListener('change',e=>{consent=e.target.checked;$('[data-wj-start]').disabled=busy||!consent||!same();});
   $('[data-wj-start]')?.addEventListener('click',()=>void command(start));$('[data-wj-new]')?.addEventListener('click',()=>void (direct?generate():command(()=>prepare(true))));$('[data-wj-refresh]')?.addEventListener('click',()=>void command(refresh));$('[data-wj-recover]')?.addEventListener('click',()=>void command(recover));$('[data-wj-cancel]')?.addEventListener('click',()=>void command(async()=>{await owner();await take((await api('/writing/jobs/'+item.id+'/cancel',{})).item);schedule();}));
-  $('[data-wj-resume]')?.addEventListener('click',()=>void command(async()=>{const resume=item.id;await prepare(true,resume);if(direct)await start();},{submit:direct}));
+  $('[data-wj-resume]')?.addEventListener('click',()=>void command(async()=>{const resume=item.id;await prepare(true,resume,{resumeOnly:true});if(direct)await start();},{submit:direct}));
   $('[data-wj-apply]')?.addEventListener('click',()=>void command(applyOutput));
  },{restoreFocus:true});}
  async function applyOutput(){await owner();if(!same())throw Error('生成输入已有变化，请先核对当前内容。');const used=await onApply?.(structuredClone(item.output),item);if(operation==='outline'&&used===false)throw Error('提纲已生成，但尚未保存成功；请重试填入，无需重新生成。');state.appliedItemId=item.id;if(current())await persist();message='已采用并保存，仍可继续完善。';if(operation==='outline'&&current()){opened=false;container.hidden=true;container.replaceChildren();}}
@@ -70,13 +72,29 @@ export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapsho
  async function refresh(){await owner({retainStatus:true});await take((await api('/writing/jobs/'+state.itemId)).item);syncInterrupted=false;readBlocked=false;message='';schedule();}
  function schedule(){stopPoll();if(current()&&active(item))timer=win.setTimeout(()=>void command(refresh,{quiet:true}),2500);}
  async function recover(){await owner();if(state.itemId)return refresh();if(state.commandKey){try{await take((await api('/writing/jobs/by-key/'+encodeURIComponent(state.commandKey))).item);syncInterrupted=false;readBlocked=false;message='';schedule();return;}catch(e){if(e.status!==404)throw e;message=recoveryOnly?'尚未找到原任务。仅查询已有任务，没有重新提交或扣费；可稍后再次读取。':'尚未找到原任务。没有自动重提或扣费，请重新读取费用后确认。';}}}
- async function prepare(newCommand=false,resumeFromJobId=null){
+ async function prepare(newCommand=false,resumeFromJobId=null,{resumeOnly=false}={}){
   if(recoveryOnly)throw Error('当前仅查看原任务。请返回写作页面，核对当前信息后再生成新任务。');
   if(readBlocked)throw Error('请先读取原任务状态，确认后再继续。');
-  await owner();if((resumeFromJobId||!newCommand&&state.commandKey&&key)&&!same())throw Error('资料或所属项目已变化，请重新确认当前信息后生成。');const projectRef=resumeFromJobId?state.projectRef||'':String(getProjectRef()||''),projectId=resolveAccountProjectId(projectRef,identity.id)||(resumeFromJobId?state.projectId:null);stopPoll();syncInterrupted=false;snapshot=structuredClone(getSnapshot());completion=structuredClone(getCompletion()||null);key=contextKey(snapshot,projectRef,completion);item=null;quote=null;consent=false;
-  if(newCommand){state={ownerId:identity.id,...(resumeFromJobId?{resumeFromJobId}:{})};resultWindowOpened=false;}if(completion)state.completion=completion;else delete state.completion;if(getAdoptionKey)state.adoptionKey=getAdoptionKey();state.projectRef=projectRef;state.projectId=projectId;state.commandKey||=win.crypto.randomUUID();state.snapshot=snapshot;state.contextKey=key;await persist();await owner();if(!same())throw Error('保存期间输入已有变化，请重新确认后读取费用。');
+  await owner();if((resumeFromJobId||!newCommand&&state.commandKey&&key)&&!same())throw Error('资料或所属项目已变化，请重新确认当前信息后生成。');
+  // A failed POST may leave a continuation marker without a new item ID.
+  // Re-read its origin and compare canonical hashes from the server before
+  // carrying it into another request. Retain the command key on an uncertain
+  // submission so a network retry can never reserve a second job.
+  const requestedResume=resumeFromJobId||(!newCommand?state.resumeFromJobId:null);let origin=null;
+  if(requestedResume){try{origin=item?.id===requestedResume?item:(await api('/writing/jobs/'+encodeURIComponent(requestedResume))).item;}catch(e){if(e.status!==404||resumeOnly)throw e;}}
+  resumeFromJobId=resumable(origin)?requestedResume:null;
+  if(resumeOnly&&!resumeFromJobId)throw Error('原任务目前不能续写。已保存内容仍保留，请读取最新任务状态。');
+  const projectRef=resumeFromJobId?state.projectRef||'':String(getProjectRef()||''),projectId=resolveAccountProjectId(projectRef,identity.id)||(resumeFromJobId?state.projectId:null);stopPoll();syncInterrupted=false;snapshot=structuredClone(getSnapshot());completion=structuredClone(getCompletion()||null);key=contextKey(snapshot,projectRef,completion);item=null;quote=null;consent=false;
+  if(newCommand){state={ownerId:identity.id};resultWindowOpened=false;}if(resumeFromJobId)state.resumeFromJobId=resumeFromJobId;else delete state.resumeFromJobId;if(completion)state.completion=completion;else delete state.completion;if(getAdoptionKey)state.adoptionKey=getAdoptionKey();state.projectRef=projectRef;state.projectId=projectId;state.commandKey||=win.crypto.randomUUID();state.snapshot=snapshot;state.contextKey=key;await persist();await owner();if(!same())throw Error('保存期间输入已有变化，请重新确认后读取费用。');
   const cap=await api('/writing/capabilities');if(!cap.ready)throw Error(cap.reason||'生成服务暂未开放。');
-  quote=await api('/writing/quote',{kind,operation,snapshot,...projectPayload(),...(completion?{completion}:{})});if(!validThesisQuote(quote))throw Error('费用信息不完整，请重试读取。');consent=true;message='核对本次费用后，点击生成即可。';
+  quote=await api('/writing/quote',{kind,operation,snapshot,...projectPayload(),...(completion?{completion}:{})});if(!validThesisQuote(quote))throw Error('费用信息不完整，请重试读取。');
+  if(resumeFromJobId&&(typeof origin.inputHash!=='string'||typeof quote.inputHash!=='string'||origin.inputHash!==quote.inputHash)){
+   const previousProject=JSON.stringify(projectPayload());delete state.resumeFromJobId;state.projectRef=String(getProjectRef()||'');state.projectId=resolveAccountProjectId(state.projectRef,identity.id);key=contextKey(snapshot,state.projectRef,completion);state.contextKey=key;await persist();
+   if(resumeOnly){quote=null;throw Error('当前写作资料或要求已更新，不能合并旧章节；原稿已保留，请按当前资料重新生成。');}
+   if(previousProject!==JSON.stringify(projectPayload())){quote=null;quote=await api('/writing/quote',{kind,operation,snapshot,...projectPayload(),...(completion?{completion}:{})});if(!validThesisQuote(quote))throw Error('费用信息不完整，请重试读取。');}
+   message='写作资料或要求已更新，将按当前内容生成新稿，原任务和旧稿保留。';
+  }else message='核对本次费用后，点击生成即可。';
+  consent=true;
  }
  async function start(){
   if(recoveryOnly)throw Error('当前仅查看原任务，不会提交新的生成请求。');
@@ -89,8 +107,8 @@ export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapsho
  async function generate({reuseExisting=false}={}){
   if(busy||!current())return;direct=true;recoveryOnly=false;opened=true;authLoading=true;
   return command(async()=>{
-   await owner();if(state.itemId||state.commandKey){await recover();if(!current()||item&&(reuseExisting||active(item)))return;}
-   const resume=item?.status==='failed'&&item.completedUnits>0&&['draft','questionnaire'].includes(operation)&&same()&&!getCompletion()?item.id:undefined;
+   await owner();if(state.itemId||state.commandKey){await recover();if(!current()||item&&sameFeature(item)&&(reuseExisting&&same()||active(item)&&(!key||!snapshot||same())))return;}
+   const resume=item?.status==='failed'&&resumable(item)&&same()&&!getCompletion()?item.id:undefined;
    await prepare(!!item,resume);if(!current())return;await start();
   },{submit:true});
  }

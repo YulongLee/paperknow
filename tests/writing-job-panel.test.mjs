@@ -9,7 +9,7 @@ const snapshot=()=>({title:'账户项目写作验收',profile:{level:'本科',ta
 const until=async check=>{for(let i=0;i<100;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}assert.ok(check(),'写作任务界面未达到预期状态');};
 function fixture(t,{projectRef='',initialState={},beforeApi=async()=>{},getQuote=()=>({type:'agent',source:'credits',creditCost:10,title:'文章写作',token:'test-quote',expiresAt:new Date(Date.now()+60000).toISOString()})}={}){
  const dom=new JSDOM('<main class="dashboard"><div id="job"></div></main>',{url:'https://paperknow.cn/workspace.html#tool/article'}),container=dom.window.document.querySelector('#job'),calls=[],instances=[];let ref=projectRef,ownerId='alice',record={id:'writing-1',kind:'article',operation:'draft',status:'completed',output:{text:'待核对的写作结果',sourceIds:[]}};
- const api=async(path,data)=>{calls.push({path,data:data===undefined?undefined:structuredClone(data)});await beforeApi(path,data);if(path==='/auth/me')return {user:{id:ownerId}};if(path==='/writing/capabilities')return {ready:true};if(path==='/writing/quote')return getQuote();if(path==='/writing/jobs')return {item:{...record,projectId:data.projectId||null}};if(path==='/writing/jobs/writing-1')return {item:record};if(path==='/writing/jobs/writing-1/cancel')return {item:{...record,status:'cancelled'}};throw Error('测试不允许的请求 '+path);};
+ const api=async(path,data)=>{calls.push({path,data:data===undefined?undefined:structuredClone(data)});await beforeApi(path,data);if(path==='/auth/me')return {user:{id:ownerId}};if(path==='/writing/capabilities')return {ready:true};if(path==='/writing/quote')return {inputHash:'fixture-input-hash',...getQuote()};if(path==='/writing/jobs')return {item:{inputHash:'fixture-input-hash',...record,projectId:data.projectId||null}};if(path==='/writing/jobs/writing-1')return {item:{inputHash:'fixture-input-hash',...record}};if(path==='/writing/jobs/writing-1/cancel')return {item:{...record,status:'cancelled'}};throw Error('测试不允许的请求 '+path);};
  const mount=state=>{const panel=mountWritingJobPanel({container,ctx:{api},kind:'article',operation:'draft',getSnapshot:snapshot,getProjectRef:()=>ref,initialState:state});instances.push(panel);return panel;},panel=mount(initialState);
  t.after(()=>{instances.forEach(panel=>panel.dispose());dom.window.close();});return {dom,container,calls,panel,mount,setRef:value=>{ref=value;},setOwner:value=>{ownerId=value;},setRecord:value=>{record=value;},consent(){const input=container.querySelector('[data-wj-consent]');assert.ok(input);input.checked=true;input.dispatchEvent(new dom.window.Event('change'));},click:selector=>{const node=container.querySelector(selector);assert.ok(node,selector);node.click();}};
 }
@@ -200,4 +200,47 @@ test('direct wj generation displays specific billing errors without reopening a 
 });
 test('direct wj generation reuses an active recovered task without requesting or reserving another job',async t=>{
  const f=fixture(t);f.setRecord({id:'writing-1',operation:'draft',kind:'article',status:'running',totalUnits:3,completedUnits:1});await f.panel.generate();await f.panel.generate();assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);assert.equal(f.calls.filter(row=>row.path==='/writing/quote').length,1);
+});
+
+test('a stale continuation marker cannot trap a new article request after a rejected submission',async t=>{
+ const snap=snapshot(),key='pending-rejected-article',f=fixture(t,{initialState:{ownerId:'alice',commandKey:key,resumeFromJobId:'writing-1',snapshot:snap,contextKey:JSON.stringify(snap)},getQuote:()=>({type:'agent',source:'credits',creditCost:10,title:'当前文章',token:'new-content-token',expiresAt:new Date(Date.now()+60000).toISOString(),inputHash:'new-content-hash'}),beforeApi:async path=>{if(path.startsWith('/writing/jobs/by-key/'))throw Object.assign(Error('未提交的任务'),{status:404});}});
+ f.setRecord({id:'writing-1',kind:'article',operation:'draft',status:'failed',completedUnits:2,totalUnits:8,inputHash:'old-content-hash'});
+ await f.panel.generate();const posts=f.calls.filter(row=>row.path==='/writing/jobs');assert.equal(posts.length,1);assert.equal(posts[0].data.resumeFromJobId,undefined);assert.equal(posts[0].data.clientKey,key);assert.equal(f.panel.getState().resumeFromJobId,undefined);
+});
+
+test('automatic article recovery uses canonical quote hashes and starts fresh when normalized requirements changed',async t=>{
+ const snap=snapshot(),f=fixture(t,{initialState:{ownerId:'alice',itemId:'writing-1',commandKey:'old-article-command',snapshot:snap,contextKey:JSON.stringify(snap)},getQuote:()=>({type:'agent',source:'bundle',creditCost:0,title:'当前文章',token:'new-canonical-token',expiresAt:new Date(Date.now()+60000).toISOString(),inputHash:'updated-canonical-hash'})});
+ f.setRecord({id:'writing-1',kind:'article',operation:'draft',status:'failed',completedUnits:2,totalUnits:8,inputHash:'original-canonical-hash'});await f.panel.generate();
+ const posts=f.calls.filter(row=>row.path==='/writing/jobs');assert.equal(posts.length,1);assert.equal(posts[0].data.resumeFromJobId,undefined);assert.notEqual(posts[0].data.clientKey,'old-article-command');assert.equal(f.calls.some(row=>row.path.endsWith('/cancel')),false);
+});
+
+test('explicit continuation stops before submission when canonical content changed and explains how to generate a new manuscript',async t=>{
+ const snap=snapshot(),f=fixture(t,{initialState:{ownerId:'alice',itemId:'writing-1',snapshot:snap,contextKey:JSON.stringify(snap)},getQuote:()=>({type:'agent',source:'credits',creditCost:10,title:'当前文章',token:'changed-content-token',expiresAt:new Date(Date.now()+60000).toISOString(),inputHash:'changed-hash'})});
+ f.setRecord({id:'writing-1',kind:'article',operation:'draft',status:'failed',completedUnits:2,totalUnits:8,inputHash:'old-hash'});await f.panel.open();f.click('[data-wj-resume]');
+ await until(()=>!!f.container.querySelector('[role="alert"]'));assert.match(f.container.querySelector('[role="alert"]').textContent,/资料或要求已更新.*原稿已保留/);assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,0);assert.equal(f.panel.getState().resumeFromJobId,undefined);
+});
+
+test('uncertain continuation submissions retain both the idempotency key and a valid origin across network retries',async t=>{
+ let fail=true;const snap=snapshot(),key='uncertain-continuation',f=fixture(t,{initialState:{ownerId:'alice',commandKey:key,resumeFromJobId:'writing-1',snapshot:snap,contextKey:JSON.stringify(snap)},beforeApi:async path=>{if(path.startsWith('/writing/jobs/by-key/'))throw Object.assign(Error('正在确认原请求'),{status:404});if(path==='/writing/jobs'&&fail){fail=false;throw Error('提交响应暂时丢失');}}});
+ f.setRecord({id:'writing-1',kind:'article',operation:'draft',status:'failed',completedUnits:2,totalUnits:8});await f.panel.generate();await f.panel.generate();const posts=f.calls.filter(row=>row.path==='/writing/jobs');assert.equal(posts.length,2);assert.ok(posts.every(row=>row.data.clientKey===key&&row.data.resumeFromJobId==='writing-1'));
+});
+
+test('an active task from another writing feature cannot block or become the origin of a new article',async t=>{
+ const snap=snapshot(),f=fixture(t,{initialState:{ownerId:'alice',itemId:'writing-1',commandKey:'proposal-command',snapshot:snap,contextKey:JSON.stringify(snap)}});f.setRecord({id:'writing-1',kind:'proposal',operation:'draft',status:'running',completedUnits:1,totalUnits:3});await f.panel.generate();
+ const posts=f.calls.filter(row=>row.path==='/writing/jobs');assert.equal(posts.length,1);assert.equal(posts[0].data.kind,'article');assert.equal(posts[0].data.resumeFromJobId,undefined);assert.notEqual(posts[0].data.clientKey,'proposal-command');assert.equal(f.calls.some(row=>row.path.endsWith('/cancel')),false);
+});
+
+test('different article content can start independently while the previous article is still running',async t=>{
+ const old={...snapshot(),title:'之前正在生成的文章'},f=fixture(t,{initialState:{ownerId:'alice',itemId:'writing-1',commandKey:'running-old-article',snapshot:old,contextKey:JSON.stringify(old)}});f.setRecord({id:'writing-1',kind:'article',operation:'draft',status:'running',completedUnits:1,totalUnits:3});await f.panel.generate();
+ const posts=f.calls.filter(row=>row.path==='/writing/jobs');assert.equal(posts.length,1);assert.equal(posts[0].data.snapshot.title,snapshot().title);assert.equal(posts[0].data.resumeFromJobId,undefined);assert.notEqual(posts[0].data.clientKey,'running-old-article');assert.equal(f.calls.some(row=>row.path.endsWith('/cancel')),false);
+});
+
+test('discarding an incompatible legacy continuation also requotes the newly selected project scope',async t=>{
+ const snap=snapshot(),f=fixture(t,{initialState:{ownerId:'alice',itemId:'writing-1',commandKey:'legacy-project-command',projectId:'old-project',snapshot:snap,contextKey:JSON.stringify(snap)},getQuote:()=>({type:'agent',source:'credits',creditCost:10,title:'当前文章',token:'current-project-token',expiresAt:new Date(Date.now()+60000).toISOString(),inputHash:'new-hash'})});
+ f.setRecord({id:'writing-1',projectId:'old-project',kind:'article',operation:'draft',status:'failed',completedUnits:2,totalUnits:8,inputHash:'old-hash'});await f.panel.generate();
+ const quotes=f.calls.filter(row=>row.path==='/writing/quote'),post=f.calls.find(row=>row.path==='/writing/jobs');assert.equal(quotes.length,2);assert.equal(quotes[0].data.projectId,'old-project');assert.equal(quotes[1].data.projectId,undefined);assert.equal(post.data.projectId,undefined);assert.equal(post.data.resumeFromJobId,undefined);
+});
+
+test('a cancelled task is never implicitly resumed by the ordinary generation action',async t=>{
+ const snap=snapshot(),f=fixture(t,{initialState:{ownerId:'alice',itemId:'writing-1',commandKey:'cancelled-original',snapshot:snap,contextKey:JSON.stringify(snap)}});f.setRecord({id:'writing-1',kind:'article',operation:'draft',status:'cancelled',completedUnits:2,totalUnits:8});await f.panel.generate();const post=f.calls.find(row=>row.path==='/writing/jobs');assert.ok(post);assert.equal(post.data.resumeFromJobId,undefined);assert.notEqual(post.data.clientKey,'cancelled-original');
 });
