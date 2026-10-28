@@ -16,7 +16,7 @@ export function presentationPreviewPages(html,win,expectedPages){
   const elements=[svg,...svg.querySelectorAll('*')];if(elements.length>4000)throw Error('预览页面过于复杂，请下载 PPTX 查看。');
   for(const node of elements){
    if(!tags.has(node.localName)||node.namespaceURI!=='http://www.w3.org/2000/svg')throw Error('预览页面包含不支持的内容。');
-   for(const attr of [...node.attributes])if(/^on/i.test(attr.name)||/href|src|style|filter|mask|clip-path|transform/i.test(attr.name)||/url\s*\(|javascript:|https?:/i.test(attr.value)&&!(attr.name==='xmlns'&&attr.value==='http://www.w3.org/2000/svg'))throw Error('预览页面包含不支持的资源。');
+   for(const attr of [...node.attributes])if(/^on/i.test(attr.name)||/^(?:href|xlink:href|src|style|filter|mask|clip-path|transform)$/i.test(attr.name)||/url\s*\(|javascript:|https?:/i.test(attr.value)&&!(attr.name==='xmlns'&&attr.value==='http://www.w3.org/2000/svg'))throw Error('预览页面包含不支持的资源。');
   }
   return new win.XMLSerializer().serializeToString(svg);
  });

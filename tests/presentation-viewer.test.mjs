@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {mountPresentationViewer,presentationPreviewPages} from '../dist/workspace/presentation-viewer.mjs';
+import {validatePptMasterSvg} from '../backend/ppt-master-runtime.mjs';
 const svg=text=>'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/><text x="72" y="90" font-size="44">'+text+'</text></svg>';
 const html=[svg('图文版第1页'),svg('图文版第2页')].map(s=>'<section class="page">'+s+'</section>').join('');
 const until=async check=>{for(let i=0;i<40;i++){if(check())return;await new Promise(r=>setTimeout(r,2));}assert.ok(check());};
@@ -42,4 +43,10 @@ test('oversized page lists are rejected before parsing any XML',t=>{
 test('network interruptions and account changes during artifact reads have clear recovery reasons',async t=>{
  const network=fixture(t,{fetcher:async()=>{throw TypeError('Failed to fetch');}});await until(()=>network.container.textContent.includes('网络连接暂时中断'));assert.doesNotMatch(network.container.textContent,/Failed to fetch/);assert.equal(network.container.querySelector('[data-pv-retry]').hidden,false);
  const account=fixture(t,{status:409});await until(()=>account.container.textContent.includes('账户已变化'));assert.match(account.container.textContent,/任务所属账户/);assert.equal(account.container.querySelector('iframe').srcdoc,'');
+});
+test('server-accepted italic and bold text remain previewable while arbitrary CSS is still rejected',t=>{
+ const dom=new JSDOM('');t.after(()=>dom.window.close());const source=svg('Research methods').replace('font-size="44"','font-family="Arial" font-size="44" font-style="italic" font-weight="700"');assert.ok(validatePptMasterSvg(source));const pages=presentationPreviewPages('<section class="page">'+source+'</section>',dom.window,1);assert.match(pages[0],/font-style="italic"/);assert.match(pages[0],/font-weight="700"/);assert.throws(()=>presentationPreviewPages('<section class="page">'+source.replace('font-style="italic"','style="font-style:italic"')+'</section>',dom.window,1),/不支持/);
+});
+test('the preview supports the complete editable SVG primitive set and ordinary server-approved typography',t=>{
+ const dom=new JSDOM('');t.after(()=>dom.window.close());const source='<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" data-pptx-page-role="content"><g id="accepted-content" data-pptx-bounds="60 60 600 400" fill="#18345B" stroke="#286AFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 2" opacity="0.95" fill-opacity="1" stroke-opacity="1" font-family="Arial" font-size="26" font-weight="700" font-style="italic" text-anchor="start" dominant-baseline="auto" xml:space="preserve"><rect x="70" y="70" width="40" height="30" rx="4" ry="4"/><circle cx="140" cy="90" r="10"/><ellipse cx="180" cy="90" rx="12" ry="8"/><line x1="210" y1="90" x2="240" y2="90"/><polyline points="260,80 270,90 280,80"/><polygon points="300,80 310,95 320,80"/><path d="M 340 80 L 360 90 L 350 100 Z"/><text x="72" y="160" dx="0" dy="0">Research <tspan x="72" dy="40" font-weight="400" font-style="normal">methods</tspan></text></g></svg>';assert.ok(validatePptMasterSvg(source));const pages=presentationPreviewPages('<section class="page">'+source+'</section>',dom.window,1);assert.equal(pages.length,1);assert.match(pages[0],/xml:space="preserve"/);assert.match(pages[0],/font-style="normal"/);for(const tag of ['rect','circle','ellipse','line','polyline','polygon','path','text','tspan'])assert.ok(pages[0].includes('<'+tag));
 });
