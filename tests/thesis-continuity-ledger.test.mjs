@@ -166,6 +166,6 @@ test('large whole-paper pools retain the relay call ceiling and stable late-chap
   f.ledger.finish(dispatch.id,{usage:{input:149006,output:7795},costUsd:.368722});
  }
  assert.ok(windows.every(window=>window===480000));assert.equal(f.ledger.summary(f.run()).tokenLimit,initial.tokenLimit);
- const review=f.ledger.reserve(f.run(),'review-1',{remainingUnits:1,settings,kind:'review'});
+ const review=f.ledger.reserve(f.run(),'review-1',{remainingUnits:1,settings:{...settings,maxTurns:4},kind:'review'});
  assert.equal(review.maxTotalTokens,480000);assert.equal(review.maxCostUsd,.5);
 });

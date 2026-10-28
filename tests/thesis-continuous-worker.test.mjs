@@ -102,7 +102,7 @@ test('a 32-unit source-backed manuscript finishes realistic late-chapter usage, 
  const seen=[],failed=new Set();let reviews=0;
  const f=fixture(t,{writingQualityEnabled:true,thesisMaxCallCostUsd:1,citationVerifier:{verify:async()=>({items:[],summary:{},limitations:[],requests:0})},agentTaskRunner:async args=>{
   const {task,settings:runtime}=args;assert.ok(runtime.maxTotalTokens<=2000000);
-  if(task.skill==='writing-review'){reviews++;return {text:JSON.stringify({complete:true,findings:[],limitations:['合成用量回放不评估真实模型质量']}),usage:{input:70000,output:1000},costUsd:.15,trace:[]};}
+  if(task.skill==='writing-review'){assert.ok(runtime.maxTotalTokens>=400000);reviews++;return {text:JSON.stringify({complete:true,findings:[],limitations:['合成用量回放不评估真实模型质量']}),usage:{input:70000,output:1000},costUsd:.15,trace:[]};}
   const unit=task.context.unit;seen.push({id:unit.id,window:runtime.maxTotalTokens});
   if([9,25].includes(seen.length)&&!failed.has(unit.id)){failed.add(unit.id);throw Object.assign(Error('Synthetic turn limit'),{status:502,code:'turn_limit',usage:{input:170687,output:11617},costUsd:.4});}
   const output=result(task,{usage:{input:149006,output:7795},costUsd:.368722});

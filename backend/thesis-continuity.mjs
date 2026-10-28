@@ -113,7 +113,9 @@ export function createThesisContinuity(db,config={}){
   // Late chapters need the same request-history space as early ones. Derive
   // the normal window from the frozen original pool, never the shrinking
   // balance. A larger whole-paper pool must not exceed the relay's call cap.
-  const contextHeadroom=Math.min(turns*40000,Math.ceil(saved.token_limit/4*2.5));
+  // A review reads a multi-section manuscript batch even when it has fewer
+  // allowed turns. Leave room for a grounded-candidate correction as well.
+  const contextHeadroom=Math.min((kind==='review'?12:turns)*40000,Math.ceil(saved.token_limit/4*2.5));
   const tokens=Math.min(state.remainingTokens,thesisCallTokenCeiling,Math.max(120000,contextHeadroom,minimumTokens));
   const id=randomUUID(),at=clock();db.prepare("INSERT INTO thesis_execution_dispatches(id,run_id,attempt,user_id,unit_id,kind,unit_attempt,status,reserved_tokens,reserved_cost_micros,charged_tokens,charged_cost_micros,created_at) VALUES(?,?,?,?,?,?,?,'reserved',?,?,?,?,?)").run(id,row.id,row.attempt,row.user_id,unitId,kind,used+1,tokens,cost,tokens,cost,at);
   db.prepare('UPDATE thesis_execution_budgets SET updated_at=? WHERE run_id=? AND attempt=?').run(at,row.id,row.attempt);
