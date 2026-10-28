@@ -1,3 +1,4 @@
+import {normalizeRevisionProduct} from '../dist/workspace/revision-product-model.mjs';
 import {normalizeRevisionReportContext,revisionReportChangeAllowed} from '../dist/workspace/revision-report-context.mjs';
 import {presentationContentTask} from './presentation-content-task.mjs';
 import {formulaSvgMarkup} from '../src/research-formula-core.js';
@@ -39,14 +40,15 @@ export function normalizeToolRequest(input){
  const raw=input.snapshot;if(!plain(raw)||Object.keys(raw).some(k=>!['title','text','requirements','language','mode','question','materials','context'].includes(k)))fail('工具资料包含不支持的字段');
  if(input.operation==='read')readingMode(raw.mode);
  if(input.kind==='revision')try{revisionStrategy(raw.mode,raw.context?.plan);}catch(error){fail(error.message);}
+ let revisionProduct=null;if(raw.context?.revisionProduct!==undefined){if(input.kind!=='revision'||input.operation!=='rewrite')fail('论文修改功能不能用于其他操作');try{revisionProduct=normalizeRevisionProduct(raw.context.revisionProduct,{mode:raw.mode,plan:raw.context.plan});}catch(error){fail(error.message);}}const textLimit=revisionProduct?100000:40000;
  // Validate before JSON cloning: unsupported own keys with undefined values
  // must not disappear into an apparently valid history object.
  validateChatHistory(raw.context,input.operation);
- const snapshot={title:clean(raw.title||toolOperationNames[input.operation],200,1),text:clean(raw.text||'',40000),requirements:clean(raw.requirements||'',3000),language:clean(raw.language||'中文',80,1),mode:clean(raw.mode||'',60),question:clean(raw.question||'',1500),context:{},materials:[]};
+ const snapshot={title:clean(raw.title||toolOperationNames[input.operation],200,1),text:clean(raw.text||'',textLimit),requirements:clean(raw.requirements||'',3000),language:clean(raw.language||'中文',80,1),mode:clean(raw.mode||'',60),question:clean(raw.question||'',1500),context:{},materials:[]};
  if(raw.context!==undefined){if(!plain(raw.context)||JSON.stringify(raw.context).length>24000)fail('补充信息过长或格式不正确');snapshot.context=JSON.parse(JSON.stringify(raw.context));}
  if(!Array.isArray(raw.materials??[])||(raw.materials?.length||0)>20)fail('每次最多使用20份授权材料');
- const ids=new Set();for(const row of raw.materials||[]){if(!plain(row))fail('材料格式不正确');const id=clean(row.id,160,1);if(!/^[\p{L}\p{N}_:.-]+$/u.test(id)||ids.has(id))fail('材料编号不正确或重复');ids.add(id);snapshot.materials.push({id,name:clean(row.name||id,240,1),text:clean(row.text,40000,1)});}
- const unique=new Set(snapshot.materials.map(s=>s.text)),joined=snapshot.materials.map(s=>s.text).join('\n\n');const total=[...unique].reduce((n,t)=>n+t.length,0)+(unique.has(snapshot.text)||snapshot.text===joined?0:snapshot.text.length);if(total>40000)fail('每次最多处理40,000字符的实际正文，请分批选择');
+ const ids=new Set();for(const row of raw.materials||[]){if(!plain(row))fail('材料格式不正确');const id=clean(row.id,160,1);if(!/^[\p{L}\p{N}_:.-]+$/u.test(id)||ids.has(id))fail('材料编号不正确或重复');ids.add(id);snapshot.materials.push({id,name:clean(row.name||id,240,1),text:clean(row.text,textLimit,1)});}
+ const unique=new Set(snapshot.materials.map(s=>s.text)),joined=snapshot.materials.map(s=>s.text).join('\n\n');const total=[...unique].reduce((n,t)=>n+t.length,0)+(unique.has(snapshot.text)||snapshot.text===joined?0:snapshot.text.length);if(total>textLimit)fail(revisionProduct?'每次最多处理100,000字符的论文正文':'每次最多处理40,000字符的实际正文，请分批选择');
  if(['read','answer'].includes(input.operation)&&!snapshot.materials.length){if(snapshot.text)snapshot.materials.push({id:'original',name:snapshot.title,text:snapshot.text});else fail('请先选择可阅读的原文，题录信息不能代替正文');}
  if(input.operation==='answer'&&!snapshot.question)fail('请输入需要结合原文回答的问题');
  if(['rewrite','translate'].includes(input.operation)&&!snapshot.text)fail('请先提供需要处理的原文');
@@ -79,7 +81,7 @@ export function normalizeToolRequest(input){
  if(snapshot.materials.length>20)fail('每次最多使用20份授权材料');
  const paragraphs=toolParagraphs(snapshot.text);
  if(['rewrite','translate'].includes(input.operation)){
-  if(paragraphs.length>120||paragraphs.some(s=>s.length>3500))fail('单次最多120段、每段3,500字符，请将长段拆分后处理');
+  if(paragraphs.length>(revisionProduct?500:120)||paragraphs.some(s=>s.length>3500))fail(revisionProduct?'每篇最多500段、每段3,500字符，请核对正文分段':'单次最多120段、每段3,500字符，请将长段拆分后处理');
   const requested=snapshot.context.paragraphIds;
   if(requested!==undefined&&(!Array.isArray(requested)||requested.length!==paragraphs.length||requested.some(v=>typeof v!=='string'||!/^[\p{L}\p{N}_:.-]{1,160}$/u.test(v))||new Set(requested).size!==requested.length))fail('段落编号与原文不一致，请重新选择原文');
   snapshot.context.paragraphIds=requested||paragraphs.map((_,i)=>'p-'+(i+1));
@@ -136,7 +138,7 @@ export function toolRunTask(value,unit,completed=[]){
  const {snapshot:s,operation}=value;
  validateChatHistory(s.context,operation);
  if(operation==='ppt')return presentationContentTask(value,unit,completed);
- const comparisonRanges=operation==='rewrite'?revisionComparisonRanges(s,unit):[],sources=comparisonRanges.length?s.materials.filter(m=>comparisonRanges.some(range=>range.sourceId===m.id)):unit.ranges?s.materials.filter(m=>unit.ranges.some(r=>r.sourceId===m.id)):s.materials;
+ const comparisonRanges=operation==='rewrite'?revisionComparisonRanges(s,unit):[],sources=operation==='rewrite'&&s.context.revisionProduct&&!comparisonRanges.length?[{id:s.materials.find(m=>m.text===s.text)?.id||'original',name:'本单元论文原文',text:unit.paragraphs.map(p=>p.original).join('\n\n')}]:comparisonRanges.length?s.materials.filter(m=>comparisonRanges.some(range=>range.sourceId===m.id)):unit.ranges?s.materials.filter(m=>unit.ranges.some(r=>r.sourceId===m.id)):s.materials;
  const context={operation,title:s.title,requirements:s.requirements,language:s.language,mode:s.mode,question:s.question,options:s.context,unit,sources:sources.map(({id,name,text})=>({id,name,characters:text.length})),previous:completed.map(r=>({titles:r.slides?.map(v=>v.title)||[]})),outputSchema:schemas[operation]};
  let readingInstructions='';
  if(operation==='read'){

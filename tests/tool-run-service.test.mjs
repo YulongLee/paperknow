@@ -53,3 +53,13 @@ test('source identifiers never collide with a distinct original text, and formul
  const value=normalizeToolRequest(input('read',{text:'另外一份真实原文。',materials:[{id:'original',name:'已有资料',text:'已有资料的实际正文。'}]}));assert.deepEqual(value.snapshot.materials.map(m=>m.id),['original','original-input-1']);
  const f=normalizeToolRequest(input('formula',{text:''})),u=toolRunPlan(f)[0];assert.throws(()=>parseToolOutput(result({latex:'\\frac{a}{',text:'无效公式'}),f,u),/语法无法实际排版/);assert.equal(parseToolOutput(result({latex:'x<y',text:'x小于y。'}),f,u).latex,'x<y');
 });
+
+test('one entire-paper dual submission automatically finishes every unit and settles only once',async t=>{
+ let calls=0;
+ const f=await fixture(t,{agentTaskRunner:async({task})=>{calls++;assert.ok(task.materials[0].text.length<4000);return revised(task);}});f.pay();
+ const text=Array.from({length:160},(_,i)=>'第'+i+'段：'+('本段为独立合成材料，保留原有论点与证据范围。'.repeat(12))).join('\n\n');
+ const value=input('rewrite',{text,mode:'reduce',context:{plan:'dual',revisionProduct:{version:1,kind:'aigc',mode:'dual'}}});assert.ok(text.length>40000);
+ const created=await f.submit(value);assert.equal(created.status,202,JSON.stringify(created.value));const id=created.value.item.id;
+ await f.worker.tick();await f.worker.tick();
+ const job=(await f.request('/tool-runs/jobs/'+id)).value.item;assert.equal(job.status,'completed',JSON.stringify(job));assert.equal(job.output.paragraphs.length,160);assert.equal(job.output.paragraphs.map(p=>p.original).join('\n\n'),text);assert.ok(calls>1);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);assert.equal(f.db.prepare('SELECT count(*) n FROM jobs').get().n,1);
+});
