@@ -125,3 +125,4 @@
 @media(max-width:1000px){.dashboard .ppt-commercial.ppt-studio .ppt-mode-card{grid-template-columns:minmax(0,1fr)}.dashboard .ppt-commercial.ppt-studio .ppt-mode-card>.ppt-material-review{margin-top:18px}.dashboard .ppt-commercial.ppt-studio .ppt-ai-input>textarea{min-height:132px}}
 .hub-theme-dark .dashboard .ppt-commercial.ppt-studio .ppt-mode-card>.ppt-material-review{background:#1b2d46;border-color:#30445f}
 @media(max-width:760px){.dashboard .ppt-commercial.ppt-studio .ppt-mode-actions{flex-flow:column nowrap;align-items:stretch}.dashboard .ppt-commercial.ppt-studio .ppt-mode-actions>.ppt-action-note{max-width:none;margin-right:0;flex:none}.dashboard .ppt-commercial.ppt-studio .ppt-mode-actions>.btn{flex:none;width:100%;min-width:0;align-self:stretch}}
+#app .ppt-studio .ppt-page-editor .ppt-editor-grid{grid-template-columns:minmax(0,1fr)}
