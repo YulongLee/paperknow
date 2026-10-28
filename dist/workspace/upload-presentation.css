@@ -1,0 +1,70 @@
+/* Shared upload surfaces. Native controls remain focusable and own selection. */
+:is(#app,dialog) .pk-upload-zone.pk-upload-zone{
+ --upload-ink:#223752;--upload-muted:#667991;--upload-accent:#2d65df;--upload-line:#c9d8ef;--upload-surface:#fff;
+ position:relative;box-sizing:border-box;display:flex!important;flex-direction:column;align-items:center;justify-content:center;
+ gap:8px;min-width:0;min-height:208px;padding:26px 24px;margin:16px 0;
+ border:1px dashed var(--upload-line);border-radius:14px;background:radial-gradient(ellipse at 50% 0%,#eef4ff 0%,#fbfcff 60%,#fff 100%);
+ color:var(--upload-ink);font-size:14px;font-weight:600;line-height:1.7;text-align:center;cursor:pointer;
+ box-shadow:0 3px 12px #264a7b03;transition:border-color .16s,background-color .16s,box-shadow .16s;
+}
+:is(#app,dialog) .pk-upload-zone.pk-upload-zone:hover{border-color:#7199e9;box-shadow:0 0 0 3px #3775e908}
+:is(#app,dialog) .pk-upload-zone.pk-upload-zone:focus-within{outline:3px solid #9ebdf680;outline-offset:3px;border-color:#5d88df}
+:is(#app,dialog) .pk-upload-zone[hidden]{display:none!important}
+:is(#app,dialog) .pk-upload-zone .pk-upload-symbol{
+ display:grid;place-items:center;flex:0 0 auto;width:48px;height:48px;padding:0;margin:0 0 5px;border:1px solid #dbe6f9;
+ border-radius:13px;background:linear-gradient(140deg,#fff,#eaf1ff);color:var(--upload-accent);font-size:26px;line-height:1;
+}
+:is(#app,dialog) .pk-upload-zone .pk-upload-symbol svg{width:23px;height:23px;padding:0;background:transparent;border:0;color:inherit}
+:is(#app,dialog) .pk-upload-zone .pk-upload-title{color:var(--upload-ink);font-size:15px;font-weight:600;line-height:1.7;margin:0;overflow-wrap:anywhere}
+:is(#app,dialog) .pk-upload-zone>span:not(.pk-upload-symbol):not(.pk-upload-action):not(.pk-upload-selection){font-size:12px;font-weight:400;line-height:1.8;color:var(--upload-muted)}
+:is(#app,dialog) .pk-upload-zone small{color:var(--upload-muted);font-size:12px;font-weight:400;line-height:1.8;max-width:100%}
+:is(#app,dialog) .pk-upload-zone .pk-upload-action{
+ display:inline-flex;align-items:center;justify-content:center;gap:7px;box-sizing:border-box;min-height:38px;margin:7px 0 0;padding:7px 20px;
+ border:1px solid #c7d8f6;border-radius:8px;background:var(--upload-surface);color:var(--upload-accent);font-size:13px;font-weight:600;line-height:1.6;
+ box-shadow:0 2px 4px #315b9d05;
+}
+:is(#app,dialog) .pk-upload-zone .pk-upload-selection{
+ display:flex;align-items:center;justify-content:center;gap:10px;max-width:100%;min-width:0;margin:4px 0 0;padding:6px 12px;
+ border:1px solid #dce6f5;border-radius:7px;background:#fff;color:#35547c;font-weight:400;font-size:12px;box-sizing:border-box;
+}
+:is(#app,dialog) .pk-upload-selection[hidden]{display:none!important}
+:is(#app,dialog) .pk-upload-selection .pk-upload-name{min-width:0;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#35547c;font-size:12px;font-weight:500}
+:is(#app,dialog) .pk-upload-selection .pk-upload-size{flex-shrink:0;font-size:11px;color:#7789a0}
+:is(#app,dialog) .pk-upload-zone.pk-has-file{border-color:#9ab7ed}
+:is(#app,dialog) .pk-file-control{
+ --upload-accent:#2d65df;position:relative;display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;margin:7px 0;
+ border:1px solid #d8e2ef;border-radius:10px;background:#fff;color:#293f5c;overflow:hidden;cursor:pointer;
+ transition:border-color .16s,box-shadow .16s;
+}
+:is(#app,dialog) .pk-file-control:hover{border-color:#8facdf}
+:is(#app,dialog) .pk-file-control:focus-within{border-color:#5d88df;outline:3px solid #9ebdf650;outline-offset:2px}
+:is(#app,dialog) .pk-file-visual{display:flex;align-items:center;gap:12px;padding:13px 14px;min-height:44px;box-sizing:content-box}
+:is(#app,dialog) .pk-file-symbol{display:grid;place-items:center;flex-shrink:0;width:38px;height:42px;border-radius:9px;color:#4779d6;background:#eff4fd}
+:is(#app,dialog) .pk-file-symbol svg{width:21px;height:21px;padding:0;background:transparent;color:inherit}
+:is(#app,dialog) .pk-file-copy{display:flex;flex:1;flex-direction:column;gap:3px;min-width:0;text-align:left}
+:is(#app,dialog) .pk-file-copy .pk-upload-name{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:1.6;font-weight:500;color:#293f5c}
+:is(#app,dialog) .pk-file-copy .pk-upload-size{font-size:11px;line-height:1.6;color:#7789a0;font-weight:400;overflow-wrap:anywhere}
+:is(#app,dialog) .pk-file-action{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;padding:7px 13px;border:1px solid #d6e2f7;border-radius:7px;background:#f7faff;color:var(--upload-accent);font-size:12px;font-weight:600;line-height:1.6;white-space:nowrap}
+:is(#app,dialog) :is(.pk-upload-zone,.pk-file-control) input.pk-upload-native[type=file]:not([hidden]){
+ position:absolute!important;inset:0!important;z-index:2;width:100%!important;max-width:none!important;height:100%!important;min-height:0!important;
+ margin:0!important;padding:0!important;border:0!important;border-radius:inherit;opacity:0!important;cursor:pointer;font-size:16px;
+}
+:is(#app,dialog) .pk-file-control:has(>input[hidden]){display:none!important}
+:is(#app,dialog) :is(.pk-upload-zone,.pk-file-control).pk-upload-disabled{cursor:not-allowed;box-shadow:none;border-color:#dce3ed;background:#f5f7fa}
+:is(#app,dialog) .pk-upload-disabled :is(.pk-file-action,.pk-upload-action){color:#8794a8;background:#f2f5f9;border-color:#dfe5ee}
+:is(#app,dialog) .pk-upload-disabled input.pk-upload-native[type=file]{cursor:not-allowed}
+:is(#app,dialog) .pk-upload-zone+.stored-file-trigger{display:inline-flex;align-items:center;gap:7px;min-height:38px;margin:0 0 14px;padding:8px 14px;border-radius:8px;color:#526984;border-color:#dce5f1;background:#fff;font-size:12px}
+/* Presentable fallback before enhancement, and for independent legacy pages. */
+#app input[type=file]::file-selector-button{border:1px solid #cad9f0;border-radius:7px;padding:8px 13px;margin-right:10px;background:#f3f7ff;color:#315fae;font:inherit;cursor:pointer}
+.hub-theme-dark :is(#app,dialog) :is(.pk-file-control,.pk-upload-zone.pk-upload-zone),html[data-theme=dark] :is(#app,dialog) :is(.pk-file-control,.pk-upload-zone.pk-upload-zone){--upload-ink:#d9e5f7;--upload-muted:#a5b6cf;--upload-accent:#92b4ff;--upload-line:#445c80;--upload-surface:#243854;background:#1c2b42;border-color:#445c80;color:#d9e5f7}
+.hub-theme-dark :is(#app,dialog) :is(.pk-file-visual,.pk-upload-selection),html[data-theme=dark] :is(#app,dialog) :is(.pk-file-visual,.pk-upload-selection){background:#1c2b42;border-color:#445c80}
+.hub-theme-dark :is(#app,dialog) :is(.pk-file-symbol,.pk-file-action,.pk-upload-symbol),html[data-theme=dark] :is(#app,dialog) :is(.pk-file-symbol,.pk-file-action,.pk-upload-symbol){background:#253d60;border-color:#445c80;color:#a7c2ff}
+.hub-theme-dark :is(#app,dialog) :is(.pk-upload-name,.pk-upload-size),html[data-theme=dark] :is(#app,dialog) :is(.pk-upload-name,.pk-upload-size){color:#bfd0e8!important}
+@media(max-width:600px){
+ :is(#app,dialog) .pk-upload-zone.pk-upload-zone{padding:22px 16px;min-height:196px;border-radius:12px}
+ :is(#app,dialog) .pk-file-visual{gap:9px;padding:11px}
+ :is(#app,dialog) .pk-file-symbol{width:32px;height:38px}
+ :is(#app,dialog) .pk-file-action{padding:7px 9px;font-size:11px}
+ :is(#app,dialog) .pk-upload-selection .pk-upload-name{max-width:calc(100vw - 180px)}
+}
+@media(prefers-reduced-motion:reduce){:is(#app,dialog) :is(.pk-upload-zone,.pk-file-control){transition:none}}

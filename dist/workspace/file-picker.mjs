@@ -61,7 +61,7 @@ export function installStoredFilePickers(root,{fetchImpl}={}){
   if(!anchor||decorated.has(anchor)||excluded(input))return;decorated.add(anchor);const button=doc.createElement('button');button.type='button';button.className='stored-file-trigger btn secondary';const purposeLabel=input.dataset.fileLibraryLabel?.trim(),labelText=purposeLabel||'从文件管理选择';button.innerHTML=icon('folder',15);button.append(doc.createTextNode(labelText));button.setAttribute('aria-label',purposeLabel||'从文件管理选择'+(input.getAttribute('aria-label')||''));
   // Never nest a button in an upload label: label default activation would open
   // the native file dialog while the cloud picker is already being shown.
-  const label=anchor.closest('label'),placement=label||anchor;placement.insertAdjacentElement('afterend',button);
+  const label=anchor.closest('label'),placement=label||anchor.closest('.pk-file-control')||anchor;placement.insertAdjacentElement('afterend',button);
   button.onclick=event=>{event.preventDefault();event.stopPropagation();if(input.disabled||anchor.disabled||!input.isConnected)return;beforeSelect?.();picker?.close();picker=openStoredFilePicker({input,fetchImpl,accept});};
  }
  function scan(node){if(node.nodeType!==1)return;const inputs=[...(node.matches('input[type=file]')?[node]:[]),...node.querySelectorAll('input[type=file]')];

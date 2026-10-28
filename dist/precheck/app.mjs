@@ -1,4 +1,5 @@
 import {highlightHtml,evidencePreview} from './report-highlight.mjs';
+import {installUploadPresentation} from '/workspace/upload-presentation.mjs';
 import {mountNavigation,workspaceLinks,trackDialogForm} from '/workspace/interface.mjs';
 import {profile,preferences} from '/workspace/state.mjs';
 import {icon as workspaceIcon,formatDate} from '/workspace/ui.mjs';
@@ -83,4 +84,4 @@ document.addEventListener('submit',e=>{if(e.target.id==='source-form')saveSource
 $('#modal').addEventListener('click',e=>{if(e.target!==$('#modal'))return;const r=$('#modal').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)requestReportClose();});
 $('#modal').addEventListener('cancel',e=>{e.preventDefault();requestReportClose();});
 window.addEventListener('hashchange',renderRoute);window.addEventListener('beforeunload',e=>{if(runController){e.preventDefault();e.returnValue='';}});
-try{customSources=await repository.all('sources');}catch{}await renderRoute();
+installUploadPresentation(document.body);try{customSources=await repository.all('sources');}catch{}await renderRoute();
