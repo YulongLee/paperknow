@@ -132,8 +132,8 @@ test('completed presentation downloads use the current task owner and keep gener
  f.setOwner('bob');f.click('[data-tj-download]');await until(()=>!!f.container.querySelector('[data-tj-change-owner]'));assert.equal(downloads.length,3);assert.equal(f.container.querySelector('[data-tj-download]'),null);
 });
 
-test('presentation progress has visible stages, page counts and safe failures without altering processing units',async t=>{
- const job={...completedJob(),status:'running',stage:'authoring',progress:{stage:'authoring',currentPage:4,totalPages:12},completedUnits:1,totalUnits:2,output:null};const f=fixture(t,{initialJob:job}),panel=f.mount(f.stateFor());await panel.open();assert.match(f.container.querySelector('.tool-job-progress').textContent,/1 \/ 2 个处理单元/);assert.match(f.container.textContent,/4 \/ 12 页/);assert.equal(f.container.querySelector('[aria-current="step"]').textContent,'2制作演示页面');assert.equal(f.container.querySelectorAll('.tool-job-stages .done').length,1);
+test('presentation progress distinguishes completed pages from content batches and keeps failures safe',async t=>{
+ const job={...completedJob(),status:'running',stage:'authoring',progress:{stage:'authoring',currentPage:4,completedPages:3,totalPages:12},completedUnits:2,totalUnits:2,output:null};const f=fixture(t,{initialJob:job}),panel=f.mount(f.stateFor());await panel.open();assert.match(f.container.querySelector('.tool-job-progress').textContent,/页面制作：3 \/ 12 页已完成/);assert.match(f.container.textContent,/4 \/ 12 页/);assert.equal(f.container.querySelector('[aria-current="step"]').textContent,'2制作演示页面');assert.equal(f.container.querySelectorAll('.tool-job-stages .done').length,1);
  f.setJob({...job,status:'failed',error:'PPTMaster provider failed at /tmp/private with api_key'});await panel.refresh();assert.doesNotMatch(f.container.textContent,/PPTMaster|provider|api_key|\/tmp\/private/);assert.match(f.container.textContent,/原稿与任务仍保留/);assert.ok(f.container.querySelector('[data-tj-resume]'));
 });
 
@@ -204,9 +204,9 @@ test('active tool progress updates keep the waiting window, controls and focus i
  const running={...completedJob(),status:'queued',output:null,completedUnits:0,totalUnits:4};
  const f=fixture(t,{initialJob:running});await f.panel.open();f.click('[data-tj-start]');await until(()=>!!f.container.querySelector('[data-tj-cancel]'));
  const window=f.container.querySelector('[data-tj-result]'),title=f.container.querySelector('[data-tj-wait-title]'),refresh=f.container.querySelector('[data-tj-cancel]');refresh.focus();window.scrollTop=37;
- f.setJob({...running,status:'running',completedUnits:2,progress:{stage:'authoring',currentPage:2,totalPages:6}});await f.panel.refresh();
+ f.setJob({...running,status:'running',completedUnits:2,progress:{stage:'authoring',currentPage:2,completedPages:1,totalPages:6}});await f.panel.refresh();
  assert.equal(f.container.querySelector('[data-tj-result]'),window);assert.equal(f.container.querySelector('[data-tj-wait-title]'),title);assert.equal(f.container.querySelector('[data-tj-cancel]'),refresh);assert.equal(f.w.document.activeElement,refresh);assert.equal(window.scrollTop,37);
- assert.equal(title.textContent,'正在处理');assert.match(f.container.querySelector('[data-tj-units]').textContent,/2 \/ 4/);assert.match(f.container.querySelector('[data-tj-wait-detail]').textContent,/制作演示页面/);assert.match(f.container.textContent,/自动更新，无需重复点击/);assert.equal(refresh.disabled,false);
+ assert.equal(title.textContent,'正在处理');assert.match(f.container.querySelector('[data-tj-units]').textContent,/页面制作：1 \/ 6 页已完成/);assert.match(f.container.querySelector('[data-tj-wait-detail]').textContent,/制作演示页面/);assert.match(f.container.textContent,/自动更新，无需重复点击/);assert.equal(refresh.disabled,false);
  f.setJob({...completedJob(),completedUnits:4,totalUnits:4});await f.panel.refresh();assert.ok(f.container.querySelector('[data-tj-result].generation-result-window'));assert.ok(f.container.querySelector('[data-tj-preview]'));assert.equal(f.container.querySelector('.generation-wait-spinner'),null);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs').length,1);
 });
 
@@ -237,4 +237,9 @@ test('direct tj generation displays specific billing errors without reopening a 
 });
 test('direct tj generation reuses an active recovered task without requesting or reserving another job',async t=>{
  const f=fixture(t);f.setJob({id:'job-alice',operation:'ppt',kind:'presentation',status:'running',totalUnits:3,completedUnits:1});await f.panel.generate();await f.panel.generate();assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs').length,1);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,1);
+});
+
+test('a failed two-of-two content plan reports unfinished PPT pages without chapter or integral-limit wording',async t=>{
+ const job={...completedJob(),status:'failed',stage:'failed',completedUnits:2,totalUnits:2,progress:{stage:'authoring',completedPages:0,currentPage:1,totalPages:12},output:null,error:'本次生成已达到系统处理上限，已完成章节已保存。这不是积分不足；继续生成时会从未完成部分接着处理。'},f=fixture(t,{initialJob:job}),panel=f.mount(f.stateFor());await panel.open();
+ assert.match(f.container.querySelector('.tool-job-progress').textContent,/页面制作：0 \/ 12 页已完成/);assert.doesNotMatch(f.container.textContent,/2 \/ 2 个处理单元|章节|积分不足|系统处理上限/);assert.equal(f.container.querySelector('[aria-current="step"]').textContent,'2制作演示页面');assert.ok(f.container.querySelector('[data-tj-resume]'));
 });

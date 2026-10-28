@@ -160,6 +160,42 @@ test('a job deadline before the content loop releases the hold and cannot leave 
 for(const [label,pptMasterMaxTokens,expected] of [['default',undefined,1000000],['configured',1500000,1500000],['upper bound',2000000,2000000],['invalid override',2000001,1000000]])test('PPT worker uses '+label+' dedicated tokens while preserving the saved aggregate dollar cap',async t=>{
  const settings=[];const f=await fixture(t,{pptMasterMaxTokens,toolMaxTokens:1000,agentTaskRunner:async args=>{settings.push(args.settings);return author(args);}});f.pay();const job=await f.submit();await f.worker.tick();
  const completed=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(completed.status,'completed',JSON.stringify(completed));assert.equal(settings.length,7);
- for(const [index,setting] of settings.entries()){assert.equal(setting.maxTotalTokens,expected-index*200);assert.ok(Math.abs(setting.maxCostUsd-(runtime.maxCostUsd-index*.001))<1e-10);assert.equal(setting.maxOutputTokens,runtime.maxOutputTokens);}
+ for(const [index,setting] of settings.entries()){assert.equal(setting.maxTotalTokens,expected-index*200);assert.ok(Math.abs(setting.maxCostUsd-(index===0?runtime.maxCostUsd:Math.min(.12,runtime.maxCostUsd-index*.001)))<1e-10);assert.equal(setting.maxTurns,index===0?runtime.maxTurns:4);assert.equal(setting.maxOutputTokens,runtime.maxOutputTokens);}
  assert.equal(f.eventCount('settle',job.id),1);
+});
+
+test('a full content plan can finish all twelve pages within the frozen budget without another paid layout call',async t=>{
+ let contentCalls=0;
+ const f=await fixture(t,{agentTaskRunner:async args=>{assert.equal(args.task.context.operation,'ppt');contentCalls++;return {...author(args),costUsd:.2475};},pptMasterRenderer:async({slides})=>{assert.equal(slides.length,12);assert.ok(slides.every(slide=>slide.layoutMethod==='validated'));return{pptx:fixtureBuffer};}});
+ f.pay();const value=input();value.snapshot.context.pages=12;const job=await f.submit(value);await f.worker.tick();const completed=(await f.request('/tool-runs/jobs/'+job.id)).value.item;
+ assert.equal(completed.status,'completed',JSON.stringify(completed));assert.equal(contentCalls,2);assert.equal(completed.completedUnits,2);assert.equal(completed.progress.completedPages,12);assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.billing.balance('alice').balance,190);
+ const metrics=JSON.parse(f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(job.id).metrics);assert.equal(metrics.presentationLayout.validatedPages,12);assert.equal(metrics.presentationLayout.reasons.budget_exceeded,12);assert.equal(metrics.sdkCost.used,.495);
+});
+
+test('a bounded failed page design uses a validated editable layout and continues the remaining pages once',async t=>{
+ let layoutCalls=0;
+ const f=await fixture(t,{agentTaskRunner:async args=>{if(args.task.context.operation==='ppt-master-slide'){layoutCalls++;assert.ok(args.task.context.startingSvg);assert.ok(args.settings.maxTurns<=4);if(args.task.context.design.current.page===1)throw Object.assign(Error('Synthetic layout repair exhausted'),{code:'turn_limit',status:502,usage:{input:500,output:100},costUsd:.01});}return author(args);}});
+ f.pay();const job=await f.submit();await f.worker.tick();const completed=(await f.request('/tool-runs/jobs/'+job.id)).value.item;
+ assert.equal(completed.status,'completed',JSON.stringify(completed));assert.equal(layoutCalls,1);assert.equal(f.eventCount('settle',job.id),1);assert.equal(completed.progress.completedPages,6);
+ const metrics=JSON.parse(f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(job.id).metrics);assert.equal(metrics.presentationLayout.validatedPages,6);assert.equal(metrics.presentationLayout.aiPages,0);assert.equal(metrics.presentationLayout.reasons.turn_limit,6);
+});
+
+test('unknown usage and cancellation never become a successful fallback deck',async t=>{
+ for(const kind of ['unknown','cancel']){
+  let f;f=await fixture(t,{agentTaskRunner:async args=>{if(args.task.context.operation==='ppt-master-slide'){if(kind==='cancel')f.worker.cancel(f.db.prepare("SELECT id FROM tool_runs WHERE status='running'").get().id);throw Object.assign(Error('Synthetic stopped author'),{code:'turn_limit',status:502,...(kind==='unknown'?{}:{usage:{input:50,output:10},costUsd:.001})});}return author(args);}});f.pay();const job=await f.submit();await f.worker.tick();const row=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(row.status,kind==='cancel'?'cancelled':'failed');assert.equal(row.output,null);assert.equal(f.rendererCalls(),0);uncharged(f,job.id);
+ }
+});
+
+test('two completed content batches do not misclassify a failed first-page authorization as completed layout',async t=>{
+ const f=await fixture(t,{agentTaskRunner:async args=>{if(args.task.context.operation==='ppt-master-slide')throw Object.assign(Error('Synthetic access denied'),{code:'access_denied',status:403,usage:{input:20,output:10},costUsd:.001});return author(args);}});
+ f.pay();const value=input();value.snapshot.context.pages=12;const job=await f.submit(value);await f.worker.tick();const row=(await f.request('/tool-runs/jobs/'+job.id)).value.item;
+ assert.equal(row.status,'failed');assert.equal(row.completedUnits,2);assert.equal(row.totalUnits,2);assert.equal(row.progress.stage,'authoring');assert.equal(row.progress.completedPages,0);assert.equal(f.rendererCalls(),0);uncharged(f,job.id);
+ f.db.prepare('DELETE FROM tool_diagnostics WHERE run_id=?').run(job.id);assert.equal((await f.request('/tool-runs/jobs/'+job.id)).value.item.progress.stage,'authoring','legacy failures without a saved phase recover their real layout stage');
+});
+
+test('the observed SDK cost-budget stop finishes with checked layouts instead of spending on each later page',async t=>{
+ let calls=0;const f=await fixture(t,{agentTaskRunner:async args=>{if(args.task.context.operation==='ppt-master-slide'){calls++;throw Object.assign(Error('Agent 已达到预算上限，结果未完成'),{code:'cost_budget',status:502,usage:{input:8290,output:1036},costUsd:.04736525});}return author(args);}});
+ f.pay();const job=await f.submit();await f.worker.tick();const row=(await f.request('/tool-runs/jobs/'+job.id)).value.item;
+ assert.equal(row.status,'completed',JSON.stringify(row));assert.equal(calls,1);assert.equal(row.progress.completedPages,6);assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.billing.balance('alice').balance,190);
+ const metrics=JSON.parse(f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(job.id).metrics);assert.equal(metrics.presentationLayout.reasons.cost_budget,6);assert.ok(metrics.sdkCost.used<metrics.sdkCost.limit);
 });

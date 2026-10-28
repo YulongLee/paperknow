@@ -36,3 +36,8 @@ test('completed jobs open saved results while specialized evidence and editable 
  for(const status of ['running','failed'])assert.equal(workspaceJobHref({type:'writing',writing_kind:'proposal',status,result_id:'owned-result'}),'#tool/proposal');
  assert.equal(workspaceJobHref({type:'parse',status:'completed',result_id:'javascript:alert(1)'}),'#projects?scope=account');
 });
+
+test('PPT task errors use page terminology while other task errors keep their own meaning',async()=>{
+ const {workspaceJobError}=await import('../dist/workspace/workspace-job-model.mjs'),error='本次生成已达到系统处理上限，已完成章节已保存。这不是积分不足；继续生成时会从未完成部分接着处理。';
+ assert.doesNotMatch(workspaceJobError({type:'tool_run',tool_operation:'ppt',error}),/章节|积分不足|系统处理上限/);assert.match(workspaceJobError({type:'tool_run',tool_operation:'ppt',error}),/页面/);assert.equal(workspaceJobError({type:'writing',error}),error);
+});

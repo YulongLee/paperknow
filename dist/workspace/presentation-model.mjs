@@ -58,6 +58,7 @@ export function presentationProgress(item){
 }
 export function presentationPublicError(value){
  const message=String(value||'');
+ if(/系统处理上限|已完成章节|执行预算|预算上限/.test(message))return '本次页面制作暂未完成，已整理的内容与已完成页面仍保留；可从未完成页面继续制作。';
  return /ppt.?master|anthropic|claude|codex|openai|gemini|provider|api[ _-]?key|access[ _-]?token|oss[.:/ _-]|\/Users\/|\/tmp\/|traceback|stack trace|pptxgen/i.test(message)?'演示文稿暂未完成，原稿与任务仍保留。请读取最新状态后重试。':message;
 }
 export function restorePresentationSnapshot(snapshot,base={}){

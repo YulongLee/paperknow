@@ -9,3 +9,7 @@ test('presentation diagnostic records keep only controlled locations and bounded
  assert.deepEqual(unsafe,{phase:'planning',code:'ppt_contract',missingReadCount:1});assert.doesNotMatch(JSON.stringify(unsafe),/private|Infinity/);
  assert.deepEqual(presentationValidationRecord({feedback:{rule:'分组重叠'}},{phase:'authoring',unitId:'design-slide-12'}),{phase:'authoring',code:'ppt_layout_overlap',unitId:'design-slide-12'});
 });
+
+test('layout role and immutable-content failures retain distinct safe diagnostic categories',()=>{
+ for(const [rule,code]of [['PPT Master 页面角色与设计计划不一致','ppt_layout_role'],['PPT Master 不得修改已接受的标题、正文或备注','ppt_semantic_integrity'],['PPT Master 页面结果结构不正确','ppt_output_schema']])assert.equal(presentationValidationRecord({feedback:{rule}},{phase:'authoring',unitId:'design-slide-1'}).code,code);
+});
