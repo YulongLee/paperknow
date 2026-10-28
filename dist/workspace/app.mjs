@@ -66,7 +66,7 @@ function render(){
  lastRenderedRoute=location.hash;
 }
 
-const categories=[['writing','AI 写作','pen',['writing','topic','idea','proposal','summary','taskbook','article','course','practice','questionnaire','analysis','journal']],['literature','AI 研读','book',['literature','search','reading','translation']],['reduce','降重复率','pen',['reduce']],['aigc','降AI率','spark',['aigc']],['detection','论文检测','shield',['check']],['ppt','PPT 创作','chart',['ppt']],['format','格式排版','file',['format']],['research','科研工具','chart',['research']]];
+const categories=[['writing','AI 写作','pen',['writing','topic','idea','proposal','summary','taskbook','article','course','practice','questionnaire','analysis','journal']],['literature','AI 研读','book',['literature','search','reading','translation']],['detection','论文检测','shield',['check']],['reduce','降重复率','pen',['reduce']],['aigc','降AI率','spark',['aigc']],['ppt','PPT 创作','chart',['ppt']],['format','格式排版','file',['format']],['research','科研工具','chart',['research']]];
 // 保留旧页面的内部路由，左侧只展示 PaperRed 风格的核心能力。
 const allCategories=[...categories,['revision','修改与润色','pen',['review','rewrite','reduce']],['format','格式排版','file',['format']],['more','更多工具','grid',['resume','posting','translation']]];
 const legacy={rewrite:'revision',check:'detection'};
