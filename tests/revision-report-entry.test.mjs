@@ -53,3 +53,12 @@ test('a changed account clears private preparation and blocks generation',async 
 test('a changed report source while authentication is pending cannot silently change generation scope',async t=>{
  let resolveAuth,pending=false;const response=aiResponse(marked+'\n\n'+plain),f=fixture(t,{kind:'aigc',hash:'#category/aigc?aigcReport=ai-1',api:async path=>path==='/auth/me'?(pending?new Promise(r=>{resolveAuth=r;}):{user:{id:'owner'}}):response});f.click('.revision-report-handoff');await until(()=>!!f.$('[data-rrp-pick]'));pending=true;const preparation=f.entry.prepare(f.getDocument());await until(()=>!!resolveAuth);f.$('[data-rrp-source]').value='other';f.$('[data-rrp-source]').dispatchEvent(new f.w.Event('change',{bubbles:true}));resolveAuth({user:{id:'owner'}});await assert.rejects(preparation,/已变化/);
 });
+
+test('changing the reduction mode stops a pending report read and ignores its late original and matches',async t=>{
+ let finish,signal;const f=fixture(t,{text:plain,reader:async(_file,options)=>{signal=options.signal;return new Promise(resolve=>finish=resolve);}});
+ f.file();await until(()=>!!finish);assert.equal(f.entry.busy,true);
+ f.click('[data-report-basis="direct"]');assert.equal(f.entry.mode,'direct');assert.equal(f.entry.busy,false);assert.equal(signal.aborted,true);
+ finish({text:'原文片段：'+marked,originalText:marked,kind:'similarity',format:'html',explicitExcerpts:[marked]});await tick();await tick();
+ assert.equal(f.$('#original').value,plain);assert.equal(f.$('[data-rrp-pick]'),null);assert.equal(await f.entry.prepare(f.getDocument()),null);
+ f.click('[data-report-basis="report"]');assert.equal(f.entry.mode,'report');assert.equal(f.$('[data-rrp-progress]').hidden,true);assert.equal(f.$('[data-rrp-locate]').disabled,false);await assert.rejects(()=>f.entry.prepare(f.getDocument()),/提供.*报告/);assert.equal(f.calls.length,0);
+});

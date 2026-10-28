@@ -152,3 +152,26 @@ test('a changed protected token in one late paragraph rejects the whole UI adopt
 test('revision-specific report and review styles remain scoped and provide narrow-screen fallbacks',async()=>{
  const css=await readFile(new URL('../dist/workspace/revision-detection-refresh.css',import.meta.url),'utf8'),selection=await readFile(new URL('../dist/workspace/revision-ai.css',import.meta.url),'utf8');assert.match(css,/\.dashboard\.revision-refresh \.rev-report-entry\{/);assert.match(css,/\.dashboard\.revision-refresh \.rev-alternative-candidate\{/);assert.match(css,/@media\(max-width:760px\).*rev-report-entry/s);assert.match(selection,/\.rev-ai-card \.rev-selection-list\{max-height:300px;overflow:auto/);assert.match(selection,/\.rev-ai-card \.rev-selection :is\(button,input\):focus-visible/);
 });
+
+test('restoring a selected reduction mode never overwrites it while restoring the saved plan and original',t=>{
+ for(const mode of ['direct','comparison']){
+  const f=fixture(t,{entryPreparation:{title:'已保存的模式选择',text:paragraphs.join('\n\n'),plan:'dual',reportMode:mode,reductionPath:mode==='direct'?'direct':'sources'}});
+  assert.equal(f.$('[data-report-basis="'+mode+'"]').getAttribute('aria-pressed'),'true');
+  assert.equal(JSON.parse(f.w.localStorage.getItem('paperknow-revision-entry')).reduce.reportMode,mode);
+  f.w.revisionProduct.disposeRevision();f.w.revisionProduct.mountRevision({...f.ctx});
+  assert.equal(f.$('[data-report-basis="'+mode+'"]').getAttribute('aria-pressed'),'true');
+  assert.equal(f.$('#revision-service-text').value,paragraphs.join('\n\n'));
+  assert.equal(f.$('[data-revision-plan="dual"]').getAttribute('aria-pressed'),'true');assert.equal(f.calls.length,0);
+ }
+});
+
+test('one click on each reduction choice updates the visible flow and keeps prepared text without a paid request',t=>{
+ const f=fixture(t),form=f.$('#revision-entry-form');f.click('[data-revision-input="paste"]');f.input('#revision-service-title','保留输入的论文');f.input('#revision-service-text',paragraphs.join('\n\n'));f.input('#revision-service-requirements','保留文献与真实数据');
+ for(const [mode,title,step,action] of [['direct','准备需要优化的论文原文','选择修改范围','创建修改稿，继续生成'],['comparison','准备论文原文与对照文章','添加对照文章','保存原文，添加对照文章'],['report','准备原文与检测报告','核对重复位置','核对报告并继续'],['direct','准备需要优化的论文原文','选择修改范围','创建修改稿，继续生成']]){
+  f.$('[data-report-basis="'+mode+'"] b').click();
+  assert.equal(f.$('[data-report-basis="'+mode+'"]').getAttribute('aria-pressed'),'true');assert.equal(f.$('[data-report-basis="'+mode+'"] .revision-basis-selected').hidden,false);
+  assert.equal(f.$('[data-revision-preparation-title]').textContent,title);assert.equal(f.$('.revision-entry-steps li:nth-child(2) b').textContent,step);assert.ok(f.$('[data-revision-service-action="start"]').textContent.includes(action));
+  assert.equal(f.$('#revision-entry-form'),form);assert.equal(f.$('#revision-service-text').value,paragraphs.join('\n\n'));assert.equal(f.$('#revision-service-requirements').value,'保留文献与真实数据');assert.equal(JSON.parse(f.w.localStorage.getItem('paperknow-revision-entry')).reduce.reportMode,mode);
+ }
+ assert.equal(f.calls.length,0);assert.equal(f.draft(),undefined);
+});
