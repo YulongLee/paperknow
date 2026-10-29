@@ -45,8 +45,8 @@
     {
       "slug": "/features/format/",
       "file": "features/format/index.html",
-      "modifiedAt": "2026-10-22",
-      "title": "论文格式排版工具｜DOCX 检测与样式整理"
+      "modifiedAt": "2026-10-29",
+      "title": "论文格式排版工具｜上传模板，一键排版"
     },
     {
       "slug": "/features/research-tools/",
@@ -75,8 +75,8 @@
     {
       "slug": "/guides/docx-format/",
       "file": "guides/docx-format/index.html",
-      "modifiedAt": "2026-10-22",
-      "title": "DOCX 论文格式排版步骤｜检查、应用与副本复核"
+      "modifiedAt": "2026-10-29",
+      "title": "DOCX 论文排版步骤｜上传模板、上传论文、AI 排版"
     },
     {
       "slug": "/guides/research-ppt/",
