@@ -38,7 +38,7 @@ export function normalizeReferenceSearchItem(input={}){
  return {id:`online-${source.replace(/[^a-z0-9-]/g,'').slice(0,25)||'source'}-${hash(doi||sourceId||title+'|'+year)}`,
   title,authors:clip(input.authors,1000),year,doi,url:safeReferenceURL(input.url)||(doi?'https://doi.org/'+encodeURI(doi):''),
   source,sourceId,sourceLabel:label+' · 在线题录，未读取全文',scope:'metadata',text:'',abstract:clip(input.abstract,12000),
-  ...(typeof input.openAccess==='boolean'?{openAccess:input.openAccess}:{}),fullTextUrl:safeReferenceURL(input.fullTextUrl),type:clip(input.type,80),tags:[],
+  ...(typeof input.downloadToken==='string'&&input.downloadToken.length<=6000?{downloadToken:input.downloadToken,downloadAvailable:input.downloadAvailable===true}:{}),...(typeof input.openAccess==='boolean'?{openAccess:input.openAccess}:{}),fullTextUrl:safeReferenceURL(input.fullTextUrl),type:clip(input.type,80),tags:[],
   ...referenceBibliography(input),...arxiv,confirmed:false,fullTextRead:false};
 }
 

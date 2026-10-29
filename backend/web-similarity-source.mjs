@@ -21,7 +21,7 @@ const limitChars=(value,max)=>Array.from(value).slice(0,max).join('');
 
 // Reject every special-use/non-global family, including IPv4-mapped IPv6,
 // documentation space, NAT64, 6to4, link-local and cloud metadata addresses.
-function publicIP(value){
+export function publicIP(value){
  if(typeof value!=='string')return false;
  const family=isIP(value);
  if(family===4){

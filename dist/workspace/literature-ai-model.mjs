@@ -18,7 +18,7 @@ export function selectReadingMaterials(paper,start=1,end,paragraphs=literaturePa
  if(!Number.isInteger(first)||!Number.isInteger(last)||first<1||last<first||last>paragraphs.length)throw Error('请选择有效的原文段落范围。');
  const selected=paragraphs.slice(first-1,last);if(selected.length>20)throw Error('本次最多处理 20 段原文，请缩小范围后分次研读。');const characters=selected.reduce((n,p)=>n+p.text.length,0);
  if(characters>literatureAiLimit)throw Error('本次选中原文超过 32,000 字符，请缩小段落范围；不会自动截断原文。');
- return selected.map(p=>({id:p.id,name:`${String(paper.title).slice(0,180)} · 第 ${p.index} 段${paper.scope==='abstract'?'（摘要）':''}`,text:p.text}));
+ return selected.map(p=>{const heading=paragraphs.slice(0,p.index).findLast(part=>/^#{1,6}\s+\S/.test(part.text)&&part.text.length<160)?.text.replace(/^#+\s*/,'');return {id:p.id,name:`${String(paper.title).slice(0,180)}${heading?' · '+heading:''} · 第 ${p.index} 段${paper.scope==='abstract'?'（摘要）':''}`,text:p.text};});
 }
 export function validateLiteratureAiOutput(output,snapshot,operation){
  if(!output||typeof output.text!=='string'||!output.text.trim()||output.text.length>100000)throw Error('生成内容为空或过长，请保留原文并重新读取任务状态。');

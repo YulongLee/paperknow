@@ -59,6 +59,7 @@ export function createDocumentParseService(db,config={}){
   const created=tx(()=>{
    const existing=db.prepare('SELECT * FROM jobs WHERE user_id=? AND idempotency_key=?').get(user.id,input.idempotencyKey);
    if(existing){if(existing.type!=='document_parse'||existing.input_hash!==hash)fail(409,'请求编号已用于其他内容，请重新选择文件');return{id:existing.id,status:200};}
+   const completed=db.prepare("SELECT j.id FROM jobs j JOIN document_parse_runs d ON d.id=j.id JOIN artifacts a ON a.id=d.structured_artifact_id AND a.user_id=j.user_id AND a.status='ready' WHERE j.user_id=? AND j.type='document_parse' AND j.status='completed' AND j.input_hash=? AND d.source_sha256=? ORDER BY j.created_at DESC LIMIT 1").get(user.id,hash,file.sha256);if(completed)return{id:completed.id,status:200};
    if(!documentParsingReady(config))fail(503,documentParsingCapabilities(config).reason);
    const active=db.prepare("SELECT id FROM jobs WHERE user_id=? AND type='document_parse' AND status IN ('queued','running') AND input_hash=?").get(user.id,hash);if(active)return{id:active.id,status:200};
    if(db.prepare("SELECT count(*) n FROM jobs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=3)fail(409,'最多同时处理 3 项任务，请等待当前任务完成');

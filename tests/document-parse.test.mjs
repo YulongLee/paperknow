@@ -142,3 +142,11 @@ test('OSS failure never marks parsing complete and compensates previous newly sa
  const stored=new Map();const f=await fixture(t,{oss:{async put(key,buffer){if(key.endsWith('.json'))throw Error('private-cloud-error');stored.set(key,Buffer.from(buffer));},async get(key){return{content:stored.get(key)};},async delete(key){stored.delete(key);}}});
  const file=await f.upload(),id=(await f.submit(file)).value.id;await f.tick();await f.tick();assert.equal(f.job(id).status,'failed');assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);assert.equal(f.db.prepare("SELECT count(*) n FROM artifacts WHERE status='ready'").get().n,0);assert.equal(stored.size,1);assert.doesNotMatch(f.job(id).error,/private-cloud/);
 });
+
+test('an unchanged owned PDF reuses a completed parse while deleted results and other owners do not',async t=>{
+ const f=await fixture(t),file=await f.upload(),id=(await f.submit(file)).value.id;await f.tick();await f.tick();assert.equal(f.job(id).status,'completed');
+ const repeated=await f.submit(file);assert.equal(repeated.status,200);assert.equal(repeated.value.id,id);await f.tick();assert.equal(f.calls.create,1);
+ assert.equal((await f.submit(file,{},f.users.bob)).status,404);
+ const run=f.db.prepare('SELECT * FROM document_parse_runs WHERE id=?').get(id);f.db.prepare("UPDATE artifacts SET status='deleted' WHERE id=?").run(run.structured_artifact_id);
+ const replaced=await f.submit(file);assert.equal(replaced.status,201);assert.notEqual(replaced.value.id,id);
+});

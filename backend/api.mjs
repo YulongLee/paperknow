@@ -1,3 +1,4 @@
+import {createLiteratureDownloadService} from './literature-pdf-download.mjs';
 import {randomUUID} from 'node:crypto';
 import {sessionUser,sessionCookie,digest} from './auth.mjs';
 import {createAuthService} from './auth-service.mjs';
@@ -46,6 +47,7 @@ const questionnaires=createQuestionnaireService(db,config);
 const payments=createPaymentService(db,{...config,billing});
 const workspace=createWorkspaceService(db,{billing});
 const files=createFileService(db,config);
+const literatureDownloads=createLiteratureDownloadService({files,db,storage:config.storage,signingKey:config.agentConfigKey||config.paymentConfigKey,...(config.literaturePdfReader?{readPDF:config.literaturePdfReader}:{})});
 const artifacts=createArtifactService(db,config);
 const documentParses=createDocumentParseService(db,{...config,cancelDocumentParse:id=>worker.cancel(id)});
 const documentTranslations=createDocumentTranslationService(db,{...config,cancelDocumentTranslation:id=>worker.cancel(id)});
@@ -86,8 +88,9 @@ if(path==='/api/desktop/releases'&&method==='GET'){send(200,desktopReleases.cata
 const desktopDownload=path.match(/^\/api\/desktop\/download\/([^/]+)\/([^/]+)$/);
 if(desktopDownload&&method==='GET'){rate(req,120);const location=await desktopReleases.download(desktopDownload[1],desktopDownload[2]);res.writeHead(302,{'Location':location,'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}).end();return;}
 if(path.startsWith('/api/questionnaires/public/')){if(method==='POST')rate(req,120);const response=await questionnaires.handle({path,method,user:null,query:requestURL.searchParams,readBody:()=>body(req),clientKey:clientAddress(req,config)});if(response){send(response.status,response.value);return;}fail(404,'问卷链接不存在');}
+if(path==='/api/literature/capabilities'&&method==='GET'){const scope=literatureScope(req);send(200,{academicSearchSources:literatureSearch.listSources(scope),fullTextStorage:config.storage?.provider==='aliyun_oss'});return;}
 if(path==='/api/literature/search'&&method==='GET'){
- try{send(200,await literatureSearch.search(requestURL.searchParams,{clientKey:clientAddress(req,config),...literatureScope(req)}));}
+ try{const value=await literatureSearch.search(requestURL.searchParams,{clientKey:clientAddress(req,config),...literatureScope(req)});send(200,{...value,items:value.items.map(row=>literatureDownloads.decorate(row))});}
  catch(error){send(error.status||503,{error:error.message,...error.response},error.retryAfter?{'Retry-After':String(error.retryAfter)}:{});}
  return;
 }
@@ -113,6 +116,7 @@ const user=adminUser||sessionUser(db,req,config.ownerEmail);if(!user)fail(401,'�
 const expectedOwner=req.headers['x-paperknow-user'];
 if(expectedOwner!==undefined&&(typeof expectedOwner!=='string'||expectedOwner!==user.id)){send(409,{error:'登录账户已变化，请刷新页面后重试',code:'ACCOUNT_CHANGED'});return;}
 if(adminRequest){send(200,await admin({path,method,query:requestURL.searchParams,readBody:()=>body(req),user}));return;}
+if(path==='/api/literature/files'&&method==='POST'){rate(req,30);const input=await body(req),controller=new AbortController(),cancel=()=>{if(!res.writableEnded)controller.abort();};req.once('aborted',cancel);res.once('close',cancel);try{send(201,await literatureDownloads.save(input,user,{signal:controller.signal}));}finally{req.removeListener('aborted',cancel);res.removeListener('close',cancel);}return;}
 if(path==='/api/theses/document-render'){
  if(method==='GET'){const status=await thesisRenderer.status();send(200,{available:status.available,busy:status.busy,maxInputBytes:status.maxInputBytes});return;}
  rate(req,60);const value=await body(req);
