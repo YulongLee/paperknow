@@ -146,3 +146,15 @@ test('quick prompts enable sending, history toggles work, and composition or Shi
  const history=f.$('[data-lit-include-history]');history.checked=false;history.dispatchEvent(new f.w.Event('change',{bubbles:true}));const question=f.$('[data-lit-ai-question]');question.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true}));question.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',shiftKey:true,bubbles:true}));assert.equal(f.calls.length,0);
  question.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await until(()=>f.papers()[0].aiResults.length===1);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);assert.equal(f.calls.find(c=>c.path==='/tool-runs/jobs').data.snapshot.context.chatHistory,undefined);
 });
+
+
+test('PDF reading opens the original without extracted-text tabs, tools or exports, while AI retains grounded evidence',async t=>{
+ const f=fixture(t,{papers:[paper({fileName:'original.pdf',originalFileId:'file-pdf',originalOwnerId:'owner'})]});
+ globalThis.fetch=async url=>reply(url==='/api/auth/me'?{user:{id:'other-owner'}}:{});
+ mountLiteratureReader('saved-paper',f.ctx,'text');
+ assert.equal(f.$('[data-read-tab="text"]'),null);assert.equal(f.$('[data-reader-find]'),null);assert.equal(f.$('[data-reader-text-fallback]'),null);assert.equal(f.$('#lit-original-docx'),null);assert.equal(f.$('.lit-read-text'),null);assert.equal(f.$('#reader-pdf-pane').hidden,false);assert.equal(f.$('#reader-text-pane').hidden,true);
+ f.$('[data-lit-assistant-mode="summary"]').click();f.$('[data-lit-ai-open]').click();await until(()=>f.papers()[0].aiResults.length===1);
+ const task=f.calls.find(c=>c.path==='/tool-runs/jobs');assert.equal(task.data.snapshot.materials[0].text,source.split('\n\n')[0]);
+ assert.equal(f.$('[data-lit-source]').textContent,'原文依据');f.$('[data-lit-source]').click();assert.equal(f.$('#reader-pdf-pane').hidden,false);assert.equal(f.$('#reader-text-pane').hidden,true);assert.ok(f.$('[data-lit-source]').closest('blockquote').classList.contains('lit-ai-source-highlight'));
+ f.$('[data-read-tab="notes"]').click();assert.equal(f.$('#reader-notes-pane').hidden,false);f.$('[data-read-tab="pdf"]').click();assert.equal(f.$('#reader-pdf-pane').hidden,false);assert.equal(f.papers()[0].notes[0].text,'Keep my research note.');
+});

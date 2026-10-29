@@ -1,11 +1,12 @@
+import {readFileBytes} from './file-bytes.mjs';
 import {reuseStoredOriginal,storedFileSource} from './file-selection.mjs';
 const PDF_BYTES=20*1024*1024,PDF_PAGES=100;
 const abortError=()=>Object.assign(new Error('已停止等待；已提交的云端解析仍可在任务中心查看。'),{name:'AbortError'});
 const checkSignal=signal=>{if(signal?.aborted)throw abortError();};
 const stageMessages={uploading:'正在上传 PDF 原件',queued:'PDF 已加入解析队列',pending:'PDF 已加入解析队列',reading:'正在读取 PDF 原件',running:'正在识别 PDF 正文、表格与公式',recognizing:'正在识别 PDF 正文、表格与公式',parsing:'正在识别 PDF 正文、表格与公式',ocr:'正在识别扫描文字',converting:'正在整理解析结果',downloading:'正在整理并读取解析结果',saving:'正在保存解析成果',saving_wait:'解析完成，正在等待成果保存',completed:'PDF 云端解析已完成',cancelled:'已停止本站解析任务，上游可能仍在处理'};
 const wait=(ms,signal)=>new Promise((resolve,reject)=>{checkSignal(signal);const timer=setTimeout(done,ms);function done(){signal?.removeEventListener('abort',cancel);resolve();}function cancel(){clearTimeout(timer);signal?.removeEventListener('abort',cancel);reject(abortError());}signal?.addEventListener('abort',cancel,{once:true});});
-const localExtract=async file=>/\.txt$/i.test(file.name)?{text:await file.text(),warnings:[]}:(await import('/precheck/assets/parsers.js')).extractFile(file);
-async function base64File(file,signal){const bytes=new Uint8Array(await file.arrayBuffer());checkSignal(signal);let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary);}
+const localExtract=async file=>{if(/\.txt$/i.test(file.name)&&typeof file.arrayBuffer!=='function'&&typeof file.text==='function')return {text:await file.text(),warnings:[]};const bytes=await readFileBytes(file),snapshot=new File([bytes],file.name,{type:file.type,lastModified:file.lastModified});return /\.txt$/i.test(file.name)?{text:await snapshot.text(),warnings:[]}:(await import('/precheck/assets/parsers.js')).extractFile(snapshot);};
+async function base64File(file,signal){const bytes=await readFileBytes(file,{signal,maxBytes:PDF_BYTES});checkSignal(signal);let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary);}
 
 // Kept per importer: manual re-entry with the same File reuses the submitted task.
 // POSTs are never retried automatically, even when the response was interrupted.
@@ -17,6 +18,7 @@ export function createWorkspaceDocumentImporter({fetchImpl=(...args)=>fetch(...a
   const emit=value=>{if(!signal?.aborted)onProgress(value);};
   if(!/\.pdf$/i.test(file.name)){emit({stage:'local',message:'正在当前浏览器提取文档文字…',progress:null});const result=await extractFileImpl(file);checkSignal(signal);return {...result,warnings:Array.isArray(result.warnings)?result.warnings:[]};}
   if(file.size>PDF_BYTES)throw Error('PDF 最大 20MB、最多 100 页，请拆分后导入。');
+  if(!storedFileSource(file)){emit({stage:'reading_file',message:'正在读取所选 PDF…',progress:null});await readFileBytes(file,{signal,maxBytes:PDF_BYTES});}
   const session=await api('/auth/me',{signal});if(!session.user?.id)throw Error('请先登录，再使用 PDF 云端解析；TXT / DOCX 仍可本地导入。');
   const capability=(await api('/capabilities',{signal})).documentParsing;
   if(!capability?.ready)throw Error('PDF 云端解析暂未开放，请稍后重试，或先导入 TXT / DOCX。');

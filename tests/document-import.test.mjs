@@ -109,3 +109,21 @@ test('a queued PDF can continue in the background while the writing editor saves
 test('cloud OCR does not bypass the writing material character budget or silently replace existing inputs',async t=>{
  const f=await flowPdfFixture(t,{completedText:'文'.repeat(30001)});await settle(()=>/30,000/.test(f.$('[data-wf-error]')?.textContent||''));assert.match(f.$('[data-wf-error]').textContent,/最多 30,000 字符/);assert.equal(f.$('.wf-material-list').children.length,0);assert.equal(f.calls.filter(c=>c.url==='/api/document-parses').length,1);
 });
+
+
+test('a local PDF is read before authentication or consent and its bytes are reused after a long dialog',async()=>{
+ let reads=0,late=false;
+ const file={name:'native.pdf',size:4,arrayBuffer(){reads++;if(late)throw Object.assign(Error('handle expired'),{name:'NotReadableError'});return Promise.resolve(new Uint8Array([37,80,68,70]).buffer);}};
+ const f=fixture({handle:url=>{if(url==='/api/auth/me'){assert.equal(reads,1);late=true;}},config:{confirmImpl:async()=>{assert.equal(reads,1);await new Promise(resolve=>setImmediate(resolve));return true;}}});
+ assert.equal((await f.extract(file)).text,f.done.result.text);assert.equal(reads,1);assert.equal(f.calls.find(c=>c.url==='/api/files').body.data,'JVBERg==');
+});
+test('unreadable native PDFs give actionable Chinese feedback without uploading, quoting or creating a task',async()=>{
+ for(const name of ['NotReadableError','NotFoundError','SecurityError']){
+  const file={name:'local.pdf',size:4,arrayBuffer:async()=>{throw Object.assign(Error('The requested file could not be read'),{name});}},f=fixture();
+  await assert.rejects(f.extract(file),error=>error.code==='LOCAL_FILE_UNREADABLE'&&/重新选择文件/.test(error.message)&&/本次未提交解析/.test(error.message));assert.equal(f.calls.length,0);assert.equal(f.confirmations.length,0);
+ }
+});
+test('reselecting a readable PDF succeeds after a failed handle without a phantom parse task',async()=>{
+ const f=fixture();await assert.rejects(f.extract({name:'same.pdf',size:4,arrayBuffer:async()=>{throw Object.assign(Error('expired'),{name:'NotReadableError'});}}));
+ assert.equal((await f.extract(pdf('same.pdf'))).text,f.done.result.text);assert.equal(f.calls.filter(c=>c.url==='/api/files').length,1);assert.equal(f.calls.filter(c=>c.url==='/api/document-parses').length,1);
+});
