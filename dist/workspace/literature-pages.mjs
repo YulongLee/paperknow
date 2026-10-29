@@ -9,12 +9,12 @@ import {toolBanner} from './tool-banner.mjs';
 import {esc,icon} from './ui.mjs';
 
 export const readingFeatures=Object.freeze([
- {id:'library',title:'我的文献',icon:'book',color:'blue',tag:'文献管理',description:'导入与管理文献，整理题录、分组和阅读记录。'},
- {id:'search',title:'文献检索',icon:'search',color:'orange',tag:'查找资料',description:'按主题检索文献，筛选、保存并继续研读。'},
- {id:'reading',title:'文献研读',icon:'file',color:'mint',tag:'理解原文',description:'选择原文，提炼核心要点、总结或深入解读。'},
- {id:'answer',title:'原文问答',icon:'help',color:'blue',tag:'围绕原文提问',description:'提出研究问题，查看回答与可定位的原文依据。'},
- {id:'translation',title:'文献翻译',icon:'language',color:'violet',tag:'跨语言阅读',description:'制作原文对照译文，或翻译整篇 PDF、Word 文档。'},
- {id:'review',title:'文献综述',icon:'pen',color:'orange',tag:'整理研究进展',description:'选择参考材料，进入完整的文献综述写作流程。'}
+ {id:'library',art:'/workspace/assets/feature-art-v1/reading-library.webp',title:'我的文献',icon:'book',color:'blue',tag:'文献管理',description:'导入与管理文献，整理题录、分组和阅读记录。'},
+ {id:'search',art:'/workspace/assets/feature-art-v1/reading-search.webp',title:'文献检索',icon:'search',color:'orange',tag:'查找资料',description:'按主题检索文献，筛选、保存并继续研读。'},
+ {id:'reading',art:'/workspace/assets/feature-art-v1/reading-reading.webp',title:'文献研读',icon:'file',color:'mint',tag:'理解原文',description:'选择原文，提炼核心要点、总结或深入解读。'},
+ {id:'answer',art:'/workspace/assets/feature-art-v1/reading-answer.webp',title:'原文问答',icon:'help',color:'blue',tag:'围绕原文提问',description:'提出研究问题，查看回答与可定位的原文依据。'},
+ {id:'translation',art:'/workspace/assets/feature-art-v1/reading-translation.webp',title:'文献翻译',icon:'language',color:'violet',tag:'跨语言阅读',description:'制作原文对照译文，或翻译整篇 PDF、Word 文档。'},
+ {id:'review',art:'/workspace/assets/writing-summary-v1.webp',title:'文献综述',icon:'pen',color:'orange',tag:'整理研究进展',description:'选择参考材料，进入完整的文献综述写作流程。'}
 ].map(Object.freeze));
 export const readingFeatureHref=id=>'#category/literature?view='+encodeURIComponent(readingFeatures.some(feature=>feature.id===id)?id:'library');
 let controller=null,child=null;
@@ -25,11 +25,11 @@ function begin(container,feature){
  const hash=container.ownerDocument.defaultView.location.hash;
  return {signal,current:()=>!signal.aborted&&container.isConnected&&container.ownerDocument.defaultView.location.hash===hash};
 }
-function pageHeading(feature){return toolBanner('literature',{title:feature.title,label:'AI 研读 · '+feature.title,description:feature.description,actions:'<a class="btn secondary" href="#category/literature">'+'<span aria-hidden="true">←</span>'+' 返回 AI 研读</a>'});}
+function pageHeading(feature){return toolBanner('literature',{feature:'reading-'+feature.id,title:feature.title,label:'AI 研读 · '+feature.title,description:feature.description,actions:'<a class="btn secondary" href="#category/literature">'+'<span aria-hidden="true">←</span>'+' 返回 AI 研读</a>'});}
 
 export function mountLiteratureLanding(ctx,{container=document.querySelector('.dashboard')}={}){
  begin(container,'home');const papers=list(literatureKey),notes=papers.reduce((n,p)=>n+(p.notes?.length||0),0);
- container.innerHTML=`<section class="lit-workspace-refresh lit-catalog">${toolBanner('literature',{title:'AI 研读',description:'从查找文献到理解原文，选择一项任务开始。'})}<div class="lit-overview-strip"><div><span class="lit-overview-kicker">YOUR READING SPACE</span><h2>选择任务，进入专属工作页面</h2><p>检索、研读、问答与翻译，各有清晰的操作流程。</p></div><dl><div><dt>已保存文献</dt><dd>${papers.length}<small>篇</small></dd></div><div><dt>研究笔记</dt><dd>${notes}<small>条</small></dd></div></dl></div><section class="lit-feature-grid" aria-label="AI 研读功能">${readingFeatures.map((feature,index)=>`<a class="lit-feature-card ${feature.color}" data-reading-feature="${feature.id}" href="${readingFeatureHref(feature.id)}"><span class="lit-feature-art" aria-hidden="true">${icon(feature.icon,52)}</span><span class="lit-feature-top"><span class="lit-feature-icon">${icon(feature.icon,22)}</span><span class="lit-feature-state">${feature.tag}</span></span><span class="lit-feature-copy"><b>${feature.title}</b><small>${feature.description}</small></span><span class="lit-feature-bottom"><span>0${index+1} / ${feature.title}</span><span>开始使用 ${icon('arrow',15)}</span></span></a>`).join('')}</section></section>`;
+ container.innerHTML=`<section class="lit-workspace-refresh lit-catalog">${toolBanner('literature',{title:'AI 研读',description:'从查找文献到理解原文，选择一项任务开始。'})}<div class="lit-overview-strip"><div><span class="lit-overview-kicker">YOUR READING SPACE</span><h2>选择任务，进入专属工作页面</h2><p>检索、研读、问答与翻译，各有清晰的操作流程。</p></div><dl><div><dt>已保存文献</dt><dd>${papers.length}<small>篇</small></dd></div><div><dt>研究笔记</dt><dd>${notes}<small>条</small></dd></div></dl></div><section class="lit-feature-grid" aria-label="AI 研读功能">${readingFeatures.map((feature,index)=>`<a class="lit-feature-card ${feature.color}" data-reading-feature="${feature.id}" href="${readingFeatureHref(feature.id)}"><span class="lit-feature-art" aria-hidden="true"><img src="${feature.art}" srcset="${feature.id==='review'?feature.art:feature.art.replace('.webp','-320.webp')} 320w, ${feature.art} 640w" sizes="166px" width="166" height="166" alt="" loading="lazy" decoding="async"></span><span class="lit-feature-top"><span class="lit-feature-icon">${icon(feature.icon,22)}</span><span class="lit-feature-state">${feature.tag}</span></span><span class="lit-feature-copy"><b>${feature.title}</b><small>${feature.description}</small></span><span class="lit-feature-bottom"><span>0${index+1} / ${feature.title}</span><span>开始使用 ${icon('arrow',15)}</span></span></a>`).join('')}</section></section>`;
 }
 
 export function mountLiteratureFeaturePage(kind,ctx,{container=document.querySelector('.dashboard'),fetcher,translationOptions={}}={}){

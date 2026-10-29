@@ -24,7 +24,7 @@ function openLegacyPresentation(f){const title=f.doc.querySelector('[data-field=
 function edit(f,selector,value){const input=f.doc.querySelector(selector);input.value=value;input.dispatchEvent(new f.w.Event('input',{bubbles:true}));}
 
 for(const mode of ['ai','proposal','thesis'])test(mode+' PPT workflow follows actual progress, preserves inputs and exposes one result workflow without an outline gate',t=>{
- const f=pptFixture(t,mode),nav=f.doc.querySelector('[data-ppt-workflow]'),buttons=[...nav.querySelectorAll('button')];assert.equal(nav.dataset.currentStep,'1');assert.equal(buttons[3].disabled,true);
+ const f=pptFixture(t,mode);assert.equal(f.doc.querySelector('header.tool-banner').dataset.toolArt,'ppt-'+mode);const nav=f.doc.querySelector('[data-ppt-workflow]'),buttons=[...nav.querySelectorAll('button')];assert.equal(nav.dataset.currentStep,'1');assert.equal(buttons[3].disabled,true);
  edit(f,'[data-field="title"]','合成研究演示');edit(f,'[data-field="pages"]','6');edit(f,mode==='ai'?'[data-field="prompt"]':'[data-field="material"]','依据给定研究材料整理问题、方法与结论，保留真实信息。');assert.equal(nav.dataset.currentStep,'2');assert.equal(f.doc.querySelector('[data-ppt-workflow]'),nav);
  let locations=0;const target=f.doc.querySelector('.ppt-template-gallery,[data-field="pages"]');target.scrollIntoView=()=>locations++;buttons[1].click();assert.equal(locations,1);assert.equal(f.w.toolInputChanges>0,true);
  let panel=f.w.lastToolPanel;panel.onProgressChange({submitting:true,busy:true,hasTask:false,auth:'authenticated'});assert.equal(nav.dataset.phase,'preparing');assert.equal(nav.dataset.currentStep,'3');

@@ -1,3 +1,4 @@
+import {resolveFeatureIllustration} from './feature-illustrations.mjs';
 import {esc,icon} from './ui.mjs';
 
 // One heading contract across the workspace, services and research tools.
@@ -24,8 +25,9 @@ export const toolBannerCategories=Object.freeze({
 
 // Titles, descriptions and optional labels can contain user-provided text.
 // Actions are trusted markup from the owning tool and keep their original IDs.
-export function toolBanner(key,{title,description,label,actions='',extraClass=''}={}){
+export function toolBanner(key,{title,description,label,feature:illustrationKey='',actions='',extraClass=''}={}){
   const category=Object.hasOwn(toolBannerCategories,key)?key:'writing';
   const feature=toolBannerCategories[category];
-  return `<header class="tool-banner hub-heading ${esc(extraClass)}" data-tool-category="${category}"><div class="tool-banner-scene" aria-hidden="true"><span class="tool-banner-orbit"></span><span class="tool-banner-glass"></span><span class="tool-banner-token">${icon(feature.icon,18)}</span><span class="tool-banner-spark">${icon('plus',14)}</span></div><div class="tool-banner-copy"><span class="tool-banner-label"><span class="tool-banner-label-icon">${icon(feature.icon,15)}</span><span>${esc(label??`${feature.group||'论文与科研'} · ${feature.title}`)}</span></span><h1>${esc(title||feature.title)}</h1><p>${esc(description??feature.description)}</p>${actions?`<div class="hub-heading-actions tool-banner-actions">${actions}</div>`:''}</div></header>`;
+  const art=resolveFeatureIllustration(category,illustrationKey,extraClass);
+  return `<header class="tool-banner hub-heading ${esc(extraClass)}" data-tool-category="${category}"${art?` data-tool-art="${art.key}"`:""}><div class="tool-banner-scene" aria-hidden="true"><span class="tool-banner-orbit"></span><span class="tool-banner-glass"></span><span class="tool-banner-token">${icon(feature.icon,18)}</span><span class="tool-banner-spark">${icon('plus',14)}</span></div><div class="tool-banner-copy"><span class="tool-banner-label"><span class="tool-banner-label-icon">${icon(feature.icon,15)}</span><span>${esc(label??`${feature.group||'论文与科研'} · ${feature.title}`)}</span></span><h1>${esc(title||feature.title)}</h1><p>${esc(description??feature.description)}</p>${actions?`<div class="hub-heading-actions tool-banner-actions">${actions}</div>`:''}</div></header>`;
 }
