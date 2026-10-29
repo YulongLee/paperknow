@@ -1,3 +1,4 @@
+import {mountLiteratureDesk} from './literature-desk.mjs';
 import {mountLiterature,mountLiteratureDiscoveryPage,openLiteratureMaterialForm,disposeLiterature} from './literature.mjs';
 import {mountDocumentTranslation} from './document-translation.mjs';
 import {readingWorkflowMarkup,updateReadingWorkflow,bindReadingWorkflow,focusReadingTarget} from './literature-workflow.mjs';
@@ -26,9 +27,8 @@ function begin(container,feature){
 }
 function pageHeading(feature){return toolBanner('literature',{feature:'reading-'+feature.id,title:feature.title,label:'文献研读 · '+feature.title,description:feature.description,actions:'<a class="btn secondary" href="#category/literature">'+'<span aria-hidden="true">←</span>'+' 返回文献研读</a>'});}
 
-export function mountLiteratureLanding(ctx,{container=document.querySelector('.dashboard')}={}){
- begin(container,'home');const papers=list(literatureKey),notes=papers.reduce((n,p)=>n+(p.notes?.length||0),0);
- container.innerHTML=`<section class="lit-workspace-refresh lit-catalog">${toolBanner('literature',{title:'文献研读',description:'从查找文献到理解原文，选择一项任务开始。'})}<div class="lit-overview-strip"><div><span class="lit-overview-kicker">YOUR READING SPACE</span><h2>选择任务，进入专属工作页面</h2><p>检索、研读、问答与翻译，各有清晰的操作流程。</p></div><dl><div><dt>已保存文献</dt><dd>${papers.length}<small>篇</small></dd></div><div><dt>研究笔记</dt><dd>${notes}<small>条</small></dd></div></dl></div><section class="lit-feature-grid" aria-label="文献研读功能">${readingFeatures.map((feature,index)=>`<a class="lit-feature-card ${feature.color}" data-reading-feature="${feature.id}" href="${readingFeatureHref(feature.id)}"><span class="lit-feature-art" aria-hidden="true"><img src="${feature.art}" srcset="${feature.art.replace('.webp','-320.webp')} 320w, ${feature.art} 640w" sizes="166px" width="166" height="166" alt="" loading="lazy" decoding="async"></span><span class="lit-feature-top"><span class="lit-feature-icon">${icon(feature.icon,22)}</span><span class="lit-feature-state">${feature.tag}</span></span><span class="lit-feature-copy"><b>${feature.title}</b><small>${feature.description}</small></span><span class="lit-feature-bottom"><span>0${index+1} / ${feature.title}</span><span>开始使用 ${icon('arrow',15)}</span></span></a>`).join('')}</section></section>`;
+export function mountLiteratureLanding(ctx,{container=document.querySelector('.dashboard'),...options}={}){
+ begin(container,'home');child=mountLiteratureDesk(ctx,{container,...options});return child;
 }
 
 export function mountLiteratureFeaturePage(kind,ctx,{container=document.querySelector('.dashboard'),fetcher,translationOptions={}}={}){

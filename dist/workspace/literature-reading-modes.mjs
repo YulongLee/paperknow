@@ -1,5 +1,5 @@
 export const readingModes=Object.freeze({
- keypoints:Object.freeze({label:'归纳核心要点',requirements:'提炼所选原文的研究主题、核心观点或发现、关键依据与适用边界；各要点应有可定位的原文依据。原文未说明的事项明确标注未提供，不补造结论。'}),
+ keypoints:Object.freeze({label:'归纳知识点',requirements:'归纳所选原文中的核心概念与术语、关键知识点及其联系、研究方法与主要观点；结合原文说明概念含义、方法用途、关键依据与适用边界。每个知识点应有可定位的原文依据；原文未说明的事项明确标注未提供，不补造定义、数据或结论。'}),
  summary:Object.freeze({label:'总结论文内容',requirements:'按研究背景与问题、方法、结果、结论整理所选原文的结构概要；准确保留重要数字与条件，缺项明确标注原文未提供，不把所选节选称为已读全文。'}),
  deep:Object.freeze({label:'深入阅读论文',requirements:'深入梳理所选原文的研究问题、设计与方法、证据及推论、局限和适用条件、需要进一步核验的问题；区分原文事实与阅读解读，给出可定位的原文依据，不补造数据或发现。'})
 });

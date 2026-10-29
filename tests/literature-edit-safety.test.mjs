@@ -58,7 +58,7 @@ test('failed reading edits survive redraw, block stale exports and guard navigat
 });
 
 test('saving a separate note cannot mark a failed translation edit as durable',t=>{
- const f=setup(t),p=seed(f,'translate');mountLiteratureReader(p.id,f.ctx);
+ const f=setup(t),p=seed(f,'translate');mountLiteratureReader(p.id,f.ctx,'translation');
  f.w.Storage.prototype.setItem=function(key,value){if(key===literatureKey&&JSON.parse(value)[0].aiResults[0].output.segments[0].translation!=='Saved translation')throw Error('quota for revised result');return f.originalSet.call(this,key,value);};
  f.input('[data-lit-ai-segment="p1"]','Revised translation not yet saved');f.input('#note-text','A separately saved note');f.$('#lit-note-form').dispatchEvent(new f.w.Event('submit',{bubbles:true,cancelable:true}));
  assert.equal(f.saved().notes[0].text,'A separately saved note');assert.equal(f.saved().aiResults[0].output.segments[0].translation,'Saved translation');assert.equal(editorHasWork(),true);assert.equal(editorRouteGuard('#home'),false);

@@ -1,0 +1,100 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {JSDOM} from 'jsdom';
+import {mountLiteratureLanding,disposeLiteraturePages} from '../dist/workspace/literature-pages.mjs';
+import {mountLiteratureReader,disposeLiterature} from '../dist/workspace/literature.mjs';
+import {mountLiteratureOriginalPreview} from '../dist/workspace/literature-original-preview.mjs';
+import {saveLiteratureOriginal} from '../dist/workspace/literature-upload.mjs';
+import {literatureKey,validatePaper} from '../dist/workspace/literature-model.mjs';
+import {clearEditor} from '../dist/workspace/edit-guard.mjs';
+import {bindStoredFile} from '../dist/workspace/file-selection.mjs';
+
+const source='A verified synthetic paragraph describes the research method and its observed evidence.\n\nA second synthetic paragraph explains the limitations and the scope of those observations.';
+const paper=(extra={})=>validatePaper({id:'saved-paper',title:'Existing research <img src=x>',scope:'full',text:source,authors:'Original Author',year:'2026',notes:[{id:'note-one',text:'Keep my research note.'}],...extra});
+const reply=(value,status=200)=>({ok:status<400,status,json:async()=>structuredClone(value)});
+const until=async check=>{for(let n=0;n<150;n++){if(check())return;await new Promise(resolve=>setTimeout(resolve,3));}assert.fail('Reading desk did not settle');};
+function fixture(t,{papers=[paper()],fetcher}={}){
+ const dom=new JSDOM('<div id="app"><main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog></div>',{url:'https://reading.test/workspace.html#category/literature'}),w=dom.window,old={};
+ for(const name of ['window','document','location','localStorage','FormData','AbortController','MutationObserver','DOMParser','XMLSerializer','fetch']){old[name]=globalThis[name];globalThis[name]=name==='window'?w:name==='fetch'?async()=>{throw Error('No external API allowed');}:w[name];}
+ const calls=[],notices=[],jobs=new Map(),scrolls=[],$=s=>w.document.querySelector(s);
+ w.HTMLElement.prototype.scrollIntoView=function(){scrolls.push(this.id);};$('dialog').close=function(){this.open=false;};
+ const api=async(path,data)=>{calls.push({path,data});if(path==='/auth/me')return {user:{id:'owner'}};if(path==='/tool-runs/capabilities')return {ready:true};if(path==='/tool-runs/quote')return {type:'agent',source:'credits',title:'Reading',token:'quote-'+calls.length,creditCost:10,expiresAt:new Date(Date.now()+60000).toISOString()};if(path==='/tool-runs/jobs'){const materials=data.snapshot.materials,item={id:'job-'+jobs.size,kind:'literature',operation:data.operation,status:'completed',completedUnits:1,totalUnits:1,output:{text:'Verified answer grounded in the selected source.',sourceIds:materials.map(m=>m.id),citations:materials.map(m=>({sourceId:m.id,quote:m.text.slice(0,25)})),...(data.operation==='translate'?{targetLanguage:data.snapshot.language,segments:materials.map(m=>({id:m.id,source:m.text,translation:'A synthetic translation.'}))}:{})}};jobs.set(item.id,item);return {item};}if(path.startsWith('/tool-runs/jobs/'))return {item:jobs.get(path.split('/').at(-1))};throw Error('Unexpected '+path);};
+ const ctx={api,notify:message=>notices.push(message),modal:(_,html)=>{$('#workspace-dialog-body').innerHTML=html;$('dialog').open=true;}};
+ const fetchImpl=async(url,init)=>{calls.push({url,init});return fetcher?fetcher(url,init):reply({academicSearchSources:['crossref']});};
+ localStorage.setItem(literatureKey,JSON.stringify(papers));
+ t.after(()=>{disposeLiteraturePages();disposeLiterature();clearEditor();Object.assign(globalThis,old);w.close();});
+ return {w,$,ctx,calls,notices,jobs,scrolls,fetcher:fetchImpl,papers:()=>JSON.parse(localStorage.getItem(literatureKey)),input(selector,value){const node=$(selector);node.value=value;node.dispatchEvent(new w.Event('input',{bubbles:true}));}};
+}
+
+test('the entrance combines search, upload and saved papers without another operation picker or automatic AI task',async t=>{
+ const f=fixture(t),ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher});await ui.ready;
+ assert.ok(f.$('#ld-query'));assert.ok(f.$('[data-desk-upload]'));assert.ok(f.$('[data-desk-cloud]'));assert.equal(f.$('.lit-feature-grid'),null);assert.equal(f.$('[data-reading-workflow]'),null);assert.equal(f.$('.lit-desk-file a').getAttribute('href'),'#literature/saved-paper?tab=answer');assert.equal(f.$('.lit-desk-file img'),null);assert.equal(f.calls.filter(c=>c.url?.includes('/literature/search')||c.path).length,0);
+ const filter=f.$('[data-desk-filter]');filter.focus();f.input('[data-desk-filter]','missing');assert.equal(f.$('.lit-desk-file'),null);assert.equal(f.w.document.activeElement,filter);f.input('[data-desk-filter]','Original Author');assert.ok(f.$('.lit-desk-file'));assert.equal(f.papers()[0].notes[0].text,'Keep my research note.');
+});
+
+test('direct upload keeps existing notes, persists the verified original and opens its own reader exactly once',async t=>{
+ const f=fixture(t);let release,reads=0,stores=0;const pending=new Promise(resolve=>release=resolve),file={name:'New research.txt',size:source.length};
+ const ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher,importDocument:async()=>{reads++;await pending;return {text:source,warnings:[]};},saveOriginal:async()=>{stores++;return {originalFileId:'original-id',originalOwnerId:'owner'};}});await ui.ready;
+ const one=ui.upload(file),two=ui.upload(file);assert.equal(f.$('[data-desk-import]').hidden,false);assert.equal(f.$('[data-desk-upload]').disabled,true);release();await Promise.all([one,two]);
+ assert.equal(reads,1);assert.equal(stores,1);assert.equal(f.papers().length,2);assert.equal(f.papers()[0].title,'New research');assert.equal(f.papers()[0].originalFileId,'original-id');assert.equal(f.papers()[0].text,source);assert.equal(f.papers()[1].notes[0].text,'Keep my research note.');assert.match(f.w.location.hash,/^#literature\/.+\?tab=answer$/);assert.equal(f.calls.some(c=>c.path),false);
+});
+
+test('leaving during import cannot append a late paper, and an original-save failure cannot create a phantom upload',async t=>{
+ const f=fixture(t);let release,stores=0;const held=new Promise(resolve=>release=resolve),file={name:'Pending.txt',size:120};
+ let ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher,importDocument:async()=>{await held;return {text:source};},saveOriginal:async()=>{stores++;return {originalFileId:'id',originalOwnerId:'owner'};}});await ui.ready;const pending=ui.upload(file);f.w.history.replaceState(null,'','#home');ui.dispose();release();await pending;assert.equal(f.papers().length,1);assert.equal(stores,0);
+ f.w.history.replaceState(null,'','#category/literature');ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher,importDocument:async()=>({text:source}),saveOriginal:async()=>{throw Error('Original save failed');}});await ui.ready;await ui.upload(file);assert.equal(f.papers().length,1);assert.match(f.$('[data-desk-import-message]').textContent,/Original save failed/);assert.equal(f.$('[data-desk-upload]').disabled,false);
+});
+
+test('a slow original upload cannot overwrite a different tab’s newer literature or notes',async t=>{
+ const f=fixture(t);let release,started=false;const pending=new Promise(resolve=>release=resolve);
+ const ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher,importDocument:async()=>({text:source}),saveOriginal:async()=>{started=true;await pending;return {originalFileId:'new-original',originalOwnerId:'owner'};}});await ui.ready;
+ const uploading=ui.upload({name:'New.txt',size:source.length});await until(()=>started);
+ const changed=paper({notes:[{id:'note-one',text:'Newer note from a second tab.'}]}),other=paper({id:'second-tab-paper',title:'Another saved paper'});f.w.localStorage.setItem(literatureKey,JSON.stringify([other,changed]));release();await uploading;
+ assert.equal(f.papers().length,3);assert.equal(f.papers().find(p=>p.id==='saved-paper').notes[0].text,'Newer note from a second tab.');assert.equal(f.papers().find(p=>p.id==='second-tab-paper').title,'Another saved paper');
+});
+
+test('compact search has a stable pending state and opens an explicitly labelled abstract without another confirmation form',async t=>{
+ let release;const result={id:'database-result',source:'crossref',sourceId:'10.1000/reader',title:'Actual database paper',authors:'Author',year:'2026',doi:'10.1000/reader',abstract:source};
+ const f=fixture(t,{fetcher:async url=>url==='/api/capabilities'?reply({academicSearchSources:['crossref']}):new Promise(resolve=>release=resolve)}),ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher});await ui.ready;f.input('#ld-query','research method');f.$('.ld-form').dispatchEvent(new f.w.Event('submit',{bubbles:true,cancelable:true}));await until(()=>!!release);
+ const query=f.$('#ld-query');assert.equal(f.$('[data-ld-wait]').hidden,false);assert.match(f.$('[data-ld-status]').textContent,/正在检索/);release(reply({items:[result],page:1,hasMore:false}));await until(()=>!!f.$('[data-ld-open]'));assert.equal(f.$('#ld-query'),query);f.$('[data-ld-open]').click();await until(()=>f.w.location.hash.includes('#literature/'));
+ assert.match(f.w.location.hash,/\?tab=answer$/);assert.equal(f.papers()[0].scope,'abstract');assert.equal(f.papers()[0].text,source.replace(/\s+/g,' '));assert.equal(f.$('[data-ld-confirm-abstract]'),null);assert.equal(f.papers().find(p=>p.id==='saved-paper').notes[0].text,'Keep my research note.');
+});
+
+test('the reader keeps the original on the left, all assistance on the right and selected-paragraph questions do not submit',t=>{
+ const f=fixture(t);f.w.history.replaceState(null,'','#literature/saved-paper?tab=answer');mountLiteratureReader('saved-paper',f.ctx,'answer');
+ assert.ok(f.$('.lit-reader-columns>.lit-reading-main .lit-read-text'));assert.ok(f.$('.lit-reader-columns>.lit-reader-assistant [data-reader-ai]'));assert.equal(f.w.document.querySelectorAll('[data-lit-assistant-mode]').length,5);assert.equal(f.$('[data-reader-ai] .lit-ai-workspace'),null);assert.equal(f.calls.length,0);
+ f.$('[data-reader-ask="2"]').click();assert.equal(f.$('[data-lit-ai-start]').value,'2');assert.equal(f.$('[data-lit-ai-end]').value,'2');assert.match(f.$('[data-lit-ai-question]').value,/解释这一段/);assert.equal(f.calls.length,0);assert.equal(f.papers()[0].notes[0].text,'Keep my research note.');assert.equal(f.$('.lit-read-text img'),null);
+});
+
+test('mobile reading switches the same document between original and assistant without navigation or AI submission',t=>{
+ const f=fixture(t);f.w.history.replaceState(null,'','#literature/saved-paper?tab=answer');mountLiteratureReader('saved-paper',f.ctx,'answer');
+ const route=f.w.location.hash;f.$('[data-reader-mobile-view="assistant"]').click();assert.equal(f.$('.lit-reader-studio').dataset.mobilePane,'assistant');assert.equal(f.$('[data-reader-mobile-view="assistant"]').getAttribute('aria-pressed'),'true');assert.equal(f.w.location.hash,route);assert.equal(f.calls.length,0);
+ f.$('[data-reader-mobile-view="source"]').click();assert.equal(f.$('.lit-reader-studio').dataset.mobilePane,'source');assert.equal(f.$('[data-reader-mobile-view="source"]').getAttribute('aria-pressed'),'true');assert.equal(f.w.location.hash,route);assert.equal(f.papers()[0].text,source);
+});
+
+test('summary and knowledge modes submit their own snapshots, keep separate recovery records and preserve source citations',async t=>{
+ const f=fixture(t);mountLiteratureReader('saved-paper',f.ctx,'answer');
+ for(const mode of ['summary','keypoints']){
+  f.$('[data-lit-assistant-mode="'+mode+'"]').click();assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,mode==='summary'?0:1);f.$('[data-lit-ai-open]').click();await until(()=>f.papers()[0].aiResults.some(r=>r.mode===mode));
+  assert.equal(f.calls.filter(c=>c.path==='/tool-runs/quote').at(-1).data.snapshot.mode,mode);assert.ok(f.papers()[0].aiJobStates['read:'+mode]?.itemId);assert.equal(f.papers()[0].text,source);
+ }
+ assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,2);f.$('[data-lit-source]').click();assert.equal(f.$('#reader-text-pane').hidden,false);assert.equal(f.$('#reader-pdf-pane').hidden,true);assert.equal(f.$('#lit-source-p1').classList.contains('lit-ai-source-highlight'),true);assert.equal(f.w.scrollY,0);assert.equal(f.papers()[0].notes[0].text,'Keep my research note.');
+});
+
+test('original preview verifies the owner before loading the PDF renderer and disposes the private view',async t=>{
+ const f=fixture(t);f.$('.dashboard').innerHTML='<section id="preview"><p data-reader-pdf-status></p><div data-reader-pdf-pages></div></section>';const calls=[],disposed=[],bytes=new TextEncoder().encode('%PDF-1.4\nsynthetic PDF').buffer;
+ const ui=mountLiteratureOriginalPreview({container:f.$('#preview'),paper:{title:'Paper',originalFileId:'file-1',originalOwnerId:'owner'},loadViewer:async()=>({mountPdfViewer:async value=>{assert.equal(value.bytes,bytes);return {pageCount:1,dispose:()=>disposed.push('done')};}}),fetchImpl:async(url,init)=>{calls.push({url,init});return url==='/api/auth/me'?reply({user:{id:'owner'}}):{ok:true,status:200,headers:new Headers(),arrayBuffer:async()=>bytes};}});
+ assert.deepEqual(await Promise.all([ui.load(),ui.load()]),[true,true]);assert.equal(calls.filter(c=>c.url.includes('/download')).length,1);assert.match(calls[1].url,/expectedUserId=owner$/);assert.match(f.$('[data-reader-pdf-status]').textContent,/1 页/);ui.dispose();assert.deepEqual(disposed,['done']);assert.equal(f.$('[data-reader-pdf-pages]').childElementCount,0);
+});
+
+test('foreign-owner and late original responses never reach the PDF renderer',async t=>{
+ const f=fixture(t);f.$('.dashboard').innerHTML='<section id="preview"><p data-reader-pdf-status></p><div data-reader-pdf-pages></div></section>';const calls=[];let renders=0;
+ let ui=mountLiteratureOriginalPreview({container:f.$('#preview'),paper:{originalFileId:'file-1',originalOwnerId:'owner'},loadViewer:async()=>{renders++;throw Error('Should not render');},fetchImpl:async url=>{calls.push(url);return reply({user:{id:'other'}});}});assert.equal(await ui.load(),false);assert.deepEqual(calls,['/api/auth/me']);assert.equal(renders,0);ui.dispose();
+ let release;ui=mountLiteratureOriginalPreview({container:f.$('#preview'),paper:{originalFileId:'file-1',originalOwnerId:'owner'},loadViewer:async()=>{renders++;throw Error('Should not render');},fetchImpl:async url=>url==='/api/auth/me'?reply({user:{id:'owner'}}):new Promise(resolve=>release=resolve)});const pending=ui.load();await until(()=>!!release);ui.dispose();release({ok:true,status:200,headers:new Headers(),arrayBuffer:async()=>new TextEncoder().encode('%PDF-1.4\n').buffer});assert.equal(await pending,false);assert.equal(renders,0);
+});
+
+test('Word originals are reused from the verified file library and an account change blocks completion',async()=>{
+ const file={name:'source.docx',size:20,arrayBuffer:async()=>new Uint8Array([80,75,1,2]).buffer},calls=[];bindStoredFile(file,{ownerId:'owner',sourceType:'original',id:'file-1',sha256:'a'.repeat(64)});
+ const result=await saveLiteratureOriginal(file,{fetchImpl:async(url,init)=>{calls.push({url,init});return reply(url.endsWith('/reuse')?{id:'file-1'}:{user:{id:'owner'}});}});assert.deepEqual(result,{originalFileId:'file-1',originalOwnerId:'owner'});assert.equal(calls.filter(c=>c.url==='/api/files').length,0);assert.equal(JSON.parse(calls.find(c=>c.url.endsWith('/reuse')).init.body).expectedUserId,'owner');
+ let checks=0;await assert.rejects(saveLiteratureOriginal({name:'other.txt',size:4,arrayBuffer:async()=>new Uint8Array([1,2,3,4]).buffer},{fetchImpl:async url=>reply(url==='/api/files'?{id:'saved-original'}:{user:{id:++checks===1?'owner':'other'}})}),/账户已变化/);
+});
