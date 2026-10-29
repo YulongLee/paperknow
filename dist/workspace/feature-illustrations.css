@@ -55,3 +55,61 @@
 @media(max-width:1100px){#app .dashboard .revision-product .revision-product-modes button{padding:18px;min-height:230px;padding-bottom:100px}#app .dashboard .revision-mode-art{width:100px;height:100px;bottom:3px;right:8px}}@media(max-width:600px){#app .dashboard .revision-product .revision-product-modes button{min-height:155px;padding:18px 126px 18px 18px}#app .dashboard .revision-mode-art{bottom:16px;right:12px;width:108px;height:108px}#app .dashboard .more-tool .more-feature-art{width:80px;height:80px;flex-basis:80px}}
 
 .hub-theme-dark #app .dashboard .lit-catalog .lit-feature-card{--lit-color:#96b9ef;--lit-tint:#1c3149}.hub-theme-dark #app .dashboard .lit-catalog .lit-feature-card.orange{--lit-color:#dfb080;--lit-tint:#342b25}.hub-theme-dark #app .dashboard .lit-catalog .lit-feature-card.mint{--lit-color:#80c7b7;--lit-tint:#19332f}.hub-theme-dark #app .dashboard .lit-catalog .lit-feature-card.violet{--lit-color:#bca5ee;--lit-tint:#29243b}
+
+/* Keep selection cards as the real controls; artwork never intercepts clicks. */
+#app .dashboard .detection-method-cards>a{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 120px;align-items:center;gap:16px;min-height:164px;padding:22px;background:linear-gradient(140deg,var(--pk-surface,#fff),color-mix(in srgb,#4b9d9a 6%,var(--pk-surface,#fff)))}
+#app .dashboard .detection-method-cards>a[data-paper-detection-mode=ai]{background:linear-gradient(140deg,var(--pk-surface,#fff),color-mix(in srgb,#6484b8 7%,var(--pk-surface,#fff)))}
+#app .dashboard .detection-method-cards>a[aria-current=page]{border-color:#7299f5;box-shadow:0 0 0 1px #c8d9fa}
+#app .dashboard .detection-method-cards>a>div{grid-column:1;grid-row:1}
+#app .dashboard .detection-method-cards>a>.detection-choice-art{grid-column:2;grid-row:1;width:120px;height:120px;border:0;border-radius:0;background:none;pointer-events:none}
+#app .dashboard .detection-choice-art img,#app .dashboard .ppt-entry-art img,#app .dashboard .research-mode-art img{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 7px 10px #2d54701a)}
+#app .dashboard .detection-method-cards>a>svg{position:absolute;top:14px;right:14px;color:#507bcf}
+#app .dashboard .detection-method-cards b{font-size:17px;line-height:1.6;color:var(--pk-text,#243958)}
+#app .dashboard .detection-method-cards small{color:var(--pk-muted,#64748b)}
+#app .dashboard .ppt-commercial.ppt-studio .ppt-rail-item{display:grid;grid-template-columns:minmax(0,1fr) 104px;gap:14px;min-height:164px;padding:22px;align-items:center;background:linear-gradient(140deg,var(--pk-surface,#fff),color-mix(in srgb,var(--entry-tone,#678cc8) 6%,var(--pk-surface,#fff)))}
+#app .dashboard .ppt-commercial.ppt-studio .ppt-entry-copy{grid-column:1;grid-row:1;margin:0;min-width:0}
+#app .dashboard .ppt-commercial.ppt-studio .ppt-entry-art{grid-column:2;grid-row:1;display:block;width:104px;height:104px;margin-top:10px;pointer-events:none}
+#app .dashboard .ppt-commercial.ppt-studio .ppt-rail-item.active{border-color:#7299f5;box-shadow:0 0 0 1px #c8d9fa}
+#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:20px}
+#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:0;position:relative;min-height:214px;padding:20px;text-align:left;background:linear-gradient(140deg,var(--pk-surface,#fff),color-mix(in srgb,var(--rs-color,#537bd6) 6%,var(--pk-surface,#fff)))}
+#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>.research-mode-art{display:block;position:absolute;top:52px;right:14px;bottom:auto;width:124px;height:124px;border:0;border-radius:0;background:none;rotate:0deg;transform:none;z-index:0;pointer-events:none}
+#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>.research-mode-card-top{display:flex;justify-content:space-between;align-items:center;margin:0 0 14px;position:relative;z-index:1}
+#app .dashboard .research-space.rdc-research-space .research-mode-card-top small{display:inline-block;margin:0}
+#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>b,#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>.research-mode-description{display:block;padding-right:140px;position:relative;z-index:1;min-width:0;max-width:none}
+#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>b{font-size:16px;line-height:1.6}
+#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>.research-mode-description{font-size:12px;line-height:1.7;margin:5px 0 16px}
+#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>.research-mode-bottom{display:flex;margin-top:auto;position:relative;z-index:1}
+@media(max-width:1100px){#app .dashboard .ppt-commercial.ppt-studio .ppt-rail-item{grid-template-columns:minmax(0,1fr) 82px;padding:18px;gap:10px}#app .dashboard .ppt-commercial.ppt-studio .ppt-entry-art{width:82px;height:82px}#app .dashboard .ppt-commercial.ppt-studio .ppt-entry-copy>strong{font-size:15px}#app .dashboard .ppt-commercial.ppt-studio .ppt-entry-copy>span{font-size:11px}}
+@media(max-width:1000px) and (min-width:701px){#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button{padding:17px;min-height:232px}#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>.research-mode-art{top:84px;right:9px;width:94px;height:94px}#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>b,#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>.research-mode-description{padding-right:98px}}
+@media(max-width:700px){#app .dashboard .detection-method-cards>a{grid-template-columns:minmax(0,1fr) 88px;gap:12px;min-height:140px;padding:18px}#app .dashboard .detection-method-cards>a>.detection-choice-art{width:88px;height:88px}#app .dashboard .detection-method-cards b{font-size:16px}#app .dashboard .ppt-commercial.ppt-studio .ppt-mode-options{grid-template-columns:1fr;gap:10px}#app .dashboard .ppt-commercial.ppt-studio .ppt-rail-item{grid-template-columns:minmax(0,1fr) 88px;min-height:120px;padding:18px}#app .dashboard .ppt-commercial.ppt-studio .ppt-entry-art{width:88px;height:88px;margin-top:6px}#app .dashboard .ppt-commercial.ppt-studio .ppt-entry-copy>strong{font-size:16px}}
+@media(max-width:700px){#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:122px;padding:11px 6px;text-align:center}#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>.research-mode-art{position:static;display:block;width:66px;height:66px;flex:0 0 66px}#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>b{font-size:12px;line-height:1.5;padding:0;width:100%}#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>:is(.research-mode-description,.research-mode-bottom,.research-mode-card-top){display:none}}
+#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button.active{border-color:#7299f5;box-shadow:0 0 0 1px #c8d9fa}
+/* Size to the actual workspace, so an open sidebar never squeezes the copy. */
+@container workspace (min-width:701px) and (max-width:1040px){
+ #app .dashboard .ppt-commercial.ppt-studio .ppt-rail-item{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:12px;min-height:224px;padding:24px 18px 18px}
+ #app .dashboard .ppt-commercial.ppt-studio .ppt-entry-art{order:0;align-self:center;width:92px;height:92px;margin:4px 0 0}
+ #app .dashboard .ppt-commercial.ppt-studio .ppt-entry-copy{order:1;display:grid;margin:0;gap:5px}
+ #app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button{min-height:208px;padding:18px;align-items:center;text-align:center;gap:7px}
+ #app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>.research-mode-art{display:block;position:static;width:90px;height:90px;flex:0 0 90px}
+ #app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>b,#app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>.research-mode-description{padding:0;width:100%;margin:0}
+ #app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>:is(.research-mode-card-top,.research-mode-bottom){display:none}
+}
+@container workspace (max-width:700px){
+ #app .dashboard .ppt-commercial.ppt-studio .ppt-mode-options{grid-template-columns:1fr}
+ #app .dashboard .ppt-commercial.ppt-studio .ppt-rail-item{display:grid;grid-template-columns:minmax(0,1fr) 88px;min-height:120px;padding:18px;gap:12px}
+ #app .dashboard .ppt-commercial.ppt-studio .ppt-entry-art{grid-column:2;grid-row:1;width:88px;height:88px;margin-top:6px}
+ #app .dashboard .research-space.rdc-research-space>nav.research-mode-cards{gap:8px}
+ #app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:122px;padding:11px 6px;text-align:center}
+ #app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>.research-mode-art{position:static;width:66px;height:66px;flex:0 0 66px}
+ #app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>b{font-size:12px;line-height:1.5;padding:0;width:100%}
+ #app .dashboard .research-space.rdc-research-space>nav.research-mode-cards>button>:is(.research-mode-description,.research-mode-bottom,.research-mode-card-top){display:none}
+}
+
+/* Drawing panels share the surrounding dark surface, keeping the artwork and copy readable. */
+.hub-theme-dark #app .dashboard .research-drawing-studio{--rd-ink:var(--pk-text,#dce6f5);--rd-muted:var(--pk-muted,#a4b2c7);--rd-line:var(--pk-line,#2c3d54)}
+.hub-theme-dark #app .dashboard .research-drawing-studio :is(.rd-type-rail,.rd-composer,.rd-preview-card,.rd-history-card,.rd-prompt-box){background:var(--pk-surface,#172437);border-color:var(--rd-line)}
+.hub-theme-dark #app .dashboard .research-drawing-studio :is(.rd-type-search,.rd-ai-badge,.rd-selected-type,.rd-type-selected-icon,.rd-preview-mark,.rd-preview-card>header>span,.rd-preview-empty>div>span,.rd-history-icon,.rd-history-tabs button.active,.rd-type-list button.active){background:color-mix(in srgb,#638dcc 13%,var(--pk-surface,#172437));border-color:var(--rd-line)}
+.hub-theme-dark #app .dashboard .research-drawing-studio .rd-preview-empty{background:radial-gradient(ellipse at 50% 40%,#263c5b 0%,transparent 72%)}
+.hub-theme-dark #app .dashboard .research-drawing-studio :is(.rd-compose-head h2,.rd-preview-card h3,.rd-history-card h3,.rd-rail-head>span,.rd-selected-type b,.rd-title-label,.rd-prompt-label,.rd-preview-empty>b){color:var(--rd-ink)}
+.hub-theme-dark #app .dashboard .research-drawing-studio :is(.rd-compose-head p,.rd-preview-empty>p,.rd-selected-type div>span,.rd-type-list summary,.rd-type-list button,.rd-history-item b){color:var(--rd-muted)}
+.hub-theme-dark #app .dashboard .research-drawing-studio :is(.rd-type-list button:hover,.rd-type-list summary:hover,.rd-history-item:hover){background:color-mix(in srgb,#638dcc 10%,var(--pk-surface,#172437))}
