@@ -1,3 +1,4 @@
+import {mountLiteratureLanding} from '../dist/workspace/literature-pages.mjs';
 import {installGuestExportSession,waitForExport} from './fixtures/artifact-session.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,12 +20,12 @@ const {mountLiterature,mountLiteratureReader,openLiteratureSearch}=await import(
 const {mountResearch,disposeResearch,researchHasWork,researchRouteGuard}=await import('../dist/workspace/research.mjs');
 const {clearEditor}=await import('../dist/workspace/edit-guard.mjs');
 
-test('AI reading keeps its four task entries and saved papers while search omits the local library shortcut',()=>{
+test('AI reading has separate feature links while library and search preserve saved papers',()=>{
  const {dom,ctx}=setup(),paper=validatePaper({id:'paper-refresh',title:'真实文献 <script>x</script>',authors:'用户作者',year:'2025',text:'可核对的原文正文',scope:'full',tags:['教育研究'],notes:[],status:'unread'});
  try{
-  localStorage.setItem(literatureKey,JSON.stringify([paper]));mountLiterature(ctx);
-  assert.deepEqual([...document.querySelectorAll('.lit-feature-copy b')].map(node=>node.textContent),['我的文献','文献检索','文献研读','文献翻译']);assert.equal(document.querySelectorAll('.lit-feature-card').length,4);assert.ok($('.lit-table-scroll'));assert.equal(document.querySelector('script'),null);
-  $('[data-lit-entry="search"]').click();assert.match(location.hash,/view=search/);openLiteratureSearch(ctx);assert.ok($('.writing-reference-search'));assert.equal($('[data-ref-local]'),null);assert.ok($('#lit-library'));assert.match($('#lit-rows').textContent,/真实文献/);
+  localStorage.setItem(literatureKey,JSON.stringify([paper]));mountLiteratureLanding(ctx);
+  assert.deepEqual([...document.querySelectorAll('.lit-feature-copy b')].map(node=>node.textContent),['我的文献','文献检索','文献研读','原文问答','文献翻译','文献综述']);assert.equal(document.querySelectorAll('.lit-feature-card').length,6);assert.equal($('.lit-table-scroll'),null);assert.equal(document.querySelector('script'),null);assert.match($('[data-reading-feature="search"]').getAttribute('href'),/view=search/);
+  mountLiterature(ctx);assert.ok($('.lit-table-scroll'));openLiteratureSearch(ctx);assert.ok($('.writing-reference-search'));assert.equal($('[data-ref-local]'),null);assert.ok($('#lit-library'));assert.match($('#lit-rows').textContent,/真实文献/);
   $('[data-lit-import]').click();assert.ok($('#lit-upload'));assert.ok($('#lit-form'));
   mountLiteratureReader(paper.id,ctx);input('#note-text','根据原文记录自己的研究问题');$('#lit-note-form').dispatchEvent(new window.Event('submit',{cancelable:true}));const saved=JSON.parse(localStorage.getItem(literatureKey))[0];assert.equal(saved.notes[0].text,'根据原文记录自己的研究问题');assert.equal(saved.text,paper.text);assert.equal(document.querySelector('script'),null);assert.match($('#note-status').textContent,/已保存/);
  }finally{clearEditor();dom.window.close();}

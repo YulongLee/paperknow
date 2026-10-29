@@ -1,3 +1,4 @@
+import {readingFeatures} from '../dist/workspace/literature-pages.mjs';
 import {mountRevisionReportEntry} from '../dist/workspace/revision-report-entry.mjs';
 import {installUploadPresentation} from '../dist/workspace/upload-presentation.mjs';
 import * as thesisCompletion from '../dist/workspace/thesis-completion-panel.mjs';
@@ -53,6 +54,19 @@ const keys={profile:'paperknow-local-profile',preferences:'paperknow-preferences
 const response=(status,user)=>({status,ok:status>=200&&status<300,json:async()=>({user})});
 const signedIn={id:'researcher-1',name:'服务账户',email:null,phone:'+8613800000000',phoneVerifiedAt:'2026-10-15T00:00:00Z',hasPassword:false};
 
+test('reading home, feature deep links and legacy tool links mount separate pages with one active parent',async()=>{
+ const mounts=[],f=await fixture(async()=>response(401),{hash:'#category/literature',setup:w=>{
+  w.mountLiteratureLanding=()=>{mounts.push('home');w.document.querySelector('.dashboard').innerHTML='<h1>AI 研读</h1>';};
+  w.mountLiteratureFeaturePage=kind=>{mounts.push(kind);w.document.querySelector('.dashboard').innerHTML='<h1>'+kind+'</h1>';};
+  w.mountLiteratureReader=(id,ctx,tab)=>{mounts.push('reader:'+tab);w.document.querySelector('.dashboard').innerHTML='<h1>Reader</h1>';};
+ }});
+ try{
+  const cases=[['#category/literature','home'],...readingFeatures.map(row=>['#category/literature?view='+row.id,row.id]),['#category/literature?tool=translation','translation'],['#tool/reading','reading'],['#tool/search','search'],['#tool/translation','translation'],['#literature/saved-paper?tab=answer','reader:answer'],['#category/literature?view=missing','home']];
+  for(const [hash,expected]of cases){f.dom.window.history.replaceState(null,'',hash);f.api.render();assert.equal(mounts.at(-1),expected,hash);assert.equal(f.document.querySelector('.sidebar .nav-link.active')?.getAttribute('href'),'#category/literature',hash);}
+  assert.equal(f.document.querySelectorAll('.sidebar .nav-link.active').length,1);
+ }finally{f.close();}
+});
+
 test('same-owner detection recovery markers never remount another active view, while foreign-owner changes still follow the session path',async()=>{
  const f=await fixture(async url=>url==='/api/auth/me'?response(200,signedIn):{ok:true,status:200,json:async()=>({items:[]})});
  try{
@@ -75,7 +89,7 @@ async function fixture(fetcher,{hash='#account',allReports=async()=>[],setup}={}
  const reads=[];const read=(key,fallback)=>{reads.push(key);return JSON.parse(storage.getItem(key)||'null')??fallback;};
  Object.assign(dom.window,thesisCompletion,{thesisCoverFields,thesisFrontMatterKind,thesisManualBackMatter,helpKnowledgeMarkup,bindHelpKnowledge,supportContactsMarkup,bindSupportContacts,projectPickerOptions,hasDraftScope:()=>false,installUploadPresentation,installStoredFilePickers:()=>({dispose(){}}),installProjectPickers:()=>()=>{},selectableProjects:()=>[],setProjectDirectorySession:()=>{},updateAccountProjects:()=>false,resolveAccountProjectId,captureDraftScope,workspaceJobLabel,workspaceResultTitle,workspaceJobError,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),normalizeThesisFigures,thesisFigureTitle,renderThesisFigureSvg,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,buildThesisBibliography,withBibliographicMetadata,assessThesisEvidence,writingQualityPanel,thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,downloadDefaultThesisTemplate,renderThesisDocument,showThesisExportCheck,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
   ...taskModel,...projectModel,...assetModel,...overviewModel,homeLayout,fitHomeRows,continuationAssets,readHomeService:async()=>({cap:{},user:null}),preferences:()=>({degree:'本科',...read(keys.preferences,{})}),profile:()=>({name:'研究者',...read(keys.profile,{})}),read,list:key=>read(key,[]),write:(key,value)=>storage.setItem(key,JSON.stringify(value)),projects:()=>read(keys.projects,[]),repository:{all:allReports},formatDate:()=>'',mountNavigation:()=>({close(){}}),
-  disposeWritingFlows:()=>{},disposeDataAnalysis:()=>{},disposeQuestionnaire:()=>{},questionnaireRouteGuard:async()=>true,questionnaireSessionChanged:()=>{},disposeFormat:()=>{},disposeResearch:()=>{},disposePresentation:()=>{},disposeRevision:()=>{},disposeAccountDraft:()=>{},accountDraftEditing:()=>false,accountDraftHasWork:()=>false,accountDraftConfirmLeave:async()=>true,accountDraftSessionChanged:()=>{},accountDraftRouteGuard:()=>true,
+  disposeLiteraturePages:()=>{},readingFeatures,mountLiteratureLanding:()=>{},mountLiteratureFeaturePage:()=>{},disposeWritingFlows:()=>{},disposeDataAnalysis:()=>{},disposeQuestionnaire:()=>{},questionnaireRouteGuard:async()=>true,questionnaireSessionChanged:()=>{},disposeFormat:()=>{},disposeResearch:()=>{},disposePresentation:()=>{},disposeRevision:()=>{},disposeAccountDraft:()=>{},accountDraftEditing:()=>false,accountDraftHasWork:()=>false,accountDraftConfirmLeave:async()=>true,accountDraftSessionChanged:()=>{},accountDraftRouteGuard:()=>true,
   disposePayment:()=>{paymentCalls.push({type:'dispose'});},renderPaymentOrders:async()=>{paymentCalls.push({type:'orders'});},renderPaymentCheckout:async options=>{paymentCalls.push({type:'checkout',productId:options.productId,orderId:options.orderId});},clearEditor:()=>{},clearHelpWork:()=>{},clearSettingsWork:()=>{},clearMoreWork:()=>{},trackDialogForm:()=>()=>{},retainWritingCatalog:()=>{},isCurrentRouteChange:()=>false,
   editorIsActive:()=>false,editorRouteGuard:()=>true,helpHasWork:()=>false,helpRouteGuard:()=>true,settingsHasWork:()=>false,settingsRouteGuard:()=>true,moreHasWork:()=>false,moreRouteGuard:()=>true,formatHasWork:()=>false,formatRouteGuard:()=>true,researchHasWork:()=>false,researchRouteGuard:()=>true,presentationHasWork:()=>false,presentationRouteGuard:()=>true,revisionHasWork:()=>false,revisionRouteGuard:()=>true,detectionRouteGuard:()=>true,
  });

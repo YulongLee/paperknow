@@ -77,6 +77,7 @@ export function withStableView(root,update,{restoreFocus=true}={}){
 // A surface is one feature. Parameters and its tabs may change without becoming a new page.
 export function workspaceSurface(hash=''){
  const value=String(hash).replace(/^#/,''),[path]=value.split('?'),parts=path.split('/'),[route,id]=parts;
+ if(route==='category'&&id==='literature'){const params=new URLSearchParams(value.split('?')[1]||'');return 'category/literature/'+(params.get('view')||params.get('tool')||'home');}
  if(route==='category'||route==='tool')return route+'/'+(id||'');
  if(['project','draft','account-draft','thesis','literature'].includes(route))return route+'/'+(id||'');
  if(route==='membership'&&(id==='pay'||id==='checkout'))return route+'/'+id;

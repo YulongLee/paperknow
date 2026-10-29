@@ -1,3 +1,4 @@
+import {mountLiteratureFeaturePage,disposeLiteraturePages} from '../dist/workspace/literature-pages.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
@@ -13,7 +14,7 @@ function setup(t,{existing=[],owner=null}={}){
  const fetcher=async(url,init)=>{calls.push({url,init});if(url==='/api/capabilities')return Response.json({academicSearchSources:['crossref']});if(url.startsWith('/api/literature/search?'))return Response.json({items:rows,sources:[{id:'crossref',status:'ok'}],page:1,hasMore:false});if(url==='/api/auth/me')return Response.json({user:owner?{id:owner}:null});throw Error('Unexpected external request '+url);};globalThis.fetch=fetcher;w.fetch=fetcher;
  w.HTMLElement.prototype.scrollIntoView=()=>{};w.document.querySelector('dialog').close=function(){this.open=false;};const ctx={notify:msg=>notices.push(msg),modal:(_,html)=>{$('#workspace-dialog-body').innerHTML=html;$('#workspace-dialog').open=true;}};
  localStorage.setItem(literatureKey,JSON.stringify(existing));let ui;const mount=()=>{ui=mountLiteratureDiscoveryPage(ctx,{fetcher});return ui;};
- t.after(()=>{ui?.dispose();clearEditor();Object.assign(globalThis,before);w.close();});
+ t.after(()=>{disposeLiteraturePages();ui?.dispose();clearEditor();Object.assign(globalThis,before);w.close();});
  return {w,$,ctx,calls,notices,fetcher,mount,setRows:value=>{rows=value;},saved:()=>JSON.parse(w.localStorage.getItem(literatureKey)),search:async()=>{await ui.ready;$('#ld-query').value='actual research';await ui.search();},readAbstract:async()=>{$('[data-ld-abstract-read]').click();assert.ok($('[data-ld-confirm-abstract]'));$('[data-ld-confirm-abstract]').click();await new Promise(resolve=>setImmediate(resolve));}};
 }
 
@@ -47,6 +48,6 @@ test('extracted-text DOCX uses actual current text and makes no PDF layout claim
 });
 
 test('the visible review entry creates a separate summary draft from selected original text without submitting AI',async t=>{
- const p=validatePaper({...item(),id:'review-source',scope:'full',text:'An actual original paper text long enough for source admission.',notes:[{id:'private-note',text:'A note is not source evidence.'}]}),f=setup(t,{existing:[p]});f.w.location.hash='#category/literature';localStorage.setItem('paperknow-drafts',JSON.stringify([{id:'prior-draft',tool:'summary',title:'Keep prior draft',text:'Prior text'}]));mountLiterature(f.ctx);assert.match(f.$('[data-lit-review]').textContent,/文献综述/);f.$('[data-lit-review]').click();await until(()=>!!f.$('#lit-review-bridge-form'));
+ const p=validatePaper({...item(),id:'review-source',scope:'full',text:'An actual original paper text long enough for source admission.',notes:[{id:'private-note',text:'A note is not source evidence.'}]}),f=setup(t,{existing:[p]});f.w.location.hash='#category/literature';localStorage.setItem('paperknow-drafts',JSON.stringify([{id:'prior-draft',tool:'summary',title:'Keep prior draft',text:'Prior text'}]));f.w.history.replaceState(null,'','#category/literature?view=review');await mountLiteratureFeaturePage('review',f.ctx).ready;assert.ok(f.$('.dashboard #lit-review-bridge-form'));assert.equal(f.$('#workspace-dialog-body').textContent,'');
  f.$('#lit-review-title').value='A source-grounded literature review';f.$('input[name="paperId"]').checked=true;f.$('#lit-review-bridge-form').dispatchEvent(new f.w.Event('submit',{bubbles:true,cancelable:true}));const drafts=JSON.parse(localStorage.getItem('paperknow-drafts'));assert.equal(drafts.length,2);assert.equal(drafts[1].id,'prior-draft');assert.equal(drafts[1].text,'Prior text');assert.equal(drafts[0].tool,'summary');assert.equal(drafts[0].writingFlow.references[0].text,p.text);assert.equal(drafts[0].writingFlow.references[0].scope,'full');assert.equal(drafts[0].writingFlow.references[0].confirmed,false);assert.ok(!JSON.stringify(drafts[0].writingFlow).includes('A note is not source evidence.'));assert.match(f.w.location.hash,/#draft\//);assert.equal(f.calls.length,0);
 });
