@@ -1,7 +1,7 @@
 import {writingBillingServiceTypes} from './writing-billing-catalog.mjs';
 // Public service identifiers. Prices and availability come from the server.
 export const toolBillingServiceTypes=Object.freeze([
- ['literature-read','文献解读','AI 研读'],['literature-answer','原文问答','AI 研读'],['literature-translate','文献翻译','AI 研读'],
+ ['literature-read','文献解读','文献研读'],['literature-answer','原文问答','文献研读'],['literature-translate','文献翻译','文献研读'],
  ['revision-reduce','降重复率','论文修改'],['revision-aigc','降 AI 率','论文修改'],['revision-dual','AIGC 与重复率双降','论文修改'],
  ['presentation-ai','AI PPT','PPT 创作'],['presentation-proposal','开题 PPT','PPT 创作'],['presentation-thesis','毕业 PPT','PPT 创作'],
  ['research-image','AI 科研绘图','科研工具'],['research-chart','科研图表配置','科研工具'],['research-diagram','科研结构示意图','科研工具'],['research-formula','公式辅助','科研工具'],

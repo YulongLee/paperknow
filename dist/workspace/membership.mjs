@@ -10,7 +10,7 @@ export function membershipSnapshot({projectRows=[],drafts=[],papers=[],reports=[
 }
 const features=[
  ['pen','写作与修改','整理大纲、手动编辑与保存草稿',[['#category/writing','开始写作'],['#category/reduce','修改段落']]],
- ['book','AI 研读','管理文献、核对原文与整理笔记',[['#category/literature','打开文献库']]],
+ ['book','文献研读','管理文献、核对原文与整理笔记',[['#category/literature','打开文献库']]],
  ['search','论文检测','与自备材料进行文本比对',[['#category/detection','查看材料比对']]],
  ['chart','PPT 与科研绘图','编辑演示文稿，按真实数据绘图',[['#category/ppt','创作 PPT'],['#category/research','科研绘图']]],
  ['file','格式排版','保留原件、检查格式并导出副本',[['#category/format','开始排版']]]

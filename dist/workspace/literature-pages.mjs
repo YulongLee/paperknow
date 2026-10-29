@@ -13,10 +13,9 @@ export const readingFeatures=Object.freeze([
  {id:'search',art:'/workspace/assets/feature-art-v1/reading-search.webp',title:'文献检索',icon:'search',color:'orange',tag:'查找资料',description:'按主题检索文献，筛选、保存并继续研读。'},
  {id:'reading',art:'/workspace/assets/feature-art-v1/reading-reading.webp',title:'文献研读',icon:'file',color:'mint',tag:'理解原文',description:'选择原文，提炼核心要点、总结或深入解读。'},
  {id:'answer',art:'/workspace/assets/feature-art-v1/reading-answer.webp',title:'原文问答',icon:'help',color:'blue',tag:'围绕原文提问',description:'提出研究问题，查看回答与可定位的原文依据。'},
- {id:'translation',art:'/workspace/assets/feature-art-v1/reading-translation.webp',title:'文献翻译',icon:'language',color:'violet',tag:'跨语言阅读',description:'制作原文对照译文，或翻译整篇 PDF、Word 文档。'},
- {id:'review',art:'/workspace/assets/writing-summary-v1.webp',title:'文献综述',icon:'pen',color:'orange',tag:'整理研究进展',description:'选择参考材料，进入完整的文献综述写作流程。'}
+ {id:'translation',art:'/workspace/assets/feature-art-v1/reading-translation.webp',title:'文献翻译',icon:'language',color:'violet',tag:'跨语言阅读',description:'制作原文对照译文，或翻译整篇 PDF、Word 文档。'}
 ].map(Object.freeze));
-export const readingFeatureHref=id=>'#category/literature?view='+encodeURIComponent(readingFeatures.some(feature=>feature.id===id)?id:'library');
+export const readingFeatureHref=id=>id==='review'?'#tool/summary':'#category/literature?view='+encodeURIComponent(readingFeatures.some(feature=>feature.id===id)?id:'library');
 let controller=null,child=null;
 export function disposeLiteraturePages(){controller?.abort();controller=null;child?.dispose?.();child=null;disposeLiterature();}
 function begin(container,feature){
@@ -25,14 +24,15 @@ function begin(container,feature){
  const hash=container.ownerDocument.defaultView.location.hash;
  return {signal,current:()=>!signal.aborted&&container.isConnected&&container.ownerDocument.defaultView.location.hash===hash};
 }
-function pageHeading(feature){return toolBanner('literature',{feature:'reading-'+feature.id,title:feature.title,label:'AI 研读 · '+feature.title,description:feature.description,actions:'<a class="btn secondary" href="#category/literature">'+'<span aria-hidden="true">←</span>'+' 返回 AI 研读</a>'});}
+function pageHeading(feature){return toolBanner('literature',{feature:'reading-'+feature.id,title:feature.title,label:'文献研读 · '+feature.title,description:feature.description,actions:'<a class="btn secondary" href="#category/literature">'+'<span aria-hidden="true">←</span>'+' 返回文献研读</a>'});}
 
 export function mountLiteratureLanding(ctx,{container=document.querySelector('.dashboard')}={}){
  begin(container,'home');const papers=list(literatureKey),notes=papers.reduce((n,p)=>n+(p.notes?.length||0),0);
- container.innerHTML=`<section class="lit-workspace-refresh lit-catalog">${toolBanner('literature',{title:'AI 研读',description:'从查找文献到理解原文，选择一项任务开始。'})}<div class="lit-overview-strip"><div><span class="lit-overview-kicker">YOUR READING SPACE</span><h2>选择任务，进入专属工作页面</h2><p>检索、研读、问答与翻译，各有清晰的操作流程。</p></div><dl><div><dt>已保存文献</dt><dd>${papers.length}<small>篇</small></dd></div><div><dt>研究笔记</dt><dd>${notes}<small>条</small></dd></div></dl></div><section class="lit-feature-grid" aria-label="AI 研读功能">${readingFeatures.map((feature,index)=>`<a class="lit-feature-card ${feature.color}" data-reading-feature="${feature.id}" href="${readingFeatureHref(feature.id)}"><span class="lit-feature-art" aria-hidden="true"><img src="${feature.art}" srcset="${feature.id==='review'?feature.art:feature.art.replace('.webp','-320.webp')} 320w, ${feature.art} 640w" sizes="166px" width="166" height="166" alt="" loading="lazy" decoding="async"></span><span class="lit-feature-top"><span class="lit-feature-icon">${icon(feature.icon,22)}</span><span class="lit-feature-state">${feature.tag}</span></span><span class="lit-feature-copy"><b>${feature.title}</b><small>${feature.description}</small></span><span class="lit-feature-bottom"><span>0${index+1} / ${feature.title}</span><span>开始使用 ${icon('arrow',15)}</span></span></a>`).join('')}</section></section>`;
+ container.innerHTML=`<section class="lit-workspace-refresh lit-catalog">${toolBanner('literature',{title:'文献研读',description:'从查找文献到理解原文，选择一项任务开始。'})}<div class="lit-overview-strip"><div><span class="lit-overview-kicker">YOUR READING SPACE</span><h2>选择任务，进入专属工作页面</h2><p>检索、研读、问答与翻译，各有清晰的操作流程。</p></div><dl><div><dt>已保存文献</dt><dd>${papers.length}<small>篇</small></dd></div><div><dt>研究笔记</dt><dd>${notes}<small>条</small></dd></div></dl></div><section class="lit-feature-grid" aria-label="文献研读功能">${readingFeatures.map((feature,index)=>`<a class="lit-feature-card ${feature.color}" data-reading-feature="${feature.id}" href="${readingFeatureHref(feature.id)}"><span class="lit-feature-art" aria-hidden="true"><img src="${feature.art}" srcset="${feature.art.replace('.webp','-320.webp')} 320w, ${feature.art} 640w" sizes="166px" width="166" height="166" alt="" loading="lazy" decoding="async"></span><span class="lit-feature-top"><span class="lit-feature-icon">${icon(feature.icon,22)}</span><span class="lit-feature-state">${feature.tag}</span></span><span class="lit-feature-copy"><b>${feature.title}</b><small>${feature.description}</small></span><span class="lit-feature-bottom"><span>0${index+1} / ${feature.title}</span><span>开始使用 ${icon('arrow',15)}</span></span></a>`).join('')}</section></section>`;
 }
 
 export function mountLiteratureFeaturePage(kind,ctx,{container=document.querySelector('.dashboard'),fetcher,translationOptions={}}={}){
+ if(kind==='review'){disposeLiteraturePages();clearEditor();container.ownerDocument.defaultView.location.replace(readingFeatureHref(kind));return;}
  const feature=readingFeatures.find(row=>row.id===kind);if(!feature){mountLiteratureLanding(ctx,{container});return;}
  const {signal,current}=begin(container,kind);
  if(kind==='library'){mountLiterature(ctx);return;}
@@ -40,16 +40,6 @@ export function mountLiteratureFeaturePage(kind,ctx,{container=document.querySel
  container.innerHTML=`<section class="lit-workspace-refresh lit-feature-page">${pageHeading(feature)}<div data-reading-page-content></div></section>`;
  const host=container.querySelector('[data-reading-page-content]');
  const importMaterial=existing=>openLiteratureMaterialForm({...ctx,onSaved:()=>{if(current())mountLiteratureFeaturePage(kind,ctx,{container,fetcher,translationOptions});}},existing);
- if(kind==='review'){
-  host.innerHTML='<p role="status">正在打开文献综述…</p>';
-  const ready=import('./literature-review-bridge.mjs').then(({openLiteratureReview})=>{
-   if(!current())return;host.innerHTML=`<div class="lit-source-page-actions"><button type="button" class="btn secondary" data-reading-import>${icon('upload',16)} 导入文献</button><a class="btn secondary" href="${readingFeatureHref('search')}">检索文献</a></div>${readingWorkflowMarkup('review')}<section class="card lit-review-page" data-reading-review></section>`;
-   const workflow=host.querySelector('[data-reading-workflow]');updateReadingWorkflow(workflow,{step:1,phase:'prepare',hint:'填写综述题目并选择参考材料，创建后继续完成综述写作流程。',disabled:[2,3,4]});
-   bindReadingWorkflow(workflow,()=>focusReadingTarget(host.querySelector('#lit-review-title')));
-   host.querySelector('[data-reading-import]').onclick=()=>importMaterial();
-   child=openLiteratureReview({getPapers:()=>list(literatureKey),container:host.querySelector('[data-reading-review]'),notify:ctx.notify});
-  }).catch(error=>{if(current())host.textContent=error.message||'文献综述暂时无法打开，请稍后重试。';});return {ready};
- }
  if(kind==='translation'){
   const documentMode=new URLSearchParams(container.ownerDocument.defaultView.location.hash.split('?')[1]||'').get('mode')==='document';
   host.innerHTML=`<nav class="document-translation-modes lit-translation-page-modes" aria-label="文献翻译方式"><a href="${readingFeatureHref('translation')}" class="${documentMode?'':'active'}" ${documentMode?'':'aria-current="page"'}>原文对照翻译</a><a href="${readingFeatureHref('translation')}&mode=document" class="${documentMode?'active':''}" ${documentMode?'aria-current="page"':''}>整篇文档翻译 <small>PDF / Word</small></a></nav><div data-reading-translation-host></div>`;

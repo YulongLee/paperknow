@@ -14,7 +14,7 @@ SOURCE = ROOT / "dist/workspace/assets/fonts/NotoSansSC-Regular.otf"
 SOURCE_SHA256 = "faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9"
 OUTPUT = ROOT / "dist/brand/fonts/paperknow-nav.woff2"
 NAVIGATION_TEXT = (
-    "首页 AI 写作 AI 研读 降重复率 降AI率 免费查重 PPT 创作 格式排版 "
+    "首页 AI 写作文献研读降重复率 降AI率 免费查重 PPT 创作 格式排版 "
     "科研工具 客户端下载 方案与权益 开通会员 注册并开始 开始使用 进入工作台 登录 "
     "我的账户 导航 论文与科研工作台 新 热 免费"
 )

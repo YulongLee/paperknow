@@ -1,7 +1,7 @@
 export const feedbackKey='paperknow-help-feedback';
 export const feedbackTypes=['功能问题','使用咨询','体验建议','其他'];
-export const helpCategories=[{"id":"start","title":"新手入门","description":"创建项目与管理成果","icon":"book","color":"blue"},{"id":"writing","title":"写作与修改","description":"大纲编辑与内容保存","icon":"pen","color":"purple"},{"id":"literature","title":"AI 研读","description":"原文解读、问答与翻译","icon":"file","color":"mint"},{"id":"detection","title":"论文检测","description":"上传要求与报告解读","icon":"search","color":"orange"},{"id":"files","title":"文件与导出","description":"Word、PDF 与 PPT","icon":"upload","color":"blue"},{"id":"data","title":"账户与数据","description":"账户资料导出与隐私设置","icon":"settings","color":"purple"}];
-export const relatedFeatures=['未选择','工作台与项目','文件管理','任务中心','AI 写作','AI 研读','降重复率','降 AI 率','论文检测','PPT 创作','科研工具','格式排版','会员与用量','设置与备份','其他'];
+export const helpCategories=[{"id":"start","title":"新手入门","description":"创建项目与管理成果","icon":"book","color":"blue"},{"id":"writing","title":"写作与修改","description":"大纲编辑与内容保存","icon":"pen","color":"purple"},{"id":"literature","title":"文献研读","description":"原文解读、问答与翻译","icon":"file","color":"mint"},{"id":"detection","title":"论文检测","description":"上传要求与报告解读","icon":"search","color":"orange"},{"id":"files","title":"文件与导出","description":"Word、PDF 与 PPT","icon":"upload","color":"blue"},{"id":"data","title":"账户与数据","description":"账户资料导出与隐私设置","icon":"settings","color":"purple"}];
+export const relatedFeatures=['未选择','工作台与项目','文件管理','任务中心','AI 写作','文献研读','降重复率','降 AI 率','论文检测','PPT 创作','科研工具','格式排版','会员与用量','设置与备份','其他'];
 export const articles=[
   {
     "id": "start-project",
@@ -25,7 +25,7 @@ export const articles=[
     "tags": "入门 工具 开始",
     "summary": "从目标选择工具，保存后到文件管理继续处理。",
     "steps": [
-      "选择 AI 写作、AI 研读、论文检测或其他相关工具。",
+      "选择 AI 写作、文献研读、论文检测或其他相关工具。",
       "按页面提示填写真实研究信息，核对页面标注的当前可用范围。",
       "编辑并保存内容，再到「文件管理」重新打开；任务中心查看已记录的实际操作。"
     ],
@@ -71,12 +71,12 @@ export const articles=[
     "summary": "用实际原文进行解读、问答与逐段翻译，保留可定位的来源。",
     "steps": [
       "在我的文献导入有权使用的正文或摘要，也可从已开放的检索来源查找题录后补充原文。检索来源的实际开放状态以页面为准。",
-      "进入文献，选择实际段落，使用 AI 研读、原文问答或文献翻译。核对范围与目标语言后，点击生成即可开始。",
+      "进入文献，选择实际段落，使用文献研读、原文问答或文献翻译。核对范围与目标语言后，点击生成即可开始。",
       "核对解读的原文摘录或按段对应译文，采纳后保存，可继续修改并导出 TXT、DOCX 或 PDF。"
     ],
     "note": "每次最多 20 段、32,000 字符；翻译每段最多 3,500 字符。只有题录不能开始全文研读；未选择的原文不会声称已读。文献与采纳的研读记录保存在当前浏览器，请及时备份。",
     "action": "#category/literature",
-    "actionLabel": "前往 AI 研读"
+    "actionLabel": "前往文献研读"
   },
   {
     "id": "detection-meaning",
@@ -245,7 +245,7 @@ export const articles=[
   }
 ];
 export function searchHelp(query='',category='all'){const tokens=query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);return articles.filter(a=>(category==='all'||a.category===category)&&tokens.every(t=>[a.title,helpCategories.find(c=>c.id===a.category)?.title||'',a.tags,a.summary,...a.steps,a.note].join(' ').toLocaleLowerCase().includes(t)));}
-export function normalizeFeedback(raw={}){if(!raw||typeof raw!=='object'||Array.isArray(raw))raw={};const oldFeatures={'文献与研读':'AI 研读','修改与润色':'降重复率','免费查重':'论文检测'};return {type:feedbackTypes.includes(raw.type)?raw.type:feedbackTypes[0],feature:relatedFeatures.includes(raw.feature)?raw.feature:(Object.hasOwn(oldFeatures,raw.feature)?oldFeatures[raw.feature]:relatedFeatures[0]),content:typeof raw.content==='string'?raw.content.slice(0,3000):'',savedAt:typeof raw.savedAt==='string'?raw.savedAt:''};}
+export function normalizeFeedback(raw={}){if(!raw||typeof raw!=='object'||Array.isArray(raw))raw={};const oldFeatures={'AI 研读':'文献研读','AI研读':'文献研读','文献与研读':'文献研读','修改与润色':'降重复率','免费查重':'论文检测'};return {type:feedbackTypes.includes(raw.type)?raw.type:feedbackTypes[0],feature:relatedFeatures.includes(raw.feature)?raw.feature:(Object.hasOwn(oldFeatures,raw.feature)?oldFeatures[raw.feature]:relatedFeatures[0]),content:typeof raw.content==='string'?raw.content.slice(0,3000):'',savedAt:typeof raw.savedAt==='string'?raw.savedAt:''};}
 export function feedbackText(value){const v=normalizeFeedback(value);if(!v.content.trim())throw Error('请先填写问题描述。');return `PaperKnow 反馈草稿（本地，尚未发送）\n反馈类型：${v.type}\n相关功能：${v.feature}\n\n问题描述：\n${v.content.trim()}\n\n此文本由用户本地导出，不代表已向 PaperKnow 提交。`;} 
 
 export function parseFeedbackDraft(raw){if(raw===null||raw===undefined||raw==='')return normalizeFeedback();const value=typeof raw==='string'?JSON.parse(raw):raw;if(!value||typeof value!=='object'||Array.isArray(value)||['type','feature','content','savedAt'].some(key=>value[key]!==undefined&&typeof value[key]!=='string')||typeof value.content==='string'&&value.content.length>3000)throw Error('反馈草稿结构异常，已停止覆盖。');return normalizeFeedback(value);}

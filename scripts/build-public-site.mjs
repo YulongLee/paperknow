@@ -14,7 +14,7 @@ const operator='oneshowailab-paperknow';
 const email='contact@oneshowailab.com';
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const json=value=>JSON.stringify(value).replace(/</g,'\\u003c');
-const categoryNames={writing:'AI 写作',literature:'AI 研读',reduce:'降重复率',aigc:'降AI率',detection:'免费查重',ppt:'PPT 创作',format:'格式排版',research:'科研工具'};
+const categoryNames={writing:'AI 写作',literature:'文献研读',reduce:'降重复率',aigc:'降AI率',detection:'免费查重',ppt:'PPT 创作',format:'格式排版',research:'科研工具'};
 const titleFor=page=>page.title.includes('PaperKnow')?page.title:`${page.title}｜PaperKnow`;
 const homeTitle=siteName;
 const homeDescription='PaperKnow科研助手为专科、本科、硕士、博士与研究工作者提供 10 项 AI 写作流程，连接文献检索、原文研读与翻译、逐段改写、公开网络来源比对和通用 AI 文本鉴别，支持可编辑 PPTX、论文排版、科研绘图与公式编辑。';
@@ -90,7 +90,7 @@ export async function buildPublicSite({outDir=resolve(projectRoot,'dist')}={}){
  if(!header)throw new Error('Homepage header missing');
  const publicHeader=header.replace('class="nav-active" href="/" aria-current="page"','href="/"').replace('href="#download"','href="/#download"').replace(/\sdata-service-start(?:="[^"]*"|='[^']*')?/g,'');
  const pages=[
-  {slug:'/features/',title:'论文与科研功能介绍',h1:'围绕你的论文，找到适合的工具',eyebrow:'PAPERKNOW · 功能介绍',description:'查看 PaperKnow AI 写作、AI 研读、降重、材料比对、PPT、格式排版与科研工具的实际使用范围和流程。',intro:'从研究问题、大纲和资料整理开始，到格式检查、图表与汇报准备。先了解每项能力的输入、输出与当前范围，再进入适合的工作流程。',directory:'features'},
+  {slug:'/features/',title:'论文与科研功能介绍',h1:'围绕你的论文，找到适合的工具',eyebrow:'PAPERKNOW · 功能介绍',description:'查看 PaperKnow AI 写作、文献研读、降重、材料比对、PPT、格式排版与科研工具的实际使用范围和流程。',intro:'从研究问题、大纲和资料整理开始，到格式检查、图表与汇报准备。先了解每项能力的输入、输出与当前范围，再进入适合的工作流程。',directory:'features'},
   ...featurePages,
   {slug:'/guides/',title:'论文与科研工具使用指南',h1:'按实际步骤，完成你的研究任务',eyebrow:'PAPERKNOW · 使用指南',description:'阅读 PaperKnow 论文大纲、材料比对、DOCX 格式、开题与毕业 PPT、科研图表的操作指南。',intro:'这些指南说明各项工具当前可用的操作、输入材料和结果复核方式。示例用于学习步骤，研究内容和最终成果由你核实完善。',directory:'guides'},
   ...guidePages,...infoPages.filter(p=>p.publish!==false)

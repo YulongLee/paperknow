@@ -4,7 +4,7 @@ import {esc,icon} from './ui.mjs';
 // One heading contract across the workspace, services and research tools.
 export const toolBannerCategories=Object.freeze({
   writing:{title:'AI 写作',icon:'pen',description:'从研究问题到论文草稿，按步骤整理资料、提纲与章节。'},
-  literature:{title:'AI 研读',icon:'book',description:'管理文献、检索资料、研读正文，并整理翻译内容。'},
+  literature:{title:'文献研读',icon:'book',description:'管理文献、检索资料、研读正文，并整理翻译内容。'},
   reduce:{title:'降重复率',icon:'pen',description:'对照真实来源，逐段整理表达与引用，保留修改记录。'},
   aigc:{title:'降AI率',icon:'file',description:'先核对观点与来源，再逐段整理你自己的学术表达。'},
   detection:{title:'论文检测',icon:'shield',description:'上传论文，检测重复率与 AI 生成特征，生成可核对的论文检测报告。'},

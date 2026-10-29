@@ -56,7 +56,7 @@ const signedIn={id:'researcher-1',name:'服务账户',email:null,phone:'+8613800
 
 test('reading home, feature deep links and legacy tool links mount separate pages with one active parent',async()=>{
  const mounts=[],f=await fixture(async()=>response(401),{hash:'#category/literature',setup:w=>{
-  w.mountLiteratureLanding=()=>{mounts.push('home');w.document.querySelector('.dashboard').innerHTML='<h1>AI 研读</h1>';};
+  w.mountLiteratureLanding=()=>{mounts.push('home');w.document.querySelector('.dashboard').innerHTML='<h1>文献研读</h1>';};
   w.mountLiteratureFeaturePage=kind=>{mounts.push(kind);w.document.querySelector('.dashboard').innerHTML='<h1>'+kind+'</h1>';};
   w.mountLiteratureReader=(id,ctx,tab)=>{mounts.push('reader:'+tab);w.document.querySelector('.dashboard').innerHTML='<h1>Reader</h1>';};
  }});
@@ -64,6 +64,7 @@ test('reading home, feature deep links and legacy tool links mount separate page
   const cases=[['#category/literature','home'],...readingFeatures.map(row=>['#category/literature?view='+row.id,row.id]),['#category/literature?tool=translation','translation'],['#tool/reading','reading'],['#tool/search','search'],['#tool/translation','translation'],['#literature/saved-paper?tab=answer','reader:answer'],['#category/literature?view=missing','home']];
   for(const [hash,expected]of cases){f.dom.window.history.replaceState(null,'',hash);f.api.render();assert.equal(mounts.at(-1),expected,hash);assert.equal(f.document.querySelector('.sidebar .nav-link.active')?.getAttribute('href'),'#category/literature',hash);}
   assert.equal(f.document.querySelectorAll('.sidebar .nav-link.active').length,1);
+  for(const query of ['view=review','tool=review']){f.dom.window.history.replaceState(null,'','#category/literature?'+query);f.api.render();assert.equal(f.dom.window.location.hash,'#tool/summary');}
  }finally{f.close();}
 });
 
@@ -301,7 +302,7 @@ test('homepage research navigation matches the rendered workspace and report sid
  const f=await fixture(async()=>response(401));
  const home=new JSDOM(homeSource,{url:'https://paperknow.cn/'});
  try{
-  const expected=[['writing','AI 写作'],['literature','AI 研读'],['detection','论文检测'],['reduce','降重复率'],['aigc','降AI率'],['ppt','PPT 创作'],['format','格式排版'],['research','科研工具']]
+  const expected=[['writing','AI 写作'],['literature','文献研读'],['detection','论文检测'],['reduce','降重复率'],['aigc','降AI率'],['ppt','PPT 创作'],['format','格式排版'],['research','科研工具']]
    .map(([key,label])=>({key,label,path:`/workspace.html#category/${key}`}));
   const homepage=[...home.window.document.querySelectorAll('#main-nav [data-research-category]')]
    .map(link=>({key:link.dataset.researchCategory,label:link.textContent.trim(),path:link.pathname+link.hash}));

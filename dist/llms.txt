@@ -3,9 +3,9 @@
 > AI 论文写作与科研辅助工作台。公开资料说明写作、文献研读、修改、比对、演示与科研工具的实际使用范围。
 
 ## 产品与使用
-- [论文与科研功能介绍](https://paperknow.cn/features/): 查看 PaperKnow AI 写作、AI 研读、降重、材料比对、PPT、格式排版与科研工具的实际使用范围和流程。
+- [论文与科研功能介绍](https://paperknow.cn/features/): 查看 PaperKnow AI 写作、文献研读、降重、材料比对、PPT、格式排版与科研工具的实际使用范围和流程。
 - [AI 论文写作工具｜毕业论文五步确认与分章生成](https://paperknow.cn/features/ai-writing/): PaperKnow 提供毕业论文、开题报告、文献综述、期刊文章、课程作业等 10 项 AI 写作流程，适用专科、本科、硕士、博士与研究工作者。毕业论文五步确认、分章生成，可编辑保存并导出。
-- [AI 文献研读与翻译｜真实原文问答、引用定位与文献检索](https://paperknow.cn/features/ai-reading/): PaperKnow 支持 OpenAlex、arXiv 等来源的文献题录检索，连接 PDF 解析、原文解读问答、逐段翻译与整篇中英文文档翻译。解读保留原文摘录，翻译和成果可核对、保存与导出。
+- [文献研读与翻译｜真实原文问答、引用定位与文献检索](https://paperknow.cn/features/ai-reading/): PaperKnow 支持 OpenAlex、arXiv 等来源的文献题录检索，连接 PDF 解析、原文解读问答、逐段翻译与整篇中英文文档翻译。解读保留原文摘录，翻译和成果可核对、保存与导出。
 - [论文降重与表达优化｜AI 逐段候选、原文对照与版本保存](https://paperknow.cn/features/reduce-similarity/): PaperKnow 论文降重入口支持导入真实正文、确认费用后生成 AI 逐段候选，查看差异、核对引用并采纳，保留原稿和版本，可导出 DOCX、PDF、TXT。不保证重复率或检测结果。
 - [论文表达优化与 AI 文本鉴别｜原稿对照、逐段修改](https://paperknow.cn/features/reduce-ai/): PaperKnow 支持中文与英文 AI 表达优化、原稿对照、逐段采纳和版本保存，并提供通用 AI 文本鉴别的分段倾向与置信分。鉴别结果不代表论文 AI 字数占比，不替代学校指定报告。
 - [论文检测｜重复率检测与 AI 率检测报告](https://paperknow.cn/features/similarity-check/): PaperKnow 论文检测支持上传论文进行重复率与 AI 生成特征检测，提供结果概览、分段标注和可下载的检测报告。重复率限于本次实际取得的来源，AI 指标按实际分段标签统计。

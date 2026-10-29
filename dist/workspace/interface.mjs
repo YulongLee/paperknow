@@ -46,7 +46,7 @@ export function trackDialogForm(dialog){
  const previous=document.activeElement;box.querySelectorAll('button')[0].onclick=()=>{box.remove();previous?.focus({preventScroll:true});};box.querySelectorAll('button')[1].onclick=()=>dialog.close();dialog.append(box);box.querySelector('button').focus({preventScroll:true});
  };
 }
-export const workspaceLinks=[['工作空间',[['home','工作台','grid'],['projects','我的项目','folder'],['assets','文件管理','file'],['tasks','任务中心','clock']]],['论文与科研',[['category/writing','AI 写作','pen'],['category/literature','AI 研读','book'],['category/detection','论文检测','shield'],['category/reduce','降重复率','pen'],['category/aigc','降AI率','spark'],['category/ppt','PPT 创作','chart'],['category/format','格式排版','file'],['category/research','科研工具','chart']]],['个人与服务',[['membership','会员与用量','diamond'],['settings','设置中心','settings'],['help','帮助与反馈','help']]]];
+export const workspaceLinks=[['工作空间',[['home','工作台','grid'],['projects','我的项目','folder'],['assets','文件管理','file'],['tasks','任务中心','clock']]],['论文与科研',[['category/writing','AI 写作','pen'],['category/literature','文献研读','book'],['category/detection','论文检测','shield'],['category/reduce','降重复率','pen'],['category/aigc','降AI率','spark'],['category/ppt','PPT 创作','chart'],['category/format','格式排版','file'],['category/research','科研工具','chart']]],['个人与服务',[['membership','会员与用量','diamond'],['settings','设置中心','settings'],['help','帮助与反馈','help']]]];
 
 // Hash events can queue up during rapid navigation; only the current destination may render.
 export const isCurrentRouteChange=(event,url)=>event.newURL===url;
