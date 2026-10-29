@@ -8,6 +8,8 @@ import {saveLiteratureOriginal} from '../dist/workspace/literature-upload.mjs';
 import {literatureKey,validatePaper} from '../dist/workspace/literature-model.mjs';
 import {clearEditor} from '../dist/workspace/edit-guard.mjs';
 import {bindStoredFile} from '../dist/workspace/file-selection.mjs';
+import {readingResultMarkup} from '../dist/workspace/literature-result-view.mjs';
+import {readingHeadings} from '../dist/workspace/literature-reader-tools.mjs';
 
 const source='A verified synthetic paragraph describes the research method and its observed evidence.\n\nA second synthetic paragraph explains the limitations and the scope of those observations.';
 const paper=(extra={})=>validatePaper({id:'saved-paper',title:'Existing research <img src=x>',scope:'full',text:source,authors:'Original Author',year:'2026',notes:[{id:'note-one',text:'Keep my research note.'}],...extra});
@@ -97,4 +99,50 @@ test('Word originals are reused from the verified file library and an account ch
  const file={name:'source.docx',size:20,arrayBuffer:async()=>new Uint8Array([80,75,1,2]).buffer},calls=[];bindStoredFile(file,{ownerId:'owner',sourceType:'original',id:'file-1',sha256:'a'.repeat(64)});
  const result=await saveLiteratureOriginal(file,{fetchImpl:async(url,init)=>{calls.push({url,init});return reply(url.endsWith('/reuse')?{id:'file-1'}:{user:{id:'owner'}});}});assert.deepEqual(result,{originalFileId:'file-1',originalOwnerId:'owner'});assert.equal(calls.filter(c=>c.url==='/api/files').length,0);assert.equal(JSON.parse(calls.find(c=>c.url.endsWith('/reuse')).init.body).expectedUserId,'owner');
  let checks=0;await assert.rejects(saveLiteratureOriginal({name:'other.txt',size:4,arrayBuffer:async()=>new Uint8Array([1,2,3,4]).buffer},{fetchImpl:async url=>reply(url==='/api/files'?{id:'saved-original'}:{user:{id:++checks===1?'owner':'other'}})}),/账户已变化/);
+});
+
+test('saved-paper filtering uses a small index, limits the initial DOM and notices another tab’s updates',async t=>{
+ const many=Array.from({length:60},(_,n)=>paper({id:'paper-'+n,title:'Research '+n,text:'Long source '.repeat(5000),status:n%2?'reading':'unread'})),f=fixture(t,{papers:many}),ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher});await ui.ready;
+ let reads=0;const native=f.w.Storage.prototype.getItem;f.w.Storage.prototype.getItem=function(key){if(key===literatureKey)reads++;return native.call(this,key);};t.after(()=>{f.w.Storage.prototype.getItem=native;});
+ assert.equal(f.w.document.querySelectorAll('.lit-desk-file').length,12);f.input('[data-desk-filter]','Research 2');f.input('[data-desk-filter]','Research 20');assert.equal(reads,0);assert.equal(f.w.document.querySelectorAll('.lit-desk-file').length,1);f.input('[data-desk-filter]','');f.$('[data-desk-more]').click();assert.equal(f.w.document.querySelectorAll('.lit-desk-file').length,24);assert.equal(reads,0);
+ f.w.localStorage.setItem(literatureKey,JSON.stringify([paper({id:'new-tab-paper',title:'A new source'})]));f.w.dispatchEvent(new f.w.StorageEvent('storage',{key:literatureKey}));assert.equal(reads,1);assert.equal(f.$('.lit-desk-file h3').textContent,'A new source');
+});
+
+test('reading results render headings, lists and code while keeping HTML, links and images inert',()=>{
+ const html=readingResultMarkup('## Findings\n\n**Verified evidence**\n\n- First\n- Second\n\n```html\n<img src=x onerror=alert(1)>\n```\n<script>bad()</script>\n![tracking](https://external.test/x)');
+ const dom=new JSDOM(html);assert.equal(dom.window.document.querySelector('h4').textContent,'Findings');assert.equal(dom.window.document.querySelectorAll('li').length,2);assert.equal(dom.window.document.querySelector('strong').textContent,'Verified evidence');assert.match(dom.window.document.querySelector('pre').textContent,/onerror/);assert.equal(dom.window.document.querySelector('img,script,a,iframe'),null);dom.window.close();
+});
+
+test('正文查找和目录定位不创建任务，专注阅读可以切回助手',t=>{
+ const text='1 Introduction\n\nThe first verified method explains a synthetic dataset.\n\n2 Methods\n\nThe second method preserves the source evidence.',f=fixture(t,{papers:[paper({text})]});mountLiteratureReader('saved-paper',f.ctx,'answer');
+ assert.equal(readingHeadings([{text:'1 Introduction',index:1},{text:'A long paragraph containing a word methods.',index:2},{text:'2 Methods',index:3}]).length,2);assert.equal(f.w.document.querySelectorAll('[data-reader-heading]').length,2);
+ f.input('[data-reader-find]','method');assert.equal(f.$('[data-reader-find-count]').textContent,'1 / 3');f.$('[data-reader-find-next]').click();assert.equal(f.$('[data-reader-find-count]').textContent,'2 / 3');assert.equal(f.$('#reader-text-pane').hidden,false);assert.equal(f.calls.length,0);
+ f.$('[data-reader-focus]').click();assert.equal(f.$('.lit-reader-studio').dataset.focus,'true');f.$('[data-reader-focus]').click();assert.equal(f.$('.lit-reader-studio').dataset.focus,'false');assert.equal(f.papers()[0].text,text);
+});
+
+test('rapid question typing avoids library reads and writes, then saves the latest draft before leaving',async t=>{
+ const f=fixture(t);mountLiteratureReader('saved-paper',f.ctx,'answer');let reads=0,writes=0;const nativeGet=f.w.Storage.prototype.getItem,nativeSet=f.w.Storage.prototype.setItem;
+ f.w.Storage.prototype.getItem=function(key){if(key===literatureKey)reads++;return nativeGet.call(this,key);};f.w.Storage.prototype.setItem=function(key,value){if(key===literatureKey)writes++;return nativeSet.call(this,key,value);};t.after(()=>{f.w.Storage.prototype.getItem=nativeGet;f.w.Storage.prototype.setItem=nativeSet;});
+ for(let n=1;n<=30;n++)f.input('[data-lit-ai-question]','Question '+n);assert.equal(reads,0);assert.equal(writes,0);await new Promise(resolve=>setTimeout(resolve,390));assert.equal(writes,1);assert.equal(f.papers()[0].aiDraft.question,'Question 30');f.input('[data-lit-ai-question]','Final draft');disposeLiterature();assert.equal(f.papers()[0].aiDraft.question,'Final draft');
+});
+
+test('a generated answer can become a linked note without changing the original or discarding an existing note draft',async t=>{
+ const f=fixture(t,{papers:[paper({noteDraft:{text:'An unfinished personal note',location:'p2'}})]});mountLiteratureReader('saved-paper',f.ctx,'answer');f.input('[data-lit-ai-question]','Explain the verified method');f.$('[data-lit-ai-open]').click();await until(()=>!!f.$('[data-lit-ai-note]'));f.$('[data-lit-ai-note]').click();
+ const saved=f.papers()[0];assert.equal(saved.notes.length,2);assert.match(saved.notes[0].text,/Verified answer/);assert.match(saved.notes[0].location,/原文问答.*p1/);assert.equal(saved.noteDraft.text,'An unfinished personal note');assert.equal(f.$('#note-text').value,'An unfinished personal note');assert.equal(saved.text,source);f.$('[data-lit-ai-note]').click();assert.equal(f.papers()[0].notes.length,2);
+});
+
+test('another tab changing the source blocks stale edits and asks to reopen rather than overwriting that source',t=>{
+ const f=fixture(t);mountLiteratureReader('saved-paper',f.ctx,'answer');const replacement=paper({text:'New source content from another tab, which must remain intact.'});f.w.localStorage.setItem(literatureKey,JSON.stringify([replacement]));f.w.dispatchEvent(new f.w.StorageEvent('storage',{key:literatureKey}));
+ assert.equal(f.$('[data-reader-stale]').hidden,false);f.input('[data-lit-ai-question]','An old-source question');disposeLiterature();assert.equal(f.papers()[0].text,replacement.text);assert.equal(f.calls.length,0);
+});
+
+test('private PDF preview restores a saved page and forwards location changes without refetching its original',async t=>{
+ const f=fixture(t);f.$('.dashboard').innerHTML='<section id="preview"><p data-reader-pdf-status></p><div data-reader-pdf-pages></div></section>';let mountOptions,downloads=0;const locations=[],bytes=new TextEncoder().encode('%PDF-1.4\nSynthetic PDF').buffer;
+ const ui=mountLiteratureOriginalPreview({container:f.$('#preview'),paper:{originalFileId:'file-1',originalOwnerId:'owner',readingPosition:{pdfPage:6}},onLocation:page=>locations.push(page),loadViewer:async()=>({mountPdfViewer:async options=>{mountOptions=options;return {pageCount:8,dispose(){}};}}),fetchImpl:async url=>url==='/api/auth/me'?reply({user:{id:'owner'}}):(downloads++,{ok:true,status:200,headers:new Headers(),arrayBuffer:async()=>bytes})});await ui.load();assert.equal(mountOptions.initialPage,6);mountOptions.onLocation(7);await ui.load();assert.deepEqual(locations,[7]);assert.equal(downloads,1);ui.dispose();
+});
+
+test('quick prompts enable sending, history toggles work, and composition or Shift+Enter cannot submit a paid question',async t=>{
+ const f=fixture(t);mountLiteratureReader('saved-paper',f.ctx,'answer');assert.equal(f.$('[data-lit-ai-open]').disabled,true);f.$('[data-lit-quick-question]').click();assert.equal(f.$('[data-lit-ai-open]').disabled,false);
+ const history=f.$('[data-lit-include-history]');history.checked=false;history.dispatchEvent(new f.w.Event('change',{bubbles:true}));const question=f.$('[data-lit-ai-question]');question.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true}));question.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',shiftKey:true,bubbles:true}));assert.equal(f.calls.length,0);
+ question.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await until(()=>f.papers()[0].aiResults.length===1);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);assert.equal(f.calls.find(c=>c.path==='/tool-runs/jobs').data.snapshot.context.chatHistory,undefined);
 });

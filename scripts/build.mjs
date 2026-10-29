@@ -8,6 +8,7 @@ await copyFile('node_modules/pdfjs-dist/build/pdf.worker.min.mjs','dist/precheck
 await build({entryPoints:['src/revision-report-parser.js'],bundle:true,platform:'browser',format:'esm',minify:true,target:'es2022',outfile:'dist/workspace/assets/revision-report-parser.js',legalComments:'eof'});
 console.log('PaperKnow document parser built.');
 await cp('node_modules/pdfjs-dist/cmaps','dist/workspace/assets/pdf-cmaps',{recursive:true});
+await cp('node_modules/pdfjs-dist/wasm','dist/workspace/assets/pdf-wasm',{recursive:true});
 await cp('node_modules/pdfjs-dist/standard_fonts','dist/workspace/assets/pdf-fonts',{recursive:true});
 await copyFile('node_modules/pdfjs-dist/LICENSE','dist/workspace/assets/pdfjs-LICENSE.txt');
 const pdfjsNotice=(await readFile('node_modules/pdfjs-dist/build/pdf.mjs','utf8')).split('*/',1)[0]+'*/';

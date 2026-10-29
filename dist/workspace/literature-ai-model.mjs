@@ -12,9 +12,9 @@ export function literatureParagraphs(text){
  const output=[];for(const block of String(text||'').replace(/\r\n?/g,'\n').split(/\n[ \t]*\n/).map(part=>part.trim()).filter(Boolean)){let rest=block;const split=block.length>3200;while(rest.length>3200){const prefix=rest.slice(0,3200);let cut=0;for(const match of prefix.matchAll(/[。！？.!?;；]\s*|\n/g))if(match.index+match[0].length>=1600)cut=match.index+match[0].length;if(!cut)cut=3200;if(/[\uD800-\uDBFF]/.test(rest[cut-1]))cut--;output.push({text:rest.slice(0,cut).trim(),split});rest=rest.slice(cut).trimStart();}if(rest.trim())output.push({text:rest.trim(),split});}
  return output.map((part,index)=>({...part,id:'p'+(index+1),index:index+1}));
 }
-export function selectReadingMaterials(paper,start=1,end){
+export function selectReadingMaterials(paper,start=1,end,paragraphs=literatureParagraphs(paper?.text)){
  if(!paper||paper.scope==='metadata'||!String(paper.text||'').trim())throw Error('这篇文献只有题录，请先补充有权使用的正文或摘要。');
- const paragraphs=literatureParagraphs(paper.text),first=Number(start),last=Number(end??paragraphs.length);
+ const first=Number(start),last=Number(end??paragraphs.length);
  if(!Number.isInteger(first)||!Number.isInteger(last)||first<1||last<first||last>paragraphs.length)throw Error('请选择有效的原文段落范围。');
  const selected=paragraphs.slice(first-1,last);if(selected.length>20)throw Error('本次最多处理 20 段原文，请缩小范围后分次研读。');const characters=selected.reduce((n,p)=>n+p.text.length,0);
  if(characters>literatureAiLimit)throw Error('本次选中原文超过 32,000 字符，请缩小段落范围；不会自动截断原文。');
