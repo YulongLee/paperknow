@@ -26,7 +26,7 @@ export function createLiteratureReaderService(db,config={}){
  }
  const serialize=row=>({id:row.id,page:row.page,color:row.color,quote:row.quote,note:row.note,rects:JSON.parse(row.rects),version:row.version,createdAt:row.created_at,updatedAt:row.updated_at});
  function ownedJob(id,user){const row=db.prepare("SELECT j.status,j.project_id,d.* FROM document_translation_runs d JOIN jobs j ON j.id=d.id WHERE d.id=? AND d.user_id=?").get(id,user.id);if(!row)fail(404,'译文任务不存在');const source=resource('file',row.file_id,user);if(source.sha256!==row.source_sha256)fail(409,'原文已经变化，请重新选择文献');return row;}
- function cachedPreview(job,user){const row=db.prepare("SELECT a.*,p.pages FROM literature_translation_previews p JOIN artifacts a ON a.id=p.artifact_id AND a.user_id=p.user_id WHERE p.job_id=? AND p.user_id=? AND p.source_sha256=? AND a.status='ready'").get(job.id,user.id,job.source_sha256);return row?{artifact:serializeArtifact(row),pages:row.pages,sourcePages:job.page_count,alignment:row.pages===job.page_count?'page':'proportional'}:null;}
+ function cachedPreview(job,user){const row=db.prepare("SELECT a.*,p.pages FROM literature_translation_previews p JOIN artifacts a ON a.id=p.artifact_id AND a.user_id=p.user_id WHERE p.job_id=? AND p.user_id=? AND p.source_sha256=? AND a.status='ready'").get(job.id,user.id,job.source_sha256);return row?{artifact:serializeArtifact(row),pages:row.pages,sourcePages:job.page_count,alignment:'unverified'}:null;}
  async function makePreview(job,user){
   const existing=cachedPreview(job,user);if(existing)return existing;
   if(job.status!=='completed')fail(409,'译文仍在生成，请等待完成');

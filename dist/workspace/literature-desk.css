@@ -129,3 +129,5 @@
 .lit-reader-studio [data-reader-tools]:empty{display:none}
 .lit-translation-pane>header{padding:8px 13px}
 @media(max-width:999px){#app .dashboard .lit-reader-studio[data-pdf-compare=true] .lit-reader-document-toolbar,#app .dashboard .lit-reader-studio[data-pdf-compare=true] .lit-translation-pane>header{min-height:100px}}
+/* In parallel reading, both PDF viewports start on the same horizontal line. */
+.lit-reader-studio[data-pdf-compare=true] .lit-fulltext-ready{display:none!important}

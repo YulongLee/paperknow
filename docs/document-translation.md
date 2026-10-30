@@ -29,12 +29,13 @@ model. No browser or API response receives the credentials. The client uses the
 fixed HTTPS endpoint `mt.cn-hangzhou.aliyuncs.com`; arbitrary endpoints are not
 configurable. The existing private OSS storage configuration must also be ready.
 
-This initial release does not debit PaperKnow research credits. Upstream calls
-can still consume the operator's free quota or incur provider charges. Admission
-is capped at three tasks and 100 reserved pages per user per UTC day, twenty tasks
-and 500 pages globally. Failed and cancelled submissions retain quota usage so
-repeated cancellation cannot bypass cost controls. Future paid use needs a
-separate explicit quote/reservation/settlement flow before raising these limits.
+Document translation shares the unified literature-reading tariff. The browser
+obtains an input-bound quote, then submits once without an additional fee dialog.
+Membership and bundle allowances precede credits. A hold settles only after the
+translated attachment is saved, and failure/cancellation releases the hold.
+Completed matching translations and PDF previews are reused without another
+translation request or charge. Free-mode trials retain their daily safeguards;
+paid use is not constrained by the free daily task/page quotas.
 
 ## Product limits and output
 
@@ -48,14 +49,18 @@ separate explicit quote/reservation/settlement flow before raising these limits.
 - DOCX uses ZIP entry/uncompressed size limits and counts all XML text, including
   notes and headers, before submission. Its input ceiling is 100,000 characters;
   estimated billable units use the provider's 2,000-character page unit.
-- Both PDF and DOCX inputs produce DOCX output through this API. Do not advertise
-  a translated PDF download or pixel-identical layout preservation. Tables,
-  formulae, terminology and pagination require review.
+- Both PDF and DOCX inputs produce DOCX output through this API. The reading
+  workspace converts that owned output to a cached private PDF. Its pagination
+  can differ from the original; equal page counts do not prove correspondence.
 - Translated outputs are at most 20 MiB. File bytes remain only in memory during
   transfer, and the existing artifact service saves the final attachment to
   private OSS. SQLite stores metadata, IDs and job state rather than binaries.
 
 ## API
+
+`POST /api/document-translations/quote` accepts the owned `fileId`, language pair,
+and `expectedUserId`. It returns an input-bound `token`, or `existingJobId` for
+an active/completed matching task. The browser reuses the latter without a submit.
 
 `POST /api/document-translations`
 
@@ -66,7 +71,8 @@ separate explicit quote/reservation/settlement flow before raising these limits.
   "targetLanguage": "zh",
   "consent": true,
   "expectedUserId": "current-user-id",
-  "idempotencyKey": "unique-browser-request-id"
+  "idempotencyKey": "unique-browser-request-id",
+  "billingToken": "input-bound-quote-token"
 }
 ```
 
@@ -120,3 +126,20 @@ storage, malformed output, DNS/URL safety and attachment ownership. Live provide
 activation and an authorized synthetic-document round trip still need independent
 deployment verification; mocked tests are not evidence of a live account's quota
 or service permission.
+
+## Parallel PDF correspondence
+
+The reader indexes the already downloaded PDF text locally and caches it for the
+current viewer. It excludes repeated running headers, page numbers and rotated
+margin labels. Unique section/caption/term anchors establish monotone regions;
+within them, sentence and paragraph groups are matched using order and relative
+text length, including split/merged sentences. Line coordinates map the selected
+paragraph to the other PDF. This is structural alignment, not semantic proof of
+translation quality. An unmatched or image-only region explicitly falls back to
+approximate reading progress instead of claiming content correspondence.
+
+The mapped anchor also preserves its viewport offset across different pane widths.
+Programmatic scroll changes do not echo back, and a new user gesture supersedes
+an older asynchronous move. Both PDF viewports start at the same vertical height.
+The index and mapping reuse existing text and never invoke a billable model or
+translation request. Existing annotations and translated cloud files are unchanged.
