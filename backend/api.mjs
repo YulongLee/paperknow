@@ -1,3 +1,4 @@
+import {createLiteratureReaderService} from './literature-reader-service.mjs';
 import {createLiteratureDownloadService} from './literature-pdf-download.mjs';
 import {randomUUID} from 'node:crypto';
 import {sessionUser,sessionCookie,digest} from './auth.mjs';
@@ -50,6 +51,7 @@ const files=createFileService(db,config);
 const literatureDownloads=createLiteratureDownloadService({files,db,storage:config.storage,signingKey:config.agentConfigKey||config.paymentConfigKey,...(config.literaturePdfReader?{readPDF:config.literaturePdfReader}:{})});
 const artifacts=createArtifactService(db,config);
 const documentParses=createDocumentParseService(db,{...config,cancelDocumentParse:id=>worker.cancel(id)});
+const literatureReader=createLiteratureReaderService(db,config);
 const documentTranslations=createDocumentTranslationService(db,{...config,cancelDocumentTranslation:id=>worker.cancel(id)});
 const formulaRecognitions=createFormulaOcrService(db,config);
 const aigcDetections=createAigcDetectionService(db,{...config,billing});
@@ -127,6 +129,7 @@ if(path==='/api/theses/document-render'){
 }
 if(path==='/api/aigc-detections'||path.startsWith('/api/aigc-detections/')){if(method==='POST')rate(req,30);const response=await aigcDetections.handle({path,method,user,readBody:()=>body(req)});if(!response)fail(404,'文本鉴别接口不存在');send(response.status||200,response.value);return;}
 if(path==='/api/web-similarity'||path.startsWith('/api/web-similarity/')){if(method==='POST')rate(req,20);const response=await webSimilarity.handle({path,method,user,query:requestURL.searchParams,readBody:()=>body(req)});if(!response)fail(404,'论文重复率检测接口不存在');send(response.status||200,response.value);return;}
+if(path.startsWith('/api/literature/reader/')){if(method==='POST')rate(req,300);const response=await literatureReader.handle({path,method,user,readBody:()=>body(req)});send(response.status||200,response.value);return;}
 if(path==='/api/document-translations'||path.startsWith('/api/document-translations/')){if(method==='POST')rate(req,30);const response=await documentTranslations.handle({path,method,user,readBody:()=>body(req)});if(!response)fail(404,'文档翻译接口不存在');send(response.status||200,response.value);return;}
 if(path==='/api/formula-recognitions'||path.startsWith('/api/formula-recognitions/')){if(method==='POST')rate(req,30);const response=await formulaRecognitions.handle({path,method,user,readBody:()=>body(req)});if(!response)fail(404,'公式识别接口不存在');send(response.status||200,response.value);return;}
 if(path==='/api/document-parses'||path.startsWith('/api/document-parses/')){if(method==='POST')rate(req,30);const response=await documentParses.handle({path,method,user,readBody:()=>body(req)});if(!response)fail(404,'文档解析接口不存在');send(response.status||200,response.value);return;}

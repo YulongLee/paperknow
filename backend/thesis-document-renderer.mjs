@@ -119,9 +119,9 @@ async function inspectEmbeddedMedia(zip,documents){
 const registry=`<?xml version="1.0" encoding="UTF-8"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop><prop oor:name="BlockUntrustedRefererLinks" oor:op="fuse"><value>true</value></prop></item><item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>0</value></prop></item></oor:items>`;
 
 /** Strict template inspection runs first, with the existing ZIP/XML limits. */
-async function safeDocument(bytes){
+async function safeDocument(bytes,prepare=prepareThesisDocxTemplate){
  let prepared;
- try{prepared=await prepareThesisDocxTemplate(bytes);}
+ try{prepared=await prepare(bytes);}
  catch(error){throw failure(422,'document_render_unsafe','无法转换该 DOCX：'+String(error?.message||'文档未通过安全检查。'));}
  // VML can carry a raw image URL without a relationship. It must never be
  // resolved by the renderer, even when it occurs outside a picture field.
@@ -178,6 +178,7 @@ export function runThesisDocumentConversion({commandPath,workspace,signal,timeou
 }
 
 export function createThesisDocumentRenderer(config={}){
+ const maxInputBytes=bounded(config.maxInputBytes,THESIS_RENDER_MAX_INPUT_BYTES,20*1024*1024),prepare=config.prepareDocument||prepareThesisDocxTemplate;
  const commandPath=config.commandPath||process.env.PAPERKNOW_SOFFICE_PATH||(process.platform==='linux'?'/usr/bin/soffice':'');
  const useUno=config.useUno??process.platform==='linux',pythonPath=config.pythonPath||'/usr/bin/python3';
  const timeoutMs=bounded(config.timeoutMs,MAX_TIMEOUT,MAX_TIMEOUT),maxOutputBytes=bounded(config.maxOutputBytes,THESIS_RENDER_MAX_OUTPUT_BYTES,THESIS_RENDER_MAX_OUTPUT_BYTES);
@@ -185,21 +186,21 @@ export function createThesisDocumentRenderer(config={}){
   let available=false;
   if(config.enabled!==false&&typeof commandPath==='string'&&path.isAbsolute(commandPath)&&!commandPath.includes('\0'))try{await access(commandPath,constants.X_OK);available=(await stat(commandPath)).isFile();}catch{}
   if(available&&useUno)try{if(typeof pythonPath!=='string'||!path.isAbsolute(pythonPath)||pythonPath.includes('\0'))throw Error();await access(pythonPath,constants.X_OK);available=(await stat(pythonPath)).isFile();}catch{available=false;}
-  return{available,busy:activeConversions>0,engine:'libreoffice',maxInputBytes:THESIS_RENDER_MAX_INPUT_BYTES,maxOutputBytes,timeoutMs};
+  return{available,busy:activeConversions>0,engine:'libreoffice',maxInputBytes,maxOutputBytes,timeoutMs};
  };
  return{
   status,
   async convert({bytes,signal}={}){
    abortIfNeeded(signal);
    if(!(bytes instanceof Uint8Array)||!bytes.byteLength)throw failure(422,'document_render_invalid','请提供有效的 DOCX 文档。');
-   if(bytes.byteLength>THESIS_RENDER_MAX_INPUT_BYTES)throw failure(413,'document_render_input_large','DOCX 转 PDF 暂支持最大 2 MB 文档，请下载 Word 文档。');
+   if(bytes.byteLength>maxInputBytes)throw failure(413,'document_render_input_large','文档超过 PDF 转换大小限制。');
    // Copy before any await so callers cannot replace bytes after validation.
    const input=new Uint8Array(bytes);
    if(!(await status()).available)throw failure(503,'document_render_unavailable','PDF 转换服务暂不可用，请下载 Word 文档。');
    if(activeConversions>=1)throw failure(429,'document_render_busy','PDF 转换服务繁忙，请稍后重试。');
    activeConversions++;let workspace;
    try{
-    const prepared=await safeDocument(input);abortIfNeeded(signal);
+    const prepared=await safeDocument(input,prepare);abortIfNeeded(signal);
     workspace=await mkdtemp(path.join(config.tempRoot||tmpdir(),'paperknow-docx-pdf-'));
     await mkdir(path.join(workspace,'profile','user'),{recursive:true,mode:0o700});
     await mkdir(path.join(workspace,'output'),{mode:0o700});
@@ -228,7 +229,7 @@ export function createThesisDocumentRenderer(config={}){
     // of its math. After numeric-cache transfer, check exact original math and
     // text again in the package that will actually be delivered.
     let docxBytes=null;
-    if(useUno){const refreshed=path.join(workspace,'output','document-refreshed.docx');let info;try{info=await lstat(refreshed);}catch{}if(info){try{if(!info.isFile()||info.isSymbolicLink()||info.size<1||info.size>THESIS_RENDER_MAX_INPUT_BYTES)throw Error();const bytes=await readFile(refreshed);await safeDocument(bytes);await assertRefreshedSourceRanges(prepared,bytes,{includeMath:false});const merged=await mergeThesisFieldCaches(prepared,bytes);if(merged.unresolved)throw Error('field caches incomplete');await assertRefreshedSourceRanges(prepared,merged.bytes);docxBytes=merged.bytes;}catch{throw failure(502,'document_render_word_changed','更新目录后的 Word 正文完整性核对未通过，未交付终稿；原正文保留，可下载初稿。');}}}
+    if(useUno&&config.preserveConvertedDocument!==false){const refreshed=path.join(workspace,'output','document-refreshed.docx');let info;try{info=await lstat(refreshed);}catch{}if(info){try{if(!info.isFile()||info.isSymbolicLink()||info.size<1||info.size>THESIS_RENDER_MAX_INPUT_BYTES)throw Error();const bytes=await readFile(refreshed);await safeDocument(bytes);await assertRefreshedSourceRanges(prepared,bytes,{includeMath:false});const merged=await mergeThesisFieldCaches(prepared,bytes);if(merged.unresolved)throw Error('field caches incomplete');await assertRefreshedSourceRanges(prepared,merged.bytes);docxBytes=merged.bytes;}catch{throw failure(502,'document_render_word_changed','更新目录后的 Word 正文完整性核对未通过，未交付终稿；原正文保留，可下载初稿。');}}}
     abortIfNeeded(signal);
     return{bytes:new Uint8Array(output),...(docxBytes?{docxBytes}:{}),...(useUno?{fieldsRefreshed:true}:{}),...(pageCheck?{pageCheck}:{}),pages,warnings:['PDF 已按当前 Word 文档转换，字体显示和最终分页请按学校要求核对。',...(!useUno?['本次转换未自动刷新目录与交叉引用页码，请在 Word/WPS 更新域后核对。']:[])]};
    }finally{
