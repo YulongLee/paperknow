@@ -7,7 +7,7 @@ import {featurePages} from '../src/public-feature-content.mjs';
 
 const html=await readFile(new URL('../dist/index.html',import.meta.url),'utf8');
 const script=await readFile(new URL('../dist/home-app.js',import.meta.url),'utf8');
-const categories=['writing','literature','reduce','aigc','detection','ppt','format','research'];
+const categories=['writing','literature','detection','reduce','aigc','ppt','format','research'];
 
 function documentFor(t){
  const dom=new JSDOM(html,{url:'https://paperknow.cn/'});
@@ -110,7 +110,7 @@ test('homepage task shortcuts cover the shipped writing catalog including the to
   assert.ok(link.textContent.includes(label),`task label identifies its destination: ${label}`);
  }
  const text=flow.textContent;
- for(const step of ['基础信息','资料补充','参考文献','提纲确认','生成版本'])assert.ok(text.includes(step),`writing step: ${step}`);
+ for(const step of ['基础信息','资料补充','参考文献','提纲确认','生成与导出'])assert.ok(text.includes(step),`writing step: ${step}`);
  assert.match(text,/确认|核对/);
 });
 
@@ -139,9 +139,9 @@ test('FAQ explains evidence limits, voluntary uploads, fees and exports without 
   assert.ok(item.querySelector('p')?.textContent.trim());
  }
  const text=faq.textContent;
- assert.match(text,/不自动续费/);
- assert.match(text,/提交任务前.*确认.*费用|提交.*前.*确认.*权益/);
- assert.match(text,/不会因登录自动上传/);
+ assert.match(text,/不会?自动续费/);
+ assert.match(text,/提交任务前.*(?:确认|显示).*费用|提交.*前.*确认.*权益/);
+ assert.match(text,/私有云端空间/);assert.match(text,/同一账户/);assert.doesNotMatch(text,/本地草稿|部分本地工具|不同环境分别保存/);
  assert.match(text,/学校指定|学校.*数据库/);
  assert.match(text,/导出/);
  assert.doesNotMatch(text,/在线 AI.*尚未开放|AI 生成尚未开放|学术检索尚未开放|付费购买尚未开放|未开放的解锁流程/);
@@ -172,4 +172,45 @@ test('all sample actions open a labeled preview and preserve their actual task d
   assert.equal(document.querySelector('#home-dialog').open,false);
   assert.equal(document.activeElement,action,'closing a preview returns focus to its trigger');
  }
+});
+
+test('V1 homepage follows the released reading, detection, presentation, format and cloud workflows',t=>{
+ const document=documentFor(t),body=document.body;
+ assert.equal(document.querySelector('#hero-writing-start').getAttribute('href'),'/workspace.html#tool/writing');
+ assert.ok(document.querySelector('.hp-v1-quick-start a[href="/workspace.html#tool/proposal"]'));
+ assert.match(document.querySelector('[data-feature-panel="literature"]').textContent,/批量上传 PDF/);
+ assert.ok(document.querySelector('.hp-v1-reading-split .hp-v1-pdf-page'));assert.ok(document.querySelector('.hp-v1-reader-assistant'));
+ assert.ok(document.querySelector('[data-feature-panel="detection"] a[href="/workspace.html#category/detection?view=combined"]'));
+ const ppt=document.querySelector('[data-feature-panel="ppt"]');assert.match(ppt.textContent,/网页.*预览|预览.*网页/);assert.doesNotMatch(ppt.textContent,/确认大纲|先确认内容结构/);
+ const format=document.querySelector('[data-feature-panel="format"]');assert.match(format.textContent,/格式模板/);assert.match(format.textContent,/文稿原文/);assert.match(format.textContent,/DOCX/);
+ assert.equal(document.querySelector('.hp-plans-section').id,'plans');assert.notEqual(document.querySelector('#download').closest('.hp-plans-section'),document.querySelector('#plans'));
+ assert.ok(document.querySelector('#plans a[href="/workspace.html#membership/pricing"]'));
+ assert.doesNotMatch(body.textContent,/本地草稿保存在|部分本地工具|分别保存在各自设备|科研主题视觉示意/);
+});
+function runtimeHome(t,data,{releases=[],user=null}={}){
+ const dom=new JSDOM(html,{url:'https://paperknow.cn/',runScripts:'outside-only'}),w=dom.window,calls=[];t.after(()=>w.close());
+ w.matchMedia=media=>({media,matches:true,addEventListener(){},removeEventListener(){}});w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
+ w.fetch=async(path,options={})=>{calls.push([path,options]);return {ok:path!=='/api/auth/me'||!!user,status:path==='/api/auth/me'&&!user?401:200,json:async()=>path==='/api/payments/options'?data:path==='/api/desktop/releases'?{releases}:path==='/api/auth/me'?{user}:{account:true,tools:{ready:true},writing:{ready:true},thesis:{ready:true}}};};w.eval(script);
+ return {w,doc:w.document,calls,ready:async()=>{for(let n=0;n<5;n++)await new Promise(r=>setImmediate(r));}};
+}
+const publishedHomePricing=()=>({enabled:true,products:[
+ {id:'reading-v1',title:'研读会员',status:'active',purchasable:true,currency:'CNY',priceCents:2990,durationDays:30,entitlementType:'membership',membershipItems:[{key:'light-ai',quantity:60},{key:'translation-pages',quantity:20}]},
+ {id:'credits-200',title:'200 科研积分',status:'active',purchasable:true,currency:'CNY',priceCents:2000,entitlementType:'credits',creditAmount:200},
+ {id:'bundle-rewrite',title:'查重优化套餐',status:'active',purchasable:true,currency:'CNY',priceCents:5900,durationDays:180,entitlementType:'bundle'}],
+ billing:{services:[{key:'agent',mode:'paid',creditCost:1,available:true}]},toolBilling:{services:[{key:'thesis-bachelor',effectiveMode:'paid',effectiveCreditCost:1234,available:true},{key:'detection-similarity',effectiveMode:'paid',effectiveCreditCost:99,available:true},{key:'presentation-ai',effectiveMode:'paid',effectiveCreditCost:199,available:true}]}});
+
+test('homepage prices use the exact published service fee and member quota without creating orders or estimating from the generic agent rate',async t=>{
+ const f=runtimeHome(t,publishedHomePricing());await f.ready();
+ assert.match(f.doc.querySelector('[data-home-service-price="thesis-bachelor"]').textContent,/1,234 积分/);assert.match(f.doc.querySelector('[data-home-service-price="thesis-bachelor"]').textContent,/¥123\.40/);
+ assert.match(f.doc.querySelector('[data-home-service-price="presentation-ai"]').textContent,/199 积分/);assert.match(f.doc.querySelector('[data-home-plan-price="membership"]').textContent,/29\.9.*30天/);
+ assert.match(f.doc.querySelector('[data-home-plan-detail="membership"]').textContent,/60 次.*20 页/);assert.match(f.doc.querySelector('[data-home-plan-price="bundle"]').textContent,/59.*180天/);
+ assert.equal(f.calls.filter(([path])=>path==='/api/payments/options').length,1);assert.equal(f.calls.every(([,options])=>!options.method||options.method==='GET'),true);
+});
+test('malformed or unavailable paid services cannot appear free and valid fees remain visible while sales are paused',async t=>{
+ const data=publishedHomePricing();data.enabled=false;data.toolBilling.services[0].effectiveCreditCost=null;data.toolBilling.services[1].available=false;
+ const f=runtimeHome(t,data);await f.ready();assert.match(f.doc.querySelector('[data-home-service-price="thesis-bachelor"]').textContent,/价格待核对/);assert.match(f.doc.querySelector('[data-home-service-price="detection-similarity"]').textContent,/查看当前费用/);assert.match(f.doc.querySelector('[data-home-service-price="presentation-ai"]').textContent,/199 积分/);assert.equal(f.doc.querySelector('[data-home-plan-price="membership"]').textContent,'查看当前方案');
+});
+test('the published desktop FAQ reflects a unified cloud account rather than separate local drafts',async t=>{
+ const release={platform:'macos',arch:'arm64',format:'dmg',version:'1.0.0',bytes:102400,sha256:'a'.repeat(64),fileName:'PaperKnow.dmg',minSystem:'macOS 12',signed:false,downloadUrl:'/api/desktop/download/macos/arm64'};
+ const f=runtimeHome(t,publishedHomePricing(),{releases:[release]});await f.ready();const text=f.doc.querySelector('#desktop-faq-status').textContent;assert.match(text,/同一账户.*云端资料/);assert.doesNotMatch(text,/本地草稿|不会自动互相迁移/);assert.match(f.doc.querySelector('#desktop-download-notice').textContent,/尚未签名/);
 });

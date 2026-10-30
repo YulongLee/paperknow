@@ -10,7 +10,7 @@ import {createServer} from '../server.mjs';
 const origin='https://paperknow.cn';
 const refreshedPages=new Set(['/','/features/ai-writing/','/features/ai-reading/','/features/reduce-ai/','/features/similarity-check/','/features/ppt/','/guides/paper-outline/','/guides/research-ppt/','/guides/research-charts/','/about/','/help/','/status/']);
 const formatUpdatedPages=new Set(['/','/features/format/','/guides/docx-format/','/about/','/status/']);
-const expectedModifiedAt=slug=>['/features/format/','/guides/docx-format/','/features/ai-reading/'].includes(slug)?'2026-10-29':['/help/','/privacy/'].includes(slug)?'2026-10-28':slug==='/features/similarity-check/'?'2026-10-27':slug==='/features/ai-writing/'?'2026-10-25':formatUpdatedPages.has(slug)?'2026-10-22':refreshedPages.has(slug)?'2026-10-21':['/features/research-tools/','/privacy/'].includes(slug)?'2026-10-19':['/features/','/guides/'].includes(slug)?'2026-10-15':'2026-10-18';
+const expectedModifiedAt=slug=>slug==='/'?'2026-10-31':['/features/format/','/guides/docx-format/','/features/ai-reading/'].includes(slug)?'2026-10-29':['/help/','/privacy/'].includes(slug)?'2026-10-28':slug==='/features/similarity-check/'?'2026-10-27':slug==='/features/ai-writing/'?'2026-10-25':formatUpdatedPages.has(slug)?'2026-10-22':refreshedPages.has(slug)?'2026-10-21':['/features/research-tools/','/privacy/'].includes(slug)?'2026-10-19':['/features/','/guides/'].includes(slug)?'2026-10-15':'2026-10-18';
 const features={
   'ai-writing':'writing','ai-reading':'literature','reduce-similarity':'reduce',
   'reduce-ai':'aigc','similarity-check':'detection','ppt':'ppt',
@@ -112,10 +112,10 @@ test('share metadata and structured data agree with canonical URLs without fabri
 test('homepage metadata describes shipped research workflows and keeps its own modification date',()=>{
   const {document}=pages.get('/'),description=meta(document,'description');
   assert.equal(document.title,'PaperKnow科研助手');
-  for(const capability of ['10 项','文献检索','翻译','改写','公开网络来源比对','通用 AI 文本鉴别','PPTX','科研绘图','公式'])assert.ok(description.includes(capability),capability);
+  for(const capability of ['10 类','PDF','翻译','报告定向优化','论文检测','PPT','DOCX','云端管理','科研绘图','公式'])assert.ok(description.includes(capability),capability);
   assert.doesNotMatch(description,/待接入|尚未开放|在线 AI 与检索能力以实际开放状态为准/);
   const data=JSON.parse(document.querySelector('script[type="application/ld+json"]').textContent)['@graph'];
-  assert.equal(data.find(node=>node['@type']==='WebPage').dateModified,'2026-10-22');
+  assert.equal(data.find(node=>node['@type']==='WebPage').dateModified,'2026-10-31');
   assert.match(data.find(node=>node['@type']==='WebApplication').description,/毕业论文五步确认与分章生成/);
   assert.equal(pages.get('/privacy/').document.querySelector('.public-updated').textContent.includes(expectedModifiedAt('/privacy/')),true);
   assert.equal(pages.get('/terms/').document.querySelector('.public-updated').textContent.includes('2026-10-18'),true);

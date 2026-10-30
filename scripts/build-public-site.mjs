@@ -8,23 +8,23 @@ import {buildPublicSamples} from './build-public-samples.mjs';
 const projectRoot=fileURLToPath(new URL('../',import.meta.url));
 export const siteURL='https://paperknow.cn';
 export const updatedAt='2026-10-15';
-export const homeModifiedAt='2026-10-22';
+export const homeModifiedAt='2026-10-31';
 const siteName='PaperKnow科研助手';
 const operator='oneshowailab-paperknow';
 const email='contact@oneshowailab.com';
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const json=value=>JSON.stringify(value).replace(/</g,'\\u003c');
-const categoryNames={writing:'AI 写作',literature:'文献研读',reduce:'降重复率',aigc:'降AI率',detection:'免费查重',ppt:'PPT 创作',format:'格式排版',research:'科研工具'};
+const categoryNames={writing:'AI 写作',literature:'文献研读',reduce:'降重复率',aigc:'降AI率',detection:'论文检测',ppt:'PPT 创作',format:'格式排版',research:'科研工具'};
 const titleFor=page=>page.title.includes('PaperKnow')?page.title:`${page.title}｜PaperKnow`;
 const homeTitle=siteName;
-const homeDescription='PaperKnow科研助手为专科、本科、硕士、博士与研究工作者提供 10 项 AI 写作流程，连接文献检索、原文研读与翻译、逐段改写、公开网络来源比对和通用 AI 文本鉴别，支持可编辑 PPTX、论文排版、科研绘图与公式编辑。';
+const homeDescription='PaperKnow科研助手提供 10 类写作与研究任务，覆盖论文、开题报告、综述与期刊写作，衔接 PDF 文献研读与双文档翻译、论文检测、报告定向优化、PPT 创作、DOCX 智能排版、科研绘图与公式编辑，已保存的项目、文件与任务统一云端管理。';
 
 function graphFor(page){
  const url=siteURL+page.slug;
  const graph=[
   {'@type':'Organization','@id':siteURL+'/#organization',name:operator,url:siteURL+'/',email,logo:siteURL+'/brand/paperknow-symbol.svg'},
   {'@type':'WebSite','@id':siteURL+'/#website',url:siteURL+'/',name:siteName,inLanguage:'zh-CN',publisher:{'@id':siteURL+'/#organization'}},
-  {'@type':'WebApplication','@id':siteURL+'/#application',name:siteName,url:siteURL+'/',applicationCategory:'EducationalApplication',browserRequirements:'需要支持 JavaScript 的现代浏览器',description:'10 项 AI 写作流程、毕业论文五步确认与分章生成、文献检索研读与翻译、逐段改写、本地材料与公开网络来源比对、通用 AI 文本鉴别、可编辑 PPTX、DOCX 格式排版、科研绘图及 LaTeX 公式编辑。',publisher:{'@id':siteURL+'/#organization'}},
+  {'@type':'WebApplication','@id':siteURL+'/#application',name:siteName,url:siteURL+'/',applicationCategory:'EducationalApplication',browserRequirements:'需要支持 JavaScript 的现代浏览器',description:'10 类写作与研究任务、毕业论文五步确认与分章生成、文献检索、双文档翻译与原文问答、报告定向优化、论文重复率与 AI 率检测、网页 PPT 预览与编辑、DOCX 智能排版、科研绘图及 LaTeX 公式编辑；已保存资料统一云端管理。',publisher:{'@id':siteURL+'/#organization'}},
   {'@type':'WebPage','@id':url+'#webpage',url,name:page.slug==='/'?homeTitle:titleFor(page),description:page.description,inLanguage:'zh-CN',isPartOf:{'@id':siteURL+'/#website'},about:{'@id':siteURL+'/#application'},dateModified:page.modifiedAt||(page.slug==='/'?homeModifiedAt:updatedAt)}
  ];
  if(page.slug!=='/'){
@@ -88,7 +88,7 @@ export async function buildPublicSite({outDir=resolve(projectRoot,'dist')}={}){
  const original=await readFile(resolve(projectRoot,'dist/index.html'),'utf8');
  const header=original.match(/<header class="header product-header">[\s\S]*?<\/header>/)?.[0];
  if(!header)throw new Error('Homepage header missing');
- const publicHeader=header.replace('class="nav-active" href="/" aria-current="page"','href="/"').replace('href="#download"','href="/#download"').replace(/\sdata-service-start(?:="[^"]*"|='[^']*')?/g,'');
+ const publicHeader=header.replace('class="nav-active" href="/" aria-current="page"','href="/"').replace('href="#download"','href="/#download"').replace('href="#plans"','href="/#plans"').replace(/\sdata-service-start(?:="[^"]*"|='[^']*')?/g,'');
  const pages=[
   {slug:'/features/',title:'论文与科研功能介绍',h1:'围绕你的论文，找到适合的工具',eyebrow:'PAPERKNOW · 功能介绍',description:'查看 PaperKnow AI 写作、文献研读、降重、材料比对、PPT、格式排版与科研工具的实际使用范围和流程。',intro:'从研究问题、大纲和资料整理开始，到格式检查、图表与汇报准备。先了解每项能力的输入、输出与当前范围，再进入适合的工作流程。',directory:'features'},
   ...featurePages,
@@ -119,7 +119,7 @@ export async function buildPublicSite({outDir=resolve(projectRoot,'dist')}={}){
  const entries=[{slug:'/',modifiedAt:homeModifiedAt},...manifest.pages];
  await writeFile(resolve(outDir,'sitemap.xml'),`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.map(p=>`  <url><loc>${siteURL}${p.slug}</loc><lastmod>${p.modifiedAt}</lastmod></url>`).join('\n')}\n</urlset>\n`);
  await writeFile(resolve(outDir,'robots.txt'),`User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${siteURL}/sitemap.xml\n`);
- await writeFile(resolve(outDir,'llms.txt'),`# PaperKnow\n\n> AI 论文写作与科研辅助工作台。公开资料说明写作、文献研读、修改、比对、演示与科研工具的实际使用范围。\n\n## 产品与使用\n${pages.map(p=>`- [${p.title}](${siteURL}${p.slug}): ${p.description}`).join('\n')}\n\n## 数据与范围\n- 本地体验与在线账户分别保存，不会自动迁移浏览器草稿。\n- 文献检索提供题录与可用摘要；研读与翻译使用实际提供的正文或摘要。\n- 联网来源比对仅覆盖本次取得的公开网页正文，通用 AI 文本鉴别提供表达倾向，均不能替代学校指定检测。\n- 商品、价格、有效期与支付渠道以账户收银台实时核验结果为准。\n- 研究事实、数据、引用与最终成果需要使用者复核。\n`);
+ await writeFile(resolve(outDir,'llms.txt'),`# PaperKnow\n\n> AI 论文写作与科研辅助工作台。公开资料说明写作、文献研读、修改、比对、演示与科研工具的实际使用范围。\n\n## 产品与使用\n${pages.map(p=>`- [${p.title}](${siteURL}${p.slug}): ${p.description}`).join('\n')}\n\n## 数据与范围\n- 已保存的项目、材料、任务与成果统一归属账户，原件与生成文件使用私有云端存储。\n- 文献检索提供题录与可用摘要；研读与翻译使用实际提供的正文或摘要。\n- 联网来源比对仅覆盖本次取得的公开网页正文，通用 AI 文本鉴别提供表达倾向，均不能替代学校指定检测。\n- 商品、价格、有效期与支付渠道以账户收银台实时核验结果为准。\n- 研究事实、数据、引用与最终成果需要使用者复核。\n`);
  return manifest;
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){

@@ -13,7 +13,7 @@ function carouselEnvironment({reducedMotion=false,compact=false}={}){
  return {
   prepare(w){
    w.matchMedia=query=>{
-    const listeners=new Set(),media={media:query,matches:query==='(prefers-reduced-motion: reduce)'?reducedMotion:query==='(max-width: 700px)'?compact:false,addEventListener(type,listener){if(type==='change')listeners.add(listener);},removeEventListener(type,listener){if(type==='change')listeners.delete(listener);}};
+    const listeners=new Set(),media={media:query,matches:query==='(prefers-reduced-motion: reduce)'?reducedMotion:query==='(max-width: 1000px)'?compact:false,addEventListener(type,listener){if(type==='change')listeners.add(listener);},removeEventListener(type,listener){if(type==='change')listeners.delete(listener);}};
     mediaQueries.set(query,{media,listeners});return media;
    };
    Object.defineProperty(w.document,'hidden',{get:()=>hidden,configurable:true});
@@ -27,20 +27,20 @@ function carouselEnvironment({reducedMotion=false,compact=false}={}){
    };
   },
   enter(ratio=1){assert.ok(observed,'the carousel observes its viewport');observer([{target:observed,isIntersecting:ratio>0,intersectionRatio:ratio}]);},
-  setCompact(value){const state=mediaQueries.get('(max-width: 700px)');assert.ok(state,'the carousel watches the mobile breakpoint');state.media.matches=value;state.listeners.forEach(listener=>listener({matches:value,media:state.media.media}));},
+  setCompact(value){const state=mediaQueries.get('(max-width: 1000px)');assert.ok(state,'the carousel watches the mobile breakpoint');state.media.matches=value;state.listeners.forEach(listener=>listener({matches:value,media:state.media.media}));},
   hide(d,value){hidden=value;d.dispatchEvent(new d.defaultView.Event('visibilitychange'));},
   get pending(){return timers.size;},
   get timer(){return [...timers.keys()][0];},
   advance(){assert.equal(timers.size,1,'one rotation is scheduled');const [id,callback]=timers.entries().next().value;timers.delete(id);callback();}
  };
 }
-test('guest homepage ignores local nickname and offers real registration plus local tools',async t=>{const d=await page(t,null);assert.equal(d.querySelector('#account-button').textContent,'登录');assert.equal(d.querySelector('#account-button').classList.contains('is-signed-in'),false);assert.equal(d.querySelector('#header-start').getAttribute('href'),'/auth.html?mode=register');assert.equal(d.querySelector('#header-start').textContent.trim(),'开始使用');const initial=new JSDOM(html);t.after(()=>initial.window.close());const originalLabels=Array.from(initial.window.document.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim());assert.deepEqual(Array.from(d.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim()),originalLabels,'guest CTA copy outside the header keeps its own context');assert.ok(d.querySelector('a[href="/workspace.html#category/writing"]'));assert.equal(d.querySelectorAll('#status-button').length,1);});
-test('authenticated homepage safely renders actual account name and shows admin entry only for administrator',async t=>{const name='管理员<script>';const d=await page(t,{name,email:'a@example.invalid',role:'admin'});const account=d.querySelector('#account-button');assert.equal(account.classList.contains('is-signed-in'),true);assert.equal(account.querySelector('.home-account-name').textContent,name);assert.equal(account.querySelector('.home-account-avatar').textContent,'管');assert.equal(account.title,name);assert.equal(account.getAttribute('aria-label'),`打开 ${name} 的账户`);assert.equal(account.querySelector('script'),null);assert.equal(d.querySelector('#header-start').getAttribute('href'),'/workspace.html#home');assert.equal(d.querySelector('#header-start').textContent.trim(),'进入工作台');account.click();assert.ok(d.querySelector('a[href="/admin.html"]'));assert.equal(d.querySelector('#home-dialog-body script'),null);assert.ok(d.querySelector('#home-dialog-body').textContent.includes(name));});
-test('account display truncates text while preserving full identity and email or phone fallback',async t=>{const name='Researcher<img src=x onerror=alert(1)>';const d=await page(t,{name,email:'u@example.invalid',role:'user'});const account=d.querySelector('#account-button');assert.equal(account.querySelector('.home-account-name').textContent,Array.from(name).slice(0,16).join(''));assert.equal(account.title,name);assert.equal(account.querySelector('img'),null);const email=await page(t,{email:'person@example.invalid',role:'user'});assert.equal(email.querySelector('.home-account-avatar').textContent,'P');assert.equal(email.querySelector('.home-account-name').textContent,'person@example.i');const phone=await page(t,{phone:'13800138000',role:'user'});assert.equal(phone.querySelector('.home-account-name').textContent,'13800138000');});
-test('ordinary user keeps contextual CTA labels and offline homepage retains usable links and the guest header CTA',async t=>{const d=await page(t,{name:'用户',email:'u@example.invalid',role:'user'});const guest=await page(t,null);assert.deepEqual(Array.from(d.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim()),Array.from(guest.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim()),'account hydration preserves each section’s action label');assert.ok(Array.from(d.querySelectorAll('[data-service-start]'),a=>a.getAttribute('href')).every(href=>href==='/workspace.html#home'));d.querySelector('#account-button').click();assert.equal(d.querySelector('a[href="/admin.html"]'),null);const offline=await page(t,'offline');assert.equal(offline.querySelector('#account-button').textContent,'登录');assert.equal(offline.querySelector('#header-start').textContent.trim(),'开始使用');assert.equal(offline.querySelector('#header-start').getAttribute('href'),'/auth.html?mode=register');assert.deepEqual(Array.from(offline.querySelectorAll('[data-service-start]'),a=>[a.textContent.trim(),a.getAttribute('href')]),Array.from(guest.querySelectorAll('[data-service-start]'),a=>[a.textContent.trim(),a.getAttribute('href')]));assert.ok(offline.querySelector('a[href="/workspace.html#home"]'));});
+test('guest homepage ignores local nickname and offers real registration plus direct writing entry',async t=>{const d=await page(t,null);assert.equal(d.querySelector('#account-button').textContent,'登录');assert.equal(d.querySelector('#account-button').classList.contains('is-signed-in'),false);assert.equal(d.querySelector('#header-start').getAttribute('href'),'/auth.html?mode=register');assert.equal(d.querySelector('#header-start').textContent.trim(),'开始使用');const initial=new JSDOM(html);t.after(()=>initial.window.close());const originalLabels=Array.from(initial.window.document.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim());assert.deepEqual(Array.from(d.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim()),originalLabels,'guest CTA copy outside the header keeps its own context');assert.ok(d.querySelector('a[href="/workspace.html#category/writing"]'));assert.equal(d.querySelectorAll('#status-button').length,1);});
+test('authenticated homepage safely renders actual account name and shows admin entry only for administrator',async t=>{const name='管理员<script>';const d=await page(t,{id:'test-account',name,email:'a@example.invalid',role:'admin'});const account=d.querySelector('#account-button');assert.equal(account.classList.contains('is-signed-in'),true);assert.equal(account.querySelector('.home-account-name').textContent,name);assert.equal(account.querySelector('.home-account-avatar').textContent,'管');assert.equal(account.title,name);assert.equal(account.getAttribute('aria-label'),`打开 ${name} 的账户`);assert.equal(account.querySelector('script'),null);assert.equal(d.querySelector('#header-start').getAttribute('href'),'/workspace.html#home');assert.equal(d.querySelector('#header-start').textContent.trim(),'进入工作台');account.click();assert.ok(d.querySelector('a[href="/admin.html"]'));assert.equal(d.querySelector('#home-dialog-body script'),null);assert.ok(d.querySelector('#home-dialog-body').textContent.includes(name));});
+test('account display truncates text while preserving full identity and email or phone fallback',async t=>{const name='Researcher<img src=x onerror=alert(1)>';const d=await page(t,{id:'test-account',name,email:'u@example.invalid',role:'user'});const account=d.querySelector('#account-button');assert.equal(account.querySelector('.home-account-name').textContent,Array.from(name).slice(0,16).join(''));assert.equal(account.title,name);assert.equal(account.querySelector('img'),null);const email=await page(t,{id:'test-account',email:'person@example.invalid',role:'user'});assert.equal(email.querySelector('.home-account-avatar').textContent,'P');assert.equal(email.querySelector('.home-account-name').textContent,'person@example.i');const phone=await page(t,{id:'test-account',phone:'13800138000',role:'user'});assert.equal(phone.querySelector('.home-account-name').textContent,'13800138000');});
+test('ordinary user keeps contextual CTA labels and offline homepage retains usable links and the guest header CTA',async t=>{const d=await page(t,{id:'test-account',name:'用户',email:'u@example.invalid',role:'user'});const guest=await page(t,null);assert.deepEqual(Array.from(d.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim()),Array.from(guest.querySelectorAll('[data-service-start]:not(#header-start)'),a=>a.textContent.trim()),'account hydration preserves each section’s action label');assert.ok(Array.from(d.querySelectorAll('[data-service-start]'),a=>a.getAttribute('href')).every(href=>href==='/workspace.html#home'));d.querySelector('#account-button').click();assert.equal(d.querySelector('a[href="/admin.html"]'),null);const offline=await page(t,'offline');assert.equal(offline.querySelector('#account-button').textContent,'登录');assert.equal(offline.querySelector('#header-start').textContent.trim(),'开始使用');assert.equal(offline.querySelector('#header-start').getAttribute('href'),'/auth.html?mode=register');assert.deepEqual(Array.from(offline.querySelectorAll('[data-service-start]'),a=>[a.textContent.trim(),a.getAttribute('href')]),Array.from(guest.querySelectorAll('[data-service-start]'),a=>[a.textContent.trim(),a.getAttribute('href')]));assert.ok(offline.querySelector('a[href="/workspace.html#home"]'));});
 
 test('account hydration completes independently when capability discovery fails or remains pending',async t=>{
- const user={name:'已登录研究员',email:'researcher@example.invalid',role:'user'};
+ const user={id:'test-account',name:'已登录研究员',email:'researcher@example.invalid',role:'user'};
  for(const pending of [false,true]){
   const d=await page(t,user,w=>{const fetch=w.fetch;w.fetch=path=>path==='/api/capabilities'?(pending?new Promise(()=>{}):Promise.reject(new Error('capabilities unavailable'))):fetch(path);});
   assert.equal(d.querySelector('.home-account-name').textContent,user.name);
@@ -119,10 +119,10 @@ test('scroll styling changes at the header threshold without measuring layout an
 test('homepage previews expose all eight workspace capabilities and switch without changing direct destinations',async t=>{
  const d=await page(t,null);
  const tabs=Array.from(d.querySelectorAll('[data-feature-tab]'));
- const keys=['writing','literature','reduce','aigc','detection','ppt','format','research'];
+ const keys=['writing','literature','detection','reduce','aigc','ppt','format','research'];
  assert.deepEqual(tabs.map(tab=>tab.dataset.featureTab),keys);
  const panels=Array.from(d.querySelectorAll('[data-feature-panel]'));
- const destinations=panels.map(panel=>panel.querySelector('a[href^="/workspace.html#category/"]')?.getAttribute('href'));
+ const destinations=panels.map(panel=>panel.querySelector('a.button[href^="/workspace.html#category/"]')?.getAttribute('href'));
  assert.deepEqual(destinations,keys.map(key=>`/workspace.html#category/${key}`));
  const assertActive=key=>{
   assert.deepEqual(tabs.filter(tab=>tab.getAttribute('aria-selected')==='true').map(tab=>tab.dataset.featureTab),[key]);
@@ -133,7 +133,7 @@ test('homepage previews expose all eight workspace capabilities and switch witho
  };
  assertActive('writing');
  for(const tab of tabs){tab.click();assertActive(tab.dataset.featureTab);}
- assert.deepEqual(panels.map(panel=>panel.querySelector('a[href^="/workspace.html#category/"]')?.getAttribute('href')),destinations);
+ assert.deepEqual(panels.map(panel=>panel.querySelector('a.button[href^="/workspace.html#category/"]')?.getAttribute('href')),destinations);
  tabs[0].focus();
  const key=key=>d.activeElement.dispatchEvent(new d.defaultView.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));
  key('ArrowLeft');assertActive('research');assert.equal(d.activeElement,tabs[7]);
@@ -149,9 +149,11 @@ const desktopResponse=(w,data)=>{w.fetch=async path=>({ok:path!=='/api/auth/me',
 test('homepage keeps sample results and unpublished desktop files clearly identified',async t=>{
  const d=await page(t,null);
  d.querySelector('[data-example="report"]').click();
- assert.match(d.querySelector('#home-dialog-body').textContent,/不是一次实际检测结果/);
- assert.match(d.querySelector('#home-dialog-body').textContent,/本次检索取得的公开网页/);
- assert.match(d.querySelector('#home-dialog-body').textContent,/不包含学校封闭数据库/);
+ assert.match(d.querySelector('#home-dialog-body').textContent,/检测报告示例/);
+ assert.match(d.querySelector('#home-dialog-body').textContent,/来源对照或 AI 表达修改建议/);
+ assert.match(d.querySelector('#home-dialog-body').textContent,/检测覆盖范围可在具体功能与使用说明中查看/);
+ assert.match(d.querySelector('#home-dialog-body .mini-comparison').textContent,/依据学习者已有知识/);
+ assert.match(d.querySelector('#home-dialog-body').textContent,/来源对照/);
  d.querySelector('#dialog-close').click();
  for(const card of d.querySelectorAll('[data-desktop-card]')){
   assert.equal(card.querySelector('[data-desktop-status]').textContent,'暂未提供');
@@ -162,7 +164,7 @@ test('homepage keeps sample results and unpublished desktop files clearly identi
  assert.ok(d.querySelector('a[href="/workspace.html#home"]'));
  assert.equal(d.querySelector('[data-download-platform]'),null,'old unavailable modal has been removed');
  d.querySelector('#status-button').click();
- assert.match(d.querySelector('#home-dialog-body').textContent,/10 类写作流程/);
+ assert.match(d.querySelector('#home-dialog-body').textContent,/10 类写作与研究任务/);
  assert.match(d.querySelector('#home-dialog-body').textContent,/OpenAlex、arXiv/);
  assert.match(d.querySelector('#home-dialog-body').textContent,/进入功能确认/);
  assert.doesNotMatch(d.querySelector('#home-dialog-body').textContent,/尚未接入|AI 尚未接入|待开放/);
@@ -176,7 +178,7 @@ test('homepage describes real feature coverage and only reports service readines
  assert.equal(status('AI 写作'),'当前可用');
  assert.equal(status('毕业论文五步流程'),'暂不可用');
  assert.equal(status('文献翻译'),'进入功能确认');
- assert.equal(status('联网来源比对'),'当前可用');
+ assert.equal(status('论文重复率检测'),'当前可用');
  assert.equal(status('会员、积分与套餐'),'当前可用');
  d.querySelector('#dialog-close').click();d.querySelector('#about-button').click();
  assert.match(d.querySelector('#home-dialog-body').textContent,/会员、科研积分与专项套餐/);
@@ -327,12 +329,12 @@ test('capability carousel keeps rotating with the mouse over it after a real poi
  assert.notEqual(manualTimer,initialTimer,'a manual click grants a fresh five second interval');
  section.dispatchEvent(pointer('pointerleave'));
  assert.equal(clock.timer,manualTimer,'moving the mouse away does not change the interval');
- clock.advance();assert.equal(selected(),'reduce');assert.equal(d.activeElement,tab,'rotation does not move focus');
- assert.equal(d.querySelector('[data-feature-panel="reduce"]').hidden,false,'the lower preview follows the rotating tab');
- clock.advance();assert.equal(selected(),'aigc');assert.equal(clock.pending,1,'rotation continues beyond a single transition');
+ clock.advance();assert.equal(selected(),'detection');assert.equal(d.activeElement,tab,'rotation does not move focus');
+ assert.equal(d.querySelector('[data-feature-panel="detection"]').hidden,false,'the lower preview follows the rotating tab');
+ clock.advance();assert.equal(selected(),'reduce');assert.equal(clock.pending,1,'rotation continues beyond a single transition');
  tab.dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
  assert.equal(clock.pending,0,'switching to keyboard navigation still pauses rotation');
- assert.equal(d.activeElement,d.querySelector('[data-feature-tab="reduce"]'));
+ assert.equal(d.activeElement,d.querySelector('[data-feature-tab="detection"]'));
  d.querySelector('#account-button').focus();await Promise.resolve();
  assert.equal(clock.pending,1,'leaving keyboard interaction resumes rotation');
 });
@@ -379,7 +381,7 @@ test('touch interaction stops capability rotation while keeping manual tab selec
  assert.equal(clock.pending,0,'scrolling back to the preview does not resume rotation after touch');
 });
 
-test('mobile capability previews stay manual and react to the 700px media breakpoint',async t=>{
+test('mobile capability previews stay manual and react to the 1000px stacked-layout breakpoint',async t=>{
  const clock=carouselEnvironment({compact:true}),d=await page(t,null,clock.prepare),w=d.defaultView;
  clock.enter();assert.equal(clock.pending,0,'mobile previews never start an automatic timer');
  assert.equal(d.querySelector('#capabilities').dataset.rotation,'paused');
@@ -404,4 +406,13 @@ test('media breakpoint changes preserve a manual touch pause on desktop',async t
  d.querySelector('#capabilities').dispatchEvent(touch);
  clock.setCompact(true);clock.setCompact(false);
  assert.equal(clock.pending,0,'resizing does not override an explicit touch pause');
+});
+
+test('malformed account responses retain the guest entry and direct writing destination',async t=>{
+ for(const user of [{name:'missing id'},{id:123,name:'numeric id'},[]]){
+  const d=await page(t,user);
+  assert.equal(d.querySelector('#account-button').classList.contains('is-signed-in'),false);
+  assert.equal(d.querySelector('#header-start').getAttribute('href'),'/auth.html?mode=register');
+  assert.equal(d.querySelector('#hero-writing-start').getAttribute('href'),'/workspace.html#tool/writing');
+ }
 });

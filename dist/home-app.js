@@ -9,7 +9,7 @@ function openDialog(title,html){previousFocus=document.activeElement;$('#home-di
 function closeDialog(){dialog.close();}
 dialog.addEventListener('close',()=>{document.body.classList.remove('home-modal-open');previousFocus?.focus();});$('#dialog-close').addEventListener('click',closeDialog);
 dialog.addEventListener('click',e=>{if(e.target!==dialog)return;const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();});
-const examples={outline:{title:'论文大纲 · 结构示例',selector:'.mini-outline',note:'这里展示论文提纲的结构示例，当前未调用 AI 生成正文。正式写作可从研究信息、知识补充、参考文献到提纲与正文逐步确认；请核对研究证据与引用。',url:'/workspace.html#category/writing',action:'开始创建论文'},report:{title:'来源比对 · 界面示例',selector:'.mini-comparison',note:'这里展示相似片段与对照正文的呈现方式，不是一次实际检测结果。工作台支持材料比对与联网来源比对；联网来源仅覆盖本次检索取得的公开网页，不包含学校封闭数据库。',url:'/workspace.html#category/detection',action:'进入来源比对'},revision:{title:'表达调整 · 界面示例',selector:'.mini-revision',note:'这里展示同一段内容调整表达前后的呈现方式，当前未执行 AI 修改。正式任务可结合原文与修改要求生成建议，保留原意并逐段复核后保存成果。',url:'/workspace.html#category/reduce',action:'开始调整表达'}};
+const examples={outline:{title:'论文大纲 · 结构示例',selector:'.mini-outline',note:'论文提纲示例。正式写作可确认研究信息、材料与文献，再按章节安排篇幅、图表、公式与代码。生成初稿后，可补充材料并继续完善终稿。',url:'/workspace.html#category/writing',action:'开始创建论文'},report:{title:'来源比对 · 界面示例',selector:'.mini-comparison',note:'检测报告示例。实际报告按原文定位展示相似片段、来源对照或 AI 表达修改建议。检测覆盖范围可在具体功能与使用说明中查看。',url:'/workspace.html#category/detection',action:'进入来源比对'},revision:{title:'表达调整 · 界面示例',selector:'.mini-revision',note:'这里展示同一段内容调整表达前后的呈现方式，当前未执行 AI 修改。正式任务可结合原文与修改要求生成建议，保留原意并逐段复核后保存成果。',url:'/workspace.html#category/reduce',action:'开始调整表达'}};
 document.querySelectorAll('[data-example]').forEach(b=>b.addEventListener('click',()=>{const e=examples[b.dataset.example];if(!e)return;const preview=$(e.selector);openDialog(e.title,`<p>${e.note}</p>${preview?`<div class="example-modal-preview">${preview.outerHTML}</div>`:''}<div class="home-dialog-actions"><a class="button" href="${e.url}">${e.action} ${svg('arrow')}</a></div>`);}));
 // The published release API is the only source of download links and file metadata.
 let desktopReleases=[],desktopReleaseState='loading',desktopReleaseVersion='';
@@ -46,7 +46,7 @@ function renderDesktopDownloads(){
  else if(desktopReleaseState==='error')notice.textContent='暂时无法获取客户端下载信息，你可以继续使用网页工作台。';
  else if(!available)notice.textContent='当前暂无已发布的安装包。网页工作台可正常使用。';
  else notice.textContent=desktopReleases.some(item=>!item.signed)?'首版安装包尚未签名，系统可能提示发布者无法验证。请从本站获取安装包。':'请按设备类型选择安装包，版本与系统要求见上方。';
- if(faq)faq.textContent=desktopReleaseState==='ready'&&available?`网页端无需安装。客户端 ${desktopReleaseVersion?'v'+desktopReleaseVersion+' ':''}已提供下载；请按设备选择版本，并核对系统要求。网页端与客户端的本地草稿分别保存在各自设备环境中，不会自动互相迁移。`:'网页端无需安装。客户端的版本、系统要求与可下载状态，请查看本页「客户端下载」。';
+ if(faq)faq.textContent=desktopReleaseState==='ready'&&available?`网页端无需安装。客户端 ${desktopReleaseVersion?'v'+desktopReleaseVersion+' ':''}已提供下载；请按设备选择版本，并核对系统要求。网页端与客户端使用同一账户管理已保存的云端资料，可继续处理项目、文件与任务。`:'网页端无需安装。客户端的版本、系统要求与可下载状态，请查看本页「客户端下载」。';
 }
 async function loadDesktopReleases(){
  if(desktopReleaseState==='loading'&&loadDesktopReleases.pending)return;
@@ -69,17 +69,17 @@ $('#desktop-download-retry')?.addEventListener('click',loadDesktopReleases);
 loadDesktopReleases();
 function capabilityStatus(ready){return ready===true?'当前可用':ready===false?'暂不可用':'进入功能确认';}
 $('#status-button').addEventListener('click',()=>{openDialog('PaperKnow 功能与服务',`<p>从研究资料到论文与演示成果，在同一工作台完成。在线服务状态来自当前服务信息，具体额度与处理要求请在提交任务前确认。</p><div class="status-list">${[
- ['AI 写作','10 类写作流程，覆盖论文、开题、综述与日常学术写作',serviceCapabilities?.writing?.ready],
+ ['AI 写作','10 类写作与研究任务，覆盖论文、开题、综述与日常研究',serviceCapabilities?.writing?.ready],
  ['毕业论文五步流程','研究信息、知识补充、参考文献、提纲与论文撰写逐步确认',serviceCapabilities?.thesis?.ready],
  ['文献检索','检索 OpenAlex、arXiv 等学术来源，整理参考文献',serviceCapabilities?.academicSearch],
- ['文献研读与改写','结合材料研读、整理摘要、润色与修改建议',serviceCapabilities?.tools?.ready],
- ['文献翻译','提交文档后核对处理状态与译文成果',serviceCapabilities?.documentTranslation?.ready],
- ['联网来源比对','覆盖本次检索取得的公开网页，不包含学校封闭数据库',serviceCapabilities?.webSimilarity?.ready],
- ['AI 文本鉴别','提供文本鉴别参考，结果不能作为学术违规的单独判定依据',serviceCapabilities?.aigcDetection?.ready],
- ['学术 PPT','生成并导出可编辑 PPTX，支持后续调整',serviceCapabilities?.tools?.presentation?.ready],
+ ['文献研读','原文阅读、AI 问答、要点总结与高亮笔记',serviceCapabilities?.tools?.ready],
+ ['文献翻译','对照原文与译文阅读，支持联动查看',serviceCapabilities?.documentTranslation?.ready],
+ ['论文重复率检测','按原文定位相似片段，并提供来源对照与报告',serviceCapabilities?.webSimilarity?.ready],
+ ['论文 AI 率检测','查看分段分析、原文标记与修改建议',serviceCapabilities?.aigcDetection?.ready],
+ ['PPT 创作','直接生成图文演示，网页预览并导出可编辑 PPTX',serviceCapabilities?.tools?.presentation?.ready],
  ['科研 AI 绘图','根据研究内容与参考图创建科研图像',serviceCapabilities?.tools?.researchImages?.ready],
  ['公式识别','识别公式图像并在工作台核对结果',serviceCapabilities?.formulaOcr?.ready],
- ['格式排版','根据格式要求编辑与导出文档',true],
+ ['格式排版','上传模板与 DOCX 原文，按要求排版并检查',serviceCapabilities?.tools?.ready],
  ['项目、资料与成果','账户管理项目文件、任务与成果版本',serviceCapabilities?.account],
  ['会员、积分与套餐','按研究需求选择当前已发布方案，购买前确认权益',serviceCapabilities?.payment]
  ].map(([t,d,ready])=>`<div><div><b>${t}</b><small>${d}</small></div><span class="status-tag ${ready===true?'':'neutral'}">${capabilityStatus(ready)}</span></div>`).join('')}</div><div class="home-dialog-actions"><a class="button" href="/workspace.html">进入工作台 ${svg('arrow')}</a></div>`);});
@@ -93,6 +93,16 @@ function validHomePlan(product){
  if(product.entitlementType==='credits')return Number.isSafeInteger(product.creditAmount)&&product.creditAmount>0&&product.creditAmount<=1000000;
  return Number.isSafeInteger(product.durationDays)&&product.durationDays>0&&product.durationDays<=366;
 }
+function renderHomeServicePrices(data){
+ if(!Array.isArray(data?.toolBilling?.services))return;
+ for(const node of document.querySelectorAll('[data-home-service-price]')){
+  const matches=data.toolBilling.services.filter(item=>item?.key===node.dataset.homeServicePrice),item=matches.length===1?matches[0]:null,mode=item?.effectiveMode??item?.mode,cost=item?.effectiveCreditCost??item?.creditCost;
+  if(!item||item.available!==true||mode==='disabled'){node.textContent='查看当前费用';continue;}
+  if(mode!=='free'&&(mode!=='paid'||!Number.isSafeInteger(cost)||cost<1||cost>100000)){node.textContent='价格待核对';continue;}
+  node.textContent=mode==='free'?'免费':cost.toLocaleString('zh-CN')+' 积分 / 次';
+  if(mode==='paid'){const cash=document.createElement('small');cash.textContent='标准折合 ¥'+(cost/10).toFixed(2);node.append(cash);}
+ }
+}
 async function loadHomePlanSummary(){
  const summary=$('[data-home-plan-summary]');if(!summary)return;
  summary.querySelectorAll('[data-home-plan-link]').forEach(link=>{const type=link.dataset.homePlanLink;if(Object.hasOwn(homePlanRoutes,type))link.href=homePlanRoutes[type];});
@@ -101,7 +111,8 @@ async function loadHomePlanSummary(){
   const response=await fetch('/api/payments/options',{credentials:'same-origin',cache:'no-store',signal:controller.signal});
   if(!response.ok)return;
   const data=await response.json();
-  if(data?.enabled!==true||!Array.isArray(data.products)||data.products.length>500)return;
+  if(!data||!Array.isArray(data.products)||data.products.length>500)return;
+  renderHomeServicePrices(data);if(data.enabled!==true)return;
   const products=data.products.filter(validHomePlan);
   for(const type of Object.keys(homePlanRoutes)){
    const product=products.filter(item=>item.entitlementType===type).sort((a,b)=>a.priceCents-b.priceCents)[0];if(!product)continue;
@@ -114,7 +125,7 @@ async function loadHomePlanSummary(){
      const credits=`${product.creditAmount.toLocaleString('zh-CN')} 科研积分`;
      const quantityTitle=[`${product.creditAmount}积分`,`${product.creditAmount}科研积分`].includes(title.replace(/[\s,，]/g,''));
      detail.textContent=quantityTitle?credits:`${title} · ${credits}`;
-    }else detail.textContent=`${title} · 按所选商品权益使用`;
+    }else{const items=product.membershipItems||product.entitlement?.membershipItems||[],light=items.find(item=>item.key==='light-ai'),pages=items.find(item=>item.key==='translation-pages');detail.textContent=type==='membership'&&Number.isSafeInteger(light?.quantity)&&Number.isSafeInteger(pages?.quantity)?`${title} · 轻量 AI ${light.quantity} 次 · 翻译 ${pages.quantity} 页`:`${title} · 按所选商品权益使用`;}
    }
   }
  }catch{}finally{clearTimeout(timeout);}
@@ -139,17 +150,18 @@ $('#account-button').addEventListener('click',()=>{
  $('#service-logout').onclick=async()=>{const b=$('#service-logout');b.disabled=true;try{const r=await fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(!r.ok)throw new Error();serviceUser=null;closeDialog();location.reload();}catch{toast('退出未完成，请重试。');b.disabled=false;}};
 });
 async function loadServiceState(){
- await Promise.allSettled([
-  (async()=>{try{const response=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store'});if(response.ok){const data=await response.json();serviceUser=data?.user&&typeof data.user==='object'&&!Array.isArray(data.user)?data.user:null;}}finally{renderAccount();}})(),
-  (async()=>{const response=await fetch('/api/capabilities',{credentials:'same-origin',cache:'no-store'});if(response.ok)serviceCapabilities=await response.json();})()
- ]);
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);
+ try{await Promise.allSettled([
+  (async()=>{try{const response=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store',signal:controller.signal});if(response.ok){const data=await response.json();serviceUser=data?.user&&typeof data.user==='object'&&!Array.isArray(data.user)&&typeof data.user.id==='string'&&data.user.id?data.user:null;}}finally{renderAccount();}})(),
+  (async()=>{const response=await fetch('/api/capabilities',{credentials:'same-origin',cache:'no-store',signal:controller.signal});if(response.ok)serviceCapabilities=await response.json();})()
+ ]);}finally{clearTimeout(timeout);}
 }
 // Keep all capabilities visible, with one focused preview and direct workspace links.
 const featureTabs=Array.from(document.querySelectorAll('[data-feature-tab]'));
 const featurePanels=Array.from(document.querySelectorAll('[data-feature-panel]'));
 const featureSection=$('#capabilities');
 const featureMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
-const featureCompact=window.matchMedia('(max-width: 700px)');
+const featureCompact=window.matchMedia('(max-width: 1000px)');
 let featureAutoplay=!featureMotion.matches,featureInView=false,featureKeyboardInput=true;
 let featureTimer=null;
 const featureDelay=5000;
