@@ -1,5 +1,5 @@
 const stages=[
- ['prepare','准备论文','上传文档或粘贴正文'],
+ ['prepare','准备论文','上传 DOCX 论文'],
  ['review','核对检测内容','核对正文与本次费用'],
  ['processing','生成检测报告','查看检测进度'],
  ['report','查看与下载','查看标注与完整报告']
@@ -35,7 +35,7 @@ export function createDetectionWorkflow(host,{kind='similarity',targets={}}={}){
    button.querySelector('[data-workflow-number]').textContent=completed?'✓':String(index+1).padStart(2,'0');
   }
   const messages={
-   prepare:'先上传 DOCX、PDF、TXT 文档，或在下方粘贴需要检测的论文正文。',
+   prepare:'先上传需要检测的 DOCX 论文，读取完成后即可开始检测。',
    importing:'正在读取论文文档，读取完成后请核对提取的正文。',
    review:newDraft?'当前正文已更新，尚未进行本次检测；上次报告仍可在下方查看。':valid?(ai?'正文已准备好。核对论文内容与本次费用后，点击“开始 AI 率检测”。':'正文已准备好。核对正文、检测范围与本次费用后，点击“开始重复率检测”。'):'请在正文区补充或调整内容，符合检测要求后即可开始。',
    submitting:'正在提交本次检测，请稍候。',

@@ -120,3 +120,10 @@ test('an export finishing after a mode switch cannot show its result in a differ
 });
 
 for(const kind of ['similarity','aigc'])test(kind+' switches decorative artwork with the chosen mode without a new API request or replacing inputs',t=>{const f=fixture(t,{kind}),header=f.$('header.tool-banner'),original=f.$('#revision-service-text');for(const mode of ['report','paragraph','dual','report']){f.choose(mode);assert.equal(f.$('header.tool-banner'),header);assert.equal(header.dataset.toolArt,'revision-'+kind+'-'+mode);assert.equal(f.$('#revision-service-text'),original);assert.equal(f.calls.length,0);}for(const image of f.root.querySelectorAll('.revision-mode-art')){assert.equal(image.alt,'');assert.equal(image.getAttribute('aria-hidden'),'true');}});
+
+for(const kind of ['similarity','aigc'])test(kind+' manuscript uploads reject other formats while reports retain provider formats',async t=>{
+ let reads=0;const f=fixture(t,{kind,dependencies:{importDocument:async()=>{reads++;return{text:paragraphs.join('\n\n')};}}});
+ assert.equal(f.$('#revision-service-file').accept,'.docx');assert.match(f.$('[data-rrp-file]').accept,/\.pdf/);assert.match(f.$('[data-rrp-file]').accept,/\.zip/);
+ for(const mode of ['report','dual']){f.choose(mode);for(const file of ['论文.pdf','论文.txt','论文.doc']){f.file(file);await new Promise(r=>setImmediate(r));assert.match(f.$('#revision-service-file-status').textContent,/仅支持 DOCX/);}}
+ assert.equal(reads,0);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);f.file('论文.DOCX');await settle(()=>/已读取/.test(f.$('#revision-service-file-status').textContent));assert.equal(reads,1);
+});

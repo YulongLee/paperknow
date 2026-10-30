@@ -15,11 +15,11 @@ function fixture(t,{importDocument,onConfirm}={}){
 }
 
 test('source dialog retains typed content after a file read and only explicitly adopts extracted source text',async t=>{
- const read=deferred(),f=fixture(t,{importDocument:async()=>read.promise});f.fill('#rev-source-name','已填文章');f.fill('#rev-source-text','用户已经填写且有权使用的对照正文，应保留当前输入。');f.select({name:'其他文章.txt',size:100});read.resolve({text,warnings:[]});await until(()=>!f.q('[data-source-confirm]').disabled);assert.match(f.q('#rev-source-text').value,/用户已经填写/);assert.equal(f.saved.length,0);const adopt=f.q('[data-source-import-status] button');assert.ok(adopt);adopt.click();assert.equal(f.q('#rev-source-text').value,text);assert.equal(f.q('#rev-source-name').value,'已填文章');f.q('[data-source-confirm]').click();await until(()=>f.saved.length===1);assert.equal(f.saved[0].sources[0].text,text);assert.equal(f.doc.original,text);
+ const read=deferred(),f=fixture(t,{importDocument:async()=>read.promise});f.fill('#rev-source-name','已填文章');f.fill('#rev-source-text','用户已经填写且有权使用的对照正文，应保留当前输入。');f.select({name:'其他文章.docx',size:100});read.resolve({text,warnings:[]});await until(()=>!f.q('[data-source-confirm]').disabled);assert.match(f.q('#rev-source-text').value,/用户已经填写/);assert.equal(f.saved.length,0);const adopt=f.q('[data-source-import-status] button');assert.ok(adopt);adopt.click();assert.equal(f.q('#rev-source-text').value,text);assert.equal(f.q('#rev-source-name').value,'已填文章');f.q('[data-source-confirm]').click();await until(()=>f.saved.length===1);assert.equal(f.saved[0].sources[0].text,text);assert.equal(f.doc.original,text);
 });
 
 test('closing the source dialog invalidates late file extraction and cannot save or repaint a different window',async t=>{
- const read=deferred(),f=fixture(t,{importDocument:async()=>read.promise});f.select({name:'迟到文章.txt',size:100});f.q('dialog').close();f.q('#body').innerHTML='<p id="next">其他页面</p>';read.resolve({text,warnings:[]});await new Promise(resolve=>setTimeout(resolve,5));assert.equal(f.q('#next').textContent,'其他页面');assert.equal(f.saved.length,0);assert.equal(f.doc.comparison,undefined);
+ const read=deferred(),f=fixture(t,{importDocument:async()=>read.promise});f.select({name:'迟到文章.docx',size:100});f.q('dialog').close();f.q('#body').innerHTML='<p id="next">其他页面</p>';read.resolve({text,warnings:[]});await new Promise(resolve=>setTimeout(resolve,5));assert.equal(f.q('#next').textContent,'其他页面');assert.equal(f.saved.length,0);assert.equal(f.doc.comparison,undefined);
 });
 
 test('unsafe source URLs and oversized source text never persist a misleading comparison',async t=>{

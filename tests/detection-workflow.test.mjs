@@ -33,7 +33,7 @@ for(const kind of ['similarity','aigc']){
  test(kind+' guides prepare, import and review without submitting or replacing existing controls',async t=>{
   let release;const f=await fixture(t,kind,{importDocument:()=>new Promise(resolve=>release=resolve)}),input=f.$(`[data-${f.prefix}-text]`),root=f.$('[data-detection-workflow]');
   assert.equal(root.querySelectorAll('[data-workflow-step]').length,4);assert.equal(f.phase(),'prepare');assert.equal(f.$('[data-workflow-step="report"]').disabled,true);
-  const file=f.$(`[data-${f.prefix}-file]`);Object.defineProperty(file,'files',{configurable:true,value:[{name:'合成论文.txt',size:128}]});file.dispatchEvent(new f.dom.window.Event('change'));await flush();assert.equal(f.phase(),'importing');
+  const file=f.$(`[data-${f.prefix}-file]`);Object.defineProperty(file,'files',{configurable:true,value:[{name:'合成论文.docx',size:128}]});file.dispatchEvent(new f.dom.window.Event('change'));await flush();assert.equal(f.phase(),'importing');
   release({text});await flush();assert.equal(f.phase(),'review');assert.equal(input.value,text);assert.equal(f.$(`[data-${f.prefix}-text]`),input);
   let scrolls=0;input.scrollIntoView=()=>scrolls++;f.$('[data-workflow-step="review"]').click();assert.equal(scrolls,1);assert.equal(f.doc.activeElement,input);assert.equal(f.posts().length,0);
   assert.match(f.$('[data-workflow-hint]').textContent,/核对/);assert.equal(f.$('[data-workflow-step="processing"]').disabled,true);

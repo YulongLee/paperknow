@@ -54,3 +54,9 @@ AI报告按保存原文的换行建立定位，标出落在实际AI标签片段�
 `tests/detection-formal-report.test.mjs`、`tests/report-export.test.mjs`、`tests/report-highlight.test.mjs` 保证相似性证据、演示标识、安全转义和长稿上限。
 
 `tests/aigc-report.test.mjs`、`tests/aigc-detection-ui.test.mjs` 保证结果语义、历史正文边界、预览打印、账户切换及下载延迟竞态。浏览器验收使用 localhost 模拟服务，不将模拟数据作为真实检测证据。
+
+## 论文原文上传（2026-10-30）
+
+论文重复率检测、论文 AI 率检测、降重复率和降 AI 率统一只接收 DOCX 论文文件，单文件非空且不超过 50MB。文件选择器、文件管理筛选和读取前校验使用同一格式要求。非法格式不会进入解析或检测提交；原有正文不会被非法文件替换。降重与降 AI 的全文检测报告保留 PDF、HTML、ZIP 等供应商报告格式，段落粘贴模式仍可使用。文献研读等其他功能的上传格式不受影响。
+
+AI 率检测以 DOCX 上传为主入口，包含拖拽、文件状态、读取等待、标题自动填写和正文核对。只有点击开始检测才会提交正文；费用和账户隔离规则保持不变。

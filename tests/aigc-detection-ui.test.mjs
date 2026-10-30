@@ -62,7 +62,7 @@ test('Unicode source positions preserve emoji and count codepoints without alter
 
 test('an explicit nonconclusive server result never becomes a confident verdict',()=>{assert.equal(normalizeAigcResult(complete({conclusive:false})).verdict,'undetermined');assert.equal(normalizeAigcResult(complete({verdict:'undetermined'})).verdict,'undetermined');});
 
-test('document import prepares text locally and never submits detection or consents automatically',async()=>{const f=fixture(()=>null,{importDocument:async()=>({text:'提取后的真实正文',warnings:[]})});try{await f.panel.ready;const target=f.$('[data-aigc-file]');Object.defineProperty(target,'files',{value:[{name:'原稿.txt',size:100}],configurable:true});target.dispatchEvent(new f.dom.window.Event('change'));await settle();assert.equal(f.$('[data-aigc-text]').value,'提取后的真实正文');assert.equal(f.$('[data-aigc-consent]'),null);assert.equal(f.calls.some(call=>call.body),false);assert.match(f.$('[data-aigc-status]').textContent,/请核对正文/);}finally{f.close();}});
+test('document import prepares text locally and never submits detection or consents automatically',async()=>{const f=fixture(()=>null,{importDocument:async()=>({text:'提取后的真实正文',warnings:[]})});try{await f.panel.ready;const target=f.$('[data-aigc-file]');Object.defineProperty(target,'files',{value:[{name:'原稿.docx',size:100}],configurable:true});target.dispatchEvent(new f.dom.window.Event('change'));await settle();assert.equal(f.$('[data-aigc-text]').value,'提取后的真实正文');assert.equal(f.$('[data-aigc-consent]'),null);assert.equal(f.calls.some(call=>call.body),false);assert.match(f.$('[data-aigc-status]').textContent,/论文已准备好/);}finally{f.close();}});
 
 test('disposing a panel ignores late responses and stops result updates',async()=>{let finish;const f=fixture((url,body)=>url==='/api/aigc-detections'&&body?new Promise(resolve=>finish=resolve):null);try{await f.panel.ready;f.input('正文内容');f.consent();f.$('[data-aigc-start]').click();await settle();f.panel.dispose();finish(response(complete(),202));await settle();assert.equal(f.$('[data-aigc-result]').hidden,true);assert.equal(f.calls.filter(call=>call.body).length,1);}finally{f.close();}});
 
@@ -144,4 +144,29 @@ test('AI failed tasks do not publish partial label tables or a success percentag
 test('saved AI original exposes paragraph entry points and opens the exact risk location without new detection',async()=>{
  const raw='原文第一段需要核对。\n原文第二段保留上下文。',size=Array.from(raw).length,item=complete({characters:size,reportAvailable:true,parts:[{index:0,start:0,end:size,characters:size,label:'aigc',confidence:88}]}),f=fixture((url,body)=>url==='/api/aigc-detections'&&!body?response({items:[item]}):url==='/api/aigc-detections/task-1'?response(item):url==='/api/aigc-detections/task-1/report'?response({item,text:raw,title:'送检原稿'}):null);
  try{await f.panel.ready;const button=f.$('[data-aigc-location]');assert.ok(button);assert.match(button.closest('.detection-findings').textContent,/原文第一段需要核对/);button.click();await settle();const frame=f.$('.aigc-report-preview iframe');assert.ok(frame);const dom=new JSDOM(frame.srcdoc);assert.ok(dom.window.document.getElementById(button.dataset.aigcLocation));assert.equal([...dom.window.document.querySelectorAll('.aigc-report-text-risk')].map(node=>node.textContent).join(''),raw);dom.window.close();assert.equal(f.calls.some(call=>call.body),false);}finally{f.close();}
+});
+
+test('DOCX upload rejects PDF, TXT and oversized files before parsing or submitting and keeps the previous manuscript',async()=>{
+ let parsed=0;const f=fixture(()=>null,{importDocument:async()=>{parsed++;return{text:'需要检查的真实研究正文。',warnings:[]};}});
+ try{await f.panel.ready;assert.equal(f.$('[data-aigc-file]').accept,'.docx');assert.equal(f.$('[data-aigc-text-preview]').hidden,true);
+  const select=async file=>{Object.defineProperty(f.$('[data-aigc-file]'),'files',{value:[file],configurable:true});f.$('[data-aigc-file]').dispatchEvent(new f.dom.window.Event('change'));await settle();};
+  for(const file of [{name:'论文.pdf',size:40},{name:'论文.txt',size:40},{name:'论文.doc',size:40},{name:'论文.docx',size:51*1024*1024}])await select(file);
+  assert.equal(parsed,0);assert.equal(f.calls.some(call=>call.body),false);assert.equal(f.$('[data-aigc-text]').value,'');
+  await select({name:'研究论文.DOCX',size:1234});assert.equal(parsed,1);assert.equal(f.$('[data-aigc-file-name]').textContent,'研究论文.DOCX');assert.equal(f.$('[data-aigc-upload]').dataset.state,'ready');assert.equal(f.$('[data-aigc-title]').value,'研究论文');assert.equal(f.$('[data-aigc-text-preview]').hidden,false);assert.equal(f.$('[data-aigc-text-preview]').open,false);
+  await select({name:'不支持.pdf',size:50});assert.equal(parsed,1);assert.equal(f.$('[data-aigc-file-name]').textContent,'研究论文.DOCX');assert.equal(f.$('[data-aigc-text]').value,'需要检查的真实研究正文。');assert.equal(f.calls.some(call=>call.body),false);
+ }finally{f.close();}
+});
+
+test('DOCX reading keeps a stable busy surface and drops do not duplicate the read',async()=>{
+ let finish,calls=0;const f=fixture(()=>null,{importDocument:async()=>{calls++;return new Promise(resolve=>finish=resolve);}});
+ try{await f.panel.ready;const file={name:'待检测论文.docx',size:100},zone=f.$('[data-aigc-upload]'),drop=()=>{const event=new f.dom.window.Event('drop',{bubbles:true,cancelable:true});Object.defineProperty(event,'dataTransfer',{value:{files:[file]}});zone.dispatchEvent(event);};
+  drop();await settle();assert.equal(calls,1);assert.equal(zone.dataset.state,'reading');assert.equal(f.$('[data-aigc-file]').disabled,true);assert.equal(f.$('[data-aigc-start]').disabled,true);drop();await settle();assert.equal(calls,1);
+  finish({text:'这是合成论文正文，用于核对读取状态与重复点击保护。'});await settle();assert.equal(f.$('[data-aigc-upload]'),zone);assert.equal(zone.dataset.state,'ready');assert.equal(f.$('[data-aigc-file]').disabled,false);assert.equal(f.calls.some(call=>call.body),false);
+ }finally{f.close();}
+});
+
+test('an account change during DOCX reading clears the manuscript, file name and title before late text can appear',async()=>{
+ let owner='u1',finish;const f=fixture(url=>url==='/api/auth/me'?response({user:{id:owner}}):null,{importDocument:async()=>new Promise(resolve=>finish=resolve)});
+ try{await f.panel.ready;const input=f.$('[data-aigc-file]');Object.defineProperty(input,'files',{value:[{name:'私有论文.docx',size:100}],configurable:true});input.dispatchEvent(new f.dom.window.Event('change'));await settle();owner='u2';finish({text:'原账户私有研究资料内容。'});await settle();assert.equal(f.$('[data-aigc-text]').value,'');assert.equal(f.$('[data-aigc-title]').value,'');assert.doesNotMatch(f.$('#host').textContent,/私有论文|原账户私有/);assert.equal(f.$('[data-aigc-start]').disabled,true);assert.equal(f.calls.some(call=>call.body),false);
+ }finally{f.close();}
 });
