@@ -47,6 +47,21 @@ test('quick questions only fill the input and same-source history is included au
 test('an unsaved manual edit is excluded from chat history even while durable storage still holds the old answer',async t=>{
  const record=answer('1');record.materials=[{id:'p1',name:'Paper · 第 1 段',text:source}];const f=fixture(t,[record]);f.$('[data-lit-ai-operation="answer"]').click();f.failEdits();f.input('[data-lit-ai-text]','Unpersisted human edit');assert.equal(f.getUi().getPendingEdits().length,1);f.input('[data-lit-ai-question]','A new source question');await f.open();const snapshot=f.calls.find(c=>c.path==='/tool-runs/quote').data.snapshot;assert.equal(snapshot.context.chatHistory,undefined);
 });
+test('question retrieval is the default, manual ranges override it and automatic mode can be restored',async t=>{
+ const f=fixture(t),paragraphs=Array.from({length:40},(_,i)=>i===35?'The model achieves a BLEU score of 28.4.':`Synthetic background paragraph ${i} without measured results.`);
+ f.setPaper({...paper([]),text:paragraphs.join('\n\n')});f.mount();f.$('[data-lit-ai-operation="answer"]').click();f.input('[data-lit-ai-question]','BLEU score?');await f.open();
+ let snapshot=f.calls.filter(c=>c.path==='/tool-runs/quote').at(-1).data.snapshot;assert.equal(snapshot.context.answerStrategy,'question-retrieval-v1');assert.ok(snapshot.materials.some(m=>m.id==='p36'));
+ f.input('[data-lit-ai-start]','1');f.input('[data-lit-ai-end]','1');await f.open();snapshot=f.calls.filter(c=>c.path==='/tool-runs/quote').at(-1).data.snapshot;assert.equal(snapshot.context.answerStrategy,undefined);assert.deepEqual(snapshot.materials.map(m=>m.id),['p1']);
+ f.$('[data-lit-auto-range]').click();await f.open();snapshot=f.calls.filter(c=>c.path==='/tool-runs/quote').at(-1).data.snapshot;assert.ok(snapshot.materials.some(m=>m.id==='p36'));
+});
+test('interactive history keeps complete recent turns within a small context budget',()=>{
+ const rows=['1','2','3'].map(id=>answer(id,'q','a'.repeat(1000))),result=readingChatHistory(paper(rows),materials,{enabled:true,maxCharacters:2000,maxTurns:2});
+ assert.equal(result.history.length,1);assert.equal(result.history[0].answer.length,1000);assert.ok(result.history[0].question.length+result.history[0].answer.length<=2000);
+});
+test('a pending pre-retrieval answer retains its original manual scope when the reader is upgraded',t=>{
+ const f=fixture(t),p=paper([]);p.aiDraft={start:1,end:1,question:'Existing question'};p.aiJobStates={answer:{itemId:'legacy-pending',snapshot:{question:'Existing question',context:{}}}};f.setPaper(p);f.mount();
+ assert.equal(f.getUi().getState().answerScope,'manual');assert.equal(f.getUi().getState().start,1);assert.equal(f.calls.some(c=>c.path==='/tool-runs/jobs'),false);
+});
 
 for(const operation of ['read','answer','translate'])test('literature '+operation+' sends the selected account project in both quote and job requests',async t=>{
  const f=fixture(t),reference=projectReference('owner1','cloud-paper-project');f.setPaper({...paper([]),projectId:reference});f.mount();

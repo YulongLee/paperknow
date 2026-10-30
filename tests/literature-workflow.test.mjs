@@ -19,7 +19,7 @@ const nav=f=>f.$('[data-reading-workflow]');
 const record=()=>({id:'paper1',title:'Synthetic research',scope:'full',text:'First actual paragraph describes a verified research method.\n\nSecond actual paragraph describes evidence and limitations.',notes:[],aiResults:[]});
 function aiFixture(t,operation='read',options={}){
  const f=fixture(t,'#literature/paper1');let paper=record(),job,snapshot;const calls=[];
- const nativeTimeout=f.w.setTimeout.bind(f.w);f.w.setTimeout=(fn,ms,...args)=>nativeTimeout(fn,ms===2500?5:ms,...args);
+ const nativeTimeout=f.w.setTimeout.bind(f.w);f.w.setTimeout=(fn,ms,...args)=>nativeTimeout(fn,ms===2500||ms===1000?5:ms,...args);
  const ctx={notify(){},api:async(path,data)=>{calls.push({path,data});if(path==='/auth/me')return {user:{id:'owner'}};if(path==='/tool-runs/capabilities')return {ready:true};if(path==='/tool-runs/quote')return {type:'agent',source:'credits',title:'Reading',token:'flow-quote',creditCost:10,expiresAt:new Date(Date.now()+60000).toISOString()};if(path==='/tool-runs/jobs'){snapshot=data.snapshot;job={id:'flow-job',kind:'literature',operation,status:'queued',completedUnits:0,totalUnits:2};return {item:job};}if(path==='/tool-runs/jobs/flow-job')return {item:job};throw Error('Unexpected API '+path);}};
  if(options.paper)paper=options.paper;
  const ui=mountLiteratureAi({container:f.host,ctx,getPaper:()=>paper,updatePaper:fn=>{paper=fn(paper);},initialOperation:operation});f.disposers.push(()=>ui.dispose());

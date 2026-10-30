@@ -14,6 +14,32 @@ const original='这是功能验收的合成资料，记录了20名参与者，�
 const input=(operation='rewrite',snapshot={})=>({kind:operation==='rewrite'?'revision':['read','answer','translate'].includes(operation)?'literature':operation==='ppt'?'presentation':'research',operation,snapshot:{title:'【合成验收】研究材料',text:original,language:'en',question:'原文提供了什么信息？',...snapshot}});
 const result=(body,trace=[])=>({text:JSON.stringify({complete:true,sourceIds:[],...body}),trace,usage:{input:100,output:100},costUsd:.001});
 const revised=task=>result({paragraphs:task.context.unit.paragraphs.map(p=>({id:p.id,original:p.original,revised:p.original.includes('这是')?p.original.replace('这是','这份'):'表达调整：'+p.original}))});
+test('interactive answers finish while general work is blocked, settle once and keep diagnostics free of source text',async t=>{
+ let release,entered;const gate=new Promise(r=>{release=r;}),started=new Promise(r=>{entered=r;});t.after(()=>release());let answers=0;
+ const f=await fixture(t,{agentTaskRunner:async({task,settings})=>{
+  if(task.context.operation!=='answer'){entered();await gate;return revised(task);}
+  answers++;assert.ok(settings.maxOutputTokens<=3072);const ranges=task.context.unit.ranges;
+  return {...result({text:'回答基于实际资料。',sourceIds:ranges.map(r=>r.sourceId),citations:[{sourceId:ranges[0].sourceId,quote:task.materials[0].text.slice(0,10)}]},ranges.map(r=>({tool:'read_material',status:'completed',materialId:r.sourceId,offset:r.start,limit:r.end-r.start}))),providerRequests:2};
+ }});f.pay();const general=await f.submit();const pending=f.worker.tick();await started;
+ const answer=await f.submit(input('answer'));const next=f.worker.tick();
+ for(let i=0;i<100&&f.db.prepare('SELECT status FROM tool_runs WHERE id=?').get(answer.value.item.id).status!=='completed';i++)await new Promise(r=>setTimeout(r,5));
+ assert.equal(f.db.prepare('SELECT status FROM tool_runs WHERE id=?').get(answer.value.item.id).status,'completed');
+ assert.equal(f.db.prepare('SELECT status FROM tool_runs WHERE id=?').get(general.value.item.id).status,'running');
+ await next;const diagnostic=f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(answer.value.item.id);const metrics=JSON.parse(diagnostic.metrics);
+ assert.equal(metrics.units,1);assert.equal(metrics.providerRequests,2);assert.ok(metrics.queueMs>=0&&metrics.executionMs>=0);assert.doesNotMatch(diagnostic.metrics,/参与者|private/);
+ release();await pending;await f.worker.tick();assert.equal(answers,1);assert.equal(f.billing.balance('alice').balance,180);assert.equal(f.billing.balance('alice').held,0);
+});
+test('interactive lane cancellation releases its hold without cancelling general work or starting the queued duplicate',async t=>{
+ let release,answerStarted;const gate=new Promise(r=>{release=r;}),started=new Promise(r=>{answerStarted=r;});t.after(()=>release());let answerCalls=0;
+ const f=await fixture(t,{agentTaskRunner:async({task,signal})=>{
+  if(task.context.operation!=='answer'){await gate;return revised(task);}
+  answerCalls++;answerStarted();await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}));throw Object.assign(Error('cancelled'),{usage:{input:10,output:10},costUsd:.001});
+ }});f.pay();const general=await f.submit(),answer=await f.submit(input('answer'));const pending=f.worker.tick();await started;
+ const second=await f.submit(input('answer'));await f.worker.tick();assert.equal(answerCalls,1);assert.equal(f.db.prepare('SELECT status FROM tool_runs WHERE id=?').get(second.value.item.id).status,'queued');
+ await f.request('/tool-runs/jobs/'+answer.value.item.id+'/cancel',{});await f.request('/tool-runs/jobs/'+second.value.item.id+'/cancel',{});release();await pending;
+ assert.equal(f.db.prepare('SELECT status FROM tool_runs WHERE id=?').get(general.value.item.id).status,'completed');assert.equal(f.billing.balance('alice').held,0);assert.equal(f.billing.balance('alice').balance,190);
+ assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='release'").get().n,2);
+});
 async function fixture(t,extra={}){
  const db=database(':memory:'),users={};for(const id of ['alice','bob']){db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run(id,id+'@example.test',id,null,'user',new Date().toISOString());users[id]={id,cookie:'pk_session='+createSession(db,id)};}
  const config={getAI:()=>({aiEnabled:false}),getAgentSettings:version=>!version||version===runtime.version?{...runtime}:null,agentTaskRunner:async({task})=>revised(task),toolPollMs:60000,...extra};const billing=createBillingService(db,config);config.billing=billing;let worker;
