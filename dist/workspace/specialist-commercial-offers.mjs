@@ -2,7 +2,7 @@
 // the published server catalogue and its immutable order snapshot.
 const freeze=value=>{if(value&&typeof value==='object'){for(const item of Object.values(value))freeze(item);Object.freeze(value);}return value;};
 export const specialistBundleDurationDays=180;
-export const specialistLaunchVersion='2026-10-21-paid-v1';
+export const specialistLaunchVersion='2026-10-31-paid-v1';
 const degreeNames={junior:'专科',bachelor:'本科',master:'硕士',doctor:'博士'};
 const validDuration=value=>{if(!Number.isSafeInteger(value)||value<1||value>366)throw new Error('套餐有效期应为 1～366 天的整数');return value;};
 const item=(key,title,quantity)=>({key,title,quantity});
@@ -14,12 +14,12 @@ function offer({id,title,priceCents,durationDays,group,audience,featured=false,b
 export function specialistOffersForDuration(durationDays=specialistBundleDurationDays){
  validDuration(durationDays);
  const revisions=[
-  ['rewrite','强力查降套餐',9900,'revision-reduce','一键强力降重','围绕已有正文，整理重复表达'],
-  ['reduce','超值降 AI 套餐',12900,'revision-aigc','一键降 AIGC','完善自然、连贯的学术表达'],
-  ['dual','AIGC+重复率双降套餐',15900,'revision-dual','AIGC+重复率双降','兼顾重复表达与语言自然度']
+  ['rewrite','查重优化套餐',5900,'revision-reduce','一键强力降重','围绕已有正文，整理重复表达'],
+  ['reduce','AI 表达优化套餐',7900,'revision-aigc','一键降 AIGC','完善自然、连贯的学术表达'],
+  ['dual','双向优化套餐',9900,'revision-dual','AIGC+重复率双降','兼顾重复表达与语言自然度']
  ].map(([id,title,priceCents,key,service,audience])=>offer({id:'bundle-'+id,title,priceCents,durationDays,group:'detect',audience,featured:id==='reduce',bundleItems:[item('detection-similarity','PaperKnow 来源比对',2),item('detection-aigc','AI 文本鉴别',2),item('polish','修改建议与表达修改',2),item(key,service,2)]}));
- const writing=[['junior',15900,5],['bachelor',23900,7],['master',36900,10],['doctor',48900,15]].map(([degree,priceCents,changes])=>{
-  const name=degreeNames[degree];return offer({id:'bundle-'+degree,title:name+'写作套餐',priceCents,durationDays,group:'writing',audience:'适合'+name+'阶段的论文与答辩准备',featured:degree==='bachelor',bundleItems:[item('thesis-'+degree,'毕业论文-'+name,1),item('presentation-proposal','开题 PPT',1),item('polish','在线修改',changes),item('taskbook-'+degree,'任务书-'+name,1),item('proposal-'+degree,'开题报告-'+name,1),item('literature-review-'+degree,'文献综述-'+name,1),item('presentation-thesis','答辩 PPT 基础版',1)]});
+ const writing=[['junior',12900,5],['bachelor',16900,7],['master',26900,10],['doctor',39900,15]].map(([degree,priceCents,changes])=>{
+  const name=degreeNames[degree];return offer({id:'bundle-'+degree,title:(degree==='doctor'?'博士研究辅助套餐':name+'写作套餐'),priceCents,durationDays,group:'writing',audience:'适合'+name+'阶段的论文与答辩准备',featured:degree==='bachelor',bundleItems:[item('thesis-'+degree,'毕业论文-'+name,1),item('presentation-proposal','开题 PPT',1),item('polish','在线修改',changes),item('taskbook-'+degree,'任务书-'+name,1),item('proposal-'+degree,'开题报告-'+name,1),item('literature-review-'+degree,'文献综述-'+name,1),item('presentation-thesis','答辩 PPT 基础版',1)]});
  });
  return freeze([...revisions,...writing]);
 }

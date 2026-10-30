@@ -1,3 +1,5 @@
+import {attachCombinedChild,reconcileCombinedParents} from './combined-detection-ledger.mjs';
+import {v1CommercialEnabled} from './v1-commercial-policy.mjs';
 import {concurrentDetection,detectionSlots} from './detection-concurrency.mjs';
 import {aigcInputHash} from './aigc-input-hash.mjs';
 import {AIGC_PARAGRAPH_VERSION,MAX_AIGC_PARTS} from '../dist/reports/aigc-partitions.mjs';
@@ -48,6 +50,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
   const at=new Date().toISOString();
   db.prepare("UPDATE aigc_detections SET status=?,error=?,request_ids=COALESCE(?,request_ids),updated_at=? WHERE id=? AND status='running'").run(status,message||null,requestIds?JSON.stringify(requestIds):null,at,id);
   if(row.billing_job_id){db.prepare("UPDATE jobs SET status=?,stage=?,error=?,updated_at=? WHERE id=? AND status='running'").run(status,status,message||null,at,row.billing_job_id);if(status==='completed')billing?.settle(row.billing_job_id);else billing?.release(row.billing_job_id);}
+  reconcileCombinedParents(db,billing,id);
   return true;
  });}
  function expireStale(){const before=new Date(Date.now()-120000).toISOString();for(const row of db.prepare("SELECT id FROM aigc_detections WHERE status='running' AND updated_at<?").all(before))finish(row.id,'failed',{message:'此文本鉴别未完成确认，为避免重复调用不会自动重新提交，请联系支持。'});}
@@ -84,7 +87,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    if(db.isOpen!==false)finish(id,'failed',{message:safe.message,requestIds});
   }
  }
- return{capabilities:()=>{const cap=aigcDetectionCapabilities(config),ready=cap.ready&&cloud.ready!==false&&typeof cloud.detect==='function';return{...cap,ready,reason:ready?'':'文本鉴别暂未开放，请稍后再试。'};},waitForIdle:()=>Promise.allSettled([...pending]),async handle({path,method,user,readBody}){
+ return{capabilities:()=>{const cap=aigcDetectionCapabilities(config),ready=cap.ready&&cloud.ready!==false&&typeof cloud.detect==='function';return{...cap,maxCharacters:v1CommercialEnabled(db)?Math.min(cap.maxCharacters,20000):cap.maxCharacters,ready,reason:ready?'':'文本鉴别暂未开放，请稍后再试。'};},waitForIdle:()=>Promise.allSettled([...pending]),async handle({path,method,user,fundingParent=null,readBody}){
   const item=path.match(/^\/api\/aigc-detections\/([-A-Za-z0-9_]{1,120})(\/(?:cancel|report))?$/);
   if(path!=='/api/aigc-detections'&&!item)return null;
   if(!validId(user?.id))fail(401,'请先登录后使用文本鉴别');
@@ -108,6 +111,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    if(alias){if(alias.input_hash!==hash&&alias.input_hash!==aigcInputHash(input.text,'length-v1'))fail(409,'此请求编号已用于其他文本，请重新确认提交');return{row:own(alias.detection_id,user),cached:true};}
    const prior=db.prepare('SELECT * FROM aigc_detections WHERE user_id=? AND input_hash=?').get(user.id,hash);
    if(prior){db.prepare('INSERT INTO aigc_detection_requests VALUES(?,?,?,?)').run(user.id,input.idempotencyKey,prior.id,hash);return{row:prior,cached:true};}
+   if(v1CommercialEnabled(db)&&Array.from(input.text||'').length>20000)fail(400,'单次检测最多 20,000 字符，请分章节提交；尚未扣费。');
    assertDetectionPrice(input,billing,'detection-aigc');
    if(!aigcDetectionConfigured(config)||cloud.ready===false||typeof cloud.detect!=='function')fail(503,'文本鉴别暂未开放，请稍后再试。');
    if(db.prepare("SELECT count(*) n FROM aigc_detections WHERE user_id=? AND status='running'").get(user.id).n)fail(409,'已有文本正在鉴别，请等待完成后再提交');
@@ -116,7 +120,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    db.prepare("INSERT INTO aigc_detections(id,user_id,input_hash,status,characters,part_count,reserved_calls,reserved_billing_units,parts,created_at,updated_at) VALUES(?,?,?,'running',?,?,?,?,?,?,?)").run(id,user.id,hash,prepared.characters,parts.length,prepared.calls,prepared.billingUnits,JSON.stringify(parts),created,created);
    db.prepare('UPDATE aigc_detections SET title=?,partition_version=? WHERE id=?').run(input.title?.trim()||'送检论文',AIGC_PARAGRAPH_VERSION,id);
    db.prepare('INSERT INTO aigc_detection_requests VALUES(?,?,?,?)').run(user.id,input.idempotencyKey,id,hash);
-   reserveDetection(billing,user,id,'detection-aigc',{createJob:()=>{
+   if(fundingParent){db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,attempt,created_at,updated_at) VALUES(?,?,'aigc_detection','running','detecting','{}',?,?,1,?,?)").run(id,user.id,'aigc:'+id,hash,created,created);db.prepare('UPDATE aigc_detections SET billing_job_id=? WHERE id=?').run(id,id);attachCombinedChild(db,{parentId:fundingParent,userId:user.id,childId:id,key:'detection-aigc',text:input.text});}else reserveDetection(billing,user,id,'detection-aigc',{createJob:()=>{
     db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,attempt,created_at,updated_at) VALUES(?,?,'aigc_detection','running','detecting','{}',?,?,1,?,?)").run(id,user.id,'aigc:'+id,hash,created,created);
     db.prepare('UPDATE aigc_detections SET billing_job_id=? WHERE id=?').run(id,id);
    }});
@@ -129,6 +133,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    }
    return{row:own(id,user),cached:false};
   });
+  if(fundingParent&&admission.cached)transaction(()=>attachCombinedChild(db,{parentId:fundingParent,userId:user.id,childId:admission.row.id,key:'detection-aigc',text:input.text}));
   if(admission.cached)return{value:summarize(admission.row,true)};
   // The private original is a report artifact, never a replayable paid queue.
   // A restart cannot repeat a detector call whose upstream outcome is unknown.

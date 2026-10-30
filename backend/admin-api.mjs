@@ -4,7 +4,7 @@ import {createResearchImageSettings} from './research-image-settings.mjs';
 import {randomUUID} from 'node:crypto';
 import {aiReady,publicModelSettings} from './config.mjs';
 import {paymentCatalog,savePaymentProduct} from './payment-settings.mjs';
-import {productDelivery} from './commerce-readiness.mjs';
+import {productDelivery,commerceResourceServices} from './commerce-readiness.mjs';
 import {createAgentSettings} from './agent-settings.mjs';
 import {testAgentConnection} from './agent-runtime.mjs';
 
@@ -160,7 +160,7 @@ export function createAdminAPI(db,worker,config,auth){
       parameters(query,[]);const input=await readBody();if(!input||Object.keys(input).some(name=>name!=='version'))fail(400,'测试仅使用已保存配置');const snapshot=agentSettings.get();if(!snapshot.version||input.version!==snapshot.version)fail(409,'请先保存当前配置后再测试');if(agentTestRunning||Date.now()-agentTestAt<30000)fail(429,'请等待 30 秒后再测试');agentTestRunning=true;agentTestAt=Date.now();
       try{const result=await (config.agentConnectionTest||testAgentConnection)(snapshot);audit(actor,'agent.connection.test','setting','agent',{version:snapshot.version,ok:true,sdkVerified:false});return result;}catch(error){audit(actor,'agent.connection.test','setting','agent',{version:snapshot.version,ok:false,sdkVerified:false});throw error;}finally{agentTestRunning=false;}
     }
-    const paymentConfig=()=>({channels:['wechat','alipay'].map(p=>config.payments.settings.summary(p)),catalog:paymentCatalog(db,{all:true}).map(product=>({...product,...productDelivery(product,config.billing)})),encryptionReady:config.payments.settings.encryptionReady,billing:config.billing?.rules(),toolBilling:config.billing?.toolRules?.()});
+    const paymentConfig=()=>({channels:['wechat','alipay'].map(p=>config.payments.settings.summary(p)),catalog:paymentCatalog(db,{all:true}).map(product=>({...product,...productDelivery(product,config.billing,config)})),resourceServices:commerceResourceServices(config.billing,config),encryptionReady:config.payments.settings.encryptionReady,billing:config.billing?.rules(),toolBilling:config.billing?.toolRules?.()});
     if(path==='/api/admin/payments'&&method==='GET'){parameters(query,[]);return paymentConfig();}
     if(path==='/api/admin/billing'&&method==='POST'){parameters(query,[]);const input=await readBody();return transaction(()=>{const billing=config.billing.saveRules(input);audit(actor,'billing.rules.update','setting','billing',{version:billing.version,services:billing.services.map(({key,mode,creditCost})=>({key,mode,creditCost}))});return {billing,toolBilling:config.billing.toolRules(),catalog:paymentConfig().catalog};});}
     if(path==='/api/admin/tool-billing'&&['GET','POST'].includes(method)){parameters(query,[]);if(method==='GET')return {toolBilling:config.billing.toolRules()};const input=await readBody();return transaction(()=>{const toolBilling=config.billing.saveToolRules(input);audit(actor,'billing.tools.update','setting','tool-billing',{version:toolBilling.version,services:toolBilling.services.map(({key,mode,creditCost})=>({key,mode,creditCost}))});return {toolBilling,catalog:paymentConfig().catalog};});}

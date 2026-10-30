@@ -16,8 +16,8 @@ const rows=db=>db.prepare('SELECT id,title,status,rules FROM products ORDER BY i
 const row=(db,id)=>db.prepare('SELECT id,title,status,rules FROM products WHERE id=?').get(id);
 
 test('seven approved prices and per-degree allowances become executable 180-day package definitions',()=>{
- assert.deepEqual(specialistRevisionOffers.map(offer=>[offer.id,offer.priceCents,offer.totalUses]),[['bundle-rewrite',9900,8],['bundle-reduce',12900,8],['bundle-dual',15900,8]]);
- assert.deepEqual(specialistWritingOffers.map(offer=>[offer.id,offer.priceCents,offer.totalUses]),[['bundle-junior',15900,11],['bundle-bachelor',23900,13],['bundle-master',36900,16],['bundle-doctor',48900,21]]);
+ assert.deepEqual(specialistRevisionOffers.map(offer=>[offer.id,offer.priceCents,offer.totalUses]),[['bundle-rewrite',5900,8],['bundle-reduce',7900,8],['bundle-dual',9900,8]]);
+ assert.deepEqual(specialistWritingOffers.map(offer=>[offer.id,offer.priceCents,offer.totalUses]),[['bundle-junior',12900,11],['bundle-bachelor',16900,13],['bundle-master',26900,16],['bundle-doctor',39900,21]]);
  for(const [index,degree] of ['junior','bachelor','master','doctor'].entries()){
   const offer=specialistWritingOffers[index];assert.deepEqual(offer.bundleItems.map(item=>[item.key,item.quantity]),[['thesis-'+degree,1],['presentation-proposal',1],['polish',[5,7,10,15][index]],['taskbook-'+degree,1],['proposal-'+degree,1],['literature-review-'+degree,1],['presentation-thesis',1]]);
  }

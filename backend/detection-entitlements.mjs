@@ -1,3 +1,4 @@
+import {combinedChildFunded} from './combined-detection-ledger.mjs';
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 export function detectionPricing(billing,key){
  if(!billing)return{pricingMode:'free',pointsCharged:false,creditCost:0,pricingVersion:null};
@@ -32,20 +33,24 @@ function reservationMatch(key,owner,job,statuses){
 // matching package use or credit amount was held in the same database transaction. Client flags,
 // a purchased but unrelated package, and a released hold never authorize work.
 export function includedDetectionHeld(db,userId,jobId,key){
- return hasReservations(db)&&Boolean(db.prepare(`SELECT 1 WHERE EXISTS(${reservationMatch(key,'?','?',"'held'")})`).get(jobId,userId));
+ return combinedChildFunded(db,userId,jobId,key)||hasReservations(db)&&Boolean(db.prepare(`SELECT 1 WHERE EXISTS(${reservationMatch(key,'?','?',"'held'")})`).get(jobId,userId));
 }
-export function detectionWasFunded(db,userId,jobId,key){return hasReservations(db)&&Boolean(db.prepare(`SELECT 1 WHERE EXISTS(${reservationMatch(key,'?','?',"'held','settled','released'")})`).get(jobId,userId));}
+export function detectionWasFunded(db,userId,jobId,key){return combinedChildFunded(db,userId,jobId,key,{heldOnly:false})||hasReservations(db)&&Boolean(db.prepare(`SELECT 1 WHERE EXISTS(${reservationMatch(key,'?','?',"'held','settled','released'")})`).get(jobId,userId));}
 // A paid attempt never uses trial allowance, even if it later fails or is
 // cancelled and its hold is released. Those immutable funding records remain
 // authoritative when an account subsequently returns to the free entry.
+function combinedFundingExclusion(db,owner,job){
+ if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='combined_detection_children'").get())return '';
+ return ` AND NOT EXISTS(SELECT 1 FROM combined_detection_children c JOIN jobs p ON p.id=c.parent_id AND p.user_id=${owner} JOIN billing_reservations r ON r.job_id=p.id AND r.user_id=p.user_id AND r.service_key='detection-combined' AND r.type='agent' WHERE c.child_id=${job} AND r.status IN ('held','settled','released'))`;
+}
 export function detectionTrialUsage(db,key,{since,until,userId=null,excludeId=null}){
  const aigc=key==='detection-aigc';if(!Object.hasOwn(detectionTypes,key))throw new Error('Unsupported detection entitlement');
  const source=aigc?'aigc_detections d':"web_similarity_runs d JOIN jobs j ON j.id=d.id AND j.user_id=d.user_id AND j.stage!='input_failed'";
  const funded=hasReservations(db)?` AND NOT EXISTS(${reservationMatch(key,'d.user_id','d.id',"'held','settled','released'")})`:'';
  const totals=aigc?',COALESCE(sum(d.reserved_calls),0) calls,COALESCE(sum(d.reserved_billing_units),0) billingUnits':',0 calls,0 billingUnits';
- return db.prepare(`SELECT count(*) n,COALESCE(sum(d.characters),0) characters${totals} FROM ${source} WHERE d.created_at>=? AND d.created_at<? AND (? IS NULL OR d.user_id=?) AND (? IS NULL OR d.id!=?)${funded}`).get(since,until,userId,userId,excludeId,excludeId);
+ return db.prepare(`SELECT count(*) n,COALESCE(sum(d.characters),0) characters${totals} FROM ${source} WHERE d.created_at>=? AND d.created_at<? AND (? IS NULL OR d.user_id=?) AND (? IS NULL OR d.id!=?)${funded}${combinedFundingExclusion(db,'d.user_id','d.id')}`).get(since,until,userId,userId,excludeId,excludeId);
 }
 export function detectionTrialSearchCount(db,{since,until,userId=null}){
  const funded=hasReservations(db)?` AND NOT EXISTS(${reservationMatch('detection-similarity','a.user_id','a.job_id',"'held','settled','released'")})`:'';
- return db.prepare(`SELECT count(*) n FROM web_similarity_attempts a WHERE a.created_at>=? AND a.created_at<? AND (? IS NULL OR a.user_id=?)${funded}`).get(since,until,userId,userId).n;
+ return db.prepare(`SELECT count(*) n FROM web_similarity_attempts a WHERE a.created_at>=? AND a.created_at<? AND (? IS NULL OR a.user_id=?)${funded}${combinedFundingExclusion(db,'a.user_id','a.job_id')}`).get(since,until,userId,userId).n;
 }

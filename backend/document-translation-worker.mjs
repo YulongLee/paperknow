@@ -38,6 +38,7 @@ export function startDocumentTranslationWorker(db,config={}){
  }
  function reservePages(job,pages){
   tx(()=>{
+   const meta=JSON.parse(job.input||'{}');if(meta.quotedPages&&meta.quotedPages!==pages)throw safe('原文页数已变化，请重新获取费用；本次未提交翻译');
    if(billing.isBillable(job.id)){db.prepare('UPDATE document_translation_runs SET expected_pages=?,updated_at=? WHERE id=?').run(pages,clock(),job.id);return;}
    const day=new Date(job.created_at);day.setUTCHours(0,0,0,0);const from=day.toISOString(),to=new Date(day.getTime()+86400000).toISOString();
    const freePages=" FROM document_translation_runs d LEFT JOIN billing_reservations b ON b.job_id=d.id AND b.attempt=1 WHERE (b.source='free' OR b.id IS NULL) AND d.id!=? AND d.created_at>=? AND d.created_at<?";

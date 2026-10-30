@@ -1,3 +1,4 @@
+import {entitlementUnit} from '../dist/workspace/v1-pricing.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -22,7 +23,7 @@ async function fixture(t,{guest=false,catalogue={enabled:true,channels,products}
  const realNow=w.Date.now;w.Date.now=()=>realNow()+clockOffset;
  const calls=[],qrInputs=[],navigations=[],created=[];let cleanups=[];
  const order={id:'o1',outTradeNo:'PK20261015001',title:'100 研究币',amountCents:1000,currency:'CNY',provider:'wechat',status:'pending',qrContent:'weixin://wxpay/bizpayurl?pr=actual-provider-qr',createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+15*60*1000).toISOString(),...orderOverride};
- w.esc=esc;w.icon=icon;w.toolBanner=toolBanner;w.withStableView=withStableView;
+ w.entitlementUnit=entitlementUnit;w.esc=esc;w.icon=icon;w.toolBanner=toolBanner;w.withStableView=withStableView;
  w.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({path,options,body});const custom=onRequest&&await onRequest(path,options,body);if(custom)return custom;if(path==='/api/auth/me')return guest?response({error:'请登录'},401):response({user:{id:'u1'}});if(path==='/api/payments/options')return response(catalogue);if(path==='/api/orders'&&!body)return response({items});if(path==='/api/orders'&&body){const item={...order,provider:body.provider};created.push(item);return response({item});}if(path==='/api/orders/o1')return response({item:order});if(path==='/api/orders/o1/query')return response({item:order});throw new Error('Unexpected API '+path);};
  w.eval(source+'\nwindow.paymentTest={renderPaymentCheckout,renderPaymentOrders};');
  const args={productId:initialProductId,orderId,provider:preferredProvider,container:w.document.querySelector('.dashboard'),navigate:href=>navigations.push(href),renderQRCode:async value=>{qrInputs.push(value);return renderQRCode?renderQRCode(value):qr;}};

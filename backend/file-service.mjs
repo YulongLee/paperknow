@@ -1,3 +1,4 @@
+import {assertCloudCapacity} from './commercial-resources.mjs';
 import {randomUUID} from 'node:crypto';
 import {digest} from './auth.mjs';
 import {fileBytes} from './storage.mjs';
@@ -24,6 +25,7 @@ export function createFileService(db,config={}){
  const removeObject=async row=>{if(row.storage_provider==='aliyun_oss'){if(!config.storage||typeof config.storage.remove!=='function')fail(503,'文件存储暂不可用，原件未完成删除，请稍后重试');await config.storage.remove(row);}};
  const pending=id=>db.prepare("SELECT 1 FROM workspace_file_deletions WHERE file_id=? AND status='pending'").get(id);
  const quota=(user,bytes,exclude='')=>{
+  if(assertCloudCapacity(db,user.id,bytes,exclude)!==null)return;
   const stored=db.prepare('SELECT coalesce(sum(bytes),0) n FROM files WHERE user_id=?').get(user.id).n;
   const reserved=db.prepare('SELECT coalesce(sum(bytes),0) n FROM workspace_file_uploads WHERE user_id=? AND id!=? AND expires_at>?').get(user.id,exclude,new Date().toISOString()).n;
   if(stored+reserved+bytes>maxAccountBytes)fail(409,'账户原件总量最多 50MB，请下载备份后删除不再需要的原件，或等待正在上传的文件完成');

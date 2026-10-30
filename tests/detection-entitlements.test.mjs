@@ -220,3 +220,30 @@ test('failed AIGC and cancelled web checks release their 500-credit holds',async
 test('stale tariff and another owner never reserve credits; cached results remain readable after a price change',async t=>{
  const f=fixture(t,{paid:true});credit(f,1000);const ai=f.aigc();for(const extra of [{pricingVersion:undefined,expectedCreditCost:undefined},{pricingVersion:1,expectedCreditCost:0},{pricingVersion:999,expectedCreditCost:500}])await assert.rejects(f.submitAigc(ai,extra),{status:409});assert.equal(f.calls.length,0);assert.equal(f.billing.balance(f.user.id).held,0);const item=await f.submitAigc(ai);await ai.waitForIdle();const policy=f.billing.toolRules();f.billing.saveToolRules({version:policy.version,services:policy.services.map(({key,mode,creditCost})=>({key,mode,creditCost:key==='detection-aigc'?600:creditCost}))});assert.equal((await f.submitAigc(ai,{expectedCreditCost:0})).value.id,item.value.id);assert.equal(f.billing.balance(f.user.id).available,500);
 });
+
+// V1 joint detection uses one immutable parent hold; children cannot authorize
+// free dispatch with a browser-supplied flag.
+import {planV1Commerce,applyV1Commerce} from '../backend/v1-commercial-launch.mjs';
+import {createCombinedDetectionService} from '../backend/combined-detection-service.mjs';
+import {attachCombinedChild} from '../backend/combined-detection-ledger.mjs';
+function combinedFixture(t,options={}){
+ const f=fixture(t,{paid:true,...options});applyV1Commerce(f.db,planV1Commerce(f.db).expected);
+ f.db.prepare('INSERT INTO admin_credit_adjustments(id,user_id,amount,reason,actor_id,created_at) VALUES(?,?,?,?,?,?)').run(randomUUID(),f.user.id,1000,'Synthetic joint test',f.user.id,new Date().toISOString());
+ const aigc=f.aigc(),{service:similarity,worker}=f.web(),joint=createCombinedDetectionService(f.db,f.config,{aigc,similarity});
+ const submit=(extra={})=>joint.handle({path:'/api/combined-detections',method:'POST',user:f.user,readBody:async()=>({text:paragraph,title:'联合检测合成测试',expectedUserId:f.user.id,idempotencyKey:randomUUID(),pricingVersion:f.billing.toolRules().version,expectedCreditCost:149,...extra})});
+ return{...f,aigc,similarity,worker,joint,submit};
+}
+test('V1 joint detection settles only one 149-credit hold after both reports and reuses same text without charge',async t=>{
+ const f=combinedFixture(t),first=(await f.submit()).value;assert.equal(first.status,'running');assert.equal(f.billing.balance(f.user.id).held,149);
+ await f.aigc.waitForIdle();await f.worker.tick();const parent=f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id);assert.equal(parent.status,'completed');assert.equal(f.billing.balance(f.user.id).balance,851);assert.equal(f.billing.balance(f.user.id).held,0);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,1);assert.equal(f.db.prepare('SELECT count(*) n FROM combined_detection_children').get().n,2);const again=await f.submit();assert.equal(again.value.id,first.id);assert.equal(f.billing.balance(f.user.id).balance,851);
+ for(const c of again.value.children)assert.equal(c.status,'completed');
+});
+test('V1 joint detection releases full price on partial failure and cannot be forged from the public child input',async t=>{
+ const f=combinedFixture(t,{cloud:async()=>{throw Error('synthetic detector failure');}}),first=(await f.submit()).value;await f.aigc.waitForIdle();await f.worker.tick();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id).status,'failed');assert.equal(f.billing.balance(f.user.id).balance,1000);assert.equal(f.billing.balance(f.user.id).held,0);
+ await assert.rejects(f.similarity.handle({path:'/api/web-similarity',method:'POST',user:f.user,readBody:async()=>({text:paragraph,title:'Forged',consent:true,expectedUserId:f.user.id,idempotencyKey:randomUUID(),fundingParent:first.id})}),{status:400});
+ assert.throws(()=>attachCombinedChild(f.db,{parentId:first.id,userId:'bob',childId:first.children[0].id,key:'detection-similarity',text:paragraph}),{status:409});
+});
+test('V1 joint detection rejects stale prices and invalid text before any hold or provider call',async t=>{
+ const f=combinedFixture(t);await assert.rejects(f.submit({expectedCreditCost:99}),{status:409});await assert.rejects(f.submit({text:'too short'}),{status:400});assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);assert.equal(f.calls.length,0);
+});

@@ -9,7 +9,7 @@ const processingPhases=new Set(['submitting','queued','running','recovering','re
 // Guide and locate the existing controls. Navigating a step never submits a
 // manuscript, starts a paid job, or recreates the form during polling.
 export function createDetectionWorkflow(host,{kind='similarity',targets={}}={}){
- const doc=host.ownerDocument,ai=kind==='aigc',title=ai?'论文 AI 率检测':'论文重复率检测';
+ const doc=host.ownerDocument,ai=kind==='aigc',title=kind==='combined'?'论文联合检测':ai?'论文 AI 率检测':'论文重复率检测';
  let disposed=false,signature='',snapshot={};
  const root=doc.createElement('nav');root.className='detection-workflow';root.dataset.detectionWorkflow=kind;root.setAttribute('aria-label',title+'操作流程');
  root.innerHTML='<div class="detection-workflow-heading"><strong>操作流程</strong><span data-workflow-position></span></div><ol class="wf-stepper detection-workflow-steps">'+stages.map(([id,label,description],index)=>`<li><button type="button" data-workflow-step="${id}" disabled><span data-workflow-number aria-hidden="true">${String(index+1).padStart(2,'0')}</span><div><b>${label}</b><small>${description}</small></div></button></li>`).join('')+'</ol><p class="detection-workflow-hint" data-workflow-hint></p>';
@@ -37,7 +37,7 @@ export function createDetectionWorkflow(host,{kind='similarity',targets={}}={}){
   const messages={
    prepare:'先上传需要检测的 DOCX 论文，读取完成后即可开始检测。',
    importing:'正在读取论文文档，读取完成后请核对提取的正文。',
-   review:newDraft?'当前正文已更新，尚未进行本次检测；上次报告仍可在下方查看。':valid?(ai?'正文已准备好。核对论文内容与本次费用后，点击“开始 AI 率检测”。':'正文已准备好。核对正文、检测范围与本次费用后，点击“开始重复率检测”。'):'请在正文区补充或调整内容，符合检测要求后即可开始。',
+   review:kind==='combined'&&valid?'正文已就绪，点击“开始联合检测”即可生成两份报告。':newDraft?'当前正文已更新，尚未进行本次检测；上次报告仍可在下方查看。':valid?(ai?'正文已准备好。核对论文内容与本次费用后，点击“开始 AI 率检测”。':'正文已准备好。核对正文、检测范围与本次费用后，点击“开始重复率检测”。'):'请在正文区补充或调整内容，符合检测要求后即可开始。',
    submitting:'正在提交本次检测，请稍候。',
    queued:'论文已提交，正在等待处理；完成后会自动显示检测报告。',
    running:'论文检测中，完成后会自动显示报告。可在任务中心查看已提交的任务。',

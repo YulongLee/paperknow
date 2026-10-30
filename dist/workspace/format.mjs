@@ -102,7 +102,7 @@ async function prepareCandidate(token){
 }
 function snapshot(){
  if(!hasTemplate()||!hasDocument()||!candidate)throw Error('请先准备模板和原文，完成格式检查。');
- const value=formatAdviceSnapshot(item,doc,rules,'smart');value.title=(item.title+' · 排版复核').slice(0,200);value.context={...value.context,inputFingerprint:item.documentHash,templateName:item.formatSample.name,remainingIssues:verification?.length||0};return value;
+ if(doc.paragraphs.reduce((n,p)=>n+Array.from(p.text||'').length,0)>20000)throw Error('智能排版每次最多 20,000 字符，请分文档处理；尚未扣费。');const value=formatAdviceSnapshot(item,doc,rules,'smart');value.title=(item.title+' · 排版复核').slice(0,200);value.context={...value.context,inputFingerprint:item.documentHash,templateName:item.formatSample.name,remainingIssues:verification?.length||0};return value;
 }
 function mountAI(){
  panel?.dispose();panel=null;if(!root||!hasDocument()||!hasTemplate()||scoped)return;const token=epoch;

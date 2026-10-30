@@ -19,7 +19,7 @@ function setup(kind='reduce'){
 }
 const noPayment=root=>{assert.equal(root.querySelector('[data-revision-bundle-checkout]'),null);assert.equal(root.querySelector('a[href*="membership/pay"]'),null);};
 const referencePrices=root=>{
- assert.deepEqual([...root.querySelectorAll('.purchase-price b')].map(node=>node.textContent),['¥99','¥129','¥159']);
+ assert.deepEqual([...root.querySelectorAll('.purchase-price b')].map(node=>node.textContent),['¥59','¥79','¥99']);
  assert.ok([...root.querySelectorAll('.purchase-price span')].every(node=>node.textContent==='建议价 / 180 天 · 未上架'));
 };
 
@@ -27,7 +27,7 @@ test('the specialist catalogue preserves three original names without coupling t
  for(const kind of ['reduce','aigc','membership','invalid']){
   const s=setup(kind);try{
    assert.deepEqual([...s.root.querySelectorAll('[data-revision-bundle]')].map(card=>card.dataset.revisionBundle),ids);
-   assert.deepEqual([...s.root.querySelectorAll('h3')].map(node=>node.textContent),['强力查降套餐','超值降 AI 套餐','AIGC+重复率双降套餐']);
+   assert.deepEqual([...s.root.querySelectorAll('h3')].map(node=>node.textContent),['查重优化套餐','AI 表达优化套餐','双向优化套餐']);
    assert.equal(s.root.dataset.revisionBundleContext,kind==='membership'?'membership':kind==='aigc'?'aigc':'reduce');
    assert.equal(s.root.querySelectorAll('[data-revision-bundle-state="loading"]').length,3);noPayment(s.root);
    assert.ok(s.root.querySelector('a[href="#membership?scope=account"]'));
@@ -201,7 +201,7 @@ test('specialist and research bundles use the same card structure, grid classes 
   const css=await readFile(new URL('../dist/workspace/commerce-center.css',import.meta.url),'utf8');assert.match(css,/commerce-center-plan-grid\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);assert.match(css,/@(?:media|container)[\s\S]*commerce-center-plan-grid[\s\S]*grid-template-columns:minmax\(0,1fr\)/);
   assert.ok(Object.isFrozen(revisionBundlePlans));assert.deepEqual(revisionBundlePlans.map(plan=>plan.id),['rewrite','reduce','dual']);
   assert.ok(revisionBundlePlans.every(plan=>plan.features.length===4&&Object.isFrozen(plan.features)&&Number.isSafeInteger(plan.priceCents)&&plan.durationDays===180&&plan.totalUses===8));
-  assert.deepEqual(revisionBundlePlans.map(plan=>plan.priceCents),[9900,12900,15900]);
+  assert.deepEqual(revisionBundlePlans.map(plan=>plan.priceCents),[5900,7900,9900]);
   assert.doesNotMatch(revisionBundlePlans.flatMap(plan=>plan.features).join(' '),/自动复测|保证|官方报告/);
  }finally{s.close();}
 });

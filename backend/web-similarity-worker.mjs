@@ -1,3 +1,4 @@
+import {reconcileCombinedParents} from './combined-detection-ledger.mjs';
 import {concurrentDetection} from './detection-concurrency.mjs';
 import {randomUUID} from 'node:crypto';
 import {parseDocument,countChars} from '../dist/precheck/engine.mjs';
@@ -18,7 +19,7 @@ export function startWebSimilarityWorker(db,config={}){
  const clock=()=>new Date().toISOString(),tx=fn=>{db.exec('BEGIN IMMEDIATE');try{const v=fn();db.exec('COMMIT');return v;}catch(e){db.exec('ROLLBACK');throw e;}};
  let busy=false,stopped=false;const controllers=new Map();
  // An interrupted search may already be billable upstream. Never replay it.
- tx(()=>{const interrupted=db.prepare("SELECT id FROM jobs WHERE type='web_similarity' AND status IN ('preparing','running')").all();db.prepare("UPDATE jobs SET status='failed',stage='interrupted',error='服务切换中断了本次查重，未自动重复检索，也未生成完整相似度。请查看记录后联系支持。',updated_at=? WHERE type='web_similarity' AND status IN ('preparing','running')").run(clock());for(const job of interrupted)billing.release(job.id);});
+ tx(()=>{const interrupted=db.prepare("SELECT id FROM jobs WHERE type='web_similarity' AND status IN ('preparing','running')").all();db.prepare("UPDATE jobs SET status='failed',stage='interrupted',error='服务切换中断了本次查重，未自动重复检索，也未生成完整相似度。请查看记录后联系支持。',updated_at=? WHERE type='web_similarity' AND status IN ('preparing','running')").run(clock());for(const job of interrupted){billing.release(job.id);reconcileCombinedParents(db,billing,job.id);}});
  const active=id=>!stopped&&db.prepare("SELECT 1 FROM jobs WHERE id=? AND type='web_similarity' AND status='running'").get(id);
  const stage=(id,value)=>db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(value,clock(),id);
  const saveCoverage=(id,value)=>db.prepare('UPDATE web_similarity_runs SET coverage=?,updated_at=? WHERE id=?').run(JSON.stringify(value),clock(),id);
@@ -107,14 +108,14 @@ export function startWebSimilarityWorker(db,config={}){
     const id=randomUUID(),at=clock();
     db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(id,job.user_id,null,job.id,'web_similarity',job.title+' · 论文重复率检测',JSON.stringify({webSimilarityId:job.id,reportId:job.id,characters:report.totalChars,ratio:report.ratio,matchedCharacters:report.similarChars,sourceCount:report.sourceCount,coverage,scope:'本次纳入的比对资料；不保证覆盖全部文献'}),at);
     db.prepare("UPDATE jobs SET status='completed',stage='completed',result_id=?,updated_at=? WHERE id=? AND status='running'").run(id,at,job.id);
-    billing.settle(job.id);
+    billing.settle(job.id);reconcileCombinedParents(db,billing,job.id);
    });
   }catch(error){
    const message=signal.aborted?'本次检测超时或中断，未生成完整报告，预占权益将释放。':error?.webSimilaritySafe||error?.moderationSafe?error.message:'论文重复率检测未能完成，请稍后查看记录或联系支持；未生成不完整相似度。';
-   tx(()=>{db.prepare("UPDATE jobs SET status='failed',stage='failed',error=?,updated_at=? WHERE id=? AND status='running'").run(message.slice(0,240),clock(),job.id);billing.release(job.id);});
+   tx(()=>{db.prepare("UPDATE jobs SET status='failed',stage='failed',error=?,updated_at=? WHERE id=? AND status='running'").run(message.slice(0,240),clock(),job.id);billing.release(job.id);reconcileCombinedParents(db,billing,job.id);});
   }finally{
    clearTimeout(timer);
-   tx(()=>{if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status==='running')db.prepare("UPDATE jobs SET status='failed',stage='interrupted',error='本次检测被中断，未生成完整报告，预占权益将释放。',updated_at=? WHERE id=?").run(clock(),job.id);if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status!=='completed')billing.release(job.id);});
+   tx(()=>{if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status==='running')db.prepare("UPDATE jobs SET status='failed',stage='interrupted',error='本次检测被中断，未生成完整报告，预占权益将释放。',updated_at=? WHERE id=?").run(clock(),job.id);if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status!=='completed')billing.release(job.id);reconcileCombinedParents(db,billing,job.id);});
    if(attempted){
     db.prepare('UPDATE web_similarity_runs SET usage=?,updated_at=? WHERE id=?').run(JSON.stringify(usages),clock(),job.id);
     const tokens=key=>usages.length===attempted&&usages.every(u=>Number.isSafeInteger(u?.[key])&&u[key]>=0)?usages.reduce((n,u)=>n+u[key],0):null;

@@ -71,8 +71,10 @@ export function paymentCatalog(db,{all=false}={}){
   const description=typeof rules.description==='string'?rules.description:'';
   const active=p.status==='active'&&priceCents!==null&&validEntitlement&&Boolean(description.trim());
   if(!all&&!active)return [];
-  const entitlement=entitlementType==='credits'?{type:'credits',creditAmount}:entitlementType==='bundle'?{type:'bundle',durationDays,bundleItems:bundleItems||[]}:{type:'membership',durationDays,membershipItems:membershipItems||[]};
-  return [{id:p.id,title:p.title,status:active?'active':'preview',priceCents,currency:'CNY',description,durationDays,creditAmount,bundleItems:bundleItems||[],membershipItems:membershipItems||[],entitlementType,entitlement}];
+  const scope=rules.scope&&typeof rules.scope==='object'&&!Array.isArray(rules.scope)?rules.scope:null;
+  const entitlementBase=entitlementType==='credits'?{type:'credits',creditAmount}:entitlementType==='bundle'?{type:'bundle',durationDays,bundleItems:bundleItems||[]}:{type:'membership',durationDays,membershipItems:membershipItems||[]};
+  const entitlement={...entitlementBase,...(scope?{scope}:{})};
+  return [{id:p.id,title:p.title,status:active?'active':'preview',priceCents,currency:'CNY',description,durationDays,creditAmount,bundleItems:bundleItems||[],membershipItems:membershipItems||[],entitlementType,entitlement,...(scope?{scope}:{})}];
  }).sort((a,b)=>{
   const group={membership:0,credits:1,bundle:2};
   if(a.entitlementType!==b.entitlementType)return (group[a.entitlementType]??3)-(group[b.entitlementType]??3);
@@ -100,6 +102,6 @@ export function savePaymentProduct(db,id,input){
   if(creditAmount!==null&&(!Number.isSafeInteger(creditAmount)||creditAmount<1||creditAmount>1000000))fail(400,'充值积分应为 1～1000000 的整数');
  }
  if(input.status==='active'&&(!price||!(type==='credits'?creditAmount:days)||!input.description.trim()))fail(400,'上架前请明确价格、可交付权益及数量或有效期');
- db.prepare('UPDATE products SET title=?,status=?,rules=? WHERE id=?').run(input.title.trim(),input.status,JSON.stringify({priceCents:price,durationDays:type==='credits'?null:days,...(type==='credits'?{creditAmount}:type==='bundle'?{bundleItems}:{membershipItems}),description:input.description.trim(),entitlementType:type,paymentEnabled:input.status==='active'}),id);
+ db.prepare('UPDATE products SET title=?,status=?,rules=? WHERE id=?').run(input.title.trim(),input.status,JSON.stringify({...((previous?.scope&&typeof previous.scope==='object')?{scope:previous.scope}:{}),priceCents:price,durationDays:type==='credits'?null:days,...(type==='credits'?{creditAmount}:type==='bundle'?{bundleItems}:{membershipItems}),description:input.description.trim(),entitlementType:type,paymentEnabled:input.status==='active'}),id);
  return paymentCatalog(db,{all:true}).find(p=>p.id===id);
 }

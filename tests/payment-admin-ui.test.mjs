@@ -536,7 +536,7 @@ test('legacy unknown bundle services remain unchanged in drafts and cannot be pu
   const ui = await page(t, { data: { channels, catalog: [legacy], encryptionReady: true }, handle: (url, payload) => url.endsWith('/products/bundle-rewrite') ? (saved = payload, { body: { item: { ...legacy, ...payload } } }) : undefined });
   const select = ui.$('#product-bundle-rewrite-bundle-0-key');
   assert.equal(select.tagName, 'SELECT'); assert.equal(select.value, 'legacy-tool'); assert.match(select.selectedOptions[0].textContent, /待接通/);
-  assert.equal(select.querySelectorAll('option').length, 5);
+  assert.equal(select.querySelectorAll('option').length, 9);
   ui.submit('[data-payment-product="bundle-rewrite"]'); await settle(() => saved && !ui.$('[data-payment-product="bundle-rewrite"] [type="submit"]').disabled);
   assert.deepEqual(saved.bundleItems, legacy.bundleItems);
   ui.fill('#product-bundle-rewrite-days', '30'); ui.fill('#product-bundle-rewrite-status', 'active'); ui.submit('[data-payment-product="bundle-rewrite"]');

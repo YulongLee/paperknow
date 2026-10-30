@@ -67,7 +67,7 @@ test('a paid paper check shows 500 credits and package priority, then starts on 
 
 test('insufficient detector credits show the exact reason and keep the current paper available',async()=>{
  const paid={...cap,pointsCharged:true,creditCost:500,pricingVersion:7},f=fixture((url,body)=>url==='/api/capabilities'?response({webSimilarity:paid}):url==='/api/web-similarity'&&body?response({error:'可用积分不足'},402):null);
- try{await f.panel.ready;f.input(text);f.$('[data-web-start]').click();await settle();assert.match(f.$('[data-web-status]').textContent,/积分不足.*500.*套餐/);assert.equal(f.$('[data-web-text]').value,text);assert.equal(f.$('[data-web-text]').disabled,false);assert.equal(f.calls.filter(row=>row.body).length,1);}finally{f.close();}
+ try{await f.panel.ready;f.input(text);f.$('[data-web-start]').click();await settle();assert.match(f.$('[data-web-status]').textContent,/积分或对应套餐次数不足/);assert.equal(f.$('[data-web-text]').value,text);assert.equal(f.$('[data-web-text]').disabled,false);assert.equal(f.calls.filter(row=>row.body).length,1);}finally{f.close();}
 });
 
 test('polling keeps the progress surface and controls stable while private search stages change',async()=>{

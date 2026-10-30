@@ -143,7 +143,7 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
   quote=null;consent=false;projectPayload();
   cap=await request('/theses/methods/capabilities',undefined,token);
   if(!cap?.ready){quote=null;throw Error(cap?.reason||'方法建议生成服务暂未开放，仍可自行填写补充说明。');}
-  const value=await request('/billing/quote',{type:'agent'},token);
+  const value=await request('/billing/quote',{type:'agent',...(cap.billingServiceKey?{serviceKey:cap.billingServiceKey}:{})},token);
   if(!validThesisQuote(value))throw Error('费用信息不完整或已过期，请重新获取费用。');
   quote=value;if(!preserveCommand)clientKey=win.crypto.randomUUID();consent=true;ambiguous=preserveCommand&&commandPending;message=preserveCommand?'上次任务尚未确认创建。请重新确认费用后重试同一任务；若后台已接收，会读取原任务。':'费用已就绪，可直接点击“生成方法建议”。';
  }

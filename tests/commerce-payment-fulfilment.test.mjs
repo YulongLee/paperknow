@@ -1,3 +1,4 @@
+import {planV1Commerce,applyV1Commerce} from '../backend/v1-commercial-launch.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,randomBytes,randomUUID} from 'node:crypto';
@@ -55,7 +56,7 @@ test('the complete 16-product catalogue offers both payment channels with execut
  const f=fixture(t),options=f.payments.options();assert.equal(options.enabled,true);assert.deepEqual(options.channels.map(item=>[item.provider,item.ready]),[['wechat',true],['alipay',true]]);
  assert.deepEqual(options.products.map(item=>item.id).sort(),[...allOffers.map(item=>item.id),'credits-200','credits-500','credits-1000'].sort());
  for(const offer of allOffers){const actual=options.products.find(item=>item.id===offer.id);assert.equal(actual.purchasable,true,offer.id);assert.equal(actual.priceCents,offer.priceCents);assert.equal(actual.durationDays,offer.durationDays);assert.deepEqual(actual.entitlement[offer.entitlementType==='membership'?'membershipItems':'bundleItems'],offer.membershipItems||offer.bundleItems);}
- const detections=f.billing.toolRules().services.filter(item=>item.key.startsWith('detection-'));assert.equal(detections.length,2);assert.ok(detections.every(item=>item.effectiveMode==='paid'&&item.effectiveCreditCost===500&&item.available));
+ const detections=f.billing.toolRules().services.filter(item=>item.key.startsWith('detection-'));assert.equal(detections.length,3);assert.ok(detections.every(item=>item.effectiveMode==='paid'&&item.effectiveCreditCost===500&&item.available));
  const before=f.created.length;const key='unknown-actual-service';f.db.prepare('INSERT INTO products(id,title,status,rules) VALUES(?,?,?,?)').run('unknown-service-bundle','未知权益套餐','active',JSON.stringify({priceCents:100,durationDays:180,entitlementType:'bundle',description:'合成不可执行服务',bundleItems:[{key,title:'尚未接通服务',quantity:1}]}));
  assert.equal(f.payments.options().products.find(item=>item.id==='unknown-service-bundle').purchasable,false);await assert.rejects(f.create(f.seed(),'unknown-service-bundle'),{status:409});assert.equal(f.created.length,before);
 });
@@ -90,7 +91,7 @@ test('a disabled detector policy cannot sell an unusable specialist package thro
 test('legacy AI availability cannot sell degree-specific writing when the required versioned Agent is disabled',async t=>{
  const f=fixture(t),owner=f.seed();f.config.getAgentSettings=()=>({enabled:false});
  assert.equal(f.billing.rules().services.find(item=>item.key==='agent').available,true);
- const writing=f.billing.toolRules().services.filter(item=>item.group==='AI 写作');assert.equal(writing.length,17);assert.ok(writing.every(item=>!item.available));
+ const writing=f.billing.toolRules().services.filter(item=>item.group==='AI 写作');assert.equal(writing.length,25);assert.ok(writing.every(item=>!item.available));
  for(const item of writing)assert.throws(()=>f.billing.quote(owner,{type:'agent',serviceKey:item.key}),{status:503});
  for(const offer of specialistBundleOffers.filter(item=>item.group==='writing')){
   assert.equal(f.payments.options().products.find(item=>item.id===offer.id).purchasable,false);
@@ -133,4 +134,26 @@ test('included self-operated detection is accounted against a paid package while
   assert.throws(()=>f.billing.quote(owner,{type:'agent',serviceKey}),{status:402});const quota=f.payments.entitlements(owner).bundles[0].items.find(item=>item.key===serviceKey);assert.deepEqual([quota.used,quota.held,quota.remaining],[2,0,0]);
  }
  const independent=f.seed();for(const serviceKey of ['detection-similarity','detection-aigc'])assert.throws(()=>f.billing.quote(independent,{type:'agent',serviceKey}),{status:402});assert.equal(f.billing.balance(owner.id).balance,0);assert.equal(f.billing.balance(independent.id).balance,0);
+});
+
+
+test('V1 memberships and packages fulfil exact immutable resources through WeChat and Alipay without bonus credits',async t=>{
+ const f=fixture(t);Object.assign(f.config,{mineruEnabled:true,mineruToken:'synthetic-mineru-token',documentTranslationEnabled:true,documentTranslationAccessKeyId:'synthetic-id',documentTranslationAccessKeySecret:'synthetic-secret'});f.config.storage.read=()=>assert.fail('no original download in commerce acceptance');f.config.storage.signedOriginalURL=()=>assert.fail('no original signing in commerce acceptance');
+ // The payment service holds the same storage object but a shallow config copy.
+ const payments=createPaymentService(f.db,{...f.config,billing:f.billing});
+ applyV1Commerce(f.db,planV1Commerce(f.db).expected);
+ const options=payments.options();assert.equal(options.commercialVersion,'2026-10-31-v1');assert.equal(options.products.length,10);assert.ok(options.products.every(p=>p.purchasable),JSON.stringify(options.products.filter(p=>!p.purchasable).map(p=>p.id)));
+ assert.deepEqual(options.products.filter(p=>p.entitlementType==='membership').map(p=>p.priceCents).sort((a,b)=>a-b),[2990,6990]);
+ for(const provider of ['wechat','alipay'])for(const product of options.products.filter(p=>p.entitlementType!=='credits')){
+  const user=f.seed(),request={productId:product.id,provider,idempotencyKey:'v1-'+randomUUID()},order=(await payments.create(user,request)).item;
+  assert.equal(order.amountCents,product.priceCents);assert.equal(order.status,'pending');assert.equal(payments.entitlements(user).items.length,0);
+  // Later edits cannot alter the purchased price, validity, scope or resource counts.
+  const saved=f.db.prepare('SELECT rules FROM products WHERE id=?').get(product.id).rules,edited=JSON.parse(saved);edited.priceCents+=100;
+  f.db.prepare('UPDATE products SET rules=? WHERE id=?').run(JSON.stringify(edited),product.id);
+  await f.notify(order);await f.notify(order);const paid=payments.getOrder(user,order.id).item;assert.equal(paid.status,'paid');assert.equal(paid.amountCents,product.priceCents);
+  const ent=payments.entitlements(user),member=product.entitlementType==='membership',rows=member?ent.items:ent.bundles;assert.equal(rows.length,1);assert.equal(ent.credits.balance,0);
+  const row=rows[0];assert.equal(Date.parse(row.expires_at||row.expiresAt)-Date.parse(row.starts_at||row.startsAt),(member?30:180)*86400000);
+  const snapshot=JSON.parse(f.db.prepare('SELECT entitlement FROM payment_orders WHERE order_id=?').get(order.id).entitlement);assert.equal(snapshot.scope.version,'2026-10-31-v1');assert.deepEqual(snapshot[member?'membershipItems':'bundleItems'],product[member?'membershipItems':'bundleItems']);
+  f.db.prepare('UPDATE products SET rules=? WHERE id=?').run(saved,product.id);
+ }
 });

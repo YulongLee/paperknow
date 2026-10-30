@@ -1,3 +1,6 @@
+import {cloudUsage} from './commercial-resources.mjs';
+import {resourceEntitlementKeys,v1ExtraServices} from '../dist/workspace/v1-pricing.mjs';
+import {v1CommercialEnabled} from './v1-commercial-policy.mjs';
 import {literatureBillingKeys,literaturePricingKey,isLiteratureBillingKey,literatureBillingTitle} from '../dist/workspace/literature-billing-catalog.mjs';
 import {documentTranslationReady} from './document-translation-readiness.mjs';
 import {toolBillingServiceTypes} from '../dist/workspace/tool-pricing-catalog.mjs';
@@ -15,10 +18,10 @@ export const billingServiceTypes=Object.freeze([
  Object.freeze({key:'review',title:'导师意见修改'}),
  Object.freeze({key:'agent',title:'科研智能助手'})
 ]);
-const keys=new Set(billingServiceTypes.map(item=>item.key)),toolKeys=new Set(toolBillingServiceTypes.map(item=>item.key)),entitlementKeys=new Set([...keys,...toolKeys]);
+const keys=new Set(billingServiceTypes.map(item=>item.key)),toolKeys=new Set(toolBillingServiceTypes.map(item=>item.key)),entitlementKeys=new Set([...keys,...toolKeys,...resourceEntitlementKeys]);
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const isObject=value=>value&&typeof value==='object'&&!Array.isArray(value);
-const detectionKeys=new Set(['detection-similarity','detection-aigc']);
+const detectionKeys=new Set(['detection-similarity','detection-aigc','detection-combined']);
 const defaultToolRule=key=>({key,mode:detectionKeys.has(key)?'paid':'inherit',creditCost:detectionKeys.has(key)?500:null});
 const validItems=value=>{
  if(!Array.isArray(value)||value.length>20)return [];
@@ -68,8 +71,10 @@ export function createBillingService(db,config={}){
  // records; no existing purchase, charge, entitlement or policy is rewritten.
  for(const table of ['billing_quotes','billing_reservations']){
   const present=new Set(db.prepare('PRAGMA table_info('+table+')').all().map(row=>row.name));
-  for(const [name,type]of [['service_key','TEXT'],['entitlement_key','TEXT'],['source_grant_id','TEXT REFERENCES admin_membership_grants(id)'],...(table==='billing_quotes'?[['tool_policy_version','INTEGER']]:[])])if(!present.has(name))db.exec('ALTER TABLE '+table+' ADD COLUMN '+name+' '+type);
+  for(const [name,type]of [['entitlement_units','INTEGER NOT NULL DEFAULT 1'],['work_context','TEXT'],['service_key','TEXT'],['entitlement_key','TEXT'],['source_grant_id','TEXT REFERENCES admin_membership_grants(id)'],...(table==='billing_quotes'?[['tool_policy_version','INTEGER']]:[])])if(!present.has(name))db.exec('ALTER TABLE '+table+' ADD COLUMN '+name+' '+type);
  }
+ db.exec(`CREATE TRIGGER IF NOT EXISTS billing_quotes_units_protect BEFORE UPDATE ON billing_quotes WHEN NEW.entitlement_units IS NOT OLD.entitlement_units OR NEW.work_context IS NOT OLD.work_context BEGIN SELECT RAISE(ABORT,'报价范围不可修改'); END;
+ CREATE TRIGGER IF NOT EXISTS billing_reservations_units_protect BEFORE UPDATE ON billing_reservations WHEN NEW.entitlement_units IS NOT OLD.entitlement_units OR NEW.work_context IS NOT OLD.work_context BEGIN SELECT RAISE(ABORT,'预占范围不可修改'); END;`);
  db.exec(`CREATE TABLE IF NOT EXISTS tool_pricing_policy(id INTEGER PRIMARY KEY CHECK(id=1),rules TEXT NOT NULL,version INTEGER NOT NULL CHECK(version>=1),updated_at TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS billing_reservations_entitlement_v2 ON billing_reservations(source_order,entitlement_key,type,status);
  CREATE TRIGGER IF NOT EXISTS billing_quotes_tool_identity_protect BEFORE UPDATE ON billing_quotes
@@ -86,7 +91,7 @@ export function createBillingService(db,config={}){
  // duplicate/missing old entries and malformed modes remain closed for inspection.
  const previousToolPolicy=db.prepare('SELECT rules,version FROM tool_pricing_policy WHERE id=1').get();
  try{
-  const old=JSON.parse(previousToolPolicy.rules),base=toolBillingServiceTypes.filter(item=>!['AI 写作','免费检测','论文检测'].includes(item.group)).map(item=>item.key),known=[base,base.filter(key=>key!=='research-image'),toolBillingServiceTypes.filter(item=>item.key!=='thesis-researcher').map(item=>item.key)];
+  const old=JSON.parse(previousToolPolicy.rules),base=toolBillingServiceTypes.filter(item=>!v1ExtraServices.some(s=>s.key===item.key)&&!['AI 写作','免费检测','论文检测'].includes(item.group)).map(item=>item.key),oldV1=toolBillingServiceTypes.filter(item=>!['detection-combined','thesis-long','writing-article','writing-course','writing-practice','writing-idea','writing-questionnaire','writing-analysis','revision-paragraph','revision-targeted','presentation-enhanced','literature-document','literature-document-long','writing-planning'].includes(item.key)).map(item=>item.key),known=[oldV1,oldV1.filter(key=>key!=='thesis-researcher'),base,base.filter(key=>key!=='research-image'),toolBillingServiceTypes.filter(item=>item.key!=='thesis-researcher').map(item=>item.key)];
   const shape=Array.isArray(old)&&old.every(item=>isObject(item)&&Object.keys(item).length===3&&Object.keys(item).every(key=>['key','mode','creditCost'].includes(key))&&['inherit','free','paid','disabled'].includes(item.mode)&&(item.mode==='paid'?Number.isSafeInteger(item.creditCost)&&item.creditCost>=1&&item.creditCost<=100000:item.creditCost===null));
   const legacy=shape&&known.some(version=>old.length===version.length&&new Set(old.map(item=>item.key)).size===version.length&&old.every(item=>version.includes(item.key)));
   if(legacy){const present=new Set(old.map(item=>item.key)),added=toolBillingServiceTypes.filter(item=>!present.has(item.key)).map(({key})=>defaultToolRule(key));
@@ -129,7 +134,7 @@ export function createBillingService(db,config={}){
   const services=toolBillingServiceTypes.map(({key,title,group})=>{const values=stored.filter(item=>item?.key===(isLiteratureBillingKey(key)?literaturePricingKey:key)),item=values[0];
    if(values.length!==1||!['inherit','free','paid','disabled'].includes(item?.mode)||(item.mode==='paid'?(!Number.isSafeInteger(item.creditCost)||item.creditCost<1||item.creditCost>100000):item.creditCost!==null))fail(503,'科研工具计价规则暂时无法读取');
    const effectiveMode=item.mode==='inherit'?parent.mode:item.mode,effectiveCreditCost=effectiveMode==='paid'?(item.mode==='inherit'?parent.creditCost:item.creditCost):null;
-   return {key,title:literatureBillingTitle(key)||title,group,mode:item.mode,creditCost:item.creditCost,effectiveMode,effectiveCreditCost,available:key==='literature-translate'?(ready||documentTranslationReady(config)):key==='research-image'?imageAvailable():key.startsWith('presentation-')?ready&&presentationGenerationStatus(config).ready:detectionKeys.has(key)?detectionBillingReady(key,config):ready};
+   return {key,title:literatureBillingTitle(key)||title,group,mode:item.mode,creditCost:item.creditCost,effectiveMode,effectiveCreditCost,available:key.startsWith('literature-document')?documentTranslationReady(config):key==='literature-translate'?(ready||documentTranslationReady(config)):key==='research-image'?imageAvailable():key.startsWith('presentation-')?ready&&presentationGenerationStatus(config).ready:detectionKeys.has(key)?detectionBillingReady(key,config):ready};
   });return {version:row.version,services};
  }
  function saveToolRules(input){
@@ -147,13 +152,13 @@ export function createBillingService(db,config={}){
   if(!keys.has(type))fail(400,'不支持的计费服务');serviceKey=subservice(type,serviceKey);const policy=rules(),parent=policy.services.find(value=>value.key===type),tools=serviceKey?toolRules():null,child=tools?.services.find(value=>value.key===serviceKey),item=child?{...parent,title:child.title,mode:child.effectiveMode,creditCost:child.effectiveCreditCost,available:child.available}:parent;
   if(!item.available)fail(503,'当前服务尚未启用');if(item.mode==='disabled')fail(503,'当前服务已暂停');return {...item,version:policy.version,serviceKey,toolVersion:tools?.version??null};
  }
- function counts(orderId,key){const admin=typeof orderId==='string'&&orderId.startsWith('admin:');return db.prepare(`SELECT COALESCE(sum(CASE WHEN status='held' THEN 1 ELSE 0 END),0) held,COALESCE(sum(CASE WHEN status='settled' THEN 1 ELSE 0 END),0) used FROM billing_reservations WHERE ${admin?'source_grant_id':'source_order'}=? AND COALESCE(entitlement_key,type)=? AND status IN ('held','settled')`).get(admin?orderId.slice(6):orderId,key);}
+ function counts(orderId,key){const admin=typeof orderId==='string'&&orderId.startsWith('admin:');return db.prepare(`SELECT COALESCE(sum(CASE WHEN status='held' THEN entitlement_units ELSE 0 END),0) held,COALESCE(sum(CASE WHEN status='settled' THEN entitlement_units ELSE 0 END),0) used FROM billing_reservations WHERE ${admin?'source_grant_id':'source_order'}=? AND COALESCE(entitlement_key,type)=? AND status IN ('held','settled')`).get(admin?orderId.slice(6):orderId,key);}
  function grants(userId,source){
-  const membership=source==='membership';if(membership)return managedMemberships(db,userId,clock()).filter(row=>row.status!=='revoked').map(row=>({orderId:row.origin==='admin'?row.id:row.orderId,startsAt:row.startsAt,expiresAt:row.expiresAt,items:validItems(row.items)})).sort((a,b)=>a.expiresAt.localeCompare(b.expiresAt)||a.orderId.localeCompare(b.orderId));const table='payment_bundle_entitlements';
+  const membership=source==='membership';if(membership)return managedMemberships(db,userId,clock()).filter(row=>row.status!=='revoked').map(row=>({orderId:row.origin==='admin'?row.id:row.orderId,startsAt:row.startsAt,expiresAt:row.expiresAt,items:validItems(row.items),scope:row.scope||null})).sort((a,b)=>a.expiresAt.localeCompare(b.expiresAt)||a.orderId.localeCompare(b.orderId));const table='payment_bundle_entitlements';
   return db.prepare(`SELECT e.order_id AS orderId,e.starts_at AS startsAt,e.expires_at AS expiresAt,d.entitlement FROM ${table} e JOIN payment_orders d ON d.order_id=e.order_id JOIN orders o ON o.id=e.order_id WHERE e.user_id=? AND o.user_id=? AND o.status='paid' ORDER BY e.expires_at,e.starts_at,e.order_id`).all(userId,userId).flatMap(row=>{
    let snapshot;try{snapshot=JSON.parse(row.entitlement);}catch{return [];}
    if(snapshot?.type!==source)return [];
-   return [{orderId:row.orderId,startsAt:row.startsAt,expiresAt:row.expiresAt,items:validItems(snapshot[membership?'membershipItems':'bundleItems'])}];
+   return [{orderId:row.orderId,startsAt:row.startsAt,expiresAt:row.expiresAt,items:validItems(snapshot[membership?'membershipItems':'bundleItems']),scope:snapshot.scope||null}];
   });
  }
  function grantQuota(grant,type,now){
@@ -171,14 +176,17 @@ export function createBillingService(db,config={}){
   return {balance,held,available:balance-held};
  }
  function quote(user,input){
-  if(!isObject(input)||Object.keys(input).some(key=>!['type','serviceKey'].includes(key)))fail(400,'请选择有效的服务');
-  const item=service(input.type,input.serviceKey),now=clock();let source='free',sourceOrderId=null,creditCost=0,entitlementKey=null;
+  if(!isObject(input)||Object.keys(input).some(key=>!['type','serviceKey','context'].includes(key))||input.context!==undefined&&(!isObject(input.context)||JSON.stringify(input.context).length>1500))fail(400,'请选择有效的服务');
+  const item=service(input.type,input.serviceKey),now=clock();let source='free',sourceOrderId=null,creditCost=0,entitlementKey=null,entitlementUnits=1;
+  const context=input.context||{},v1=v1CommercialEnabled(db);
+  const eligible=(grant,key)=>{const q=grantQuota(grant,key,now),units=key==='translation-pages'?context.pages:1;if(!Number.isSafeInteger(units)||units<1||!q||q.remaining<units)return false;if(key==='light-ai'&&(!Number.isSafeInteger(context.characters)||context.characters>3000||!['literature-read','literature-answer','literature-translate',null].includes(item.serviceKey)))return false;const s=grant.scope;if(s?.version&&context.targetWords>(({thesis:30000,proposal:6000,summary:8000,taskbook:3000,article:10000,course:5000,practice:8000,idea:1500,questionnaire:6000})[context.kind]||Infinity))return false;if(s?.maxTargetWords&&context.targetWords>s.maxTargetWords)return false;if(s?.maxLocalChars&&['polish','review'].includes(item.key)&&context.characters>s.maxLocalChars)return false;if(s?.maxRevisionChars&&item.serviceKey?.startsWith('revision-')&&context.characters>s.maxRevisionChars)return false;if(s?.maxSlides&&item.serviceKey?.startsWith('presentation-')&&context.pages>s.maxSlides)return false;return true;};
   if(item.mode==='paid'||detectionKeys.has(item.serviceKey)&&item.mode==='free'){
    if(item.mode==='paid'){source='credits';creditCost=item.creditCost;}
    for(const candidate of ['membership','bundle']){
-    const availableGrants=grants(user.id,candidate),options=item.serviceKey?(item.mode==='free'||detectionKeys.has(item.serviceKey)?[item.serviceKey]:(isLiteratureBillingKey(item.serviceKey)?[...new Set([item.serviceKey,...literatureBillingKeys,item.key])]:[item.serviceKey,item.key])):[item.key];let chosen;for(const key of options){const grant=availableGrants.find(grant=>grantQuota(grant,key,now)?.remaining>0);if(grant){chosen={grant,key};break;}}
-    if(chosen){source=candidate;sourceOrderId=chosen.grant.orderId;entitlementKey=chosen.key;creditCost=0;break;}
+    const availableGrants=grants(user.id,candidate),options=item.serviceKey?(item.mode==='free'||detectionKeys.has(item.serviceKey)?[item.serviceKey]:(isLiteratureBillingKey(item.serviceKey)?[...new Set([item.serviceKey,...literatureBillingKeys,item.key])]:[item.serviceKey,item.key])):[item.key];if(v1){if(item.serviceKey?.startsWith('literature-document'))options.splice(0,options.length,'translation-pages','literature-translate');else if(isLiteratureBillingKey(item.serviceKey)||['polish','review'].includes(item.key))options.unshift('light-ai');if(item.serviceKey==='thesis-long'&&context.level)options.unshift('thesis-'+({'专科':'junior','本科':'bachelor','硕士':'master','博士':'doctor','研究工作者':'researcher'})[context.level]);if(item.serviceKey==='revision-targeted')options.unshift(context.revisionKind==='aigc'?'revision-aigc':'revision-reduce');}let chosen;for(const key of options){const grant=availableGrants.find(grant=>eligible(grant,key));if(grant){chosen={grant,key};break;}}
+    if(chosen){source=candidate;sourceOrderId=chosen.grant.orderId;entitlementKey=chosen.key;entitlementUnits=chosen.key==='translation-pages'?context.pages:1;creditCost=0;break;}
    }
+   if(v1&&source==='credits'&&context.targetWords>(({thesis:30000,proposal:6000,summary:8000,taskbook:3000,article:10000,course:5000,practice:8000,idea:1500,questionnaire:6000})[context.kind]||Infinity))fail(400,'目标字数超出当前服务范围，请调整后生成；尚未扣费。');
    if(source==='credits'&&totals(user.id).available<creditCost)fail(402,'可用积分不足，请充值或选择有效权益');
   }
   // Quotes are short-lived confirmation credentials, never financial history.
@@ -186,35 +194,35 @@ export function createBillingService(db,config={}){
   db.prepare('DELETE FROM billing_quotes WHERE token IN (SELECT token FROM billing_quotes WHERE expires_at<? ORDER BY expires_at,token LIMIT 500)').run(new Date(Date.parse(now)-86400000).toISOString());
   const token=randomBytes(32).toString('base64url'),expiresAt=new Date(Date.parse(now)+5*60000).toISOString();
   const adminGrantId=source==='membership'&&sourceOrderId?.startsWith('admin:')?sourceOrderId.slice(6):null;
-  db.prepare('INSERT INTO billing_quotes(token,user_id,type,source,source_order,source_grant_id,credits,policy_version,expires_at,used,service_key,entitlement_key,tool_policy_version) VALUES(?,?,?,?,?,?,?,?,?,0,?,?,?)').run(token,user.id,item.key,source,adminGrantId?null:sourceOrderId,adminGrantId,creditCost,item.version,expiresAt,item.serviceKey,entitlementKey,item.toolVersion);
-  return {token,type:item.key,title:item.title,source,sourceOrderId,creditCost,expiresAt,policyVersion:item.version,...(item.serviceKey?{serviceKey:item.serviceKey,toolPolicyVersion:item.toolVersion}:{}),...(entitlementKey?{entitlementKey}:{})};
+  db.prepare('INSERT INTO billing_quotes(token,user_id,type,source,source_order,source_grant_id,credits,policy_version,expires_at,used,service_key,entitlement_key,tool_policy_version,entitlement_units,work_context) VALUES(?,?,?,?,?,?,?,?,?,0,?,?,?,?,?)').run(token,user.id,item.key,source,adminGrantId?null:sourceOrderId,adminGrantId,creditCost,item.version,expiresAt,item.serviceKey,entitlementKey,item.toolVersion,entitlementUnits,JSON.stringify(context));
+  return {token,type:item.key,title:item.title,amountCents:creditCost*10,entitlementUnits,source,sourceOrderId,creditCost,expiresAt,policyVersion:item.version,...(item.serviceKey?{serviceKey:item.serviceKey,toolPolicyVersion:item.toolVersion}:{}),...(entitlementKey?{entitlementKey}:{})};
  }
- function reservation(row){return {id:row.id,jobId:row.job_id,attempt:row.attempt,userId:row.user_id,type:row.type,source:row.source,sourceOrderId:row.source_grant_id?'admin:'+row.source_grant_id:row.source_order,...(row.source_grant_id?{sourceGrantId:row.source_grant_id}:{}),creditCost:row.credits,status:row.status,...(row.service_key?{serviceKey:row.service_key}:{}),...(row.entitlement_key?{entitlementKey:row.entitlement_key}:{}),createdAt:row.created_at,updatedAt:row.updated_at};}
+ function reservation(row){return {id:row.id,jobId:row.job_id,attempt:row.attempt,userId:row.user_id,type:row.type,source:row.source,sourceOrderId:row.source_grant_id?'admin:'+row.source_grant_id:row.source_order,...(row.source_grant_id?{sourceGrantId:row.source_grant_id}:{}),creditCost:row.credits,entitlementUnits:row.entitlement_units,status:row.status,...(row.service_key?{serviceKey:row.service_key}:{}),...(row.entitlement_key?{entitlementKey:row.entitlement_key}:{}),createdAt:row.created_at,updatedAt:row.updated_at};}
  function event(id,kind,now){db.prepare('INSERT INTO billing_events(id,reservation_id,kind,created_at) VALUES(?,?,?,?)').run(randomUUID(),id,kind,now);}
  function reserve(user,jobId,attempt,type,token,serviceKey){
   serviceKey=subservice(type,serviceKey);
   if(!Number.isSafeInteger(attempt)||attempt<1||typeof jobId!=='string')fail(400,'任务执行次数无效');
-  const job=db.prepare('SELECT id,user_id,type,input FROM jobs WHERE id=? AND user_id=?').get(jobId,user.id);if(!job)fail(404,'任务不存在');const documentTranslationJob=job.type==='document_translation';const detectionJob=({'web_similarity':'detection-similarity','aigc_detection':'detection-aigc'})[job.type];if(documentTranslationJob?(type!=='agent'||serviceKey!=='literature-translate'):detectionJob?(type!=='agent'||serviceKey!==detectionJob):detectionKeys.has(serviceKey)||job.type!==type&&!(['thesis','thesis_outline','thesis_method','writing','tool_run'].includes(job.type)&&type===jobBillingType(job)))fail(409,'任务类型与计费服务不一致');
+  const job=db.prepare('SELECT id,user_id,type,input FROM jobs WHERE id=? AND user_id=?').get(jobId,user.id);if(!job)fail(404,'任务不存在');const documentTranslationJob=job.type==='document_translation';const detectionJob=({'web_similarity':'detection-similarity','aigc_detection':'detection-aigc','detection_combined':'detection-combined'})[job.type];if(documentTranslationJob?(type!=='agent'||!['literature-translate','literature-document','literature-document-long'].includes(serviceKey)):detectionJob?(type!=='agent'||serviceKey!==detectionJob):detectionKeys.has(serviceKey)||job.type!==type&&!(['thesis','thesis_outline','thesis_method','writing','tool_run'].includes(job.type)&&type===jobBillingType(job)))fail(409,'任务类型与计费服务不一致');
   const existing=db.prepare('SELECT * FROM billing_reservations WHERE job_id=? AND attempt=?').get(jobId,attempt);
   if(existing){if(existing.user_id!==user.id||existing.type!==type||(existing.service_key??null)!==serviceKey)fail(409,'任务预占信息不一致');return reservation(existing);}
   if(db.prepare("SELECT 1 FROM billing_reservations WHERE job_id=? AND status='held'").get(jobId))fail(409,'任务已有未结算预占');
-  const item=service(type,serviceKey),now=clock();let source='free',sourceOrderId=null,creditCost=0,entitlementKey=null,quoted;
+  const item=service(type,serviceKey),now=clock();let source='free',sourceOrderId=null,creditCost=0,entitlementKey=null,entitlementUnits=1,workContext=null,quoted;
   if(token!==undefined&&token!==null&&token!==''){
    if(typeof token!=='string'||token.length>200)fail(400,'计费确认无效');
    quoted=db.prepare('SELECT * FROM billing_quotes WHERE token=? AND user_id=?').get(token,user.id);
    if(!quoted||quoted.type!==type||quoted.used||quoted.expires_at<=now||quoted.policy_version!==item.version||(quoted.service_key??null)!==serviceKey||(quoted.tool_policy_version??null)!==item.toolVersion)fail(409,'计费确认已失效，请重新确认后提交');
-   ({source,source_order:sourceOrderId,credits:creditCost,entitlement_key:entitlementKey}=quoted);if(quoted.source_grant_id)sourceOrderId='admin:'+quoted.source_grant_id;
+   ({source,source_order:sourceOrderId,credits:creditCost,entitlement_key:entitlementKey,entitlement_units:entitlementUnits,work_context:workContext}=quoted);if(quoted.source_grant_id)sourceOrderId='admin:'+quoted.source_grant_id;
    if(item.mode==='free'&&source!=='free'&&!(detectionKeys.has(serviceKey)&&['membership','bundle'].includes(source))||item.mode==='paid'&&source==='free')fail(409,'计费方式已变化，请重新确认');
   }else if(item.mode==='paid'||serviceKey)fail(409,'请先确认本次使用的权益或积分');
   if(source==='credits'){
    if(creditCost!==item.creditCost||totals(user.id).available<creditCost)fail(402,'可用积分不足，请重新确认');
   }else if(source==='membership'||source==='bundle'){
-   if(!quota(user.id,source,sourceOrderId,entitlementKey||type,now)?.remaining)fail(409,'本次选定权益已用完或到期，请重新确认');
+   if((quota(user.id,source,sourceOrderId,entitlementKey||type,now)?.remaining||0)<entitlementUnits)fail(409,'本次选定权益已用完或到期，请重新确认');
   }
   if(quoted&&!db.prepare('UPDATE billing_quotes SET used=1 WHERE token=? AND used=0').run(quoted.token).changes)fail(409,'本次计费确认已使用');
   const id=randomUUID();
   const adminGrantId=source==='membership'&&sourceOrderId?.startsWith('admin:')?sourceOrderId.slice(6):null;
-  db.prepare("INSERT INTO billing_reservations(id,job_id,attempt,user_id,type,source,source_order,source_grant_id,credits,status,created_at,updated_at,service_key,entitlement_key) VALUES(?,?,?,?,?,?,?,?,?,'held',?,?,?,?)").run(id,jobId,attempt,user.id,type,source,adminGrantId?null:sourceOrderId,adminGrantId,creditCost,now,now,serviceKey,entitlementKey);
+  db.prepare("INSERT INTO billing_reservations(id,job_id,attempt,user_id,type,source,source_order,source_grant_id,credits,status,created_at,updated_at,service_key,entitlement_key,entitlement_units,work_context) VALUES(?,?,?,?,?,?,?,?,?,'held',?,?,?,?,?,?)").run(id,jobId,attempt,user.id,type,source,adminGrantId?null:sourceOrderId,adminGrantId,creditCost,now,now,serviceKey,entitlementKey,entitlementUnits,workContext);
   event(id,'reserve',now);return reservation(db.prepare('SELECT * FROM billing_reservations WHERE id=?').get(id));
  }
  function finish(jobId,status,kind){
@@ -232,7 +240,7 @@ export function createBillingService(db,config={}){
   return {...totals(userId),ledger};
  }
  function entitlements(userId){
-  const usage=source=>Object.fromEntries(grants(userId,source).map(grant=>[grant.orderId,grant.items.map(item=>{const {held,used}=counts(grant.orderId,item.key);return {...item,held,used,remaining:Math.max(0,item.quantity-held-used)};})]));
+  const usage=source=>Object.fromEntries(grants(userId,source).map(grant=>[grant.orderId,grant.items.map(item=>{let {held,used}=counts(grant.orderId,item.key);if(item.key==='cloud-mb'){held=0;used=Math.ceil(cloudUsage(db,userId)/1024/1024);}if(item.key==='parse-pages'&&db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='commercial_parse_reservations'").get()){const x=db.prepare("SELECT coalesce(sum(CASE WHEN j.status IN ('queued','running') THEN r.pages ELSE 0 END),0) held,coalesce(sum(CASE WHEN j.status='completed' THEN r.pages ELSE 0 END),0) used FROM commercial_parse_reservations r JOIN jobs j ON j.id=r.job_id WHERE r.user_id=? AND r.grant_key=?").get(userId,grant.orderId.startsWith('admin:')?grant.orderId:'payment:'+grant.orderId);held=x.held;used=x.used;}return {...item,held,used,remaining:Math.max(0,item.quantity-held-used)};})]));
   return {reservations:db.prepare('SELECT * FROM billing_reservations WHERE user_id=? ORDER BY created_at DESC,rowid DESC LIMIT 100').all(userId).map(reservation),membershipUsage:usage('membership'),bundleUsage:usage('bundle')};
  }
  return {rules,saveRules,toolRules,saveToolRules,quote,reserve,settle,release,balance,entitlements,isBillable};

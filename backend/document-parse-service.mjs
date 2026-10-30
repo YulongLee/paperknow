@@ -1,3 +1,5 @@
+import {v1CommercialEnabled} from './v1-commercial-policy.mjs';
+import {commercialDocumentPages,reserveParsePages} from './commercial-resources.mjs';
 import {randomUUID} from 'node:crypto';
 import {digest} from './auth.mjs';
 import {initializeArtifactSchema} from './artifact-service.mjs';
@@ -56,6 +58,7 @@ export function createDocumentParseService(db,config={}){
   if(file.storage_provider!=='aliyun_oss')fail(409,'此原件尚未保存到云端，请重新上传后解析。');
   if(db.prepare("SELECT 1 FROM workspace_file_deletions WHERE file_id=? AND status='pending'").get(file.id))fail(409,'原件正在删除，请选择其他文件');
   const hash=digest(JSON.stringify({fileId:file.id,sha256:file.sha256,consent:true}));
+  const pages=v1CommercialEnabled(db)?await commercialDocumentPages(db,file,{...config,documentTranslationPageCount:config.documentPageCount}):null;
   const created=tx(()=>{
    const existing=db.prepare('SELECT * FROM jobs WHERE user_id=? AND idempotency_key=?').get(user.id,input.idempotencyKey);
    if(existing){if(existing.type!=='document_parse'||existing.input_hash!==hash)fail(409,'请求编号已用于其他内容，请重新选择文件');return{id:existing.id,status:200};}
@@ -65,10 +68,11 @@ export function createDocumentParseService(db,config={}){
    if(db.prepare("SELECT count(*) n FROM jobs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=3)fail(409,'最多同时处理 3 项任务，请等待当前任务完成');
    if(db.prepare("SELECT count(*) n FROM jobs WHERE type='document_parse' AND status IN ('queued','running')").get().n>=20)fail(429,'云端文档解析当前繁忙，请稍后再试');
    const since=new Date();since.setUTCHours(0,0,0,0);const today=since.toISOString();
-   if(db.prepare('SELECT count(*) n FROM document_parse_runs WHERE user_id=? AND created_at>=?').get(user.id,today).n>=documentParseLimits.userDaily)fail(429,'今日云端文档解析次数已用完，请明天再试');
-   if(db.prepare('SELECT count(*) n FROM document_parse_runs WHERE created_at>=?').get(today).n>=documentParseLimits.globalDaily)fail(429,'云端文档解析今日额度已用完，请稍后再试');
+   if(!v1CommercialEnabled(db)&&db.prepare('SELECT count(*) n FROM document_parse_runs WHERE user_id=? AND created_at>=?').get(user.id,today).n>=documentParseLimits.userDaily)fail(429,'今日云端文档解析次数已用完，请明天再试');
+   if(!v1CommercialEnabled(db)&&db.prepare('SELECT count(*) n FROM document_parse_runs WHERE created_at>=?').get(today).n>=documentParseLimits.globalDaily)fail(429,'云端文档解析今日额度已用完，请稍后再试');
    const id=randomUUID(),at=new Date().toISOString();db.prepare("INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,'document_parse','queued','queued',?,?,?,?,?)").run(id,user.id,file.project_id,JSON.stringify({fileId:file.id,consent:true}),input.idempotencyKey,hash,at,at);
    db.prepare('INSERT INTO document_parse_runs(id,user_id,file_id,source_sha256,file_name,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(id,user.id,file.id,file.sha256,file.name,at,at);
+   if(pages){reserveParsePages(db,user.id,id,pages);db.prepare('UPDATE document_parse_runs SET expected_pages=?,total_pages=? WHERE id=?').run(pages,pages,id);}
    return{id,status:201};
   });return{status:created.status,value:{id:created.id}};
  }};

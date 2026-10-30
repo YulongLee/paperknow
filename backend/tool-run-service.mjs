@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {commercialToolIdentity,commercialWorkContext} from './v1-commercial-policy.mjs';
 import {resolveTaskProject,projectTaskHash,taskProjectId} from './task-project-context.mjs';
 import {createBillingService} from './billing-service.mjs';
 import {createModelBudget} from './model-budget.mjs';
@@ -47,7 +48,7 @@ export function createToolRunService(db,config={}){
   if(path==='/api/tool-runs/jobs'&&method==='GET')return response({items:db.prepare('SELECT * FROM tool_runs WHERE user_id=? ORDER BY created_at DESC LIMIT 100').all(user.id).map(row=>serializeToolRun(db,row))});
   if(path==='/api/tool-runs/quote'&&method==='POST'){
    const input=await readBody();fields(input,['kind','operation','snapshot','projectId']);const value=normalize(input,user),runtime=await settings(undefined,value);await checkImage(value,runtime);checkPresentation(value);
-   return response(thesisTransaction(db,()=>{resolveTaskProject(db,value.projectId,user);const charge=toolBillingIdentity(value),quote=billing.quote(user,charge);admission(user,quote.token,charge);db.prepare('INSERT INTO tool_quotes VALUES(?,?,?,?)').run(quote.token,user.id,value.inputHash,clock());return{...quote,inputHash:value.inputHash,projectId:value.projectId,kind:value.kind,operation:value.operation};}));
+   return response(thesisTransaction(db,()=>{resolveTaskProject(db,value.projectId,user);const charge=commercialToolIdentity(db,value),quote=billing.quote(user,{...charge,context:commercialWorkContext(value)});admission(user,quote.token,charge);db.prepare('INSERT INTO tool_quotes VALUES(?,?,?,?)').run(quote.token,user.id,value.inputHash,clock());return{...quote,inputHash:value.inputHash,projectId:value.projectId,kind:value.kind,operation:value.operation};}));
   }
   const byKey=path.match(/^\/api\/tool-runs\/jobs\/by-key\/([^/]+)$/);if(byKey&&method==='GET'){const key=commandKey(decodeURIComponent(byKey[1])),row=db.prepare('SELECT * FROM tool_runs WHERE user_id=? AND client_key=?').get(user.id,key);if(!row)fail(404,'科研工具任务不存在');return response({item:serializeToolRun(db,row)});}
   if(path==='/api/tool-runs/jobs'&&method==='POST'){
@@ -56,7 +57,7 @@ export function createToolRunService(db,config={}){
    let resume;if(input.resumeFromJobId!==undefined){resume=own(input.resumeFromJobId,user);if(resume.input_hash!==value.inputHash||!['failed','cancelled'].includes(resume.status))fail(409,'只能从相同输入的失败或取消任务继续');}
    const runtime=await settings(undefined,value);await checkImage(value,runtime);checkPresentation(value);return response(thesisTransaction(db,()=>{
     resolveTaskProject(db,value.projectId,user);const again=db.prepare('SELECT * FROM tool_runs WHERE user_id=? AND client_key=?').get(user.id,input.clientKey);if(again){if(again.input_hash!==value.inputHash)fail(409,'提交标识已用于其他内容');return{item:serializeToolRun(db,again)};}
-    const charge=toolBillingIdentity(value);admission(user,input.billingToken,charge);const quote=db.prepare('SELECT * FROM tool_quotes WHERE token=? AND user_id=?').get(typeof input.billingToken==='string'?input.billingToken:'',user.id);if(!quote||quote.input_hash!==value.inputHash)fail(409,'资料与费用确认不一致，请重新确认');
+    const charge=commercialToolIdentity(db,value);admission(user,input.billingToken,charge);const quote=db.prepare('SELECT * FROM tool_quotes WHERE token=? AND user_id=?').get(typeof input.billingToken==='string'?input.billingToken:'',user.id);if(!quote||quote.input_hash!==value.inputHash)fail(409,'资料与费用确认不一致，请重新确认');
     const json=JSON.stringify(value.snapshot),plan=resume?JSON.parse(resume.plan):toolRunPlan(value),copies=resume?db.prepare('SELECT * FROM tool_checkpoints WHERE run_id=? AND position<2000 ORDER BY position').all(resume.id):[];toolStorageCheck(db,user.id,Buffer.byteLength(json)+50000+copies.reduce((n,c)=>n+Buffer.byteLength(c.output),0),config);const id=randomUUID(),at=clock();
     db.prepare('INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,user.id,value.projectId,'tool_run','queued','queued',JSON.stringify({title:value.snapshot.title,kind:value.kind,operation:value.operation,settingsVersion:runtime.version,billingType:charge.type}),'tool:'+input.clientKey,value.inputHash,at,at);
     db.prepare('INSERT INTO tool_runs(id,user_id,kind,operation,snapshot,input_hash,client_key,settings_version,status,stage,plan,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,user.id,value.kind,value.operation,json,value.inputHash,input.clientKey,runtime.version,'queued','queued',JSON.stringify(plan),at,at);

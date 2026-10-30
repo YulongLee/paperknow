@@ -1,3 +1,4 @@
+import {entitlementUnit} from './v1-pricing.mjs';
 import {toolBanner} from './tool-banner.mjs';
 import {esc,icon} from './ui.mjs';
 import {withStableView} from './view-stability.mjs';
@@ -53,7 +54,7 @@ function entitlementText(value){if(!value||typeof value!=='object')return '';con
 function entitlementSnapshot(item){const nested=item?.entitlement&&typeof item.entitlement==='object'?item.entitlement:{};return {...nested,type:item?.entitlementType||nested.type,creditAmount:item?.creditAmount??nested.creditAmount,durationDays:item?.durationDays??nested.durationDays,bundleItems:item?.bundleItems??nested.bundleItems,membershipItems:item?.membershipItems??nested.membershipItems};}
 function purchaseType(item){return {membership:'会员订阅',credits:'科研积分',bundle:'服务套餐'}[entitlementSnapshot(item).type]||'服务订单';}
 function bundleItems(item){const snapshot=entitlementSnapshot(item);const items=snapshot.type==='membership'?snapshot.membershipItems:snapshot.type==='bundle'?snapshot.bundleItems:null;return Array.isArray(items)?items.filter(part=>part&&typeof part.title==='string'&&Number.isSafeInteger(part.quantity)&&part.quantity>0):[];}
-function bundleMarkup(item){const parts=bundleItems(item);return parts.length?`<span class="payment-bundle-items">${parts.map(part=>`<span><span>${esc(part.title)}</span><b>× ${part.quantity}</b></span>`).join('')}</span>`:'';}
+function bundleMarkup(item){const parts=bundleItems(item);return parts.length?`<span class="payment-bundle-items">${parts.map(part=>`<span><span>${esc(part.title)}</span><b>× ${part.quantity} ${entitlementUnit(part.key)}</b></span>`).join('')}</span>`:'';}
 function entitlementRows(item){const value=entitlementSnapshot(item),days=Number.isSafeInteger(value.durationDays)&&value.durationDays>0?value.durationDays:null,credits=Number.isSafeInteger(value.creditAmount)&&value.creditAmount>0?value.creditAmount:Number.isSafeInteger(value.quantity)&&value.quantity>0?value.quantity:null;return `<div><dt>商品类型</dt><dd>${purchaseType(item)}</dd></div>${value.type==='credits'?`<div><dt>到账积分</dt><dd>${credits===null?'以商品说明为准':credits+' 科研积分'}</dd></div>`:`<div><dt>购买数量</dt><dd>${value.type==='bundle'?'1 套':'1 份'}</dd></div>`}${days?`<div><dt>${value.type==='membership'?'会员有效期':value.type==='bundle'?'套餐有效期':'权益有效期'}</dt><dd>${days} 天</dd></div>`:''}`;}
 function paidAccountLabel(item){return {membership:'查看会员权益',credits:'查看账户科研积分',bundle:'查看账户已购套餐'}[entitlementSnapshot(item).type]||'查看账户权益与积分';}
 function selectionHref(item){return {membership:'#membership/plans',credits:'#membership/recharge',bundle:'#membership/bundles'}[entitlementSnapshot(item).type]||'#membership/plans';}

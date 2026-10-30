@@ -5,7 +5,7 @@ const concepts=[[/方法|模型|架构|机制|算法|method|approach|architectur
 function terms(text){const low=String(text).toLowerCase(),out=new Set((low.match(/[a-z][a-z0-9_-]{1,40}|\d+(?:\.\d+)?/g)||[]).filter(t=>!stop.has(t)));for(const run of low.match(/[\p{Script=Han}]+/gu)||[])for(let i=0;i<run.length-1;i++)out.add(run.slice(i,i+2));return out;}
 function indexFor(paper){let index=cache.get(paper.id);if(index?.text===paper.text){cache.delete(paper.id);cache.set(paper.id,index);return index;}const parts=literatureParagraphs(paper.text);let heading='';const rows=parts.map(part=>{if(/^#{1,6}\s+/.test(part.text))heading=part.text;return {...part,heading,words:terms(part.text+' '+heading),body:!/^#{1,6}\s+[^\n]{1,180}$/.test(part.text)&&part.text.length>=5};});index={text:paper.text,parts,rows,answers:new Map()};cache.set(paper.id,index);while(cache.size>3)cache.delete(cache.keys().next().value);return index;}
 /** Local full-document lexical/section retrieval. All returned text is exact, never rewritten. */
-export function retrieveLiteratureMaterials(paper,question,{previousQuestion='',maxCharacters=5500,maxSources=6}={}){
+export function retrieveLiteratureMaterials(paper,question,{previousQuestion='',maxCharacters=3000,maxSources=6}={}){
  if(!paper||paper.scope==='metadata'||!paper.text?.trim())return selectReadingMaterials(paper);
  const index=indexFor(paper),query=String(question||'').trim(),follow=isReadingFollowUp(query);
  const effective=query+(follow&&previousQuestion?' '+previousQuestion:''),key=effective+'\n'+maxCharacters+'\n'+maxSources;

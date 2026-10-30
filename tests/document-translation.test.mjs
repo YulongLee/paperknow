@@ -1,3 +1,4 @@
+import {planV1Commerce,applyV1Commerce} from '../backend/v1-commercial-launch.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -138,4 +139,17 @@ test('paid translation actions have no free daily count or page cap and PDF prep
  const f=await fixture(t,{config:{documentTranslationPageCount:async()=>100}}),billing=paidReading(f,200);
  for(let n=0;n<4;n++){const id=(await f.submit(f.upload())).value.id;await f.tick();await f.tick();assert.equal(f.job(id).status,'completed');}
  assert.equal(f.calls.create,4);assert.equal(billing.balance('alice').balance,100);assert.equal(billing.balance('alice').ledger.filter(e=>e.kind==='settle').length,4);
+});
+
+
+test('V1 whole-document price follows verified source pages at 20/21/50 and rejects 51 before a hold or provider call',async t=>{
+ for(const [pages,cost] of [[20,99],[21,249],[50,249],[51,null]]){
+  const f=await fixture(t,{config:{documentTranslationPageCount:async()=>pages}});applyV1Commerce(f.db,planV1Commerce(f.db).expected);
+  f.db.prepare('INSERT INTO admin_credit_adjustments(id,user_id,amount,reason,actor_id,created_at) VALUES(?,?,?,?,?,?)').run(randomUUID(),'alice',10000,'Synthetic fixture','alice',new Date().toISOString());
+  const id=f.upload(),before=f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n;
+  const input={fileId:id,sourceLanguage:'en',targetLanguage:'zh',expectedUserId:'alice'};
+  if(cost===null)await assert.rejects(f.request('/quote',input),{status:400});
+  else {const result=await f.request('/quote',input);assert.equal(result.value.creditCost,cost);assert.equal(result.value.pageCount,pages);}
+  assert.equal(f.calls.create,0);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,before);
+ }
 });

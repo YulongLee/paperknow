@@ -5,7 +5,7 @@ export function managedMemberships(db,userId,at=new Date().toISOString()){
  const paid=db.prepare(`SELECT e.order_id AS orderId,e.product_id AS productId,e.starts_at AS startsAt,e.expires_at AS originalExpiresAt,d.title,d.entitlement FROM payment_entitlements e JOIN payment_orders d ON d.order_id=e.order_id JOIN orders o ON o.id=e.order_id WHERE e.user_id=? AND o.user_id=? AND o.status='paid'`).all(userId,userId).flatMap(({entitlement,...row})=>{
   let snapshot;try{snapshot=JSON.parse(entitlement);}catch{return [];}
   if(snapshot?.type!=='membership')return [];
-  return [{...row,id:'payment:'+row.orderId,origin:'payment',items:paymentBundleItems(snapshot.membershipItems||[],{allowEmpty:true})||[],description:snapshot.description||''}];
+  return [{...row,id:'payment:'+row.orderId,origin:'payment',items:paymentBundleItems(snapshot.membershipItems||[],{allowEmpty:true})||[],description:snapshot.description||'',scope:snapshot.scope||null}];
  });
  const admin=db.prepare('SELECT id,product_id AS productId,title,items,starts_at AS startsAt,expires_at AS originalExpiresAt,reason,created_at AS grantedAt FROM admin_membership_grants WHERE user_id=?').all(userId).map(row=>({...row,id:'admin:'+row.id,grantId:row.id,orderId:null,origin:'admin',description:'管理员授予会员',items:paymentBundleItems(JSON.parse(row.items),{allowEmpty:true})||[]}));
  const overrides=new Map(db.prepare('SELECT * FROM admin_membership_overrides WHERE user_id=?').all(userId).map(row=>[row.grant_key,row]));

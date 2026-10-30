@@ -1,3 +1,5 @@
+import {attachCombinedChild,reconcileCombinedParents} from './combined-detection-ledger.mjs';
+import {v1CommercialEnabled} from './v1-commercial-policy.mjs';
 import {randomUUID} from 'node:crypto';
 import {digest} from './auth.mjs';
 import {createArtifactService,initializeArtifactSchema} from './artifact-service.mjs';
@@ -70,7 +72,7 @@ export function createWebSimilarityService(db,config={}){
  const tx=fn=>{db.exec('BEGIN IMMEDIATE');try{const value=fn();db.exec('COMMIT');return value;}catch(e){db.exec('ROLLBACK');throw e;}};
  const own=(id,user)=>{const row=db.prepare("SELECT j.*,r.title,r.characters,r.report_artifact_id,r.html_artifact_id,r.coverage FROM jobs j JOIN web_similarity_runs r ON r.id=j.id WHERE j.id=? AND j.user_id=? AND j.type='web_similarity'").get(id,user.id);if(!row)fail(404,'查重任务不存在。');return row;};
  const summary=row=>({id:row.id,title:row.title,status:row.status==='preparing'?'queued':row.status,stage:row.stage,characters:row.characters,error:row.error||null,reportId:row.status==='completed'?row.id:null,coverage:JSON.parse(row.coverage),createdAt:row.created_at,updatedAt:row.updated_at});
- return{capabilities:()=>webSimilarityCapabilities(config),async handle({path,method,user,readBody,query=new URLSearchParams()}){
+ return{capabilities:()=>webSimilarityCapabilities(config),async handle({path,method,user,fundingParent=null,readBody,query=new URLSearchParams()}){
   const match=path.match(/^\/api\/web-similarity\/([-A-Za-z0-9_]{1,120})(\/(?:cancel|report))?$/);
   if(path!=='/api/web-similarity'&&!match)return null;
   if(!safeId(user?.id))fail(401,'请先登录服务账户。');
@@ -87,7 +89,7 @@ export function createWebSimilarityService(db,config={}){
    if(method==='GET'&&!match[2])return{value:{ownerId:user.id,item:summary(row)}};
    if(method!=='POST'||match[2]!=='/cancel')fail(405,'不支持的查重操作。');
    const input=await readBody();if(!input||Object.keys(input).some(k=>k!=='expectedUserId')||input.expectedUserId!==user.id)fail(409,'登录账户已变化，请刷新后操作。');
-   tx(()=>{const current=own(row.id,user);if(!['preparing','queued','running'].includes(current.status))fail(409,'本次查重已经结束。');db.prepare("UPDATE jobs SET status='cancelled',stage='cancelled',error=NULL,updated_at=? WHERE id=?").run(new Date().toISOString(),row.id);config.billing?.release(row.id);});
+   tx(()=>{const current=own(row.id,user);if(!['preparing','queued','running'].includes(current.status))fail(409,'本次查重已经结束。');db.prepare("UPDATE jobs SET status='cancelled',stage='cancelled',error=NULL,updated_at=? WHERE id=?").run(new Date().toISOString(),row.id);config.billing?.release(row.id);reconcileCombinedParents(db,config.billing,row.id);});
    config.cancelWebSimilarity?.(row.id);
    return{value:{ownerId:user.id,item:summary(own(row.id,user))}};
   }
@@ -99,6 +101,7 @@ export function createWebSimilarityService(db,config={}){
    if(existing){if(existing.type!=='web_similarity'||![hash,digest(JSON.stringify({version:'public-web-exact-1.0',text:input.text,title:input.title}))].includes(existing.input_hash))fail(409,'请求编号已用于其他内容，请重新确认正文。');return{id:existing.id,existing:true};}
    const duplicate=db.prepare("SELECT j.id FROM jobs j JOIN web_similarity_runs r ON r.id=j.id WHERE j.user_id=? AND j.type='web_similarity' AND j.input_hash=? AND (j.status IN ('preparing','queued','running','completed') OR r.queries_attempted>0) AND (j.status IN ('preparing','queued','running') OR j.created_at>=?) ORDER BY j.created_at DESC LIMIT 1").get(user.id,hash,new Date(Date.now()-86400000).toISOString());
    if(duplicate)return{id:duplicate.id,existing:true};
+   if(v1CommercialEnabled(db)&&Array.from(input.text||'').length>20000)fail(400,'单次检测最多 20,000 字符，请分章节提交；尚未扣费。');
    assertDetectionPrice(input,config.billing,'detection-similarity');
    if(!webSimilarityReady(config))fail(503,webSimilarityCapabilities(config).reason);
    if(db.prepare("SELECT 1 FROM jobs WHERE user_id=? AND type='web_similarity' AND status IN ('preparing','queued','running')").get(user.id))fail(409,'你已有一项论文重复率检测正在处理，请完成后再提交。');
@@ -107,7 +110,7 @@ export function createWebSimilarityService(db,config={}){
    db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,'web_similarity','preparing','saving_input','{}',?,?,?,?)").run(id,user.id,input.idempotencyKey,hash,at,at);
    const coverage={sampledParagraphs:plan.sampledParagraphs,totalParagraphs:plan.totalParagraphs,queries:plan.queries.length,candidateSources:0,fetchedSources:0,failedSources:0,searchComplete:false};
    db.prepare('INSERT INTO web_similarity_runs(id,user_id,title,characters,queries_reserved,coverage,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(id,user.id,input.title,input.characters,plan.queries.length,JSON.stringify(coverage),at,at);
-   reserveDetection(config.billing,user,id,'detection-similarity');
+   if(fundingParent)attachCombinedChild(db,{parentId:fundingParent,userId:user.id,childId:id,key:'detection-similarity',text:input.text});else reserveDetection(config.billing,user,id,'detection-similarity');
    if(!includedDetectionHeld(db,user.id,id,'detection-similarity')){
     const day=webSimilarityDay(),window={since:day.start,until:day.end,excludeId:id};
     if(detectionTrialUsage(db,'detection-similarity',{...window,userId:user.id}).n>=webSimilarityLimits.userDailyLimit)fail(429,'今日论文重复率检测次数已用完，请明日再试。');
@@ -115,6 +118,7 @@ export function createWebSimilarityService(db,config={}){
    }
    return{id,existing:false};
   });
+  if(fundingParent&&reserved.existing)tx(()=>attachCombinedChild(db,{parentId:fundingParent,userId:user.id,childId:reserved.id,key:'detection-similarity',text:input.text}));
   if(!reserved.existing){
    const job={id:reserved.id,user_id:user.id};
    try{
@@ -123,7 +127,7 @@ export function createWebSimilarityService(db,config={}){
     db.prepare("UPDATE jobs SET status='queued',stage='queued',updated_at=? WHERE id=? AND status='preparing'").run(new Date().toISOString(),reserved.id);
     if(own(reserved.id,user).status==='cancelled')await removeWebSimilarityArtifacts(db,config,job);
    }catch{
-    tx(()=>{db.prepare("UPDATE jobs SET status='failed',stage='input_failed',error='正文保存未完成，请稍后重新提交。',updated_at=? WHERE id=? AND status='preparing'").run(new Date().toISOString(),reserved.id);config.billing?.release(reserved.id);});
+    tx(()=>{db.prepare("UPDATE jobs SET status='failed',stage='input_failed',error='正文保存未完成，请稍后重新提交。',updated_at=? WHERE id=? AND status='preparing'").run(new Date().toISOString(),reserved.id);config.billing?.release(reserved.id);reconcileCombinedParents(db,config.billing,reserved.id);});
     await removeWebSimilarityArtifacts(db,config,job);
    }
   }

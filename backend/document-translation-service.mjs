@@ -1,3 +1,5 @@
+import {v1CommercialEnabled} from './v1-commercial-policy.mjs';
+import {commercialDocumentPages} from './commercial-resources.mjs';
 import {createBillingService} from './billing-service.mjs';
 import {documentTranslationReady} from './document-translation-readiness.mjs';
 import {randomUUID} from 'node:crypto';
@@ -42,13 +44,16 @@ export function createDocumentTranslationService(db,config={}){
  }
  function reusable(user,hash){return db.prepare("SELECT j.id FROM jobs j JOIN document_translation_runs d ON d.id=j.id WHERE j.user_id=? AND j.type='document_translation' AND j.input_hash=? AND (j.status IN ('queued','running') OR j.status='completed' AND EXISTS(SELECT 1 FROM json_each(d.artifacts) a JOIN artifacts f ON f.id=a.value WHERE f.user_id=j.user_id AND f.status='ready' AND f.kind='docx')) ORDER BY CASE WHEN j.status='completed' THEN 1 ELSE 0 END,j.created_at DESC,j.id DESC LIMIT 1").get(user.id,hash);}
  function freeDaily(user){const since=new Date();since.setUTCHours(0,0,0,0);const today=since.toISOString(),sql=" FROM document_translation_runs d JOIN jobs j ON j.id=d.id LEFT JOIN billing_reservations b ON b.job_id=j.id AND b.attempt=1 WHERE (b.source='free' OR b.id IS NULL) AND d.created_at>=?";if(db.prepare('SELECT count(*) n'+sql+' AND d.user_id=?').get(today,user.id).n>=documentTranslationLimits.userDaily)fail(429,'今日免费文档翻译次数已用完，请明天再试');if(db.prepare('SELECT count(*) n'+sql).get(today).n>=documentTranslationLimits.globalDaily)fail(429,'免费文档翻译今日额度已用完，请稍后再试');}
- return{capabilities:()=>documentTranslationCapabilities(config),async handle({path,method,user,readBody}){
+ return{capabilities:()=>({...documentTranslationCapabilities(config),...(v1CommercialEnabled(db)?{maxPages:50,billingService:'literature-document'}:{})}),async handle({path,method,user,readBody}){
   const quoting=path==='/api/document-translations/quote',item=quoting?null:path.match(/^\/api\/document-translations\/([A-Za-z0-9_-]{1,120})(\/cancel)?$/);if(path!=='/api/document-translations'&&!item&&!quoting)return null;
   if(!idValid(user?.id))fail(401,'请先登录服务账户');
   if(item){const row=own(item[1],user);if(method==='GET'&&!item[2])return{value:{...summary(row),...(row.status==='completed'?{result:completed(row)}:{})}};if(method!=='POST'||!item[2])fail(405,'不支持的文档翻译操作');const input=await readBody();if(!plain(input)||Object.keys(input).length)fail(400,'取消任务不需要其他字段');tx(()=>{const current=own(row.id,user);if(!['queued','running'].includes(current.status))fail(409,'文档翻译任务已经结束');db.prepare("UPDATE jobs SET status='cancelled',stage='cancelled',error=NULL,updated_at=? WHERE id=?").run(new Date().toISOString(),row.id);billing.release(row.id);});config.cancelDocumentTranslation?.(row.id);return{value:{ok:true,id:row.id}};}
   if(!quoting&&method==='GET')return{value:{items:db.prepare("SELECT j.*,d.file_name,d.source_language,d.target_language,d.page_count FROM jobs j JOIN document_translation_runs d ON d.id=j.id WHERE j.user_id=? AND j.type='document_translation' ORDER BY j.created_at DESC,j.id DESC LIMIT 20").all(user.id).map(summary)}};
   if(method!=='POST')fail(405,'不支持的文档翻译操作');const input=await readBody(),{file,hash}=normalized(input,user,quoting);
-  if(quoting)return{value:tx(()=>{const reused=reusable(user,hash);if(reused)return{existingJobId:reused.id,reused:true};if(!documentTranslationReady(config))fail(503,documentTranslationCapabilities(config).reason);const quote=billing.quote(user,{type:'agent',serviceKey:'literature-translate'});if(quote.source==='free')freeDaily(user);db.prepare('INSERT INTO document_translation_quotes VALUES(?,?,?,?)').run(quote.token,user.id,hash,new Date().toISOString());return{...quote,title:'文献研读'};})};
+  const v1=v1CommercialEnabled(db),pages=v1?await commercialDocumentPages(db,file,config):null;
+  if(v1&&pages>50)fail(400,'整篇翻译每次最多 50 页，请拆分文档；尚未扣费。');
+  const serviceKey=v1?(pages>20?'literature-document-long':'literature-document'):'literature-translate';
+  if(quoting)return{value:tx(()=>{const reused=reusable(user,hash);if(reused)return{existingJobId:reused.id,reused:true};if(!documentTranslationReady(config))fail(503,documentTranslationCapabilities(config).reason);const quote=billing.quote(user,{type:'agent',serviceKey,context:{pages}});if(quote.source==='free')freeDaily(user);db.prepare('INSERT INTO document_translation_quotes VALUES(?,?,?,?)').run(quote.token,user.id,hash,new Date().toISOString());return{...quote,title:v1?'整篇文档翻译':'文献研读',pageCount:pages,pricingBasis:file.kind==='docx'?'每 2,000 字符折算一页':'原文实际页数'};})};
   const created=tx(()=>{
    const existing=db.prepare('SELECT * FROM jobs WHERE user_id=? AND idempotency_key=?').get(user.id,input.idempotencyKey);if(existing){if(existing.type!=='document_translation'||existing.input_hash!==hash)fail(409,'请求编号已用于其他内容，请重新提交');return{id:existing.id,status:200};}
    const reused=reusable(user,hash);if(reused)return{id:reused.id,status:200};
@@ -58,9 +63,9 @@ export function createDocumentTranslationService(db,config={}){
    if(db.prepare("SELECT count(*) n FROM jobs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=3)fail(409,'最多同时处理3项任务，请等待当前任务完成');
    if(db.prepare("SELECT count(*) n FROM jobs WHERE type='document_translation' AND status IN ('queued','running')").get().n>=3)fail(429,'文档翻译当前繁忙，请稍后再试');
    if(quote.source==='free')freeDaily(user);
-   const id=randomUUID(),at=new Date().toISOString();db.prepare("INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,'document_translation','queued','queued',?,?,?,?,?)").run(id,user.id,file.project_id,JSON.stringify({fileId:file.id,sourceLanguage:input.sourceLanguage,targetLanguage:input.targetLanguage,consent:true,billingRequired:true}),input.idempotencyKey,hash,at,at);
+   const id=randomUUID(),at=new Date().toISOString();db.prepare("INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,'document_translation','queued','queued',?,?,?,?,?)").run(id,user.id,file.project_id,JSON.stringify({fileId:file.id,sourceLanguage:input.sourceLanguage,targetLanguage:input.targetLanguage,consent:true,billingRequired:true,quotedPages:pages}),input.idempotencyKey,hash,at,at);
    db.prepare('INSERT INTO document_translation_runs(id,user_id,file_id,source_sha256,file_name,source_language,target_language,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(id,user.id,file.id,file.sha256,file.name,input.sourceLanguage,input.targetLanguage,at,at);
-   billing.reserve(user,id,1,'agent',input.billingToken,'literature-translate');return{id,status:201};
+   billing.reserve(user,id,1,'agent',input.billingToken,serviceKey);return{id,status:201};
   });return{status:created.status,value:{id:created.id}};
  }};
 }

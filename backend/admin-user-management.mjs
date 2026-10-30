@@ -1,8 +1,9 @@
+import {resourceEntitlementKeys} from '../dist/workspace/v1-pricing.mjs';
 import {createHash,randomUUID} from 'node:crypto';
 import {paymentCatalog} from './payment-settings.mjs';
 import {managedMemberships} from './admin-user-entitlements.mjs';
 import {toolBillingServiceTypes} from '../dist/workspace/tool-pricing-catalog.mjs';
-const membershipKeys=new Set(['polish','review','agent',...toolBillingServiceTypes.map(row=>row.key)]);
+const membershipKeys=new Set([...resourceEntitlementKeys,'polish','review','agent',...toolBillingServiceTypes.map(row=>row.key)]);
 
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
