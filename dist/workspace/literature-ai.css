@@ -2,3 +2,22 @@
 .lit-ai-paragraph-label{display:block;font-size:10px;font-family:inherit;color:#99a7bd;line-height:1.4;margin:0 0 5px;user-select:none}
 .lit-ai-edit-label{display:grid;gap:8px;font-size:12px;color:#8190aa}.lit-ai-answer,.lit-ai-translation-edit{box-sizing:border-box;width:100%;padding:13px 15px;border:1px solid #e0e7f3;border-radius:9px;background:#fff;font:14px/1.9 inherit;color:#35455f;resize:vertical}.lit-ai-translation-edit{margin-top:10px;font:14px/1.9 system-ui}.lit-ai-export-status{font-size:12px;color:#6b8a78;line-height:1.8}.lit-ai-result>.btn{margin:10px 6px 0 0}
 .lit-ai-read-modes,.lit-ai-quick-questions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.lit-ai-read-modes button[aria-pressed=true]{background:#e8f0ff;border-color:#9dbcf4;color:#2257af}.lit-ai-quick-questions button{max-width:100%;white-space:normal;text-align:left;font-size:12px}.lit-ai-history{display:flex;align-items:center;gap:8px;margin-top:13px;font-size:13px}.lit-ai-saved-question{white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* Answer content must win over generic muted card descriptions. */
+.lit-ai-card{--lit-answer-ink:var(--pk-text,#1d2b43);--lit-answer-detail:#475569;--lit-answer-link:#1d4ed8}
+body.hub-theme-dark .lit-ai-card{--lit-answer-detail:#b8c6da;--lit-answer-link:#9ec1ff;background:var(--pk-surface,#182234);border-color:var(--pk-border,#304057)}
+#app .dashboard .lit-ai-results .lit-assistant-response{color:var(--lit-answer-ink);font-size:15px;line-height:1.9}
+#app .dashboard .lit-ai-results .lit-assistant-response :is(p,ul,ol,li){color:inherit;font-size:inherit;line-height:inherit}
+#app .dashboard .lit-ai-results .lit-assistant-response :is(strong,em,code){color:inherit}
+#app .dashboard .lit-ai-results .lit-assistant-response h4{color:var(--lit-answer-ink);font-size:16px!important;font-weight:650;line-height:1.7}
+#app .dashboard .lit-ai-results .lit-assistant-response code{font-size:.92em}
+#app .dashboard .lit-ai-results .lit-assistant-response pre{color:var(--lit-answer-ink);font-size:13px;line-height:1.85}
+#app .dashboard .lit-ai-results .lit-ai-result{background:var(--pk-surface,#fff)}
+#app .dashboard .lit-ai-results .lit-ai-saved-question{color:var(--lit-answer-ink);font-size:14px;line-height:1.85}
+#app .dashboard .lit-ai-results :is(.lit-ai-answer,.lit-ai-translation-edit,.lit-ai-translations p){color:var(--lit-answer-ink);font-size:15px;line-height:1.9}
+#app .dashboard .lit-ai-results :is(.lit-ai-answer,.lit-ai-translation-edit,.lit-ai-translations>section>div){background:var(--pk-surface,#fff)}
+#app .dashboard .lit-ai-results .lit-ai-translations>section>div+div{background:var(--pk-surface-soft,#f8fafd)}
+#app .dashboard .lit-ai-results .lit-ai-result blockquote{background:var(--pk-surface-soft,#f8fafd)}
+#app .dashboard .lit-ai-results .lit-ai-result blockquote p{color:var(--lit-answer-detail);font-size:13px;line-height:1.85}
+#app .dashboard .lit-ai-results .lit-ai-result blockquote a{color:var(--lit-answer-link);font-size:12px}
+#app .dashboard .lit-ai-results :is(.lit-ai-result-scope,.lit-ai-result summary>span,.lit-assistant-edit>summary,.lit-assistant-evidence>summary,.lit-assistant-export>summary,.lit-assistant-more>summary,.lit-assistant-result-tools>button){color:var(--lit-answer-detail);font-size:12px}
