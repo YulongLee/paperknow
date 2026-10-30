@@ -18,7 +18,7 @@ export function mountPdfTranslation({studio,paper,getOriginalPreview,signal,fetc
  async function showPdf(id,ticket){
   status('正在生成译文 PDF…','正在整理译文页面，完成后自动进入双栏阅读。');let output;
   for(let count=0;count<30;count++){try{output=await request('/literature/reader/translations/'+encodeURIComponent(id)+'/pdf',{expectedUserId:paper.originalOwnerId});break;}catch(error){if(error.status!==429||count===29)throw error;await sleep(2000);if(!current()||ticket!==version)return;}}
-  if(!current()||ticket!==version)return;
+  if(!current()||ticket!==version)return;if(!active){status('译文已就绪','返回对照翻译后即可阅读。');return;}
   if(lastArtifact!==output.artifact.id){annotations?.dispose();preview?.dispose();lastArtifact=output.artifact.id;translated.hidden=false;preview=mountLiteratureOriginalPreview({container:translated,paper:{originalFileId:output.artifact.id,artifactId:output.artifact.id,originalOwnerId:paper.originalOwnerId},label:'译文',fetchImpl,...(loadViewer?{loadViewer}:{}),signal:controller.signal,onViewChange:translatedMoved,onReady:viewer=>{annotations=mountPdfAnnotations({viewer,container:translated.querySelector('[data-reader-pdf-pages]'),resourceKind:'artifact',resourceId:output.artifact.id,ownerId:paper.originalOwnerId,signal:controller.signal,fetchImpl});}});}
   translated.hidden=false;const ready=await preview.load();if(!current()||ticket!==version)return;if(!ready)throw Error('译文 PDF 暂未能打开，请重试');progress.hidden=true;progress.setAttribute('aria-busy','false');download.href=output.artifact.downloadUrl;download.hidden=false;alignment.textContent=output.alignment==='page'?'原文与译文按页联动 · 标注自动保存到云端':'原文与译文分页不同，按阅读进度联动';originalMoved(getOriginalPreview().getViewer().getView());
  }
