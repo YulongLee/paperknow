@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {retrieveLiteratureMaterials} from '../dist/workspace/literature-retrieval.mjs';
+import {retrieveLiteratureMaterials,isReadingFollowUp} from '../dist/workspace/literature-retrieval.mjs';
 import {literatureParagraphs} from '../dist/workspace/literature-ai-model.mjs';
 import {toolRunPlan,normalizeToolRequest,toolRunTask,validateToolCandidate} from '../backend/tool-run-model.mjs';
 const paper=text=>({id:'shared-id',title:'Synthetic literature',scope:'full',text});
@@ -23,6 +23,7 @@ test('Chinese method questions can retrieve English methods and content changes 
  assert.ok(retrieveLiteratureMaterials(changed,'作者采用了什么研究方法？').every(m=>!m.text.includes('attention')));
 });
 test('follow-up retrieval uses previous question to resolve references but never inserts previous answers as source text',()=>{
+ assert.equal(isReadingFollowUp('这篇文献研究了什么问题？'),false);assert.equal(isReadingFollowUp('This paper describes what problem?'),false);assert.equal(isReadingFollowUp('那具体是多少？'),true);
  const p=paper('A training dataset includes 400 samples.\n\nThe limitation is restricted evaluation across domains.\n\nResults include a BLEU score of 28.4.');
  const materials=retrieveLiteratureMaterials(p,'那具体是多少？',{previousQuestion:'BLEU score'});
  assert.ok(materials.some(m=>m.text.includes('28.4')));assert.ok(materials.every(m=>p.text.includes(m.text)));
