@@ -5,9 +5,9 @@ export function jobBillingType(job){
   let input;try{input=JSON.parse(job.input);}catch{}
   return ['polish','review'].includes(input?.billingType)?input.billingType:'agent';
  }
- return ['thesis','thesis_outline','thesis_method','writing'].includes(job.type)?'agent':job.type;
+ return ['thesis','thesis_outline','thesis_method','writing','document_translation'].includes(job.type)?'agent':job.type;
 }
 export function jobBillingTypeExpression(alias){
  if(!/^[a-z][a-z0-9_]*$/i.test(alias))throw new TypeError('Invalid task alias');
- return `CASE WHEN ${alias}.type='tool_run' THEN CASE WHEN json_valid(${alias}.input) THEN CASE WHEN json_extract(${alias}.input,'$.billingType') IN ('polish','review') THEN json_extract(${alias}.input,'$.billingType') ELSE 'agent' END ELSE 'agent' END WHEN ${alias}.type IN ('thesis','thesis_outline','thesis_method','writing') THEN 'agent' ELSE ${alias}.type END`;
+ return `CASE WHEN ${alias}.type='tool_run' THEN CASE WHEN json_valid(${alias}.input) THEN CASE WHEN json_extract(${alias}.input,'$.billingType') IN ('polish','review') THEN json_extract(${alias}.input,'$.billingType') ELSE 'agent' END ELSE 'agent' END WHEN ${alias}.type IN ('thesis','thesis_outline','thesis_method','writing','document_translation') THEN 'agent' ELSE ${alias}.type END`;
 }

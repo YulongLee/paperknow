@@ -1,3 +1,5 @@
+import {literatureBillingKeys,literaturePricingKey,isLiteratureBillingKey,literatureBillingTitle} from '../dist/workspace/literature-billing-catalog.mjs';
+import {documentTranslationReady} from './document-translation-readiness.mjs';
 import {toolBillingServiceTypes} from '../dist/workspace/tool-pricing-catalog.mjs';
 export {toolBillingServiceTypes};
 import {randomBytes,randomUUID} from 'node:crypto';
@@ -92,6 +94,9 @@ export function createBillingService(db,config={}){
   }
  }catch{/* Corrupt/unknown policy remains closed instead of silently resetting prices. */}
  db.prepare('INSERT OR IGNORE INTO billing_policy(id,rules,version,updated_at) VALUES(1,?,1,?)').run(JSON.stringify(billingServiceTypes.map(({key})=>({key,mode:'free',creditCost:null}))),clock());
+ // Merge future literature prices only. Historical purchases and reservations
+ // retain their original values and keys; changed policies invalidate old quotes.
+ try{const row=db.prepare('SELECT rules,version FROM tool_pricing_policy WHERE id=1').get(),stored=JSON.parse(row.rules),valid=Array.isArray(stored)&&stored.length===toolBillingServiceTypes.length&&new Set(stored.map(item=>item.key)).size===stored.length&&stored.every(item=>isObject(item)&&toolKeys.has(item.key)&&Object.keys(item).length===3&&['inherit','free','paid','disabled'].includes(item.mode)&&(item.mode==='paid'?Number.isSafeInteger(item.creditCost)&&item.creditCost>=1&&item.creditCost<=100000:item.creditCost===null));if(valid){const common=stored.find(item=>item.key===literaturePricingKey);if(stored.some(item=>isLiteratureBillingKey(item.key)&&(item.mode!==common.mode||item.creditCost!==common.creditCost)))db.prepare('UPDATE tool_pricing_policy SET rules=?,version=version+1,updated_at=? WHERE id=1 AND version=?').run(JSON.stringify(stored.map(item=>isLiteratureBillingKey(item.key)?{...item,mode:common.mode,creditCost:common.creditCost}:item)),clock(),row.version);}}catch{/* Malformed policies remain closed for administrator inspection. */}
  const available=key=>{if(config.getAgentSettings){try{if(agentSettingsReady(config.getAgentSettings()))return true;}catch{/* A failed new runtime configuration never enables paid work. */}}return Boolean(aiReady(config.getAI?.()||config)&&(key!=='agent'||config.agentEnabled));};
  function rules(){
   const row=db.prepare('SELECT rules,version FROM billing_policy WHERE id=1').get();let stored;
@@ -119,12 +124,12 @@ export function createBillingService(db,config={}){
  const toolAvailable=()=>{try{const runtime=config.getAgentSettings?.();return agentSettingsReady(runtime)&&typeof runtime.version==='string'&&runtime.version.length>0;}catch{return false;}};
  function toolRules(){
   const row=db.prepare('SELECT rules,version FROM tool_pricing_policy WHERE id=1').get();let stored;try{stored=JSON.parse(row.rules);}catch{fail(503,'科研工具计价规则暂时无法读取');}
-  if(!Array.isArray(stored)||stored.length!==toolBillingServiceTypes.length)fail(503,'科研工具计价规则暂时无法读取');
+  if(!Array.isArray(stored)||stored.length!==toolBillingServiceTypes.length||new Set(stored.map(item=>item?.key)).size!==stored.length||stored.some(item=>!isObject(item)||!toolKeys.has(item.key)||Object.keys(item).length!==3||!['inherit','free','paid','disabled'].includes(item.mode)||(item.mode==='paid'?(!Number.isSafeInteger(item.creditCost)||item.creditCost<1||item.creditCost>100000):item.creditCost!==null)))fail(503,'科研工具计价规则暂时无法读取');
   const parent=rules().services.find(item=>item.key==='agent'),ready=toolAvailable();
-  const services=toolBillingServiceTypes.map(({key,title,group})=>{const values=stored.filter(item=>item?.key===key),item=values[0];
+  const services=toolBillingServiceTypes.map(({key,title,group})=>{const values=stored.filter(item=>item?.key===(isLiteratureBillingKey(key)?literaturePricingKey:key)),item=values[0];
    if(values.length!==1||!['inherit','free','paid','disabled'].includes(item?.mode)||(item.mode==='paid'?(!Number.isSafeInteger(item.creditCost)||item.creditCost<1||item.creditCost>100000):item.creditCost!==null))fail(503,'科研工具计价规则暂时无法读取');
    const effectiveMode=item.mode==='inherit'?parent.mode:item.mode,effectiveCreditCost=effectiveMode==='paid'?(item.mode==='inherit'?parent.creditCost:item.creditCost):null;
-   return {key,title,group,mode:item.mode,creditCost:item.creditCost,effectiveMode,effectiveCreditCost,available:key==='research-image'?imageAvailable():key.startsWith('presentation-')?ready&&presentationGenerationStatus(config).ready:detectionKeys.has(key)?detectionBillingReady(key,config):ready};
+   return {key,title:literatureBillingTitle(key)||title,group,mode:item.mode,creditCost:item.creditCost,effectiveMode,effectiveCreditCost,available:key==='literature-translate'?(ready||documentTranslationReady(config)):key==='research-image'?imageAvailable():key.startsWith('presentation-')?ready&&presentationGenerationStatus(config).ready:detectionKeys.has(key)?detectionBillingReady(key,config):ready};
   });return {version:row.version,services};
  }
  function saveToolRules(input){
@@ -133,6 +138,7 @@ export function createBillingService(db,config={}){
    if(!isObject(item)||Object.keys(item).some(key=>!['key','mode','creditCost'].includes(key))||!toolKeys.has(item.key)||seen.has(item.key)||!['inherit','free','paid','disabled'].includes(item.mode)||(item.mode==='paid'?(!Number.isSafeInteger(item.creditCost)||item.creditCost<1||item.creditCost>100000):item.creditCost!==null))fail(400,'科研工具可选择继承、免费、暂停或设置 1～100000 的整数积分');
    seen.add(item.key);services.push({key:item.key,mode:item.mode,creditCost:item.creditCost});
   }
+  const reading=services.find(item=>item.key===literaturePricingKey);if(services.some(item=>isLiteratureBillingKey(item.key)&&(item.mode!==reading.mode||item.creditCost!==reading.creditCost)))fail(400,'文献研读统一计费，请为解读、问答和翻译设置相同规则');
   const changed=db.prepare('UPDATE tool_pricing_policy SET rules=?,version=version+1,updated_at=? WHERE id=1 AND version=?').run(JSON.stringify(services),clock(),input.version);
   if(!changed.changes)fail(409,'科研工具计价已变化，请刷新后重新保存');return toolRules();
  }
@@ -170,7 +176,7 @@ export function createBillingService(db,config={}){
   if(item.mode==='paid'||detectionKeys.has(item.serviceKey)&&item.mode==='free'){
    if(item.mode==='paid'){source='credits';creditCost=item.creditCost;}
    for(const candidate of ['membership','bundle']){
-    const availableGrants=grants(user.id,candidate),options=item.serviceKey?(item.mode==='free'||detectionKeys.has(item.serviceKey)?[item.serviceKey]:[item.serviceKey,item.key]):[item.key];let chosen;for(const key of options){const grant=availableGrants.find(grant=>grantQuota(grant,key,now)?.remaining>0);if(grant){chosen={grant,key};break;}}
+    const availableGrants=grants(user.id,candidate),options=item.serviceKey?(item.mode==='free'||detectionKeys.has(item.serviceKey)?[item.serviceKey]:(isLiteratureBillingKey(item.serviceKey)?[...new Set([item.serviceKey,...literatureBillingKeys,item.key])]:[item.serviceKey,item.key])):[item.key];let chosen;for(const key of options){const grant=availableGrants.find(grant=>grantQuota(grant,key,now)?.remaining>0);if(grant){chosen={grant,key};break;}}
     if(chosen){source=candidate;sourceOrderId=chosen.grant.orderId;entitlementKey=chosen.key;creditCost=0;break;}
    }
    if(source==='credits'&&totals(user.id).available<creditCost)fail(402,'可用积分不足，请充值或选择有效权益');
@@ -188,7 +194,7 @@ export function createBillingService(db,config={}){
  function reserve(user,jobId,attempt,type,token,serviceKey){
   serviceKey=subservice(type,serviceKey);
   if(!Number.isSafeInteger(attempt)||attempt<1||typeof jobId!=='string')fail(400,'任务执行次数无效');
-  const job=db.prepare('SELECT id,user_id,type,input FROM jobs WHERE id=? AND user_id=?').get(jobId,user.id);if(!job)fail(404,'任务不存在');const detectionJob=({'web_similarity':'detection-similarity','aigc_detection':'detection-aigc'})[job.type];if(detectionJob?(type!=='agent'||serviceKey!==detectionJob):detectionKeys.has(serviceKey)||job.type!==type&&!(['thesis','thesis_outline','thesis_method','writing','tool_run'].includes(job.type)&&type===jobBillingType(job)))fail(409,'任务类型与计费服务不一致');
+  const job=db.prepare('SELECT id,user_id,type,input FROM jobs WHERE id=? AND user_id=?').get(jobId,user.id);if(!job)fail(404,'任务不存在');const documentTranslationJob=job.type==='document_translation';const detectionJob=({'web_similarity':'detection-similarity','aigc_detection':'detection-aigc'})[job.type];if(documentTranslationJob?(type!=='agent'||serviceKey!=='literature-translate'):detectionJob?(type!=='agent'||serviceKey!==detectionJob):detectionKeys.has(serviceKey)||job.type!==type&&!(['thesis','thesis_outline','thesis_method','writing','tool_run'].includes(job.type)&&type===jobBillingType(job)))fail(409,'任务类型与计费服务不一致');
   const existing=db.prepare('SELECT * FROM billing_reservations WHERE job_id=? AND attempt=?').get(jobId,attempt);
   if(existing){if(existing.user_id!==user.id||existing.type!==type||(existing.service_key??null)!==serviceKey)fail(409,'任务预占信息不一致');return reservation(existing);}
   if(db.prepare("SELECT 1 FROM billing_reservations WHERE job_id=? AND status='held'").get(jobId))fail(409,'任务已有未结算预占');
@@ -221,7 +227,7 @@ export function createBillingService(db,config={}){
  function isBillable(jobId){return Boolean(db.prepare("SELECT 1 FROM billing_reservations WHERE job_id=? AND source!='free' AND status IN ('held','settled')").get(jobId));}
  function balance(userId){
   const purchased=db.prepare('SELECT p.order_id AS orderId,p.product_id AS productId,d.title,p.amount,p.kind,p.created_at AS createdAt FROM payment_credit_ledger p JOIN payment_orders d ON d.order_id=p.order_id WHERE p.user_id=? ORDER BY p.created_at DESC,p.order_id DESC LIMIT 100').all(userId).map(row=>({...row,id:'purchase:'+row.orderId,source:'credits',jobId:null,heldDelta:0}));
-  const events=db.prepare(`SELECT e.id,e.kind,e.created_at AS createdAt,r.id AS reservationId,r.job_id AS jobId,r.attempt,r.type,r.service_key AS serviceKey,r.entitlement_key AS entitlementKey,r.source,r.source_order AS sourceOrderId,r.credits FROM billing_events e JOIN billing_reservations r ON r.id=e.reservation_id WHERE r.user_id=? AND r.source='credits' ORDER BY e.created_at DESC,e.rowid DESC LIMIT 100`).all(userId).map(({credits,...row})=>({...row,title:toolBillingServiceTypes.find(item=>item.key===row.serviceKey)?.title||billingServiceTypes.find(item=>item.key===row.type)?.title||row.type,amount:row.source==='credits'&&row.kind==='settle'?-credits:0,heldDelta:row.source==='credits'?(row.kind==='reserve'?credits:row.kind==='settle'||row.kind==='release'?-credits:0):0}));
+  const events=db.prepare(`SELECT e.id,e.kind,e.created_at AS createdAt,r.id AS reservationId,r.job_id AS jobId,r.attempt,r.type,r.service_key AS serviceKey,r.entitlement_key AS entitlementKey,r.source,r.source_order AS sourceOrderId,r.credits FROM billing_events e JOIN billing_reservations r ON r.id=e.reservation_id WHERE r.user_id=? AND r.source='credits' ORDER BY e.created_at DESC,e.rowid DESC LIMIT 100`).all(userId).map(({credits,...row})=>({...row,title:literatureBillingTitle(row.serviceKey)||toolBillingServiceTypes.find(item=>item.key===row.serviceKey)?.title||billingServiceTypes.find(item=>item.key===row.type)?.title||row.type,amount:row.source==='credits'&&row.kind==='settle'?-credits:0,heldDelta:row.source==='credits'?(row.kind==='reserve'?credits:row.kind==='settle'||row.kind==='release'?-credits:0):0}));
   const ledger=[...purchased,...adminCreditLedger(db,userId),...events].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||b.id.localeCompare(a.id)).slice(0,100);
   return {...totals(userId),ledger};
  }

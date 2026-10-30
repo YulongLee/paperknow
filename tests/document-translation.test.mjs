@@ -7,6 +7,7 @@ import {database} from '../backend/database.mjs';
 import {digest} from '../backend/auth.mjs';
 import {createArtifactService} from '../backend/artifact-service.mjs';
 import {createDocumentTranslationService,documentTranslationCapabilities} from '../backend/document-translation-service.mjs';
+import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
 import {startDocumentTranslationWorker} from '../backend/document-translation-worker.mjs';
 
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};};
@@ -23,7 +24,7 @@ async function fixture(t,overrides={}){
   const id=randomUUID(),key=`paperknow/users/${user}/originals/${id}.${kind}`;objects.set(key,Buffer.from(bytes));db.prepare("INSERT INTO files(id,user_id,project_id,name,kind,bytes,sha256,body,created_at,storage_provider,storage_bucket,storage_key) VALUES(?,?,NULL,?,?,?,?,?,?, 'aliyun_oss',?,?)").run(id,user,'合成测试.'+kind,kind,bytes.length,digest(bytes),Buffer.alloc(0),new Date().toISOString(),storage.bucket,key);return id;
  }
  const request=(path,input,user='alice')=>service.handle({path:'/api/document-translations'+path,method:input===undefined?'GET':'POST',user:user?{id:user}:null,readBody:async()=>input});
- const submit=(fileId,extra={},user='alice')=>request('',{fileId,sourceLanguage:'en',targetLanguage:'zh',consent:true,idempotencyKey:randomUUID(),expectedUserId:user,...extra},user);
+ const submit=async(fileId,extra={},user='alice')=>{const input={fileId,sourceLanguage:'en',targetLanguage:'zh',consent:true,idempotencyKey:randomUUID(),expectedUserId:user,...extra},quote=await request('/quote',{fileId:input.fileId,sourceLanguage:input.sourceLanguage,targetLanguage:input.targetLanguage,expectedUserId:input.expectedUserId},user);return request('',{...input,...(quote.value.token?{billingToken:quote.value.token}:{})},user);};
  const job=id=>db.prepare('SELECT * FROM jobs WHERE id=?').get(id);
  return{db,objects,calls,source,translated,config,storage,client,worker,service,upload,request,submit,job,tick:()=>worker.tick()};
 }
@@ -34,7 +35,7 @@ test('document translation requires login, explicit consent, current owner, supp
  await rejected(f.submit(file,{fileURL:'http://127.0.0.1/a.pdf'}),400);await rejected(f.submit(file,{targetLanguage:'en'}),400);await rejected(f.submit(file,{sourceLanguage:'auto'}),400);await rejected(f.submit(file,{targetLanguage:'ja'}),400);await rejected(f.request('',[]),400);
  const text=f.upload(Buffer.from('plain'),'txt');await rejected(f.submit(text),400);
  f.db.prepare("UPDATE files SET storage_provider='local_server_sqlite' WHERE id=?").run(file);await rejected(f.submit(file),409);assert.equal(f.calls.create,0);
- const cap=documentTranslationCapabilities(f.config);assert.equal(cap.ready,true);assert.equal(cap.outputFormat,'docx');assert.equal(cap.pointsCharged,false);assert.equal(cap.userDailyPages,100);assert.doesNotMatch(JSON.stringify(cap),/unit-key|Signature|aliyuncs/);
+ const cap=documentTranslationCapabilities(f.config);assert.equal(cap.ready,true);assert.equal(cap.outputFormat,'docx');assert.equal(cap.pointsCharged,true);assert.equal(cap.billingService,'literature-read');assert.doesNotMatch(JSON.stringify(cap),/unit-key|Signature|aliyuncs/);
 });
 
 test('creation is idempotent, active duplicate merges, summaries are owner-only and contain no provider ID or URL',async t=>{
@@ -76,8 +77,8 @@ test('DOCX character and forged decompression declarations are rejected before r
  const bad=f.upload(forged,'docx'),next=(await f.submit(bad)).value.id;await f.tick();assert.equal(f.job(next).status,'failed');assert.equal(f.calls.create,0);assert.equal(f.calls.sign,0);
 });
 
-test('daily page budget rejects the next paid submission before signing or create, even after a successful earlier task',async t=>{
- const f=await fixture(t,{config:{documentTranslationPageCount:async()=>100}}),file=f.upload(),first=(await f.submit(file)).value.id;await f.tick();await f.tick();assert.equal(f.job(first).status,'completed');const next=(await f.submit(file)).value.id;await f.tick();assert.equal(f.job(next).status,'failed');assert.match(f.job(next).error,/页数额度/);assert.equal(f.calls.create,1);assert.equal(f.calls.sign,1);
+test('free translation page budget rejects the next submission before signing or create, even after a successful earlier task',async t=>{
+ const f=await fixture(t,{config:{documentTranslationPageCount:async()=>100}}),file=f.upload(),first=(await f.submit(file)).value.id;await f.tick();await f.tick();assert.equal(f.job(first).status,'completed');const next=(await f.submit(f.upload())).value.id;await f.tick();assert.equal(f.job(next).status,'failed');assert.match(f.job(next).error,/页数额度/);assert.equal(f.calls.create,1);assert.equal(f.calls.sign,1);
 });
 
 test('unknown create outcome is never replayed and provider credential errors are never exposed',async t=>{
@@ -86,7 +87,7 @@ test('unknown create outcome is never replayed and provider credential errors ar
 
 test('known remote task resumes after worker restart without replaying create; unknown submission boundary fails closed',async t=>{
  const f=await fixture(t),file=f.upload(),id=(await f.submit(file)).value.id;await f.tick();await f.worker.stop();const resumed=startDocumentTranslationWorker(f.db,f.config);t.after(()=>resumed.stop());await resumed.tick();assert.equal(f.job(id).status,'completed');assert.equal(f.calls.create,1);
- await resumed.stop();const next=(await f.submit(file)).value.id;f.db.prepare("UPDATE jobs SET status='running' WHERE id=?").run(next);f.db.prepare("UPDATE document_translation_runs SET provider_state='submitting' WHERE id=?").run(next);const restart=startDocumentTranslationWorker(f.db,f.config);t.after(()=>restart.stop());assert.equal(f.job(next).stage,'submission_unconfirmed');await restart.tick();assert.equal(f.calls.create,1);assert.match(f.job(next).error,/未自动重复/);
+ await resumed.stop();const next=(await f.submit(f.upload())).value.id;f.db.prepare("UPDATE jobs SET status='running' WHERE id=?").run(next);f.db.prepare("UPDATE document_translation_runs SET provider_state='submitting' WHERE id=?").run(next);const restart=startDocumentTranslationWorker(f.db,f.config);t.after(()=>restart.stop());assert.equal(f.job(next).stage,'submission_unconfirmed');await restart.tick();assert.equal(f.calls.create,1);assert.match(f.job(next).error,/未自动重复/);
 });
 
 test('read-only transient errors recover against the same task and provider error payload is never returned',async t=>{
@@ -110,4 +111,31 @@ test('malformed provider DOCX or private OSS failure never publishes a completed
 
 test('daily admission stays bounded when tasks are cancelled before remote work',async t=>{
  const f=await fixture(t),file=f.upload();for(let i=0;i<3;i++){const id=(await f.submit(file)).value.id;await f.request('/'+id+'/cancel',{});}await rejected(f.submit(file),429);assert.equal(f.calls.create,0);
+});
+
+function paidReading(f,amount=100){
+ const billing=createBillingService(f.db,f.config);billing.saveRules({version:billing.rules().version,services:billingServiceTypes.map(({key})=>({key,mode:'paid',creditCost:25}))});
+ const at=new Date().toISOString(),id=randomUUID();f.db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run(id,'alice','credits-200','paid',at);f.db.prepare('INSERT INTO payment_credit_ledger VALUES(?,?,?,?,?,?)').run(id,'alice','credits-200',amount,'purchase',at);return billing;
+}
+test('paid whole-document translation holds one unified fee, settles once and reopens its completed output free',async t=>{
+ const f=await fixture(t),billing=paidReading(f),file=f.upload(),key=randomUUID(),id=(await f.submit(file,{idempotencyKey:key})).value.id;
+ assert.deepEqual({...billing.balance('alice'),ledger:[]},{balance:100,held:25,available:75,ledger:[]});
+ assert.equal((await f.submit(file,{idempotencyKey:key})).value.id,id);assert.equal((await f.submit(file)).value.id,id);await f.tick();await f.tick();await f.tick();assert.equal(f.job(id).status,'completed');assert.equal(billing.balance('alice').balance,75);assert.equal(billing.balance('alice').held,0);
+ const cached=await f.request('/quote',{fileId:file,sourceLanguage:'en',targetLanguage:'zh',expectedUserId:'alice'});assert.equal(cached.value.existingJobId,id);assert.equal((await f.submit(file)).value.id,id);assert.equal(f.calls.create,1);assert.equal(billing.balance('alice').ledger.filter(e=>e.kind==='settle').length,1);assert.equal(billing.balance('alice').ledger.find(e=>e.kind==='settle').title,'文献研读');
+});
+test('translation quote binds owner and exact file; missing or exhausted funds never start a paid provider call',async t=>{
+ const f=await fixture(t),billing=paidReading(f,25),file=f.upload(),other=f.upload();const input={fileId:file,sourceLanguage:'en',targetLanguage:'zh',expectedUserId:'alice',consent:true,idempotencyKey:randomUUID()};
+ await rejected(f.request('',input),409);const q=(await f.request('/quote',{fileId:file,sourceLanguage:'en',targetLanguage:'zh',expectedUserId:'alice'})).value;
+ await rejected(f.request('',{...input,fileId:other,billingToken:q.token}),409);await rejected(f.request('',{...input,expectedUserId:'bob',billingToken:q.token},'bob'),404);
+ const id=(await f.request('',{...input,billingToken:q.token})).value.id;await rejected(f.submit(other),402);assert.equal(f.calls.create,0);assert.equal(billing.balance('alice').held,25);await f.request('/'+id+'/cancel',{});assert.equal(billing.balance('alice').held,0);assert.equal(billing.balance('alice').balance,25);
+ const retry=(await f.submit(other)).value.id;await f.tick();await f.tick();assert.equal(f.job(retry).status,'completed');assert.equal(billing.balance('alice').balance,0);await rejected(f.submit(f.upload()),402);assert.equal(f.calls.create,1);
+});
+test('failed paid translations and uncertain submission after restart release their holds without charging',async t=>{
+ const f=await fixture(t,{client:{async create(){throw Error('unknown create outcome');}}}),billing=paidReading(f),id=(await f.submit(f.upload())).value.id;await f.tick();assert.equal(f.job(id).status,'failed');assert.equal(billing.balance('alice').balance,100);assert.equal(billing.balance('alice').held,0);
+ await f.worker.stop();const next=(await f.submit(f.upload())).value.id;f.db.prepare("UPDATE jobs SET status='running' WHERE id=?").run(next);f.db.prepare("UPDATE document_translation_runs SET provider_state='submitting' WHERE id=?").run(next);const restart=startDocumentTranslationWorker(f.db,f.config);t.after(()=>restart.stop());assert.equal(f.job(next).status,'failed');assert.equal(billing.balance('alice').held,0);assert.equal(billing.balance('alice').balance,100);assert.equal(billing.balance('alice').ledger.filter(e=>e.kind==='release').length,2);
+});
+test('paid translation actions have no free daily count or page cap and PDF preparation adds no charge',async t=>{
+ const f=await fixture(t,{config:{documentTranslationPageCount:async()=>100}}),billing=paidReading(f,200);
+ for(let n=0;n<4;n++){const id=(await f.submit(f.upload())).value.id;await f.tick();await f.tick();assert.equal(f.job(id).status,'completed');}
+ assert.equal(f.calls.create,4);assert.equal(billing.balance('alice').balance,100);assert.equal(billing.balance('alice').ledger.filter(e=>e.kind==='settle').length,4);
 });

@@ -29,7 +29,7 @@ async function fixture(t,overrides={}){
   const type=result.headers.get('content-type')||'',value=type.includes('application/json')?await result.json():Buffer.from(await result.arrayBuffer());return{status:result.status,value,headers:result.headers};
  }
  const upload=async()=>{const r=await request('/files',{name:'合成英文资料.pdf',data:source.toString('base64'),expectedUserId:'alice'});assert.equal(r.status,201);return r.value.id;};
- const submitTranslation=(fileId,extra={},user=users.alice)=>request('/document-translations',{fileId,sourceLanguage:'en',targetLanguage:'zh',consent:true,expectedUserId:user?.id,idempotencyKey:crypto.randomUUID(),...extra},user);
+ const submitTranslation=async(fileId,extra={},user=users.alice)=>{const input={fileId,sourceLanguage:'en',targetLanguage:'zh',consent:true,expectedUserId:user?.id,idempotencyKey:crypto.randomUUID(),...extra},q=await request('/document-translations/quote',{fileId:input.fileId,sourceLanguage:input.sourceLanguage,targetLanguage:input.targetLanguage,expectedUserId:input.expectedUserId},user);if(q.status!==200)return q;return request('/document-translations',{...input,...(q.value.token?{billingToken:q.value.token}:{})},user);};
  const submitOcr=(extra={},user=users.alice)=>request('/formula-recognitions',{imageBase64:image().toString('base64'),mime:'image/png',consent:true,expectedUserId:user?.id,idempotencyKey:crypto.randomUUID(),...extra},user);
  const job=id=>app.db.prepare('SELECT * FROM jobs WHERE id=?').get(id);
  return{...app,objects,calls,source,translated,users,config,base,request,upload,submitTranslation,submitOcr,job};
@@ -37,7 +37,7 @@ async function fixture(t,overrides={}){
 
 test('public service capabilities disclose availability and bounds without any provider credentials',async t=>{
  const f=await fixture(t),result=await f.request('/capabilities',undefined,null);assert.equal(result.status,200);
- assert.equal(result.value.formulaOcr.ready,true);assert.equal(result.value.formulaOcr.maxFileBytes,2*1024*1024);assert.equal(result.value.documentTranslation.ready,true);assert.deepEqual(result.value.documentTranslation.formats,['pdf','docx']);assert.equal(result.value.documentTranslation.pointsCharged,false);
+ assert.equal(result.value.formulaOcr.ready,true);assert.equal(result.value.formulaOcr.maxFileBytes,2*1024*1024);assert.equal(result.value.documentTranslation.ready,true);assert.deepEqual(result.value.documentTranslation.formats,['pdf','docx']);assert.equal(result.value.documentTranslation.pointsCharged,true);
  assert.doesNotMatch(JSON.stringify(result.value),/unit-only-|AccessKey|signature|aliyuncs|unit-task/);assert.equal(result.headers.get('cache-control'),'no-store');
  const disabled=await fixture(t,{config:{formulaOcrEnabled:false,documentTranslationEnabled:false}}),cap=await disabled.request('/capabilities',undefined,null);assert.equal(cap.value.formulaOcr.ready,false);assert.equal(cap.value.documentTranslation.ready,false);
 });
@@ -71,7 +71,7 @@ test('translation remains queued for its specialist worker, guards source deleti
  const completed=await f.request('/document-translations/'+id),artifact=completed.value.result.artifacts[0];assert.equal(completed.status,200);assert.equal(artifact.kind,'docx');
  const path=artifact.downloadUrl.replace(/^\/api/,'');const output=await f.request(path);assert.equal(output.status,200);assert.deepEqual(output.value,f.translated);assert.match(output.headers.get('content-disposition'),/^attachment/);assert.match(output.headers.get('content-security-policy'),/sandbox/);
  assert.equal((await f.request(path,undefined,f.users.bob)).status,404);assert.equal((await f.request(path,undefined,null)).status,401);
- assert.equal(f.db.prepare('SELECT length(body) n FROM files WHERE id=?').get(file).n,0);assert.equal(f.objects.size,2);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);
+ assert.equal(f.db.prepare('SELECT length(body) n FROM files WHERE id=?').get(file).n,0);assert.equal(f.objects.size,2);assert.deepEqual({...f.db.prepare('SELECT source,credits,status FROM billing_reservations').get()},{source:'free',credits:0,status:'settled'});
  const remove=await f.request('/files/'+file+'/delete',{expectedSha256:digest(f.source)});assert.equal(remove.status,200);assert.deepEqual((await f.request(path)).value,f.translated);
 });
 

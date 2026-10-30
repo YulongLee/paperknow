@@ -1,3 +1,4 @@
+import {createBillingService} from './billing-service.mjs';
 import {randomUUID} from 'node:crypto';
 import {validateTranslationDocument as docxSize} from './document-translation-document.mjs';
 const safe=message=>Object.assign(new Error(message),{documentTranslationSafe:true});
@@ -10,7 +11,7 @@ import {documentTranslationLimits,documentTranslationReady,initializeDocumentTra
 
 
 export function startDocumentTranslationWorker(db,config={}){
- initializeDocumentTranslationSchema(db);
+ const billing=config.billing||createBillingService(db,config);initializeDocumentTranslationSchema(db);
  const clock=()=>new Date().toISOString(),tx=fn=>{db.exec('BEGIN IMMEDIATE');try{const value=fn();db.exec('COMMIT');return value;}catch(error){db.exec('ROLLBACK');throw error;}};
  const artifacts=createArtifactService(db,config),controllers=new Map(),cleanups=new Set();let busy=false,stopped=false;
  const client=config.documentTranslationClient||(documentTranslationReady(config)?createDocumentTranslationClient(config):null);
@@ -28,7 +29,7 @@ export function startDocumentTranslationWorker(db,config={}){
  function cleanup(id){const work=removeOwned(id).catch(()=>{}).finally(()=>cleanups.delete(work));cleanups.add(work);return work;}
  // A remote create might have succeeded even if the process died before its ID
  // was persisted. Never automatically create another paid task in that state.
- tx(()=>db.prepare("UPDATE jobs SET status='failed',stage='submission_unconfirmed',error='文档翻译提交在服务切换时未获确认，未自动重复提交。请核对任务后重新确认。',updated_at=? WHERE id IN (SELECT id FROM document_translation_runs WHERE provider_state='submitting' AND provider_task_id IS NULL) AND status='running'").run(clock()));
+ tx(()=>{const interrupted=db.prepare("SELECT j.id FROM jobs j JOIN document_translation_runs d ON d.id=j.id WHERE d.provider_state='submitting' AND d.provider_task_id IS NULL AND j.status='running'").all();for(const row of interrupted){db.prepare("UPDATE jobs SET status='failed',stage='submission_unconfirmed',error='文档翻译提交未获确认，未自动重复提交，预占权益已释放；请核对任务后重新提交。',updated_at=? WHERE id=?").run(clock(),row.id);billing.release(row.id);}});
  async function preflight(file,source,signal){
   if(source.length!==file.bytes||source.length>documentTranslationLimits.maxFileBytes||digest(source)!==file.sha256)throw safe('文档原件完整性校验未通过，请重新上传');
   if(file.kind==='docx')return docxSize(source);
@@ -37,9 +38,11 @@ export function startDocumentTranslationWorker(db,config={}){
  }
  function reservePages(job,pages){
   tx(()=>{
+   if(billing.isBillable(job.id)){db.prepare('UPDATE document_translation_runs SET expected_pages=?,updated_at=? WHERE id=?').run(pages,clock(),job.id);return;}
    const day=new Date(job.created_at);day.setUTCHours(0,0,0,0);const from=day.toISOString(),to=new Date(day.getTime()+86400000).toISOString();
-   const owner=db.prepare('SELECT coalesce(sum(expected_pages),0) n FROM document_translation_runs WHERE user_id=? AND id!=? AND created_at>=? AND created_at<?').get(job.user_id,job.id,from,to).n;
-   const all=db.prepare('SELECT coalesce(sum(expected_pages),0) n FROM document_translation_runs WHERE id!=? AND created_at>=? AND created_at<?').get(job.id,from,to).n;
+   const freePages=" FROM document_translation_runs d LEFT JOIN billing_reservations b ON b.job_id=d.id AND b.attempt=1 WHERE (b.source='free' OR b.id IS NULL) AND d.id!=? AND d.created_at>=? AND d.created_at<?";
+   const owner=db.prepare('SELECT coalesce(sum(d.expected_pages),0) n'+freePages+' AND d.user_id=?').get(job.id,from,to,job.user_id).n;
+   const all=db.prepare('SELECT coalesce(sum(d.expected_pages),0) n'+freePages).get(job.id,from,to).n;
    if(owner+pages>documentTranslationLimits.userDailyPages)throw safe('今日文档翻译页数额度不足，请分章节或明天再试');
    if(all+pages>documentTranslationLimits.globalDailyPages)throw safe('文档翻译今日页数额度已用完，请明天再试');
    db.prepare('UPDATE document_translation_runs SET expected_pages=?,updated_at=? WHERE id=?').run(pages,clock(),job.id);
@@ -55,7 +58,7 @@ export function startDocumentTranslationWorker(db,config={}){
   tx(()=>{const row=db.prepare('SELECT artifacts,created_artifacts FROM document_translation_runs WHERE id=?').get(job.id),ids=JSON.parse(row.artifacts),owned=JSON.parse(row.created_artifacts);if(!ids.includes(item.id))ids.push(item.id);if(!response.value.deduplicated&&!owned.includes(item.id))owned.push(item.id);db.prepare('UPDATE document_translation_runs SET artifacts=?,created_artifacts=?,updated_at=? WHERE id=?').run(JSON.stringify(ids),JSON.stringify(owned),clock(),job.id);});
   if(!active(job.id)){await removeOwned(job.id);return;}
   tx(()=>{
-   if(!active(job.id))return;const id=randomUUID(),at=clock();
+   if(!active(job.id))return;const id=randomUUID(),at=clock();billing.settle(job.id);
    db.prepare("UPDATE document_translation_runs SET page_count=?,provider_state='done',updated_at=? WHERE id=?").run(pageCount,at,job.id);
    db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(id,job.user_id,job.project_id,job.id,'document_translation',job.file_name+' · 文档翻译',JSON.stringify({documentTranslationId:job.id,fileName:job.file_name,sourceLanguage:job.source_language,targetLanguage:job.target_language,pageCount,artifacts:[item.id],scope:'整篇文档译文保存在账户私有云存储，下载为DOCX；专业术语、公式、表格及排版需核对。'}),at);
    db.prepare("UPDATE jobs SET status='completed',stage='completed',result_id=?,error=NULL,updated_at=? WHERE id=? AND status='running'").run(id,at,job.id);
@@ -69,6 +72,7 @@ export function startDocumentTranslationWorker(db,config={}){
   try{
    if(job.status==='queued'&&!tx(()=>{const at=clock();if(!db.prepare("UPDATE jobs SET status='running',stage='reading',attempt=attempt+1,updated_at=? WHERE id=? AND status='queued'").run(at,job.id).changes)return false;db.prepare('UPDATE document_translation_runs SET started_at=coalesce(started_at,?),updated_at=? WHERE id=?').run(at,at,job.id);return true;}))return;
    if(!active(job.id))return;
+   if(JSON.parse(job.input).billingRequired===true&&!db.prepare("SELECT 1 FROM billing_reservations WHERE job_id=? AND status='held'").get(job.id))throw safe('本次文献研读权益预占无效，请重新提交');
    if(job.started_at&&Date.now()-Date.parse(job.started_at)>30*60000)throw safe('文档翻译等待超过30分钟，请检查原件后重新确认提交');
    if(!job.provider_task_id){
     const file=db.prepare('SELECT * FROM files WHERE id=? AND user_id=?').get(job.file_id,job.user_id);
@@ -97,7 +101,7 @@ export function startDocumentTranslationWorker(db,config={}){
    if(active(job.id)&&job.provider_task_id&&error.status===409&&/相同成果正在保存/.test(error.message)){stage(job.id,'saving_wait');schedule(job.id,15000);return;}
    if(active(job.id)){
     const message=error.documentTranslationSafe?error.message:controller.signal.aborted?'本次文档翻译连接超时，未自动重复提交，请稍后查看任务。':'文档翻译暂未完成，未自动重复提交，请核对文件或联系支持。';
-    db.prepare("UPDATE jobs SET status='failed',stage='failed',error=?,updated_at=? WHERE id=? AND status='running'").run(message.slice(0,300),clock(),job.id);
+    tx(()=>{db.prepare("UPDATE jobs SET status='failed',stage='failed',error=?,updated_at=? WHERE id=? AND status='running'").run(message.slice(0,300),clock(),job.id);billing.release(job.id);});
    }
    if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status!=='completed')await removeOwned(job.id);
   }finally{clearTimeout(timer);controllers.delete(job.id);busy=false;}

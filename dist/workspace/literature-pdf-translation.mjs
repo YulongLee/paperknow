@@ -1,3 +1,4 @@
+import {submitDocumentTranslation} from './document-translation-submit.mjs';
 import {icon} from './ui.mjs';
 import {mountLiteratureOriginalPreview} from './literature-original-preview.mjs';
 import {mountPdfAnnotations} from './pdf-annotations.mjs';
@@ -26,7 +27,7 @@ export function mountPdfTranslation({studio,paper,getOriginalPreview,signal,fetc
   try{
    const ready=await getOriginalPreview()?.load();if(!ready)throw Error('请先成功打开 PDF 原文，再进行翻译');
    const state=await request('/literature/reader/files/'+encodeURIComponent(paper.originalFileId)+'/translations'),source=language.value==='zh'?'en':'zh';let job=state.items.find(item=>item.targetLanguage===language.value&&['queued','running','completed'].includes(item.status));
-   if(!job){if(!state.ready)throw Error('整篇 PDF 翻译暂不可用，请稍后重试');status('正在提交整篇翻译…');const created=await request('/document-translations',{fileId:paper.originalFileId,sourceLanguage:source,targetLanguage:language.value,idempotencyKey:'reader-'+win.crypto.randomUUID(),consent:true,expectedUserId:paper.originalOwnerId});job={id:created.id,status:'queued'};}
+   if(!job){if(!state.ready)throw Error('整篇 PDF 翻译暂不可用，请稍后重试');status('正在提交整篇翻译…');const created=await submitDocumentTranslation(request,{fileId:paper.originalFileId,sourceLanguage:source,targetLanguage:language.value,idempotencyKey:'reader-'+win.crypto.randomUUID(),consent:true,expectedUserId:paper.originalOwnerId});job={id:created.id,status:'queued'};}
    const started=Date.now();while(current()&&ticket===version&&job.status!=='completed'){
     if(['failed','cancelled'].includes(job.status))throw Error(job.error||'这次翻译未完成，可重试；原文与已有标注保留');
     status(job.status==='queued'?'翻译任务排队中…':job.stage==='saving'||job.stage==='downloading'?'正在保存译文…':'正在翻译整篇文献…','译文完成后自动打开。可以先阅读和标注左侧原文。');
