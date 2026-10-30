@@ -11,7 +11,7 @@ test('retrieval finds late evidence beyond the former first twenty paragraphs an
  for(const m of materials)assert.equal(m.text,parts.find(p=>p.id===m.id).text);
  assert.ok(materials.length<=6);assert.ok(materials.reduce((n,m)=>n+m.text.length,0)<=5500);
  const value=normalizeToolRequest({kind:'literature',operation:'answer',snapshot:{title:p.title,text:materials.map(m=>m.text).join('\n\n'),materials,question:'BLEU?',context:{answerStrategy:'question-retrieval-v1'}}});
- assert.equal(toolRunPlan(value).length,1);const task=toolRunTask(value,toolRunPlan(value)[0]);assert.doesNotMatch(task.instructions,/chart的全部|演讲备注/);assert.match(task.instructions,/read_material/);
+ assert.equal(toolRunPlan(value).length,1);const task=toolRunTask(value,toolRunPlan(value)[0]);assert.doesNotMatch(task.instructions,/chart的全部|演讲备注/);assert.match(task.instructions,/read_material/);assert.match(task.instructions,/不能自行解释为笔误/);assert.match(task.instructions,/其他版本已经纠正/);
  const candidate={text:JSON.stringify({complete:true,text:'The score is 28.4.',sourceIds:['p58'],citations:[{sourceId:'p58',quote:'BLEU score of 28.4'}]}),trace:[]};
  assert.equal(validateToolCandidate(candidate,value,toolRunPlan(value)[0]).valid,false,'fast answers still require actual material reads');
 });
