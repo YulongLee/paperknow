@@ -31,9 +31,9 @@ test('suggestions cite actual expression concerns and do not invent a new result
  const c=sentenceEditAdvice('本研究拟采用访谈法。');assert.ok(c.issues.some(r=>r.title==='核对研究状态'));assert.equal(c.revised,null);
  assert.equal(sentenceEditAdvice('数据集包含不同光照条件下的图像。').kind,'retain');
 });
-test('the right column covers every sentence, including unflagged paragraphs, with safe original anchors',()=>{
+test('the right column gives sentence advice only for flagged paragraphs and keeps safe original anchors',()=>{
  const text='值得注意的是，本文进行进一步的分析。数据集包含不同光照条件下的图像。\n\n本研究使用独立测试集。结果仍需结合样本范围解释。',item=itemFor(text),before=JSON.stringify(item),dom=new JSDOM(aigcReportHtml(item,{text})),doc=dom.window.document;
- assert.equal(doc.querySelectorAll('.report-sentence-card').length,4);assert.equal(doc.querySelectorAll('[data-ai-sentence-row^="2-"] .report-sentence-card').length,2);assert.equal([...doc.querySelectorAll('.report-review-original .report-text')].map(n=>n.textContent).join(''),text);
+ assert.equal(doc.querySelectorAll('.report-sentence-card').length,2);assert.equal(doc.querySelectorAll('[data-ai-sentence-row^="2-"] .report-sentence-card').length,0);assert.ok([...doc.querySelectorAll('[data-ai-sentence-row^="2-"] .report-review-detail')].every(node=>node.innerHTML===''));assert.equal([...doc.querySelectorAll('.report-review-original .report-text')].map(n=>n.textContent).join(''),text);
  for(const a of doc.querySelectorAll('.report-sentence-card a[href^="#"]')){const target=doc.getElementById(a.hash.slice(1));assert.ok(target);assert.ok(target.closest('.report-review-original'));assert.equal(target.closest('tr'),a.closest('tr'));}
  assert.equal(doc.querySelectorAll('.report-sentence-rewrite').length,1);assert.match(doc.body.textContent,/逐句修改建议/);assert.match(doc.body.textContent,/不代表逐句 AI 作者判定/);assert.equal(JSON.stringify(item),before);assert.equal(doc.querySelectorAll('script,button,details').length,0);dom.window.close();
 });
@@ -43,7 +43,7 @@ test('one sentence crossing detector boundaries has one advice and one original 
 });
 test('code fences, displayed equations and reference entries receive preservation guidance without rewrites',()=>{
  const text='```python\nx = a.b()\nprint("值得注意的是，")\n```\n\n[1] Li. A study. 2025. DOI: 10.1000/test.\n\n$$\nL = 0.5 + 1.2\n$$',dom=new JSDOM(aigcReportHtml(itemFor(text),{text})),doc=dom.window.document;
- assert.equal(doc.querySelectorAll('.report-sentence-rewrite').length,0);assert.match(doc.querySelector('[data-ai-paragraph="2"] .report-review-detail').textContent,/保留结构与符号/);assert.match(doc.querySelector('[data-ai-paragraph="5"] .report-review-detail').textContent,/核对参考文献信息/);assert.equal([...doc.querySelectorAll('.report-review-original .report-text')].map(n=>n.textContent).join(''),text);dom.window.close();
+ assert.equal(doc.querySelectorAll('.report-sentence-rewrite').length,0);assert.equal(doc.querySelector('[data-ai-paragraph="2"] .report-review-detail').textContent,'');assert.match(doc.querySelector('[data-ai-paragraph="1"] .report-review-detail').textContent,/保留结构与符号/);assert.match(doc.querySelector('[data-ai-paragraph="5"] .report-review-detail').textContent,/核对参考文献信息/);assert.equal([...doc.querySelectorAll('.report-review-original .report-text')].map(n=>n.textContent).join(''),text);dom.window.close();
 });
 test('manuscript markup cannot become executable in a sentence quote or reference rewrite',()=>{
  const text='值得注意的是，<script>alert(1)</script>本研究进行详细的分析。',dom=new JSDOM(aigcReportHtml(itemFor(text),{text,title:'<img src=x onerror=alert(1)>'})),doc=dom.window.document;
