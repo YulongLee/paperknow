@@ -21,3 +21,5 @@ body.hub-theme-dark .lit-ai-card{--lit-answer-detail:#b8c6da;--lit-answer-link:#
 #app .dashboard .lit-ai-results .lit-ai-result blockquote p{color:var(--lit-answer-detail);font-size:13px;line-height:1.85}
 #app .dashboard .lit-ai-results .lit-ai-result blockquote a{color:var(--lit-answer-link);font-size:12px}
 #app .dashboard .lit-ai-results :is(.lit-ai-result-scope,.lit-ai-result summary>span,.lit-assistant-edit>summary,.lit-assistant-evidence>summary,.lit-assistant-export>summary,.lit-assistant-more>summary,.lit-assistant-result-tools>button){color:var(--lit-answer-detail);font-size:12px}
+body.hub-theme-dark .lit-reader-studio{--lit-soft:var(--pk-surface-soft,#1e2b40);--lit-accent:#9ec1ff}
+#app .dashboard .lit-ai-results .lit-ai-saved-question{background:var(--pk-blue-soft,#edf3ff)}
