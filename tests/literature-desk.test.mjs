@@ -34,17 +34,21 @@ test('the entrance combines search, upload and saved papers without another oper
  const filter=f.$('[data-desk-filter]');filter.focus();f.input('[data-desk-filter]','missing');assert.equal(f.$('.lit-desk-file'),null);assert.equal(f.w.document.activeElement,filter);f.input('[data-desk-filter]','Original Author');assert.ok(f.$('.lit-desk-file'));assert.equal(f.papers()[0].notes[0].text,'Keep my research note.');
 });
 
-test('direct upload keeps existing notes, persists the verified original and opens its own reader exactly once',async t=>{
+test('direct upload keeps existing notes and completes its queue row without automatic navigation',async t=>{
  const f=fixture(t);let release,reads=0,stores=0;const pending=new Promise(resolve=>release=resolve),file={name:'New research.txt',size:source.length};
  const ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher,importDocument:async()=>{reads++;await pending;return {text:source,warnings:[]};},saveOriginal:async()=>{stores++;return {originalFileId:'original-id',originalOwnerId:'owner'};}});await ui.ready;
- const one=ui.upload(file),two=ui.upload(file);assert.equal(f.$('[data-desk-import]').hidden,false);assert.equal(f.$('[data-desk-upload]').disabled,true);release();await Promise.all([one,two]);
- assert.equal(reads,1);assert.equal(stores,1);assert.equal(f.papers().length,2);assert.equal(f.papers()[0].title,'New research');assert.equal(f.papers()[0].originalFileId,'original-id');assert.equal(f.papers()[0].text,source);assert.equal(f.papers()[1].notes[0].text,'Keep my research note.');assert.match(f.w.location.hash,/^#literature\/.+\?tab=answer$/);assert.equal(f.calls.some(c=>c.path),false);
+ const one=ui.upload(file),two=ui.upload(file);await until(()=>reads===1);assert.equal(f.$('[data-desk-import]').hidden,false);assert.equal(f.$('[data-desk-upload]').disabled,false);assert.equal(f.$('[data-desk-upload]').multiple,true);release();await Promise.all([one,two]);
+ assert.equal(reads,1);assert.equal(stores,1);assert.equal(f.papers().length,2);assert.equal(f.papers()[0].title,'New research');assert.equal(f.papers()[0].originalFileId,'original-id');assert.equal(f.papers()[0].text,source);assert.equal(f.papers()[1].notes[0].text,'Keep my research note.');assert.equal(f.w.location.hash,'#category/literature');assert.ok(f.$('.lit-queue-row.is-completed a'));
 });
 
-test('leaving during import cannot append a late paper, and an original-save failure cannot create a phantom upload',async t=>{
+test('changing workspace pages keeps the serial upload alive and returning restores its completed row',async t=>{
  const f=fixture(t);let release,stores=0;const held=new Promise(resolve=>release=resolve),file={name:'Pending.txt',size:120};
- let ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher,importDocument:async()=>{await held;return {text:source};},saveOriginal:async()=>{stores++;return {originalFileId:'id',originalOwnerId:'owner'};}});await ui.ready;const pending=ui.upload(file);f.w.history.replaceState(null,'','#home');ui.dispose();release();await pending;assert.equal(f.papers().length,1);assert.equal(stores,0);
- f.w.history.replaceState(null,'','#category/literature');ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher,importDocument:async()=>({text:source}),saveOriginal:async()=>{throw Error('Original save failed');}});await ui.ready;await ui.upload(file);assert.equal(f.papers().length,1);assert.match(f.$('[data-desk-import-message]').textContent,/Original save failed/);assert.equal(f.$('[data-desk-upload]').disabled,false);
+ let ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher,importDocument:async()=>{await held;return {text:source};},saveOriginal:async()=>{stores++;return {originalFileId:'id',originalOwnerId:'owner'};}});await ui.ready;const pending=ui.upload(file);f.w.history.replaceState(null,'','#home');ui.dispose();release();await pending;assert.equal(f.papers().length,2);assert.equal(stores,1);
+ f.w.history.replaceState(null,'','#category/literature');ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher});await ui.ready;assert.equal(f.$('.lit-queue-row.is-completed b').textContent,'Pending.txt');assert.equal(f.w.location.hash,'#category/literature');
+});
+
+test('a failed original save leaves no phantom literature and does not stop subsequent files',async t=>{
+ const f=fixture(t);let attempt=0;const ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher,importDocument:async()=>({text:source}),saveOriginal:async()=>{if(++attempt===1)throw Error('Original save failed');return {originalFileId:'second-file',originalOwnerId:'owner'};}});await ui.ready;await ui.upload([{name:'Failed.txt',size:120},{name:'Good.txt',size:120}]);assert.equal(f.papers().length,2);assert.equal(f.papers()[0].title,'Good');assert.match(f.$('.lit-queue-row.is-failed').textContent,/Original save failed/);assert.ok(f.$('.lit-queue-row.is-completed'));
 });
 
 test('a slow original upload cannot overwrite a different tab’s newer literature or notes',async t=>{

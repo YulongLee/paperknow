@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {readFile} from 'node:fs/promises';
-import {createWorkspaceDocumentImporter,importWorkspaceDocument,documentImportContinuesInBackground} from '../dist/workspace/document-import.mjs';
+import {approveDocumentBatch,createWorkspaceDocumentImporter,importWorkspaceDocument,documentImportContinuesInBackground} from '../dist/workspace/document-import.mjs';
 import {withStableView} from '../dist/workspace/view-stability.mjs';
 import {esc,icon} from '../dist/workspace/ui.mjs';
 import {mountWritingFlow,disposeWritingFlows} from '../dist/workspace/writing-flows.mjs';
@@ -126,4 +126,22 @@ test('unreadable native PDFs give actionable Chinese feedback without uploading,
 test('reselecting a readable PDF succeeds after a failed handle without a phantom parse task',async()=>{
  const f=fixture();await assert.rejects(f.extract({name:'same.pdf',size:4,arrayBuffer:async()=>{throw Object.assign(Error('expired'),{name:'NotReadableError'});}}));
  assert.equal((await f.extract(pdf('same.pdf'))).text,f.done.result.text);assert.equal(f.calls.filter(c=>c.url==='/api/files').length,1);assert.equal(f.calls.filter(c=>c.url==='/api/document-parses').length,1);
+});
+
+test('one batch approval is bound to the exact PDF objects and account without per-file confirmations',async()=>{
+ const files=[pdf('one.pdf'),pdf('two.pdf')];let confirms=0;
+ const batchConsent=await approveDocumentBatch(files,'user-1',{confirmImpl:async()=>{confirms++;return true;}}),f=fixture();
+ for(const file of files)await f.extract(file,{batchConsent,expectedUserId:'user-1'});
+ assert.equal(confirms,1);assert.equal(f.confirmations.length,0);
+ const before=f.calls.filter(c=>c.init.method==='POST').length;
+ await assert.rejects(f.extract(pdf('other.pdf'),{batchConsent,expectedUserId:'user-1'}),/当前账户或文件/);
+ const changed=fixture({handle:url=>url==='/api/auth/me'?response({user:{id:'other'}}):null});await assert.rejects(changed.extract(files[0],{batchConsent,expectedUserId:'user-1'}),/账户已变化/);
+ assert.equal(f.calls.filter(c=>c.init.method==='POST').length,before);assert.equal(changed.calls.some(c=>c.init.method==='POST'),false);
+});
+
+test('explicit retry of a terminal PDF task creates a new task but reuses its original; ordinary retry never repeats failure automatically',async()=>{
+ let submissions=0,uuid=0;
+ const f=fixture({config:{uuid:()=> 'request-'+(++uuid)},handle:(url,init)=>url==='/api/document-parses'?(submissions++,response({id:submissions===1?'failed-job':'recovered-job'})):url==='/api/document-parses/failed-job'?response({status:'failed',error:'Damaged upstream attempt'}):url==='/api/document-parses/recovered-job'?response({status:'completed',result:{text:'Recovered source text',pages:1}}):null});
+ const file=pdf();await assert.rejects(f.extract(file),/Damaged/);await assert.rejects(f.extract(file),/Damaged/);assert.equal(submissions,1);
+ const result=await f.extract(file,{retryFailed:true});assert.equal(result.documentParseId,'recovered-job');assert.equal(submissions,2);assert.equal(f.calls.filter(c=>c.url==='/api/files').length,1);assert.notEqual(f.calls.filter(c=>c.url==='/api/document-parses')[0].body.idempotencyKey,f.calls.filter(c=>c.url==='/api/document-parses')[1].body.idempotencyKey);
 });

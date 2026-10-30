@@ -1,7 +1,7 @@
 import {readFileBytes} from './file-bytes.mjs';
 import {reuseStoredOriginal} from './file-selection.mjs';
 
-export async function saveLiteratureOriginal(file,{fetchImpl=(...args)=>fetch(...args),signal,isCurrent=()=>true}={}){
+export async function saveLiteratureOriginal(file,{fetchImpl=(...args)=>fetch(...args),signal,isCurrent=()=>true,expectedUserId}={}){
  if(!file||!/^.+\.(txt|docx)$/i.test(file.name)||file.size>2*1024*1024)throw Error('Word、TXT 文献最大支持 2MB，请压缩文档或改用 PDF。');
  const current=()=>!signal?.aborted&&isCurrent();
  async function api(path,body){
@@ -11,6 +11,7 @@ export async function saveLiteratureOriginal(file,{fetchImpl=(...args)=>fetch(..
   if(!response.ok)throw Error(response.status===401?'请先登录，再上传文献。':value?.error?.message||typeof value?.error==='string'&&value.error||'文献原件未能保存，请稍后重试。');return value;
  }
  const session=await api('/auth/me'),owner=session.user?.id;if(!owner)throw Error('请先登录，再上传文献。');
+ if(expectedUserId&&owner!==expectedUserId)throw Error('登录账户已变化，请返回原账户后继续上传。');
  let uploaded=await reuseStoredOriginal(file,{api,expectedUserId:owner});
  if(!uploaded){const bytes=await readFileBytes(file,{signal,maxBytes:2*1024*1024});if(!bytes.length||bytes.length>2*1024*1024)throw Error('Word、TXT 文献最大支持 2MB。');if(!current())throw Object.assign(Error('文献导入已停止'),{name:'AbortError'});let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));uploaded=await api('/files',{name:file.name,data:btoa(binary),expectedUserId:owner});}
  if(!uploaded?.id)throw Error('文献原件未确认保存，请在文件管理中核对。');

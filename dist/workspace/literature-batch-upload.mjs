@@ -1,0 +1,35 @@
+import {literatureImportQueue} from './literature-import-queue.mjs';
+import {approveDocumentBatch,extractWorkspaceDocument} from './document-import.mjs';
+import {literatureKey,validatePaper} from './literature-model.mjs';
+import {list,write} from './state.mjs';
+import {esc,icon} from './ui.mjs';
+
+export function mountLiteratureBatchUpload({container,ctx,fetcher,importDocument,saveOriginal,onSaved,current=()=>true}){
+ const doc=container.ownerDocument,win=doc.defaultView;
+ const getOwner=async()=>{const session=ctx.api?await ctx.api('/auth/me'):await (await (fetcher||fetch)('/api/auth/me',{credentials:'same-origin',cache:'no-store'})).json();return session.user?.id;};
+ const queue=literatureImportQueue(win,{getOwner,approveBatch:(files,ownerId)=>approveDocumentBatch(files,ownerId,{confirmImpl:message=>win.confirm(message)}),processFile:async(file,{ownerId,batchConsent,retryFailed,onProgress})=>{
+  const options={expectedUserId:ownerId,batchConsent,retryFailed,onProgress};
+  const parsed=await (importDocument?importDocument(file,doc.createElement('span'),options):extractWorkspaceDocument(file,options));
+  if(await getOwner()!==ownerId)throw Object.assign(Error('登录账户已变化，请返回原账户后继续此上传队列。'),{queueOwnerChanged:true});
+  if(!String(parsed.text||'').trim())throw Error('未读取到可研读的正文，请检查文件。');
+  let rows=list(literatureKey),duplicate=rows.find(p=>parsed.originalFileId&&p.originalFileId===parsed.originalFileId||p.fileName===file.name&&p.text===parsed.text&&p.scope==='full');if(duplicate)return duplicate;
+  if(rows.length>=200)throw Error('已保存 200 篇文献，请先整理不再需要的记录。');
+  const original=/\.pdf$/i.test(file.name)?{originalFileId:parsed.originalFileId||'',originalOwnerId:parsed.originalOwnerId||''}:await saveOriginal(file,{expectedUserId:ownerId,...(fetcher?{fetchImpl:fetcher}:{})});
+  if(await getOwner()!==ownerId||original.originalOwnerId!==ownerId)throw Object.assign(Error('登录账户已变化，原件保留在原账户，请返回后重试。'),{queueOwnerChanged:true});
+  const now=new Date().toISOString(),paper=validatePaper({id:win.crypto.randomUUID(),title:file.name.replace(/\.(pdf|docx|txt)$/i,'').slice(0,300),scope:'full',text:parsed.text,fileName:file.name,warnings:parsed.warnings||[],...original,notes:[],status:'unread',createdAt:now,updatedAt:now});
+  rows=list(literatureKey);duplicate=rows.find(p=>original.originalFileId&&p.originalFileId===original.originalFileId);if(duplicate)return duplicate;if(rows.length>=200)throw Error('文献数量已达上限；已保存原件可在文件管理查看。');write(literatureKey,[paper,...rows]);return paper;
+ }});
+ container.className='lit-import-queue';container.innerHTML=`<header><div><span class="lit-section-eyebrow">文献上传</span><h2>处理队列 <small data-queue-summary></small></h2></div><button type="button" class="btn secondary" data-queue-clear>清理记录</button></header><p class="lit-queue-help">逐篇处理，完成后即可研读。可切换工作台页面；关闭或刷新浏览器会停止尚未提交的队列。</p><p data-queue-error role="status" hidden></p><button type="button" class="btn secondary" data-queue-resume hidden>继续队列</button><div class="lit-queue-list" data-queue-list role="region" aria-label="文献上传队列，可滚动" tabindex="0"></div><p class="lit-queue-announcement" data-queue-announcement role="status" aria-live="polite"></p>`;
+ const $=s=>container.querySelector(s),labels={waiting:'等待处理',processing:'正在处理',completed:'已完成',failed:'未完成',cancelled:'已停止',invalid:'无法上传'};let counts='',completedIds='',viewerOwner=null;
+ function render(state){if(!current()||!viewerOwner)return;container.hidden=!state.rows.length;container.setAttribute('aria-busy',String(state.busy));if(state.ownerId&&state.ownerId!==viewerOwner||state.paused){$('[data-queue-list]').replaceChildren();$('[data-queue-error]').hidden=false;$('[data-queue-error]').textContent='上传队列所属账户已变化，请返回原账户后继续。';$('[data-queue-resume]').hidden=false;return;}const done=state.rows.filter(r=>r.state==='completed').length,failed=state.rows.filter(r=>['failed','invalid','cancelled'].includes(r.state)).length,waiting=state.rows.filter(r=>r.state==='waiting').length;
+  $('[data-queue-summary]').textContent=`${done} 已完成 · ${waiting} 等待${failed?' · '+failed+' 未完成':''}`;$('[data-queue-resume]').hidden=!state.paused;
+  const scroll=$('[data-queue-list]').scrollTop,active=doc.activeElement,focused=active?.getAttribute('data-queue-action'),focusId=active?.getAttribute('data-queue-id');
+  $('[data-queue-list]').innerHTML=state.rows.map(row=>`<article class="lit-queue-row is-${row.state}"><span class="lit-queue-file" aria-hidden="true">${icon(row.state==='completed'?'check':'file',19)}</span><div class="lit-queue-copy"><b title="${esc(row.name)}">${esc(row.name)}</b><p>${esc(row.message)}</p>${row.state==='processing'?`<div class="lit-queue-progress" role="progressbar" aria-label="${esc(row.name)}处理进度" ${row.progress!==null?`aria-valuenow="${row.progress}" aria-valuemin="0" aria-valuemax="100"`:''}><i ${row.progress!==null?`style="width:${Math.min(100,Math.max(0,row.progress))}%"`:''}></i></div>`:''}</div><span class="lit-queue-state">${labels[row.state]}</span><div class="lit-queue-actions">${row.state==='completed'?`<a href="#literature/${encodeURIComponent(row.paperId)}?tab=answer">开始研读 ${icon('arrow',13)}</a>`:row.state==='processing'?row.canCancel?`<button type="button" data-queue-action="cancel" data-queue-id="${row.id}">停止</button>`:'':`${['failed','cancelled'].includes(row.state)?`<button type="button" data-queue-action="retry" data-queue-id="${row.id}">重试</button>`:''}<button type="button" data-queue-action="remove" data-queue-id="${row.id}">移除</button>`}</div></article>`).join('');$('[data-queue-list]').scrollTop=scroll;if(focused&&focusId)$(`[data-queue-action="${focused}"][data-queue-id="${focusId}"]`)?.focus({preventScroll:true});
+  const summary=`${done} 份完成，${failed} 份未完成，${waiting} 份等待`;if(summary!==counts){counts=summary;$('[data-queue-announcement]').textContent=summary;}const ids=state.rows.filter(r=>r.state==='completed').map(r=>r.paperId).join(',');if(ids!==completedIds){completedIds=ids;onSaved?.();}
+ }
+ const off=queue.subscribe(render);
+ if(queue.snapshot().ownerId)void getOwner().then(id=>{viewerOwner=id;if(current())render(queue.snapshot());}).catch(()=>{});
+ const showError=error=>{if(!current())return;$('[data-queue-error]').hidden=false;$('[data-queue-error]').textContent=error.message||'文件未能加入队列，请重试。';container.hidden=false;};
+ const click=event=>{const button=event.target.closest('[data-queue-action]');if(button){const result=queue[button.dataset.queueAction](button.dataset.queueId);Promise.resolve(result).catch(showError);}else if(event.target.closest('[data-queue-clear]'))queue.clear();else if(event.target.closest('[data-queue-resume]'))queue.resume().catch(showError);};container.addEventListener('click',click);
+ return {queue,async upload(values){try{$('[data-queue-error]').hidden=true;viewerOwner=await getOwner();await queue.enqueue(Array.isArray(values)||typeof values?.[Symbol.iterator]==='function'?values:[values]);await queue.whenIdle();}catch(error){if(error.name!=='DocumentImportCancelled')showError(error);}},dispose(){off();container.removeEventListener('click',click);}};
+}
