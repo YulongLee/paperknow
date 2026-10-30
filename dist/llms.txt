@@ -10,12 +10,12 @@
 - [论文表达优化与 AI 文本鉴别｜原稿对照、逐段修改](https://paperknow.cn/features/reduce-ai/): PaperKnow 支持中文与英文 AI 表达优化、原稿对照、逐段采纳和版本保存，并提供通用 AI 文本鉴别的分段倾向与置信分。鉴别结果不代表论文 AI 字数占比，不替代学校指定报告。
 - [论文检测｜重复率检测与 AI 率检测报告](https://paperknow.cn/features/similarity-check/): PaperKnow 论文检测支持上传论文进行重复率与 AI 生成特征检测，提供结果概览、分段标注和可下载的检测报告。重复率限于本次实际取得的来源，AI 指标按实际分段标签统计。
 - [答辩 PPT 制作｜开题、毕业与可编辑 PPTX](https://paperknow.cn/features/ppt/): PaperKnow 支持 AI PPT、开题 PPT、毕业 PPT 三种创作流程。基于主题或真实报告生成页面及备注，确认费用后处理，核对采纳并逐页编辑，导出可编辑 PPTX；不编造研究结果。
-- [论文格式排版工具｜上传模板，一键排版](https://paperknow.cn/features/format/): 上传 DOCX 格式模板和论文，PaperKnow 自动读取可识别样式，完成排版与复查，保留原件并生成可编辑 Word 副本。
+- [文稿格式排版工具｜上传模板，一键排版](https://paperknow.cn/features/format/): 上传 DOCX 格式模板和原文，PaperKnow 自动读取可识别样式，完成排版与复查，保留原件并生成可编辑 Word 副本。
 - [AI 科研绘图与公式编辑｜描述生成图片、LaTeX 实时预览](https://paperknow.cn/features/research-tools/): PaperKnow 科研工具支持描述生成基础图表和专业科研示意图片、账户私有云端保存，以及公式模板、符号、截图识别和 LaTeX 实时排版。保留真实数据绘图入口，图片内容需核对。
 - [论文与科研工具使用指南](https://paperknow.cn/guides/): 阅读 PaperKnow 论文大纲、材料比对、DOCX 格式、开题与毕业 PPT、科研图表的操作指南。
 - [论文大纲生成与编辑指南｜AI 提纲、字数分配与核对](https://paperknow.cn/guides/paper-outline/): 按 PaperKnow 写作流程准备题目和真实材料，确认费用后生成 AI 提纲，自动映射章节与目标字数分配，也可导入、粘贴并自行修改。核对方法、引用与研究事实后再生成正文。
 - [本地材料比对怎么用｜正文、来源与报告核对](https://paperknow.cn/guides/material-comparison/): 按步骤导入论文和自备对照正文，确认章节，运行 PaperKnow 本地材料比对并查看来源。解释结果适用范围，以及为何不能替代学校正式查重。
-- [DOCX 论文排版步骤｜上传模板、上传论文、AI 排版](https://paperknow.cn/guides/docx-format/): 通过三个步骤完成 DOCX 论文格式排版：上传格式模板、上传论文、一键 AI 排版，完成后下载独立 Word 副本。
+- [DOCX 文稿排版步骤｜上传模板、上传原文、AI 排版](https://paperknow.cn/guides/docx-format/): 通过三个步骤完成 DOCX 文稿格式排版：上传格式模板、上传原文、一键 AI 排版，完成后下载独立 Word 副本。
 - [开题与毕业 PPT 制作步骤｜结构、页面与 PPTX 导出](https://paperknow.cn/guides/research-ppt/): 按 PaperKnow AI PPT、开题 PPT 或毕业 PPT 流程，准备主题或真实报告，确认范围与费用后生成草稿，再审核、编辑大纲、页面与备注并导出可编辑 PPTX。
 - [科研基础图表制作步骤｜CSV 输入与 SVG、PNG 导出](https://paperknow.cn/guides/research-charts/): 按 PaperKnow 当前绘图流程整理表头、类别与数值系列，选择基础图表，核对坐标、单位和图例，再导出 SVG、PNG 与 CSV。区分描述统计和显著性检验。
 - [关于 PaperKnow｜论文写作与科研辅助工作台](https://paperknow.cn/about/): 了解 PaperKnow 的产品定位、八项论文与科研工具、当前服务范围，以及统一账户下的资料管理方式。运营名称：oneshowailab-paperknow。
