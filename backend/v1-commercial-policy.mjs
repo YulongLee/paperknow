@@ -29,5 +29,5 @@ export function commercialToolIdentity(db,value){
 }
 export function commercialWorkContext(value){
  const s=value.snapshot||{},c=s.context||{};
- return {kind:value.kind,operation:value.operation,characters:value.kind==='format'?Number(c.documentCharacters||0):value.kind==='literature'&&s.materials?.length?s.materials.reduce((n,m)=>n+Array.from(m.text||'').length,0):Math.max(Array.from(s.text||'').length,(s.materials||[]).reduce((n,m)=>n+Array.from(m.text||'').length,0)),targetWords:(s.profile?.targetWords||0)*(/english|英文|英语/i.test(s.profile?.language||'')?2:1),level:s.profile?.level||'',pages:c.pages||0,revisionKind:c.revisionProduct?.kind||''};
+ return {kind:value.kind,operation:value.operation,characters:value.kind==='format'?Number(c.documentCharacters||0):value.kind==='literature'&&s.materials?.length?s.materials.reduce((n,m)=>n+Array.from(m.text||'').length,0):Math.max(Array.from(s.text||'').length,(s.materials||[]).reduce((n,m)=>n+Array.from(m.text||'').length,0)),targetWords:(s.profile?.targetWords||0)*(/english|英文|英语/i.test(s.profile?.language||'')?2:1),level:s.profile?.level||'',pages:c.pages||0,legacyPresentationKey:value.kind==='presentation'?toolBillingIdentity(value).serviceKey:null,revisionKind:c.revisionProduct?.kind||''};
 }

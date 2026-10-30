@@ -11,7 +11,7 @@ import {v1PriceFor,entitlementLabel} from '../dist/workspace/v1-pricing.mjs';
 function fixture(t){
  const db=database(':memory:'),at=new Date().toISOString(),until=new Date(Date.now()+86400000).toISOString(),user={id:'v1-owner'};
  db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run(user.id,'v1@example.invalid','Synthetic fixture',null,'user',at);
- const config={aiURL:'https://example.invalid',aiKey:'fixture',aiModel:'fixture',agentEnabled:true,getAgentSettings:()=>({enabled:true,engine:'claude-agent-sdk',baseURL:'https://example.invalid',apiKey:'fixture',model:'fixture',version:'fixture'}),documentTranslationEnabled:true,documentTranslationAccessKeyId:'fixture-test',documentTranslationAccessKeySecret:'fixture-test',storage:{provider:'aliyun_oss',read(){},putArtifact(){},readArtifact(){},removeArtifact(){},signedOriginalURL(){}}};
+ const config={pptMasterEnabled:true,pptMasterRenderer(){assert.fail('no rendering in quota tests');},aiURL:'https://example.invalid',aiKey:'fixture',aiModel:'fixture',agentEnabled:true,getAgentSettings:()=>({enabled:true,engine:'claude-agent-sdk',baseURL:'https://example.invalid',apiKey:'fixture',model:'fixture',version:'fixture'}),documentTranslationEnabled:true,documentTranslationAccessKeyId:'fixture-test',documentTranslationAccessKeySecret:'fixture-test',storage:{provider:'aliyun_oss',bucket:'fixture-private',prefix:'fixture/',read(){},putArtifact(){},readArtifact(){},removeArtifact(){},signedOriginalURL(){}}};
  const billing=createBillingService(db,config);applyV1Commerce(db,planV1Commerce(db).expected);
  db.prepare('INSERT INTO payment_config_versions(id,provider,sealed_settings,identity_hash,created_by,created_at) VALUES(?,?,?,?,?,?)').run('v1-fixture','wechat','{}','fixture',user.id,at);
  function grant(items,scope=null,product='reading-v1',type='membership'){
@@ -67,4 +67,14 @@ test('cloud storage and PDF parse allowances enforce real resources while retain
  const id=f.job('document_parse');f.tx(()=>reserveParsePages(f.db,f.user.id,id,100));assert.equal(f.billing.entitlements(f.user.id).membershipUsage[grant].find(i=>i.key==='parse-pages').held,100);assert.throws(()=>f.tx(()=>reserveParsePages(f.db,f.user.id,f.job('document_parse'),21)),{status:402});
  f.db.prepare("UPDATE jobs SET status='failed' WHERE id=?").run(id);f.tx(()=>reserveParsePages(f.db,f.user.id,f.job('document_parse'),100));
  assert.equal(entitlementLabel({key:'translation-pages',title:'Full translation',quantity:20}),'Full translation × 20 页');
+});
+
+test('enhanced presentations honour the matching historical allowance while new packages retain their 20-slide scope',t=>{
+ const f=fixture(t),context={kind:'presentation',pages:25,legacyPresentationKey:'presentation-ai'};
+ f.grant([{key:'presentation-ai',title:'Historical AI PPT',quantity:1}],null,'premium','membership');
+ f.grant([{key:'presentation-thesis',title:'Historical defence PPT',quantity:1}],null,'bundle-presentation','bundle');
+ assert.equal(f.quote('presentation-enhanced',context).entitlementKey,'presentation-ai');
+ const current=f.quote('presentation-enhanced',{...context,legacyPresentationKey:'presentation-proposal'});assert.equal(current.source,'credits');assert.equal(current.creditCost,299);
+ const g=fixture(t);g.grant([{key:'presentation-thesis',title:'Scoped defence PPT',quantity:1}],{version:'2026-10-31-v1',maxSlides:20},'bundle-bachelor','bundle');
+ assert.equal(g.quote('presentation-enhanced',{...context,legacyPresentationKey:'presentation-thesis'}).source,'credits');
 });
