@@ -34,6 +34,7 @@ export function assessPublicationFigure({profile='general',widthMm,vector=false,
 const basicData=new Set(['pie','bar','line','treemap','horizontal-bar','pictorial-bar','radar','heatmap','boxplot','gauge','scatter','candlestick','sankey','sunburst','calendar','parallel','river','funnel','chord']);
 const basicSequence=new Set(['sequence','timing','timeline','journey','zenuml']);
 export function publicationFigureKind(choice){
+ if(choice.categoryId==='basic'&&['journey','timeline'].includes(choice.id))return 'diagram';
  if(choice.categoryId==='basic')return basicData.has(choice.id)?'data':basicSequence.has(choice.id)||/时序|时间线|旅程|ZenUML/.test(choice.label)?'sequence':choice.id==='auto'?'auto':'diagram';
  const name=[choice.label,choice.sceneLabel].filter(Boolean).join(' ');
  if(/混淆矩阵|ROC|生存曲线|训练曲线|损失函数|曲线拟合|峰拟合|回归分析|面板数据|计量经济|生物统计|实验数据|质量控制|过程能力|信号分析|频率响应|频谱|谱分析|时序分析/.test(name))return 'data';

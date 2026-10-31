@@ -3,13 +3,13 @@
 import {basicFigureExamples,professionalFigureExample} from './research-figure-examples.mjs';
 const figure=(id,label,description,example)=>({id,label,description,example});
 export const basicResearchFigures=[
- figure('auto','智能选择','根据描述选择适合的画面结构','为一项大学生学习投入研究画一张清晰的科研示意图，包含研究背景、研究问题、问卷调查、数据分析和结论，使用蓝白配色。'),
+ figure('auto','智能选择','根据描述选择适合的画面结构',basicFigureExamples['auto']),
  figure('flowchart','流程图','步骤、分支与决策关系','画一张研究流程图：提出问题→文献调研→提出假设→问卷设计→数据采集→统计分析→研究结论。节点从左向右排列，清晰标注每个步骤。'),
- figure('er','实体关系图','实体、属性与关系示意','画一张图书管理系统实体关系示意图，包含读者、图书、借阅记录三个实体。读者与借阅记录为一对多，图书与借阅记录为一对多，标注主键和关键属性。'),
+ figure('er','实体关系图','实体、属性与关系示意',basicFigureExamples['er']),
  figure('pie','饼图','组成、占比与类别对照',basicFigureExamples['pie']),
  figure('bar','柱状图','不同类别的数值对比',basicFigureExamples['bar']),
  figure('line','折线图','变化趋势与序列对比',basicFigureExamples['line']),
- figure('tree','树图','层级、分类与组织结构','画一张研究框架树图：学习效果分为认知、行为和情感三个维度，每个维度列出两个观察指标。使用圆角节点，层级自上而下。'),
+ figure('tree','树图','层级、分类与组织结构',basicFigureExamples['tree']),
  figure('treemap','矩形树图','层级与面积占比示意',basicFigureExamples['treemap']),
  figure('horizontal-bar','条形图','横向展示类别差异',basicFigureExamples['horizontal-bar']),
  figure('pictorial-bar','象形柱图','用图形符号表达类别与数量',basicFigureExamples['pictorial-bar']),
@@ -21,7 +21,7 @@ export const basicResearchFigures=[
  figure('scatter','散点图','变量关系与分布示意',basicFigureExamples['scatter']),
  figure('candlestick','K线图','开高低收的视觉表达',basicFigureExamples['candlestick']),
  figure('sankey','桑基图','流向、转化与路径',basicFigureExamples['sankey']),
- figure('sunburst','旭日图','多层级环形结构','画一张科研方法分类旭日图：内层为定性、定量、混合方法；外层分别列出访谈、案例、实验、问卷和混合设计，层级清楚。'),
+ figure('sunburst','旭日图','多层级环形结构',basicFigureExamples['sunburst']),
  figure('matrix','矩阵坐标系','二维定位与四象限表达','画一张科研任务优先级四象限图，横轴为紧迫程度，纵轴为重要程度，四个象限分别标注立即执行、计划安排、委派协作、减少投入。'),
  figure('calendar','日历坐标系','按日期组织研究活动',basicFigureExamples['calendar']),
  figure('parallel','平行坐标系','多个变量的模式对照',basicFigureExamples['parallel']),
@@ -30,13 +30,13 @@ export const basicResearchFigures=[
  figure('funnel','漏斗图','筛选、转化与阶段收敛',basicFigureExamples['funnel']),
  figure('path','路径图','作用路径与假设关系','画一张研究假设路径图：学习支持→学习动机→学习投入→学习效果；学习支持也直接指向学习效果，路径标为H1至H4，不添加估计系数。'),
  figure('river','主题河流图','主题随时间的演变',basicFigureExamples['river']),
- figure('journey','用户旅程图','阶段、行为与体验触点','画一张研究生使用文献工具的用户旅程图：发现选题、检索文献、阅读标注、整理笔记、写作引用。每阶段列出行为、痛点和机会。'),
+ figure('journey','用户旅程图','阶段、行为与体验触点',basicFigureExamples['journey']),
  figure('requirement','需求图','目标、需求与依赖关系','画一张科研资料管理系统需求图，顶层目标为高效管理研究资料，下分文献检索、分类收藏、笔记整理和引用导出，标明需求依赖。'),
- figure('zenuml','ZenUML','交互调用与控制逻辑','画一张系统交互示意图：用户输入检索词，前端请求检索服务，服务查询文献源并返回结果，用户收藏题录。清楚区分参与者，不生成可执行代码。'),
- figure('sequence','时序图','参与者之间的消息顺序','画一张文献导入时序图，参与者为用户、网页、解析服务、存储服务。依次展示选择文件、确认处理、解析、保存、返回结果，标注失败分支。'),
- figure('class','类图','类型、属性与关联关系','画一张文献管理类图示意，包含Paper、Collection、Note三个类。Paper有title、authors、year属性，Collection包含多个Paper，每个Paper有多条Note。'),
+ figure('zenuml','ZenUML','交互调用与控制逻辑',basicFigureExamples['zenuml']),
+ figure('sequence','时序图','参与者之间的消息顺序',basicFigureExamples['sequence']),
+ figure('class','类图','类型、属性与关联关系',basicFigureExamples['class']),
  figure('architecture','架构图','系统分层与模块关系','画一张科研辅助平台架构图，上层为网页工作台，中层为文献、写作、绘图服务，下层为任务队列、数据库与对象存储，区分数据流和调用关系。'),
- figure('state','状态图','状态转换与触发条件','画一张研究任务状态图：草稿→等待处理→处理中→完成；处理中可进入失败或取消，失败后由用户确认重试。每个转换标明触发条件。'),
+ figure('state','状态图','状态转换与触发条件',basicFigureExamples['state']),
  figure('timeline','时间线图(不带数值)','里程碑与研究安排','画一张毕业论文计划时间线：第1月选题、第2月文献与设计、第3至4月资料收集、第5月分析与写作、第6月修改与答辩，蓝白配色。')
 ];
 

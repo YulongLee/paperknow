@@ -1,0 +1,4682 @@
+[
+  {
+    "id": "architecture-en",
+    "figureType": "architecture",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "Research_Platform_Architecture",
+        "caption": "Architecture of the scientific research assistance platform showing three layers: Web Workbench (upper), Services (middle), and Infrastructure (lower), with distinct data flow and call relationships.",
+        "layout": "TB",
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "Web Workbench",
+            "role": "component",
+            "attributes": [
+              "User Interface"
+            ]
+          },
+          {
+            "id": "n2",
+            "label": "Literature Service",
+            "role": "component",
+            "attributes": [
+              "Search & Analysis"
+            ]
+          },
+          {
+            "id": "n3",
+            "label": "Writing Service",
+            "role": "component",
+            "attributes": [
+              "Drafting & Editing"
+            ]
+          },
+          {
+            "id": "n4",
+            "label": "Plotting Service",
+            "role": "component",
+            "attributes": [
+              "Visualization"
+            ]
+          },
+          {
+            "id": "n5",
+            "label": "Task Queue",
+            "role": "component",
+            "attributes": [
+              "Job Scheduling"
+            ]
+          },
+          {
+            "id": "n6",
+            "label": "Database",
+            "role": "entity",
+            "attributes": [
+              "Relational Data"
+            ]
+          },
+          {
+            "id": "n7",
+            "label": "Object Storage",
+            "role": "entity",
+            "attributes": [
+              "Files & Assets"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "Request",
+            "kind": "directed"
+          },
+          {
+            "from": "n1",
+            "to": "n3",
+            "label": "Request",
+            "kind": "directed"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "label": "Request",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n5",
+            "label": "Submit Task",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n5",
+            "label": "Submit Task",
+            "kind": "directed"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "label": "Submit Task",
+            "kind": "directed"
+          },
+          {
+            "from": "n5",
+            "to": "n6",
+            "label": "Read/Write",
+            "kind": "directed"
+          },
+          {
+            "from": "n5",
+            "to": "n7",
+            "label": "Read/Write",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n6",
+            "label": "Access",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n7",
+            "label": "Access",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n6",
+            "label": "Access",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n7",
+            "label": "Access",
+            "kind": "directed"
+          },
+          {
+            "from": "n4",
+            "to": "n6",
+            "label": "Access",
+            "kind": "directed"
+          },
+          {
+            "from": "n4",
+            "to": "n7",
+            "label": "Access",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "architecture-zh",
+    "figureType": "architecture",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "科研辅助平台架构图",
+        "caption": "系统分层与模块关系：上层为网页工作台，中层为文献、写作、绘图服务，下层为任务队列、数据库与对象存储。区分数据流和调用关系。",
+        "layout": "TB",
+        "qualitative": false,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "网页工作台",
+            "role": "component",
+            "attributes": [
+              "用户交互层"
+            ]
+          },
+          {
+            "id": "n2",
+            "label": "文献服务",
+            "role": "component",
+            "attributes": [
+              "中层服务"
+            ]
+          },
+          {
+            "id": "n3",
+            "label": "写作服务",
+            "role": "component",
+            "attributes": [
+              "中层服务"
+            ]
+          },
+          {
+            "id": "n4",
+            "label": "绘图服务",
+            "role": "component",
+            "attributes": [
+              "中层服务"
+            ]
+          },
+          {
+            "id": "n5",
+            "label": "任务队列",
+            "role": "component",
+            "attributes": [
+              "底层基础设施"
+            ]
+          },
+          {
+            "id": "n6",
+            "label": "数据库",
+            "role": "entity",
+            "attributes": [
+              "底层存储"
+            ]
+          },
+          {
+            "id": "n7",
+            "label": "对象存储",
+            "role": "entity",
+            "attributes": [
+              "底层存储"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "调用/请求",
+            "kind": "directed"
+          },
+          {
+            "from": "n1",
+            "to": "n3",
+            "label": "调用/请求",
+            "kind": "directed"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "label": "调用/请求",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n5",
+            "label": "提交任务",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n5",
+            "label": "提交任务",
+            "kind": "directed"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "label": "提交任务",
+            "kind": "directed"
+          },
+          {
+            "from": "n5",
+            "to": "n6",
+            "label": "读写数据",
+            "kind": "directed"
+          },
+          {
+            "from": "n5",
+            "to": "n7",
+            "label": "存取文件",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n6",
+            "label": "读取元数据",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n7",
+            "label": "获取全文/PDF",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n6",
+            "label": "保存草稿",
+            "kind": "directed"
+          },
+          {
+            "from": "n4",
+            "to": "n7",
+            "label": "上传图表源文件",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "auto-en",
+    "figureType": "auto",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "Research_Flow",
+        "caption": "Schematic representation of the research process flow.",
+        "layout": "LR",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "Research Background",
+            "role": "process"
+          },
+          {
+            "id": "n2",
+            "label": "Research Question",
+            "role": "process"
+          },
+          {
+            "id": "n3",
+            "label": "Questionnaire Survey",
+            "role": "process"
+          },
+          {
+            "id": "n4",
+            "label": "Data Analysis",
+            "role": "process"
+          },
+          {
+            "id": "n5",
+            "label": "Research Conclusion",
+            "role": "process"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "label": "",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "auto-zh",
+    "figureType": "auto",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "研究流程示意",
+        "caption": "本研究流程示意图，展示从背景到结论的五个阶段。",
+        "layout": "LR",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "研究背景",
+            "role": "process"
+          },
+          {
+            "id": "n2",
+            "label": "研究问题",
+            "role": "process"
+          },
+          {
+            "id": "n3",
+            "label": "问卷调查",
+            "role": "process"
+          },
+          {
+            "id": "n4",
+            "label": "数据分析",
+            "role": "process"
+          },
+          {
+            "id": "n5",
+            "label": "研究结论",
+            "role": "process"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "label": "",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "bar-en",
+    "figureType": "bar",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Completion Time Comparison",
+        "caption": "Comparison of completion times for different schemes.",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "bar",
+        "xLabel": "Scheme",
+        "yLabel": "Completion Time (min)",
+        "unit": "min",
+        "data": {
+          "categories": [
+            "Scheme A",
+            "Scheme B",
+            "Scheme C"
+          ],
+          "series": [
+            {
+              "name": "Time",
+              "values": [
+                12,
+                18,
+                15
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "bar-zh",
+    "figureType": "bar",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "绘制方案完成时间柱状图",
+        "caption": "不同方案的完成时间对比",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "bar",
+        "xLabel": "方案",
+        "yLabel": "完成时间",
+        "unit": "分钟",
+        "data": {
+          "categories": [
+            "方案A",
+            "方案B",
+            "方案C"
+          ],
+          "series": [
+            {
+              "name": "完成时间",
+              "values": [
+                12,
+                18,
+                15
+              ]
+            }
+          ]
+        },
+        "referenceLines": [],
+        "yRange": {}
+      }
+    }
+  },
+  {
+    "id": "boxplot-en",
+    "figureType": "boxplot",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Task Completion Time Boxplot",
+        "caption": "Comparison of task completion times between Group A and Group B. The box represents the interquartile range (IQR), the line inside the box indicates the median, and the whiskers extend to 1.5 * IQR. Outliers are plotted as individual points.",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "boxplot",
+        "xLabel": "Group",
+        "yLabel": "Time (min)",
+        "unit": "min",
+        "data": {
+          "series": [
+            {
+              "name": "Group A",
+              "values": [
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                25
+              ]
+            },
+            {
+              "name": "Group B",
+              "values": [
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "boxplot-zh",
+    "figureType": "boxplot",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "两组任务完成时间分布",
+        "caption": "A组与B组任务完成时间的盒须图对比。箱体展示四分位数，须线覆盖1.5倍IQR范围，离群点单独标示。",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "boxplot",
+        "xLabel": "组别",
+        "yLabel": "时间",
+        "unit": "分钟",
+        "data": {
+          "series": [
+            {
+              "name": "A组",
+              "values": [
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                25
+              ]
+            },
+            {
+              "name": "B组",
+              "values": [
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "calendar-en",
+    "figureType": "calendar",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Literature Reading Calendar - Oct 2026",
+        "caption": "Daily reading duration in minutes for October 1-7, 2026. Missing dates are left blank.",
+        "layout": "TB",
+        "qualitative": false,
+        "chartType": "calendar",
+        "xLabel": "Date (Oct 2026)",
+        "yLabel": "Duration (min)",
+        "unit": "minutes",
+        "data": {
+          "calendar": [
+            {
+              "date": "2026-10-01",
+              "value": 20
+            },
+            {
+              "date": "2026-10-02",
+              "value": 35
+            },
+            {
+              "date": "2026-10-03",
+              "value": 0
+            },
+            {
+              "date": "2026-10-04",
+              "value": 40
+            },
+            {
+              "date": "2026-10-05",
+              "value": 25
+            },
+            {
+              "date": "2026-10-06",
+              "value": 50
+            },
+            {
+              "date": "2026-10-07",
+              "value": 30
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "calendar-zh",
+    "figureType": "calendar",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "2026年10月文献阅读日历热力图",
+        "caption": "2026年10月每日文献阅读时长（分钟）",
+        "layout": "grid",
+        "qualitative": false,
+        "chartType": "calendar",
+        "data": {
+          "calendar": [
+            {
+              "date": "2026-10-01",
+              "value": 20
+            },
+            {
+              "date": "2026-10-02",
+              "value": 35
+            },
+            {
+              "date": "2026-10-03",
+              "value": 0
+            },
+            {
+              "date": "2026-10-04",
+              "value": 40
+            },
+            {
+              "date": "2026-10-05",
+              "value": 25
+            },
+            {
+              "date": "2026-10-06",
+              "value": 50
+            },
+            {
+              "date": "2026-10-07",
+              "value": 30
+            }
+          ]
+        },
+        "xLabel": "日期",
+        "yLabel": "阅读时长 (min)",
+        "unit": "min"
+      }
+    }
+  },
+  {
+    "id": "candlestick-en",
+    "figureType": "candlestick",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "K线图_两根K线示例",
+        "caption": "展示第1日与第2日的开高低收价格变化。上涨用实心/绿色表示，下跌用空心/红色表示（或根据具体期刊规范调整颜色，此处以标准涨跌色区分）。",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "candlestick",
+        "data": {
+          "ohlc": [
+            {
+              "name": "第1日",
+              "open": 10,
+              "close": 13,
+              "low": 9,
+              "high": 14
+            },
+            {
+              "name": "第2日",
+              "open": 13,
+              "close": 11,
+              "low": 10,
+              "high": 15
+            }
+          ]
+        },
+        "xLabel": "交易日",
+        "yLabel": "价格",
+        "unit": "元"
+      }
+    }
+  },
+  {
+    "id": "candlestick-zh",
+    "figureType": "candlestick",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "K线图",
+        "caption": "两根K线：第1日（开10/高14/低9/收13）与第2日（开13/高15/低10/收11），横轴为交易日，纵轴为价格（元）。",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "candlestick",
+        "data": {
+          "ohlc": [
+            {
+              "name": "第1日",
+              "open": 10,
+              "close": 13,
+              "low": 9,
+              "high": 14
+            },
+            {
+              "name": "第2日",
+              "open": 13,
+              "close": 11,
+              "low": 10,
+              "high": 15
+            }
+          ]
+        },
+        "xLabel": "交易日",
+        "yLabel": "价格",
+        "unit": "元"
+      }
+    }
+  },
+  {
+    "id": "chord-en",
+    "figureType": "chord",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Interdisciplinary Collaboration Chord Diagram",
+        "caption": "Qualitative representation of collaboration links between Computer Science, Education, Psychology, and Design. Bandwidth is uniform as no quantitative weights are provided.",
+        "layout": "radial",
+        "qualitative": true,
+        "chartType": "chord",
+        "data": {
+          "nodes": [
+            {
+              "id": "computer",
+              "label": "Computer"
+            },
+            {
+              "id": "education",
+              "label": "Education"
+            },
+            {
+              "id": "psychology",
+              "label": "Psychology"
+            },
+            {
+              "id": "design",
+              "label": "Design"
+            }
+          ],
+          "links": [
+            {
+              "from": "computer",
+              "to": "education",
+              "value": 1
+            },
+            {
+              "from": "education",
+              "to": "psychology",
+              "value": 1
+            },
+            {
+              "from": "computer",
+              "to": "design",
+              "value": 1
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "chord-zh",
+    "figureType": "chord",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "跨学科合作网络",
+        "caption": "计算机、教育、心理学与设计领域的合作联系示意。带宽均等表示定性关系，无权重差异。",
+        "layout": "radial",
+        "qualitative": true,
+        "chartType": "chord",
+        "data": {
+          "nodes": [
+            {
+              "id": "cs",
+              "label": "计算机"
+            },
+            {
+              "id": "edu",
+              "label": "教育"
+            },
+            {
+              "id": "psy",
+              "label": "心理学"
+            },
+            {
+              "id": "des",
+              "label": "设计"
+            }
+          ],
+          "links": [
+            {
+              "from": "cs",
+              "to": "edu",
+              "value": 1
+            },
+            {
+              "from": "edu",
+              "to": "psy",
+              "value": 1
+            },
+            {
+              "from": "cs",
+              "to": "des",
+              "value": 1
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "class-en",
+    "figureType": "class",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "Literature Management Class Diagram",
+        "caption": "Class diagram showing aggregation of Paper by Collection and composition of Note within Paper.",
+        "layout": "LR",
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "Collection",
+            "role": "entity",
+            "attributes": [
+              "name"
+            ]
+          },
+          {
+            "id": "n2",
+            "label": "Paper",
+            "role": "entity",
+            "attributes": [
+              "title",
+              "authors",
+              "year"
+            ]
+          },
+          {
+            "id": "n3",
+            "label": "Note",
+            "role": "entity",
+            "attributes": [
+              "text"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "aggregates (1..*)",
+            "kind": "aggregation"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "label": "composes (1..*)",
+            "kind": "composition"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "class-zh",
+    "figureType": "class",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "文献管理类图",
+        "caption": "展示Paper、Collection和Note三个类及其聚合与组合关系。",
+        "layout": "LR",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "Collection",
+            "role": "entity",
+            "attributes": [
+              "name"
+            ]
+          },
+          {
+            "id": "n2",
+            "label": "Paper",
+            "role": "entity",
+            "attributes": [
+              "title",
+              "authors",
+              "year"
+            ]
+          },
+          {
+            "id": "n3",
+            "label": "Note",
+            "role": "entity",
+            "attributes": [
+              "text"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "1..*",
+            "kind": "aggregation"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "label": "1..*",
+            "kind": "composition"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "er-en",
+    "figureType": "er",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "Library_Management_ERD",
+        "caption": "Entity-Relationship Diagram of Library Management System showing Readers, Books, and Loan Records with primary/foreign keys and cardinality.",
+        "layout": "LR",
+        "qualitative": false,
+        "nodes": [
+          {
+            "id": "reader",
+            "label": "Reader",
+            "role": "entity",
+            "attributes": [
+              "PK: reader_id",
+              "name"
+            ]
+          },
+          {
+            "id": "book",
+            "label": "Book",
+            "role": "entity",
+            "attributes": [
+              "PK: book_id",
+              "title"
+            ]
+          },
+          {
+            "id": "loan",
+            "label": "Loan Record",
+            "role": "entity",
+            "attributes": [
+              "PK: loan_id",
+              "FK: reader_id",
+              "FK: book_id",
+              "loan_date"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "reader",
+            "to": "loan",
+            "label": "1:N",
+            "kind": "composition"
+          },
+          {
+            "from": "book",
+            "to": "loan",
+            "label": "1:N",
+            "kind": "composition"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "er-zh",
+    "figureType": "er",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "图书管理实体关系图",
+        "caption": "展示读者、图书与借阅记录之间的实体关系，包含主键、外键及一对多基数。",
+        "layout": "LR",
+        "qualitative": false,
+        "nodes": [
+          {
+            "id": "reader",
+            "label": "读者 (Reader)",
+            "role": "entity",
+            "attributes": [
+              "PK: reader_id",
+              "name"
+            ]
+          },
+          {
+            "id": "book",
+            "label": "图书 (Book)",
+            "role": "entity",
+            "attributes": [
+              "PK: book_id",
+              "title"
+            ]
+          },
+          {
+            "id": "loan",
+            "label": "借阅记录 (Loan)",
+            "role": "entity",
+            "attributes": [
+              "PK: loan_id",
+              "FK: reader_id",
+              "FK: book_id",
+              "loan_date"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "reader",
+            "to": "loan",
+            "label": "1 : N",
+            "kind": "composition",
+            "color": "#000000"
+          },
+          {
+            "from": "book",
+            "to": "loan",
+            "label": "1 : N",
+            "kind": "composition",
+            "color": "#000000"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "flowchart-en",
+    "figureType": "flowchart",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "Research_Flowchart",
+        "caption": "Schematic representation of the research methodology workflow.",
+        "layout": "LR",
+        "qualitative": false,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "Problem Identification",
+            "role": "process"
+          },
+          {
+            "id": "n2",
+            "label": "Literature Review",
+            "role": "process"
+          },
+          {
+            "id": "n3",
+            "label": "Hypothesis Formulation",
+            "role": "process"
+          },
+          {
+            "id": "n4",
+            "label": "Questionnaire Design",
+            "role": "process"
+          },
+          {
+            "id": "n5",
+            "label": "Data Collection",
+            "role": "process"
+          },
+          {
+            "id": "n6",
+            "label": "Statistical Analysis",
+            "role": "process"
+          },
+          {
+            "id": "n7",
+            "label": "Research Conclusion",
+            "role": "process"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n5",
+            "to": "n6",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n6",
+            "to": "n7",
+            "label": "",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "flowchart-zh",
+    "figureType": "flowchart",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "研究流程图",
+        "caption": "本研究的技术路线与实施步骤",
+        "layout": "LR",
+        "qualitative": false,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "提出问题",
+            "role": "process"
+          },
+          {
+            "id": "n2",
+            "label": "文献调研",
+            "role": "process"
+          },
+          {
+            "id": "n3",
+            "label": "提出假设",
+            "role": "process"
+          },
+          {
+            "id": "n4",
+            "label": "问卷设计",
+            "role": "process"
+          },
+          {
+            "id": "n5",
+            "label": "数据采集",
+            "role": "process"
+          },
+          {
+            "id": "n6",
+            "label": "统计分析",
+            "role": "process"
+          },
+          {
+            "id": "n7",
+            "label": "研究结论",
+            "role": "process"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n5",
+            "to": "n6",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n6",
+            "to": "n7",
+            "label": "",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "funnel-en",
+    "figureType": "funnel",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Literature Selection Funnel",
+        "caption": "Flow of study selection through five stages: initial retrieval, duplicate removal, abstract screening, full-text review, and final inclusion.",
+        "layout": "TB",
+        "qualitative": false,
+        "chartType": "funnel",
+        "data": {
+          "categories": [
+            "Initial Retrieval",
+            "Duplicate Removal",
+            "Abstract Screening",
+            "Full-Text Review",
+            "Final Inclusion"
+          ],
+          "series": [
+            {
+              "name": "Studies",
+              "values": [
+                200,
+                160,
+                80,
+                40,
+                25
+              ]
+            }
+          ]
+        },
+        "yLabel": "Number of Studies",
+        "unit": "count"
+      }
+    }
+  },
+  {
+    "id": "funnel-zh",
+    "figureType": "funnel",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "文献筛选漏斗图",
+        "caption": "文献筛选流程及纳入数量统计",
+        "layout": "TB",
+        "qualitative": false,
+        "chartType": "funnel",
+        "data": {
+          "categories": [
+            "检索结果",
+            "去除重复",
+            "摘要筛选",
+            "全文阅读",
+            "最终纳入"
+          ],
+          "series": [
+            {
+              "name": "篇数",
+              "values": [
+                200,
+                160,
+                80,
+                40,
+                25
+              ]
+            }
+          ]
+        },
+        "yLabel": "篇数",
+        "unit": "篇"
+      }
+    }
+  },
+  {
+    "id": "gauge-en",
+    "figureType": "gauge",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Research Progress Gauge",
+        "caption": "Current research progress status.",
+        "layout": "LR",
+        "unit": "%",
+        "qualitative": false,
+        "chartType": "gauge",
+        "data": {
+          "value": 65,
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    }
+  },
+  {
+    "id": "gauge-zh",
+    "figureType": "gauge",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "研究计划完成进度仪表盘",
+        "caption": "当前研究计划完成度为65%，量程范围0%至100%。",
+        "layout": "LR",
+        "qualitative": false,
+        "unit": "%",
+        "chartType": "gauge",
+        "data": {
+          "value": 65,
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    }
+  },
+  {
+    "id": "heatmap-en",
+    "figureType": "heatmap",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "3x3 Metrics Heatmap",
+        "caption": "Heatmap of three methods across three metrics. Values are dimensionless.",
+        "layout": "grid",
+        "qualitative": false,
+        "chartType": "heatmap",
+        "data": {
+          "rows": [
+            "Method A",
+            "Method B",
+            "Method C"
+          ],
+          "columns": [
+            "Metric 1",
+            "Metric 2",
+            "Metric 3"
+          ],
+          "matrix": [
+            [
+              0.8,
+              0.6,
+              0.7
+            ],
+            [
+              0.5,
+              0.9,
+              0.6
+            ],
+            [
+              0.7,
+              0.8,
+              0.9
+            ]
+          ]
+        },
+        "xLabel": "Metrics",
+        "yLabel": "Methods",
+        "unit": "Dimensionless"
+      }
+    }
+  },
+  {
+    "id": "heatmap-zh",
+    "figureType": "heatmap",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "3x3指标热力图",
+        "caption": "不同方法在三个指标上的表现对比（合成数据，非实测）",
+        "layout": "grid",
+        "qualitative": false,
+        "chartType": "heatmap",
+        "data": {
+          "rows": [
+            "方法A",
+            "方法B",
+            "方法C"
+          ],
+          "columns": [
+            "指标1",
+            "指标2",
+            "指标3"
+          ],
+          "matrix": [
+            [
+              0.8,
+              0.6,
+              0.7
+            ],
+            [
+              0.5,
+              0.9,
+              0.6
+            ],
+            [
+              0.7,
+              0.8,
+              0.9
+            ]
+          ]
+        },
+        "xLabel": "指标",
+        "yLabel": "方法",
+        "unit": "无量纲"
+      }
+    }
+  },
+  {
+    "id": "horizontal-bar-en",
+    "figureType": "horizontal-bar",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Satisfaction Survey Results",
+        "caption": "Horizontal bar chart showing satisfaction scores for four teaching evaluation categories. Scores range from 0 to 5.",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "horizontal-bar",
+        "data": {
+          "categories": [
+            "Teaching Content",
+            "Interactive Feedback",
+            "Resource Support",
+            "Evaluation Method"
+          ],
+          "series": [
+            {
+              "name": "Satisfaction Score",
+              "values": [
+                4.5,
+                4.1,
+                3.8,
+                4
+              ]
+            }
+          ]
+        },
+        "xLabel": "Satisfaction (Score)",
+        "yLabel": "Category",
+        "unit": "Score",
+        "referenceLines": [],
+        "yRange": {
+          "min": 0,
+          "max": 5,
+          "interval": 1
+        }
+      }
+    }
+  },
+  {
+    "id": "horizontal-bar-zh",
+    "figureType": "horizontal-bar",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "满意度横向条形图",
+        "caption": "",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "horizontal-bar",
+        "data": {
+          "categories": [
+            "教学内容",
+            "互动反馈",
+            "资源支持",
+            "评价方式"
+          ],
+          "series": [
+            {
+              "name": "满意度",
+              "values": [
+                4.5,
+                4.1,
+                3.8,
+                4
+              ]
+            }
+          ]
+        },
+        "xLabel": "满意度（分）",
+        "yLabel": "评价类别",
+        "unit": "分",
+        "referenceLines": [],
+        "yRange": {
+          "min": 0,
+          "max": 5,
+          "interval": 1
+        }
+      }
+    }
+  },
+  {
+    "id": "journey-en",
+    "figureType": "journey",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "Literature Tool User Journey",
+        "caption": "User journey through five stages: Topic Discovery, Literature Search, Reading & Annotation, Note Organization, and Writing & Citation. Each stage shows user behavior, pain points, and support features.",
+        "layout": "LR",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "Topic Discovery",
+            "role": "process"
+          },
+          {
+            "id": "n2",
+            "label": "Literature Search",
+            "role": "process"
+          },
+          {
+            "id": "n3",
+            "label": "Reading & Annotation",
+            "role": "process"
+          },
+          {
+            "id": "n4",
+            "label": "Note Organization",
+            "role": "process"
+          },
+          {
+            "id": "n5",
+            "label": "Writing & Citation",
+            "role": "process"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "label": "",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "journey-zh",
+    "figureType": "journey",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "文献工具用户旅程图",
+        "caption": "展示用户在文献管理全流程中的五个阶段、行为、痛点及支持功能。",
+        "layout": "LR",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "stage1",
+            "label": "发现选题",
+            "role": "state"
+          },
+          {
+            "id": "stage2",
+            "label": "检索文献",
+            "role": "state"
+          },
+          {
+            "id": "stage3",
+            "label": "阅读标注",
+            "role": "state"
+          },
+          {
+            "id": "stage4",
+            "label": "整理笔记",
+            "role": "state"
+          },
+          {
+            "id": "stage5",
+            "label": "写作引用",
+            "role": "end"
+          },
+          {
+            "id": "act1",
+            "label": "浏览主题",
+            "role": "process"
+          },
+          {
+            "id": "pain1",
+            "label": "方向不清",
+            "role": "entity"
+          },
+          {
+            "id": "supp1",
+            "label": "主题推荐",
+            "role": "component"
+          },
+          {
+            "id": "act2",
+            "label": "关键词检索",
+            "role": "process"
+          },
+          {
+            "id": "pain2",
+            "label": "结果分散",
+            "role": "entity"
+          },
+          {
+            "id": "supp2",
+            "label": "集中筛选",
+            "role": "component"
+          },
+          {
+            "id": "act3",
+            "label": "阅读标记",
+            "role": "process"
+          },
+          {
+            "id": "pain3",
+            "label": "重点易漏",
+            "role": "entity"
+          },
+          {
+            "id": "supp3",
+            "label": "重点提示",
+            "role": "component"
+          },
+          {
+            "id": "act4",
+            "label": "归纳要点",
+            "role": "process"
+          },
+          {
+            "id": "pain4",
+            "label": "线索断开",
+            "role": "entity"
+          },
+          {
+            "id": "supp4",
+            "label": "关联笔记",
+            "role": "component"
+          },
+          {
+            "id": "act5",
+            "label": "组织引用",
+            "role": "process"
+          },
+          {
+            "id": "pain5",
+            "label": "格式不一",
+            "role": "entity"
+          },
+          {
+            "id": "supp5",
+            "label": "引用导出",
+            "role": "component"
+          }
+        ],
+        "edges": [
+          {
+            "from": "stage1",
+            "to": "act1",
+            "label": "行为",
+            "kind": "directed"
+          },
+          {
+            "from": "stage1",
+            "to": "pain1",
+            "label": "痛点",
+            "kind": "directed"
+          },
+          {
+            "from": "stage1",
+            "to": "supp1",
+            "label": "支持",
+            "kind": "directed"
+          },
+          {
+            "from": "stage2",
+            "to": "act2",
+            "label": "行为",
+            "kind": "directed"
+          },
+          {
+            "from": "stage2",
+            "to": "pain2",
+            "label": "痛点",
+            "kind": "directed"
+          },
+          {
+            "from": "stage2",
+            "to": "supp2",
+            "label": "支持",
+            "kind": "directed"
+          },
+          {
+            "from": "stage3",
+            "to": "act3",
+            "label": "行为",
+            "kind": "directed"
+          },
+          {
+            "from": "stage3",
+            "to": "pain3",
+            "label": "痛点",
+            "kind": "directed"
+          },
+          {
+            "from": "stage3",
+            "to": "supp3",
+            "label": "支持",
+            "kind": "directed"
+          },
+          {
+            "from": "stage4",
+            "to": "act4",
+            "label": "行为",
+            "kind": "directed"
+          },
+          {
+            "from": "stage4",
+            "to": "pain4",
+            "label": "痛点",
+            "kind": "directed"
+          },
+          {
+            "from": "stage4",
+            "to": "supp4",
+            "label": "支持",
+            "kind": "directed"
+          },
+          {
+            "from": "stage5",
+            "to": "act5",
+            "label": "行为",
+            "kind": "directed"
+          },
+          {
+            "from": "stage5",
+            "to": "pain5",
+            "label": "痛点",
+            "kind": "directed"
+          },
+          {
+            "from": "stage5",
+            "to": "supp5",
+            "label": "支持",
+            "kind": "directed"
+          },
+          {
+            "from": "stage1",
+            "to": "stage2",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "stage2",
+            "to": "stage3",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "stage3",
+            "to": "stage4",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "stage4",
+            "to": "stage5",
+            "label": "",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "line-en",
+    "figureType": "line",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Research_Participants_Trend",
+        "caption": "Trend of research participants over four weeks.",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "line",
+        "xLabel": "Week",
+        "yLabel": "Number of Participants",
+        "unit": "persons",
+        "data": {
+          "categories": [
+            "Week 1",
+            "Week 2",
+            "Week 3",
+            "Week 4"
+          ],
+          "series": [
+            {
+              "name": "Participants",
+              "values": [
+                20,
+                25,
+                23,
+                31
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "line-zh",
+    "figureType": "line",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "研究参与人数变化趋势",
+        "caption": "图1. 研究期间每周参与人数的变化趋势。横轴表示周次，纵轴表示参与人数（人）。数据点按顺序连接，未提供额外观测值或统计信息。",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "line",
+        "xLabel": "周次",
+        "yLabel": "参与人数",
+        "unit": "人",
+        "data": {
+          "categories": [
+            "第1周",
+            "第2周",
+            "第3周",
+            "第4周"
+          ],
+          "series": [
+            {
+              "name": "参与人数",
+              "values": [
+                20,
+                25,
+                23,
+                31
+              ]
+            }
+          ]
+        },
+        "referenceLines": [],
+        "yRange": {}
+      }
+    }
+  },
+  {
+    "id": "matrix-en",
+    "figureType": "matrix",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "Task_Priority_Quadrant",
+        "caption": "Four-quadrant task prioritization matrix based on urgency and importance.",
+        "layout": "grid",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "q1",
+            "label": "Do First\n(Urgent & Important)",
+            "role": "entity",
+            "attributes": [
+              "top-left"
+            ]
+          },
+          {
+            "id": "q2",
+            "label": "Schedule\n(Not Urgent & Important)",
+            "role": "entity",
+            "attributes": [
+              "top-right"
+            ]
+          },
+          {
+            "id": "q3",
+            "label": "Delegate\n(Urgent & Not Important)",
+            "role": "entity",
+            "attributes": [
+              "bottom-left"
+            ]
+          },
+          {
+            "id": "q4",
+            "label": "Eliminate\n(Not Urgent & Not Important)",
+            "role": "entity",
+            "attributes": [
+              "bottom-right"
+            ]
+          },
+          {
+            "id": "x_axis",
+            "label": "Urgency",
+            "role": "component",
+            "attributes": [
+              "axis-label-bottom"
+            ]
+          },
+          {
+            "id": "y_axis",
+            "label": "Importance",
+            "role": "component",
+            "attributes": [
+              "axis-label-left"
+            ]
+          }
+        ],
+        "edges": []
+      }
+    }
+  },
+  {
+    "id": "matrix-zh",
+    "figureType": "matrix",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "科研任务优先级四象限图",
+        "caption": "基于重要性与紧迫性的二维定位矩阵，展示四类任务的分布策略。",
+        "layout": "grid",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "q1",
+            "label": "立即执行\n(高重要/高紧迫)",
+            "role": "entity"
+          },
+          {
+            "id": "q2",
+            "label": "计划安排\n(高重要/低紧迫)",
+            "role": "entity"
+          },
+          {
+            "id": "q3",
+            "label": "委派协作\n(低重要/高紧迫)",
+            "role": "entity"
+          },
+          {
+            "id": "q4",
+            "label": "减少投入\n(低重要/低紧迫)",
+            "role": "entity"
+          }
+        ],
+        "edges": [],
+        "axes": {
+          "xAxis": {
+            "label": "紧迫程度",
+            "minLabel": "低",
+            "maxLabel": "高"
+          },
+          "yAxis": {
+            "label": "重要程度",
+            "minLabel": "低",
+            "maxLabel": "高"
+          }
+        },
+        "quadrants": [
+          {
+            "position": "top-right",
+            "nodeId": "q1",
+            "description": "第一象限：重要且紧迫的任务"
+          },
+          {
+            "position": "top-left",
+            "nodeId": "q2",
+            "description": "第二象限：重要但不紧迫的任务"
+          },
+          {
+            "position": "bottom-right",
+            "nodeId": "q3",
+            "description": "第三象限：不重要但紧迫的任务"
+          },
+          {
+            "position": "bottom-left",
+            "nodeId": "q4",
+            "description": "第四象限：不重要且不紧迫的任务"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "mindmap-network-en",
+    "figureType": "mindmap-network",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "College Student Learning Engagement",
+        "caption": "A non-hierarchical conceptual map illustrating the dynamic interplay between learning motivation, environment, teacher support, peer interaction, and learning outcomes.",
+        "layout": "radial",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "Learning Motivation",
+            "role": "entity"
+          },
+          {
+            "id": "n2",
+            "label": "Learning Environment",
+            "role": "entity"
+          },
+          {
+            "id": "n3",
+            "label": "Teacher Support",
+            "role": "entity"
+          },
+          {
+            "id": "n4",
+            "label": "Peer Interaction",
+            "role": "entity"
+          },
+          {
+            "id": "n5",
+            "label": "Learning Outcomes",
+            "role": "entity"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "Influences",
+            "kind": "directed"
+          },
+          {
+            "from": "n1",
+            "to": "n3",
+            "label": "Drives",
+            "kind": "directed"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "label": "Promotes",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "label": "Facilitates",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n4",
+            "label": "Enables",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "label": "Encourages",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n5",
+            "label": "Enhances",
+            "kind": "directed"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "label": "Contributes to",
+            "kind": "directed"
+          },
+          {
+            "from": "n5",
+            "to": "n1",
+            "label": "Reinforces",
+            "kind": "feedback"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "mindmap-network-zh",
+    "figureType": "mindmap-network",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "大学生学习投入影响因素关系图",
+        "caption": "展示学习动机、学习环境、教师支持、同伴互动与学习效果之间的自由布局及交叉联系。",
+        "layout": "radial",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "大学生学习投入",
+            "role": "entity"
+          },
+          {
+            "id": "n2",
+            "label": "学习动机",
+            "role": "entity"
+          },
+          {
+            "id": "n3",
+            "label": "学习环境",
+            "role": "entity"
+          },
+          {
+            "id": "n4",
+            "label": "教师支持",
+            "role": "entity"
+          },
+          {
+            "id": "n5",
+            "label": "同伴互动",
+            "role": "entity"
+          },
+          {
+            "id": "n6",
+            "label": "学习效果",
+            "role": "entity"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n2",
+            "to": "n1",
+            "label": "驱动",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n1",
+            "label": "支撑",
+            "kind": "directed"
+          },
+          {
+            "from": "n4",
+            "to": "n1",
+            "label": "促进",
+            "kind": "directed"
+          },
+          {
+            "from": "n5",
+            "to": "n1",
+            "label": "协同",
+            "kind": "directed"
+          },
+          {
+            "from": "n1",
+            "to": "n6",
+            "label": "影响",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n5",
+            "label": "激发",
+            "kind": "undirected"
+          },
+          {
+            "from": "n4",
+            "to": "n3",
+            "label": "优化",
+            "kind": "undirected"
+          },
+          {
+            "from": "n5",
+            "to": "n2",
+            "label": "强化",
+            "kind": "undirected"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "label": "依赖",
+            "kind": "undirected"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "network-en",
+    "figureType": "network",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "Research Collaboration Network",
+        "caption": "Schematic of the research group's collaboration network, illustrating relationships between the core group, supervisor, graduate students, experimental platforms, and external partners.",
+        "layout": "radial",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "Research Group",
+            "role": "entity"
+          },
+          {
+            "id": "n2",
+            "label": "Supervisor",
+            "role": "entity"
+          },
+          {
+            "id": "n3",
+            "label": "Graduate Students",
+            "role": "entity"
+          },
+          {
+            "id": "n4",
+            "label": "Experimental Platform",
+            "role": "entity"
+          },
+          {
+            "id": "n5",
+            "label": "Collaborating Institutions",
+            "role": "entity"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n2",
+            "to": "n1",
+            "label": "Guidance",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n1",
+            "label": "Research",
+            "kind": "undirected"
+          },
+          {
+            "from": "n4",
+            "to": "n1",
+            "label": "Technical Support",
+            "kind": "undirected"
+          },
+          {
+            "from": "n5",
+            "to": "n1",
+            "label": "Cooperation",
+            "kind": "undirected"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "network-zh",
+    "figureType": "network",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "研究合作关系图",
+        "caption": "课题组核心成员及外部合作网络结构。中心节点为课题组，连接导师、研究生、实验平台和合作机构，展示指导、研究、技术支持和合作关系。",
+        "layout": "radial",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "课题组",
+            "role": "entity"
+          },
+          {
+            "id": "n2",
+            "label": "导师",
+            "role": "entity"
+          },
+          {
+            "id": "n3",
+            "label": "研究生",
+            "role": "entity"
+          },
+          {
+            "id": "n4",
+            "label": "实验平台",
+            "role": "entity"
+          },
+          {
+            "id": "n5",
+            "label": "合作机构",
+            "role": "entity"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n2",
+            "to": "n1",
+            "label": "指导",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n1",
+            "label": "研究",
+            "kind": "undirected"
+          },
+          {
+            "from": "n4",
+            "to": "n1",
+            "label": "技术支持",
+            "kind": "directed"
+          },
+          {
+            "from": "n5",
+            "to": "n1",
+            "label": "合作关系",
+            "kind": "undirected"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "parallel-en",
+    "figureType": "parallel",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Algorithm_Comparison_Parallel_Coordinates",
+        "caption": "Parallel coordinates plot comparing Accuracy (%), Time (s), Memory (MB), and Stability (score) for three algorithms.",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "parallel",
+        "xLabel": "Dimensions",
+        "yLabel": "Values",
+        "unit": "% / s / MB / score",
+        "data": {
+          "dimensions": [
+            "Accuracy (%)",
+            "Time (s)",
+            "Memory (MB)",
+            "Stability (score)"
+          ],
+          "series": [
+            {
+              "name": "Method A",
+              "values": [
+                [
+                  90,
+                  12,
+                  256,
+                  4
+                ]
+              ]
+            },
+            {
+              "name": "Method B",
+              "values": [
+                [
+                  92,
+                  18,
+                  384,
+                  5
+                ]
+              ]
+            },
+            {
+              "name": "Method C",
+              "values": [
+                [
+                  88,
+                  10,
+                  192,
+                  3
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "parallel-zh",
+    "figureType": "parallel",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "三种算法性能对比平行坐标图",
+        "caption": "不同算法在准确率、耗时、内存占用及稳定性四个维度的表现对照。",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "parallel",
+        "xLabel": "评估维度",
+        "yLabel": "数值",
+        "unit": "% / s / MB / 分",
+        "data": {
+          "dimensions": [
+            "准确率（%）",
+            "耗时（s）",
+            "内存（MB）",
+            "稳定性（分）"
+          ],
+          "series": [
+            {
+              "name": "方法A",
+              "values": [
+                [
+                  90,
+                  12,
+                  256,
+                  4
+                ]
+              ]
+            },
+            {
+              "name": "方法B",
+              "values": [
+                [
+                  92,
+                  18,
+                  384,
+                  5
+                ]
+              ]
+            },
+            {
+              "name": "方法C",
+              "values": [
+                [
+                  88,
+                  10,
+                  192,
+                  3
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "path-en",
+    "figureType": "path",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "Research Hypothesis Path Diagram",
+        "caption": "Path model illustrating the hypothesized relationships between learning support, motivation, engagement, and learning outcomes. H1-H4 denote specific hypotheses.",
+        "layout": "LR",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "Learning Support",
+            "role": "entity"
+          },
+          {
+            "id": "n2",
+            "label": "Learning Motivation",
+            "role": "entity"
+          },
+          {
+            "id": "n3",
+            "label": "Learning Engagement",
+            "role": "entity"
+          },
+          {
+            "id": "n4",
+            "label": "Learning Outcomes",
+            "role": "entity"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "H1",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "label": "H2",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "label": "H3",
+            "kind": "directed"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "label": "H4",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "path-zh",
+    "figureType": "path",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "研究假设路径图",
+        "caption": "学习支持对学习效果的影响机制：包含直接效应与通过动机、投入的中介路径。",
+        "layout": "LR",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "学习支持",
+            "role": "entity"
+          },
+          {
+            "id": "n2",
+            "label": "学习动机",
+            "role": "entity"
+          },
+          {
+            "id": "n3",
+            "label": "学习投入",
+            "role": "entity"
+          },
+          {
+            "id": "n4",
+            "label": "学习效果",
+            "role": "entity"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "H1",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "label": "H2",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "label": "H3",
+            "kind": "directed"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "label": "H4",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "pictorial-bar-en",
+    "figureType": "pictorial-bar",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Literature Reading Quantity by Group",
+        "caption": "Pictorial bar chart representing the number of literature articles read per group. Each rectangle symbol represents a fixed quantity (e.g., 1 or 2 articles) to visually encode the count. Groups are labeled on the x-axis, and the y-axis indicates the total number of articles.",
+        "layout": "TB",
+        "qualitative": false,
+        "chartType": "pictorial-bar",
+        "xLabel": "Group",
+        "yLabel": "Number of Articles Read",
+        "unit": "articles",
+        "data": {
+          "categories": [
+            "Group 1",
+            "Group 2",
+            "Group 3"
+          ],
+          "series": [
+            {
+              "name": "Articles Read",
+              "values": [
+                12,
+                18,
+                15
+              ]
+            }
+          ]
+        },
+        "referenceLines": [],
+        "yRange": {}
+      }
+    }
+  },
+  {
+    "id": "pictorial-bar-zh",
+    "figureType": "pictorial-bar",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "文献阅读数量象形柱图",
+        "caption": "各组别文献阅读数量统计。使用重复的相同矩形符号表达数量，横轴为组别，纵轴为阅读数量（篇）。",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "pictorial-bar",
+        "xLabel": "组别",
+        "yLabel": "阅读数量（篇）",
+        "unit": "篇",
+        "data": {
+          "categories": [
+            "第一组",
+            "第二组",
+            "第三组"
+          ],
+          "series": [
+            {
+              "name": "阅读数量",
+              "values": [
+                12,
+                18,
+                15
+              ]
+            }
+          ]
+        },
+        "referenceLines": [],
+        "yRange": {}
+      }
+    }
+  },
+  {
+    "id": "pie-en",
+    "figureType": "pie",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Disciplinary Distribution Pie Chart",
+        "caption": "Distribution of disciplines: STEM (40%), Humanities & Social Sciences (35%), Medicine (25%).",
+        "layout": "radial",
+        "qualitative": false,
+        "chartType": "pie",
+        "data": {
+          "categories": [
+            "STEM",
+            "Humanities & Social Sciences",
+            "Medicine"
+          ],
+          "series": [
+            {
+              "name": "Proportion",
+              "values": [
+                40,
+                35,
+                25
+              ]
+            }
+          ]
+        },
+        "labels": [
+          "STEM 40%",
+          "Humanities & Social Sciences 35%",
+          "Medicine 25%"
+        ],
+        "legendPosition": "right"
+      }
+    }
+  },
+  {
+    "id": "pie-zh",
+    "figureType": "pie",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "学科分布饼图",
+        "caption": "不同学科领域占比分布",
+        "layout": "radial",
+        "qualitative": false,
+        "chartType": "pie",
+        "data": {
+          "categories": [
+            "理工科",
+            "人文社科",
+            "医学"
+          ],
+          "series": [
+            {
+              "name": "占比",
+              "values": [
+                40,
+                35,
+                25
+              ]
+            }
+          ]
+        },
+        "referenceLines": [],
+        "yRange": null
+      }
+    }
+  },
+  {
+    "id": "radar-en",
+    "figureType": "radar",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Five-Dimensional Comparison of Scheme A and B",
+        "caption": "Comparison of five dimensions: Accuracy, Efficiency, Stability, Usability, Scalability. Scheme A scores: 4, 5, 4, 3, 4. Scheme B scores: 5, 3, 4, 4, 3. Units are points.",
+        "layout": "radial",
+        "qualitative": false,
+        "chartType": "radar",
+        "data": {
+          "categories": [
+            "Accuracy",
+            "Efficiency",
+            "Stability",
+            "Usability",
+            "Scalability"
+          ],
+          "series": [
+            {
+              "name": "Scheme A",
+              "values": [
+                4,
+                5,
+                4,
+                3,
+                4
+              ]
+            },
+            {
+              "name": "Scheme B",
+              "values": [
+                5,
+                3,
+                4,
+                4,
+                3
+              ]
+            }
+          ]
+        },
+        "xLabel": "Dimensions",
+        "yLabel": "Score (points)",
+        "unit": "points"
+      }
+    }
+  },
+  {
+    "id": "radar-zh",
+    "figureType": "radar",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "五维能力对比雷达图",
+        "caption": "方案A与方案B在准确性、效率、稳定性、易用性、可扩展性五个维度的评分对比（单位：分）",
+        "layout": "radial",
+        "qualitative": false,
+        "chartType": "radar",
+        "data": {
+          "categories": [
+            "准确性",
+            "效率",
+            "稳定性",
+            "易用性",
+            "可扩展性"
+          ],
+          "series": [
+            {
+              "name": "方案A",
+              "values": [
+                4,
+                5,
+                4,
+                3,
+                4
+              ]
+            },
+            {
+              "name": "方案B",
+              "values": [
+                5,
+                3,
+                4,
+                4,
+                3
+              ]
+            }
+          ]
+        },
+        "yRange": {
+          "min": 0,
+          "max": 5,
+          "interval": 1
+        }
+      }
+    }
+  },
+  {
+    "id": "requirement-en",
+    "figureType": "requirement",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "Research_Data_Management_Needs_Diagram",
+        "caption": "Requirements diagram for efficient research data management system.",
+        "layout": "TB",
+        "qualitative": false,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "Efficient Research Data Management",
+            "role": "entity",
+            "attributes": [
+              "Top-level Goal"
+            ]
+          },
+          {
+            "id": "n2",
+            "label": "Literature Retrieval",
+            "role": "process",
+            "attributes": []
+          },
+          {
+            "id": "n3",
+            "label": "Categorized Collection",
+            "role": "process",
+            "attributes": []
+          },
+          {
+            "id": "n4",
+            "label": "Note Organization",
+            "role": "process",
+            "attributes": []
+          },
+          {
+            "id": "n5",
+            "label": "Citation Export",
+            "role": "process",
+            "attributes": []
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "requires",
+            "kind": "dependency"
+          },
+          {
+            "from": "n1",
+            "to": "n3",
+            "label": "requires",
+            "kind": "dependency"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "label": "requires",
+            "kind": "dependency"
+          },
+          {
+            "from": "n1",
+            "to": "n5",
+            "label": "requires",
+            "kind": "dependency"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "requirement-zh",
+    "figureType": "requirement",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "科研资料管理系统需求图",
+        "caption": "系统顶层目标为高效管理研究资料，下分文献检索、分类收藏、笔记整理和引用导出四个子需求，并标明各模块间的依赖关系。",
+        "layout": "TB",
+        "qualitative": false,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "高效管理研究资料",
+            "role": "entity",
+            "attributes": [
+              "顶层目标"
+            ]
+          },
+          {
+            "id": "n2",
+            "label": "文献检索",
+            "role": "component",
+            "attributes": [
+              "子需求"
+            ]
+          },
+          {
+            "id": "n3",
+            "label": "分类收藏",
+            "role": "component",
+            "attributes": [
+              "子需求"
+            ]
+          },
+          {
+            "id": "n4",
+            "label": "笔记整理",
+            "role": "component",
+            "attributes": [
+              "子需求"
+            ]
+          },
+          {
+            "id": "n5",
+            "label": "引用导出",
+            "role": "component",
+            "attributes": [
+              "子需求"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "包含",
+            "kind": "composition"
+          },
+          {
+            "from": "n1",
+            "to": "n3",
+            "label": "包含",
+            "kind": "composition"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "label": "包含",
+            "kind": "composition"
+          },
+          {
+            "from": "n1",
+            "to": "n5",
+            "label": "包含",
+            "kind": "composition"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "label": "数据输入至",
+            "kind": "dependency"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "label": "支持关联",
+            "kind": "dependency"
+          },
+          {
+            "from": "n3",
+            "to": "n5",
+            "label": "提供元数据",
+            "kind": "dependency"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "label": "提供引用内容",
+            "kind": "dependency"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "river-en",
+    "figureType": "river",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Topic Evolution over Time",
+        "caption": "Evolution of publication counts for Artificial Intelligence, Online Learning, and Personalized Feedback from 2024 to 2026.",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "river",
+        "xLabel": "Year",
+        "yLabel": "Publication Count",
+        "unit": "count",
+        "data": {
+          "river": [
+            {
+              "date": "2024-01-01",
+              "name": "Artificial Intelligence",
+              "value": 20
+            },
+            {
+              "date": "2024-01-01",
+              "name": "Online Learning",
+              "value": 30
+            },
+            {
+              "date": "2024-01-01",
+              "name": "Personalized Feedback",
+              "value": 10
+            },
+            {
+              "date": "2025-01-01",
+              "name": "Artificial Intelligence",
+              "value": 30
+            },
+            {
+              "date": "2025-01-01",
+              "name": "Online Learning",
+              "value": 25
+            },
+            {
+              "date": "2025-01-01",
+              "name": "Personalized Feedback",
+              "value": 20
+            },
+            {
+              "date": "2026-01-01",
+              "name": "Artificial Intelligence",
+              "value": 40
+            },
+            {
+              "date": "2026-01-01",
+              "name": "Online Learning",
+              "value": 20
+            },
+            {
+              "date": "2026-01-01",
+              "name": "Personalized Feedback",
+              "value": 30
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "river-zh",
+    "figureType": "river",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "主题河流图_2024-2026",
+        "caption": "2024至2026年不同研究主题的篇数演变",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "river",
+        "xLabel": "年份",
+        "yLabel": "篇数",
+        "unit": "篇",
+        "data": {
+          "river": [
+            {
+              "date": "2024-01-01",
+              "name": "人工智能",
+              "value": 20
+            },
+            {
+              "date": "2024-01-01",
+              "name": "在线学习",
+              "value": 30
+            },
+            {
+              "date": "2024-01-01",
+              "name": "个性化反馈",
+              "value": 10
+            },
+            {
+              "date": "2025-01-01",
+              "name": "人工智能",
+              "value": 30
+            },
+            {
+              "date": "2025-01-01",
+              "name": "在线学习",
+              "value": 25
+            },
+            {
+              "date": "2025-01-01",
+              "name": "个性化反馈",
+              "value": 20
+            },
+            {
+              "date": "2026-01-01",
+              "name": "人工智能",
+              "value": 40
+            },
+            {
+              "date": "2026-01-01",
+              "name": "在线学习",
+              "value": 20
+            },
+            {
+              "date": "2026-01-01",
+              "name": "个性化反馈",
+              "value": 30
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "sankey-en",
+    "figureType": "sankey",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Learning Resource Flow Sankey Diagram",
+        "caption": "Flow of learning resources (in persons) from sources to learning modes and finally to knowledge consolidation.",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "sankey",
+        "data": {
+          "nodes": [
+            {
+              "id": "textbook",
+              "label": "Textbook"
+            },
+            {
+              "id": "video",
+              "label": "Video"
+            },
+            {
+              "id": "exercise",
+              "label": "Exercise"
+            },
+            {
+              "id": "self_study",
+              "label": "Self-study"
+            },
+            {
+              "id": "collab_study",
+              "label": "Collaborative Study"
+            },
+            {
+              "id": "knowledge_consolidation",
+              "label": "Knowledge Consolidation"
+            }
+          ],
+          "links": [
+            {
+              "from": "textbook",
+              "to": "self_study",
+              "value": 30
+            },
+            {
+              "from": "textbook",
+              "to": "collab_study",
+              "value": 10
+            },
+            {
+              "from": "video",
+              "to": "self_study",
+              "value": 20
+            },
+            {
+              "from": "video",
+              "to": "collab_study",
+              "value": 20
+            },
+            {
+              "from": "exercise",
+              "to": "self_study",
+              "value": 10
+            },
+            {
+              "from": "exercise",
+              "to": "collab_study",
+              "value": 10
+            },
+            {
+              "from": "self_study",
+              "to": "knowledge_consolidation",
+              "value": 60
+            },
+            {
+              "from": "collab_study",
+              "to": "knowledge_consolidation",
+              "value": 40
+            }
+          ]
+        },
+        "unit": "persons"
+      }
+    }
+  },
+  {
+    "id": "sankey-zh",
+    "figureType": "sankey",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "学习资源流向桑基图",
+        "caption": "不同学习资源向自主学习与协作学习的转化，以及最终向知识巩固的汇聚情况。单位：人。",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "sankey",
+        "data": {
+          "nodes": [
+            {
+              "id": "教材",
+              "label": "教材"
+            },
+            {
+              "id": "视频",
+              "label": "视频"
+            },
+            {
+              "id": "练习",
+              "label": "练习"
+            },
+            {
+              "id": "自主学习",
+              "label": "自主学习"
+            },
+            {
+              "id": "协作学习",
+              "label": "协作学习"
+            },
+            {
+              "id": "知识巩固",
+              "label": "知识巩固"
+            }
+          ],
+          "links": [
+            {
+              "from": "教材",
+              "to": "自主学习",
+              "value": 30
+            },
+            {
+              "from": "教材",
+              "to": "协作学习",
+              "value": 10
+            },
+            {
+              "from": "视频",
+              "to": "自主学习",
+              "value": 20
+            },
+            {
+              "from": "视频",
+              "to": "协作学习",
+              "value": 20
+            },
+            {
+              "from": "练习",
+              "to": "自主学习",
+              "value": 10
+            },
+            {
+              "from": "练习",
+              "to": "协作学习",
+              "value": 10
+            },
+            {
+              "from": "自主学习",
+              "to": "知识巩固",
+              "value": 60
+            },
+            {
+              "from": "协作学习",
+              "to": "知识巩固",
+              "value": 40
+            }
+          ]
+        },
+        "unit": "人"
+      }
+    }
+  },
+  {
+    "id": "scatter-en",
+    "figureType": "scatter",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Learning_Hours_vs_Self_Test_Score",
+        "caption": "Scatter plot of self-test scores against learning hours.",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "scatter",
+        "xLabel": "Learning Hours (h)",
+        "yLabel": "Self-Test Score (pts)",
+        "data": {
+          "points": [
+            {
+              "x": 1,
+              "y": 2
+            },
+            {
+              "x": 2,
+              "y": 3
+            },
+            {
+              "x": 3,
+              "y": 2.5
+            },
+            {
+              "x": 4,
+              "y": 4
+            },
+            {
+              "x": 5,
+              "y": 4.5
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "scatter-zh",
+    "figureType": "scatter",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "学习时长与自测评分散点图",
+        "caption": "学习时长与自测评分的关系示意",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "scatter",
+        "xLabel": "学习时长（小时）",
+        "yLabel": "自测评分（分）",
+        "unit": "",
+        "data": {
+          "points": [
+            {
+              "x": 1,
+              "y": 2
+            },
+            {
+              "x": 2,
+              "y": 3
+            },
+            {
+              "x": 3,
+              "y": 2.5
+            },
+            {
+              "x": 4,
+              "y": 4
+            },
+            {
+              "x": 5,
+              "y": 4.5
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "sequence-en",
+    "figureType": "sequence",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "sequence",
+        "title": "File Import Sequence Diagram",
+        "caption": "Sequence diagram illustrating the file import process between User, Web Interface, Parsing Service, and Storage Service, including success and failure branches.",
+        "layout": "TB",
+        "qualitative": false,
+        "nodes": [
+          {
+            "id": "user",
+            "label": "User",
+            "role": "actor"
+          },
+          {
+            "id": "web",
+            "label": "Web Interface",
+            "role": "entity"
+          },
+          {
+            "id": "parser",
+            "label": "Parsing Service",
+            "role": "entity"
+          },
+          {
+            "id": "storage",
+            "label": "Storage Service",
+            "role": "entity"
+          }
+        ],
+        "edges": [
+          {
+            "from": "user",
+            "to": "web",
+            "label": "Select File",
+            "kind": "directed"
+          },
+          {
+            "from": "web",
+            "to": "parser",
+            "label": "Request Parse",
+            "kind": "directed"
+          },
+          {
+            "from": "parser",
+            "to": "storage",
+            "label": "Save Result",
+            "kind": "directed"
+          },
+          {
+            "from": "storage",
+            "to": "parser",
+            "label": "Return ID",
+            "kind": "return"
+          },
+          {
+            "from": "parser",
+            "to": "web",
+            "label": "Return Result",
+            "kind": "return"
+          },
+          {
+            "from": "web",
+            "to": "user",
+            "label": "Display Result",
+            "kind": "directed"
+          },
+          {
+            "from": "parser",
+            "to": "web",
+            "label": "Return Error",
+            "kind": "return"
+          },
+          {
+            "from": "web",
+            "to": "user",
+            "label": "Display Error",
+            "kind": "directed"
+          }
+        ],
+        "fragments": [
+          {
+            "label": "alt",
+            "branches": [
+              {
+                "label": "Success",
+                "start": 2,
+                "end": 5
+              },
+              {
+                "label": "Failure",
+                "start": 6,
+                "end": 7
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "sequence-zh",
+    "figureType": "sequence",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "sequence",
+        "title": "文献导入时序图",
+        "caption": "用户、网页、解析服务与存储服务之间的文献导入交互流程，包含成功与失败分支。",
+        "layout": "TB",
+        "qualitative": false,
+        "participants": [
+          {
+            "id": "user",
+            "label": "用户"
+          },
+          {
+            "id": "web",
+            "label": "网页"
+          },
+          {
+            "id": "parser",
+            "label": "解析服务"
+          },
+          {
+            "id": "storage",
+            "label": "存储服务"
+          }
+        ],
+        "fragments": [
+          {
+            "label": "alt",
+            "condition": "解析结果",
+            "branches": [
+              {
+                "label": "成功",
+                "start": 2,
+                "end": 5
+              },
+              {
+                "label": "失败",
+                "start": 6,
+                "end": 7
+              }
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "user",
+            "to": "web",
+            "label": "选择文件",
+            "kind": "directed"
+          },
+          {
+            "from": "web",
+            "to": "parser",
+            "label": "请求解析",
+            "kind": "directed"
+          },
+          {
+            "from": "parser",
+            "to": "storage",
+            "label": "保存结果",
+            "kind": "directed"
+          },
+          {
+            "from": "storage",
+            "to": "parser",
+            "label": "返回文件标识",
+            "kind": "return"
+          },
+          {
+            "from": "parser",
+            "to": "web",
+            "label": "返回解析结果",
+            "kind": "return"
+          },
+          {
+            "from": "web",
+            "to": "user",
+            "label": "显示结果",
+            "kind": "directed"
+          },
+          {
+            "from": "parser",
+            "to": "web",
+            "label": "返回错误",
+            "kind": "return"
+          },
+          {
+            "from": "web",
+            "to": "user",
+            "label": "显示错误",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "state-en",
+    "figureType": "state",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "Task_Status_Transition",
+        "caption": "State transition diagram for task lifecycle including draft, pending, processing, completion, failure, and cancellation states with retry logic.",
+        "layout": "TB",
+        "nodes": [
+          {
+            "id": "start",
+            "label": "",
+            "role": "start"
+          },
+          {
+            "id": "draft",
+            "label": "Draft",
+            "role": "state"
+          },
+          {
+            "id": "pending",
+            "label": "Pending Processing",
+            "role": "state"
+          },
+          {
+            "id": "processing",
+            "label": "Processing",
+            "role": "state"
+          },
+          {
+            "id": "completed",
+            "label": "Completed",
+            "role": "end"
+          },
+          {
+            "id": "failed",
+            "label": "Failed",
+            "role": "state"
+          },
+          {
+            "id": "cancelled",
+            "label": "Cancelled",
+            "role": "state"
+          }
+        ],
+        "edges": [
+          {
+            "from": "start",
+            "to": "draft",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "draft",
+            "to": "pending",
+            "label": "Submit",
+            "kind": "directed"
+          },
+          {
+            "from": "pending",
+            "to": "processing",
+            "label": "Start",
+            "kind": "directed"
+          },
+          {
+            "from": "processing",
+            "to": "completed",
+            "label": "Success",
+            "kind": "directed"
+          },
+          {
+            "from": "processing",
+            "to": "failed",
+            "label": "Error",
+            "kind": "directed"
+          },
+          {
+            "from": "processing",
+            "to": "cancelled",
+            "label": "Cancel",
+            "kind": "directed"
+          },
+          {
+            "from": "failed",
+            "to": "pending",
+            "label": "Retry",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "state-zh",
+    "figureType": "state",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "任务状态转换图",
+        "caption": "任务从草稿到完成/失败的状态流转，包含重试机制。",
+        "layout": "TB",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "start",
+            "label": "",
+            "role": "start"
+          },
+          {
+            "id": "draft",
+            "label": "草稿",
+            "role": "state"
+          },
+          {
+            "id": "waiting",
+            "label": "等待处理",
+            "role": "state"
+          },
+          {
+            "id": "processing",
+            "label": "处理中",
+            "role": "state"
+          },
+          {
+            "id": "completed",
+            "label": "完成",
+            "role": "end"
+          },
+          {
+            "id": "failed",
+            "label": "失败",
+            "role": "state"
+          },
+          {
+            "id": "cancelled",
+            "label": "取消",
+            "role": "state"
+          }
+        ],
+        "edges": [
+          {
+            "from": "start",
+            "to": "draft",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "draft",
+            "to": "waiting",
+            "label": "提交",
+            "kind": "directed"
+          },
+          {
+            "from": "waiting",
+            "to": "processing",
+            "label": "开始",
+            "kind": "directed"
+          },
+          {
+            "from": "processing",
+            "to": "completed",
+            "label": "成功",
+            "kind": "directed"
+          },
+          {
+            "from": "processing",
+            "to": "failed",
+            "label": "错误",
+            "kind": "directed"
+          },
+          {
+            "from": "processing",
+            "to": "cancelled",
+            "label": "取消",
+            "kind": "directed"
+          },
+          {
+            "from": "failed",
+            "to": "waiting",
+            "label": "重试",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "sunburst-en",
+    "figureType": "sunburst",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Research_Methods_Classification_Sunburst",
+        "caption": "Sunburst diagram illustrating the hierarchical classification of research methodologies. The inner ring represents the three primary methodological approaches: Qualitative, Quantitative, and Mixed Methods. The outer ring details specific techniques associated with each approach, such as Interviews and Case Studies for Qualitative, Experiments and Surveys for Quantitative, and Mixed Design for Mixed Methods.",
+        "layout": "radial",
+        "qualitative": false,
+        "chartType": "sunburst",
+        "data": {
+          "hierarchy": {
+            "name": "Research Methodology",
+            "children": [
+              {
+                "name": "Qualitative",
+                "value": 1,
+                "children": [
+                  {
+                    "name": "Interview",
+                    "value": 1
+                  },
+                  {
+                    "name": "Case Study",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "name": "Quantitative",
+                "value": 1,
+                "children": [
+                  {
+                    "name": "Experiment",
+                    "value": 1
+                  },
+                  {
+                    "name": "Survey",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "name": "Mixed Methods",
+                "value": 1,
+                "children": [
+                  {
+                    "name": "Mixed Design",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "xLabel": "",
+        "yLabel": ""
+      }
+    }
+  },
+  {
+    "id": "sunburst-zh",
+    "figureType": "sunburst",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "科研方法分类旭日图",
+        "caption": "展示定性、定量、混合研究方法的层级分类结构。内层环表示三大主要方法论类别，外层环分别列出对应的具体研究方法类型。",
+        "layout": "radial",
+        "qualitative": true,
+        "chartType": "sunburst",
+        "data": {
+          "hierarchy": {
+            "name": "科研方法",
+            "children": [
+              {
+                "name": "定性方法",
+                "children": [
+                  {
+                    "name": "访谈"
+                  },
+                  {
+                    "name": "案例"
+                  }
+                ]
+              },
+              {
+                "name": "定量方法",
+                "children": [
+                  {
+                    "name": "实验"
+                  },
+                  {
+                    "name": "问卷"
+                  }
+                ]
+              },
+              {
+                "name": "混合方法",
+                "children": [
+                  {
+                    "name": "混合设计"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "timeline-en",
+    "figureType": "timeline",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "Thesis_Timeline",
+        "caption": "Timeline of the graduation thesis plan from topic selection to defense.",
+        "layout": "LR",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "Month 1: Topic Selection",
+            "role": "process"
+          },
+          {
+            "id": "n2",
+            "label": "Month 2: Literature Review & Design",
+            "role": "process"
+          },
+          {
+            "id": "n3",
+            "label": "Months 3-4: Data Collection",
+            "role": "process"
+          },
+          {
+            "id": "n4",
+            "label": "Month 5: Analysis & Writing",
+            "role": "process"
+          },
+          {
+            "id": "n5",
+            "label": "Month 6: Revision & Defense",
+            "role": "process"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "",
+            "kind": "directed",
+            "color": "#0000FF"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "label": "",
+            "kind": "directed",
+            "color": "#0000FF"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "label": "",
+            "kind": "directed",
+            "color": "#0000FF"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "label": "",
+            "kind": "directed",
+            "color": "#0000FF"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "timeline-zh",
+    "figureType": "timeline",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "毕业论文计划时间线",
+        "caption": "基于六个月的阶段性研究安排，展示从选题到答辩的关键里程碑。",
+        "layout": "LR",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "第1月：选题",
+            "role": "process",
+            "attributes": [
+              "start"
+            ]
+          },
+          {
+            "id": "n2",
+            "label": "第2月：文献与设计",
+            "role": "process"
+          },
+          {
+            "id": "n3",
+            "label": "第3-4月：资料收集",
+            "role": "process"
+          },
+          {
+            "id": "n4",
+            "label": "第5月：分析与写作",
+            "role": "process"
+          },
+          {
+            "id": "n5",
+            "label": "第6月：修改与答辩",
+            "role": "process",
+            "attributes": [
+              "end"
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "",
+            "kind": "directed",
+            "color": "#4A90E2"
+          },
+          {
+            "from": "n2",
+            "to": "n3",
+            "label": "",
+            "kind": "directed",
+            "color": "#4A90E2"
+          },
+          {
+            "from": "n3",
+            "to": "n4",
+            "label": "",
+            "kind": "directed",
+            "color": "#4A90E2"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "label": "",
+            "kind": "directed",
+            "color": "#4A90E2"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "tree-en",
+    "figureType": "tree",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "Learning Outcomes Taxonomy",
+        "caption": "Hierarchical classification of learning outcomes into cognitive, behavioral, and affective domains, with specific sub-components.",
+        "layout": "TB",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "root",
+            "label": "Learning Outcomes",
+            "role": "entity"
+          },
+          {
+            "id": "cognitive",
+            "label": "Cognitive",
+            "role": "entity"
+          },
+          {
+            "id": "behavioral",
+            "label": "Behavioral",
+            "role": "entity"
+          },
+          {
+            "id": "affective",
+            "label": "Affective",
+            "role": "entity"
+          },
+          {
+            "id": "knowledge",
+            "label": "Knowledge & Understanding",
+            "role": "entity"
+          },
+          {
+            "id": "problem_solving",
+            "label": "Problem Solving",
+            "role": "entity"
+          },
+          {
+            "id": "participation",
+            "label": "Participation Frequency",
+            "role": "entity"
+          },
+          {
+            "id": "task_completion",
+            "label": "Task Completion",
+            "role": "entity"
+          },
+          {
+            "id": "interest",
+            "label": "Learning Interest",
+            "role": "entity"
+          },
+          {
+            "id": "self_efficacy",
+            "label": "Self-Efficacy",
+            "role": "entity"
+          }
+        ],
+        "edges": [
+          {
+            "from": "root",
+            "to": "cognitive",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "root",
+            "to": "behavioral",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "root",
+            "to": "affective",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "cognitive",
+            "to": "knowledge",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "cognitive",
+            "to": "problem_solving",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "behavioral",
+            "to": "participation",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "behavioral",
+            "to": "task_completion",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "affective",
+            "to": "interest",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "affective",
+            "to": "self_efficacy",
+            "label": "",
+            "kind": "composition"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "tree-zh",
+    "figureType": "tree",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "学习效果分类树",
+        "caption": "图1. 学习效果分类结构图。展示了从总体效果到认知、行为及情感维度的层级分解，以及各维度下的具体构成要素。",
+        "layout": "TB",
+        "qualitative": true,
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "学习效果",
+            "role": "entity"
+          },
+          {
+            "id": "n2",
+            "label": "认知",
+            "role": "entity"
+          },
+          {
+            "id": "n3",
+            "label": "行为",
+            "role": "entity"
+          },
+          {
+            "id": "n4",
+            "label": "情感",
+            "role": "entity"
+          },
+          {
+            "id": "n5",
+            "label": "知识理解",
+            "role": "entity"
+          },
+          {
+            "id": "n6",
+            "label": "问题解决",
+            "role": "entity"
+          },
+          {
+            "id": "n7",
+            "label": "参与频次",
+            "role": "entity"
+          },
+          {
+            "id": "n8",
+            "label": "任务完成",
+            "role": "entity"
+          },
+          {
+            "id": "n9",
+            "label": "学习兴趣",
+            "role": "entity"
+          },
+          {
+            "id": "n10",
+            "label": "自我效能",
+            "role": "entity"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "n1",
+            "to": "n3",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "n1",
+            "to": "n4",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "n2",
+            "to": "n5",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "n2",
+            "to": "n6",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "n3",
+            "to": "n7",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "n3",
+            "to": "n8",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "n4",
+            "to": "n9",
+            "label": "",
+            "kind": "composition"
+          },
+          {
+            "from": "n4",
+            "to": "n10",
+            "label": "",
+            "kind": "composition"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "treemap-en",
+    "figureType": "treemap",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "Research Resource Allocation",
+        "caption": "Treemap illustrating the allocation of 100 research hours across four categories: Literature Review (30h), Experimentation (40h), Data Analysis (20h), and Writing (10h). Area proportions correspond to time spent.",
+        "layout": "TB",
+        "qualitative": false,
+        "chartType": "treemap",
+        "data": {
+          "hierarchy": {
+            "name": "Research Resources",
+            "children": [
+              {
+                "name": "Experimentation",
+                "value": 40
+              },
+              {
+                "name": "Literature Review",
+                "value": 30
+              },
+              {
+                "name": "Data Analysis",
+                "value": 20
+              },
+              {
+                "name": "Writing",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "xLabel": "",
+        "yLabel": ""
+      }
+    }
+  },
+  {
+    "id": "treemap-zh",
+    "figureType": "treemap",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "研究资源分配矩形树图",
+        "caption": "研究各阶段时间资源分配示意图。总面积代表总资源100小时，子矩形面积按文献整理(30h)、实验(40h)、数据分析(20h)和写作(10h)的比例严格分配。",
+        "layout": "grid",
+        "qualitative": false,
+        "chartType": "treemap",
+        "data": {
+          "hierarchy": {
+            "name": "研究资源",
+            "children": [
+              {
+                "name": "文献整理",
+                "value": 30
+              },
+              {
+                "name": "实验",
+                "value": 40
+              },
+              {
+                "name": "数据分析",
+                "value": 20
+              },
+              {
+                "name": "写作",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "unit": "小时"
+      }
+    }
+  },
+  {
+    "id": "zenuml-en",
+    "figureType": "zenuml",
+    "language": "English",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "sequence",
+        "title": "Literature Retrieval Interaction",
+        "caption": "Sequence diagram of the literature retrieval interaction between User, Web Page, Retrieval Service, and Literature Database.",
+        "layout": "TB",
+        "qualitative": false,
+        "participants": [
+          {
+            "id": "user",
+            "label": "User"
+          },
+          {
+            "id": "webpage",
+            "label": "Web Page"
+          },
+          {
+            "id": "service",
+            "label": "Retrieval Service"
+          },
+          {
+            "id": "database",
+            "label": "Literature Database"
+          }
+        ],
+        "messages": [
+          {
+            "from": "user",
+            "to": "webpage",
+            "label": "Input search query",
+            "type": "sync"
+          },
+          {
+            "from": "webpage",
+            "to": "service",
+            "label": "Initiate retrieval",
+            "type": "sync"
+          },
+          {
+            "from": "service",
+            "to": "database",
+            "label": "Query bibliographic records",
+            "type": "sync"
+          },
+          {
+            "from": "database",
+            "to": "service",
+            "label": "Return bibliographic records",
+            "type": "async"
+          },
+          {
+            "from": "service",
+            "to": "webpage",
+            "label": "Return results",
+            "type": "async"
+          },
+          {
+            "from": "webpage",
+            "to": "user",
+            "label": "Display results",
+            "type": "async"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "zenuml-zh",
+    "figureType": "zenuml",
+    "language": "中文",
+    "raw": {
+      "complete": true,
+      "figure": {
+        "kind": "sequence",
+        "title": "文献检索交互时序图",
+        "caption": "用户通过网页发起检索，经检索服务查询文献库并返回结果的交互流程。",
+        "layout": "TB",
+        "qualitative": false,
+        "actors": [
+          {
+            "id": "user",
+            "label": "用户"
+          },
+          {
+            "id": "web",
+            "label": "网页"
+          },
+          {
+            "id": "service",
+            "label": "检索服务"
+          },
+          {
+            "id": "library",
+            "label": "文献库"
+          }
+        ],
+        "messages": [
+          {
+            "from": "user",
+            "to": "web",
+            "label": "输入检索词",
+            "type": "sync"
+          },
+          {
+            "from": "web",
+            "to": "service",
+            "label": "发起检索",
+            "type": "sync"
+          },
+          {
+            "from": "service",
+            "to": "library",
+            "label": "查询题录",
+            "type": "sync"
+          },
+          {
+            "from": "library",
+            "to": "service",
+            "label": "返回题录",
+            "type": "async"
+          },
+          {
+            "from": "service",
+            "to": "web",
+            "label": "返回结果",
+            "type": "async"
+          },
+          {
+            "from": "web",
+            "to": "user",
+            "label": "显示结果",
+            "type": "async"
+          }
+        ]
+      }
+    }
+  }
+]

@@ -5,6 +5,7 @@ import {normalizePublicationFigurePlan} from '../backend/research-figure-plan.mj
 import {publicationChartOption,renderPublicationVector,rasterPublicationVector} from '../backend/research-native-figure.mjs';
 import {createScientificFigure,normalizeFigureReview} from '../backend/research-figure-quality.mjs';
 import {validateResearchImage} from '../backend/research-image-client.mjs';
+import {researchIllustrationPrompt} from '../backend/research-image-client.mjs';
 import {pngFixture} from './fixtures/research-image.mjs';
 const settings={enabled:true,model:'qwen-image-3.0',apiKey:'sk-private-fixture',version:'test-scientific',baseURL:'https://dashscope.aliyuncs.com',timeoutMs:1000};
 const snapshot=(figureType='flowchart')=>({mode:'basic',title:'Save name',text:'A→B; sample indices 1 2 3 4 5 6 7 8; counts 9,10,11,10,9,11,10,10. UCL12 CL10 LCL8. Axis8..12 step1.',language:'English',context:{categoryId:'basic',figureType,aspectRatio:'4:3',palette:'academic'}});
@@ -12,6 +13,43 @@ const review=passed=>({passed,checks:['brief_fidelity','scientific_relations','n
 const illustration={complete:true,figure:{kind:'illustration',description:'Two components A and B',requiredObjects:['A','B'],labels:['A','B']}};
 const illustrationSnapshot=()=>({...snapshot(),mode:'professional',context:{...snapshot().context,categoryId:'rendering',figureType:'3d-structure'}});
 const chart=(chartType,data,extra={})=>({complete:true,figure:{kind:'chart',chartType,data,...extra}});
+test('illustration prompts contain the normalized composition and labels, never internal source headings or review text',()=>{
+ const s={...illustrationSnapshot(),text:'AUTHOR BRIEF source-only instructions and private file title',title:'private file title'},plan={kind:'illustration',description:'A gray base below a blue lens housing.',requiredObjects:['gray base','blue lens housing'],labels:['Base','Lens']},prompt=researchIllustrationPrompt(s,plan,{repairKeys:['labels_legible']});
+ assert.match(prompt,/gray base/);assert.match(prompt,/"Base"/);assert.doesNotMatch(prompt,/AUTHOR BRIEF|source-only|private file title|STRICT VISIBLE|COMPOSITION:|REQUIRED OBJECTS:/);
+});
+test('text-only illustration defects reuse the composition and do not copy the rejected lettering into the next image prompt',async()=>{
+ let plans=0,images=0,reviews=0;const prompts=[];
+ const result=await createScientificFigure(illustrationSnapshot(),{settings,jsonRunner:async(_m,{phase})=>{
+  if(phase==='planning'){plans++;return{value:illustration};}
+  const value=review(true);if(!reviews++){value.passed=false;value.checks=value.checks.map(c=>c.key==='labels_legible'?{...c,passed:false,detail:'Remove the unwanted AUTHOR BRIEF footer'}:c);}return{value};
+ },imageRunner:async(_s,{prompt})=>{images++;prompts.push(prompt);return{buffer:pngFixture(),imageCount:1};}});
+ assert.equal(result.review.passed,true);assert.equal(plans,1);assert.equal(images,2);assert.ok(prompts.every(p=>!p.includes('AUTHOR BRIEF')));assert.match(prompts[1],/large, simple, legible labels/);
+});
+test('English node wrapping keeps complete words instead of breaking Motivation or Engagement',async()=>{
+ const s={...snapshot('path'),text:'Learning Support -> Learning Motivation -> Learning Engagement -> Learning Outcomes. H1 H2 H3 H4.'},plan=normalizePublicationFigurePlan({complete:true,figure:{kind:'diagram',nodes:['Learning Support','Learning Motivation','Learning Engagement','Learning Outcomes'].map((label,i)=>({id:String(i),label})),edges:[{from:'0',to:'1',label:'H1'},{from:'1',to:'2',label:'H2'},{from:'2',to:'3',label:'H3'},{from:'0',to:'3',label:'H4'}]}},s),r=await renderPublicationVector(plan,s);
+ assert.match(r.svg,/>Motivation<\/text>/);assert.match(r.svg,/>Engagement<\/text>/);assert.doesNotMatch(r.svg,/>Motivatio<\/text>|>Engagemen<\/text>/);
+});
+test('qualitative author intent removes fabricated equal weights without discarding real quantitative measurements',()=>{
+ const s={...snapshot('chord'),text:'A and B have a relation, no weights, equal width.'},raw=chart('chord',{nodes:[{id:'a',label:'A'},{id:'b',label:'B'}],links:[{from:'a',to:'b',value:1}]},{qualitative:false}),p=normalizePublicationFigurePlan(raw,s);
+ assert.equal(p.qualitative,true);assert.equal(p.data.links[0].value,undefined);
+ const weighted=normalizePublicationFigurePlan(raw,{...s,text:'A -> B, weight 1.'});assert.equal(weighted.qualitative,false);assert.equal(weighted.data.links[0].value,1);
+ assert.throws(()=>normalizePublicationFigurePlan(raw,{...s,text:'A -> B, weight 25.'}),/没有的数据/);
+});
+test('derived tick intervals are presentation settings while source measurements and range bounds stay verified',()=>{
+ const s={...snapshot('horizontal-bar'),text:'Scores A4.5 B4.0, axis 0 to 5.'},p=normalizePublicationFigurePlan(chart('horizontal-bar',{categories:['A','B'],series:[{name:'Score',values:[4.5,4]}]},{yRange:{min:0,max:5,interval:1}}),s),o=publicationChartOption(p,s);
+ assert.equal(o.xAxis.min,0);assert.equal(o.xAxis.max,5);assert.equal(o.xAxis.interval,1);
+ assert.throws(()=>normalizePublicationFigurePlan(chart('horizontal-bar',{categories:['A'],series:[{name:'Score',values:[99]}]}),s),/没有的数据/);
+ const radar=normalizePublicationFigurePlan(chart('radar',{categories:['A','B','C'],series:[{name:'Score',values:[4,4,4]}]},{yRange:{min:0,max:5,interval:1}}),{...snapshot('radar'),text:'Scores A4 B4 C4.'});assert.equal(radar.yRange,null);
+});
+test('sequence participant and message aliases retain explicit return semantics without treating asynchronous calls as returns',async()=>{
+ const s=snapshot('zenuml'),p=normalizePublicationFigurePlan({complete:true,figure:{kind:'sequence',participants:[{id:'web',label:'Web Page'},{id:'library',label:'Literature Repository'}],messages:[{from:'web',to:'library',label:'Query bibliographic records',type:'async'},{from:'library',to:'web',label:'Return bibliographic records',type:'return'}]}},s),r=await renderPublicationVector(p,s);
+ assert.equal(p.edges[0].kind,'directed');assert.equal(p.edges[1].kind,'return');assert.match(r.svg,/stroke-dasharray="5 4"/);
+});
+test('quadrant geometry helpers stay out of visible text while labels and axis positions are rendered explicitly',async()=>{
+ const s={...snapshot('matrix'),text:'Four quadrants Do, Plan, Delegate, Eliminate; axes Urgency and Importance.'},raw={complete:true,figure:{kind:'diagram',layout:'grid',nodes:[{id:'o',label:'',position:'center'},{id:'x',label:'Urgency',position:'x-axis'},{id:'y',label:'Importance',position:'y-axis'},...['Do','Plan','Delegate','Eliminate'].map((label,i)=>({id:'q'+i,label,position:['top-right','top-left','bottom-right','bottom-left'][i]}))],edges:[{from:'o',to:'x'},{from:'o',to:'y'}]}};
+ const p=normalizePublicationFigurePlan(raw,s),r=await renderPublicationVector(p,s);assert.equal(p.nodes.length,6);assert.equal(p.edges.length,0);assert.equal((r.svg.match(/data-quadrant=/g)||[]).length,4);assert.match(r.svg,/>Urgency<\/text>/);assert.doesNotMatch(r.svg,/>top-right<\/text>/);
+ assert.throws(()=>normalizePublicationFigurePlan({...raw,figure:{...raw.figure,edges:[{from:'o',to:'x',label:'meaningful relationship'}]}},s),{code:'figure_plan_invalid'});
+});
 test('qualitative sunburst keeps all parent-child relations without fabricated percentages or observed weights',async()=>{
  const s=snapshot('sunburst'),tree={name:'Methods',children:[{name:'Qualitative',children:[{name:'Interview'},{name:'Case'}]},{name:'Quantitative',children:[{name:'Experiment'},{name:'Survey'}]},{name:'Mixed',children:[{name:'Mixed design'}]}]};
  const plan=normalizePublicationFigurePlan(chart('sunburst',{hierarchy:tree},{qualitative:true}),s);assert.equal(plan.data.hierarchy.value,undefined);const option=publicationChartOption(plan,s);assert.deepEqual(option.series[0].data[0].children[1].children.map(x=>x.name),['Experiment','Survey']);assert.equal(option.series[0].data[0].children[0].children[0].value,1);assert.equal(option.series[0].label.formatter,undefined);
@@ -26,9 +64,9 @@ test('control chart plots the exact ordered observations, reference limits and e
  assert.deepEqual(option.series[0].data,values.map((value,i)=>[i+1,value]));assert.deepEqual(option.series[0].markLine.data.map(r=>r.yAxis),[12,10,8]);assert.equal(option.yAxis.interval,1);assert.equal(option.yAxis.min,8);assert.equal(option.yAxis.max,12);
  assert.throws(()=>normalizePublicationFigurePlan(chart('line',{categories:['A'],series:[{name:'x',values:[99]}]}),s),{code:'figure_plan_invalid'});
 });
-test('optional empty axis settings do not reject complete data, while partial or invented ranges still fail',()=>{
- const s={...snapshot('pie'),text:'A=40, B=35, C=25.'},raw=chart('pie',{categories:['A','B','C'],series:[{name:'Share',values:[40,35,25]}]},{yRange:{}}),plan=normalizePublicationFigurePlan(raw,s);
- assert.equal(plan.yRange,null);assert.equal(publicationChartOption(plan,s).series[0].data[0].value,40);
+test('empty axis settings do not reject complete data, while invalid cartesian ranges still fail',()=>{
+ const s={...snapshot('bar'),text:'A=40, B=35, C=25.'},raw=chart('bar',{categories:['A','B','C'],series:[{name:'Share',values:[40,35,25]}]},{yRange:{}}),plan=normalizePublicationFigurePlan(raw,s);
+ assert.equal(plan.yRange,null);assert.equal(publicationChartOption(plan,s).series[0].data[0],40);
  for(const yRange of [{min:0},{min:0,max:50,interval:10}])assert.throws(()=>normalizePublicationFigurePlan({...raw,figure:{...raw.figure,yRange}},s),{code:'figure_plan_invalid'});
 });
 test('uneven numeric line samples preserve true x positions and ordinary categories remain categorical',async()=>{

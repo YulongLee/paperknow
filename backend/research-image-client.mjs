@@ -67,6 +67,23 @@ export function researchImagePrompt(snapshot){
   'Technical plots must reproduce every supplied value and connection exactly. This is a static explanatory figure, not evidence that any simulation or experiment has been performed.'
  ].filter(Boolean).join('\n');
 }
+// The image model receives a visual composition, never the planner's source
+// document, schema headings or review transcript: these can become visible text.
+export function researchIllustrationPrompt(snapshot,plan,{repairKeys=[]}={}){
+ if(!researchFigureSelection(snapshot)||plan?.kind!=='illustration')fail('input_invalid','科研插图内容无效',400);
+ const labels=plan.labels||[],repair=new Set(repairKeys);
+ return [
+  'Draw one precise scientific illustration on a pure white canvas. Use a clean explanatory style, clear geometry and generous empty margins.',
+  plan.description,
+  'Depict these objects and preserve their stated counts and relationships: '+plan.requiredObjects.join('; ')+'.',
+  palettes[snapshot.context.palette]||palettes.academic,
+  snapshot.language==='中文'?'图片标注使用简体中文。':'Use English for visible labels.',
+  labels.length?'The only visible text is these short labels, spelled exactly: '+labels.map(v=>JSON.stringify(v)).join(', ')+'. Place each beside the correct object with a clear leader line.':'The artwork contains no text or lettering.',
+  'Leave the remaining white space empty. No title, caption, footer, explanatory paragraph, interface or watermark.',
+  repair.has('labels_legible')||repair.has('figure_grammar')?'Use large, simple, legible labels on blank white space outside the objects. Keep the margins completely blank.':'',
+  repair.has('no_overlap_or_clipping')?'Space the objects and labels farther apart, with no cropping or overlap.':''
+ ].filter(Boolean).join('\n');
+}
 export function createResearchImageClient(settings,{requestImpl=httpsRequest,lookupImpl=lookup}={}){
  const runtime=assertResearchImageSettings(settings);
  async function request(url,{body,signal,api=false}={}){
