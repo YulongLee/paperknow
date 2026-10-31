@@ -1,4 +1,5 @@
 import {publicationFigureKind,publicationProfile} from './research-publication-policy.mjs';
+import {assertResearchStateEvidence} from './research-state-evidence.mjs';
 import {scientificFigureStyle} from './research-image-scientific-style.mjs';
 import {researchFigureSelection} from './research-figure-selection.mjs';
 const fail=message=>{throw Object.assign(Error(message),{status:422,code:'figure_plan_invalid'});};
@@ -26,6 +27,7 @@ export function normalizePublicationFigurePlan(raw,snapshot,{verifyEvidence=true
  out.nodes=nodes(f.nodes||[]);out.edges=edges(f.edges,out.nodes);
  if(snapshot.language==='中文')for(const n of out.nodes)n.attributes=n.attributes.filter(v=>!(/^(?:input|output|pre-processing|registration|difference|classification|process|state|component|actor|entity|initial|final)$/i.test(v)&&!snapshot.text.toLowerCase().includes(v.toLowerCase())));
  if(choice.id==='state')for(const node of out.nodes)if(node.role==='end'&&node.label&&out.edges.some(e=>e.from===node.id))node.role='state';
+ if(choice.id==='state')out.stateEvidence=assertResearchStateEvidence(out,snapshot);
  if(kind==='diagram'&&out.nodes.length<2)fail('结构图至少需要两个明确元素');
  if(kind==='sequence'&&(out.nodes.length<2||out.nodes.length>10||!out.edges.length))fail('时序图需要2～10个参与者及明确的消息或步骤');
  if(kind==='sequence')out.fragments=arrays(f.fragments||[],8,'分支框').map(g=>({label:text(g.label,80,'分支名称'),branches:arrays(g.branches,8,'分支').map(b=>{

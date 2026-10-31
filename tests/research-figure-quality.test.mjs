@@ -69,3 +69,14 @@ test('selected palettes apply to native charts and diagrams while explicit autho
  const s={...snapshot('line'),context:{...snapshot().context,palette:'warm'}},plan=normalizePublicationFigurePlan(chart('line',{categories:['A','B'],series:[{name:'Observed',values:[9,10],color:'blue'}]}),s),option=publicationChartOption(plan,s);assert.equal(option.color[0],'#bd5d16');assert.equal(option.series[0].lineStyle.color,'#0072B2');
  const d=normalizePublicationFigurePlan({complete:true,figure:{kind:'diagram',nodes:[{id:'a',label:'A'},{id:'b',label:'B'}],edges:[{from:'a',to:'b'}]}},snapshot()),r=await renderPublicationVector(d,s);assert.match(r.svg,/#fff4e8/);
 });
+test('explicit state transitions reject plausible but unrequested edges and detect missing transitions',()=>{
+ const s={...snapshot('state'),language:'中文',text:'三个状态为“草稿”“完成”“取消”。起始黑点→草稿；草稿→完成；草稿→取消；完成→终点同心圆。不增加额外状态。'},f={kind:'diagram',nodes:[{id:'start',label:'',role:'start'},{id:'draft',label:'草稿',role:'state'},{id:'done',label:'完成',role:'state'},{id:'cancel',label:'取消',role:'state'},{id:'end',label:'',role:'end'}],edges:[{from:'start',to:'draft'},{from:'draft',to:'done'},{from:'draft',to:'cancel'},{from:'done',to:'end'}]};
+ const plan=normalizePublicationFigurePlan({complete:true,figure:f},s);assert.equal(plan.stateEvidence.requiredTransitions,4);
+ assert.throws(()=>normalizePublicationFigurePlan({complete:true,figure:{...f,edges:[...f.edges,{from:'cancel',to:'end'}]}},s),/没有作者提供的转换依据/);
+ assert.throws(()=>normalizePublicationFigurePlan({complete:true,figure:{...f,edges:f.edges.slice(0,-1)}},s),/缺少作者指定的连接/);
+ assert.throws(()=>normalizePublicationFigurePlan({complete:true,figure:{...f,nodes:f.nodes.filter(n=>n.id!=='cancel'),edges:f.edges.filter(e=>e.to!=='cancel')}},s),/遗漏作者指定的状态/);
+});
+test('closed English state graphs preserve named transitions and Chinese event labels remain exact',()=>{
+ const s={...snapshot('state'),text:'States are "Draft", "Done". Initial black dot->Draft; Draft->Done; Done->End.'},f={kind:'diagram',nodes:[{id:'s',label:'',role:'start'},{id:'a',label:'Draft',role:'state'},{id:'b',label:'Done',role:'state'},{id:'e',label:'',role:'end'}],edges:[{from:'s',to:'a'},{from:'a',to:'b'},{from:'b',to:'e'}]};assert.equal(normalizePublicationFigurePlan({complete:true,figure:f},s).stateEvidence.requiredTransitions,3);
+ const cn={...s,language:'中文',text:'状态为“草稿”“完成”。起始黑点→草稿；草稿→完成，事件“成功”；完成→终点同心圆。'},chinese={...f,nodes:f.nodes.map(n=>({...n,label:n.id==='a'?'草稿':n.id==='b'?'完成':''})),edges:f.edges.map(e=>({...e,label:e.from==='a'?'别的事件':''}))};assert.throws(()=>normalizePublicationFigurePlan({complete:true,figure:chinese},cn),/应标注作者给出的事件/);
+});
