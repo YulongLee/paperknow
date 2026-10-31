@@ -1,0 +1,226 @@
+/* Homepage layout contract. Load after the visual themes so legacy breakpoints
+   cannot give the header, copy, artwork and cards different alignment rules. */
+@font-face {
+  font-family: "PaperKnow Home";
+  src: url('/brand/fonts/paperknow-home-v1.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "PaperKnow Home";
+  src: url('/brand/fonts/paperknow-home-v1-bold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+.homepage-v1 {
+  --hp-content-width: 1440px;
+  --hp-page-gutter: 48px;
+  font-family: "PaperKnow Home", "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+.homepage-v1 button,
+.homepage-v1 input,
+.homepage-v1 select {
+  font-family: inherit;
+}
+.homepage-v1 main .container,
+.homepage-v1 footer.container,
+.homepage-v1 .product-header .nav-wrap {
+  width: min(var(--hp-content-width), calc(100% - 2 * var(--hp-page-gutter)));
+  max-width: var(--hp-content-width);
+  margin-inline: auto;
+}
+.homepage-v1 .product-header .nav-wrap {
+  padding-inline: 0;
+}
+.homepage-v1 main .hero-inner {
+  padding-block: 0;
+}
+.homepage-v1 main .hero h1.hp-hero-headline {
+  font-family: inherit;
+  font-size: clamp(40px, 3.55vw, 54px);
+  font-weight: 700;
+  line-height: 1.42;
+  letter-spacing: -.045em;
+  white-space: normal;
+}
+.homepage-v1 main .platform-hero-copy {
+  max-width: none;
+  min-width: 0;
+  text-align: left;
+}
+.homepage-v1 main .hero-actions,
+.homepage-v1 main .hero-trust,
+.homepage-v1 .hp-v1-quick-start {
+  justify-content: flex-start;
+  text-align: left;
+}
+.homepage-v1 .hp-continuity-grid > article {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.homepage-v1 .hp-continuity-grid > article > p {
+  margin-bottom: 20px;
+}
+.homepage-v1 .hp-continuity-grid > article > a {
+  margin-top: auto;
+}
+.homepage-v1 .hp-plan-card {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto auto auto;
+  min-width: 0;
+}
+.homepage-v1 .hp-plan-card > small {
+  min-height: 3.6em;
+}
+.homepage-v1 .hp-final-cta > .container {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 32px;
+  align-items: center;
+}
+.homepage-v1 .hp-final-actions {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+}
+.homepage-v1 .hp-final-actions .hp-v1-final-price-link {
+  margin: 0;
+  color: #dce8ff;
+}
+.homepage-v1 .footer-links {
+  align-items: start;
+}
+.homepage-v1 main .section-heading,
+.homepage-v1 main .feature-copy,
+.homepage-v1 .hp-plan-card,
+.homepage-v1 .hp-continuity-grid > article,
+.homepage-v1 .footer-top > div {
+  overflow-wrap: anywhere;
+}
+
+/* A full desktop menu needs room for both utility entries and account actions. */
+@media (max-width: 1399px) {
+  .homepage-v1 .product-header,
+  .homepage-v1 .product-header .nav-wrap { min-height: 68px; }
+  .homepage-v1 .product-header .nav-wrap { gap: 18px; }
+  .homepage-v1 .product-header .nav-actions {
+    display: flex;
+    margin-left: auto;
+    gap: 18px;
+  }
+  .homepage-v1 .product-header .header-account-actions,
+  .homepage-v1 .product-header .header-utilities { display: flex; }
+  .homepage-v1 .product-header .mobile-menu {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+  }
+  .homepage-v1 .product-header .nav-wrap #main-nav {
+    display: none;
+    position: absolute;
+    inset: 100% 0 auto;
+    height: auto;
+    max-height: calc(100dvh - 68px);
+    overflow: auto;
+    padding: 14px var(--hp-page-gutter) 18px;
+    border-top: 1px solid #e7edf6;
+    background: #fff;
+    box-shadow: 0 16px 26px #1c365514;
+    gap: 6px;
+  }
+  .homepage-v1 .product-header .nav-wrap #main-nav.mobile-open {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .homepage-v1 .product-header #main-nav > a {
+    height: auto;
+    min-height: 46px;
+    justify-content: flex-start;
+    padding: 12px 16px;
+    border-radius: 7px;
+    font-size: 14px;
+  }
+  .homepage-v1 .product-header .nav-motion-line { display: none; }
+}
+@media (max-width: 1100px) {
+  .homepage-v1 { --hp-page-gutter: 32px; }
+}
+@media (min-width: 701px) and (max-width: 1000px) {
+  .homepage-v1 main .hero h1.hp-hero-headline {
+    font-size: clamp(38px, 5.4vw, 52px);
+  }
+  .homepage-v1.homepage-art .hp-hero-gallery {
+    max-width: none;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 3 / 2;
+    min-height: 420px;
+  }
+}
+@media (min-width: 701px) and (max-width: 760px) {
+  .homepage-v1 .product-header .nav-wrap { flex-wrap: nowrap; }
+  .homepage-v1 .product-header .header-utilities { flex: none; order: initial; }
+  .homepage-v1 .product-header .header-account-actions { gap: 12px; }
+}
+@media (max-width: 700px) {
+  .homepage-v1 { --hp-page-gutter: 20px; }
+  .homepage-v1 .product-header,
+  .homepage-v1 .product-header .nav-wrap { min-height: 124px; }
+  .homepage-v1 .product-header .nav-wrap {
+    flex-wrap: wrap;
+    padding-block: 10px;
+    gap: 8px;
+  }
+  .homepage-v1 .product-header .nav-actions,
+  .homepage-v1 .product-header .header-account-actions { display: contents; }
+  .homepage-v1 .product-header .header-utilities {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex: 0 0 100%;
+    order: 5;
+    gap: 12px;
+  }
+  .homepage-v1 .product-header .nav-wrap #main-nav {
+    max-height: calc(100dvh - 124px);
+  }
+  .homepage-v1 .product-header .nav-wrap #main-nav.mobile-open {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .homepage-v1 .product-header #main-nav > .nav-active { grid-column: 1 / -1; }
+  .homepage-v1 main .hero h1.hp-hero-headline {
+    font-size: clamp(24px, 7.3vw, 36px);
+    line-height: 1.48;
+    letter-spacing: -.04em;
+  }
+  .homepage-v1 main .hero-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 420px;
+    gap: 10px;
+  }
+  .homepage-v1 main .hero-actions .button {
+    min-width: 0;
+    padding-inline: 10px;
+    font-size: 13px;
+    gap: 8px;
+  }
+  .homepage-v1 .hp-final-cta > .container {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 26px;
+  }
+  .homepage-v1 .hp-final-actions { justify-items: start; }
+}
+@media (max-width: 359px) {
+  .homepage-v1 .product-header .nav-wrap { gap: 8px 6px; }
+  .homepage-v1 .product-header .mobile-menu { width: 36px; }
+  .homepage-v1 main .hero-actions { grid-template-columns: minmax(0, 1fr); }
+}

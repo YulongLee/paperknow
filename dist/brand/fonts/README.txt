@@ -27,3 +27,21 @@ The script checks the source hash, glyph coverage, primary font names and a
 40 KiB size budget. Deployment serves the checked-in WOFF2 asset directly;
 Python and the font-building packages are not required to run or build the app.
 Use font-display: swap and system fallbacks in the consuming CSS.
+
+Homepage body font
+==================
+paperknow-home-v1.woff2 is a separate, renamed subset of the same licensed
+Noto Sans SC Regular source and SHA-256 above. Family: PaperKnow Home.
+It covers printable ASCII and the visible homepage / dynamic homepage UI
+characters from dist/index.html and dist/home-app.js. Unrecognized user and
+product names retain system fallbacks. paperknow-home-v1-bold.woff2 provides an actual 700 weight; no proprietary
+system fonts are redistributed. Bold source is Noto Sans CJK SC Bold 2.004,
+face 2 of the fonts-noto-cjk NotoSansCJK-Bold.ttc collection, SHA-256
+faa5f3656a78b2e2d450d27fe8382c778bc2b6bb5ea29c986664a6a435056ceb.
+Upstream: https://github.com/notofonts/noto-cjk (SIL OFL 1.1).
+
+Regenerate: python scripts/build-home-font.py --bold-source /path/to/NotoSansCJK-Bold.ttc
+Use fonttools[woff]==4.60.2 and
+brotli==1.2.0. The source is local and hash-checked; no network access is needed.
+The generated WOFF2 is checked in and limited to 180 KiB per weight. Font creation is a
+maintenance task, not a runtime or deployment dependency. SIL OFL 1.1 applies.
