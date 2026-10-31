@@ -80,3 +80,9 @@ test('closed English state graphs preserve named transitions and Chinese event l
  const s={...snapshot('state'),text:'States are "Draft", "Done". Initial black dot->Draft; Draft->Done; Done->End.'},f={kind:'diagram',nodes:[{id:'s',label:'',role:'start'},{id:'a',label:'Draft',role:'state'},{id:'b',label:'Done',role:'state'},{id:'e',label:'',role:'end'}],edges:[{from:'s',to:'a'},{from:'a',to:'b'},{from:'b',to:'e'}]};assert.equal(normalizePublicationFigurePlan({complete:true,figure:f},s).stateEvidence.requiredTransitions,3);
  const cn={...s,language:'中文',text:'状态为“草稿”“完成”。起始黑点→草稿；草稿→完成，事件“成功”；完成→终点同心圆。'},chinese={...f,nodes:f.nodes.map(n=>({...n,label:n.id==='a'?'草稿':n.id==='b'?'完成':''})),edges:f.edges.map(e=>({...e,label:e.from==='a'?'别的事件':''}))};assert.throws(()=>normalizePublicationFigurePlan({complete:true,figure:chinese},cn),/应标注作者给出的事件/);
 });
+test('scatter y limits do not clip or reject unrelated x coordinates',()=>{
+ const s={...snapshot('scatter'),text:'Point x=1000, y=2. Y range 0 to 5, interval 1.'},plan=normalizePublicationFigurePlan(chart('scatter',{points:[{x:1000,y:2}]},{yRange:{min:0,max:5,interval:1}}),s),option=publicationChartOption(plan,s);assert.deepEqual(option.series[0].data,[[1000,2]]);assert.equal(option.yAxis.max,5);
+});
+test('hierarchy area encodings reject negative weights and children exceeding the author parent total',()=>{
+ const s={...snapshot('treemap'),text:'Weights -1, 1, 2.'};for(const hierarchy of [{name:'All',value:-1},{name:'All',value:1,children:[{name:'A',value:2}]}])assert.throws(()=>normalizePublicationFigurePlan(chart('treemap',{hierarchy}),s),{code:'figure_plan_invalid'});
+});
