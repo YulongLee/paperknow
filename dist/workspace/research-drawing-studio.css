@@ -80,6 +80,7 @@
 .rd-status:empty{display:none}
 .rd-status.is-error,.rd-history-empty.is-error{color:#b86a59}
 .rd-recover-input.btn{font-size:10px;margin-top:10px;min-height:31px;padding:7px 11px}
+.rd-undo-example.btn{font-size:12px;margin-top:8px;min-height:32px;padding:6px 12px}
 [data-rd-draft-recovery]{background:#fff9f4;border-radius:8px;padding:12px;margin-top:10px}
 [data-rd-draft-recovery] p{font-size:10px;color:#9d8f84;line-height:1.8;margin-bottom:0}
 .rd-composer [data-rd-job]{margin-top:20px}

@@ -1,0 +1,853 @@
+[
+  {
+    "id": "pie",
+    "mode": "basic",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "学科分布饼图",
+        "caption": "不同学科类别的占比分布",
+        "layout": "radial",
+        "qualitative": false,
+        "chartType": "pie",
+        "data": {
+          "categories": [
+            "理工科",
+            "人文社科",
+            "医学"
+          ],
+          "series": [
+            {
+              "name": "占比",
+              "values": [
+                40,
+                35,
+                25
+              ]
+            }
+          ]
+        },
+        "referenceLines": [],
+        "yRange": {}
+      }
+    }
+  },
+  {
+    "id": "boxplot",
+    "mode": "basic",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "两组任务完成时间分布",
+        "caption": "A组与B组任务完成时间的盒须图对比。箱体展示四分位数，须线表示1.5倍四分位距范围，点状标记为超出范围的离群值。",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "boxplot",
+        "xLabel": "组别",
+        "yLabel": "时间（分钟）",
+        "unit": "分钟",
+        "data": {
+          "series": [
+            {
+              "name": "A组",
+              "values": [
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                25
+              ]
+            },
+            {
+              "name": "B组",
+              "values": [
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "candlestick",
+    "mode": "basic",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "K线图_两根示例",
+        "caption": "第1日与第2日价格波动示意（合成数据）",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "candlestick",
+        "xLabel": "交易日",
+        "yLabel": "价格",
+        "unit": "元",
+        "data": {
+          "ohlc": [
+            {
+              "name": "第1日",
+              "open": 10,
+              "close": 13,
+              "low": 9,
+              "high": 14
+            },
+            {
+              "name": "第2日",
+              "open": 13,
+              "close": 11,
+              "low": 10,
+              "high": 15
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "sankey",
+    "mode": "basic",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "学习资源流向桑基图",
+        "caption": "不同学习资源向自主学习与协作学习的转化，以及最终向知识巩固的汇聚情况。单位：人。",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "sankey",
+        "data": {
+          "nodes": [
+            {
+              "id": "教材",
+              "label": "教材"
+            },
+            {
+              "id": "视频",
+              "label": "视频"
+            },
+            {
+              "id": "练习",
+              "label": "练习"
+            },
+            {
+              "id": "自主学习",
+              "label": "自主学习"
+            },
+            {
+              "id": "协作学习",
+              "label": "协作学习"
+            },
+            {
+              "id": "知识巩固",
+              "label": "知识巩固"
+            }
+          ],
+          "links": [
+            {
+              "from": "教材",
+              "to": "自主学习",
+              "value": 30
+            },
+            {
+              "from": "教材",
+              "to": "协作学习",
+              "value": 10
+            },
+            {
+              "from": "视频",
+              "to": "自主学习",
+              "value": 20
+            },
+            {
+              "from": "视频",
+              "to": "协作学习",
+              "value": 20
+            },
+            {
+              "from": "练习",
+              "to": "自主学习",
+              "value": 10
+            },
+            {
+              "from": "练习",
+              "to": "协作学习",
+              "value": 10
+            },
+            {
+              "from": "自主学习",
+              "to": "知识巩固",
+              "value": 60
+            },
+            {
+              "from": "协作学习",
+              "to": "知识巩固",
+              "value": 40
+            }
+          ]
+        },
+        "xLabel": "学习阶段",
+        "yLabel": "人数 (人)"
+      }
+    }
+  },
+  {
+    "id": "calendar",
+    "mode": "basic",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "2026年10月文献阅读日历热力图",
+        "caption": "2026年10月文献阅读时长分布（单位：分钟）",
+        "layout": "grid",
+        "qualitative": false,
+        "chartType": "calendar",
+        "data": {
+          "calendar": [
+            {
+              "date": "2026-10-01",
+              "value": 20
+            },
+            {
+              "date": "2026-10-02",
+              "value": 35
+            },
+            {
+              "date": "2026-10-03",
+              "value": 0
+            },
+            {
+              "date": "2026-10-04",
+              "value": 40
+            },
+            {
+              "date": "2026-10-05",
+              "value": 25
+            },
+            {
+              "date": "2026-10-06",
+              "value": 50
+            },
+            {
+              "date": "2026-10-07",
+              "value": 30
+            }
+          ]
+        },
+        "unit": "分钟"
+      }
+    }
+  },
+  {
+    "id": "parallel",
+    "mode": "basic",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "三种算法性能对比平行坐标图",
+        "caption": "比较方法A、B、C在准确率、耗时、内存和稳定性四个维度的表现。",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "parallel",
+        "data": {
+          "dimensions": [
+            "准确率 (%)",
+            "耗时 (秒)",
+            "内存 (MB)",
+            "稳定性 (分)"
+          ],
+          "series": [
+            {
+              "name": "方法A",
+              "values": [
+                [
+                  90,
+                  12,
+                  256,
+                  4
+                ]
+              ]
+            },
+            {
+              "name": "方法B",
+              "values": [
+                [
+                  92,
+                  18,
+                  384,
+                  5
+                ]
+              ]
+            },
+            {
+              "name": "方法C",
+              "values": [
+                [
+                  88,
+                  10,
+                  192,
+                  3
+                ]
+              ]
+            }
+          ]
+        },
+        "xLabel": "",
+        "yLabel": ""
+      }
+    }
+  },
+  {
+    "id": "funnel",
+    "mode": "basic",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "文献筛选漏斗图",
+        "caption": "文献筛选流程与阶段收敛示意图。展示从初始检索到最终纳入的五个阶段及其对应的篇数。",
+        "layout": "TB",
+        "qualitative": false,
+        "chartType": "funnel",
+        "data": {
+          "categories": [
+            "检索结果",
+            "去除重复",
+            "摘要筛选",
+            "全文阅读",
+            "最终纳入"
+          ],
+          "series": [
+            {
+              "name": "篇数",
+              "values": [
+                200,
+                160,
+                80,
+                40,
+                25
+              ]
+            }
+          ]
+        },
+        "yLabel": "篇数",
+        "unit": "篇"
+      }
+    }
+  },
+  {
+    "id": "river",
+    "mode": "basic",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "主题河流图_2024-2026",
+        "caption": "不同教育技术主题在2024至2026年间的篇数演变",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "river",
+        "xLabel": "年份",
+        "yLabel": "篇数",
+        "unit": "篇",
+        "data": {
+          "river": [
+            {
+              "date": "2024-01-01",
+              "name": "人工智能",
+              "value": 20
+            },
+            {
+              "date": "2024-01-01",
+              "name": "在线学习",
+              "value": 30
+            },
+            {
+              "date": "2024-01-01",
+              "name": "个性化反馈",
+              "value": 10
+            },
+            {
+              "date": "2025-01-01",
+              "name": "人工智能",
+              "value": 30
+            },
+            {
+              "date": "2025-01-01",
+              "name": "在线学习",
+              "value": 25
+            },
+            {
+              "date": "2025-01-01",
+              "name": "个性化反馈",
+              "value": 20
+            },
+            {
+              "date": "2026-01-01",
+              "name": "人工智能",
+              "value": 40
+            },
+            {
+              "date": "2026-01-01",
+              "name": "在线学习",
+              "value": 20
+            },
+            {
+              "date": "2026-01-01",
+              "name": "个性化反馈",
+              "value": 30
+            }
+          ]
+        },
+        "legend": [
+          {
+            "name": "人工智能",
+            "color": "#1f77b4"
+          },
+          {
+            "name": "在线学习",
+            "color": "#ff7f0e"
+          },
+          {
+            "name": "个性化反馈",
+            "color": "#2ca02c"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "sas-01",
+    "mode": "professional",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "质量控制合成控制图",
+        "caption": "样本测量值与控制限对照图。横轴为样本序号，纵轴为测量值（mm）。实线表示中心线（CL），虚线表示上下控制限（UCL/LCL），折线连接各样本实测点。",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "line",
+        "data": {
+          "categories": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8"
+          ],
+          "series": [
+            {
+              "name": "测量值",
+              "values": [
+                9,
+                10,
+                11,
+                10,
+                9,
+                11,
+                10,
+                10
+              ]
+            }
+          ]
+        },
+        "xLabel": "样本序号",
+        "yLabel": "测量值 (mm)",
+        "unit": "mm",
+        "referenceLines": [
+          {
+            "label": "UCL=12",
+            "value": 12,
+            "color": "#FF0000"
+          },
+          {
+            "label": "CL=10",
+            "value": 10,
+            "color": "#000000"
+          },
+          {
+            "label": "LCL=8",
+            "value": 8,
+            "color": "#FF0000"
+          }
+        ],
+        "yRange": {
+          "min": 8,
+          "max": 12,
+          "interval": 1
+        }
+      }
+    }
+  },
+  {
+    "id": "scikit-learn-03",
+    "mode": "professional",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "ROC曲线示意图",
+        "caption": "基于给定数据点的ROC曲线示意。横轴为假阳性率（FPR），纵轴为真阳性率（TPR）。",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "line",
+        "xLabel": "False Positive Rate (FPR)",
+        "yLabel": "True Positive Rate (TPR)",
+        "unit": "",
+        "data": {
+          "categories": [
+            "0.0",
+            "0.1",
+            "0.2",
+            "0.4",
+            "1.0"
+          ],
+          "series": [
+            {
+              "name": "Model ROC",
+              "values": [
+                0,
+                0.6,
+                0.8,
+                0.9,
+                1
+              ]
+            }
+          ]
+        },
+        "referenceLines": [],
+        "yRange": {}
+      }
+    }
+  },
+  {
+    "id": "keras-01",
+    "mode": "professional",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "训练监控示意图",
+        "caption": "训练与验证损失随轮次变化曲线",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "line",
+        "xLabel": "Epoch",
+        "yLabel": "Loss",
+        "unit": "",
+        "data": {
+          "categories": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5"
+          ],
+          "series": [
+            {
+              "name": "Training Loss",
+              "values": [
+                0.9,
+                0.7,
+                0.5,
+                0.4,
+                0.3
+              ]
+            },
+            {
+              "name": "Validation Loss",
+              "values": [
+                1,
+                0.8,
+                0.6,
+                0.55,
+                0.5
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "chemoffice-01",
+    "mode": "professional",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "光谱分析示意图",
+        "caption": "波长与强度的关系示意",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "line",
+        "xLabel": "波长 (nm)",
+        "yLabel": "强度 (a.u.)",
+        "unit": "a.u.",
+        "data": {
+          "categories": [
+            "400",
+            "450",
+            "500",
+            "550",
+            "600",
+            "650",
+            "700"
+          ],
+          "series": [
+            {
+              "name": "强度",
+              "values": [
+                1,
+                2,
+                5,
+                9,
+                5,
+                2,
+                1
+              ]
+            }
+          ]
+        },
+        "referenceLines": [],
+        "yRange": {}
+      }
+    }
+  },
+  {
+    "id": "pspice-02",
+    "mode": "professional",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "频率响应示意图",
+        "caption": "合成幅频响应曲线，展示不同频率下的增益变化。",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "line",
+        "xLabel": "频率 (Hz)",
+        "yLabel": "增益 (dB)",
+        "unit": "dB",
+        "data": {
+          "categories": [
+            "10",
+            "100",
+            "1000",
+            "10000"
+          ],
+          "series": [
+            {
+              "name": "幅频响应",
+              "values": [
+                0,
+                -1,
+                -6,
+                -20
+              ]
+            }
+          ]
+        },
+        "referenceLines": [],
+        "yRange": {}
+      }
+    }
+  },
+  {
+    "id": "graphpad-02",
+    "mode": "professional",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "chart",
+        "title": "生存曲线示意图",
+        "caption": "A组与B组随时间变化的生存率对比（合成数据）",
+        "layout": "LR",
+        "qualitative": false,
+        "chartType": "line",
+        "xLabel": "时间 (月)",
+        "yLabel": "生存率 (%)",
+        "unit": "%",
+        "data": {
+          "categories": [
+            "0",
+            "3",
+            "6",
+            "9",
+            "12"
+          ],
+          "series": [
+            {
+              "name": "A组",
+              "values": [
+                100,
+                95,
+                90,
+                85,
+                80
+              ]
+            },
+            {
+              "name": "B组",
+              "values": [
+                100,
+                90,
+                80,
+                70,
+                60
+              ]
+            }
+          ]
+        },
+        "referenceLines": [],
+        "yRange": {}
+      }
+    }
+  },
+  {
+    "id": "envi-03",
+    "mode": "professional",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "diagram",
+        "title": "遥感变化检测流程示意图",
+        "caption": "基于双时相遥感影像的变化检测处理流程。流程从两个时相的原始数据开始，分别进行辐射校正，随后进行空间配准，最后通过差分与阈值分割提取变化区域。",
+        "layout": "TB",
+        "nodes": [
+          {
+            "id": "n1",
+            "label": "时相A",
+            "role": "entity"
+          },
+          {
+            "id": "n2",
+            "label": "时相B",
+            "role": "entity"
+          },
+          {
+            "id": "n3",
+            "label": "校正A",
+            "role": "process"
+          },
+          {
+            "id": "n4",
+            "label": "校正B",
+            "role": "process"
+          },
+          {
+            "id": "n5",
+            "label": "配准",
+            "role": "process"
+          },
+          {
+            "id": "n6",
+            "label": "差分",
+            "role": "process"
+          },
+          {
+            "id": "n7",
+            "label": "阈值",
+            "role": "process"
+          },
+          {
+            "id": "n8",
+            "label": "变化区",
+            "role": "entity"
+          }
+        ],
+        "edges": [
+          {
+            "from": "n1",
+            "to": "n3",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n2",
+            "to": "n4",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n3",
+            "to": "n5",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n4",
+            "to": "n5",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n5",
+            "to": "n6",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n6",
+            "to": "n7",
+            "label": "",
+            "kind": "directed"
+          },
+          {
+            "from": "n7",
+            "to": "n8",
+            "label": "",
+            "kind": "directed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "altium-designer-04",
+    "mode": "professional",
+    "plan": {
+      "complete": true,
+      "figure": {
+        "kind": "illustration",
+        "title": "RC低通电路原理图",
+        "caption": "RC低通滤波器电路示意图。输入信号Vin经电阻R连接至输出端Vout，电容C并联于Vout与地GND之间。",
+        "layout": "LR",
+        "description": "在纯白背景上绘制标准的电子电路原理图。布局从左至右：左侧为输入端口Vin，中间串联电阻R，右侧节点为输出端口Vout。从Vout节点向下引出导线连接至电容C的一端，电容C的另一端连接至公共地线（GND）。输入端Vin下方也需连接至同一公共地线。所有元件使用标准电气符号，线条清晰平整，无装饰性元素。",
+        "requiredObjects": [
+          "输入端子 Vin",
+          "电阻 R (标准矩形或锯齿形符号)",
+          "电容 C (标准平行板符号)",
+          "输出端子 Vout",
+          "接地符号 GND (至少两个，分别位于输入地和输出地，或共用一条地线)"
+        ],
+        "labels": [
+          "Vin",
+          "R",
+          "C",
+          "Vout",
+          "GND"
+        ]
+      }
+    }
+  }
+]

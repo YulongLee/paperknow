@@ -1,34 +1,35 @@
 // Product choices describe the illustration to create; they are not integrations
 // with the specialist desktop applications sometimes used for these figures.
+import {basicFigureExamples,professionalFigureExample} from './research-figure-examples.mjs';
 const figure=(id,label,description,example)=>({id,label,description,example});
 export const basicResearchFigures=[
  figure('auto','智能选择','根据描述选择适合的画面结构','为一项大学生学习投入研究画一张清晰的科研示意图，包含研究背景、研究问题、问卷调查、数据分析和结论，使用蓝白配色。'),
  figure('flowchart','流程图','步骤、分支与决策关系','画一张研究流程图：提出问题→文献调研→提出假设→问卷设计→数据采集→统计分析→研究结论。节点从左向右排列，清晰标注每个步骤。'),
  figure('er','实体关系图','实体、属性与关系示意','画一张图书管理系统实体关系示意图，包含读者、图书、借阅记录三个实体。读者与借阅记录为一对多，图书与借阅记录为一对多，标注主键和关键属性。'),
- figure('pie','饼图','组成、占比与类别对照','画一张样本专业分布饼图。仅使用以下示例值：理工科40%、人文社科35%、医学25%，标明示例数据，图例放在右侧，背景留白。'),
- figure('bar','柱状图','不同类别的数值对比','将以下已提供数据画成柱状图：方案A为12、方案B为18、方案C为15。纵轴为完成时间（分钟），柱顶显示数值，使用蓝色渐变。'),
- figure('line','折线图','变化趋势与序列对比','画一张折线图，仅展示给定数据：第1周20、第2周25、第3周23、第4周31。横轴为周次，纵轴为参与人数，标注数据点。'),
+ figure('pie','饼图','组成、占比与类别对照',basicFigureExamples['pie']),
+ figure('bar','柱状图','不同类别的数值对比',basicFigureExamples['bar']),
+ figure('line','折线图','变化趋势与序列对比',basicFigureExamples['line']),
  figure('tree','树图','层级、分类与组织结构','画一张研究框架树图：学习效果分为认知、行为和情感三个维度，每个维度列出两个观察指标。使用圆角节点，层级自上而下。'),
- figure('treemap','矩形树图','层级与面积占比示意','画一张研究资源分配矩形树图，示例数据为：文献整理30、实验40、数据分析20、写作10。面积对应给定数值，明确标注示例。'),
- figure('horizontal-bar','条形图','横向展示类别差异','绘制横向条形图，给定满意度分数：教学内容4.5、互动反馈4.1、资源支持3.8、评价方式4.0，横轴范围0至5。'),
- figure('pictorial-bar','象形柱图','用图形符号表达类别与数量','绘制一张象形柱图，以书本形状表示文献阅读数量。使用给定示例数据：第一组12篇、第二组18篇、第三组15篇，每个书本图标表示3篇，保留清晰图例并注明示例数据。'),
- figure('radar','雷达图','多维度能力或指标对比','画一张五维雷达图，维度为准确性、效率、稳定性、易用性、可扩展性。方案A的示例评分依次为4、5、4、3、4，使用单一蓝色。'),
- figure('chord','和弦图','群组之间的联系示意','画一张跨学科合作关系和弦示意图，包含计算机、教育、心理学、设计四个学科，强调计算机与教育的合作，不虚构统计数值。'),
- figure('heatmap','热力图','矩阵中的高低分布','画一张3×3热力图，行是方法A/B/C，列是指标1/2/3，给定矩阵为0.8,0.6,0.7；0.5,0.9,0.6；0.7,0.8,0.9，标出原始数值。'),
- figure('boxplot','盒须图','分布结构与异常值示意','画一张盒须图结构教学示意图，标注最小值、第一四分位数、中位数、第三四分位数、最大值与异常点，不添加未经提供的实验统计。'),
- figure('gauge','仪表盘','单项进度与目标表达','画一张研究计划进度仪表盘，当前进度为65%，目标100%，使用简洁半圆弧，中心显示65%，注明计划完成进度。'),
- figure('scatter','散点图','变量关系与分布示意','用以下数据点画散点图：(1,2)、(2,3)、(3,2.5)、(4,4)、(5,4.5)，横轴为学习时长，纵轴为自测评分，说明这是示例数据，不做显著性推断。'),
- figure('candlestick','K线图','开高低收的视觉表达','绘制单根K线教学示意图，标注开盘价、收盘价、最高价、最低价，分别展示上涨和下跌，不生成实际市场行情。'),
- figure('sankey','桑基图','流向、转化与路径','画一张学习资源使用路径桑基示意图，入口为教材、视频、练习，流向自主学习和协作学习，再连接到知识巩固，不添加虚构样本数。'),
+ figure('treemap','矩形树图','层级与面积占比示意',basicFigureExamples['treemap']),
+ figure('horizontal-bar','条形图','横向展示类别差异',basicFigureExamples['horizontal-bar']),
+ figure('pictorial-bar','象形柱图','用图形符号表达类别与数量',basicFigureExamples['pictorial-bar']),
+ figure('radar','雷达图','多维度能力或指标对比',basicFigureExamples['radar']),
+ figure('chord','和弦图','群组之间的联系示意',basicFigureExamples['chord']),
+ figure('heatmap','热力图','矩阵中的高低分布',basicFigureExamples['heatmap']),
+ figure('boxplot','盒须图','分布结构与异常值示意',basicFigureExamples['boxplot']),
+ figure('gauge','仪表盘','单项进度与目标表达',basicFigureExamples['gauge']),
+ figure('scatter','散点图','变量关系与分布示意',basicFigureExamples['scatter']),
+ figure('candlestick','K线图','开高低收的视觉表达',basicFigureExamples['candlestick']),
+ figure('sankey','桑基图','流向、转化与路径',basicFigureExamples['sankey']),
  figure('sunburst','旭日图','多层级环形结构','画一张科研方法分类旭日图：内层为定性、定量、混合方法；外层分别列出访谈、案例、实验、问卷和混合设计，层级清楚。'),
  figure('matrix','矩阵坐标系','二维定位与四象限表达','画一张科研任务优先级四象限图，横轴为紧迫程度，纵轴为重要程度，四个象限分别标注立即执行、计划安排、委派协作、减少投入。'),
- figure('calendar','日历坐标系','按日期组织研究活动','绘制一个示意性研究日历热力图，展示文献阅读、实验记录和写作三个活动类别，仅用深浅表达活动分布，不标注虚构统计。'),
- figure('parallel','平行坐标系','多个变量的模式对照','绘制平行坐标系教学示意图，设置准确率、耗时、内存、稳定性四条纵轴，以三条不同颜色的线示意三种方法，标注为示意。'),
+ figure('calendar','日历坐标系','按日期组织研究活动',basicFigureExamples['calendar']),
+ figure('parallel','平行坐标系','多个变量的模式对照',basicFigureExamples['parallel']),
  figure('mindmap-network','思维导图(非树状)','用自由布局组织概念、交叉联系与研究思路','画一张非树状思维导图，中心主题为大学生学习投入，围绕学习动机、学习环境、教师支持、同伴互动和学习效果自由布局。用交叉连线表达相互影响，不强制为树状层级。'),
  figure('network','关系图','对象、连接与网络结构','画一张研究合作关系图，中心节点为课题组，连接导师、研究生、实验平台和合作机构，标注指导、研究、技术支持和合作关系。'),
- figure('funnel','漏斗图','筛选、转化与阶段收敛','画一张文献筛选漏斗示意图，阶段为数据库检索、去除重复、摘要筛选、全文阅读、纳入研究，只标阶段，不添加样本数。'),
+ figure('funnel','漏斗图','筛选、转化与阶段收敛',basicFigureExamples['funnel']),
  figure('path','路径图','作用路径与假设关系','画一张研究假设路径图：学习支持→学习动机→学习投入→学习效果；学习支持也直接指向学习效果，路径标为H1至H4，不添加估计系数。'),
- figure('river','主题河流图','主题随时间的演变','画一张科研主题河流概念示意图，三条河流分别为人工智能、在线学习、个性化反馈，时间轴为2019年至2025年，注明趋势示意而非统计结果。'),
+ figure('river','主题河流图','主题随时间的演变',basicFigureExamples['river']),
  figure('journey','用户旅程图','阶段、行为与体验触点','画一张研究生使用文献工具的用户旅程图：发现选题、检索文献、阅读标注、整理笔记、写作引用。每阶段列出行为、痛点和机会。'),
  figure('requirement','需求图','目标、需求与依赖关系','画一张科研资料管理系统需求图，顶层目标为高效管理研究资料，下分文献检索、分类收藏、笔记整理和引用导出，标明需求依赖。'),
  figure('zenuml','ZenUML','交互调用与控制逻辑','画一张系统交互示意图：用户输入检索词，前端请求检索服务，服务查询文献源并返回结果，用户收藏题录。清楚区分参与者，不生成可执行代码。'),
@@ -634,7 +635,7 @@ const professionalDomainDirections={
 for(const group of professionalResearchFigures){
  const legacy={id:group.id+'-general',label:'通用科研场景',items:group.items.map(item=>({...item,familyId:group.id+'-general',familyLabel:'通用科研场景'}))};
  const families=professionalFamilyScenes.filter(([categoryId])=>categoryId===group.id).map(([,id,label,...scenes])=>({id,label,items:scenes.map((scene,index)=>({
-  ...figure(id+'-'+String(index+1).padStart(2,'0'),label+' - '+scene,scene+'的科研示意表达','请生成一张'+scene+'科研示意图片，使用'+label+'类图形常见的清晰表达方式。请先根据我的研究内容确定具体对象、元素、连接关系、布局和标注。'+professionalDomainDirections[group.id]+'使用简洁白色背景，说明性的文字保持清楚。'),
+  ...figure(id+'-'+String(index+1).padStart(2,'0'),label+' - '+scene,scene+'的科研示意表达',professionalFigureExample(group.id,scene)),
   familyId:id,familyLabel:label,sceneLabel:scene,aliases:[label.replace(/\s/g,''),scene],guidance:professionalDomainDirections[group.id]
  }))}));
  group.families=[legacy,...families];

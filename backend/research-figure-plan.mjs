@@ -9,7 +9,39 @@ const optional=(v,max,label)=>v==null||v===''?'':text(v,max,label);
 const color=v=>{const named={orange:'#D55E00',blue:'#0072B2',green:'#009E73',gray:'#64748b',grey:'#64748b',red:'#b91c1c',橙色:'#D55E00',蓝色:'#0072B2',绿色:'#009E73',灰色:'#64748b'};return typeof v==='string'?(named[v.toLowerCase()]||(/^#[a-fA-F0-9]{6}$/.test(v)?v:undefined)):undefined;};
 const number=(v,label)=>{if(typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>1e12)fail(label+'必须是有限数值');return v;};
 const arrays=(v,max,label)=>{if(!Array.isArray(v)||v.length>max)fail(label+'格式无效或数量过多');return v;};
+export function numericLineCoordinates(categories){
+ if(!Array.isArray(categories)||categories.length<2||!categories.every(v=>typeof v==='string'&&/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(v)))return null;
+ const x=categories.map(Number);return x.every((value,i)=>Number.isFinite(value)&&Math.abs(value)<=1e12&&(!i||value>x[i-1]))?x:null;
+}
 export const publicationChartTypes=Object.freeze(['bar','horizontal-bar','pictorial-bar','line','area','scatter','pie','radar','heatmap','boxplot','candlestick','gauge','treemap','sunburst','sankey','chord','funnel','parallel','calendar','river','histogram']);
+const chartDataSchemas={
+ categorical:'data:{categories:["类别A","类别B"],series:[{name:"系列名称",values:[1,2]}]}。categories每项必须是字符串，数值型周次/年份也必须写成字符串。每个系列的values长度与categories一致。',
+ scatter:'data:{points:[{x:1,y:2},{x:2,y:3}]}。x和y为原文坐标数值。',
+ heatmap:'data:{rows:["行A","行B"],columns:["列A","列B"],matrix:[[1,2],[3,4]]}。行列标签与矩阵尺寸必须对应。',
+ boxplot:'data:{series:[{name:"组名",values:[1,2,3,4]}]}。values必须是每组原始观测值，不是五数概括；不由模型计算四分位数。',
+ candlestick:'data:{ohlc:[{name:"第1日",open:1,close:2,low:0,high:3}]}。时间标签字段必须为name，不使用date。所有开高低收值取自原文。',
+ gauge:'data:{value:1,minimum:0,maximum:5}。unit在figure顶层。仅明确百分比时可以使用0～100。',
+ hierarchy:'data:{hierarchy:{name:"根节点",children:[{name:"子节点",value:1}]}}。仅分类且无权重时qualitative:true，省略所有value。',
+ links:'data:{nodes:[{id:"a",label:"A"},{id:"b",label:"B"}],links:[{from:"a",to:"b",value:1}]}。不要用diagram冒充流量图，连接数值不能仅写在edges.label中。',
+ parallel:'data:{dimensions:["维度A","维度B"],series:[{name:"方法A",values:[[1,2]]},{name:"方法B",values:[[3,4]]}]}。每条数据行是数组；即使一个方法只有一行，也必须有values的外层数组，维度名称使用dimensions。',
+ calendar:'data:{calendar:[{date:"2026-10-01",value:1},{date:"2026-10-02",value:2}]}。日期仅使用原文给定日期。',
+ river:'data:{river:[{date:"2026-01-01",name:"主题A",value:1},{date:"2026-01-01",name:"主题B",value:2}]}。逐个日期和主题展开为记录，不使用categories/series替代。',
+ histogram:'data:{series:[{name:"组名",values:[1,2,3,4]}]}。传入原始观测值，分箱由程序计算。'
+};
+function planSchemaInstructions(choice){
+ const selected=choice.categoryId==='basic'&&publicationFigureKind(choice)==='data'?choice.id:null;
+ const key=selected&&(['bar','horizontal-bar','pictorial-bar','line','area','pie','radar','funnel'].includes(selected)?'categorical':['treemap','sunburst'].includes(selected)?'hierarchy':['sankey','chord'].includes(selected)?'links':selected);
+ const schemas=(key?[[key,chartDataSchemas[key]]]:Object.entries(chartDataSchemas)).map(([key,schema])=>key+'：'+schema).join('\n');
+ return [
+  selected?`所选基础图种强制绑定kind:"chart",chartType:"${selected}"；不得改成diagram、其他图种或空数据。`:'专业图种按明确对象选择绘制方法；如果是电路原理图/电路图，必须使用illustration和标准器件图形，不能用diagram方框代替。',
+  '根结构为{complete:true,figure:{kind:"chart|diagram|sequence|illustration",title:"保存名称",caption:"图注",layout:"LR|TB|radial|grid",qualitative:false,...当前图种实际字段}}。禁止把无关字段写成空对象。以下数据格式中的数字仅演示结构，实际数值必须逐项来自作者原文，不能照抄格式示范数值。',
+  'chart只写chartType、data和所需xLabel/yLabel/unit；图种数据结构如下。bar、horizontal-bar、pictorial-bar、line、area、pie、radar、funnel使用categorical格式；treemap、sunburst使用hierarchy格式；sankey、chord使用links格式。',
+  schemas,
+  'referenceLines和yRange只能放在figure顶层。没有要求参考线则不传referenceLines。没有明确给出坐标范围和间隔则完全省略yRange，不能传空对象，也不能自行选择0起点或推算刻度。明确要求时yRange的min、max、interval都必须是原文给出的数值。',
+  'diagram/sequence：nodes:[{id:"n1",label:"短标注",role:"process|decision|entity|state|component|actor",attributes:["可选属性"]}],edges:[{from:"n1",to:"n2",label:"关系",kind:"directed|undirected|feedback|inheritance|composition|aggregation|dependency|association|return"}]。至少两个节点。',
+  'illustration：description:"画面构图与专业符号说明",requiredObjects:["必要对象"],labels:["需出现在图中的短标签"]。不提交nodes/edges，不把它变成普通框图。'
+ ].join('\n');
+}
 function nodes(raw){const ids=new Set();return arrays(raw,40,'图中元素').map(row=>{if(!object(row))fail('图中元素无效');const id=text(row.id??row.name??row.label,80,'元素编号');if(ids.has(id))fail('元素编号重复或无效');ids.add(id);return {id,label:row.role==='start'||row.role==='end'||Array.isArray(row.attributes)&&row.attributes.includes('initial')||Array.isArray(row.attributes)&&row.attributes.includes('final')?optional(row.label,120,'元素标注'):text(row.label,120,'元素标注'),group:optional(row.group,80,'元素分组'),role:Array.isArray(row.attributes)&&row.attributes.includes('initial')?'start':Array.isArray(row.attributes)&&row.attributes.includes('final')?'end':['process','decision','start','end','entity','state','component','actor'].includes(row.role)?row.role:'process',attributes:row.attributes===undefined?[]:arrays(row.attributes,12,'元素属性').map(v=>text(v,100,'属性标注'))};});}
 function edges(raw,items){const ids=new Set(items.map(n=>n.id));return arrays(raw||[],80,'连接').map(value=>{const row=object(value)?{...value,from:value.from??value.source,to:value.to??value.target}:value;if(!object(row)||!ids.has(row.from)||!ids.has(row.to))fail('连接引用了不存在的元素');return {from:row.from,to:row.to,label:optional(row.label,100,'连接标注'),kind:['directed','undirected','feedback','inheritance','composition','aggregation','dependency','association','return'].includes(row.kind)?row.kind:'directed',...(row.value===undefined?{}:{value:number(row.value,'连接数值')}),...(color(row.color)?{color:color(row.color)}:{})};});}
 function hierarchy(raw,depth=0,count={n:0}){if(!object(raw)||depth>5||++count.n>120)fail('层级数据过深或过多');const node={name:text(raw.name,80,'层级名称'),...(raw.value===undefined?{}:{value:number(raw.value,'层级数值')}),...(raw.children===undefined?{}:{children:arrays(raw.children,40,'子层级').map(v=>hierarchy(v,depth+1,count))})};if(node.value!==undefined&&node.value<0)fail('层级图的面积权重不能为负数');if(node.value!==undefined&&node.children?.every(n=>n.value!==undefined)&&node.children.reduce((sum,n)=>sum+n.value,0)>node.value+Math.max(1,Math.abs(node.value))*1e-9)fail('子层级权重之和超过父层级，请核对原始数据');return node;}
@@ -50,12 +82,14 @@ export function normalizePublicationFigurePlan(raw,snapshot,{verifyEvidence=true
 
   if(['sunburst','treemap'].includes(out.chartType)&&!data.hierarchy)fail('层级图缺少分类关系');
   out.referenceLines=arrays(f.referenceLines||[],8,'参考线').map(r=>({label:text(r.label,80,'参考线名称'),value:number(r.value,'参考线数值'),...(color(r.color)?{color:color(r.color)}:{})}));
-  out.yRange=f.yRange==null?null:{min:number(f.yRange.min,'坐标最小值'),max:number(f.yRange.max,'坐标最大值'),interval:number(f.yRange.interval,'坐标间隔')};
+  // An empty optional range contains no author instruction. Keep the native
+  // automatic scale, while still rejecting partial or fabricated numeric ranges.
+  out.yRange=f.yRange==null||object(f.yRange)&&!Object.keys(f.yRange).length?null:{min:number(f.yRange.min,'坐标最小值'),max:number(f.yRange.max,'坐标最大值'),interval:number(f.yRange.interval,'坐标间隔')};
   if(out.yRange&&(out.yRange.max<=out.yRange.min||out.yRange.interval<=0||(out.yRange.max-out.yRange.min)/out.yRange.interval>30))fail('坐标范围或间隔无效');
   if(out.referenceLines.length&&!['line','bar','scatter'].includes(out.chartType))fail('此图种不支持参考线');
   out.data=data;out.xLabel=optional(f.xLabel,100,'横轴名称');out.yLabel=optional(f.yLabel,100,'纵轴名称');out.unit=optional(f.unit,40,'计量单位');
   if(!out.qualitative&&!numericValues(data).length)fail('数据图没有可绘制的数值；概念图请使用结构示意方式');
-  if(verifyEvidence)for(const value of [...numericValues(data),...out.referenceLines.map(r=>r.value),...(out.yRange?Object.values(out.yRange):[])])if(!(out.chartType==='gauge'&&/%|百分/.test(snapshot.text)&&[0,100].includes(value))&&!sourceHasNumber(snapshot.text,value))fail('发现原始描述中没有的数据 '+value+'，请仅按用户提供的数据绘制');
+  if(verifyEvidence)for(const value of [...numericValues(data),...(['line','area'].includes(out.chartType)?numericLineCoordinates(data.categories)||[]:[]),...out.referenceLines.map(r=>r.value),...(out.yRange?Object.values(out.yRange):[])])if(!(out.chartType==='gauge'&&/%|百分/.test(snapshot.text)&&[0,100].includes(value))&&!sourceHasNumber(snapshot.text,value))fail('发现原始描述中没有的数据 '+value+'，请仅按用户提供的数据绘制');
   if(out.qualitative&&!['sunburst','treemap','chord'].includes(out.chartType))fail('这个数据图需要作者给出明确数值');
   if(out.chartType==='chord'&&(!data.nodes?.length||!data.links?.length))fail('和弦图缺少节点或连接');
   if(out.yRange){const vals=out.chartType==='scatter'&&data.points?data.points.map(p=>p.y):numericValues(data);if(vals.some(v=>v<out.yRange.min||v>out.yRange.max))fail('坐标范围会截断原始数据');}
@@ -79,7 +113,7 @@ export function publicationFigurePlanTask(snapshot){
   '需要空间、材料、器官、装置或机理画面时用illustration；仅表达作者提供的概念，不生成伪实验照片或未经提供的结构测定结果。说明必要对象、方位、箭头和科学关系。',
   `输出语言：${snapshot.language}。规范：${profile.label}。文字只保留必要的短标注；作品名称不放在画面顶端，不加宣传语、UI、水印或长说明。`,
   '图中关系必须正确，反馈方向、主外键、继承关系、时序先后、电流和光路按实际语义表达。元素一般控制在12个以内。requiredObjects只用于插图，nodes/edges用于结构与时序。',
-  '提交格式：{complete:true,figure:{kind:"chart|diagram|sequence|illustration",title:"保存名称",caption:"不掺入未提供结论的图注",layout:"LR|TB|radial|grid",qualitative:false,nodes:[{id:"n1",label:"短标注",role:"process|decision|entity|state|component|actor",attributes:["可选属性"]}],edges:[{from:"n1",to:"n2",label:"关系",kind:"directed|undirected|feedback|inheritance|composition|aggregation|dependency|association|return"}],chartType:"仅数据图需要",data:{categories:[],series:[{name:"系列",values:[]}],points:[{x:1,y:2}],matrix:[],rows:[],columns:[],dimensions:[],hierarchy:{name:"名称",value:1,children:[]},nodes:[],links:[],value:1,ohlc:[],calendar:[],river:[]},xLabel:"",yLabel:"",unit:"",description:"仅插图需要",requiredObjects:["仅插图需要"],labels:["仅插图需要"]}}。只写当前图种用到的字段。',
+  planSchemaInstructions(choice),
   '重要：sunburst、treemap没有权重而只有分类时，仍用chart和hierarchy，qualitative:true，不要提供value，不用diagram冒充。chord没有权重时使用chart，qualitative:true，nodes和links不填value。数值坐标控制图用line并在referenceLines:[{label,value}]写入每条给定控制限，在yRange:{min,max,interval}写入作者明确要求的范围和刻度。',
   'sequence的alt/loop条件放在fragments:[{label:"alt",branches:[{label:"成功",start:3,end:6},{label:"失败",start:7,end:8}]}]，start/end是edges中从0开始的索引，每条消息必须精确反映方向、调用/返回。timeline与journey不要误画成多个参与者相互调用，应使用diagram，以节点顺序与属性表示时间或阶段。',
   'gauge在data.minimum和data.maximum中给出作者指定量程，unit写明单位；只有明确百分比时才使用0到100及%。series中color可指定序列颜色。',

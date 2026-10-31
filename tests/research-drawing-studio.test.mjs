@@ -57,11 +57,18 @@ test('safe octet-stream HTTP downloads become local PNG previews only after matc
  for(const [blob,file] of [[new Blob(['<svg><script>bad()</script></svg>'],{type:'application/octet-stream'}),imageOutput().image],[new Blob([pngFixture(1600,900)],{type:'text/html'}),imageOutput().image],[new Blob([pngFixture(1600,900)],{type:'application/octet-stream'}),{...imageOutput().image,mimeType:'image/jpeg'}],[new Blob([pngFixture(256,256)],{type:'application/octet-stream'}),imageOutput().image]])await assert.rejects(()=>validateResearchDrawingBlob(blob,file),/校验未通过/);
 });
 
-test('drawing entry is a prompt-first studio, type selection preserves typed content, and examples never silently overwrite',async t=>{
+test('type selection preserves typed content while an explicit example click fills immediately and supports undo',async t=>{
  const f=fixture(t);await f.mount.ready;assert.equal(f.container.querySelectorAll('.rd-type-list>[data-rd-figure]').length,basicResearchFigures.length);assert.ok(f.container.querySelector('[data-rd-prompt]'));assert.equal(f.container.querySelector('input[type=file]'),null);assert.equal(f.container.querySelector('table'),null);
- f.enter('[data-rd-prompt]','我自己的科研绘图描述');f.click('[data-rd-figure="network"]');assert.equal(f.container.querySelector('[data-rd-prompt]').value,'我自己的科研绘图描述');assert.equal(f.container.querySelector('[data-rd-figure-label]').textContent,'关系图');f.click('[data-rd-example]');assert.equal(f.container.querySelector('[data-rd-prompt]').value,'我自己的科研绘图描述');assert.match(f.container.querySelector('[data-rd-status]').textContent,/当前描述已保留/);
- f.enter('[data-rd-prompt]','');f.click('[data-rd-example]');assert.match(f.container.querySelector('[data-rd-prompt]').value,/研究合作关系图/);f.click('[data-rd-language="English"]');assert.equal(f.mount.getSnapshot().language,'English');
+ f.enter('[data-rd-prompt]','我自己的科研绘图描述');f.click('[data-rd-figure="network"]');assert.equal(f.container.querySelector('[data-rd-prompt]').value,'我自己的科研绘图描述');assert.equal(f.container.querySelector('[data-rd-figure-label]').textContent,'关系图');f.click('[data-rd-example]');assert.match(f.container.querySelector('[data-rd-prompt]').value,/研究合作关系图/);assert.match(f.container.querySelector('[data-rd-status]').textContent,/可直接生成/);assert.equal(f.container.querySelector('[data-rd-undo-example]').hidden,false);
+ f.click('[data-rd-undo-example]');assert.equal(f.mount.getSnapshot().text,'我自己的科研绘图描述');assert.equal(f.container.querySelector('[data-rd-undo-example]').hidden,true);
+ f.enter('[data-rd-prompt]','');f.click('[data-rd-example]');assert.match(f.container.querySelector('[data-rd-prompt]').value,/研究合作关系图/);assert.equal(f.container.querySelector('[data-rd-undo-example]').hidden,true);f.click('[data-rd-language="English"]');assert.equal(f.mount.getSnapshot().language,'English');
  const saved=JSON.parse(f.w.localStorage.getItem(researchDrawingDraftKey+':basic:alice'));assert.equal(saved.form.prompt,f.container.querySelector('[data-rd-prompt]').value);assert.equal(saved.form.figureType,'network');assert.equal(saved.form.language,'English');assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,0);
+});
+
+test('switching examples replaces the previous example and deliberate edits invalidate its undo',async t=>{
+ const f=fixture(t);await f.mount.ready;f.click('[data-rd-figure="pie"]');f.click('[data-rd-example]');const pie=f.mount.getSnapshot().text;assert.match(pie,/40%/);
+ f.click('[data-rd-figure="boxplot"]');assert.equal(f.mount.getSnapshot().text,pie);f.click('[data-rd-example]');assert.match(f.mount.getSnapshot().text,/原始观测值/);assert.notEqual(f.mount.getSnapshot().text,pie);
+ f.click('[data-rd-undo-example]');assert.equal(f.mount.getSnapshot().text,pie);f.click('[data-rd-example]');f.enter('[data-rd-prompt]','我已修改成自己的真实研究数据');assert.equal(f.container.querySelector('[data-rd-undo-example]').hidden,true);f.click('[data-rd-undo-example]');assert.equal(f.mount.getSnapshot().text,'我已修改成自己的真实研究数据');
 });
 
 test('professional domain choices send their own semantic category without claiming desktop software integration',async t=>{

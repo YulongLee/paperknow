@@ -7,7 +7,7 @@ import {createScientificFigure,normalizeFigureReview} from '../backend/research-
 import {validateResearchImage} from '../backend/research-image-client.mjs';
 import {pngFixture} from './fixtures/research-image.mjs';
 const settings={enabled:true,model:'qwen-image-3.0',apiKey:'sk-private-fixture',version:'test-scientific',baseURL:'https://dashscope.aliyuncs.com',timeoutMs:1000};
-const snapshot=(figureType='flowchart')=>({mode:'basic',title:'Save name',text:'A→B; counts 9,10,11,10,9,11,10,10. UCL12 CL10 LCL8. Axis8..12 step1.',language:'English',context:{categoryId:'basic',figureType,aspectRatio:'4:3',palette:'academic'}});
+const snapshot=(figureType='flowchart')=>({mode:'basic',title:'Save name',text:'A→B; sample indices 1 2 3 4 5 6 7 8; counts 9,10,11,10,9,11,10,10. UCL12 CL10 LCL8. Axis8..12 step1.',language:'English',context:{categoryId:'basic',figureType,aspectRatio:'4:3',palette:'academic'}});
 const review=passed=>({passed,checks:['brief_fidelity','scientific_relations','numeric_accuracy','labels_legible','no_overlap_or_clipping','figure_grammar'].map(key=>({key,passed:passed||key!=='brief_fidelity',detail:passed?'Checked exact objects and relations':'Wrong object count; use the exact required number'}))});
 const illustration={complete:true,figure:{kind:'illustration',description:'Two components A and B',requiredObjects:['A','B'],labels:['A','B']}};
 const illustrationSnapshot=()=>({...snapshot(),mode:'professional',context:{...snapshot().context,categoryId:'rendering',figureType:'3d-structure'}});
@@ -23,8 +23,18 @@ test('chord renders actual ribbons for exactly the declared connections',async()
 });
 test('control chart plots the exact ordered observations, reference limits and explicit ticks',()=>{
  const s=snapshot('line'),values=[9,10,11,10,9,11,10,10],plan=normalizePublicationFigurePlan(chart('line',{categories:values.map((_,i)=>String(i+1)),series:[{name:'Observed',values}]},{referenceLines:[{label:'UCL',value:12},{label:'CL',value:10},{label:'LCL',value:8}],yRange:{min:8,max:12,interval:1}}),s),option=publicationChartOption(plan,s);
- assert.deepEqual(option.series[0].data,values);assert.deepEqual(option.series[0].markLine.data.map(r=>r.yAxis),[12,10,8]);assert.equal(option.yAxis.interval,1);assert.equal(option.yAxis.min,8);assert.equal(option.yAxis.max,12);
+ assert.deepEqual(option.series[0].data,values.map((value,i)=>[i+1,value]));assert.deepEqual(option.series[0].markLine.data.map(r=>r.yAxis),[12,10,8]);assert.equal(option.yAxis.interval,1);assert.equal(option.yAxis.min,8);assert.equal(option.yAxis.max,12);
  assert.throws(()=>normalizePublicationFigurePlan(chart('line',{categories:['A'],series:[{name:'x',values:[99]}]}),s),{code:'figure_plan_invalid'});
+});
+test('optional empty axis settings do not reject complete data, while partial or invented ranges still fail',()=>{
+ const s={...snapshot('pie'),text:'A=40, B=35, C=25.'},raw=chart('pie',{categories:['A','B','C'],series:[{name:'Share',values:[40,35,25]}]},{yRange:{}}),plan=normalizePublicationFigurePlan(raw,s);
+ assert.equal(plan.yRange,null);assert.equal(publicationChartOption(plan,s).series[0].data[0].value,40);
+ for(const yRange of [{min:0},{min:0,max:50,interval:10}])assert.throws(()=>normalizePublicationFigurePlan({...raw,figure:{...raw.figure,yRange}},s),{code:'figure_plan_invalid'});
+});
+test('uneven numeric line samples preserve true x positions and ordinary categories remain categorical',async()=>{
+ const s={...snapshot('line'),text:'FPR0,0.1,0.2,0.4,1. TPR0,0.6,0.8,0.9,1.'},plan=normalizePublicationFigurePlan(chart('line',{categories:['0','0.1','0.2','0.4','1'],series:[{name:'ROC',values:[0,0.6,0.8,0.9,1]}]}),s),option=publicationChartOption(plan,s);
+ assert.equal(option.xAxis.type,'value');assert.deepEqual(option.series[0].data,[[0,0],[0.1,0.6],[0.2,0.8],[0.4,0.9],[1,1]]);assert.ok((await renderPublicationVector(plan,s)).grammarVerified);
+ for(const categories of [['A','B'],['001','002']]){const categorical=normalizePublicationFigurePlan(chart('line',{categories,series:[{name:'Observed',values:[9,10]}]}),snapshot('line'));assert.equal(publicationChartOption(categorical,s).xAxis.type,'category');}
 });
 test('malformed, cyclic, over-dense and unsupported plans do not reach unchecked rendering',async()=>{
  const s=snapshot();assert.throws(()=>normalizePublicationFigurePlan(illustration,s),{code:'figure_plan_invalid'});assert.throws(()=>normalizePublicationFigurePlan({complete:false,needs:'实际观测数据'},s),/请补充实际观测数据/);

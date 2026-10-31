@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import {fileURLToPath} from 'node:url';
 process.env.FONTCONFIG_FILE ||= fileURLToPath(new URL('./research-fonts.conf',import.meta.url));
 import {publicationProfile} from './research-publication-policy.mjs';
+import {numericLineCoordinates} from './research-figure-plan.mjs';
 const invalid=message=>{throw Object.assign(Error(message),{status:422,code:'figure_render_invalid'});};
 const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const colors=['#0072B2','#D55E00','#009E73','#CC79A7','#E69F00','#56B4E9','#333333'];
@@ -23,6 +24,13 @@ export function publicationChartOption(plan,snapshot){
   categorical();Object.assign(option,cartesian(plan,c));const horizontal=type==='horizontal-bar';if(horizontal){const x=option.xAxis;option.xAxis={...option.yAxis,name:plan.xLabel||plan.unit||'',nameGap:f*2.5};option.yAxis={...x,name:plan.yLabel,nameGap:f*4.3};}
   if(type==='bar'||horizontal||type==='pictorial-bar'){const axis=horizontal?option.xAxis:option.yAxis;axis.min=Math.min(0,...series.flatMap(s=>s.values));}
   option.series=series.map((s,i)=>({type:type==='line'||type==='area'?'line':type==='pictorial-bar'?'pictorialBar':'bar',...(type==='pictorial-bar'?{symbol:'rect',symbolRepeat:true,symbolMargin:2,symbolSize:['80%',8],symbolClip:true}:{}),name:s.name,data:s.values,barMaxWidth:Math.max(22,85/series.length),symbol:['circle','rect','triangle','diamond'][i%4],symbolSize:Math.max(7,f*.42),showSymbol:true,smooth:false,lineStyle:{width:Math.max(2,f*.12),type:i%2?'dashed':'solid',...(s.color?{color:s.color}:{})},itemStyle:{borderColor:'#ffffff',borderWidth:1},...(type==='area'?{areaStyle:{opacity:.16}}:{}),...(false?{label:{show:true,position:horizontal?'right':'top',fontSize:f,color:'#1f2937'}}:{})}));
+  // Numerical coordinates (e.g. ROC or frequency samples) must retain their
+  // actual spacing, rather than becoming equally spaced categorical labels.
+  const x=['line','area'].includes(type)&&numericLineCoordinates(categories);
+  if(x){
+   option.xAxis={...option.xAxis,type:'value',data:undefined,min:x[0],max:x.at(-1),boundaryGap:false,...(x.every(Number.isInteger)?{minInterval:1}:{})};
+   option.series.forEach((s,i)=>s.data=series[i].values.map((value,j)=>[x[j],value]));
+  }
  }else if(type==='scatter'){
   if(!d.points?.length)invalid('散点图需要明确的数据点');Object.assign(option,cartesian(plan,c));option.xAxis={...option.xAxis,type:'value',data:undefined};option.series=[{type:'scatter',symbolSize:Math.max(8,f*.5),itemStyle:{color:colors[0],opacity:.9},data:d.points.map(p=>[p.x,p.y])}];
  }else if(type==='pie'){
