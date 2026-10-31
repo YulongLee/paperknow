@@ -75,6 +75,7 @@ test('same-owner detection recovery markers never remount another active view, w
   w.mountTool=()=>{mounts++;f.document.querySelector('.dashboard').innerHTML='<textarea id="detection-workflow-draft">尚未提交的论文正文</textarea>';return true;};
   w.history.replaceState(null,'','#tool/writing');f.api.render();const input=f.document.querySelector('#detection-workflow-draft');input.focus();input.setSelectionRange(3,3);const before=mounts;
   for(const prefix of ['paperknow-web-similarity-last:','paperknow-aigc-last:'])w.dispatchEvent(new w.StorageEvent('storage',{key:prefix+signedIn.id,newValue:'{"itemId":"other-task"}',storageArea:f.storage}));
+  for(const key of ['paperknow-literature-account:'+signedIn.id,'paperknow-literature-account:'+signedIn.id+':pending:tab','paperknow-literature-account:another-owner:pending:tab'])w.dispatchEvent(new w.StorageEvent('storage',{key,newValue:'{}',storageArea:f.storage}));
   assert.equal(mounts,before);assert.equal(f.document.querySelector('#detection-workflow-draft'),input);assert.equal(f.document.activeElement,input);assert.equal(input.selectionStart,3);assert.equal(input.value,'尚未提交的论文正文');
   w.dispatchEvent(new w.StorageEvent('storage',{key:'paperknow-aigc-last:another-owner',newValue:'{"itemId":"private-task"}',storageArea:f.storage}));assert.equal(mounts,before+1);
  }finally{f.close();}
