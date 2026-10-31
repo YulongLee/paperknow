@@ -54,9 +54,10 @@ test('planning schema repairs cannot consume the two actual image repair attempt
  },imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}});
  assert.equal(result.review.passed,true);assert.equal(planning,3);assert.equal(images,2);
 });
-test('panel stage names use native headings instead of object leader lines',async()=>{
- const p={...plan,labels:['Separated','Aligned']},l=normalizeIllustrationLabelLayout({hasText:false,annotations:[{index:0,kind:'panel',x:250,y:100},{index:1,kind:'panel',x:750,y:100}]},p);
- const output=await composeIllustrationLabels(pngFixture(1600,900),p,l);assert.equal((output.labelSvg.match(/data-panel-label=/g)||[]).length,2);assert.doesNotMatch(output.labelSvg,/data-label-target|<path/);
+test('panel titles occupy reserved white bands even when the locator returns object centres',async()=>{
+ const p={...plan,layout:'grid',labels:['Separated','Aligned','Inserted','Complete']},l=normalizeIllustrationLabelLayout({hasText:false,annotations:p.labels.map((_,index)=>({index,kind:'panel',x:index%2?750:250,y:index<2?250:750}))},p);
+ const output=await composeIllustrationLabels(pngFixture(1600,900),p,l);assert.equal((output.labelSvg.match(/data-panel-label=/g)||[]).length,4);assert.doesNotMatch(output.labelSvg,/data-label-target|<path/);
+ const ys=[...output.labelSvg.matchAll(/<text x="[^"]+" y="([^"]+)"/g)].map(m=>Number(m[1]));assert.ok(ys[0]<200&&ys[1]<200);assert.ok(ys[2]>450&&ys[2]<600&&ys[3]>450&&ys[3]<600);
 });
 test('an independently disproved visual suspicion does not require another paid image',async()=>{
  let images=0;const phases=[];

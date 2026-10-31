@@ -25,27 +25,40 @@ export async function composeIllustrationLabels(buffer,plan,layout){
  if(!plan.labels.length)return{buffer,annotations:0};
  const {width,height}=await sharp(buffer).metadata();
  if(!width||!height||width>4096||height>4096)invalid('插图画布尺寸无效');
- const font=width*.0155,pad=font*.85,rail=width*.215,artWidth=Math.round(width-rail*2),artHeight=Math.round(height*artWidth/width),artX=Math.round(rail),artY=Math.round((height-artHeight)/2);
- const groups=[[],[]],parts=[];
- for(const a of layout){
-  if(a.kind==='panel'){
-   const rows=wrap(plan.labels[a.index],artWidth*.42,font),x=artX+a.x/1000*artWidth,y=artY+a.y/1000*artHeight;
-   if(x<artX+font||x>artX+artWidth-font||y-rows.length*font*.7<0||y+rows.length*font*.7>height)invalid('分镜标题位置超出画布');
-   parts.push(`<g data-panel-label="${a.index}">${rows.map((row,j)=>`<text x="${x}" y="${y+(j-(rows.length-1)/2)*font*1.35}" text-anchor="middle" dominant-baseline="middle" font-size="${font}">${esc(row)}</text>`).join('')}</g>`);continue;
+ const panels=layout.filter(a=>a.kind==='panel'),cell=a=>(a.y<500?0:2)+(a.x<500?0:1);
+ const panelGrid=plan.layout==='grid'&&panels.length===4&&new Set(panels.map(cell)).size===4;
+ const font=width*.0155,pad=font*.85,rail=width*(panelGrid&&panels.length===layout.length?.05:.215),artWidth=Math.round(width-rail*2),artHeight=Math.round(height*artWidth/width),artX=Math.round(rail),artY=Math.round((height-artHeight)/2);
+ const groups=[[],[]],parts=[],layers=[],rowMaps=[];
+ if(panelGrid){
+  // Move complete image rows below dedicated white title bands. No title can
+  // land on an object, even if the vision model returns an object's centre.
+  const texts=panels.map(a=>wrap(plan.labels[a.index],artWidth*.43,font)),band=Math.ceil(Math.max(...texts.map(r=>r.length))*font*1.35+font*.8),rowHeight=Math.floor(artHeight/2),imageHeight=rowHeight-band;
+  if(imageHeight<font*3)invalid('分镜标题过长，请缩短阶段名称');
+  for(let row=0;row<2;row++){
+   const sourceTop=row?Math.floor(height/2):0,sourceHeight=row?height-sourceTop:Math.floor(height/2),scale=Math.min(artWidth/width,imageHeight/sourceHeight),left=artX+(artWidth-width*scale)/2,top=artY+row*rowHeight+band+(imageHeight-sourceHeight*scale)/2;
+   rowMaps.push({sourceTop,scale,left,top});
+   const strip=await sharp(buffer).extract({left:0,top:sourceTop,width,height:sourceHeight}).resize(artWidth,imageHeight,{fit:'contain',background:'white'}).png().toBuffer();layers.push({input:strip,left:artX,top:artY+row*rowHeight+band});
   }
+  for(const [i,a]of panels.entries()){
+   const slot=cell(a),x=artX+artWidth*(slot%2?.75:.25),y=artY+Math.floor(slot/2)*rowHeight+band/2,rows=texts[i];
+   parts.push(`<g data-panel-label="${a.index}">${rows.map((row,j)=>`<text x="${x}" y="${y+(j-(rows.length-1)/2)*font*1.35}" text-anchor="middle" dominant-baseline="middle" font-size="${font}">${esc(row)}</text>`).join('')}</g>`);
+  }
+ }else layers.push({input:await sharp(buffer).resize(artWidth,artHeight).png().toBuffer(),left:artX,top:artY});
+ const target=a=>{if(!panelGrid)return{x:artX+a.x/1000*artWidth,y:artY+a.y/1000*artHeight};const m=rowMaps[a.y<500?0:1];return{x:m.left+a.x/1000*width*m.scale,y:m.top+(a.y/1000*height-m.sourceTop)*m.scale};};
+ for(const a of layout){
+  if(panelGrid&&a.kind==='panel')continue;
   const rows=wrap(plan.labels[a.index],rail-pad*2,font),h=rows.length*font*1.35+font*.8;groups[a.x<500?0:1].push({...a,rows,h});
  }
  for(const [side,items] of groups.entries()){
   items.sort((a,b)=>a.y-b.y||a.index-b.index);const total=items.reduce((n,a)=>n+a.h,0),available=height-pad*2;
   if(total>available)invalid('插图标注过密，请在保持含义的前提下缩短标签');
   const gap=items.length>1?Math.min(font*1.3,(available-total)/(items.length-1)):0;let y=(height-total-gap*Math.max(0,items.length-1))/2;
-  for(const a of items){const middle=y+a.h/2,x=side?width-pad:pad,lineX=side?width-rail+font*.3:rail-font*.3,targetX=artX+a.x/1000*artWidth,targetY=artY+a.y/1000*artHeight;
+  for(const a of items){const middle=y+a.h/2,x=side?width-pad:pad,lineX=side?width-rail+font*.3:rail-font*.3,{x:targetX,y:targetY}=target(a);
    parts.push(`<path data-label-target="${a.index}" d="M${lineX},${middle} L${targetX},${targetY}" fill="none" stroke="#64748b" stroke-width="${Math.max(1.5,width*.00065)}"/><circle cx="${targetX}" cy="${targetY}" r="${font*.07}" fill="#475569"/>`);
    parts.push(`<g data-label="${a.index}">${a.rows.map((row,j)=>`<text x="${x}" y="${middle+(j-(a.rows.length-1)/2)*font*1.35}" text-anchor="${side?'end':'start'}" dominant-baseline="middle" font-size="${font}">${esc(row)}</text>`).join('')}</g>`);y+=a.h+gap;
   }
  }
  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><g font-family="Noto Sans SC,Noto Sans CJK SC,sans-serif" fill="#172b42">${parts.join('')}</g></svg>`;
- const art=await sharp(buffer).resize(artWidth,artHeight).png().toBuffer();
- const output=await sharp({create:{width,height,channels:3,background:'white'}}).composite([{input:art,left:artX,top:artY},{input:Buffer.from(svg),left:0,top:0}]).png().toBuffer();
+ const output=await sharp({create:{width,height,channels:3,background:'white'}}).composite([...layers,{input:Buffer.from(svg),left:0,top:0}]).png().toBuffer();
  return{buffer:output,annotations:layout.length,labelSvg:svg};
 }
