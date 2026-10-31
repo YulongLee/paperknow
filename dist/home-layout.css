@@ -27,6 +27,10 @@
 .homepage-v1 select {
   font-family: inherit;
 }
+.homepage-v1 .product-header,
+.homepage-v1 .brand .brand-filing-name {
+  font-family: "PaperKnow Home", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
 .homepage-v1 main .container,
 .homepage-v1 footer.container,
 .homepage-v1 .product-header .nav-wrap {
@@ -92,7 +96,11 @@
 }
 .homepage-v1 .hp-final-actions .hp-v1-final-price-link {
   margin: 0;
-  color: #dce8ff;
+  padding: 5px 12px;
+  border: 1px solid #ffffff30;
+  border-radius: 20px;
+  background: #061729cc;
+  color: #e8f0ff;
 }
 .homepage-v1 .footer-links {
   align-items: start;
