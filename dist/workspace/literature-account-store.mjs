@@ -50,7 +50,7 @@ export function createLiteratureAccountStore({win=window,fetchImpl=(...args)=>fe
   }catch(error){if(current(s)&&error.name!=='AbortError'){s.error=true;status(s,'文献暂时无法同步，请稍后重试。',true);win.dispatchEvent(new win.CustomEvent('paperknow:library-loaded'));}}
   finally{if(current(s))s.refreshing=false;}
  }
- const adapter={read:()=>scope?rows(scope):[],status:()=>scope?scope.loaded?'ready':scope.error?'error':'loading':sessionStatus,version:id=>scope?.pending.get(id)?.version??scope?.entries.get(id)?.version??0,write(value){
+ const adapter={read:()=>scope?rows(scope):[],owner:()=>scope?.owner||null,status:()=>scope?scope.loaded?'ready':scope.error?'error':'loading':sessionStatus,version:id=>scope?.pending.get(id)?.version??scope?.entries.get(id)?.version??0,write(value){
   const s=scope;if(!s)throw Error('请先登录，再保存文献。');if(!s.loaded)throw Error('文献正在同步，请稍后再保存。');if(!Array.isArray(value)||value.length>200)throw Error('文献库最多保存 200 篇。');
   if(value.some(item=>item.originalOwnerId&&item.originalOwnerId!==s.owner))throw Error('文献原件不属于当前账户。');
   const next=new Map(value.map(item=>[item.id,item])),entries=new Map(s.entries),pending=new Map(s.pending);if(entries.get('@groups')?.item)next.set('@groups',entries.get('@groups').item);

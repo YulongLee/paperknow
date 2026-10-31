@@ -6,8 +6,11 @@ import {mountLiteratureAi} from '../dist/workspace/literature-ai.mjs';
 import {validatePaper,literatureKey} from '../dist/workspace/literature-model.mjs';
 import {requireReadingCitationCoverage,selectReadingMaterials} from '../dist/workspace/literature-ai-model.mjs';
 import {clearEditor,editorHasWork,editorRouteGuard,flushEditorDraft} from '../dist/workspace/edit-guard.mjs';
+import {createLiteratureAccountStore} from '../dist/workspace/literature-account-store.mjs';
+import {list,stateStoreStatus} from '../dist/workspace/state.mjs';
 
 const source='A complete source paragraph with verifiable information.';
+test('an open literature form cannot save its original account content after the session switches',async t=>{const f=setup(t);let owner='alice',writes=0;const store=createLiteratureAccountStore({win:f.w,fetchImpl:async(_path,options)=>{if(options.method==='POST')writes++;return Response.json({ownerId:owner,entries:[],projectIds:[],fileIds:[]});}});t.after(()=>store.dispose());store.setUser({id:owner});for(let i=0;i<20&&stateStoreStatus(literatureKey)!=='ready';i++)await new Promise(r=>setTimeout(r,5));mountLiterature(f.ctx);f.$('[data-lit-add]').click();f.$('#lit-title').value='Private account A title';owner='bob';store.setUser({id:owner});for(let i=0;i<20&&stateStoreStatus(literatureKey)!=='ready';i++)await new Promise(r=>setTimeout(r,5));f.$('#lit-form').dispatchEvent(new f.w.Event('submit',{bubbles:true,cancelable:true}));assert.match(f.$('#lit-error').textContent,/账户已变化/);assert.equal(list(literatureKey).length,0);assert.equal(writes,0);});
 function setup(t){
  const dom=new JSDOM('<main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'https://audit.test/workspace.html#category/literature'}),w=dom.window;
  const names=['window','document','localStorage','FormData','location','AbortController','DOMParser','XMLSerializer','MutationObserver','fetch'],before=Object.fromEntries(names.map(key=>[key,globalThis[key]]));

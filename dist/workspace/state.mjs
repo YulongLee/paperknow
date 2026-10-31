@@ -5,6 +5,7 @@ export function installStateStore(key,store){serviceStores.set(key,store);return
 export const hasStateStore=key=>serviceStores.has(key);
 export const stateStoreVersion=(key,id)=>serviceStores.get(key)?.version?.(id)??0;
 export const stateStoreStatus=key=>serviceStores.get(key)?.status?.()||'ready';
+export const stateStoreOwner=key=>serviceStores.get(key)?.owner?.()||null;
 export function beginDraftScope({drafts=[],projectRows=[],ownerId}={}){draftScope={revision:0,ownerId:typeof ownerId==='string'&&ownerId?ownerId:undefined,[keys.drafts]:structuredClone(drafts),[keys.projects]:structuredClone(projectRows),[keys.tasks]:[]};}
 export function endDraftScope(){draftScope=null;}
 export const hasDraftScope=()=>!!draftScope;
