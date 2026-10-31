@@ -1,5 +1,5 @@
 import {createCipheriv,createDecipheriv,randomBytes,randomUUID} from 'node:crypto';
-const defaults=Object.freeze({enabled:false,baseURL:'https://dashscope.aliyuncs.com',workspaceId:'',model:'qwen-image-3.0-pro',apiKey:'',timeoutMs:120000});
+const defaults=Object.freeze({enabled:false,baseURL:'https://dashscope.aliyuncs.com',workspaceId:'',model:'qwen-image-3.0',apiKey:'',timeoutMs:120000});
 export const researchImageModels=Object.freeze(['qwen-image-2.1-turbo','qwen-image-2.1-pro','qwen-image-3.0','qwen-image-3.0-pro']);
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 function checked(value){

@@ -27,7 +27,7 @@ function fixture(t,{mode='basic',owner='alice',jobs=[],stored,storageFails=false
   if(path==='/tool-runs/jobs/job-alice/cancel'){job={...job,status:'cancelled'};return {item:structuredClone(job)};}
   throw Error('测试不允许的请求 '+path);
  };
- const fetchImpl=async(path,options)=>{requests.push({path,headers:options.headers,owner:identity});if(!path.startsWith('/api/artifacts/image-alice/download?'))throw Error('测试不允许的文件请求 '+path);return {ok:true,blob:()=>blobRead()};};
+ const fetchImpl=async(path,options)=>{requests.push({path,headers:options.headers,owner:identity});if(!path.startsWith('/api/artifacts/image-alice/download?')&&!path.startsWith('/api/artifacts/vector-alice/download?'))throw Error('测试不允许的文件请求 '+path);return {ok:true,blob:()=>blobRead(path)};};
  initialize?.(w);
  const mount=mountResearchDrawing(container,{api,fetchImpl,notify:value=>notices.push(value)},{mode});
  t.after(()=>{mount.dispose();endDraftScope();w.close();});
@@ -175,4 +175,9 @@ test('drawing double-clicks while checking usage cannot submit duplicate jobs',a
 
 test('professional image generation directly submits the chosen scene once',async t=>{
  const f=fixture(t,{mode:'professional'});await f.mount.ready;f.click('[data-rd-figure="cell-mechanism"]');f.click('[data-rd-example]');f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-apply]'));const starts=f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data);assert.equal(starts.length,1);assert.equal(starts[0].data.operation,'image');assert.equal(starts[0].data.snapshot.mode,'professional');assert.equal(starts[0].data.snapshot.context.figureType,'cell-mechanism');assert.equal(starts[0].data.consent,true);assert.equal(f.container.querySelector('[data-tj-start]'),null);
+});
+test('editable vector download stays bound to the current owner and uses a private attachment',async t=>{
+ const job=completedJob();job.output.artifacts.push({id:'vector-alice',kind:'svg',role:'vector',name:'科研图.svg',downloadUrl:'/api/artifacts/vector-alice/download'});
+ const f=fixture(t,{jobs:[job],artifactBlob:path=>Promise.resolve(path.includes('vector-alice')?new Blob(['<svg xmlns="http://www.w3.org/2000/svg"/>'],{type:'application/octet-stream'}):new Blob([pngFixture(1600,900)],{type:'application/octet-stream'}))});f.setJob(job);await until(()=>f.container.querySelector('[data-rd-history-item]'));f.click('[data-rd-history-item]');await until(()=>f.container.querySelector('[data-rd-vector]'));f.click('[data-rd-vector]');await until(()=>f.downloads.length===1);assert.equal(f.downloads[0].name,'科研图.svg');assert.ok(f.requests.some(r=>r.path.startsWith('/api/artifacts/vector-alice/download?')&&r.path.includes('expectedUserId=alice')));
+ f.setOwner('bob');f.click('[data-rd-vector]');await until(()=>f.container.querySelector('[data-rd-status]').textContent.includes('账户'));assert.equal(f.downloads.length,1);
 });

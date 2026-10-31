@@ -1,11 +1,13 @@
 import {createArtifactService} from './artifact-service.mjs';
 import {digest} from './auth.mjs';
-import {assertResearchImageSettings,createResearchImageClient,validateResearchImage} from './research-image-client.mjs';
+import {assertResearchImageSettings,validateResearchImage} from './research-image-client.mjs';
+import {createScientificFigure,researchFigureQualityVersion} from './research-figure-quality.mjs';
 import {moderateTextOrFail} from './moderated-agent.mjs';
 const MANIFEST='research-image-delivery';
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const safeName=title=>String(title||'科研绘图').replace(/[\x00-\x1f\x7f/\\:*?"<>|\u202a-\u202e\u2066-\u2069]/g,'_').slice(0,110)||'科研绘图';
-export function initializeResearchImageUsage(db){db.exec(`CREATE TABLE IF NOT EXISTS research_image_usage(job_id TEXT PRIMARY KEY REFERENCES jobs(id),user_id TEXT NOT NULL REFERENCES users(id),provider TEXT NOT NULL,model TEXT NOT NULL,attempted_images INTEGER NOT NULL DEFAULT 1 CHECK(attempted_images=1),generated_images INTEGER NOT NULL DEFAULT 0 CHECK(generated_images IN (0,1)),delivered_images INTEGER NOT NULL DEFAULT 0 CHECK(delivered_images IN (0,1)),created_at TEXT NOT NULL,updated_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS research_image_usage_owner ON research_image_usage(user_id,created_at);`);}
+export function initializeResearchImageUsage(db){db.exec(`CREATE TABLE IF NOT EXISTS research_image_usage(job_id TEXT PRIMARY KEY REFERENCES jobs(id),user_id TEXT NOT NULL REFERENCES users(id),provider TEXT NOT NULL,model TEXT NOT NULL,attempted_images INTEGER NOT NULL DEFAULT 1 CHECK(attempted_images=1),generated_images INTEGER NOT NULL DEFAULT 0 CHECK(generated_images IN (0,1)),delivered_images INTEGER NOT NULL DEFAULT 0 CHECK(delivered_images IN (0,1)),created_at TEXT NOT NULL,updated_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS research_image_usage_owner ON research_image_usage(user_id,created_at);
+ CREATE TABLE IF NOT EXISTS research_figure_attempts(job_id TEXT NOT NULL REFERENCES jobs(id),sequence INTEGER NOT NULL,phase TEXT NOT NULL,model TEXT NOT NULL,status TEXT NOT NULL,metrics TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(job_id,sequence));`);}
 export function researchImageGenerationStatus(config={},settings){
  const storage=config.storage,storageReady=storage?.provider==='aliyun_oss'&&typeof storage.bucket==='string'&&typeof storage.prefix==='string'&&typeof storage.putArtifact==='function'&&typeof storage.readArtifact==='function'&&typeof storage.removeArtifact==='function';
  const moderated=config.moderationEnabled===true&&config.moderation?.ready===true&&typeof config.moderation.checkText==='function';let configured=false;try{assertResearchImageSettings(settings);configured=true;}catch{}
@@ -23,16 +25,21 @@ export async function generateResearchImage(db,config,{row,value,settings,signal
  const check=()=>{if(signal?.aborted||!isActive())fail(499,'科研绘图任务已停止');};check();onStage?.('checking_input');
  await moderateTextOrFail(config,JSON.stringify({title:value.snapshot.title,prompt:value.snapshot.text,requirements:value.snapshot.requirements,language:value.snapshot.language,mode:value.snapshot.mode,options:value.snapshot.context}),{kind:'input',signal});check();
  const at=new Date().toISOString();db.prepare('INSERT INTO research_image_usage(job_id,user_id,provider,model,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(row.id,row.user_id,'bailian-image',settings.model,at,at);
- onStage?.('generating');const run=config.researchImageRunner||((snapshot,options)=>createResearchImageClient(settings).generate(snapshot,options));
- const generated=await run(value.snapshot,{settings,signal});check();const image=validateResearchImage(generated?.buffer);if(generated.imageCount!==1)fail(502,'绘图服务返回的图片数量与本次确认不一致');
+ const audit=event=>{const now=new Date().toISOString();db.prepare(`INSERT INTO research_figure_attempts VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(job_id,sequence) DO UPDATE SET status=excluded.status,metrics=json_patch(research_figure_attempts.metrics,excluded.metrics),updated_at=excluded.updated_at`).run(row.id,event.sequence,event.phase,event.model,event.status,JSON.stringify({qualityVersion:researchFigureQualityVersion,...event,model:undefined}),now,now);};
+ const generated=await createScientificFigure(value.snapshot,{settings,signal,onStage,audit,jsonRunner:config.researchFigureJson,imageRunner:config.researchImageRunner});check();await moderateTextOrFail(config,JSON.stringify(generated.plan),{kind:'output',signal});check();const image=validateResearchImage(generated.buffer);
  db.prepare('UPDATE research_image_usage SET generated_images=1,updated_at=? WHERE job_id=?').run(new Date().toISOString(),row.id);onStage?.('storing');
  const artifacts=createArtifactService(db,config),name=safeName(value.snapshot.title)+'.'+image.kind;let item,created=[];
  try{
-  const response=await artifacts({path:'/api/artifacts',method:'POST',user:{id:row.user_id},readBody:async()=>({name,data:image.buffer.toString('base64'),sha256:digest(image.buffer),sourceType:'research',sourceId:row.id,expectedUserId:row.user_id})});
-  item=response.value.item;if(!response.value.deduplicated)created.push(item.id);
-  db.prepare('INSERT INTO tool_checkpoints VALUES(?,?,?,?,?) ON CONFLICT(run_id,unit_id) DO UPDATE SET output=excluded.output,created_at=excluded.created_at').run(row.id,MANIFEST,3000,JSON.stringify({createdIds:created}),new Date().toISOString());check();
-  // Verify the private object before committing a result or consuming credits.
-  const saved=db.prepare("SELECT * FROM artifacts WHERE id=? AND user_id=? AND status='ready'").get(item.id,row.user_id),bytes=saved?await config.storage.readArtifact(saved):null;check();if(!Buffer.isBuffer(bytes)||bytes.length!==image.buffer.length||digest(bytes)!==item.sha256)fail(503,'科研图片云端完整性校验未完成，本次未结算');
-  return{text:'科研绘图已生成，请核对图中文字、关系与数值后使用。',sourceIds:[],requiresReview:true,image:{artifactId:item.id,downloadUrl:item.downloadUrl,fileName:item.name,width:image.width,height:image.height,mimeType:image.mimeType},artifacts:[{...item,role:'image'}]};
+  const delivered=[];
+  const payloads=[{name,buffer:image.buffer,role:'image'},...(generated.svg?[{name:safeName(value.snapshot.title)+'.svg',buffer:Buffer.from(generated.svg),role:'vector'}]:[])];
+  for(const payload of payloads){
+   check();const response=await artifacts({path:'/api/artifacts',method:'POST',user:{id:row.user_id},readBody:async()=>({name:payload.name,data:payload.buffer.toString('base64'),sha256:digest(payload.buffer),sourceType:'research',sourceId:row.id,expectedUserId:row.user_id})});
+   const file=response.value.item;if(!response.value.deduplicated)created.push(file.id);if(payload.role==='image')item=file;
+   db.prepare('INSERT INTO tool_checkpoints VALUES(?,?,?,?,?) ON CONFLICT(run_id,unit_id) DO UPDATE SET output=excluded.output,created_at=excluded.created_at').run(row.id,MANIFEST,3000,JSON.stringify({createdIds:created}),new Date().toISOString());check();
+   const saved=db.prepare("SELECT * FROM artifacts WHERE id=? AND user_id=? AND status='ready'").get(file.id,row.user_id),bytes=saved?await config.storage.readArtifact(saved):null;check();
+   if(!Buffer.isBuffer(bytes)||bytes.length!==payload.buffer.length||digest(bytes)!==file.sha256)fail(503,'科研图片云端完整性校验未完成，本次未结算');
+   delivered.push({...file,role:payload.role});
+  }
+  return{text:'科研绘图已生成并完成内容与版式检查。投稿前请核对研究依据与目标期刊要求。',sourceIds:[],requiresReview:true,qualityChecked:true,image:{artifactId:item.id,downloadUrl:item.downloadUrl,fileName:item.name,width:image.width,height:image.height,mimeType:image.mimeType},artifacts:delivered};
  }catch(error){await cleanupResearchImageDelivery(db,config,row.id,row.user_id,created);throw error;}
 }

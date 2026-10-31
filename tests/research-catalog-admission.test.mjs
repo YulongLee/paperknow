@@ -16,9 +16,9 @@ test('every visible image scene is accepted with its exact canonical mode and do
   for(const choice of choices){
    const s=snapshot(choice,mode),normalized=normalizeToolRequest(input(s));
    assert.equal(normalized.snapshot.context.figureType,choice.id);assert.equal(researchFigureSelection(normalized.snapshot).label,choice.label);
-   const prompt=researchImagePrompt(normalized.snapshot);assert.ok(prompt.includes('图表类型：'+choice.label));assert.ok(prompt.includes('科研领域：'+choice.categoryLabel));assert.ok(prompt.includes('类型要求：'+choice.description));
-   if(choice.familyLabel)assert.ok(prompt.includes(choice.familyLabel));if(choice.sceneLabel)assert.ok(prompt.includes(choice.sceneLabel));if(choice.guidance)assert.ok(prompt.includes(choice.guidance));
-   assert.match(prompt,/不得声称真实执行任何仿真、工程设计或实验/);
+   const prompt=researchImagePrompt(normalized.snapshot);assert.ok(prompt.includes('Figure kind: '+(choice.sceneLabel||choice.label)));assert.ok(prompt.includes(choice.description));
+   if(choice.sceneLabel)assert.ok(prompt.includes(choice.sceneLabel));
+   assert.match(prompt,/not evidence that any simulation or experiment has been performed/);
   }
  }
 });
@@ -29,7 +29,7 @@ test('every catalog scene survives the real UI draft snapshot, server normalizat
   assert.equal(recovered.form.figureType,choice.id);assert.deepEqual(value.snapshot.context,{categoryId:choice.categoryId,figureType:choice.id,aspectRatio:'4:3',palette:'nature'});
   assert.equal(value.snapshot.title,form.title);assert.equal(value.snapshot.text,form.prompt);assert.equal(value.snapshot.language,'English');assert.deepEqual(value.snapshot.materials,[]);
   const selected=researchFigureSelection(value.snapshot);assert.equal(selected.categoryLabel,choice.categoryLabel);assert.equal(selected.familyId,choice.familyId);assert.equal(selected.familyLabel,choice.familyLabel);assert.equal(selected.sceneLabel,choice.sceneLabel);assert.equal(selected.guidance,choice.guidance);
-  const prompt=researchImagePrompt(value.snapshot);assert.ok(prompt.includes(choice.label));assert.ok(prompt.includes(choice.description));assert.ok(prompt.includes('English'));if(choice.familyLabel)assert.ok(prompt.includes(choice.familyLabel));if(choice.sceneLabel)assert.ok(prompt.includes(choice.sceneLabel));if(choice.guidance)assert.ok(prompt.includes(choice.guidance));
+  const prompt=researchImagePrompt(value.snapshot);assert.ok(prompt.includes(choice.sceneLabel||choice.label));assert.ok(prompt.includes(choice.description));assert.ok(prompt.includes('English'));if(choice.sceneLabel)assert.ok(prompt.includes(choice.sceneLabel));
  }
 });
 
@@ -49,8 +49,8 @@ test('unknown, mode-swapped and domain-swapped image types fail before billing o
 test('a custom work name cannot substitute the selected figure type or domain guidance',()=>{
  const choice=researchFigureChoices('professional').find(row=>row.familyLabel&&row.guidance);assert.ok(choice);
  const s=snapshot(choice,'professional'),prompt=researchImagePrompt(s);
- assert.ok(prompt.includes('图表类型：'+choice.label));assert.ok(prompt.includes('作品名称（仅用于保存，不代替图表类型）：'+s.title));
- assert.ok(!prompt.includes('图表类型：'+s.title));assert.match(prompt,/仅生成静态示意图片，不调用或运行该软件/);
+ assert.ok(prompt.includes('Figure kind: '+(choice.sceneLabel||choice.label)));assert.equal(prompt.includes(s.title),false);
+ assert.ok(!prompt.includes('图表类型：'+s.title));assert.match(prompt,/static explanatory figure/);
  assert.equal(researchFigureSelection({...s,context:{...s.context,figureLabel:'伪造类型'}}).label,choice.label);
  assert.throws(()=>normalizeToolRequest(input({...s,context:{...s.context,figureLabel:'伪造类型'}})),{status:400});
 });
