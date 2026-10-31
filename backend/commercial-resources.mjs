@@ -26,7 +26,12 @@ export async function commercialDocumentPages(db,file,config){
  db.exec('CREATE TABLE IF NOT EXISTS commercial_document_metrics(sha256 TEXT NOT NULL,kind TEXT NOT NULL,pages INTEGER NOT NULL,PRIMARY KEY(sha256,kind))');
  const old=db.prepare('SELECT pages FROM commercial_document_metrics WHERE sha256=? AND kind=?').get(file.sha256,file.kind);if(old)return old.pages;
  const bytes=await fileBytes(file,config.storage);if(bytes.length!==file.bytes||digest(bytes)!==file.sha256)fail(409,'原件完整性核验未通过，请重新上传');
- let pages;try{pages=file.kind==='docx'?await validateTranslationDocument(bytes):config.documentTranslationPageCount?await config.documentTranslationPageCount(bytes):(await compute('pdfMetadata',{body:bytes})).pages;}catch{fail(400,'无法识别文档页数，请检查文件是否加密或损坏');}
+ let pages;try{pages=file.kind==='docx'?await validateTranslationDocument(bytes):config.documentTranslationPageCount?await config.documentTranslationPageCount(bytes):(await compute('pdfMetadata',{body:bytes})).pages;}catch(error){
+  if(file.kind==='docx'&&error.documentTranslationSafe)fail(400,error.message);
+  if(error.name==='PasswordException')fail(400,'这份 PDF 设置了打开密码，请上传不需要打开密码的版本；原文件已保留，本次未提交处理或扣费。');
+  if(error.name==='InvalidPDFException')fail(400,'这份 PDF 的文档结构无法读取，请重新下载或另存为 PDF 后重试；原文件已保留，本次未提交处理或扣费。');
+  fail(503,'文档页数识别暂时无法完成，请稍后重试；原文件已保留，本次未提交处理或扣费。');
+ }
  if(!Number.isSafeInteger(pages)||pages<1||pages>100)fail(400,'当前文档最多支持 100 页，请拆分文档后处理；尚未扣费。');
  db.prepare('INSERT OR IGNORE INTO commercial_document_metrics VALUES(?,?,?)').run(file.sha256,file.kind,pages);return pages;
 }

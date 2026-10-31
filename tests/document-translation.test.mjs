@@ -153,3 +153,13 @@ test('V1 whole-document price follows verified source pages at 20/21/50 and reje
   assert.equal(f.calls.create,0);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,before);
  }
 });
+
+test('V1 PDF translation quotes count actual pages without a custom page counter before reserving any credit or contacting a provider',async t=>{
+ const f=await fixture(t,{config:{documentTranslationPageCount:undefined}});applyV1Commerce(f.db,planV1Commerce(f.db).expected);
+ f.db.prepare('INSERT INTO admin_credit_adjustments(id,user_id,amount,reason,actor_id,created_at) VALUES(?,?,?,?,?,?)').run(randomUUID(),'alice',1000,'Synthetic page-count fixture','alice',new Date().toISOString());
+ const file=f.upload(),quote=await f.request('/quote',{fileId:file,sourceLanguage:'en',targetLanguage:'zh',expectedUserId:'alice'});
+ assert.equal(quote.value.pageCount,2);assert.equal(quote.value.creditCost,99);assert.equal(f.calls.create,0);assert.equal(f.calls.sign,0);assert.equal(f.db.prepare('SELECT count(*) n FROM jobs').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);
+ assert.equal(f.db.prepare('SELECT pages FROM commercial_document_metrics WHERE sha256=?').get(digest(f.source)).pages,2);
+ assert.equal(createBillingService(f.db,f.config).balance('alice').balance,1000);
+ const badWord=f.upload(Buffer.from('PKinvalid'),'docx');await assert.rejects(f.request('/quote',{fileId:badWord,sourceLanguage:'en',targetLanguage:'zh',expectedUserId:'alice'}),error=>error.status===400&&/Word/.test(error.message));
+});

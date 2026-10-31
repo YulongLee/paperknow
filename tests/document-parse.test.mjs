@@ -1,3 +1,5 @@
+import {readFile} from 'node:fs/promises';
+import {planV1Commerce,applyV1Commerce} from '../backend/v1-commercial-launch.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PDFDocument} from 'pdf-lib';
@@ -121,7 +123,7 @@ test('daily parsing admission is bounded even when the user cancels before provi
 });
 
 test('the bounded metadata worker reads real page counts and rejects corrupt PDFs independently of cloud calls',async()=>{
- const pdf=await PDFDocument.create();pdf.addPage();pdf.addPage();const bytes=Buffer.from(await pdf.save()),signal=new AbortController().signal;assert.deepEqual(await compute('pdfMetadata',{body:bytes},signal),{pages:2});await assert.rejects(()=>compute('pdfMetadata',{body:Buffer.from('%PDF-invalid')},signal));
+ const pdf=await PDFDocument.create();pdf.addPage();pdf.addPage();const bytes=Buffer.from(await pdf.save()),signal=new AbortController().signal;assert.deepEqual(await compute('pdfMetadata',{body:bytes},signal),{pages:2});assert.deepEqual(await compute('pdfMetadata',{body:bytes}),{pages:2});await assert.rejects(()=>compute('pdfMetadata',{body:Buffer.from('%PDF-invalid')},signal),error=>error.name==='InvalidPDFException');const cancelled=new AbortController();cancelled.abort();await assert.rejects(compute('pdfMetadata',{body:bytes},cancelled.signal),/任务已取消/);const running=new AbortController(),pending=compute('pdfMetadata',{body:bytes},running.signal);running.abort();await assert.rejects(pending,/任务已取消/);
 });
 
 
@@ -149,4 +151,38 @@ test('an unchanged owned PDF reuses a completed parse while deleted results and 
  assert.equal((await f.submit(file,{},f.users.bob)).status,404);
  const run=f.db.prepare('SELECT * FROM document_parse_runs WHERE id=?').get(id);f.db.prepare("UPDATE artifacts SET status='deleted' WHERE id=?").run(run.structured_artifact_id);
  const replaced=await f.submit(file);assert.equal(replaced.status,201);assert.notEqual(replaced.value.id,id);
+});
+
+test('V1 admission counts a real uploaded PDF without a test page-count override and completes its original parse task',async t=>{
+ const f=await fixture(t,{config:{documentPageCount:undefined}});applyV1Commerce(f.db,planV1Commerce(f.db).expected);
+ const file=await f.upload(),key=crypto.randomUUID(),created=await f.submit(file,{idempotencyKey:key});assert.equal(created.status,201,JSON.stringify(created.value));
+ const run=f.db.prepare('SELECT * FROM document_parse_runs WHERE id=?').get(created.value.id);assert.equal(run.expected_pages,2);assert.equal(run.total_pages,2);
+ assert.equal(f.db.prepare('SELECT pages FROM commercial_document_metrics WHERE sha256=?').get(digest(f.source)).pages,2);
+ assert.equal(f.db.prepare('SELECT pages FROM commercial_parse_reservations WHERE job_id=?').get(created.value.id).pages,2);
+ assert.equal(f.calls.create,0);const again=await f.submit(file,{idempotencyKey:key});assert.equal(again.value.id,created.value.id);assert.equal(f.db.prepare('SELECT count(*) n FROM commercial_parse_reservations').get().n,1);
+ await f.tick();await f.tick();assert.equal(f.job(created.value.id).status,'completed');assert.equal((await f.request('/document-parses/'+created.value.id)).value.result.pages,2);assert.equal(f.calls.create,1);
+});
+
+test('V1 password-protected PDFs receive a precise message and preserve the original without reserving quota or creating a task',async t=>{
+ const f=await fixture(t,{config:{documentPageCount:undefined}});applyV1Commerce(f.db,planV1Commerce(f.db).expected);
+ const encrypted=await readFile(new URL('./fixtures/page-count-password-protected.pdf',import.meta.url)),file=await f.upload(encrypted),response=await f.submit(file);
+ assert.equal(response.status,400);assert.match(response.value.error,/打开密码/);assert.doesNotMatch(response.value.error,/损坏/);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM files').get().n,1);assert.equal(f.db.prepare('SELECT count(*) n FROM jobs').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM commercial_document_metrics').get().n,0);assert.equal(f.calls.create,0);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);
+});
+
+test('V1 corrupt PDF admission explains the structural failure before remote work and retains its original',async t=>{
+ const f=await fixture(t,{config:{documentPageCount:undefined}});applyV1Commerce(f.db,planV1Commerce(f.db).expected);
+ const file=await f.upload(Buffer.from('%PDF-invalid synthetic fixture')),response=await f.submit(file);
+ assert.equal(response.status,400);assert.match(response.value.error,/文档结构无法读取/);assert.doesNotMatch(response.value.error,/打开密码/);assert.equal(f.calls.create,0);assert.equal(f.db.prepare('SELECT count(*) n FROM jobs').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM files').get().n,1);
+});
+
+test('V1 internal page-counter failures are retryable service errors rather than claims that an uploaded file is corrupt',async t=>{
+ const f=await fixture(t,{config:{documentPageCount:async()=>{throw TypeError('internal-test-detail-must-not-leak');}}});applyV1Commerce(f.db,planV1Commerce(f.db).expected);
+ const file=await f.upload(),response=await f.submit(file);assert.equal(response.status,503);assert.match(response.value.error,/稍后重试/);assert.doesNotMatch(response.value.error,/损坏|加密|internal-test-detail/);assert.equal(f.calls.create,0);assert.equal(f.db.prepare('SELECT count(*) n FROM jobs').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM files').get().n,1);
+});
+
+test('V1 real PDFs above 100 pages are rejected before a remote submission or parse reservation',async t=>{
+ const f=await fixture(t,{config:{documentPageCount:undefined}});applyV1Commerce(f.db,planV1Commerce(f.db).expected);
+ const pdf=await PDFDocument.create();for(let i=0;i<101;i++)pdf.addPage();const file=await f.upload(Buffer.from(await pdf.save())),response=await f.submit(file);
+ assert.equal(response.status,400);assert.match(response.value.error,/100 页/);assert.equal(f.calls.create,0);assert.equal(f.db.prepare('SELECT count(*) n FROM jobs').get().n,0);
 });
