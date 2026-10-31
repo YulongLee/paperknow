@@ -71,16 +71,15 @@ export function researchImagePrompt(snapshot){
 // document, schema headings or review transcript: these can become visible text.
 export function researchIllustrationPrompt(snapshot,plan,{repairKeys=[]}={}){
  if(!researchFigureSelection(snapshot)||plan?.kind!=='illustration')fail('input_invalid','科研插图内容无效',400);
- const labels=plan.labels||[],repair=new Set(repairKeys);
+ const repair=new Set(repairKeys);
  return [
   'Draw one precise scientific illustration on a pure white canvas. Use a clean explanatory style, clear geometry and generous empty margins.',
-  plan.description,
+  plan.artworkDescription||plan.description,
   'Depict these objects and preserve their stated counts and relationships: '+plan.requiredObjects.join('; ')+'.',
   palettes[snapshot.context.palette]||palettes.academic,
-  snapshot.language==='中文'?'图片标注使用简体中文。':'Use English for visible labels.',
-  labels.length?'The only visible text is these short labels, spelled exactly: '+labels.map(v=>JSON.stringify(v)).join(', ')+'. Place each beside the correct object with a clear leader line.':'The artwork contains no text or lettering.',
-  'Leave the remaining white space empty. No title, caption, footer, explanatory paragraph, interface or watermark.',
-  repair.has('labels_legible')||repair.has('figure_grammar')?'Use large, simple, legible labels on blank white space outside the objects. Keep the margins completely blank.':'',
+  'Render only the objects, geometry and necessary motion/relationship arrows. ALL text labels are added later by a separate typesetting program. Ignore any request in the composition to write or label anything.',
+  'The artwork must contain ZERO text, letters, digits, labels, panel headings, captions, callout lines, branding or watermarks. Keep the background completely blank white. Do not draw placeholder text or pretend lettering.',
+  repair.has('labels_legible')||repair.has('figure_grammar')?'Remove ALL lettering. Even a single visible word or garbled character is forbidden. Keep only the illustration and meaningful arrows.':'',
   repair.has('no_overlap_or_clipping')?'Space the objects and labels farther apart, with no cropping or overlap.':''
  ].filter(Boolean).join('\n');
 }

@@ -39,7 +39,7 @@ function planSchemaInstructions(choice){
   schemas,
   'referenceLines和yRange只能放在figure顶层。没有要求参考线则不传referenceLines。没有明确给出坐标范围则完全省略yRange。明确要求时min、max来自原文；interval是排版刻度，必须为正数，优先遵守作者给定间隔。非直角坐标图不提交yRange。',
   'diagram/sequence：nodes:[{id:"n1",label:"短标注",role:"process|decision|entity|state|component|actor",attributes:["可选属性"]}],edges:[{from:"n1",to:"n2",label:"关系",kind:"directed|undirected|feedback|inheritance|composition|aggregation|dependency|association|return"}]。至少两个节点。',
-  'illustration：description:"画面构图与专业符号说明",requiredObjects:["必要对象"],labels:["需出现在图中的短标签"]。不提交nodes/edges，不把它变成普通框图。'
+  'illustration：description:"完整语义与专业关系说明",artworkDescription:"English visual composition only: geometry, colors, positions and arrows; no lettering instructions",requiredObjects:["必要对象"],labels:["需出现在图中的短标签"]。不提交nodes/edges，不把它变成普通框图。'
  ].join('\n');
 }
 function nodes(raw){const ids=new Set();return arrays(raw,40,'图中元素').map(row=>{if(!object(row))fail('图中元素无效');const id=text(row.id??row.name??row.label,80,'元素编号');if(ids.has(id))fail('元素编号重复或无效');ids.add(id);return {id,label:row.role==='start'||row.role==='end'||Array.isArray(row.attributes)&&row.attributes.includes('initial')||Array.isArray(row.attributes)&&row.attributes.includes('final')?optional(row.label,120,'元素标注'):text(row.label,120,'元素标注'),group:optional(row.group,80,'元素分组'),role:Array.isArray(row.attributes)&&row.attributes.includes('initial')?'start':Array.isArray(row.attributes)&&row.attributes.includes('final')?'end':['process','decision','start','end','entity','state','component','actor'].includes(row.role)?row.role:'process',attributes:row.attributes===undefined?[]:arrays(row.attributes,12,'元素属性').map(v=>text(v,100,'属性标注'))};});}
@@ -109,7 +109,7 @@ export function normalizePublicationFigurePlan(raw,snapshot,{verifyEvidence=true
   out.dataVerified=verifyEvidence;
  }
  if(kind==='illustration'){
-  out.description=text(f.description,4000,'插图说明');out.requiredObjects=arrays(f.requiredObjects||[],20,'必要对象').map(v=>text(v,120,'必要对象'));out.labels=arrays(f.labels||[],20,'插图标注').map(v=>text(v,80,'插图标注'));
+  out.description=text(f.description,4000,'插图说明');out.artworkDescription=text(f.artworkDescription,4000,'无字画面说明');out.requiredObjects=arrays(f.requiredObjects||[],20,'必要对象').map(v=>text(v,120,'必要对象'));out.labels=arrays(f.labels||[],20,'插图标注').map(v=>text(v,80,'插图标注'));
   if(!out.requiredObjects.length)fail('科研插图需要明确的必要对象');
   const profile=publicationProfile(snapshot.context?.journalProfile||'general');if(profile.aiIllustration==='not-permitted')fail('当前规范不接受通用生成式 AI 插图，请改用可复现的数据图或文本结构图。');
  }
@@ -123,7 +123,7 @@ export function publicationFigurePlanTask(snapshot){
   scientificFigureStyle(choice),
   '数值图必须用chart，全部数值必须逐项来自原文；不得补造实验结果、系数、准确率、误差线、显著性、样本量或未提供的数据。标题、坐标和单位也不能假称实测。',
   '流程、实体、网络、控制框图、概念路径及图表教学结构，使用diagram；时序或用户旅程使用sequence。概念结构不需要伪造数值。每个元素都要与主题、场景相符，不套通用研究流程。',
-  '需要空间、材料、器官、装置或机理画面时用illustration；仅表达作者提供的概念，不生成伪实验照片或未经提供的结构测定结果。说明必要对象、方位、箭头和科学关系。',
+  '需要空间、材料、器官、装置或机理画面时用illustration；仅表达作者提供的概念，不生成伪实验照片或未经提供的结构测定结果。说明必要对象、方位、箭头和科学关系。illustration必须另给artworkDescription，无论用户语言都必须使用英文，只描述视觉对象与运动，不写标签、文字、标题、分镜名称或软件名称，也不要引用labels中的词。需要显示的短标注仅放在labels数组，必须使用用户选择的语言（中文时禁止使用英文阶段名称），由程序排字，不能要求图像模型绘制任何字符。artworkDescription中禁止写label、text、caption、标注和标签等绘字指令，只描述对象外形、颜色、空间位置和运动。',
   `输出语言：${snapshot.language}。规范：${profile.label}。文字只保留必要的短标注；作品名称不放在画面顶端，不加宣传语、UI、水印或长说明。`,
   '图中关系必须正确，反馈方向、主外键、继承关系、时序先后、电流和光路按实际语义表达。元素一般控制在12个以内。requiredObjects只用于插图，nodes/edges用于结构与时序。',
   planSchemaInstructions(choice),

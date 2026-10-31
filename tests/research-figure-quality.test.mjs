@@ -10,20 +10,21 @@ import {pngFixture} from './fixtures/research-image.mjs';
 const settings={enabled:true,model:'qwen-image-3.0',apiKey:'sk-private-fixture',version:'test-scientific',baseURL:'https://dashscope.aliyuncs.com',timeoutMs:1000};
 const snapshot=(figureType='flowchart')=>({mode:'basic',title:'Save name',text:'A→B; sample indices 1 2 3 4 5 6 7 8; counts 9,10,11,10,9,11,10,10. UCL12 CL10 LCL8. Axis8..12 step1.',language:'English',context:{categoryId:'basic',figureType,aspectRatio:'4:3',palette:'academic'}});
 const review=passed=>({passed,checks:['brief_fidelity','scientific_relations','numeric_accuracy','labels_legible','no_overlap_or_clipping','figure_grammar'].map(key=>({key,passed:passed||key!=='brief_fidelity',detail:passed?'Checked exact objects and relations':'Wrong object count; use the exact required number'}))});
-const illustration={complete:true,figure:{kind:'illustration',description:'Two components A and B',requiredObjects:['A','B'],labels:['A','B']}};
+const illustration={complete:true,figure:{kind:'illustration',artworkDescription:'An unlabeled visual arrangement of the specified parts.',description:'Two components A and B',requiredObjects:['A','B'],labels:['A','B']}};
+const labelLayout=()=>({hasText:false,annotations:[{index:0,x:250,y:300},{index:1,x:750,y:700}]});
 const illustrationSnapshot=()=>({...snapshot(),mode:'professional',context:{...snapshot().context,categoryId:'rendering',figureType:'3d-structure'}});
 const chart=(chartType,data,extra={})=>({complete:true,figure:{kind:'chart',chartType,data,...extra}});
 test('illustration prompts contain the normalized composition and labels, never internal source headings or review text',()=>{
- const s={...illustrationSnapshot(),text:'AUTHOR BRIEF source-only instructions and private file title',title:'private file title'},plan={kind:'illustration',description:'A gray base below a blue lens housing.',requiredObjects:['gray base','blue lens housing'],labels:['Base','Lens']},prompt=researchIllustrationPrompt(s,plan,{repairKeys:['labels_legible']});
- assert.match(prompt,/gray base/);assert.match(prompt,/"Base"/);assert.doesNotMatch(prompt,/AUTHOR BRIEF|source-only|private file title|STRICT VISIBLE|COMPOSITION:|REQUIRED OBJECTS:/);
+ const s={...illustrationSnapshot(),text:'AUTHOR BRIEF source-only instructions and private file title',title:'private file title'},plan={kind:'illustration',artworkDescription:'An unlabeled visual arrangement of the specified parts.',description:'A gray base below a blue lens housing.',requiredObjects:['gray base','blue lens housing'],labels:['Base','Lens']},prompt=researchIllustrationPrompt(s,plan,{repairKeys:['labels_legible']});
+ assert.match(prompt,/gray base/);assert.doesNotMatch(prompt,/"Base"/);assert.doesNotMatch(prompt,/AUTHOR BRIEF|source-only|private file title|STRICT VISIBLE|COMPOSITION:|REQUIRED OBJECTS:/);
 });
 test('text-only illustration defects reuse the composition and do not copy the rejected lettering into the next image prompt',async()=>{
  let plans=0,images=0,reviews=0;const prompts=[];
  const result=await createScientificFigure(illustrationSnapshot(),{settings,jsonRunner:async(_m,{phase})=>{
-  if(phase==='planning'){plans++;return{value:illustration};}
+  if(phase==='planning'){plans++;return{value:illustration};}if(phase==='label_layout')return{value:labelLayout()};
   const value=review(true);if(!reviews++){value.passed=false;value.checks=value.checks.map(c=>c.key==='labels_legible'?{...c,passed:false,detail:'Remove the unwanted AUTHOR BRIEF footer'}:c);}return{value};
  },imageRunner:async(_s,{prompt})=>{images++;prompts.push(prompt);return{buffer:pngFixture(),imageCount:1};}});
- assert.equal(result.review.passed,true);assert.equal(plans,1);assert.equal(images,2);assert.ok(prompts.every(p=>!p.includes('AUTHOR BRIEF')));assert.match(prompts[1],/large, simple, legible labels/);
+ assert.equal(result.review.passed,true);assert.equal(plans,1);assert.equal(images,2);assert.ok(prompts.every(p=>!p.includes('AUTHOR BRIEF')));assert.match(prompts[1],/Remove ALL lettering/);
 });
 test('English node wrapping keeps complete words instead of breaking Motivation or Engagement',async()=>{
  const s={...snapshot('path'),text:'Learning Support -> Learning Motivation -> Learning Engagement -> Learning Outcomes. H1 H2 H3 H4.'},plan=normalizePublicationFigurePlan({complete:true,figure:{kind:'diagram',nodes:['Learning Support','Learning Motivation','Learning Engagement','Learning Outcomes'].map((label,i)=>({id:String(i),label})),edges:[{from:'0',to:'1',label:'H1'},{from:'1',to:'2',label:'H2'},{from:'2',to:'3',label:'H3'},{from:'0',to:'3',label:'H4'}]}},s),r=await renderPublicationVector(plan,s);
@@ -85,12 +86,12 @@ test('sequence preserves recipient direction, dashed returns, self messages and 
 });
 test('quality rejection triggers a bounded repair with specific feedback and never bypasses final review',async()=>{
  let images=0,reviews=0;const events=[],seen=[];
- const result=await createScientificFigure(illustrationSnapshot(),{settings,audit:e=>events.push(e),jsonRunner:async(messages,{phase})=>{seen.push(messages);return{value:phase==='planning'?illustration:review(++reviews===2)};},imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}});
+ const result=await createScientificFigure(illustrationSnapshot(),{settings,audit:e=>events.push(e),jsonRunner:async(messages,{phase})=>{seen.push(messages);return{value:phase==='planning'?illustration:phase==='label_layout'?labelLayout():review(++reviews===2)};},imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}});
  assert.equal(images,2);assert.equal(result.review.passed,true);assert.ok(JSON.stringify(seen).includes('Wrong object count'));assert.equal(events.filter(e=>e.phase==='image'&&e.status==='started').length,2);
- let calls=0;await assert.rejects(()=>createScientificFigure(illustrationSnapshot(),{settings,jsonRunner:async(_m,{phase})=>({value:phase==='planning'?illustration:review(false)}),imageRunner:async()=>{calls++;return{buffer:pngFixture(),imageCount:1};}}),{code:'figure_quality_rejected'});assert.equal(calls,2);
+ let calls=0;await assert.rejects(()=>createScientificFigure(illustrationSnapshot(),{settings,jsonRunner:async(_m,{phase})=>({value:phase==='planning'?illustration:phase==='label_layout'?labelLayout():review(false)}),imageRunner:async()=>{calls++;return{buffer:pngFixture(),imageCount:1};}}),{code:'figure_quality_rejected'});assert.equal(calls,2);
 });
 test('transport errors, invalid reviews, invalid image count and cancellations are not blindly retried',async()=>{
- for(const failure of ['transport','review','count','cancel']){let images=0;const abort=new AbortController();await assert.rejects(()=>createScientificFigure(illustrationSnapshot(),{settings,signal:abort.signal,jsonRunner:async(_m,{phase})=>({value:phase==='planning'?illustration:failure==='review'?{passed:true}:review(true)}),imageRunner:async()=>{images++;if(failure==='transport')throw Object.assign(Error('ambiguous transport'),{code:'transport'});if(failure==='cancel')abort.abort();return{buffer:pngFixture(),imageCount:failure==='count'?2:1};}}));assert.equal(images,1,failure);}
+ for(const failure of ['transport','review','count','cancel']){let images=0;const abort=new AbortController();await assert.rejects(()=>createScientificFigure(illustrationSnapshot(),{settings,signal:abort.signal,jsonRunner:async(_m,{phase})=>({value:phase==='planning'?illustration:phase==='label_layout'?labelLayout():failure==='review'?{passed:true}:review(true)}),imageRunner:async()=>{images++;if(failure==='transport')throw Object.assign(Error('ambiguous transport'),{code:'transport'});if(failure==='cancel')abort.abort();return{buffer:pngFixture(),imageCount:failure==='count'?2:1};}}));assert.equal(images,1,failure);}
 });
 test('native drawings are reviewed too; numeric and relation extraction errors cannot bypass visual review',async()=>{
  let images=0,reviews=0;const plan={complete:true,figure:{kind:'diagram',nodes:[{id:'a',label:'A'},{id:'b',label:'B'}],edges:[{from:'a',to:'b',label:'Connect'}]}};

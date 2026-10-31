@@ -13,9 +13,10 @@ test('all 301 examples contain concrete briefs instead of asking for an unspecif
  const choices=['basic','professional'].flatMap(researchFigureChoices);assert.equal(choices.length,301);
  for(const c of choices){assert.ok(c.example.length>20&&c.example.length<=6000,c.id);assert.doesNotMatch(c.example,/请先根据我的研究内容确定|请填写|待补充|请提供数据/,c.id);}
 });
-for(const c of recorded)test('real example plan remains compatible with its author data and renderer: '+c.id,async()=>{
+for(const c of recorded)test('recorded example preserves author data or requires a separate clean artwork brief: '+c.id,async()=>{
  const choice=researchFigureChoices(c.mode).find(x=>x.id===c.id);assert.ok(choice);
  const snapshot=researchDrawingSnapshot({figureType:c.id,prompt:choice.example,title:'示例兼容性验收',language:'中文',aspectRatio:'4:3',palette:'academic'},c.mode);
+ if(c.plan.figure?.kind==='illustration'&&!c.plan.figure.artworkDescription){assert.throws(()=>normalizePublicationFigurePlan(c.plan,snapshot),{code:'figure_plan_invalid'});return;}
  const plan=normalizePublicationFigurePlan(c.plan,snapshot);assert.ok(plan.kind);
  if(plan.kind!=='illustration'){const r=await renderPublicationVector(plan,snapshot);assert.equal(r.grammarVerified,true);assert.ok(r.svg.includes('<svg'));}
 });
