@@ -1,11 +1,16 @@
 export const keys={projects:'paperknow-projects',drafts:'paperknow-drafts',tasks:'paperknow-local-tasks',preferences:'paperknow-preferences',profile:'paperknow-local-profile'};
 let draftScope=null;
+const serviceStores=new Map();
+export function installStateStore(key,store){serviceStores.set(key,store);return ()=>{if(serviceStores.get(key)===store)serviceStores.delete(key);};}
+export const hasStateStore=key=>serviceStores.has(key);
+export const stateStoreVersion=(key,id)=>serviceStores.get(key)?.version?.(id)??0;
+export const stateStoreStatus=key=>serviceStores.get(key)?.status?.()||'ready';
 export function beginDraftScope({drafts=[],projectRows=[],ownerId}={}){draftScope={revision:0,ownerId:typeof ownerId==='string'&&ownerId?ownerId:undefined,[keys.drafts]:structuredClone(drafts),[keys.projects]:structuredClone(projectRows),[keys.tasks]:[]};}
 export function endDraftScope(){draftScope=null;}
 export const hasDraftScope=()=>!!draftScope;
-export function read(key,fallback){if(draftScope&&Object.hasOwn(draftScope,key))return structuredClone(draftScope[key]);try{const value=JSON.parse(localStorage.getItem(key)||'null');return value??fallback;}catch{return fallback;}}
+export function read(key,fallback){if(serviceStores.has(key))return serviceStores.get(key).read();if(draftScope&&Object.hasOwn(draftScope,key))return structuredClone(draftScope[key]);try{const value=JSON.parse(localStorage.getItem(key)||'null');return value??fallback;}catch{return fallback;}}
 export function list(key){const value=read(key,[]);return Array.isArray(value)?value:[];}
-export function write(key,value){if(draftScope&&Object.hasOwn(draftScope,key)){if(key===keys.drafts){draftScope.lastSaved=value.find(row=>{const old=draftScope[key].find(v=>String(v.id)===String(row.id));return !old||JSON.stringify(old)!==JSON.stringify(row);})||null;draftScope.revision++;}draftScope[key]=structuredClone(value);return;}localStorage.setItem(key,JSON.stringify(value));}
+export function write(key,value){if(serviceStores.has(key))return serviceStores.get(key).write(value);if(draftScope&&Object.hasOwn(draftScope,key)){if(key===keys.drafts){draftScope.lastSaved=value.find(row=>{const old=draftScope[key].find(v=>String(v.id)===String(row.id));return !old||JSON.stringify(old)!==JSON.stringify(row);})||null;draftScope.revision++;}draftScope[key]=structuredClone(value);return;}localStorage.setItem(key,JSON.stringify(value));}
 export const projects=()=>list(keys.projects);
 export const preferences=()=>({...{degree:'本科',major:'',density:'comfortable',fontSize:'normal'},...read(keys.preferences,{})});
 export const profile=()=>{const p=read(keys.profile,{});return {...{name:'研究者'},...(p&&typeof p==='object'?p:{})};};

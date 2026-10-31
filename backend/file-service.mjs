@@ -147,6 +147,7 @@ export function createFileService(db,config={}){
     const current=file(id,user);if(current.sha256!==input.expectedSha256)fail(409,'原件已变化，请刷新后继续');
     if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='literature_pdf_annotations'").get())db.prepare("DELETE FROM literature_pdf_annotations WHERE user_id=? AND resource_kind='file' AND resource_id=?").run(user.id,id);
     db.prepare('DELETE FROM files WHERE id=? AND user_id=?').run(id,user.id);
+    if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='literature_library'").get())db.prepare("UPDATE literature_library SET payload=NULL,version=version+1,updated_at=? WHERE user_id=? AND json_extract(payload,'$.originalFileId')=?").run(new Date().toISOString(),user.id,id);
     db.prepare("UPDATE workspace_file_deletions SET status='completed',updated_at=? WHERE file_id=? AND user_id=?").run(new Date().toISOString(),id,user.id);
    });
    return {value:{ok:true,id,deleted:true}};

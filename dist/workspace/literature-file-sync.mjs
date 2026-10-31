@@ -1,13 +1,14 @@
 import {literatureKey} from './literature-model.mjs';
+import {hasStateStore,list,write} from './state.mjs';
 
 export const fileDeletedEvent='paperknow:file-deleted';
 export const fileChangeKey='paperknow-file-change';
 const validId=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(value);
-export function savedLiterature(win=window){try{const rows=JSON.parse(win.localStorage.getItem(literatureKey)||'[]');return Array.isArray(rows)?rows:[];}catch{return [];}}
+export function savedLiterature(win=window){if(hasStateStore(literatureKey))return list(literatureKey);try{const rows=JSON.parse(win.localStorage.getItem(literatureKey)||'[]');return Array.isArray(rows)?rows:[];}catch{return [];}}
 export function removeLiteratureRecords(ids,{win=window}={}){
  const selected=new Set(ids),before=win.localStorage.getItem(literatureKey),rows=savedLiterature(win),removed=rows.filter(row=>selected.has(row.id));
  if(!removed.length)return [];
- const value=JSON.stringify(rows.filter(row=>!selected.has(row.id)));win.localStorage.setItem(literatureKey,value);
+ const value=JSON.stringify(rows.filter(row=>!selected.has(row.id)));if(hasStateStore(literatureKey))write(literatureKey,JSON.parse(value));else win.localStorage.setItem(literatureKey,value);
  win.dispatchEvent(new win.StorageEvent('storage',{key:literatureKey,oldValue:before,newValue:value,storageArea:win.localStorage}));
  return removed.map(row=>row.id);
 }

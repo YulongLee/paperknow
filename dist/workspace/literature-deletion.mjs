@@ -1,5 +1,6 @@
 import {savedLiterature,removeLiteratureRecords,publishFileDeleted,reconcileLiteratureDeletions} from './literature-file-sync.mjs';
 import {esc} from './ui.mjs';
+import {hasStateStore,stateStoreVersion} from './state.mjs';
 
 export function mountLiteratureDeletion({container,ctx,signal,getSelected=()=>[],onDeleted=()=>{},fetchImpl=(...args)=>fetch(...args)}={}){
  const doc=container.ownerDocument,win=doc.defaultView,route=win.location.hash;
@@ -14,6 +15,10 @@ export function mountLiteratureDeletion({container,ctx,signal,getSelected=()=>[]
   const latest=savedLiterature(win).find(row=>row.id===paper.id);
   if(!latest)return;
   if(JSON.stringify(latest)!==JSON.stringify(paper))throw Error('文献已在其他页面更新，请关闭此窗口后重新选择');
+  if(!paper.originalFileId&&!paper.originalOwnerId&&hasStateStore('paperknow-literature')){
+   const version=stateStoreVersion('paperknow-literature',paper.id),session=await api('/auth/me'),owner=session.user?.id;if(!current())return false;if(!owner)throw Error('请先登录，再删除文献。');
+   const result=await api('/literature/library',{expectedUserId:owner,id:paper.id,version,item:null},owner);if(!current())return false;if(result.ownerId!==owner||result.entry?.id!==paper.id||result.entry.item!==null)throw Error('文献删除结果未确认，请稍后重试。');
+  }
   if(paper.originalFileId||paper.originalOwnerId){
    if(!paper.originalFileId||!paper.originalOwnerId)throw Error('原文关联不完整，请从文件管理核对后重试');
    const owner=paper.originalOwnerId,session=await api('/auth/me');

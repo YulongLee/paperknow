@@ -1,4 +1,5 @@
 import {createCombinedDetectionService} from './combined-detection-service.mjs';
+import {createLiteratureLibrary} from './literature-library.mjs';
 import {v1CommercialEnabled} from './v1-commercial-policy.mjs';
 import {createLiteratureReaderService} from './literature-reader-service.mjs';
 import {createLiteratureDownloadService} from './literature-pdf-download.mjs';
@@ -49,6 +50,7 @@ const tools=createToolRunService(db,{...config,billing,modelBudget,cancelToolRun
 const questionnaires=createQuestionnaireService(db,config);
 const payments=createPaymentService(db,{...config,billing});
 const workspace=createWorkspaceService(db,{billing});
+const literatureLibrary=createLiteratureLibrary(db);
 const files=createFileService(db,config);
 const literatureDownloads=createLiteratureDownloadService({files,db,storage:config.storage,signingKey:config.agentConfigKey||config.paymentConfigKey,...(config.literaturePdfReader?{readPDF:config.literaturePdfReader}:{})});
 const artifacts=createArtifactService(db,config);
@@ -121,6 +123,7 @@ const user=adminUser||sessionUser(db,req,config.ownerEmail);if(!user)fail(401,'�
 const expectedOwner=req.headers['x-paperknow-user'];
 if(expectedOwner!==undefined&&(typeof expectedOwner!=='string'||expectedOwner!==user.id)){send(409,{error:'登录账户已变化，请刷新页面后重试',code:'ACCOUNT_CHANGED'});return;}
 if(adminRequest){send(200,await admin({path,method,query:requestURL.searchParams,readBody:()=>body(req),user}));return;}
+if(path==='/api/literature/library'){if(method==='GET'){const etag=literatureLibrary.etag(user);if(req.headers['if-none-match']===etag){res.writeHead(304,{'Cache-Control':'private, no-store',ETag:etag}).end();return;}send(200,literatureLibrary.list(user),{ETag:etag});return;}send(200,literatureLibrary.save(user,await body(req)));return;}
 if(path==='/api/literature/files'&&method==='POST'){rate(req,30);const input=await body(req),controller=new AbortController(),cancel=()=>{if(!res.writableEnded)controller.abort();};req.once('aborted',cancel);res.once('close',cancel);try{send(201,await literatureDownloads.save(input,user,{signal:controller.signal}));}finally{req.removeListener('aborted',cancel);res.removeListener('close',cancel);}return;}
 if(path==='/api/theses/document-render'){
  if(method==='GET'){const status=await thesisRenderer.status();send(200,{available:status.available,busy:status.busy,maxInputBytes:status.maxInputBytes});return;}
