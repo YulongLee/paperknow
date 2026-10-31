@@ -22,7 +22,7 @@ test('text-only illustration defects reuse the composition and do not copy the r
  let plans=0,images=0,reviews=0;const prompts=[];
  const result=await createScientificFigure(illustrationSnapshot(),{settings,jsonRunner:async(_m,{phase})=>{
   if(phase==='planning'){plans++;return{value:illustration};}if(phase==='label_layout')return{value:labelLayout()};
-  const value=review(true);if(!reviews++){value.passed=false;value.checks=value.checks.map(c=>c.key==='labels_legible'?{...c,passed:false,detail:'Remove the unwanted AUTHOR BRIEF footer'}:c);}return{value};
+  const value=review(true);if(phase==='review_confirm'||!reviews++){value.passed=false;value.checks=value.checks.map(c=>c.key==='labels_legible'?{...c,passed:false,detail:'Remove the unwanted AUTHOR BRIEF footer'}:c);}return{value};
  },imageRunner:async(_s,{prompt})=>{images++;prompts.push(prompt);return{buffer:pngFixture(),imageCount:1};}});
  assert.equal(result.review.passed,true);assert.equal(plans,1);assert.equal(images,2);assert.ok(prompts.every(p=>!p.includes('AUTHOR BRIEF')));assert.match(prompts[1],/Remove ALL lettering/);
 });
@@ -86,7 +86,7 @@ test('sequence preserves recipient direction, dashed returns, self messages and 
 });
 test('quality rejection triggers a bounded repair with specific feedback and never bypasses final review',async()=>{
  let images=0,reviews=0;const events=[],seen=[];
- const result=await createScientificFigure(illustrationSnapshot(),{settings,audit:e=>events.push(e),jsonRunner:async(messages,{phase})=>{seen.push(messages);return{value:phase==='planning'?illustration:phase==='label_layout'?labelLayout():review(++reviews===2)};},imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}});
+ const result=await createScientificFigure(illustrationSnapshot(),{settings,audit:e=>events.push(e),jsonRunner:async(messages,{phase})=>{seen.push(messages);return{value:phase==='planning'?illustration:phase==='label_layout'?labelLayout():phase==='review_confirm'?review(false):review(++reviews===2)};},imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}});
  assert.equal(images,2);assert.equal(result.review.passed,true);assert.ok(JSON.stringify(seen).includes('Wrong object count'));assert.equal(events.filter(e=>e.phase==='image'&&e.status==='started').length,2);
  let calls=0;await assert.rejects(()=>createScientificFigure(illustrationSnapshot(),{settings,jsonRunner:async(_m,{phase})=>({value:phase==='planning'?illustration:phase==='label_layout'?labelLayout():review(false)}),imageRunner:async()=>{calls++;return{buffer:pngFixture(),imageCount:1};}}),{code:'figure_quality_rejected'});assert.equal(calls,2);
 });

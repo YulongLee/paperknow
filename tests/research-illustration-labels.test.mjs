@@ -45,3 +45,24 @@ test('legacy plans with embedded lettering instructions are repaired before any 
  const result=await createScientificFigure(snapshot,{settings,jsonRunner:async(_m,{phase})=>({value:phase==='planning'?{complete:true,figure:++planning===1?legacy:plan}:phase==='label_layout'?layout():passed()}),imageRunner:async()=>{images++;assert.equal(planning,2);return{buffer:pngFixture(),imageCount:1};}});
  assert.equal(result.review.passed,true);assert.equal(planning,2);assert.equal(images,1);
 });
+test('planning schema repairs cannot consume the two actual image repair attempts',async()=>{
+ let planning=0,images=0,reviews=0;const {artworkDescription,...legacy}=plan;
+ const result=await createScientificFigure(snapshot,{settings,jsonRunner:async(_m,{phase})=>{
+  if(phase==='planning')return{value:{complete:true,figure:++planning<3?legacy:plan}};
+  if(phase==='label_layout')return{value:layout()};
+  const r=passed();if(phase==='review_confirm'||++reviews===1){r.passed=false;r.checks.find(c=>c.key==='labels_legible').passed=false;}return{value:r};
+ },imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}});
+ assert.equal(result.review.passed,true);assert.equal(planning,3);assert.equal(images,2);
+});
+test('panel stage names use native headings instead of object leader lines',async()=>{
+ const p={...plan,labels:['Separated','Aligned']},l=normalizeIllustrationLabelLayout({hasText:false,annotations:[{index:0,kind:'panel',x:250,y:100},{index:1,kind:'panel',x:750,y:100}]},p);
+ const output=await composeIllustrationLabels(pngFixture(1600,900),p,l);assert.equal((output.labelSvg.match(/data-panel-label=/g)||[]).length,2);assert.doesNotMatch(output.labelSvg,/data-label-target|<path/);
+});
+test('an independently disproved visual suspicion does not require another paid image',async()=>{
+ let images=0;const phases=[];
+ const result=await createScientificFigure(snapshot,{settings,jsonRunner:async(_m,{phase})=>{
+  phases.push(phase);if(phase==='planning')return{value:{complete:true,figure:plan}};if(phase==='label_layout')return{value:layout()};
+  const r=passed();if(phase==='review'){r.passed=false;r.checks[0]={key:'brief_fidelity',passed:false,detail:'Suspected extra component; verify actual visible count'};}return{value:r};
+ },imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}});
+ assert.equal(images,1);assert.equal(result.review.passed,true);assert.ok(phases.includes('review_confirm'));
+});

@@ -109,7 +109,7 @@ export function normalizePublicationFigurePlan(raw,snapshot,{verifyEvidence=true
   out.dataVerified=verifyEvidence;
  }
  if(kind==='illustration'){
-  out.description=text(f.description,4000,'插图说明');out.artworkDescription=text(f.artworkDescription,4000,'无字画面说明');out.requiredObjects=arrays(f.requiredObjects||[],20,'必要对象').map(v=>text(v,120,'必要对象'));out.labels=arrays(f.labels||[],20,'插图标注').map(v=>text(v,80,'插图标注'));
+  out.description=text(f.description,4000,'插图说明');out.artworkDescription=text(f.artworkDescription,4000,'artworkDescription（独立无字画面说明）');out.requiredObjects=arrays(f.requiredObjects||[],20,'必要对象').map(v=>text(v,120,'必要对象'));out.labels=arrays(f.labels||[],20,'插图标注').map(v=>text(v,80,'插图标注'));
   if(!out.requiredObjects.length)fail('科研插图需要明确的必要对象');
   const profile=publicationProfile(snapshot.context?.journalProfile||'general');if(profile.aiIllustration==='not-permitted')fail('当前规范不接受通用生成式 AI 插图，请改用可复现的数据图或文本结构图。');
  }
