@@ -1,3 +1,4 @@
+import {publishFileDeleted,subscribeFileDeletions} from './literature-file-sync.mjs';
 import {esc,icon} from './ui.mjs';
 import {withStableView} from './view-stability.mjs';
 import {artifactBase64} from './artifact-export.mjs';
@@ -11,7 +12,19 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
  let disposed=false,request=0,page=1,query='',kind='',project=String(projectId||''),owner=null,data=null,armed=null,editing=null,busy=false,uploadOpen=false,projects=[],projectError='';
  let originalsOpen=false,originals=null,originalsOwner=null,originalsPage=1,originalsRequest=0,originalsLoading=false,originalsError='',originalArmed=null;
  const selections={cloud:new Map(),original:new Map()};let bulkConfirm=null,bulkProgress=null;const bulkMessages={cloud:'',original:''},bulkFailures={cloud:[],original:[]};
- const controllers=new Set(),alive=()=>!disposed&&root.isConnected,doc=root.ownerDocument;
+ const controllers=new Set(),alive=()=>!disposed&&root.isConnected,doc=root.ownerDocument,win=doc.defaultView;let publishingDeletion=false,syncTimer=null;
+ function announceDeleted(row,area,expectedOwner){publishingDeletion=true;try{publishFileDeleted({ownerId:expectedOwner,fileId:row.id,kind:area==='original'?'original':'artifact'},{win});}finally{publishingDeletion=false;}}
+ let pendingFileSync=false,syncingFiles=false;
+ function flushFileSync(){
+  if(!pendingFileSync||syncingFiles||busy||editing||uploadOpen||!alive())return;
+  win.clearTimeout(syncTimer);syncTimer=win.setTimeout(async()=>{
+   if(busy||editing||uploadOpen||!alive())return;
+   pendingFileSync=false;syncingFiles=true;busy=true;root.setAttribute('aria-busy','true');
+   try{await refresh({preserveSelection:true,keepContent:true});if(alive()&&originalsOpen)await loadOriginals({preserveSelection:true,preservePage:true,keepContent:true});}
+   finally{busy=false;syncingFiles=false;if(alive())root.removeAttribute('aria-busy');flushFileSync();}
+  },60);
+ }
+ const stopFileSync=subscribeFileDeletions(win,event=>{if(publishingDeletion||!alive()||event.ownerId!==owner)return;pendingFileSync=true;flushFileSync();});
  const paint=html=>{if(alive())withStableView(root.closest('.dashboard')||root,()=>{root.innerHTML=html;});};
  const heading=()=>`<div class="cloud-artifact-heading"><div><span class="cloud-artifact-icon">${icon('folder',22)}</span><div><h2>云端文件</h2><p>生成和上传的文件集中保存，登录后可跨设备管理。</p></div></div><div class="cloud-artifact-heading-actions"><button type="button" data-cloud-refresh aria-label="刷新云端文件"><span aria-hidden="true">↻</span>刷新</button>${data?`<button type="button" data-cloud-upload-open class="cloud-artifact-primary" aria-expanded="${uploadOpen}">${icon('plus',15)}上传文件</button>`:''}</div></div>`;
  function clearSelections(){selections.cloud.clear();selections.original.clear();bulkConfirm=null;for(const area of ['cloud','original']){bulkMessages[area]='';bulkFailures[area]=[];}}
@@ -48,7 +61,7 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
      const result=await api('/'+encodeURIComponent(row.id)+'/delete',input,expectedOwner,false,area==='cloud'?'/api/artifacts':'/api/files');
      if(result?.deleted!==true||result.id!==row.id)throw Error('删除结果无法确认，请刷新文件列表核对后再重试');
      if(!await confirmOwner(expectedOwner,version))return;
-     selections[area].delete(row.id);removed++;if(area==='original')originals=originals.filter(value=>value.id!==row.id);
+     announceDeleted(row,area,expectedOwner);selections[area].delete(row.id);removed++;if(area==='original')originals=originals.filter(value=>value.id!==row.id);
     }catch(error){
      if(!alive()||version!==request)return;
      if(error.status===401||error.code==='ACCOUNT_CHANGED'){invalidate(error.message);return;}
@@ -60,7 +73,7 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
    bulkMessages[area]=`已删除 ${removed} 个文件${bulkFailures[area].length?'，'+bulkFailures[area].length+' 个未删除，已保留选择，可核对原因后重试。':'。'}`;notify(bulkMessages[area]);
    bulkProgress=null;await refresh({preserveSelection:true});
    if(alive()&&owner===expectedOwner&&area==='original'&&originalsOpen)await loadOriginals({preserveSelection:true,preservePage:true});
-  }catch(error){if(alive()&&version===request){bulkMessages[area]='批量删除已停止；已确认删除 '+removed+' 个文件，其余选择保留。'+(error.message||'请刷新后核对。');notify(bulkMessages[area]);}}finally{busy=false;bulkProgress=null;if(alive()&&data)content();}
+  }catch(error){if(alive()&&version===request){bulkMessages[area]='批量删除已停止；已确认删除 '+removed+' 个文件，其余选择保留。'+(error.message||'请刷新后核对。');notify(bulkMessages[area]);}}finally{busy=false;bulkProgress=null;if(alive()&&data)content();flushFileSync();}
  }
  function invalidate(message){clearSelections();bulkProgress=null;request++;originalsRequest++;owner=null;data=null;armed=null;editing=null;projects=[];originals=null;originalsOwner=null;originalsOpen=false;originalsLoading=false;originalArmed=null;paint(heading()+'<p class="cloud-artifact-error" role="alert">'+esc(message)+'</p>');}
  async function api(path,input,expectedOwner=owner,binary=false,base='/api/artifacts'){
@@ -89,9 +102,10 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
    return `<article class="cloud-artifact-row" data-cloud-file="${esc(row.id)}"><div class="cloud-artifact-fileline"><label class="cloud-file-check"><input type="checkbox" data-bulk-select="cloud" value="${esc(row.id)}" aria-label="选择文件：${esc(row.name)}" ${selections.cloud.has(row.id)?'checked':''}></label><span class="cloud-artifact-kind kind-${['png','jpg','jpeg','svg'].includes(row.kind)?'image':row.kind==='pptx'?'slides':['csv','xlsx','json'].includes(row.kind)?'data':'document'}">${esc(row.kind.toUpperCase())}</span><div class="cloud-artifact-copy"><b title="${esc(row.name)}">${esc(row.name)}</b><small>${size(row.bytes)}<i>·</i>${esc(date(row.createdAt))}<i>·</i><span class="cloud-artifact-status ${row.status==='ready'?'ready':''}">${esc(states[row.status]||'待核对')}</span></small><span class="cloud-artifact-project">${icon('folder',12)}${esc(projectName||(projectId?'已归入项目':'未归入项目'))}</span>${armed===row.id?'<p>删除后无法从云端恢复，已下载的本地文件不受影响。</p>':''}</div><div class="cloud-artifact-actions">${armed===row.id?`<button type="button" data-cloud-remove-confirm="${esc(row.id)}" class="cloud-artifact-danger">确认删除</button><button type="button" data-cloud-remove-cancel>取消</button>`:`${row.status==='ready'?`<button type="button" data-cloud-download="${esc(row.id)}">下载</button><button type="button" data-cloud-edit="${esc(row.id)}" aria-expanded="${editing===row.id}">管理</button>`:''}<button type="button" data-cloud-remove="${esc(row.id)}">${row.status==='deleting'?'重试删除':'删除'}</button>`}</div></div>${editor}</article>`;
   }).join(''):`<div class="cloud-artifact-empty">${icon('folder',34)}<h3>${query||kind||project?'没有匹配的文件':'把你的研究成果保存到云端'}</h3><p>${query||kind||project?'尝试其他名称、格式或项目。':'上传已有文件，或在写作、绘图等功能中导出成果。保存成功后，即可在这里统一管理。'}</p></div>`}</div><div class="cloud-artifact-footer"><span>共 ${data.total} 个文件 · 第 ${page} / ${pages} 页</span><div><button type="button" data-cloud-page="${page-1}" ${page<=1?'disabled':''}>上一页</button><button type="button" data-cloud-page="${page+1}" ${page>=pages?'disabled':''}>下一页</button></div></div>${originalMaterials()}`);paintSelections();
  }
- async function refresh({preserveSelection=false}={}){
+ async function refresh({preserveSelection=false,keepContent=false}={}){
+  const retained=keepContent&&!!data;
   if(!preserveSelection)clearSelections();
-  const version=++request;originalsRequest++;originalsLoading=false;armed=null;editing=null;data=null;projects=[];projectError='';paint(heading()+'<p class="cloud-artifact-empty" role="status">正在读取云文件…</p>');
+  const version=++request;originalsRequest++;originalsLoading=false;armed=null;editing=null;data=null;projects=[];projectError='';if(!retained)paint(heading()+'<p class="cloud-artifact-empty" role="status">正在读取云文件…</p>');
   try{
    const current=await session(true);if(!alive()||version!==request)return;
    const nextOwner=current?.user?.id||null;if(nextOwner!==owner)clearSelections();owner=nextOwner;
@@ -113,10 +127,10 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
  const rowsEmpty=value=>!value.items.length&&value.total<=(page-1)*10;
  async function confirmOwner(expectedOwner,version){const current=await session(true);if(!alive()||version!==request)return false;if(current?.user?.id!==expectedOwner){invalidate('登录账户已变化，操作已停止；请切回原账户后重试');return false;}return true;}
  function paintOriginals(){if(alive()&&data)withStableView(root.closest('.dashboard')||root,()=>{const panel=root.querySelector('.cloud-original-materials');if(panel)panel.outerHTML=originalMaterials();paintSelections();});}
- async function loadOriginals({preserveSelection=false,preservePage=false}={}){
+ async function loadOriginals({preserveSelection=false,preservePage=false,keepContent=false}={}){
   if(!preserveSelection){selections.original.clear();bulkConfirm=null;bulkMessages.original='';bulkFailures.original=[];}
   if(!owner||!data||!originalsOpen)return;const expectedOwner=owner,version=request,ticket=++originalsRequest;
-  originalsLoading=true;originalsError='';originalArmed=null;paintOriginals();
+  originalsLoading=!(keepContent&&originals);originalsError='';originalArmed=null;if(!keepContent||!originals)paintOriginals();
   const current=()=>alive()&&version===request&&ticket===originalsRequest&&originalsOpen;
   try{
    if(!await confirmOwner(expectedOwner,version)||!current())return;
@@ -147,12 +161,13 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
     if(!await confirmOwner(expectedOwner,version))return;
     const url=URL.createObjectURL(blob),a=doc.createElement('a');a.href=url;a.download=row.name;doc.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);notify('已发起材料下载，请确认浏览器保存完成。');
    }else{
-    await api('/'+encodeURIComponent(id)+'/delete',{expectedSha256:row.sha256},expectedOwner,false,'/api/files');
-    if(!await confirmOwner(expectedOwner,version))return;
+    const result=await api('/'+encodeURIComponent(id)+'/delete',{expectedSha256:row.sha256},expectedOwner,false,'/api/files');
+    if(result?.deleted!==true||result.id!==id)throw Error('删除结果无法确认，请刷新后核对');
+    if(!await confirmOwner(expectedOwner,version))return;announceDeleted(row,'original',expectedOwner);
     originals=originals.filter(item=>item.id!==id);selections.original.delete(id);originalArmed=null;originalsError='';paintOriginals();notify('已删除材料原件，已生成结果仍会保留。');
    }
   }catch(error){if(alive()&&version===request){if(error.status===401||error.code==='ACCOUNT_CHANGED')invalidate(error.message);else{originalsError=error.message||'材料操作未完成，请稍后重试';paintOriginals();}notify(error.message||'材料操作未完成，请稍后重试');}}
-  finally{busy=false;if(button.isConnected)button.disabled=false;}
+  finally{busy=false;if(button.isConnected)button.disabled=false;flushFileSync();}
  }
  async function action(event){
   const button=event.target.closest('button');if(!button||!root.contains(button)||busy)return;
@@ -164,9 +179,9 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
   if(button.hasAttribute('data-cloud-refresh')){void refresh();return;}
   if(button.hasAttribute('data-cloud-reset')){query='';kind='';project='';page=1;void refresh();return;}
   if(button.hasAttribute('data-cloud-page')){page=Number(button.dataset.cloudPage);void refresh({preserveSelection:true});return;}
-  if(button.hasAttribute('data-cloud-upload-open')||button.hasAttribute('data-cloud-upload-close')){uploadOpen=button.hasAttribute('data-cloud-upload-open')?!uploadOpen:false;content();if(uploadOpen)root.querySelector('#cloud-upload-file')?.focus({preventScroll:true});return;}
+  if(button.hasAttribute('data-cloud-upload-open')||button.hasAttribute('data-cloud-upload-close')){uploadOpen=button.hasAttribute('data-cloud-upload-open')?!uploadOpen:false;content();if(uploadOpen)root.querySelector('#cloud-upload-file')?.focus({preventScroll:true});else flushFileSync();return;}
   if(button.hasAttribute('data-cloud-remove-cancel')){armed=null;content();return;}
-  if(button.hasAttribute('data-cloud-edit-cancel')){editing=null;content();return;}
+  if(button.hasAttribute('data-cloud-edit-cancel')){editing=null;content();flushFileSync();return;}
   if(button.hasAttribute('data-cloud-edit')){editing=editing===button.dataset.cloudEdit?null:button.dataset.cloudEdit;armed=null;content();if(editing)root.querySelector('[data-cloud-metadata] input')?.focus({preventScroll:true});return;}
   if(button.hasAttribute('data-cloud-remove')){armed=button.dataset.cloudRemove;editing=null;content();return;}
   const id=button.dataset.cloudDownload||button.dataset.cloudRemoveConfirm,row=data?.items.find(r=>r.id===id);if(!row||!owner)return;
@@ -180,10 +195,10 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
     if(confirmed?.user?.id!==expectedOwner){invalidate('登录账户已变化，已停止下载；请切回原账户后重试');notify('登录账户已变化，已停止下载；请切回原账户后重试');return;}
     const url=URL.createObjectURL(blob),a=doc.createElement('a');a.href=url;a.download=row.name;doc.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);notify('已发起云文件下载，请确认浏览器保存完成。');
    }else{
-    await api('/'+encodeURIComponent(id)+'/delete',{expectedSha256:row.sha256,expectedUserId:expectedOwner},expectedOwner);if(!alive()||version!==request)return;notify('云文件已删除。');if(page>1&&data.items.length===1)page--;await refresh();
+    const result=await api('/'+encodeURIComponent(id)+'/delete',{expectedSha256:row.sha256,expectedUserId:expectedOwner},expectedOwner);if(result?.deleted!==true||result.id!==id)throw Error('删除结果无法确认，请刷新后核对');if(!await confirmOwner(expectedOwner,version))return;announceDeleted(row,'cloud',expectedOwner);notify('云文件已删除。');if(page>1&&data.items.length===1)page--;await refresh();
    }
   }catch(error){if(alive()&&version===request){if(error.status===401||error.code==='ACCOUNT_CHANGED')invalidate(error.message);notify(error.message||'操作未完成，请稍后重试');}}
-  finally{busy=false;if(button.isConnected)button.disabled=false;}
+  finally{busy=false;if(button.isConnected)button.disabled=false;flushFileSync();}
  }
  async function submit(event){
   const form=event.target;if(!form.matches('.cloud-artifact-search,.cloud-artifact-upload,.cloud-artifact-metadata'))return;event.preventDefault();if(busy||!data)return;
@@ -213,8 +228,8 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
     if(!await confirmOwner(expectedOwner,version))return;uploadOpen=false;page=1;query='';kind='';project='';notify('文件已保存到云端，相同内容会自动合并。');await refresh();
    }
   }catch(error){if(alive()&&version===request){if(error.status===401||error.code==='ACCOUNT_CHANGED')invalidate(error.message);else if(errorNode.isConnected)errorNode.textContent=error.message||'保存未完成，请稍后重试';notify(error.message||'保存未完成，请稍后重试');}}
-  finally{busy=false;if(button.isConnected){button.disabled=false;button.textContent=form.matches('.cloud-artifact-upload')?'保存到云端':'保存修改';}}
+  finally{busy=false;if(button.isConnected){button.disabled=false;button.textContent=form.matches('.cloud-artifact-upload')?'保存到云端':'保存修改';}flushFileSync();}
  }
  root.classList.add('cloud-artifact-library','card');root.addEventListener('click',action);root.addEventListener('submit',submit);root.addEventListener('change',selectFiles);void refresh();
- return {refresh,dispose(){disposed=true;request++;controllers.forEach(c=>c.abort());root.removeEventListener('click',action);root.removeEventListener('submit',submit);root.removeEventListener('change',selectFiles);clearSelections();}};
+ return {refresh,dispose(){disposed=true;stopFileSync();win.clearTimeout(syncTimer);request++;controllers.forEach(c=>c.abort());root.removeEventListener('click',action);root.removeEventListener('submit',submit);root.removeEventListener('change',selectFiles);clearSelections();}};
 }

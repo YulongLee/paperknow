@@ -1,13 +1,16 @@
-const previewCaches=new WeakMap();
+import {subscribeFileDeletions} from './literature-file-sync.mjs';
+const previewCaches=new WeakMap(),previewCacheSubscriptions=new WeakSet();
 function cacheOriginal(originalCache,key,bytes){originalCache.delete(key);originalCache.set(key,bytes);let total=[...originalCache.values()].reduce((n,b)=>n+b.byteLength,0);while(originalCache.size>2||total>24*1024*1024){const oldest=originalCache.keys().next().value;total-=originalCache.get(oldest).byteLength;originalCache.delete(oldest);}}
 // Preview only an authenticated account original. Never fetch a paper's public URL here.
 export function mountLiteratureOriginalPreview({container,paper,isCurrent=()=>true,fetchImpl=(...args)=>fetch(...args),signal,onReady=()=>{},onLocation=()=>{},onViewChange=()=>{},label='原文',loadViewer=()=>import('/workspace/assets/literature-pdf-viewer.js')}={}){
  const win=container.ownerDocument.defaultView,controller=new win.AbortController(),pages=container.querySelector('[data-reader-pdf-pages]'),status=container.querySelector('[data-reader-pdf-status]');
  const originalCache=previewCaches.get(win)||new Map();previewCaches.set(win,originalCache);
+ if(!previewCacheSubscriptions.has(win)){previewCacheSubscriptions.add(win);subscribeFileDeletions(win,event=>originalCache.delete(event.ownerId+':'+(event.kind==='artifact'?'artifact:':'file:')+event.fileId));}
  let live=true,pending=null,viewer=null,ready=false;
  const fallback=container.querySelector('[data-reader-text-fallback]'),retry=container.querySelector('[data-reader-pdf-retry]');
  const current=()=>live&&container.isConnected&&!controller.signal.aborted&&isCurrent();
  const abort=()=>{controller.abort();viewer?.dispose();viewer=null;pages.replaceChildren();};
+ const stopFileSync=subscribeFileDeletions(win,event=>{if(!live||event.ownerId!==paper.originalOwnerId||event.fileId!==paper.originalFileId||event.kind!==(paper.artifactId?'artifact':'original'))return;originalCache.delete(paper.originalOwnerId+':'+(paper.artifactId?'artifact:':'file:')+paper.originalFileId);ready=false;abort();status.textContent=label+'已删除，请返回文献列表选择其他文献。';container.dataset.previewState='deleted';});
  signal?.addEventListener('abort',abort,{once:true});
  async function request(path,binary=false){
   const response=await fetchImpl(path,{credentials:'same-origin',cache:'no-store',redirect:'error',signal:controller.signal,headers:{'X-PaperKnow-User':paper.originalOwnerId}});
@@ -32,5 +35,5 @@ export function mountLiteratureOriginalPreview({container,paper,isCurrent=()=>tr
    finally{win.clearTimeout(timer);if(live&&container.isConnected)container.setAttribute('aria-busy','false');pending=null;}
   })();return pending;
  }
- return {load,getViewer:()=>viewer,dispose(){if(!live)return;live=false;signal?.removeEventListener('abort',abort);abort();}};
+ return {load,getViewer:()=>viewer,dispose(){if(!live)return;live=false;stopFileSync();signal?.removeEventListener('abort',abort);abort();}};
 }

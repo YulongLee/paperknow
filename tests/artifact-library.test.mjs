@@ -8,7 +8,7 @@ const flush=()=>new Promise(r=>setImmediate(r));
 test('account cloud files page, search and confirmed deletion operate only on the expected owner',async()=>{
  const dom=new JSDOM('<main class="dashboard"><section id="files"></section></main>',{url:'http://localhost/workspace.html#assets'}),root=dom.window.document.querySelector('#files'),requests=[],notices=[];
  let count=11;
- const view=mountArtifactLibrary(root,{session:async()=>({user:{id:'alice'}}),notify:v=>notices.push(v),fetchImpl:async(path,options)=>{requests.push([path,options]);if(path==='/api/projects')return Response.json({items:[]});if(options.method==='POST'){count--;return Response.json({ok:true});}return Response.json({items:[item],total:count,quotaBytes:524288000,usedBytes:123,maxFileBytes:20971520});}});
+ const view=mountArtifactLibrary(root,{session:async()=>({user:{id:'alice'}}),notify:v=>notices.push(v),fetchImpl:async(path,options)=>{requests.push([path,options]);if(path==='/api/projects')return Response.json({items:[]});if(options.method==='POST'){count--;return Response.json({ok:true,id:item.id,deleted:true});}return Response.json({items:[item],total:count,quotaBytes:524288000,usedBytes:123,maxFileBytes:20971520});}});
  try{
   await flush();assert.match(root.textContent,/生成文件<测试>.docx/);assert.equal(root.querySelector('测试'),null);assert.match(requests[0][0],/expectedUserId=alice/);
   root.querySelector('[data-cloud-page="2"]').click();await flush();assert.match(requests.filter(([url])=>url.startsWith('/api/artifacts?')).at(-1)[0],/page=2/);
@@ -105,7 +105,7 @@ test('historical materials load only on expansion, paginate locally and follow t
 test('historical material deletion requires confirmation and preserves server protections before an owner-bound retry',async t=>{
  let allowed=false;const row=original(),f=await manager(t,{request:async(path,options)=>{
   if(path.startsWith('/api/files?'))return Response.json({items:[row]});
-  if(path==='/api/files/original-one/delete')return allowed?Response.json({ok:true,deleted:true}):Response.json({error:{message:'该原件正在作为论文导出模板使用，请先更换模板'}},{status:409});
+  if(path==='/api/files/original-one/delete')return allowed?Response.json({ok:true,id:row.id,deleted:true}):Response.json({error:{message:'该原件正在作为论文导出模板使用，请先更换模板'}},{status:409});
  }});
  await openOriginals(f);f.root.querySelector('[data-original-remove]').click();assert.equal(f.calls.some(c=>c.path.endsWith('/delete')),false);assert.match(f.root.querySelector('.cloud-original-list').textContent,/删除原件后无法恢复/);
  f.root.querySelector('[data-original-remove-confirm]').click();await flush();await flush();assert.match(f.root.querySelector('.cloud-original-content [role=alert]').textContent,/正在作为论文导出模板使用/);assert.equal(f.root.querySelectorAll('[data-original-file]').length,1);

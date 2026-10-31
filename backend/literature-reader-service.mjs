@@ -49,6 +49,9 @@ export function createLiteratureReaderService(db,config={}){
    if(method==='GET')return{value:{items:db.prepare('SELECT * FROM literature_pdf_annotations WHERE user_id=? AND resource_kind=? AND resource_id=? AND source_sha256=? AND deleted=0 ORDER BY page,created_at,id LIMIT 1000').all(...values).map(serialize)}};
    if(method!=='POST')fail(405,'不支持的标注操作');const input=await readBody();if(!plain(input)||input.expectedUserId!==user.id)fail(409,'登录账户已变化，请重新打开文献');
    if(Object.keys(input).some(k=>!['id','action','version','page','color','quote','note','rects','expectedUserId'].includes(k))||!validId(input.id)||!['create','update','delete'].includes(input.action))fail(400,'标注请求无效');
+   // Reading the request body can overlap deleting the original. Revalidate
+   // before a synchronous write so a late annotation cannot recreate its data.
+   if(resource(kind,id,user).sha256!==file.sha256)fail(409,'文献已变化，请重新打开后保存标注');
    const old=db.prepare('SELECT * FROM literature_pdf_annotations WHERE user_id=? AND resource_kind=? AND resource_id=? AND id=?').get(user.id,kind,id,input.id),at=new Date().toISOString();
    if(input.action==='create'){
     const value=validatePdfAnnotation(input);if(old){if(!old.deleted&&old.source_sha256===file.sha256&&JSON.stringify(serialize(old).rects)===JSON.stringify(value.rects)&&old.quote===value.quote&&old.note===value.note&&old.color===value.color&&old.page===value.page)return{value:{item:serialize(old)}};fail(409,'这条标注已存在，请刷新标注列表');}

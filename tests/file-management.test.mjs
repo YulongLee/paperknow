@@ -1,3 +1,4 @@
+import {createLiteratureReaderService} from '../backend/literature-reader-service.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -104,4 +105,47 @@ test('simultaneous deletion retries are idempotent even when both remote calls c
  const started=deferred(),finish=deferred();let removes=0;const f=await fixture(t,{provider:'aliyun_oss',bucket:'test-bucket',async remove(){if(++removes===2)started.resolve();await finish.promise;}});f.seed('same-original',{provider:'aliyun_oss'});
  const requests=[f.request('/files/same-original/delete',{expectedSha256:'hash'}),f.request('/files/same-original/delete',{expectedSha256:'hash'})];await started.promise;finish.resolve();
  assert.deepEqual((await Promise.all(requests)).map(r=>r.status),[200,200]);assert.equal(f.db.prepare('SELECT count(*) n FROM files').get().n,0);
+});
+
+test('literature deletion reconciliation returns only the requested owner’s completed deletions',async t=>{
+ const f=await fixture(t);f.seed('alice-old');f.seed('bob-old',{user:'bob'});f.seed('still-present');
+ await f.request('/files/alice-old/delete',{expectedSha256:'hash'});await f.request('/files/bob-old/delete',{expectedSha256:'hash'},'bob');
+ const input={expectedUserId:'alice',fileIds:['alice-old','bob-old','still-present','unknown','alice-old']};
+ const result=await f.request('/files/deletions/check',input);
+ assert.equal(result.status,200);assert.deepEqual(result.value,{ownerId:'alice',deletedIds:['alice-old']});
+ assert.equal((await f.request('/files/deletions/check',{...input,expectedUserId:'bob'})).status,409);
+ assert.equal((await f.request('/files/deletions/check',{...input,fileIds:Array(201).fill('alice-old')})).status,400);
+ assert.equal((await f.request('/files/deletions/check',{...input,fileIds:['../bad']})).status,400);
+ assert.equal((await f.request('/files/deletions/check',input,null)).status,401);
+ assert.equal((await f.request('/files/deletions/check')).status,405);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM files').get().n,1);
+});
+
+test('pending remote deletion is not reconciled as removed and a successful retry clears only original annotations',async t=>{
+ let fail=true;const f=await fixture(t,{provider:'aliyun_oss',bucket:'test-bucket',async remove(){if(fail)throw Error('OSS unavailable');}});
+ f.seed('annotated',{provider:'aliyun_oss'});
+ const at=new Date().toISOString(),insert=f.db.prepare('INSERT INTO literature_pdf_annotations(id,user_id,resource_kind,resource_id,source_sha256,page,color,quote,note,rects,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)');
+ insert.run('source-note','alice','file','annotated','hash',1,'yellow','quote','note','[]',at,at);
+ insert.run('translated-note','alice','artifact','annotated','hash',1,'yellow','quote','keep translated note','[]',at,at);
+ assert.equal((await f.request('/files/annotated/delete',{expectedSha256:'hash'})).status,500);
+ assert.deepEqual((await f.request('/files/deletions/check',{expectedUserId:'alice',fileIds:['annotated']})).value.deletedIds,[]);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM literature_pdf_annotations').get().n,2);
+ fail=false;assert.equal((await f.request('/files/annotated/delete',{expectedSha256:'hash'})).status,200);
+ assert.deepEqual((await f.request('/files/deletions/check',{expectedUserId:'alice',fileIds:['annotated']})).value.deletedIds,['annotated']);
+ assert.deepEqual(f.db.prepare('SELECT id FROM literature_pdf_annotations').all().map(row=>row.id),['translated-note']);
+});
+
+test('an original reserved by a preparing document task cannot be deleted from literature',async t=>{
+ const f=await fixture(t);f.seed('preparing-source');f.job('preparing-parser','preparing-source','preparing');
+ const result=await f.request('/files/preparing-source/delete',{expectedSha256:'hash'});
+ assert.equal(result.status,409);assert.match(result.value.error,/进行中的任务/);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM files').get().n,1);
+});
+
+test('an annotation body arriving after original deletion cannot recreate orphaned notes',async t=>{
+ const f=await fixture(t);f.seed('late-source');f.db.prepare("UPDATE files SET kind='pdf' WHERE id='late-source'").run();
+ const reader=createLiteratureReaderService(f.db),gate=deferred();let started=false;
+ const pending=reader.handle({path:'/api/literature/reader/file/late-source/annotations',method:'POST',user:{id:'alice'},readBody:async()=>{started=true;await gate.promise;return{id:'late-note',action:'create',page:1,color:'yellow',quote:'A pending selection',note:'A late note',rects:[{x:.1,y:.1,width:.4,height:.02}],expectedUserId:'alice'};}});
+ assert.equal(started,true);assert.equal((await f.request('/files/late-source/delete',{expectedSha256:'hash'})).status,200);gate.resolve();
+ await assert.rejects(pending,error=>error.status===404);assert.equal(f.db.prepare('SELECT count(*) n FROM literature_pdf_annotations').get().n,0);
 });

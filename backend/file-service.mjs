@@ -64,8 +64,16 @@ export function createFileService(db,config={}){
   }finally{db.prepare('DELETE FROM workspace_file_uploads WHERE id=? AND user_id=?').run(id,user.id);}
  };
  return async({path,method,user,readBody,query})=>{
-  const deletion=path.match(/^\/api\/files\/([^/]+)\/delete$/),download=path.match(/^\/api\/files\/([^/]+)\/download$/),reuse=path==='/api/files/reuse';
-  if(path!=='/api/files'&&!deletion&&!download&&!reuse)return null;
+  const deletion=path.match(/^\/api\/files\/([^/]+)\/delete$/),download=path.match(/^\/api\/files\/([^/]+)\/download$/),reuse=path==='/api/files/reuse',deletionCheck=path==='/api/files/deletions/check';
+  if(path!=='/api/files'&&!deletion&&!download&&!reuse&&!deletionCheck)return null;
+  if(deletionCheck){
+   if(method!=='POST')fail(405,'不支持的文件操作');
+   const input=await readBody();
+   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['expectedUserId','fileIds'].includes(key))||!Array.isArray(input.fileIds)||input.fileIds.length>200||input.fileIds.some(id=>!safeId(id)))fail(400,'文件删除状态参数无效');
+   if(input.expectedUserId!==user.id)fail(409,'登录账户已变化，请刷新后重试');
+   const deleted=db.prepare("SELECT 1 FROM workspace_file_deletions WHERE file_id=? AND user_id=? AND status='completed'");
+   return {value:{ownerId:user.id,deletedIds:[...new Set(input.fileIds)].filter(id=>deleted.get(id,user.id))}};
+  }
   db.prepare('DELETE FROM workspace_file_uploads WHERE expires_at<=?').run(new Date().toISOString());
   if(path==='/api/files'&&method==='GET')return {value:{items:db.prepare("SELECT f.id,f.project_id,f.name,f.kind,f.bytes,f.sha256,f.created_at,CASE WHEN d.status='pending' THEN 'pending' ELSE NULL END AS deletionStatus FROM files f LEFT JOIN workspace_file_deletions d ON d.file_id=f.id WHERE f.user_id=? ORDER BY f.created_at DESC,f.id DESC").all(user.id)}};
   if(download){
@@ -126,7 +134,7 @@ export function createFileService(db,config={}){
     if(old?.status==='completed')return null;
     const row=file(id,user);if(row.sha256!==input.expectedSha256)fail(409,'原件已变化，请刷新后再删除');
     assertThesisTemplateNotReferenced(db,id,user.id);
-    const active=db.prepare("SELECT input FROM jobs WHERE user_id=? AND status IN ('queued','running') AND type IN ('parse','agent','document_parse','document_translation')").all(user.id);
+    const active=db.prepare("SELECT input FROM jobs WHERE user_id=? AND status IN ('preparing','queued','running') AND type IN ('parse','agent','document_parse','document_translation')").all(user.id);
     if(active.some(job=>{try{const v=JSON.parse(job.input);return v.fileId===id||(Array.isArray(v.fileIds)&&v.fileIds.includes(id));}catch{return true;}}))fail(409,'仍有进行中的任务正在使用此原件，请等待完成或取消任务后再删除');
     const at=new Date().toISOString();
     db.prepare("INSERT INTO workspace_file_deletions(file_id,user_id,expected_sha256,status,created_at,updated_at) VALUES(?,?,?,'pending',?,?) ON CONFLICT(file_id) DO NOTHING").run(id,user.id,row.sha256,at,at);
@@ -137,6 +145,7 @@ export function createFileService(db,config={}){
    transaction(()=>{
     if(db.prepare("SELECT 1 FROM workspace_file_deletions WHERE file_id=? AND user_id=? AND status='completed'").get(id,user.id))return;
     const current=file(id,user);if(current.sha256!==input.expectedSha256)fail(409,'原件已变化，请刷新后继续');
+    if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='literature_pdf_annotations'").get())db.prepare("DELETE FROM literature_pdf_annotations WHERE user_id=? AND resource_kind='file' AND resource_id=?").run(user.id,id);
     db.prepare('DELETE FROM files WHERE id=? AND user_id=?').run(id,user.id);
     db.prepare("UPDATE workspace_file_deletions SET status='completed',updated_at=? WHERE file_id=? AND user_id=?").run(new Date().toISOString(),id,user.id);
    });
