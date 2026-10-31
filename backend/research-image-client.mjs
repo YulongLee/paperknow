@@ -17,6 +17,7 @@ const palettes=Object.freeze({academic:'白色背景，克制的蓝灰色学术�
 const failure=(code,message,status=502)=>Object.assign(new Error(message),{code:'research_image_'+code,status,researchImageSafe:true});
 const fail=(code,message,status)=>{throw failure(code,message,status);};
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+export function researchFigureJsonModel(messages){return messages.some(m=>Array.isArray(m.content)&&m.content.some(p=>p.type==='image_url'))?'qwen3-vl-plus':'qwen3.6-flash';}
 export function assertResearchImageSettings(s){
  if(!plain(s)||s.enabled!==true||!models.has(s.model)||typeof s.apiKey!=='string'||s.apiKey.length<8||s.apiKey.length>16384||/[\x00-\x20\x7f]/.test(s.apiKey)||!['https://dashscope.aliyuncs.com','https://dashscope.aliyuncs.com/'].includes(s.baseURL)||typeof s.version!=='string'||!/^[A-Za-z0-9_.:-]{1,160}$/.test(s.version)||s.workspaceId!==undefined&&s.workspaceId!==''&&(typeof s.workspaceId!=='string'||!/^[A-Za-z0-9_-]{1,160}$/.test(s.workspaceId)))fail('not_configured','科研绘图服务暂未就绪，请稍后重试',503);
  const timeoutMs=s.timeoutMs??120000;if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>180000)fail('not_configured','科研绘图服务暂未就绪，请稍后重试',503);
@@ -101,12 +102,12 @@ export function createResearchImageClient(settings,{requestImpl=httpsRequest,loo
   });
  }
  return{async json(messages,{signal,maxTokens=6000}={}){
-  const body=JSON.stringify({model:'qwen3.6-flash',messages,enable_thinking:false,temperature:0,max_tokens:maxTokens,response_format:{type:'json_object'}});
+  const model=researchFigureJsonModel(messages),body=JSON.stringify({model,messages,enable_thinking:false,temperature:0,max_tokens:maxTokens,response_format:{type:'json_object'}});
   const bytes=await request(new URL('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'),{body,signal,api:true});
   let data;try{data=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{fail('response_invalid','绘图内容检查未返回完整结果');}
   const choice=data?.choices?.[0];if(data.error||data.choices?.length!==1||choice.finish_reason!=='stop'||typeof choice.message?.content!=='string'||choice.message.content.length>100000)fail('response_invalid','绘图内容检查未完成，请稍后重试');
   let value;try{value=JSON.parse(choice.message.content);}catch{fail('response_invalid','绘图内容检查格式不完整');}
-  return{value,usage:data.usage||{},model:'qwen3.6-flash'};
+  return{value,usage:data.usage||{},model};
  },async generate(snapshot,{signal,prompt}={}){
   if(!sizes[snapshot.context?.aspectRatio])fail('input_invalid','请选择支持的图片比例',400);
   const size=(['qwen-image-3.0','qwen-image-3.0-pro'].includes(runtime.model)?highResolutionSizes:sizes)[snapshot.context.aspectRatio];

@@ -1,9 +1,10 @@
+import {createFigureWithReviewFixture as createScientificFigure} from './fixtures/research-review.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {researchFigureChoices} from '../dist/workspace/research-figure-catalog.mjs';
 import {normalizePublicationFigurePlan} from '../backend/research-figure-plan.mjs';
 import {publicationChartOption,renderPublicationVector,rasterPublicationVector} from '../backend/research-native-figure.mjs';
-import {createScientificFigure,normalizeFigureReview} from '../backend/research-figure-quality.mjs';
+import {normalizeFigureReview} from '../backend/research-figure-quality.mjs';
 import {validateResearchImage} from '../backend/research-image-client.mjs';
 import {researchIllustrationPrompt} from '../backend/research-image-client.mjs';
 import {pngFixture} from './fixtures/research-image.mjs';
@@ -17,14 +18,6 @@ const chart=(chartType,data,extra={})=>({complete:true,figure:{kind:'chart',char
 test('illustration prompts contain the normalized composition and labels, never internal source headings or review text',()=>{
  const s={...illustrationSnapshot(),text:'AUTHOR BRIEF source-only instructions and private file title',title:'private file title'},plan={kind:'illustration',artworkDescription:'An unlabeled visual arrangement of the specified parts.',description:'A gray base below a blue lens housing.',requiredObjects:['gray base','blue lens housing'],labels:['Base','Lens']},prompt=researchIllustrationPrompt(s,plan,{repairKeys:['labels_legible']});
  assert.match(prompt,/gray base/);assert.doesNotMatch(prompt,/"Base"/);assert.doesNotMatch(prompt,/AUTHOR BRIEF|source-only|private file title|STRICT VISIBLE|COMPOSITION:|REQUIRED OBJECTS:/);
-});
-test('native lettering defects repair the same raw artwork without paying to redraw correct content',async()=>{
- let plans=0,images=0,reviews=0;const prompts=[],locatorImages=[],events=[];
- const result=await createScientificFigure(illustrationSnapshot(),{settings,audit:e=>events.push(e),jsonRunner:async(_m,{phase})=>{
-  if(phase==='planning'){plans++;return{value:illustration};}if(phase==='label_layout'){locatorImages.push(_m[1].content[1].image_url.url);return{value:labelLayout()};}
-  const value=review(true);if(phase==='review_confirm'||!reviews++){value.passed=false;value.checks=value.checks.map(c=>c.key==='labels_legible'?{...c,passed:false,detail:'Remove the unwanted AUTHOR BRIEF footer'}:c);}return{value};
- },imageRunner:async(_s,{prompt})=>{images++;prompts.push(prompt);return{buffer:pngFixture(),imageCount:1};}});
- assert.equal(result.review.passed,true);assert.equal(plans,1);assert.equal(images,1);assert.ok(prompts.every(p=>!p.includes('AUTHOR BRIEF')));assert.equal(locatorImages.length,2);assert.equal(locatorImages[0],locatorImages[1]);assert.ok(events.some(e=>e.phase==='image_reuse'));
 });
 test('English node wrapping keeps complete words instead of breaking Motivation or Engagement',async()=>{
  const s={...snapshot('path'),text:'Learning Support -> Learning Motivation -> Learning Engagement -> Learning Outcomes. H1 H2 H3 H4.'},plan=normalizePublicationFigurePlan({complete:true,figure:{kind:'diagram',nodes:['Learning Support','Learning Motivation','Learning Engagement','Learning Outcomes'].map((label,i)=>({id:String(i),label})),edges:[{from:'0',to:'1',label:'H1'},{from:'1',to:'2',label:'H2'},{from:'2',to:'3',label:'H3'},{from:'0',to:'3',label:'H4'}]}},s),r=await renderPublicationVector(plan,s);

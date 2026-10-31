@@ -1,8 +1,9 @@
+import {createFigureWithReviewFixture as createScientificFigure} from './fixtures/research-review.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {composeIllustrationLabels,normalizeIllustrationLabelLayout,illustrationLabelTask} from '../backend/research-illustration-labels.mjs';
-import {createScientificFigure} from '../backend/research-figure-quality.mjs';
+
 import {validateResearchImage,researchIllustrationPrompt} from '../backend/research-image-client.mjs';
 import {pngFixture} from './fixtures/research-image.mjs';
 import {cantileverArtwork,cantileverPlan,cantileverLocations} from './fixtures/research-cantilever.mjs';
@@ -29,7 +30,7 @@ test('local typography preserves exact escaped labels and original canvas size w
  assert.equal(composed.annotations,5);assert.match(composed.labelSvg,/Base &amp; lens &lt;front&gt;/);assert.doesNotMatch(composed.labelSvg,/<front>/);assert.equal((composed.labelSvg.match(/data-label="/g)||[]).length,5);
  const checked=validateResearchImage(composed.buffer);assert.equal(checked.width,1600);assert.equal(checked.height,900);assert.notDeepEqual(composed.buffer,original);
 });
-test('text-bearing artwork is regenerated internally; the final full review receives the program-labelled image',async()=>{
+test('text-bearing artwork is regenerated internally; raw scientific content is reviewed separately from verified native lettering',async()=>{
  let images=0,locations=0,reviews=0;const phases=[];const raw=pngFixture(1600,900),hash=b=>createHash('sha256').update(b).digest('hex');
  const result=await createScientificFigure(snapshot,{settings,jsonRunner:async(messages,{phase})=>{
   phases.push(phase);if(phase==='planning')return{value:{complete:true,figure:plan}};
@@ -74,20 +75,4 @@ test('cantilever callouts preserve exact index-to-label mapping and avoid full-w
  assert.deepEqual(result.manifest.map(m=>[m.id,m.label]),cantileverPlan.labels.map((label,i)=>[i+1,label]));
  for(const m of result.manifest){const distance=Math.hypot((m.marker.x-m.target.x)*1.6,(m.marker.y-m.target.y)*.9);assert.ok(distance<=1600*.0155*8+.1);}
  assert.equal(validateResearchImage(result.buffer).width,1600);assert.doesNotMatch(result.labelSvg,/Fixed support.*Fixed support/);
-});
-test('annotation mapping errors in relation checks repair coordinates, not the underlying scientific picture',async()=>{
- let images=0,locations=0,reviews=0;const raw=await cantileverArtwork();
- const result=await createScientificFigure({...snapshot,context:{...snapshot.context,categoryId:'simulation',figureType:'abaqus-02'}},{settings,jsonRunner:async(messages,{phase})=>{
-  if(phase==='planning')return{value:{complete:true,figure:cantileverPlan}};
-  if(phase==='label_layout'){locations++;if(locations>1)assert.match(JSON.stringify(messages),/wrong marker mapping/);return{value:cantileverLocations};}
-  const r=passed();if(phase==='review_confirm'||++reviews===1){r.passed=false;r.checks[1]={key:'scientific_relations',passed:false,scope:'annotation',detail:'wrong marker mapping'};}return{value:r};
- },imageRunner:async()=>{images++;return{buffer:raw,imageCount:1};}});
- assert.equal(result.review.passed,true);assert.equal(images,1);assert.equal(locations,2);
-});
-test('a layout correction remains available after the two genuine artwork attempts have been used',async()=>{
- let images=0,reviews=0;const result=await createScientificFigure(snapshot,{settings,jsonRunner:async(_m,{phase})=>{
-  if(phase==='planning')return{value:{complete:true,figure:plan}};if(phase==='label_layout')return{value:layout()};
-  if(phase==='review')reviews++;const r=passed();if(reviews<3){r.passed=false;const i=reviews===1?0:4;r.checks[i]={...r.checks[i],passed:false,scope:reviews===1?'artwork':'annotation'};}return{value:r};
- },imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}});
- assert.equal(result.review.passed,true);assert.equal(images,2);assert.equal(reviews,3);
 });

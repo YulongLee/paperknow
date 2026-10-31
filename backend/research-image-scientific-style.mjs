@@ -48,7 +48,7 @@ export function scientificFigureStyle(choice){
   line:'折线图按作者给出的数据点和顺序连线，不添加未给出的平滑趋势、误差区间或预测点。'
  };
  if(exact[type])rules.push(exact[type]);
- if(category==='simulation')rules.push('没有边界条件、材料参数和计算结果时，只画物理对象、边界与计算流程示意，不伪造有限元云图、应力峰值、热场或实验验证结果。');
+ if(category==='simulation')rules.push('没有边界条件、材料参数和计算结果时，只画物理对象、边界与计算流程示意，不伪造有限元云图、应力峰值、热场或实验验证结果。若说明包含悬臂梁及自由端向下载荷：固定端位移和转角为零，自由端沿载荷方向偏转；独立变形示意也必须保留这一边界关系，不能画成两端同高的对称拱线、U形或正弦曲线，不能把载荷挪到固定端。不增加未提供的位移数值。');
  if(category==='optics')rules.push('光路的元件顺序、入射出射方向、透镜和反射面要准确，虚实光线用不同线型，未提供条件时不编造焦距、效率或成像质量。');
  if(category==='statistics'||category==='machine-learning')rules.push('统计或机器学习图的曲线与矩阵必须来自作者明确提供的值；控制图的观测点、中心线、上限、下限分别按给定值定位，不重新发明控制限。');
  if(category==='chemistry'||category==='biomedicine')rules.push('机理图明确区分对象与过程，箭头和激活/抑制符号按作者给定关系绘制；不编造化学键、分子构型、蛋白三维结构或显微照片。');

@@ -47,3 +47,11 @@ test('planning and visual review use the fixed official JSON endpoint with bound
  const requests=[],client=createResearchImageClient(runtime,{lookupImpl:publicDNS,requestImpl:transport([{json:{choices:[{finish_reason:'stop',message:{content:'{"complete":true}'}}],usage:{prompt_tokens:12,completion_tokens:8}}}],requests)}),result=await client.json([{role:'user',content:'Return JSON'}],{maxTokens:6500});assert.equal(result.value.complete,true);assert.equal(result.usage.prompt_tokens,12);assert.equal(requests[0].options.hostname,'dashscope.aliyuncs.com');assert.equal(requests[0].options.path,'/compatible-mode/v1/chat/completions');const body=JSON.parse(requests[0].body);assert.equal(body.model,'qwen3.6-flash');assert.equal(body.enable_thinking,false);assert.equal(body.max_tokens,6500);assert.equal(requests[0].options.rejectUnauthorized,true);
  for(const choice of [{finish_reason:'length',message:{content:'{}'}},{finish_reason:'stop',message:{content:'```json {}```'}}]){const calls=[],bad=createResearchImageClient(runtime,{lookupImpl:publicDNS,requestImpl:transport([{json:{choices:[choice]}}],calls)});await assert.rejects(()=>bad.json([{role:'user',content:'Return JSON'}]));assert.equal(calls.length,1);}
 });
+test('actual image localization and review use the dedicated visual model while text planning keeps the text model',async()=>{
+ for(const visual of [false,true]){
+  const requests=[],client=createResearchImageClient(runtime,{lookupImpl:publicDNS,requestImpl:transport([{json:{choices:[{finish_reason:'stop',message:{content:'{"passed":true}'}}]}}],requests)});
+  const content=visual?[{type:'text',text:'Inspect the visible figure'},{type:'image_url',image_url:{url:'data:image/png;base64,'+pngFixture().toString('base64')}}]:'Extract a structured plan';
+  const result=await client.json([{role:'user',content}],{maxTokens:2000});const expected=visual?'qwen3-vl-plus':'qwen3.6-flash';
+  assert.equal(JSON.parse(requests[0].body).model,expected);assert.equal(result.model,expected);
+ }
+});

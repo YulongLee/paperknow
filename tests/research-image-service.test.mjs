@@ -60,3 +60,20 @@ test('native PNG and editable SVG form one private atomic delivery with one sett
  const value=input();value.snapshot.mode='basic';value.snapshot.context={...value.snapshot.context,categoryId:'basic',figureType:'flowchart'};const created=await f.submit(value);await f.worker.tick();const job=(await f.request('/jobs/'+created.value.item.id)).value.item;assert.equal(job.status,'completed',JSON.stringify(job));assert.equal(f.calls.model,0);assert.equal(f.calls.put,2);assert.equal(job.output.artifacts[1].kind,'svg');assert.equal(job.output.artifacts[1].role,'vector');assert.equal(f.billing.balance('alice').balance,190);
  for(const file of job.output.artifacts)await assert.rejects(()=>f.artifacts({path:file.downloadUrl,method:'GET',user:{id:'bob'}}),{status:404});
 });
+test('verified annotation repair preserves provider usage, private delivery and a single credit settlement',async t=>{
+ const f=fixture(t);let targets=0;
+ f.config.researchFigureJson=async(messages,{phase})=>{
+  if(phase==='planning')return{value:{complete:true,figure:{kind:'illustration',artworkDescription:'Two unlabelled components.',description:'Two components',requiredObjects:['A','B'],labels:['A','B']}}};
+  if(phase==='label_layout')return{value:{hasText:false,annotations:[{index:0,x:250,y:300},{index:1,x:750,y:700}]}};
+  const request=JSON.parse(messages[1].content[0].text);
+  if(phase==='label_targets'){targets++;const checks=request.labels.map(a=>({index:a.index,passed:targets>1||a.index!==0,scope:'annotation',detail:'Fixture coordinate check'}));return{value:{passed:checks.every(c=>c.passed),checks},usage:{prompt_tokens:123,completion_tokens:21}};}
+  return{value:{passed:true,checks:request.requestedChecks.map(key=>({key,passed:true,detail:'Actual content check fixture'}))}};
+ };
+ const created=await f.submit();await f.worker.tick();await f.worker.tick();const job=(await f.request('/jobs/'+created.value.item.id)).value.item;
+ assert.equal(job.status,'completed',JSON.stringify(job));assert.equal(f.calls.model,1);assert.equal(targets,2);assert.equal(f.files.size,1);
+ assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);
+ assert.equal(f.db.prepare("SELECT count(*) n FROM billing_reservations WHERE status='settled'").get().n,1);
+ const audits=f.db.prepare('SELECT phase,metrics FROM research_figure_attempts ORDER BY sequence').all();
+ assert.equal(audits.filter(a=>a.phase==='label_targets').length,2);assert.equal(audits.filter(a=>a.phase==='label_composition').length,1);
+ assert.equal(JSON.parse(audits.find(a=>a.phase==='label_targets').metrics).usage.prompt_tokens,123);
+});
