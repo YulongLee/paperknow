@@ -5,6 +5,7 @@ import {composeIllustrationLabels,normalizeIllustrationLabelLayout,illustrationL
 import {createScientificFigure} from '../backend/research-figure-quality.mjs';
 import {validateResearchImage,researchIllustrationPrompt} from '../backend/research-image-client.mjs';
 import {pngFixture} from './fixtures/research-image.mjs';
+import {cantileverArtwork,cantileverPlan,cantileverLocations} from './fixtures/research-cantilever.mjs';
 const settings={enabled:true,model:'qwen-image-3.0',apiKey:'sk-private-fixture',version:'test-labels',baseURL:'https://dashscope.aliyuncs.com',timeoutMs:1000};
 const snapshot={mode:'professional',title:'Assembly',text:'Four stages and three consistent parts.',language:'English',context:{categoryId:'rendering',figureType:'cinema-4d-02',aspectRatio:'16:9',palette:'academic'}};
 const plan={kind:'illustration',artworkDescription:'An unlabeled visual arrangement of the specified parts.',description:'Four assembly stages with a gray base and blue barrel.',requiredObjects:['Base','Barrel'],labels:['Separated','Aligned','Inserted','Assembled','Base & lens <front>']};
@@ -38,7 +39,7 @@ test('text-bearing artwork is regenerated internally; the final full review rece
  assert.equal(images,2);assert.equal(reviews,1);assert.equal(phases.filter(p=>p==='planning').length,1);assert.equal(result.review.passed,true);assert.notEqual(hash(result.buffer),hash(raw));
 });
 test('uncertain location data never silently omit required labels or trigger another paid image',async()=>{
- let images=0;await assert.rejects(()=>createScientificFigure(snapshot,{settings,jsonRunner:async(_m,{phase})=>({value:phase==='planning'?{complete:true,figure:plan}:{hasText:false,annotations:[]}}),imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}}),{code:'figure_annotation_invalid'});assert.equal(images,1);
+ let images=0;await assert.rejects(()=>createScientificFigure(snapshot,{settings,jsonRunner:async(_m,{phase})=>({value:phase==='planning'?{complete:true,figure:plan}:{hasText:false,annotations:[]}}),imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}}),{code:'figure_quality_rejected'});assert.equal(images,1);
 });
 test('legacy plans with embedded lettering instructions are repaired before any image is paid for',async()=>{
  let planning=0,images=0;const {artworkDescription,...legacy}=plan;
@@ -50,9 +51,9 @@ test('planning schema repairs cannot consume the two actual image repair attempt
  const result=await createScientificFigure(snapshot,{settings,jsonRunner:async(_m,{phase})=>{
   if(phase==='planning')return{value:{complete:true,figure:++planning<3?legacy:plan}};
   if(phase==='label_layout')return{value:layout()};
-  const r=passed();if(phase==='review_confirm'||++reviews===1){r.passed=false;r.checks.find(c=>c.key==='labels_legible').passed=false;}return{value:r};
+  const r=passed();if(phase==='review_confirm'||++reviews===1){r.passed=false;r.checks.find(c=>c.key==='brief_fidelity').passed=false;}return{value:r};
  },imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}});
- assert.equal(result.review.passed,true);assert.equal(planning,3);assert.equal(images,2);
+ assert.equal(result.review.passed,true);assert.equal(planning,4);assert.equal(images,2);
 });
 test('panel titles occupy reserved white bands even when the locator returns object centres',async()=>{
  const p={...plan,layout:'grid',labels:['Separated','Aligned','Inserted','Complete']},l=normalizeIllustrationLabelLayout({hasText:false,annotations:p.labels.map((_,index)=>({index,kind:'panel',x:index%2?750:250,y:index<2?250:750}))},p);
@@ -63,7 +64,30 @@ test('an independently disproved visual suspicion does not require another paid 
  let images=0;const phases=[];
  const result=await createScientificFigure(snapshot,{settings,jsonRunner:async(_m,{phase})=>{
   phases.push(phase);if(phase==='planning')return{value:{complete:true,figure:plan}};if(phase==='label_layout')return{value:layout()};
-  const r=passed();if(phase==='review'){r.passed=false;r.checks[0]={key:'brief_fidelity',passed:false,detail:'Suspected extra component; verify actual visible count'};}return{value:r};
+  const r=passed();if(phase==='review'){r.passed=false;r.checks[0]={key:'brief_fidelity',passed:false,detail:'Suspected extra component; verify actual visible count'};}if(phase==='review_confirm')assert.ok(!JSON.stringify(_m).includes('Suspected extra component'));return{value:r};
  },imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}});
  assert.equal(images,1);assert.equal(result.review.passed,true);assert.ok(phases.includes('review_confirm'));
+});
+test('cantilever callouts preserve exact index-to-label mapping and avoid full-width leaders',async()=>{
+ const raw=await cantileverArtwork(),layout=normalizeIllustrationLabelLayout(cantileverLocations,cantileverPlan),result=await composeIllustrationLabels(raw,cantileverPlan,[...layout].reverse());
+ assert.equal(result.strategy,'numbered-callouts');assert.equal(result.manifest.length,4);
+ assert.deepEqual(result.manifest.map(m=>[m.id,m.label]),cantileverPlan.labels.map((label,i)=>[i+1,label]));
+ for(const m of result.manifest){const distance=Math.hypot((m.marker.x-m.target.x)*1.6,(m.marker.y-m.target.y)*.9);assert.ok(distance<=1600*.0155*8+.1);}
+ assert.equal(validateResearchImage(result.buffer).width,1600);assert.doesNotMatch(result.labelSvg,/Fixed support.*Fixed support/);
+});
+test('annotation mapping errors in relation checks repair coordinates, not the underlying scientific picture',async()=>{
+ let images=0,locations=0,reviews=0;const raw=await cantileverArtwork();
+ const result=await createScientificFigure({...snapshot,context:{...snapshot.context,categoryId:'simulation',figureType:'abaqus-02'}},{settings,jsonRunner:async(messages,{phase})=>{
+  if(phase==='planning')return{value:{complete:true,figure:cantileverPlan}};
+  if(phase==='label_layout'){locations++;if(locations>1)assert.match(JSON.stringify(messages),/wrong marker mapping/);return{value:cantileverLocations};}
+  const r=passed();if(phase==='review_confirm'||++reviews===1){r.passed=false;r.checks[1]={key:'scientific_relations',passed:false,scope:'annotation',detail:'wrong marker mapping'};}return{value:r};
+ },imageRunner:async()=>{images++;return{buffer:raw,imageCount:1};}});
+ assert.equal(result.review.passed,true);assert.equal(images,1);assert.equal(locations,2);
+});
+test('a layout correction remains available after the two genuine artwork attempts have been used',async()=>{
+ let images=0,reviews=0;const result=await createScientificFigure(snapshot,{settings,jsonRunner:async(_m,{phase})=>{
+  if(phase==='planning')return{value:{complete:true,figure:plan}};if(phase==='label_layout')return{value:layout()};
+  if(phase==='review')reviews++;const r=passed();if(reviews<3){r.passed=false;const i=reviews===1?0:4;r.checks[i]={...r.checks[i],passed:false,scope:reviews===1?'artwork':'annotation'};}return{value:r};
+ },imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}});
+ assert.equal(result.review.passed,true);assert.equal(images,2);assert.equal(reviews,3);
 });
