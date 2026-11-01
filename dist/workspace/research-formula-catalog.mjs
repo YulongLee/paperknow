@@ -422,7 +422,23 @@ export function paginateFormulaTemplates({page=1,pageSize=10,...filters}={}){
  const rows=filterFormulaTemplates(filters),size=Math.min(50,Math.max(1,Math.trunc(Number(pageSize))||10)),totalPages=Math.max(1,Math.ceil(rows.length/size)),current=Math.min(totalPages,Math.max(1,Math.trunc(Number(page))||1));
  return {items:rows.slice((current-1)*size,current*size),total:rows.length,totalPages,page:current,pageSize:size};
 }
-export function insertFormulaToken(text,token,start=String(text).length,end=start){text=String(text);start=Math.max(0,Math.min(text.length,Number(start)||0));end=Math.max(start,Math.min(text.length,Number(end)||0));const next=text.slice(0,start)+token+text.slice(end);const empty=token.indexOf('{}'),position=start+(empty>=0?empty+1:token.length);return {value:next,start:position,end:position};}
+function endsInControlWord(value){const match=String(value).match(/(\\+)[A-Za-z]+$/);return !!match&&match[1].length%2===1;}
+export function insertFormulaToken(text,token,start=String(text).length,end=start){
+ text=String(text);token=String(token);start=Math.max(0,Math.min(text.length,Number(start)||0));end=Math.max(start,Math.min(text.length,Number(end)||0));
+ const before=text.slice(0,start),after=text.slice(end),leading=endsInControlWord(before)&&/^[A-Za-z]/.test(token)?' ':'',control=endsInControlWord(token),trailing=control&&!/^\s/.test(after)?' ':'',existingSpace=control&&/^\s/.test(after)?1:0;
+ // TeX reads consecutive ASCII letters as one command. Keep the caret after
+ // its delimiter, including at end of input, so typing the next operand is safe.
+ const value=before+leading+token+trailing+after,empty=token.indexOf('{}'),position=start+leading.length+(empty>=0?empty+1:token.length+trailing.length+existingSpace);
+ return{value,start:position,end:position};
+}
+const bareFormulaCommands=[...new Set(formulaSymbolGroups.flatMap(group=>group.tokens.map(([,token])=>token.match(/^\\([A-Za-z]+)$/)?.[1]).filter(Boolean)))].sort((a,b)=>b.length-a.length);
+export function formulaSpacingRepair(source,message){
+ source=String(source);const command=String(message||'').match(/Undefined control sequence\s+\\([A-Za-z]+)/)?.[1];
+ if(!command||bareFormulaCommands.includes(command)||/\\verb\b/.test(source))return null;
+ const prefix=bareFormulaCommands.find(name=>command.startsWith(name)&&/^[A-Za-z]$/.test(command.slice(name.length)));if(!prefix)return null;
+ const suffix=command.slice(prefix.length),value=source.replace(/(\\+)([A-Za-z]+)/g,(whole,slashes,name)=>slashes.length%2===1&&name===command?slashes+prefix+' '+suffix:whole);
+ return value===source?null:{value,command:'\\'+command,replacement:'\\'+prefix+' '+suffix};
+}
 
 const symbolGlyphs={
  '+':'+','-':'−','=':'=','>':'>','<':'<','!':'!','\\times':'×','\\cdot':'⋅','\\div':'÷','\\pm':'±','\\mp':'∓','\\le':'≤','\\ge':'≥','\\ne':'≠','\\gg':'≫','\\ll':'≪','\\approx':'≈','\\equiv':'≡','\\sim':'∼','\\cong':'≅','\\propto':'∝','\\simeq':'≃','\\perp':'⊥','\\parallel':'∥','\\nparallel':'∦','\\in':'∈','\\notin':'∉','\\ni':'∋','\\subset':'⊂','\\subseteq':'⊆','\\supset':'⊃','\\supseteq':'⊇','\\cup':'∪','\\cap':'∩','\\setminus':'∖','\\varnothing':'∅','\\infty':'∞','\\circ':'∘','\\otimes':'⊗','\\oplus':'⊕',

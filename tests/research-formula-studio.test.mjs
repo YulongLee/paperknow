@@ -23,3 +23,34 @@ test('late renderer cannot mutate disposed editor or export into replacement own
 test('OCR keeps existing formula until explicit recognized result application',async t=>{let applied,disposed=false;const f=fixture(t,{initialFormula:'original',mountOcr:({container,onApply})=>{container.textContent='识别结果待确认';applied=onApply;return{dispose(){disposed=true;}};}});f.q('[data-fs-action="ocr"]').click();assert.equal(f.q('[data-fs-ocr]').hidden,false);assert.equal(f.studio.getState().formula,'original');applied('x_{ocr}');assert.equal(f.studio.getState().formula,'x_{ocr}');f.q('[data-fs-action="undo"]').click();assert.equal(f.studio.getState().formula,'original');f.studio.dispose();applied('late');assert.equal(f.studio.getState().formula,'original');assert.equal(disposed,true);});
 test('manual editor exposes no model names or obsolete wizard steps',t=>{const f=fixture(t);const text=f.q('#studio').textContent;assert.match(text,/公式模板/);assert.match(text,/实时排版/);assert.doesNotMatch(text,/GPT|Claude|Qwen|千问|DeepSeek|步骤|第[一二三四五]步/i);assert.equal(f.q('[aria-current="step"]'),null);});
 test('AI fee confirmation cannot proceed if its recovery state cannot be saved',async t=>{const requests=[],f=fixture(t,{initialFormula:'x=1',initialRequirements:'给出回归的数学公式',ctx:{api:async path=>{requests.push(path);if(path==='/auth/me')return{user:{id:'alice'}};if(path==='/tool-runs/capabilities')return{ready:true};throw Error('不应读取收费报价或提交 '+path);}}});const prototype=Object.getPrototypeOf(localStorage),old=prototype.setItem;prototype.setItem=function(){throw Error('full');};t.after(()=>{prototype.setItem=old;});f.q('[data-fs-action="ai"]').click();f.q('[data-fs-action="ai-open"]').click();for(let i=0;i<80&&!f.q('[data-fs-ai] [role="alert"]');i++)await new Promise(resolve=>setTimeout(resolve,3));assert.match(f.q('[data-fs-ai]').textContent,/未能保存任务草稿/);assert.equal(requests.includes('/tool-runs/quote'),false);assert.equal(requests.includes('/tool-runs/jobs'),false);});
+test('actual preview supports symbol-to-letter and letter-to-symbol insertion without creating capS',async t=>{
+ const actual=await import('../src/research-formula.js'),f=fixture(t,{initialFormula:'AS',loadRenderer:async()=>actual});await settle();
+ const editor=f.q('[data-fs-editor]'),index=formulaSymbolGroups.find(g=>g.id==='common').tokens.findIndex(([,token])=>token===String.raw`\cap`);
+ editor.setSelectionRange(1,1);f.q(`[data-fs-token="${index}"]`).click();await settle();assert.equal(editor.value,String.raw`A\cap S`);assert.equal(editor.selectionStart,6);assert.ok(f.q('[data-fs-preview] svg'));assert.equal(f.q('[data-fs-error]').hidden,true);
+ f.enter('[data-fs-editor]',String.raw`A\cap`);editor.setSelectionRange(editor.value.length,editor.value.length);f.q('[data-fs-group="latin"]').click();const sIndex=formulaSymbolGroups.find(g=>g.id==='latin').tokens.findIndex(([,token])=>token==='S');f.q(`[data-fs-token="${sIndex}"]`).click();await settle();assert.equal(editor.value,String.raw`A\cap S`);assert.ok(f.q('[data-fs-preview] svg'));
+});
+test('an existing capS formula receives a verified one-click repair with undo, redo and working exports',async t=>{
+ const actual=await import('../src/research-formula.js'),f=fixture(t,{initialFormula:String.raw`A\capS`,loadRenderer:async()=>actual});await settle();
+ assert.equal(f.studio.getState().formula,String.raw`A\capS`);assert.equal(f.q('[data-fs-preview] svg'),null);assert.match(f.q('[data-fs-error]').textContent,/\\cap S/);assert.ok(f.q('[data-fs-action="repair-spacing"]'));
+ f.q('[data-fs-action="repair-spacing"]').click();await settle();assert.equal(f.studio.getState().formula,String.raw`A\cap S`);assert.equal(f.dom.window.document.activeElement,f.q('[data-fs-editor]'));assert.ok(f.q('[data-fs-preview] svg'));assert.equal(f.q('[data-fs-error]').hidden,true);
+ f.q('[data-fs-action="undo"]').click();await settle();assert.equal(f.studio.getState().formula,String.raw`A\capS`);assert.ok(f.q('[data-fs-action="repair-spacing"]'));
+ f.q('[data-fs-action="redo"]').click();await settle();assert.equal(f.studio.getState().formula,String.raw`A\cap S`);
+ for(const [i,action]of ['svg','mml','docx','txt'].entries()){f.q(`[data-fs-action="${action}"]`).click();for(let j=0;j<200&&f.files.length<i+1;j++)await new Promise(r=>setTimeout(r,5));assert.equal(f.files.length,i+1,action);}
+ assert.match(f.files[0][1],/<svg/);assert.match(f.files[1][1],/∩/);assert.ok((await f.files[2][1].arrayBuffer()).byteLength>1000);assert.equal(f.files[3][1],String.raw`A\cap S`);
+});
+test('replacing the same source still positions the caret and a separator cannot silently truncate the 2000-character limit',async t=>{
+ const f=fixture(t,{initialFormula:String.raw`A\cap S`});await settle();const editor=f.q('[data-fs-editor]'),index=formulaSymbolGroups.find(g=>g.id==='common').tokens.findIndex(([,token])=>token===String.raw`\cap`);
+ editor.setSelectionRange(1,6);f.q(`[data-fs-token="${index}"]`).click();assert.equal(editor.value,String.raw`A\cap S`);assert.equal(editor.selectionStart,6);assert.equal(f.q('[data-fs-action="undo"]').disabled,true);
+ const original='a'.repeat(1995)+'S';f.enter('[data-fs-editor]',original);editor.setSelectionRange(1995,1995);f.q(`[data-fs-token="${index}"]`).click();assert.equal(editor.value,original);assert.match(f.notices.at(-1),/2000/);
+});
+test('unknown commands use a readable error, and no repair is offered if the complete candidate still fails',async t=>{
+ const actual=await import('../src/research-formula.js'),f=fixture(t,{initialFormula:String.raw`A\capS+\unknown`,loadRenderer:async()=>actual});await settle();
+ assert.match(f.q('[data-fs-error]').textContent,/无法识别公式命令/);assert.equal(f.q('[data-fs-action="repair-spacing"]'),null);assert.equal(f.studio.getState().formula,String.raw`A\capS+\unknown`);
+});
+
+test('one verified repair can separate multiple invalid commands without changing valid longer commands',async t=>{
+ const actual=await import('../src/research-formula.js'),source=String.raw`A\capS+B\cupT+\bigl(x\bigr)`,f=fixture(t,{initialFormula:source,loadRenderer:async()=>actual});await settle();
+ assert.ok(f.q('[data-fs-action="repair-spacing"]'));f.q('[data-fs-action="repair-spacing"]').click();await settle();
+ assert.equal(f.studio.getState().formula,String.raw`A\cap S+B\cup T+\bigl(x\bigr)`);assert.ok(f.q('[data-fs-preview] svg'));
+ f.q('[data-fs-action="undo"]').click();await settle();assert.equal(f.studio.getState().formula,source);
+});
