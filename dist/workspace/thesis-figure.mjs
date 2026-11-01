@@ -1,3 +1,5 @@
+import {thesisFigureKinds,thesisChartKinds,normalizeThesisChart,richThesisGraphLayout,renderThesisChartSvg} from './thesis-figure-rich.mjs';
+export {thesisFigureKinds,thesisChartKinds} from './thesis-figure-rich.mjs';
 // Scientific figures are a deliberately small data format. Model-authored SVG,
 // HTML, styles, image URLs and executable chart specifications are never used.
 const limits=Object.freeze({nodes:8,edges:12,label:80,title:200,caption:500,figures:128});
@@ -18,12 +20,16 @@ function text(value,max,label,{optional=false}={}){
  return normalized;
 }
 export function normalizeThesisFigure(input){
- own(input,['id','title','kind','nodes','edges','caption'],'图片');
+ own(input,['id','title','kind','nodes','edges','caption','data'],'图片');
  const id=identifier(input.id,'图片编号'),title=text(input.title,limits.title,'图片标题'),caption=text(input.caption,limits.caption,'图片说明',{optional:true});
- if(!['flowchart','concept'].includes(input.kind))fail('仅支持流程图和概念关系图');
+ if(!thesisFigureKinds.includes(input.kind))fail('请选择受支持的论文插图类型');
+ if(thesisChartKinds.includes(input.kind)&&((input.nodes!==undefined&&(!Array.isArray(input.nodes)||input.nodes.length))||(input.edges!==undefined&&(!Array.isArray(input.edges)||input.edges.length))))fail('统计图不使用流程节点和连线');
+ if(thesisChartKinds.includes(input.kind))return {id,title,kind:input.kind,nodes:[],edges:[],caption,data:normalizeThesisChart(input.data,input.kind,{own,text,fail})};
+ if(input.data!==undefined)fail('示意图不能附带未使用的统计数据');
  if(!Array.isArray(input.nodes)||input.nodes.length<2||input.nodes.length>limits.nodes)fail('节点数量须为 2 至 8 个');
  if(!Array.isArray(input.edges)||input.edges.length>limits.edges)fail('连接数量不能超过 12 条');
- const ids=new Set(),nodes=input.nodes.map(node=>{own(node,['id','label'],'节点');const nodeId=identifier(node.id,'节点编号');if(ids.has(nodeId))fail('节点编号不能重复');ids.add(nodeId);return {id:nodeId,label:text(node.label,limits.label,'节点文字')};});
+ const ids=new Set(),nodes=input.nodes.map(node=>{own(node,['id','label',...(input.kind==='architecture'?['group']:[]),...(input.kind==='comparison'?['details']:[])],'节点');const nodeId=identifier(node.id,'节点编号');if(ids.has(nodeId))fail('节点编号不能重复');ids.add(nodeId);const details=node.details;if(details!==undefined&&(!Array.isArray(details)||details.length>5))fail('对比卡片最多 5 条内容');return {id:nodeId,label:text(node.label,limits.label,'节点文字'),...(node.group!==undefined?{group:text(node.group,40,'层次名称')}:{}),...(details?{details:details.map(value=>text(value,80,'对比内容'))}:{})};});
+ if(input.kind==='comparison'&&(input.nodes.length>6||input.edges.length))fail('对比图最多 6 个对象，不使用流程连线');
  const seen=new Set(),edges=input.edges.map(edge=>{own(edge,['from','to','label'],'连接');const from=identifier(edge.from,'连接起点'),to=identifier(edge.to,'连接终点'),label=text(edge.label,limits.label,'连接文字',{optional:true});if(!ids.has(from)||!ids.has(to))fail('连接引用了不存在的节点');if(from===to)fail('请将自连过程拆为两个节点');const key=JSON.stringify([from,to,label]);if(seen.has(key))fail('连接不能完全重复');seen.add(key);return {from,to,...(label?{label}:{})};});
  return {id,title,kind:input.kind,nodes,edges,caption};
 }
@@ -76,7 +82,7 @@ const textLines=(lines,x,y,{size=22,anchor='middle',step=29,halo=false}={})=>`<t
 // Rank by actual dependencies. Only DFS back edges use outside return lanes;
 // unrelated nodes and parallel alternatives never become a serpentine sequence.
 export function layoutThesisFigure(input){
- const figure=normalizeThesisFigure(input),width=1000,ids=figure.nodes.map(node=>node.id),out=new Map(ids.map(id=>[id,[]])),state=new Map(),feedback=new Set();
+ const figure=normalizeThesisFigure(input);if(thesisChartKinds.includes(figure.kind))return {figure,width:1000,height:800,nodes:[],edges:[]};const rich=richThesisGraphLayout(figure,wrap);if(rich)return rich;const width=1000,ids=figure.nodes.map(node=>node.id),out=new Map(ids.map(id=>[id,[]])),state=new Map(),feedback=new Set();
  figure.edges.forEach((edge,index)=>out.get(edge.from).push({...edge,index}));
  const visit=id=>{state.set(id,1);for(const edge of out.get(id)){if(state.get(edge.to)===1)feedback.add(edge.index);else if(!state.has(edge.to))visit(edge.to);}state.set(id,2);};
  ids.forEach(id=>{if(!state.has(id))visit(id);});
@@ -101,10 +107,12 @@ export function layoutThesisFigure(input){
  return {figure,width,height:Math.ceil(y),nodes:ids.map(id=>byId.get(id)),edges};
 }
 export function renderThesisFigureSvg(input){
- const {figure,width,height,nodes,edges}=layoutThesisFigure(input),byId=new Map(nodes.map(node=>[node.id,node])),markerId=`pkfigure-${figure.id}-arrow`,titleId=`pkfigure-${figure.id}-title`,descriptionId=`pkfigure-${figure.id}-desc`;
+ const normalized=normalizeThesisFigure(input);if(thesisChartKinds.includes(normalized.kind))return renderThesisChartSvg(normalized,{escape,textLines,wrap});
+ const {figure,width,height,nodes,edges,frames=[]}=layoutThesisFigure(normalized),byId=new Map(nodes.map(node=>[node.id,node])),markerId=`pkfigure-${figure.id}-arrow`,titleId=`pkfigure-${figure.id}-title`,descriptionId=`pkfigure-${figure.id}-desc`;
  const parts=[`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="${titleId} ${descriptionId}" font-family="Times New Roman, Noto Serif CJK SC, Songti SC, SimSun, serif"><title id="${titleId}">${escape(thesisFigureTitle(figure.title))}</title><desc id="${descriptionId}">${escape([figure.caption,...figure.nodes.map(node=>node.label),...figure.edges.map(edge=>`${byId.get(edge.from).label} → ${byId.get(edge.to).label}${edge.label?`：${edge.label}`:''}`)].filter(Boolean).join('；'))}</desc><defs><marker id="${markerId}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0 0 L8 4 L0 8 Z" fill="#111111"/></marker></defs><rect width="${width}" height="${height}" fill="#ffffff"/>`];
+ for(const frame of frames)parts.push(`<rect x="${frame.x}" y="${frame.y}" width="${frame.width}" height="${frame.height}" fill="#f8f8f8" stroke="#888888" stroke-width="1"/>${textLines(frame.lines,frame.x+20,frame.y+25,{size:19,anchor:'start',step:24})}`);
  for(const edge of edges)parts.push(`<polyline points="${edge.points.map(point=>point.join(',')).join(' ')}" fill="none" stroke="#111111" stroke-width="1.5" stroke-linejoin="miter" marker-end="url(#${markerId})"/>`);
- for(const node of nodes)parts.push(`<g data-node-id="${node.id}"><rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" fill="#ffffff" stroke="#111111" stroke-width="1.5"/>${textLines(node.lines,node.x+node.width/2,node.y+(node.height-node.lines.length*29)/2+22)}</g>`);
+ for(const node of nodes)parts.push(`<g data-node-id="${node.id}"><rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" fill="#ffffff" stroke="#111111" stroke-width="1.5"/>${textLines(node.lines,node.x+node.width/2,node.detailLines?.length?node.y+32:node.y+(node.height-node.lines.length*(node.lineStep||29))/2+(node.fontSize||22),{size:node.fontSize||22,step:node.lineStep||29})}${node.detailLines?.length?textLines(node.detailLines,node.x+18,node.y+node.lines.length*27+58,{size:18,step:25,anchor:'start'}):''}</g>`);
  for(const edge of edges)if(edge.labelLines.length)parts.push(textLines(edge.labelLines,edge.labelX,edge.labelY,{size:18,step:24,halo:true}));
  parts.push('</svg>');return {svg:parts.join(''),width,height,figure};
 }

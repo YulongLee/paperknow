@@ -19,7 +19,7 @@ const response=body=>({text:JSON.stringify(body),trace:[{tool:'read_material',st
 test('figure instructions ask for chapter-specific academic diagrams with concise labels without expanding illustration permissions',()=>{
  const {snapshot,plan:[unit]}=fixture(),task=thesisAgentTask(snapshot,unit,[]);
  assert.match(task.instructions,/不把并行候选串成先后流程/);assert.match(task.instructions,/24 字以内/);assert.match(task.instructions,/图下/);assert.match(task.instructions,/不用流程框图代替实验结果图/);
- assert.deepEqual(task.context.figureContract.kinds,['flowchart','concept']);assert.equal(task.context.figureContract.maxFigures,1);
+ assert.deepEqual(task.context.figureContract.kinds,['flowchart','concept','architecture','comparison','bar','line','scatter']);assert.equal(task.context.figureContract.maxFigures,1);
  const disabled=thesisAgentTask(snapshot,{...unit,part:2},[]);assert.equal(disabled.context.figureContract.allowed,false);assert.match(disabled.instructions,/本单元不允许插图/);assert.doesNotMatch(disabled.instructions,/论文插图采用简洁的学术线框表达/);
 });
 
@@ -96,7 +96,7 @@ test('four-format output keeps actual source reads and visible draft evidence ga
 
 test('model prompt scopes same-call figures to current unit and retains factual data limits',()=>{
  const {snapshot,plan:[unit]}=fixture(),task=thesisAgentTask(snapshot,unit,[]);
- assert.equal(task.context.figureContract.source,'structured_diagram');assert.equal(task.context.figureContract.maxFigures,1);assert.match(task.instructions,/figures/);assert.match(task.instructions,/本次同一份 JSON/);assert.match(task.instructions,/实测数值必须来自已读取/);assert.match(task.instructions,/不执行/);assert.match(task.instructions,/不生成统计图、实验影像/);assert.match(task.context.lengthBudget.excluded,/插图位置标记/);
+ assert.equal(task.context.figureContract.source,'structured_academic_figure');assert.equal(task.context.figureContract.maxFigures,1);assert.match(task.instructions,/figures/);assert.match(task.instructions,/本次同一份 JSON/);assert.match(task.instructions,/实测数值必须来自已读取/);assert.match(task.instructions,/不执行/);assert.match(task.instructions,/不编造统计图/);assert.match(task.context.lengthBudget.excluded,/插图位置标记/);
  const later=thesisAgentTask(snapshot,{...unit,part:2},[]);assert.equal(later.context.figureContract.maxFigures,0);assert.match(later.instructions,/本单元不允许插图/);
 });
 

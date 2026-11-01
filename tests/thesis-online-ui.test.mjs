@@ -92,9 +92,9 @@ test('direct generation with metadata-only references never promotes them to rea
 test('usage expiring during authentication cannot authorize direct generation',async()=>{
  const now=Date.now;let expires=false;const f=fixture({handler:path=>{if(path.endsWith('/quote')){const q=quote();expires=true;return q;}if(path==='/auth/me'&&expires)Date.now=()=>now()+120000;}});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.some(c=>c.path.endsWith('/generate')),false);assert.match(f.$('[data-thesis-notice]').textContent,/用量.*变化/);assert.equal(f.$('.thesis-charge'),null);}finally{Date.now=now;f.close();}
 });
-test('export rebuilds current citation indexes and retains uncited confirmed records separately from the cited bibliography',()=>{
+test('export rebuilds current citation indexes and appends confirmed uncited records after cited draft entries',()=>{
  const value=thesis({chapters:[{id:'c1',title:'第一章',text:'真实正文 [source:r-used]；实验记录 [source:m1]。',sourceIds:['m1','r-used','r-unconfirmed']}]});value.snapshot.references=[{id:'r-used',title:'已引用的来源',confirmed:true},{id:'r-unused',title:'未引用题录',confirmed:true},{id:'r-unconfirmed',title:'未确认来源',confirmed:false}];
- const text=thesisDocumentText(value);assert.match(text,/真实正文 \[1\]/);assert.match(text,/已引用的来源/);assert.match(text,/实验笔记/);assert.match(text,/待引用文献（尚未在正文引用）[^]*未引用题录/);assert.doesNotMatch(text,/未确认来源/);assert.equal(thesisDocumentText({...value,fullText:'旧缓存省略了参考文献'}),text);
+ const text=thesisDocumentText(value);assert.match(text,/真实正文 \[1\]/);assert.match(text,/已引用的来源/);assert.match(text,/实验笔记/);assert.match(text,/参考文献[^]*\[2\] 未引用题录/);assert.doesNotMatch(text,/待引用文献/);assert.doesNotMatch(text,/未确认来源/);assert.equal(thesisDocumentText({...value,fullText:'旧缓存省略了参考文献'}),text);
 });
 test('refresh preserves unsaved text, optimistic save uses the current version and no local unlock gates exports',async()=>{
  const original=thesis({status:'completed',chapters:[{id:'c1',title:'第一章 <script>恶意</script>',text:'账户原文',version:1,status:'saved',sourceIds:['m1']}]}),f=fixture({item:original});const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;

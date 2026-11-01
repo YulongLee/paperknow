@@ -8,6 +8,7 @@ import {PDFDocument} from 'pdf-lib';
 import {getDocument} from 'pdfjs-dist/legacy/build/pdf.mjs';
 import {JSDOM} from 'jsdom';
 import {createWritingDocx,createWritingPdf} from '../src/writing-document.js';
+import {buildThesisBibliography,thesisDocumentPresentation} from '../dist/workspace/thesis-document.mjs';
 import {thesisDocumentText,mountOnlineThesis,disposeOnlineThesis} from '../dist/workspace/thesis-online.mjs';
 
 const privateIdentity='private-runtime-identity-do-not-publish';
@@ -24,8 +25,8 @@ test('actual DOCX artifact excludes execution envelopes while retaining model na
  for(const name of Object.keys(zip.files))if(!zip.files[name].dir)packageText+=await zip.files[name].async('string');
  assertPrivateIdentityAbsent(packageText);
  const xml=await zip.file('word/document.xml').async('string'),doc=new DOMParser().parseFromString(xml,'application/xml'),exported=Array.from(doc.getElementsByTagName('w:t')).map(node=>node.textContent).join('\n');
- assert.ok(exported.includes(researchText));assert.ok(exported.includes(citationTitle));assert.ok(exported.includes('待引用文献（尚未在正文引用）'));assert.ok(exported.includes('尚未引用的来源'));assert.doesNotMatch(exported,/\[1\]|已使用的参考文献/);
- assert.deepEqual(item,before);
+ assert.ok(exported.includes(researchText));assert.ok(exported.includes(citationTitle));assert.ok(exported.includes('参考文献'));assert.ok(exported.includes('尚未引用的来源'));assert.doesNotMatch(exported,/待引用文献|已使用的参考文献/);
+ assert.equal(buildThesisBibliography(item.snapshot,item.chapters).counts.citations,0);assert.deepEqual(thesisDocumentPresentation(item.snapshot,item.chapters).citationRanges,[]);assert.deepEqual(item,before);
 });
 
 test('actual PDF pages and document metadata exclude runtime identity without censoring academic model discussion',async()=>{
@@ -33,7 +34,7 @@ test('actual PDF pages and document metadata exclude runtime identity without ce
  for(const value of [metadata.getTitle(),metadata.getAuthor(),metadata.getSubject(),metadata.getCreator(),metadata.getProducer(),metadata.getKeywords()])assertPrivateIdentityAbsent(value);
  const task=getDocument({data:new Uint8Array(bytes),useSystemFonts:false});
  try{const document=await task.promise;let content='';for(let index=1;index<=document.numPages;index++){const page=await document.getPage(index);content+=(await page.getTextContent()).items.map(item=>item.str).join('');}
-  assertPrivateIdentityAbsent(content);const compact=value=>value.replace(/\s+/g,'');assert.ok(compact(content).includes(compact(researchText)));assert.ok(compact(content).includes(compact(citationTitle)));assert.ok(compact(content).includes('待引用文献（尚未在正文引用）'));assert.ok(content.includes('尚未引用的来源'));assert.doesNotMatch(content,/\[1\]|已使用的参考文献/);
+  assertPrivateIdentityAbsent(content);const compact=value=>value.replace(/\s+/g,'');assert.ok(compact(content).includes(compact(researchText)));assert.ok(compact(content).includes(compact(citationTitle)));assert.ok(compact(content).includes('参考文献'));assert.ok(content.includes('尚未引用的来源'));assert.doesNotMatch(content,/待引用文献|已使用的参考文献/);
  }finally{await task.destroy();}
 });
 
@@ -49,7 +50,7 @@ test('customer editable DOCX download retains manuscript and pending bibliograph
   await view.ready;
   assert.equal(document.querySelector('[data-thesis-txt]'),null);assert.equal(document.querySelector('#thesis-online-pdf'),null);const button=document.querySelector('#thesis-online-draft');assert.ok(button);assert.equal(button.disabled,false);button.click();
   const started=Date.now();while(button.disabled&&Date.now()-started<10000)await new Promise(resolve=>schedule(resolve,5));assert.equal(blobs.length,1,document.querySelector('[data-thesis-export-status]')?.textContent);assert.equal(clicked.length,1);assert.match(clicked[0].name,/（初稿）\.docx$/);assert.equal(blobs[0].type,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-  const zip=await JSZip.loadAsync(await blobs[0].arrayBuffer());let packageText='';for(const part of Object.values(zip.files))if(!part.dir)packageText+=await part.async('string');assertPrivateIdentityAbsent(packageText);const xml=await zip.file('word/document.xml').async('string'),doc=new DOMParser().parseFromString(xml,'application/xml'),text=[...doc.getElementsByTagName('w:t')].map(node=>node.textContent).join('\n');assertPrivateIdentityAbsent(text);assert.ok(text.includes(researchText));assert.ok(text.includes(citationTitle));assert.ok(text.includes('待引用文献（尚未在正文引用）'));assert.ok(text.includes('尚未引用的来源'));assert.doesNotMatch(text,/\[1\]|已使用的参考文献/);
+  const zip=await JSZip.loadAsync(await blobs[0].arrayBuffer());let packageText='';for(const part of Object.values(zip.files))if(!part.dir)packageText+=await part.async('string');assertPrivateIdentityAbsent(packageText);const xml=await zip.file('word/document.xml').async('string'),doc=new DOMParser().parseFromString(xml,'application/xml'),text=[...doc.getElementsByTagName('w:t')].map(node=>node.textContent).join('\n');assertPrivateIdentityAbsent(text);assert.ok(text.includes(researchText));assert.ok(text.includes(citationTitle));assert.ok(text.includes('参考文献'));assert.ok(text.includes('尚未引用的来源'));assert.doesNotMatch(text,/待引用文献|已使用的参考文献/);
  }finally{
   restoreExport();disposeOnlineThesis();dom.window.close();URL.createObjectURL=objectURL;URL.revokeObjectURL=revokeURL;globalThis.setTimeout=schedule;
   for(const [key,descriptor]of saved)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];

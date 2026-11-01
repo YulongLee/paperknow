@@ -2,7 +2,7 @@ import {thesisFrontMatterKind,thesisManualBackMatter} from './thesis-delivery.mj
 const marker=/【(?:待补充|待核对|草稿说明)[：:]([^】]{1,1000})】|\[(?:待补充|待核对|草稿说明|To be supplied|To be verified|Draft note)[：:]([^\]]{1,1000})\]/gi;
 export function thesisCompletionNeeds(item={}){
  const chapters=(item.chapters||[]).map(chapter=>{
-  const text=String(chapter.text||''),figureText=(chapter.figures||[]).flatMap(figure=>[figure.title,figure.caption,...(figure.nodes||[]).map(node=>node.label),...(figure.edges||[]).map(edge=>edge.label)]).filter(Boolean).join('\n'),requests=[...(text+'\n'+figureText).matchAll(marker)].map(match=>(match[1]||match[2]).trim());
+  const text=String(chapter.text||''),figureText=(chapter.figures||[]).flatMap(figure=>[figure.title,figure.caption,...(figure.nodes||[]).flatMap(node=>[node.label,node.group,...(node.details||[])]),...(figure.edges||[]).map(edge=>edge.label),...(figure.data?[figure.data.xLabel,figure.data.yLabel,figure.data.unit,...figure.data.series.flatMap(series=>[series.name,...series.points.map(point=>point.quote)])]:[])]).filter(Boolean).join('\n'),requests=[...(text+'\n'+figureText).matchAll(marker)].map(match=>(match[1]||match[2]).trim());
   if(!text.trim())requests.push(thesisManualBackMatter(chapter)?'请补充希望感谢的人或机构，以及实际提供的帮助。':thesisFrontMatterKind(chapter)?'系统将根据补齐后的正文整理摘要和关键词。':'请提供本章所需的研究过程、记录或结果，系统将据此完善正文。');
   const tableCount=(text.match(/^\s*\|?\s*:?-{3,}:?\s*\|/gm)||[]).length,titleCount=(text.match(/^\s*表\s*\d+(?:[.－-]\d+)?\s+\S/gm)||[]).length;
   return {id:chapter.id,title:chapter.title,requests:[...new Set(requests)].slice(0,30),needsContent:!text.trim()||requests.length>0,needsTableTitles:tableCount>titleCount};
