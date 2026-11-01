@@ -77,3 +77,23 @@ test('verified annotation repair preserves provider usage, private delivery and 
  assert.equal(audits.filter(a=>a.phase==='label_targets').length,2);assert.equal(audits.filter(a=>a.phase==='label_composition').length,1);
  assert.equal(JSON.parse(audits.find(a=>a.phase==='label_targets').metrics).usage.prompt_tokens,123);
 });
+test('existing lettering is fully reviewed before one settlement or a complete refund',async t=>{
+ const {thermalLetteringFixture,thermalPlan,thermalBrief}=await import('./fixtures/research-thermal-lettering.mjs');
+ for(const accepted of [true,false]){
+  const raw=await thermalLetteringFixture({promptLeak:!accepted}),f=fixture(t);let reviews=0;
+  f.config.researchImageRunner=async()=>{f.calls.model++;return{buffer:raw,imageCount:1};};
+  f.config.researchFigureJson=async(m,{phase})=>{
+   if(phase==='planning')return{value:thermalPlan()};
+   if(phase==='label_layout')return{value:{hasText:true,annotations:[],visibleText:accepted?['Chip','Heat sink']:['AUTHOR BRIEF']}};
+   assert.ok(['review','review_confirm'].includes(phase),'no native overlays may paint over existing letters');reviews++;
+   const request=JSON.parse(m[1].content[0].text);assert.equal(request.requestedChecks.length,6);
+   return{value:{passed:accepted,checks:request.requestedChecks.map(key=>({key,passed:accepted||key!=='labels_legible',scope:'annotation',detail:accepted?'Existing clear labels match their objects':'Unwanted prompt wording persists'}))}};
+  };
+  const value=input();value.snapshot={...value.snapshot,title:'Thermal coupling',text:thermalBrief,language:'English',context:{...value.snapshot.context,categoryId:'simulation',figureType:'comsol-04'}};
+  const created=await f.submit(value);await f.worker.tick();await f.worker.tick();const job=(await f.request('/jobs/'+created.value.item.id)).value.item;
+  assert.equal(job.status,accepted?'completed':'failed');assert.equal(f.billing.balance('alice').held,0);assert.equal(f.billing.balance('alice').balance,accepted?190:200);
+  assert.equal(f.calls.model,accepted?1:2);assert.equal(reviews,accepted?1:4);assert.equal(f.files.size,accepted?1:0);
+  assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations WHERE status=?').get(accepted?'settled':'released').n,1);
+  if(!accepted)assert.match(job.error,/文字标注/);
+ }
+});

@@ -30,14 +30,15 @@ test('local typography preserves exact escaped labels and original canvas size w
  assert.equal(composed.annotations,5);assert.match(composed.labelSvg,/Base &amp; lens &lt;front&gt;/);assert.doesNotMatch(composed.labelSvg,/<front>/);assert.equal((composed.labelSvg.match(/data-label="/g)||[]).length,5);
  const checked=validateResearchImage(composed.buffer);assert.equal(checked.width,1600);assert.equal(checked.height,900);assert.notDeepEqual(composed.buffer,original);
 });
-test('text-bearing artwork is regenerated internally; raw scientific content is reviewed separately from verified native lettering',async()=>{
- let images=0,locations=0,reviews=0;const phases=[];const raw=pngFixture(1600,900),hash=b=>createHash('sha256').update(b).digest('hex');
- const result=await createScientificFigure(snapshot,{settings,jsonRunner:async(messages,{phase})=>{
+test('existing clear lettering reaches full review without duplicate native labels or another image payment',async()=>{
+ let images=0,locations=0,reviews=0;const phases=[],events=[];const raw=pngFixture(1600,900),hash=b=>createHash('sha256').update(b).digest('hex');
+ const result=await createScientificFigure(snapshot,{settings,audit:e=>events.push(e),jsonRunner:async(messages,{phase})=>{
   phases.push(phase);if(phase==='planning')return{value:{complete:true,figure:plan}};
-  if(phase==='label_layout')return{value:++locations===1?{hasText:true,annotations:[]}:layout()};
-  reviews++;assert.ok(messages[1].content[1].image_url.url.startsWith('data:image/png;base64,'));return{value:passed()};
+  if(phase==='label_layout'){locations++;return{value:{hasText:true,visibleText:['Base','Barrel'],annotations:[]}};}
+  reviews++;const request=JSON.parse(messages[1].content[0].text);assert.equal(request.annotationGuide.strategy,'original-lettering');assert.equal(request.requestedChecks.length,6);return{value:passed()};
  },imageRunner:async(_s,{prompt})=>{images++;assert.match(prompt,/ZERO text/);return{buffer:raw,imageCount:1};}});
- assert.equal(images,2);assert.equal(reviews,1);assert.equal(phases.filter(p=>p==='planning').length,1);assert.equal(result.review.passed,true);assert.notEqual(hash(result.buffer),hash(raw));
+ assert.equal(images,1);assert.equal(locations,1);assert.equal(reviews,1);assert.equal(result.review.passed,true);assert.equal(hash(result.buffer),hash(raw));
+ assert.ok(!phases.includes('label_targets'));assert.ok(events.some(e=>e.code==='figure_existing_text_review'));assert.ok(!events.some(e=>e.phase==='label_composition'));
 });
 test('uncertain location data never silently omit required labels or trigger another paid image',async()=>{
  let images=0;await assert.rejects(()=>createScientificFigure(snapshot,{settings,jsonRunner:async(_m,{phase})=>({value:phase==='planning'?{complete:true,figure:plan}:{hasText:false,annotations:[]}}),imageRunner:async()=>{images++;return{buffer:pngFixture(),imageCount:1};}}),{code:'figure_quality_rejected'});assert.equal(images,1);

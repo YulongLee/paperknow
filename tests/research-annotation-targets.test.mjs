@@ -68,3 +68,24 @@ test('a final visual rejection cannot be overridden by approved raw targets or n
  }});
  assert.equal(reviews,2);assert.equal(images,1);assert.equal(result.review.passed,true);
 });
+test('actual bad existing text requires a new artwork, then native labels can complete normally',async()=>{
+ let images=0,locations=0,reviews=0;const raw=await cantileverArtwork();
+ const result=await createScientificFigure(snapshot,{settings,imageRunner:async()=>{images++;return{buffer:raw,imageCount:1};},jsonRunner:async(m,{phase})=>{
+  if(phase==='planning')return{value:{complete:true,figure:cantileverPlan}};
+  if(phase==='label_layout')return{value:++locations===1?{hasText:true,annotations:[]}:cantileverLocations};
+  if(phase==='label_targets')return{value:targets(m)};
+  reviews++;const value=review(m);if(images===1){value.passed=false;Object.assign(value.checks.find(c=>c.key==='labels_legible'),{passed:false,scope:'annotation',detail:'Unwanted prompt text and garbled labels'});}return{value};
+ }});
+ assert.equal(images,2);assert.equal(reviews,3);assert.equal(result.review.passed,true);
+});
+test('text detection never bypasses scientific review; persistent lettering errors produce an accurate failure reason',async()=>{
+ const raw=await cantileverArtwork();
+ for(const key of ['labels_legible','scientific_relations']){let images=0,reviews=0;
+ await assert.rejects(()=>createScientificFigure(snapshot,{settings,imageRunner:async()=>{images++;return{buffer:raw,imageCount:1};},jsonRunner:async(m,{phase})=>{
+  if(phase==='planning')return{value:{complete:true,figure:cantileverPlan}};
+  if(phase==='label_layout')return{value:{hasText:true,annotations:[]}};
+  reviews++;const value=review(m);value.passed=false;Object.assign(value.checks.find(c=>c.key===key),{passed:false,scope:key==='labels_legible'?'annotation':'artwork',detail:'A real visible error persists'});return{value};
+ }}),e=>e.code==='figure_quality_rejected'&&(key==='labels_legible'?e.message.includes('文字标注'):e.message.includes('内容或版式')));
+ assert.equal(images,2);assert.equal(reviews,4);
+ }
+});
