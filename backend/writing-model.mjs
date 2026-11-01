@@ -1,7 +1,7 @@
 import {academicWritingStyle,academicFigureStyle} from './academic-writing-style.mjs';
 import {normalizeThesisSnapshot,selectThesisEvidence,thesisError,thesisPresentationTask,parseThesisPresentation} from './thesis-model.mjs';
 import {thesisOutlineTask,parseThesisOutline,outlineValidationFeedback} from './thesis-outline-model.mjs';
-import {thesisMethodTask,parseThesisMethod} from './thesis-method-model.mjs';
+import {thesisMethodTask,parseThesisMethod,methodValidationFeedback} from './thesis-method-model.mjs';
 import {allocateOutlineWordBudget,isOutlineReferenceChapter} from '../dist/workspace/outline-word-budget.mjs';
 import {researchWordCount,checkTextLength} from './text-length.mjs';
 import {requestedIdeaCount,requestedQuestionCount,requestedScalePoints,normalizeAIQuestionnaire} from '../dist/workspace/questionnaire-model.mjs';
@@ -160,6 +160,7 @@ export function writingLengthFeedback(result,snapshot,unit){
 export function validateWritingCandidate(result,kind,operation,snapshot,unit){
  try{parseWritingOutput(result,kind,operation,snapshot,unit);const length=['draft','abstract'].includes(operation)?writingLengthFeedback(result,snapshot,unit):null;return{valid:true,...(length?{length}:{})};}
  catch(error){if(operation==='outline')return {valid:false,feedback:outlineValidationFeedback(error)};
+  if(operation==='method')return {valid:false,feedback:methodValidationFeedback(error)};
   const sources=writingSourceFeedback(result,kind,snapshot,unit,operation),length=error.code==='word_limit'?writingLengthFeedback(result,snapshot,unit):null;
   const simultaneousSourceIssue=length&&sources&&(sources.rejectedSourceIds.length||sources.unlistedMarkerIds.length||operation==='draft'&&(sources.missingRequiredCitation||sources.unmarkedSourceIds.length));
   const questionnaire=operation==='questionnaire'&&error.validationCode==='questionnaire_options'?{field:'questions',issues:error.validationIssues,issueCount:error.validationIssueCount,issuesTruncated:error.validationIssueCount>error.validationIssues.length,rule:'仅修复当前批次的 options 数组，issues 定位已发现的问题；issuesTruncated=true 时还须检查本批其余题目。保留本批全部题目和精确题数，不重复生成此前已完成的批次。每个选项必须是独立的数组元素，不能把多个选项写成单个斜杠串、逗号串或单个字符串。single/multiple 须有 2～10 个不同选项，scale 须恰好 expectedExact 个独立选项且保留各级含义，text 的 options 必须为 []。按 questionIndex 定位本批题目，questionId/globalQuestionIndex 是整份问卷的服务器题号；修正后仍提交本批完整 JSON 接受同一严格校验。'}:null;

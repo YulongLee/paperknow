@@ -5,7 +5,7 @@ import {validThesisQuote} from './thesis-online.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const active=item=>['queued','running'].includes(item?.status);
 const statusText={queued:'正在排队',running:'正在生成方法建议',completed:'方法建议已生成',failed:'方法建议生成未完成',cancelled:'已停止生成'};
-const stages={queued:'等待 AI 服务处理',preparing:'整理主题与研究资料',checking_input:'核对输入资料',agent_running:'设计拟开展的研究路径',agent_tools:'结合资料完善方法建议',checking_output:'检查生成建议',completed:'请先预览，再填入补充说明',failed:'未生成可用的方法建议，原有补充说明未改动。',cancelled:'原有补充说明未改动'};
+const stages={queued:'等待 AI 服务处理',preparing:'整理主题与研究资料',checking_input:'核对输入资料',agent_running:'设计拟开展的研究路径',agent_tools:'结合资料完善方法建议',checking_method:'检查方法建议的完整性',repairing_method:'正在自动完善方法建议，无需重复提交',method_ready:'方法建议已通过检查，正在保存',checking_output:'检查生成建议',completed:'请先预览，再填入补充说明',failed:'未生成可用的方法建议，原有补充说明未改动。',cancelled:'原有补充说明未改动'};
 const abortError=()=>Object.assign(new Error('页面已切换'),{name:'AbortError'});
 
 // The server owns durable jobs and billing. Suggestions stay proposed plans and are never applied or confirmed as research evidence by this controller.
