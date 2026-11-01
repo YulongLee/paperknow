@@ -17,11 +17,31 @@ test('automatic summary and formatting work is distinguished from the facts requ
 test('completion progress belongs only to an active completion run, never a normal generation or generic save',()=>{
  const normal={job:{id:'new-run',status:'running',stage:'agent_tools'}},draft=createCompletionDraft();draft.recheckRunId='old-completion';
  assert.equal(completionProgressText(normal,true), '');assert.equal(completionProgressText(normal,false,{completionRunId:draft.recheckRunId}), '');assert.doesNotMatch(completionPanelHTML({...base(),...normal},draft,{busy:true}),/data-completion-progress/);
- const completion={job:{...normal.job,operation:'completion'}};assert.match(completionProgressText(completion),/正在自动完善/);assert.match(completionProgressText({job:{...completion.job,status:'queued'}}),/排队/);assert.match(completionProgressText({job:{...completion.job,stage:'checking_supplements'}}),/检查补充资料/);assert.match(completionProgressText({job:{...completion.job,status:'cancelling'}}),/正在停止/);
+ const completion={job:{...normal.job,operation:'completion'}};assert.match(completionProgressText(completion),/正在自动补齐/);assert.match(completionProgressText({job:{...completion.job,status:'queued'}}),/排队/);assert.match(completionProgressText({job:{...completion.job,stage:'checking_supplements'}}),/检查补充资料/);assert.match(completionProgressText({job:{...completion.job,status:'cancelling'}}),/正在停止/);
  for(const status of ['completed','failed','cancelled','needs_materials','interrupted'])assert.equal(completionProgressText({job:{...completion.job,status,stage:'checking_supplements'}}),'');
- assert.equal(completionProgressText({job:{...normal.job,operation:'generate'}},false,{completionRunId:'new-run'}),'');assert.match(completionProgressText(normal,false,{completionRunId:'new-run'}),/正在自动完善/);assert.match(completionProgressText(base(),true,{preparing:true}),/正在保存资料/);
+ assert.equal(completionProgressText({job:{...normal.job,operation:'generate'}},false,{completionRunId:'new-run'}),'');assert.match(completionProgressText(normal,false,{completionRunId:'new-run'}),/正在自动补齐/);assert.match(completionProgressText(base(),true,{preparing:true}),/正在保存资料/);
 });
 test('reopened normal regeneration ignores an older completion recovery marker without creating any new work',async t=>{
  const f=fixture(t,{handle:async path=>path==='/theses/t1'?{item:{...base(),status:'running',job:{id:'new-normal-run',status:'running',stage:'agent_tools',completedSections:12,totalSections:18}}}:null});
  const completion=createCompletionDraft();completion.recheckRunId='old-completion-run';f.dom.window.localStorage.setItem('paperknow-thesis-edits-v1:u1:t1',JSON.stringify({schema:1,actorId:'u1',thesisId:'t1',revision:'synthetic-recovery',chapters:[],completion}));await f.ready;assert.equal(f.q('[data-completion-progress]'),null);assert.match(f.q('.thesis-progress').textContent,/12.*18/s);assert.equal(f.calls.some(row=>row.data!==undefined),false);assert.equal(f.calls.some(row=>/\/(quote|generate|completion)$/.test(row.path)),false);
+});
+
+test('full completion stops at author review, confirms the exact server revision, then exports once without another generation',async t=>{
+ let confirmed=0;const f=fixture(t,{handle:async(path,data,record)=>{
+  if(path.endsWith('/completion/confirm')){confirmed++;assert.equal(data.runId,'complete-run');assert.equal(data.fingerprint,'a'.repeat(64));const next={...record,completionReview:{...record.completionReview,status:'confirmed',confirmedAt:'2026-11-02T00:00:00.000Z'}};f.setRecord(next);return {item:structuredClone(next)};}
+ }});await f.ready;f.q('[data-completion-prepare]').click();await settle();assert.equal(f.calls.find(row=>row.path.endsWith('/quote')).data.completionScope,'full');
+ let downloads=0;f.dom.window.document.addEventListener('click',event=>{if(event.target.id==='thesis-online-docx'){downloads++;event.stopImmediatePropagation();}},true);
+ f.setRecord({...f.getRecord(),status:'completed',job:{id:'complete-run',operation:'completion',status:'completed',completedSections:1,totalSections:1},completionReview:{required:true,runId:'complete-run',status:'ready',fingerprint:'a'.repeat(64),checks:{materials:true,manuscript:true,content:true},changes:[{chapterId:'c1',title:'第一章 研究',kind:'updated',characters:200}],missing:[],issues:[]}});
+ f.q('[data-thesis-refresh]').click();await settle();assert.equal(downloads,0);assert.equal(f.q('#thesis-online-docx').disabled,true);assert.ok(f.q('[data-completion-confirm]'));assert.match(f.q('[data-completion-review]').textContent,/自动补充完成，请确认/);
+ f.q('[data-completion-confirm]').click();await settle();assert.equal(confirmed,1);assert.equal(downloads,1);assert.equal(f.q('#thesis-online-docx').disabled,false);assert.equal(f.calls.filter(row=>row.path.endsWith('/generate')).length,1);assert.equal(f.q('[data-completion-confirm]'),null);
+ f.q('[data-thesis-refresh]').click();await settle();assert.equal(downloads,1);
+});
+test('full completion shows actual missing facts and never offers a confirmation to bypass checks',async t=>{
+ const f=fixture(t,{handle:async path=>path==='/theses/t1'?{item:{...base(),completionReview:{required:true,status:'needs_materials',checks:{materials:false,manuscript:true,content:false},changes:[],missing:['研究结果：缺少实测记录'],issues:[]}}}:null});await f.ready;assert.equal(f.q('[data-completion-confirm]'),null);assert.equal(f.q('#thesis-online-docx').disabled,true);assert.equal(f.q('#thesis-online-draft').disabled,false);assert.match(f.q('[data-completion-review]').textContent,/缺少实测记录/);assert.equal(f.calls.some(row=>row.data),false);
+});
+test('saving cover-only facts reuses a complete checked manuscript instead of buying another full completion',async t=>{
+ const f=fixture(t,{handle:async(path,data,record)=>{
+  if(path==='/theses/t1'&&!data)return {item:{...record,completionReview:{required:true,status:'needs_materials',changes:[],missing:['作者姓名'],issues:[],checks:{}}}};
+  if(path.endsWith('/completion')){assert.equal(data.metadata.author,'合成作者');const next={...record,version:record.version+1,completionReview:{required:true,status:'ready',changes:[],missing:[],issues:[],checks:{materials:true,manuscript:true,content:true},fingerprint:'a'.repeat(64),runId:'old-run'}};f.setRecord(next);return{item:structuredClone(next)};}
+ }});await f.ready;f.input('[data-completion-cover="author"]','合成作者');f.q('[data-completion-prepare]').click();await settle();assert.ok(f.q('[data-completion-confirm]'));assert.equal(f.calls.filter(row=>/\/(quote|generate)$/.test(row.path)).length,0);
 });

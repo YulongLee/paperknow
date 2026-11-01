@@ -1,7 +1,4 @@
-import {simulationInUse,simulationResearchDisclosure} from './simulation-data.mjs';
 import {reuseStoredOriginal} from './file-selection.mjs';
-import {thesisDocumentPresentation,thesisChapterCompletion} from './thesis-document.mjs';
-import {thesisEnglishTitle} from './thesis-delivery.mjs';
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const thesisTemplateMaxBytes=2*1024*1024;
 export function draftThesisTemplate(draft={}){
@@ -10,13 +7,8 @@ export function draftThesisTemplate(draft={}){
  if(!value||typeof value!=='object'||!value.source||typeof value.source.fileId!=='string'||!value.source.fileId.trim())return null;
  return {version:1,source:{fileId:value.source.fileId,name:String(value.source.name||'学校格式模板.docx'),sha256:String(value.source.sha256||''),size:Number(value.source.size)||0},...(value.profile&&typeof value.profile==='object'?{profile:structuredClone(value.profile)}:{}),status:value.status==='unavailable'?'unavailable':'ready'};
 }
-export function thesisExportMetadata(value={},options={}){
- const snapshot=value.snapshot||value,profile=snapshot.profile||value.profile||{},requirements=snapshot.requirements||{};
- const simulations=simulationInUse(snapshot,value.chapters||[]),simulationNotes=simulationResearchDisclosure(snapshot,value.chapters||[]);
- const chapterTitles=(value.chapters||snapshot.outline||value.outlineRows||[]).filter(row=>row.level===undefined||Number(row.level)===1).map(row=>String(row.title||'').trim()).filter(Boolean);
- const title=String(value.title||snapshot.title||''),presentation=Array.isArray(value.chapters)?thesisDocumentPresentation(snapshot,value.chapters,{title,...options}):null,citationRanges=presentation?.citationRanges;
- return {title,...(simulations.length?{simulationSourceCount:simulations.length,simulationDisclosure:simulationNotes[1]}:{}),...(thesisEnglishTitle(value.chapters)?{englishTitle:thesisEnglishTitle(value.chapters)}:{}),level:String(profile.level||value.degree||''),major:String(profile.major||profile.discipline||value.major||''),institution:String(requirements.institution||value.institution||''),supervisor:String(requirements.supervisor||value.supervisor||''),author:String(value.author||requirements.author||''),...(value.exportMetadata||{}),chapterTitles,...(Array.isArray(value.chapters)&&Array.isArray(snapshot.outline)?{chapterCompletion:thesisChapterCompletion(snapshot,value.chapters)}:{}),...(citationRanges?{citationRanges}:{}),...(presentation?.figures?.length?{figures:presentation.figures}:{})};
-}
+export {thesisExportMetadata} from './thesis-export-metadata.mjs';
+
 export function templateSelectionFailureMessage(error){
  const reason=typeof error?.message==='string'&&error.message.trim()?error.message.trim():'模板保存未完成，请重试。';
  const recovery=error?.status===409?'本次未覆盖其他页面的模板选择，请核对后重新选择 DOCX 文件。':'原有模板保持不变，可以重新选择其他 DOCX 文件。';

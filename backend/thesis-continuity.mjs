@@ -79,7 +79,7 @@ export function createThesisContinuity(db,config={}){
   const words=Number.isSafeInteger(snapshot.profile?.targetWords)&&snapshot.profile.targetWords>0?snapshot.profile.targetWords:plan.reduce((sum,unit)=>sum+(Number.isSafeInteger(unit.targetWords)&&unit.targetWords>0?unit.targetWords:0),0)||500;
   const baseReviews=Math.max(1,Math.ceil(words*(/english|英文|英语/i.test(snapshot.profile?.language||'中文')?6:1.2)/22000),Math.ceil(plan.length/12));
   const supplementReviews=config.supplementCheckEnabled===true&&JSON.parse(row.settings_meta||'{}').supplementCheck===true?Math.ceil(words*(/english|英文|英语/i.test(snapshot.profile?.language||'中文')?6:1.5)/10000)+Math.ceil(plan.length/6):0;
-  const reviewAllowance=Math.min(24,baseReviews+supplementReviews*(JSON.parse(row.settings_meta||'{}').completion?2:1));
+  const completion=JSON.parse(row.settings_meta||'{}').completion,reviewAllowance=Math.min(24,completion?.scope==='full'?supplementReviews+3*(baseReviews+supplementReviews)+Math.min(12,plan.length*2):baseReviews+supplementReviews*(completion?2:1));
   const tokenLimit=computeThesisRunBudget({snapshot,plan,settings,config,reviewAllowance});
   let costLimit=Math.min(maxCost,perUnit*(plan.length*1.25+reviewAllowance));
   if(config.thesisMaxRunCostUsd!==undefined&&config.thesisMaxRunCostUsd!==null){const cap=Number(config.thesisMaxRunCostUsd);if(!Number.isFinite(cap)||cap<.01||cap>maxCost)fail(400,'论文总成本上限应为 0.01～50 美元','invalid_execution_budget');costLimit=Math.min(costLimit,cap);}
