@@ -1,5 +1,5 @@
 import {createThesisSimulationController,bindSimulationPanel,replaceSimulationPanel,simulationPending} from './thesis-simulation-client.mjs';
-import {createCompletionDraft,completionPayload,completionDraftRecord,restoreCompletionDraft,setCompletionIssues,completionPanelHTML,bindCompletionPanel,updateCompletionPanelState} from './thesis-completion-panel.mjs';
+import {createCompletionDraft,completionPayload,completionDraftRecord,restoreCompletionDraft,setCompletionIssues,completionPanelHTML,completionProgressText,bindCompletionPanel,updateCompletionPanelState} from './thesis-completion-panel.mjs';
 import {resolveAccountProjectId} from './project-directory.mjs';
 import {writingQualityPanel} from './writing-quality-panel.mjs';
 import {assessThesisEvidence} from './thesis-evidence.mjs';
@@ -16,9 +16,9 @@ import {thesisCoverFields,thesisFrontMatterKind,thesisManualBackMatter} from './
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const instances=new Set();
 const running=item=>['queued','running','cancelling'].includes(item?.job?.status)||['queued','running','cancelling'].includes(item?.status);
-const labels={draft:'草稿已保存',queued:'排队中',running:'正在生成',completed:'已完成',failed:'生成中断',interrupted:'处理中断',needs_materials:'待补研究证据',budget_exceeded:'已达本次处理上限',cancelled:'已停止',cancelling:'正在停止',pending:'待生成',edited:'已编辑',saved:'已保存',partial:'部分完成'};
+const labels={draft:'草稿已保存',queued:'排队中',running:'正在生成',completed:'已完成',failed:'生成中断',interrupted:'处理中断',needs_materials:'待补研究证据',check_unavailable:'资料检查未完成',budget_exceeded:'已达本次处理上限',cancelled:'已停止',cancelling:'正在停止',pending:'待生成',edited:'已编辑',saved:'已保存',partial:'部分完成'};
 const stageLabel=value=>({queue:'等待处理',queued:'等待处理',preparing:'准备研究资料',generating_section:'逐节写作',generating_abstracts:'整理摘要与关键词',agent_running:'正在整理论证',agent_tools:'正在读取研究依据',reading_material:'读取研究资料',read_material:'读取研究资料',auto_recovering:'正在自动恢复',verifying_citations:'核验参考文献题录',reviewing_manuscript:'正在审校全文',checking_consistency:'检查正文一致性',checking_supplements:'正在检查补充资料完整性',needs_materials:'等待补充研究证据',budget_exceeded:'已达本次处理上限',completed:'内容已保存',failed:'处理失败',interrupted:'处理中断',cancelled:'已停止',cancelling:'正在停止'}[value]||'章节处理中');
-const thesisStatus=item=>item.status==='draft'?'draft':item.job?.status||item.status;
+const thesisStatus=item=>item.quality?.supplementCheck?.status==='unavailable'&&(item.job?.status||item.status)==='needs_materials'?'check_unavailable':item.status==='draft'?'draft':item.job?.status||item.status;
 export function validServiceQuote(quote,type,now=Date.now()){
  return !!(['polish','review','agent'].includes(type)&&quote&&quote.type===type&&['free','membership','bundle','credits'].includes(quote.source)&&typeof quote.title==='string'&&quote.title.trim()&&typeof quote.token==='string'&&quote.token.length>0&&quote.token.length<=4096&&Number.isSafeInteger(quote.creditCost)&&quote.creditCost>=0&&(quote.source==='credits'?quote.creditCost>0:quote.creditCost===0)&&Number.isFinite(Date.parse(quote.expiresAt))&&Date.parse(quote.expiresAt)>now);
 }
@@ -56,6 +56,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  const win=container.ownerDocument.defaultView||window;
  let accountSnapshotChoice=null,chapterPresentation=null,templateSelectionMade=false,templateMessage='',templateRefreshPending=false,templatePickerBaseline;
  const disclosureState=new Map();
+ let exportLocks=[],exporting=false;
  let coverEdits=null,completionDraft=createCompletionDraft(),completionRecheckNow=false;
  const $=selector=>container.querySelector(selector);
  const dirty=()=>edits.size>0||researchEdits!==null||coverEdits!==null||completionDraft.dirty;
@@ -99,7 +100,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   notice(error.status===409?'内容版本已更新。请读取最新状态后核对，尚未保存的章节文字仍在编辑区。':error.message||'操作未完成，请稍后重试。');
  }
  async function mutate(action,{generation=false,template=false,templateName=''}={}){
-  if(busy||!current())return;
+  if(busy||exporting||!current())return;
   busy=true;submittingGeneration=generation;if(template)templateMessage=templateName?'正在识别并保存：'+templateName:'正在恢复通用学位论文模板…';render();
   try{await owner();if(current())await action();if(template)templateMessage=message;}catch(error){if(template)templateMessage=templateSelectionFailureMessage(error);failure(error);}finally{busy=false;submittingGeneration=false;if(current())render();}
  }
@@ -179,6 +180,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   const progressNode=$('.thesis-progress'),workspace=$('.thesis-chapter-workspace');if(!progressNode||!workspace)return false;
   const fragment=container.ownerDocument.createElement('template');fragment.innerHTML=progress()+chapterEditor();
   withStableView(container.closest('.dashboard')||container,()=>{patchGenerationNode(progressNode,fragment.content.firstElementChild);patchGenerationNode(workspace,fragment.content.lastElementChild);},{restoreFocus:false});
+  const completionProgress=$('[data-completion-progress-title]');if(completionProgress)completionProgress.textContent=completionProgressText(item,busy);
   updateExportButtons();return true;
  }
  function generationNodeKey(node){
@@ -517,7 +519,13 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   templateRoot?.querySelector('[data-template-file]')?.addEventListener('change',event=>{const file=event.target.files?.[0];if(!file)return;const expectedTemplateFileId=templatePickerBaseline===undefined?item.exportTemplate?.source?.fileId||null:templatePickerBaseline;templatePickerBaseline=undefined;void mutate(async()=>{const uploaded=await uploadThesisTemplate(file,{api,expectedUserId:user?.id,projectId:resolvedProjectId(),isCurrent:current});const value=await api('/theses/'+encodeURIComponent(id)+'/export-template',{version:item.version,templateFileId:uploaded.source.fileId,expectedTemplateFileId});takeItem(value.item,true);quote=null;notice('Word 导出模板已保存；正文不变，无需重新生成。');},{template:true,templateName:file.name});});
   templateRoot?.querySelector('[data-template-clear]')?.addEventListener('click',()=>void mutate(async()=>{const value=await api('/theses/'+encodeURIComponent(id)+'/export-template',{version:item.version,templateFileId:null,expectedTemplateFileId:item.exportTemplate?.source?.fileId||null});takeItem(value.item,true);quote=null;notice('已恢复通用学位论文模板；正文不变。');},{template:true}));
   templateRoot?.querySelector('[data-template-download]')?.addEventListener('click',()=>void downloadDefaultThesisTemplate({expectedUserId:user?.id,metadata:thesisExportMetadata(item),status:templateRoot.querySelector('[data-template-status]'),isCurrent:current}));
-  if(item){bindDocumentExports('thesis-online',({draft}={})=>current()&&!dirty()?thesisDocumentText(bibliographyItem(),{submission:!draft}):'',()=>item.title||'论文正文',$('[data-thesis-export-status]'),{expectedUserId:user?.id,docxOnly:true,isCurrent:current,onNeedsCompletion:async details=>{setCompletionIssues(completionDraft,details);renderCompletion();},getDocumentOptions:async({draft}={})=>{if(!Object.hasOwn(item,'exportTemplate'))return {documentKind:'thesis',requireSupplementCheck:true,submission:!draft,metadata:thesisExportMetadata(bibliographyItem(),{submission:!draft}),quality:item.quality,template:null};await owner();const value=await api('/theses/'+encodeURIComponent(id)+'/export-template');if(value.exportTemplate?.status==='unavailable')throw Error('所选 Word 模板暂不可读取，请重新上传或恢复默认后导出。');if(value.version!==item.version)throw Error('论文版本已变化，请读取最新状态后再导出。');return {documentKind:'thesis',requireSupplementCheck:true,submission:!draft,metadata:thesisExportMetadata(bibliographyItem(),{submission:!draft}),quality:item.quality,template:value.exportTemplate};}});updateExportButtons();if(!busy&&!running(item)&&(completionRecheckNow||completionDraft.recheckRunId===item.job?.id&&item.job?.status==='completed')){completionRecheckNow=false;completionDraft.recheckRunId=null;persistDraft();queueMicrotask(()=>{if(current()&&!dirty())$('#thesis-online-docx')?.click();});}}
+  if(item){bindDocumentExports('thesis-online',({draft}={})=>current()&&!dirty()?thesisDocumentText(bibliographyItem(),{submission:!draft}):'',()=>item.title||'论文正文',$('[data-thesis-export-status]'),{expectedUserId:user?.id,docxOnly:true,isCurrent:current,onStateChange:exportState,onNeedsCompletion:async details=>{setCompletionIssues(completionDraft,details);renderCompletion();},getDocumentOptions:async({draft}={})=>{if(!Object.hasOwn(item,'exportTemplate'))return {documentKind:'thesis',requireSupplementCheck:true,submission:!draft,metadata:thesisExportMetadata(bibliographyItem(),{submission:!draft}),quality:item.quality,template:null};await owner();const value=await api('/theses/'+encodeURIComponent(id)+'/export-template');if(value.exportTemplate?.status==='unavailable')throw Error('所选 Word 模板暂不可读取，请重新上传或恢复默认后导出。');if(value.version!==item.version)throw Error('论文版本已变化，请读取最新状态后再导出。');return {documentKind:'thesis',requireSupplementCheck:true,submission:!draft,metadata:thesisExportMetadata(bibliographyItem(),{submission:!draft}),quality:item.quality,template:value.exportTemplate};}});updateExportButtons();if(!busy&&!running(item)&&(completionRecheckNow||completionDraft.recheckRunId===item.job?.id&&item.job?.status==='completed')){completionRecheckNow=false;completionDraft.recheckRunId=null;persistDraft();queueMicrotask(()=>{if(current()&&!dirty())$('#thesis-online-docx')?.click();});}}
+ }
+ function exportState({active,outcome}){
+  if(!current())return;
+  exporting=active;busy=active;
+  if(active){clearTimeout(timer);exportLocks=[...container.querySelectorAll('button,input,textarea,select')].map(node=>({node,disabled:node.disabled}));exportLocks.forEach(({node})=>{node.disabled=true;});}
+  else{exportLocks.forEach(({node,disabled})=>{if(node.isConnected)node.disabled=disabled;});exportLocks=[];if(['needs_materials','check_required'].includes(outcome))renderCompletion();updateExportButtons();schedule();}
  }
  function updateExportButtons(){
   const hasText=!!thesisDocumentText(item),pending=simulationPending(completionDraft),disabled=busy||dirty()||!hasText;

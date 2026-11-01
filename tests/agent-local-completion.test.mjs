@@ -54,3 +54,13 @@ test('accepted final-turn result waits for complete upstream HTTP usage rather t
 test('accepted candidate does not bypass invalid negative SDK cost metadata',async()=>{
  const provider=providerFixture();await assert.rejects(()=>runAgentTask({settings,task,validateWritingOutput:validator,dependencies:{lookup,httpsRequest:provider.requestImpl,query:({options})=>(async function*(){await primeProvider(options);const tools=options.mcpServers.paperknow.instance._registeredTools;await tools.read_material.handler({id:'source-A'});await tools.submit_writing_output.handler({candidate});yield{...result,total_cost_usd:-1};})()}}),/用量记录无效/);
 });
+
+
+test('supplement review uses its own items contract and submits supplied evidence without redundant reads',async()=>{
+ const {runSupplementCheck,parseSupplementCheck}=await import('../backend/supplement-check.mjs');let options;
+ const report=await runSupplementCheck({snapshot:{title:'合成资料验收',materials:[{id:'source-A',name:'合成记录',text:'明确标注的合成研究记录，仅用于测试。',confirmed:true}]},chapters:[{id:'c',title:'研究说明',text:'本节检查合成研究记录。'}],runtime:{...settings,maxTotalTokens:100000,maxOutputTokens:2048},dispatch:async args=>{
+  const provider=providerFixture(),chapter=args.task.context.chapters[0],candidate={items:[{id:chapter.id,status:'sufficient',requirement:'研究记录',reason:'已读取授权合成记录。',manuscriptQuote:chapter.text,evidence:[{sourceId:'source-A',quote:'明确标注的合成研究记录'}],missing:[]}]};
+  return runAgentTask({...args,dependencies:{lookup,httpsRequest:provider.requestImpl,query:input=>{options=input.options;return(async function*(){await primeProvider(options);const tools=options.mcpServers.paperknow.instance._registeredTools;assert.equal(tools.read_material,undefined);assert.deepEqual(options.allowedTools,['mcp__paperknow__submit_writing_output']);const submitted=await tools.submit_writing_output.handler({candidate});assert.equal(JSON.parse(submitted.content[0].text).accepted,true);yield{...result,result:'ACK'};})();}}});
+ }});
+ assert.equal(report.status,'final_ready');assert.match(options.systemPrompt,/审校，不是正文写作/);assert.doesNotMatch(options.systemPrompt,/根据实际字数与来源反馈修订完整候选/);assert.match(options.systemPrompt,/无需重复调用 read_material/);
+});
