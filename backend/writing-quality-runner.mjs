@@ -1,3 +1,4 @@
+import {manuscriptFigures,manuscriptPart} from '../dist/workspace/manuscript-figures.mjs';
 import {runSupplementCheck} from './supplement-check.mjs';
 import {createCitationVerifier,auditWritingConsistency,writingReviewTask,parseWritingReview} from './writing-quality.mjs';
 
@@ -25,10 +26,8 @@ export function createWritingQualityRunner(config={}){
    if(!chapter.text.trim())continue;
    let start=0,part=0;
    while(start<chapter.text.length){
-    let end=Math.min(chapter.text.length,start+maxCharacters);
-    if(end<chapter.text.length&&/[\uD800-\uDBFF]/.test(chapter.text[end-1]))end--;
-    const text=chapter.text.slice(start,end),piece={id:'quality-section-'+(index+1)+'-part-'+(++part),title:typeof chapter.title==='string'?chapter.title.slice(0,300):'章节 '+(index+1),text,originalSectionId:chapter.id,originalOffset:start,totalCharacters:chapter.text.length,partialChapter:start>0||end<chapter.text.length};
-    if(batch.length>=12||characters+text.length>maxCharacters)flush();batch.push(piece);characters+=text.length;start=end;
+    const {text,figures,end,cost}=manuscriptPart(chapter,start,maxCharacters),piece={id:'quality-section-'+(index+1)+'-part-'+(++part),title:typeof chapter.title==='string'?chapter.title.slice(0,300):'章节 '+(index+1),text,...(figures.length?{figures}:{}),originalSectionId:chapter.id,originalOffset:start,totalCharacters:chapter.text.length,partialChapter:start>0||end<chapter.text.length};
+    if(batch.length>=12||characters+cost>maxCharacters)flush();batch.push(piece);characters+=cost;start=end;
    }
   }
   flush();return batches;
@@ -58,7 +57,7 @@ export function createWritingQualityRunner(config={}){
    task.context.manuscriptExcerpts=task.context.manuscriptExcerpts.map(piece=>{const origin=batch.find(row=>row.id===piece.id);return {...piece,partialChapter:origin.partialChapter,originalOffset:origin.originalOffset,totalCharacters:origin.totalCharacters};});
    task.context.scope={...task.context.scope,batch:index+1,totalBatches:batches.length,batchOnly:true};
    if(JSON.stringify(task.context).length>39000){partial=true;quality.reviews.push({unitId,status:'unavailable',sectionIds,reasonCode:'context_limit',reason:publicReason.unavailable,findings:[],checkedSections:0});continue;}
-   const validateReviewOutput=candidate=>{try{parseWritingReview(candidate,task);return {valid:true};}catch{return {valid:false,feedback:{code:'review_grounding',rule:'只提交实际提供的章节ID、逐字原句和完整JSON检查项；没有可定位问题时findings=[]，不得伪造原文或检查结论。'}};}};
+   const validateReviewOutput=candidate=>{try{parseWritingReview(candidate,task);return {valid:true};}catch{return {valid:false,feedback:{code:'review_grounding',rule:'只提交实际提供的章节ID、逐字原句和完整JSON检查项；checkedFigureIds 必须完整列出本批提供的图片ID，不得遗漏或添加其他图片；没有可定位问题时findings=[]，不得伪造原文或检查结论。'}};}};
    try{
     const settings={...runtime,maxTurns:Math.min(4,bounded(runtime.maxTurns,3,1,12)),maxOutputTokens:Math.min(4096,bounded(runtime.maxOutputTokens,2048,32,16384)),timeoutMs:Math.min(90000,bounded(runtime.timeoutMs,60000,5000,300000))};
     // Dispatch owns model-budget accounting and may write task state in its
@@ -74,9 +73,11 @@ export function createWritingQualityRunner(config={}){
   }
   await active();
   const successful=quality.reviews.filter(review=>review.status==='completed'),checkedCharacters=successful.reduce((sum,review)=>sum+review.checkedCharacters,0),totalCharacters=chapters.reduce((sum,chapter)=>sum+chapter.text.length,0);
+  const figureIds=chapters.flatMap(chapter=>manuscriptFigures(chapter).map(row=>row.id)),checkedFigureIds=successful.flatMap(review=>review.checkedFigureIds||[]);
+  if(figureIds.length)quality.figureReview={version:1,status:figureIds.every(id=>checkedFigureIds.includes(id))?'completed':'partial',figureIds:[...new Set(figureIds)],checkedFigureIds:[...new Set(checkedFigureIds)]};
   quality.status=partial?'partial':'completed';if(!successful.length&&quality.consistency.status==='unavailable'&&(!quality.citations.items?.length||quality.citations.status==='unavailable'))quality.status='unavailable';
   quality.checkedAt=timestamp();quality.coverage={totalSections:chapters.length,totalCharacters,reviewedCharacters:checkedCharacters,reviewedBatches:successful.length,totalBatches:batches.length,complete:successful.length===batches.length&&checkedCharacters===totalCharacters};
-  quality.limitations=[...new Set([...(chapters.some(row=>row.figures?.length)?['图片仅通过结构与位置校验；图中逻辑、来源含义与科学准确性仍需作者核对。']:[]),...(quality.citations.limitations||[]),...(quality.consistency.limitations||[]),'自动检查不能替代作者对研究事实、来源含义和院校要求的核对。',...(quality.coverage.complete?[]:['AI 辅助审校未覆盖全部正文；请查看未完成批次及检查范围。']),...(batches.length>1?['长文按片段审校；跨批次的逻辑和术语关系仍需全文人工复核。']:[])])];
+  quality.limitations=[...new Set([...(chapters.some(row=>row.figures?.length)?[quality.figureReview?.status==='completed'?'图片已纳入本次可见图文审校范围；检查不鉴定研究事实或实验真实性。':'图片内容审校尚未完整完成，不能据此确认图文已检查。']:[]),...(quality.citations.limitations||[]),...(quality.consistency.limitations||[]),'自动检查不能替代作者对研究事实、来源含义和院校要求的核对。',...(quality.coverage.complete?[]:['AI 辅助审校未覆盖全部正文；请查看未完成批次及检查范围。']),...(batches.length>1?['长文按片段审校；跨批次的逻辑和术语关系仍需全文人工复核。']:[])])];
   return quality;
  };
 }

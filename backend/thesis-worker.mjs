@@ -99,7 +99,7 @@ export function startThesisWorker(db,config={}){
      }catch(error){if(!accounted)account(error.usage);transaction(()=>continuity.finish(reservation.id,{usage:output?.usage||error.usage,costUsd:output?.costUsd??error.costUsd,errorCode:error.code||'execution_failed'}));throw error;}
     };
    if(checkSupplements&&completionMode){
-    const chapters=snapshot.outline.map(chapter=>({id:chapter.id,title:chapter.title,text:savedBaseline.find(row=>row.chapter_id===chapter.id)?.text||'本节尚未生成，按已确认的章节目的核对所需资料。'}));
+    const chapters=snapshot.outline.map(chapter=>({id:chapter.id,title:chapter.title,text:savedBaseline.find(row=>row.chapter_id===chapter.id)?.text||'本节尚未生成，按已确认的章节目的核对所需资料。',figures:JSON.parse(savedBaseline.find(row=>row.chapter_id===chapter.id)?.figures||'[]')}));
     const supplementCheck=await runSupplementCheck({snapshot,chapters,kind:'thesis',phase:'materials',runtime,dispatch:reviewDispatch,signal:controller.signal,isCurrent:running,onStage:stage});
     if(!writeRunning(()=>{const json=JSON.stringify({status:'partial',supplementCheck,manuscriptHash:completionManuscriptHash(chapters)});assertThesisAccountQuota(db,run.user_id,Buffer.byteLength(json),config);db.prepare('UPDATE thesis_runs SET quality=?,updated_at=? WHERE id=? AND attempt=?').run(json,clock(),run.id,run.attempt);}))return;
     if(supplementCheck.status!=='materials_ready')throw thesisError(422,supplementCheck.status==='needs_materials'?'补充资料仍有缺项，请查看补充内容检查；原稿与已上传资料已保留。':'补充资料检查尚未完成，请稍后重试；原稿与材料已保留。','needs_materials');

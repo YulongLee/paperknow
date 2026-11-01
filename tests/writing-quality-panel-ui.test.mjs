@@ -15,6 +15,12 @@ test('expression hints use a professional label and escape the exact manuscript 
  try{assert.match(dom.window.document.body.textContent,/学术表达/);assert.match(dom.window.document.body.textContent,/94.2%/);assert.equal(dom.window.document.querySelectorAll('img,script').length,0);assert.ok(dom.window.document.querySelector('blockquote').textContent.includes('<img'));}finally{dom.window.close();}
 });
 
+test('diagram coverage and graph/table findings appear with professional labels without exposing graphic IDs',()=>{
+ const diagram={sectionTitle:'系统设计',category:'figure_consistency',quote:'对应的正文论述',explanation:'需要统一图中关系。',suggestion:'按实际方案统一图文。'};
+ const dom=new JSDOM(writingQualityPanel(quality({figureReview:{version:1,status:'partial',figureIds:['private-a','private-b'],checkedFigureIds:['private-a']},reviews:[{status:'completed',findings:[diagram,{...diagram,category:'table_consistency'},{...diagram,category:'data_support'}]}]})));
+ try{const value=dom.window.document.body.textContent;assert.match(value,/论文图片已检查 1 \/ 2 张/);assert.match(value,/图片内容检查尚未完成/);assert.match(value,/图文一致性/);assert.match(value,/表格一致性/);assert.match(value,/数据依据/);assert.doesNotMatch(value,/private-a|private-b/);}finally{dom.window.close();}
+});
+
 function fixture(t,{item=record()}={}){
  const dom=new JSDOM('<main class="dashboard"><div id="job"></div></main>',{url:'https://example.test/workspace.html#tool/article'}),container=dom.window.document.querySelector('#job');
  const style=dom.window.document.createElement('style');style.textContent=readFileSync(new URL('../dist/workspace/thesis-detail-commercial.css',import.meta.url),'utf8')+'\n'+readFileSync(new URL('../dist/workspace/writing-flows.css',import.meta.url),'utf8');dom.window.document.head.append(style);
