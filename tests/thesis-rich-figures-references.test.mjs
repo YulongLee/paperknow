@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DOMParser} from '@xmldom/xmldom';
 import JSZip from 'jszip';
-import {normalizeThesisFigure,renderThesisFigureSvg,thesisFigureKinds} from '../dist/workspace/thesis-figure.mjs';
+import {normalizeThesisFigure,renderThesisFigureSvg,thesisFigureKinds,layoutThesisFigure} from '../dist/workspace/thesis-figure.mjs';
 import {normalizeThesisSnapshot,thesisPlan,thesisAgentTask,parseThesisSection,selectThesisEvidence} from '../backend/thesis-model.mjs';
 import {thesisDocumentPresentation,buildThesisBibliography} from '../dist/workspace/thesis-document.mjs';
 import {createWritingDocx,inspectThesisExportContent} from '../src/writing-document.js';
@@ -62,4 +62,12 @@ test('imported readable papers retain candidate slots even when many internal ma
 
 test('all expanded figure types remain actual embedded DOCX images with intact figure captions',async()=>{
  for(const figure of [diagram('architecture'),diagram('comparison'),plot('bar'),plot('line'),plot('scatter')]){const text='合成论文\n第一章 结果\n相关论述。\n[figure:'+figure.id+']\n后续说明。',metadata={title:'合成论文',figures:[figure]},bytes=await createWritingDocx(text,{documentKind:'thesis',metadata,figureRasterizer:async()=>new Uint8Array(figurePngFixture())}),zip=await JSZip.loadAsync(bytes),xml=await zip.file('word/document.xml').async('string');assert.match(xml,/w:drawing/);assert.match(xml,new RegExp(figure.title));assert.doesNotMatch(xml,/\[figure:/);assert.equal((await inspectThesisExportContent(bytes,text,{metadata})).figureSegments,1);}
+});
+
+
+test('rich diagram relation labels remain inside the canvas for dense long-label structures',()=>{
+ for(const kind of ['concept','architecture'])for(let n=2;n<=8;n++){
+  const nodes=Array.from({length:n},(_,i)=>({id:'n'+i,label:'模块'+i+' 研究对象特征表达与处理条件的说明'.repeat(3),...(kind==='architecture'?{group:'系统层次'+(i%3)}:{})})),edges=[];for(let i=0;i<n;i++)for(let j=i+1;j<n&&edges.length<12;j++)edges.push({from:'n'+i,to:'n'+j,label:'依据原始资料核对关联方向'});
+  const layout=layoutThesisFigure({id:'dense',kind,title:'长标签验收',nodes,edges});for(const edge of layout.edges){assert.ok(edge.labelX>=105&&edge.labelX<=layout.width-105);assert.ok(edge.labelY>=24);assert.ok(edge.labelY+edge.labelLines.length*24<=layout.height);}
+ }
 });

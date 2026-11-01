@@ -57,7 +57,14 @@ export function richThesisGraphLayout(figure,wrap){
    frames.push({label,lines:heading,x:45,y:top,width:910,height:y-top});y+=35;
   }height=y;
  }
- const byId=new Map(nodes.map(row=>[row.id,row])),edges=figure.edges.map(edge=>{const from=byId.get(edge.from),to=byId.get(edge.to),a=endpoint(from,center(to)),b=endpoint(to,center(from)),points=connection(a,b,nodes,width,height),middle=points[Math.floor(points.length/2)];return {...edge,points,labelLines:edge.label?wrap(edge.label,180,16):[],labelX:middle[0],labelY:middle[1]-10};});
+ const byId=new Map(nodes.map(row=>[row.id,row])),edges=figure.edges.map(edge=>{const from=byId.get(edge.from),to=byId.get(edge.to),a=endpoint(from,center(to)),b=endpoint(to,center(from)),points=connection(a,b,nodes,width,height),segments=points.slice(1).map((point,i)=>({point:[(points[i][0]+point[0])/2,(points[i][1]+point[1])/2],length:Math.abs(point[0]-points[i][0])+Math.abs(point[1]-points[i][1])})).sort((a,b)=>b.length-a.length),middle=segments[0].point,labelLines=edge.label?wrap(edge.label,180,16):[];
+  // Keep relation labels inside the canvas and away from the node rectangles.
+  // Place them alongside a segment rather than over its target node.
+  const labelHeight=Math.max(24,labelLines.length*24),clamp=(v,min,max)=>Math.max(min,Math.min(max,v)),candidates=[];
+  for(const {point}of segments)for(const dx of [0,110,-110,180,-180])for(const dy of [-12,24,-labelHeight,48]){const x=clamp(point[0]+dx,105,width-105),y=clamp(point[1]+dy,24,height-labelHeight);candidates.push({x,y,score:Math.abs(x-middle[0])+Math.abs(y-middle[1])});}
+  candidates.sort((a,b)=>a.score-b.score);const position=candidates.find(p=>!nodes.some(n=>p.x+100>n.x-4&&p.x-100<n.x+n.width+4&&p.y+labelHeight-18>n.y-4&&p.y-18<n.y+n.height+4))||{x:clamp(middle[0],105,width-105),y:clamp(middle[1]-12,24,height-labelHeight)};
+  return {...edge,points,labelLines,labelX:position.x,labelY:position.y};
+ });
  return {figure,width,height:Math.ceil(height),nodes,edges,frames};
 }
 
