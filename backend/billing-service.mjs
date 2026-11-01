@@ -1,3 +1,4 @@
+import {initializeCreditCodes,creditCodeTotal,creditCodeLedger} from './credit-code-schema.mjs';
 import {cloudUsage} from './commercial-resources.mjs';
 import {resourceEntitlementKeys,v1ExtraServices} from '../dist/workspace/v1-pricing.mjs';
 import {v1CommercialEnabled} from './v1-commercial-policy.mjs';
@@ -36,6 +37,7 @@ const validItems=value=>{
 // The caller owns the transaction that pairs a job transition with its charge.
 // Recharging remains in the existing immutable payment ledger; this service never edits it.
 export function createBillingService(db,config={}){
+ initializeCreditCodes(db);
  const clock=()=>{const value=config.billingNow?.()??new Date();const date=value instanceof Date?value:new Date(value);if(!Number.isFinite(date.getTime()))throw new Error('Invalid billing clock');return date.toISOString();};
  db.exec(`CREATE TABLE IF NOT EXISTS billing_policy(
  id INTEGER PRIMARY KEY CHECK(id=1),rules TEXT NOT NULL,version INTEGER NOT NULL CHECK(version>=1),updated_at TEXT NOT NULL
@@ -171,7 +173,7 @@ export function createBillingService(db,config={}){
  function totals(userId){
   const purchased=db.prepare('SELECT COALESCE(sum(amount),0) n FROM payment_credit_ledger WHERE user_id=?').get(userId).n;
   const usage=db.prepare("SELECT COALESCE(sum(CASE WHEN status='settled' THEN credits ELSE 0 END),0) spent,COALESCE(sum(CASE WHEN status='held' THEN credits ELSE 0 END),0) held FROM billing_reservations WHERE user_id=? AND source='credits'").get(userId);
-  const balance=purchased+adminCreditTotal(db,userId)-usage.spent,held=usage.held;
+  const balance=purchased+adminCreditTotal(db,userId)+creditCodeTotal(db,userId)-usage.spent,held=usage.held;
   if(!Number.isSafeInteger(balance)||!Number.isSafeInteger(held)||balance<0||held<0||balance-held<0)fail(503,'账户积分记录异常，请联系支持');
   return {balance,held,available:balance-held};
  }
@@ -236,7 +238,7 @@ export function createBillingService(db,config={}){
  function balance(userId){
   const purchased=db.prepare('SELECT p.order_id AS orderId,p.product_id AS productId,d.title,p.amount,p.kind,p.created_at AS createdAt FROM payment_credit_ledger p JOIN payment_orders d ON d.order_id=p.order_id WHERE p.user_id=? ORDER BY p.created_at DESC,p.order_id DESC LIMIT 100').all(userId).map(row=>({...row,id:'purchase:'+row.orderId,source:'credits',jobId:null,heldDelta:0}));
   const events=db.prepare(`SELECT e.id,e.kind,e.created_at AS createdAt,r.id AS reservationId,r.job_id AS jobId,r.attempt,r.type,r.service_key AS serviceKey,r.entitlement_key AS entitlementKey,r.source,r.source_order AS sourceOrderId,r.credits FROM billing_events e JOIN billing_reservations r ON r.id=e.reservation_id WHERE r.user_id=? AND r.source='credits' ORDER BY e.created_at DESC,e.rowid DESC LIMIT 100`).all(userId).map(({credits,...row})=>({...row,title:literatureBillingTitle(row.serviceKey)||toolBillingServiceTypes.find(item=>item.key===row.serviceKey)?.title||billingServiceTypes.find(item=>item.key===row.type)?.title||row.type,amount:row.source==='credits'&&row.kind==='settle'?-credits:0,heldDelta:row.source==='credits'?(row.kind==='reserve'?credits:row.kind==='settle'||row.kind==='release'?-credits:0):0}));
-  const ledger=[...purchased,...adminCreditLedger(db,userId),...events].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||b.id.localeCompare(a.id)).slice(0,100);
+  const ledger=[...purchased,...adminCreditLedger(db,userId),...creditCodeLedger(db,userId),...events].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||b.id.localeCompare(a.id)).slice(0,100);
   return {...totals(userId),ledger};
  }
  function entitlements(userId){

@@ -73,3 +73,5 @@
 .hub-theme-dark .payment-bundle-items>span,.hub-theme-dark .payment-bundle-items b{color:#d0b8e8}
 @container workspace (max-width:900px){#app .dashboard .member-bundle-grid{grid-template-columns:minmax(0,1fr)}}
 @container workspace (max-width:650px){#app .dashboard .member-bundle-records{padding:20px}#app .dashboard .member-bundle-records>header{flex-wrap:wrap;gap:10px}#app .dashboard .member-bundle-record{padding:18px}#app .dashboard .member-bundle-record dl>div{font-size:10px}}
+
+#app .dashboard .member-purchase-tile>a.member-code-link{margin-left:8px;background:transparent;border-color:transparent;color:#315d9c}

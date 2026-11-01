@@ -1,3 +1,4 @@
+import {createCreditCodeService} from './credit-code-service.mjs';
 import {createCombinedDetectionService} from './combined-detection-service.mjs';
 import {createLiteratureLibrary} from './literature-library.mjs';
 import {v1CommercialEnabled} from './v1-commercial-policy.mjs';
@@ -36,10 +37,11 @@ class APIError extends Error{constructor(status,message){super(message);this.sta
 const fail=(status,message)=>{throw new APIError(status,message);};
 const text=(v,max=200,min=1)=>{if(typeof v!=='string'||v.trim().length<min||v.length>max)fail(400,`请输入 ${min}～${max} 字符的有效内容`);return v.trim();};
 const url=v=>{if(!v)return '';try{const u=new URL(v);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw 0;return u.href;}catch{fail(400,'来源网址必须是有效的 HTTP/HTTPS 链接');}};
-async function body(req,maxBytes=3*1024*1024){if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'请提交 JSON 内容');let bytes=0,chunks=[];for await(const chunk of req){bytes+=chunk.length;if(bytes>maxBytes)fail(413,maxBytes===3*1024*1024?'请求超过 3MB 限制':'生成文件请求超过 28MB 限制');chunks.push(chunk);}try{const v=JSON.parse(Buffer.concat(chunks).toString());if(!v||Array.isArray(v)||typeof v!=='object')throw 0;return v;}catch{fail(400,'请求内容不是有效 JSON');}}
+async function body(req,maxBytes=3*1024*1024){if(!req.headers['content-type']?.startsWith('application/json'))fail(415,'请提交 JSON 内容');let bytes=0,chunks=[];for await(const chunk of req){bytes+=chunk.length;if(bytes>maxBytes)fail(413,maxBytes===3*1024*1024?'请求超过 3MB 限制':maxBytes===28*1024*1024?'生成文件请求超过 28MB 限制':'请求内容过大，请精简后重试');chunks.push(chunk);}try{const v=JSON.parse(Buffer.concat(chunks).toString());if(!v||Array.isArray(v)||typeof v!=='object')throw 0;return v;}catch{fail(400,'请求内容不是有效 JSON');}}
 export function createAPI(db,worker,config={}){
 const auth=createAuthService(db,{secret:config.authCodeSecret,dailyLimit:config.authDailyLimit,ownerEmail:config.ownerEmail,delivery:config.authDelivery||createAuthDelivery(config)});
 const billing=createBillingService(db,config);
+const creditCodes=createCreditCodeService(db,{...config,billing});
 const modelBudget=createModelBudget(db,config);
 const theses=createThesisService(db,{...config,billing,modelBudget,worker,cancelThesisRun:id=>worker.cancel(id)});
 const thesisRenderer=config.thesisDocumentRenderer||createThesisDocumentRenderer({commandPath:config.thesisDocumentRenderCommand,enabled:config.thesisDocumentRenderEnabled});
@@ -64,7 +66,7 @@ const combinedDetections=createCombinedDetectionService(db,{...config,billing},{
 const literatureSearch=createLiteratureSearch({fetchImpl:config.literatureFetch,openAlexApiKey:config.openAlexApiKey,openAlexDailyLimit:config.openAlexDailyLimit,semanticScholarEnabled:config.semanticScholarEnabled,semanticScholarApiKey:config.semanticScholarApiKey,semanticScholarDailyLimit:config.semanticScholarDailyLimit,aminerEnabled:config.aminerEnabled,aminerApiKey:config.aminerApiKey,aminerUserId:config.aminerUserId,aminerToken:config.aminerToken,aminerDailyLimit:config.aminerDailyLimit});
 const literatureScope=req=>{const admin=sessionUser(db,req,config.ownerEmail)?.role==='admin';return{allowAminer:config.aminerAccess==='public'||admin,allowSemanticScholar:config.semanticScholarAccess==='public'&&config.semanticScholarCommercialLicensed===true||admin};};
 const desktopReleases=createDesktopReleaseService(db,config);
-const admin=createAdminAPI(db,worker,{...config,payments,billing},auth);
+const admin=createAdminAPI(db,worker,{...config,payments,billing,creditCodes},auth);
 const transaction=fn=>{db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}};
 const archiveAttempts=new Map();
 const attempts=new Map();function rate(req,limit){const key=clientAddress(req,config);const t=Date.now();if(attempts.size>10000)for(const [k,v]of attempts)if(v.until<t)attempts.delete(k);const item=attempts.get(key)||{count:0,until:t+600000};if(item.until<t){item.count=0;item.until=t+600000;}item.count++;attempts.set(key,item);if(item.count>limit)fail(429,'请求过于频繁，请稍后重试');}
@@ -123,6 +125,8 @@ const user=adminUser||sessionUser(db,req,config.ownerEmail);if(!user)fail(401,'�
 const expectedOwner=req.headers['x-paperknow-user'];
 if(expectedOwner!==undefined&&(typeof expectedOwner!=='string'||expectedOwner!==user.id)){send(409,{error:'登录账户已变化，请刷新页面后重试',code:'ACCOUNT_CHANGED'});return;}
 if(adminRequest){send(200,await admin({path,method,query:requestURL.searchParams,readBody:()=>body(req),user}));return;}
+if(path==='/api/credits/redemptions'&&method==='GET'){send(200,creditCodes.history(user,requestURL.searchParams));return;}
+if(path==='/api/credits/redeem'&&method==='POST'){rate(req,100);send(200,creditCodes.redeem(user,await body(req,4096),clientAddress(req,config)));return;}
 if(path==='/api/literature/library'){if(method==='GET'){const etag=literatureLibrary.etag(user);if(req.headers['if-none-match']===etag){res.writeHead(304,{'Cache-Control':'private, no-store',ETag:etag}).end();return;}send(200,literatureLibrary.list(user),{ETag:etag});return;}send(200,literatureLibrary.save(user,await body(req)));return;}
 if(path==='/api/literature/files'&&method==='POST'){rate(req,30);const input=await body(req),controller=new AbortController(),cancel=()=>{if(!res.writableEnded)controller.abort();};req.once('aborted',cancel);res.once('close',cancel);try{send(201,await literatureDownloads.save(input,user,{signal:controller.signal}));}finally{req.removeListener('aborted',cancel);res.removeListener('close',cancel);}return;}
 if(path==='/api/theses/document-render'){

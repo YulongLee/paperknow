@@ -1,3 +1,4 @@
+import {createCreditCodeService} from './credit-code-service.mjs';
 import {createAdminUserManagement} from './admin-user-management.mjs';
 import {createAdminRevenue} from './admin-revenue.mjs';
 import {createResearchImageSettings} from './research-image-settings.mjs';
@@ -77,6 +78,7 @@ export function createAdminAPI(db,worker,config,auth){
   };
   const userManagement=createAdminUserManagement(db,{billing:config.billing,audit,transaction});
   const revenue=createAdminRevenue(db);
+  const creditCodes=config.creditCodes||createCreditCodeService(db,config);
   const agentSettings=config.agentSettings||createAgentSettings(db,config,{audit});
   const researchImageSettings=config.researchImageSettings||createResearchImageSettings(db,config,{audit});
   let agentTestRunning=false,agentTestAt=0;
@@ -136,6 +138,7 @@ export function createAdminAPI(db,worker,config,auth){
     const actor=db.prepare("SELECT u.id,u.role,COALESCE(m.status,'active') status FROM users u LEFT JOIN user_management m ON m.user_id=u.id WHERE u.id=?").get(user.id);
     if(!actor)fail(401,'请先登录');
     if(actor.role!=='admin'||actor.status!=='active')fail(403,'需要管理员权限');
+    if(path==='/api/admin/credit-codes'||path.startsWith('/api/admin/credit-codes/')||path.startsWith('/api/admin/credit-code-items/'))return creditCodes.adminHandle({path,method,query,readBody,user:actor});
     if(path==='/api/admin/revenue'&&method==='GET')return revenue.report(query);
     if(path==='/api/admin/revenue/export'&&method==='GET'){const result=revenue.exportCSV(query);audit(actor,'revenue.export','report',result.filters.startDate+'_'+result.filters.endDate,{startDate:result.filters.startDate,endDate:result.filters.endDate,provider:result.filters.provider,kind:result.filters.kind,rows:result.rows,amountCents:result.amountCents});return result;}
     const managedUser=path.match(/^\/api\/admin\/users\/([^/]+)\/(manage|credits|membership|status)$/);

@@ -1,3 +1,4 @@
+import {mountAdminCreditCodes} from './admin-credit-codes.mjs';
 import {resourceEntitlementKeys,entitlementUnit} from './workspace/v1-pricing.mjs';
 import {isLiteratureBillingKey,literaturePricingKey,literatureBillingTitle} from './workspace/literature-billing-catalog.mjs';
 import {revenueOverview,revenuePage,revenueDataValid,newRevenueQuery,revenueQueryString} from './admin-revenue.mjs';
@@ -17,6 +18,7 @@ const paths = {
   monitoring: ['运行监控', '监控容量、任务、支付与对象存储，提前发现运行风险。', 'chart'],
   settings: ['系统设置', '管理模型配置，查看平台服务的连接状态。', 'settings'],
   payments: ['商品与计费', '管理服务计价、可交付权益与收款渠道。', 'order'],
+  'credit-codes': ['积分兑换码', '生成积分活动兑换码，查询使用情况并管理发放批次。', 'order'],
   audit: ['操作日志', '追溯管理员执行的关键操作。', 'shield']
 };
 const icons = {
@@ -49,7 +51,7 @@ const badge = value => { const [label, color] = Object.hasOwn(statuses, value) ?
 const filters = { users: ['user', 'admin'], jobs: ['queued', 'running', 'completed', 'failed', 'cancelled'], feedback: ['open', 'processing', 'resolved'], orders: ['pending', 'paid', 'closed', 'expired', 'cancelled', 'refunded', 'failed'], usage: ['billable', 'unbilled'] };
 const searchHints = { users: '搜索昵称、邮箱、手机号或用户 ID', jobs: '搜索任务 ID、类型或用户', results: '搜索成果名称、类型或用户', feedback: '搜索反馈内容、分类或用户', orders: '搜索订单、商品或用户', usage: '搜索模型、任务或用户', audit: '搜索操作、目标或管理员' };
 const headers = { users: ['用户', '联系方式', '身份', '项目 / 任务', '注册时间', '操作'], jobs: ['任务', '所属用户', '状态', '阶段 / 次数', '创建时间', '操作'], results: ['成果名称', '所属用户', '类型', '关联任务', '创建时间'], feedback: ['反馈内容', '提交用户', '分类', '处理状态', '提交时间', '操作'], orders: ['订单', '所属用户', '商品', '订单金额', '支付渠道', '商户订单号', '平台交易号', '订单状态', '创建 / 支付时间'], usage: ['模型与服务', '所属用户', '输入 / 输出 Token', '计费标记', '调用时间', '关联任务'], audit: ['操作', '管理员', '目标', '操作时间', '详情'] };
-const auditNames = { 'revenue.export':'导出收益明细','user.credits.adjust':'调整用户积分','user.membership.grant':'发放用户会员','user.membership.update':'调整会员有效期','user.membership.revoke':'撤销用户会员','user.status.update':'调整账号状态', 'owner.verified': '管理员身份验证', 'job.cancel': '取消任务', 'feedback.update': '更新反馈', 'model.update': '修改模型配置', 'payment.config.update': '修改支付配置', 'payment.product.update': '修改可售商品', 'payment.channel.update': '切换或更新支付渠道', 'billing.rules.update': '修改服务计价', 'billing.tools.update': '修改科研工具计价' };
+const auditNames = { 'credit_codes.batch.create':'生成积分兑换码','credit_codes.batch.revoke':'作废兑换码批次','credit_codes.code.revoke':'作废单个兑换码','credit_codes.export':'导出积分兑换码', 'revenue.export':'导出收益明细','user.credits.adjust':'调整用户积分','user.membership.grant':'发放用户会员','user.membership.update':'调整会员有效期','user.membership.revoke':'撤销用户会员','user.status.update':'调整账号状态', 'owner.verified': '管理员身份验证', 'job.cancel': '取消任务', 'feedback.update': '更新反馈', 'model.update': '修改模型配置', 'payment.config.update': '修改支付配置', 'payment.product.update': '修改可售商品', 'payment.channel.update': '切换或更新支付渠道', 'billing.rules.update': '修改服务计价', 'billing.tools.update': '修改科研工具计价' };
 const billableServices = [{ key: 'polish', title: '学术润色' }, { key: 'review', title: '意见修改' }, { key: 'agent', title: '科研智能助手' }];
 const billingModes = { free: '免费', paid: '按权益计费', disabled: '暂停' };
 const paymentProviders = {
@@ -69,6 +71,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   const loginUrl = '/auth.html?mode=login&next=%2Fadmin.html';
   let authorized = false, user = null, currentView = 'overview', generation = 0, currentData = null, loadedAt = '', polling, toastTimer, previousFocus, dialogGeneration = 0;
   const paymentBaselines = new Map(), pendingPayments = new Set();
+  let creditCodePage=null;
   let agentBaseline = '', agentPending = false, imageBaseline='', imagePending=false;
   const queries = Object.fromEntries(Object.keys(headers).map(key => [key, { page: 1, pageSize: 20, q: '', status: '' }]));
   const revenueQuery=newRevenueQuery();
@@ -82,6 +85,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   function closeMenu() { $('#admin-app').classList.remove('nav-open'); $('#sidebar-backdrop').hidden = true; $('#menu-toggle').setAttribute('aria-expanded', 'false'); }
   function closeDialog() { dialogGeneration++; $('#admin-dialog').classList.remove('user-management-dialog'); if ($('#admin-dialog').open) $('#admin-dialog').close(); $('#dialog-body').replaceChildren(); $('#dialog-title').textContent = ''; previousFocus?.focus(); }
   function deny(status, message) {
+    creditCodePage?.dispose();creditCodePage=null;
     authorized = false; user = null; currentData = null; generation++;
     win.clearInterval(polling); win.clearTimeout(toastTimer);
     closeDialog(); closeMenu();
@@ -275,6 +279,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   function paymentsHaveWork() { return authorized && currentView === 'payments' && (pendingPayments.size > 0 || paymentForms().some(formIsDirty)); }
   function refreshPaymentDirty(form) { const dirty = formIsDirty(form); const note = form.querySelector('.payment-dirty'); if (note) note.hidden = !dirty; const check = form.querySelector('[data-payment-check]'); if (check) check.disabled = dirty || pendingPayments.has(paymentFormKey(form)); }
   function guardPayments(action) {
+    if(creditCodePage?.hasWork()){toast('兑换码操作正在处理，请稍候。');return;}
     if(imageHasWork()){if(imagePending){toast('绘图配置正在保存，请等待完成。');return;}openDialog('绘图配置尚未保存','<p class="dialog-copy">离开将丢弃未保存的绘图配置。</p><div class="dialog-actions"><button class="button" data-dialog-close>继续编辑</button><button class="button danger-solid" id="discard-image-changes">放弃修改并离开</button></div>');$('#discard-image-changes').onclick=()=>{imageBaseline=imageFingerprint();closeDialog();guardPayments(action);};return;}
     if (agentHasWork()) { if (agentPending) { toast('Agent 配置正在保存或测试，请等待完成。'); return; } openDialog('Agent 配置尚未保存', '<p class="dialog-copy">离开将丢弃未保存的 Agent 配置。</p><div class="dialog-actions"><button class="button" data-dialog-close>继续编辑</button><button class="button danger-solid" id="discard-agent-changes">放弃修改并离开</button></div>'); $('#discard-agent-changes').onclick = () => { agentBaseline = agentFingerprint(); closeDialog(); guardPayments(action); }; return; }
     if (!paymentsHaveWork()) { action(); return; }
@@ -284,6 +289,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   }
   async function loadView(view = currentView, { quiet = false } = {}) {
     if (!authorized) return;
+    creditCodePage?.dispose();creditCodePage=null;
     currentView = view; const ticket = ++generation;
     navigation();
     if (!quiet) { currentData = null; loadedAt = ''; $('#admin-content').innerHTML = heading(view) + loading(); }
@@ -299,7 +305,8 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
       if (query && Number.isInteger(data.page) && data.page > 0) query.page = data.page;
       if (query && query.page > Math.max(1, Math.ceil((Number(data.total) || 0) / query.pageSize))) { query.page = Math.max(1, Math.ceil((Number(data.total) || 0) / query.pageSize)); await loadView(view); return; }
       currentData = data; loadedAt = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-      $('#admin-content').innerHTML = heading(view) + (view === 'overview' ? overviewPage(data) : view==='revenue'?revenuePage(data):view === 'monitoring' ? monitoringPage(data) : view === 'settings' ? settingsPage(data) + agentSettingsPanel(data.agent) + researchImagesPanel(data.researchImages) : view === 'payments' ? paymentsPage(data) : listPage(view, data));
+      $('#admin-content').innerHTML = heading(view) + (view === 'overview' ? overviewPage(data) : view==='credit-codes'?'<div data-admin-credit-codes></div>':view==='revenue'?revenuePage(data):view === 'monitoring' ? monitoringPage(data) : view === 'settings' ? settingsPage(data) + agentSettingsPanel(data.agent) + researchImagesPanel(data.researchImages) : view === 'payments' ? paymentsPage(data) : listPage(view, data));
+      if(view==='credit-codes')creditCodePage=mountAdminCreditCodes({container:$('#admin-content [data-admin-credit-codes]'),data,actorId:user.id,request,isCurrent:()=>authorized&&ticket===generation&&currentView==='credit-codes',toast,openDialog,closeDialog});
       if (view === 'payments') rememberPaymentForms();
       if (view === 'settings') {agentBaseline = agentFingerprint();imageBaseline=imageFingerprint();}
     } catch (error) {
@@ -621,11 +628,11 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
   $('#admin-dialog').addEventListener('cancel', event => { event.preventDefault(); closeDialog(); });
   $('#dialog-body').addEventListener('click', event => { if (event.target.closest('[data-dialog-close]')) closeDialog(); });
   $('#logout').onclick = () => { if (!authorized) return; guardPayments(async () => { $('#logout').disabled = true; try { await request('/auth/logout', {}); deny(401, '你已退出登录。'); } catch (error) { if (authorized) toast(error.message); } finally { $('#logout').disabled = false; } }); };
-  function historyNavigation() { if (!authorized || currentView === route()) return; const target = route(); if (paymentsHaveWork() || agentHasWork() || imageHasWork()) win.history.replaceState(null, '', '#' + currentView); guardPayments(() => { closeDialog(); closeMenu(); win.history.replaceState(null, '', '#' + target); loadView(target); }); }
+  function historyNavigation() { if (!authorized || currentView === route()) return; const target = route(); if (paymentsHaveWork() || agentHasWork() || imageHasWork() || creditCodePage?.hasWork()) win.history.replaceState(null, '', '#' + currentView); guardPayments(() => { closeDialog(); closeMenu(); win.history.replaceState(null, '', '#' + target); loadView(target); }); }
   win.addEventListener('popstate', historyNavigation);
   win.addEventListener('hashchange', historyNavigation);
   win.addEventListener('beforeunload', event => { if (paymentsHaveWork() || agentHasWork() || imageHasWork()) { event.preventDefault(); event.returnValue = ''; } });
-  $('#admin-app').addEventListener('click', event => { const link = event.target.closest('a[href]'); if (!link || link.hasAttribute('data-view') || link.target === '_blank' || link.getAttribute('href').startsWith('#') || !(paymentsHaveWork() || agentHasWork() || imageHasWork())) return; event.preventDefault(); guardPayments(() => go(link.href)); });
+  $('#admin-app').addEventListener('click', event => { const link = event.target.closest('a[href]'); if (!link || link.hasAttribute('data-view') || link.target === '_blank' || link.getAttribute('href').startsWith('#') || !(paymentsHaveWork() || agentHasWork() || imageHasWork() || creditCodePage?.hasWork())) return; event.preventDefault(); guardPayments(() => go(link.href)); });
   async function initialize() {
     $('#access-title').textContent = '正在验证管理权限'; $('#access-message').textContent = '请稍候，正在确认你的账户身份。'; $('#access-actions').replaceChildren();
     try {
@@ -645,7 +652,7 @@ export function createAdminPage(doc, { navigate, requestTimeoutMs = 30_000, poll
     }
   }
   const ready = initialize();
-  const destroy = () => { generation++; authorized = false; currentData = null; win.clearInterval(polling); win.clearTimeout(toastTimer); };
+  const destroy = () => { creditCodePage?.dispose();creditCodePage=null;generation++; authorized = false; currentData = null; win.clearInterval(polling); win.clearTimeout(toastTimer); };
   win.addEventListener('pagehide', destroy, { once: true });
   return { ready, destroy };
 }

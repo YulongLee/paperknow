@@ -266,3 +266,5 @@
 #app .dashboard [data-specialist-panel] .commerce-center-section-title{min-height:84px;align-items:flex-start}
 #app .dashboard [data-specialist-panel] .commerce-center-plan ul{min-height:238px}
 #app .dashboard [data-specialist-panel] .commerce-member-description{flex:0;min-height:62px;max-height:62px;margin:10px 0 18px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+
+#app .dashboard .commerce-center-subnav>div{display:flex;flex-wrap:wrap;gap:18px;align-items:center}#app .dashboard .commerce-center-subnav .commerce-redeem-entry{font-weight:650}
