@@ -37,13 +37,13 @@ test('completion reads original diagram content during preflight and provides it
  const rewrite=seen.find(task=>task.context.revision?.originalFigures?.length);assert.deepEqual(rewrite.context.revision.originalFigures,[diagram]);
 });
 
-function fullFixture(t,{missing=false,persistentFinding=false,repair=false,...extra}={}){
+function fullFixture(t,{missing=false,persistentFinding=false,repair=false,expressionOnly=false,...extra}={}){
  let reviews=0;const calls=[];
  const f=fixture(t,{thesisContinuousEnabled:true,supplementCheckEnabled:true,writingQualityEnabled:true,citationVerifier:{verify:async()=>({version:1,status:'completed',items:[],summary:{},limitations:[]})},agentTaskRunner:async({task})=>{
   calls.push(task);
   if(task.context.operation==='supplement-check')return {text:JSON.stringify({items:task.context.chapters.map(row=>({id:row.id,status:missing&&row.title==='第二章 研究结果'?'missing':'sufficient',requirement:'核对研究依据',reason:'合成资料核对。',manuscriptQuote:row.text.slice(0,30),evidence:missing&&row.title==='第二章 研究结果'?[]:[{sourceId:task.context.evidence[0].id,quote:task.context.evidence[0].text.slice(0,30)}],missing:missing&&row.title==='第二章 研究结果'?['未提供真实实测记录']:[],checkedFigureIds:(row.figures||[]).map(figure=>figure.id)}))}),usage:{input:100,output:100},costUsd:.001};
   if(task.skill==='writing-review'){
-   const section=task.context.manuscriptExcerpts.find(row=>row.title.includes('第一章'));const finding=(repair&&(reviews++===0||persistentFinding)&&section)?[{sectionId:section.id,quote:section.text.slice(0,30),category:'claim_scope',severity:'warning',explanation:'应明确结论范围。',suggestion:'补充结论只适用于当前记录的范围。'}]:[];
+   const section=task.context.manuscriptExcerpts.find(row=>row.title.includes('第一章'));const finding=(repair&&(reviews++===0||persistentFinding)&&section)?[{sectionId:section.id,quote:section.text.slice(0,30),category:expressionOnly?'language_expression':'claim_scope',severity:expressionOnly?'info':'warning',explanation:'应明确结论范围。',suggestion:'补充结论只适用于当前记录的范围。'}]:[];
    return {text:JSON.stringify({complete:true,findings:finding,limitations:[]}),usage:{input:100,output:100},costUsd:.001};
   }
   const result=response(task);
@@ -95,4 +95,7 @@ test('automatic completion repair respects the original fixed dollar ceiling and
 test('only missing cover facts can be supplied after completion without another AI call or purchase',async t=>{
  const f=fullFixture(t);f.pay();let item=await completeSaved(f);item=(await f.request('/api/theses/'+item.id+'/export-metadata',{version:item.version,metadata:{}})).item;await submitFull(f,item);await f.worker.tick();item=f.get(item.id);assert.equal(item.completionReview.status,'needs_materials');assert.ok(item.completionReview.missing.some(text=>text.includes('作者姓名')));const calls=f.allCalls.length,runId=item.job.id;
  item=(await f.request('/api/theses/'+item.id+'/completion',{version:item.version,clientKey:randomUUID(),metadata:{author:'合成作者',institution:'合成大学'}})).item;assert.equal(item.completionReview.status,'ready');item=(await f.request('/api/theses/'+item.id+'/completion/confirm',confirmation(item))).item;assert.equal(item.completionReview.status,'confirmed');assert.equal(f.allCalls.length,calls);assert.equal(item.job.id,runId);assert.equal(f.billing.balance(f.user.id).balance,190);
+});
+test('remaining expression suggestions can be acknowledged without blocking an otherwise complete final manuscript',async t=>{
+ const f=fullFixture(t,{repair:true,persistentFinding:true,expressionOnly:true});let item=await completeSaved(f);await submitFull(f,item);await f.worker.tick();item=f.get(item.id);assert.equal(item.job.status,'completed',item.job.error);assert.equal(item.completionReview.status,'ready',JSON.stringify(item.completionReview));assert.equal(item.completionReview.issues.length,0);assert.ok(item.completionReview.suggestions.length);item=(await f.request('/api/theses/'+item.id+'/completion/confirm',confirmation(item))).item;assert.equal(item.completionReview.status,'confirmed');
 });
