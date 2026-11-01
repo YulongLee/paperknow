@@ -1,6 +1,7 @@
 import {withStableView} from './view-stability.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const active=status=>['submitting','queued','running','recovering'].includes(status);
+const panelMarkup=new WeakMap();
 export const simulationPending=draft=>active(draft.simulationJob?.status);
 export function simulationPanelHTML(draft,{disabled=false}={}){
  const state=draft.simulationJob,working=simulationPending(draft),ready=state?.status==='completed',stages={submitting:'正在提交模拟方案任务',recovering:'正在读取已提交任务',queued:'正在排队',running:'正在设计方案并生成模拟数据',completed:'模拟数据已加入补充资料',failed:'本次模拟数据未生成',cancelled:'已停止生成'};
@@ -37,4 +38,13 @@ export function createThesisSimulationController({api,owner,getItem,getDraft,get
  return {start,cancel,resume:schedule,dispose(){disposed=true;stop();}};
 }
 export function bindSimulationPanel(root,controller){root?.querySelector('[data-simulation-generate]')?.addEventListener('click',()=>void controller.start());root?.querySelector('[data-simulation-cancel]')?.addEventListener('click',()=>void controller.cancel());}
-export function replaceSimulationPanel(host,draft,options,controller){if(!host)return;withStableView(host,()=>{host.innerHTML=simulationPanelHTML(draft,options);bindSimulationPanel(host,controller);});}
+export function replaceSimulationPanel(host,draft,options,controller){
+ if(!host)return;
+ const markup=simulationPanelHTML(draft,options);if(panelMarkup.get(host)===markup&&host.firstElementChild)return;
+ const doc=host.ownerDocument,win=doc.defaultView,root=host.closest('.dashboard')||host.closest('.thesis-online-host')||host.parentElement||host,focused=doc.activeElement;
+ // Keep a field being edited below this panel in the same visible position.
+ // The small panel must never inherit the viewport reservation of the workspace.
+ const candidate=focused&&root.contains(focused)&&!host.contains(focused)?focused:null,rect=candidate?.getBoundingClientRect(),anchor=rect&&rect.bottom>0&&rect.top<(win?.innerHeight||0)?candidate:null,top=anchor?rect.top:null;
+ withStableView(root,()=>{host.innerHTML=markup;bindSimulationPanel(host,controller);panelMarkup.set(host,markup);});
+ if(anchor?.isConnected){const delta=anchor.getBoundingClientRect().top-top;if(Math.abs(delta)>.5)win.scrollTo({left:win.scrollX,top:win.scrollY+delta,behavior:'instant'});}
+}
