@@ -244,6 +244,7 @@ export function auditThesisSubmission(input={}) {
   if(body.replace(/\s/g,'').length<80)add('abstract_'+kind,`${label}尚未完整填写。`);
   if(count<3||count>6)add('keywords_'+kind,`${label}需包含3～6个关键词。`);
  }
+ if(input.metadata?.simulationSourceCount>0&&(!String(input.metadata.simulationDisclosure||'').trim()||!text.replace(/\s/g,'').includes(input.metadata.simulationDisclosure.replace(/\s/g,''))))add('simulation_disclosure','采用模拟数据的终稿必须保留模拟方法和数据来源说明。');
  if(!String(input.metadata?.englishTitle||'').trim())add('english_title','英文题目尚未填写。');
  if(/^(?:专科|本科|硕士|博士)$/.test(input.metadata?.level||''))for(const [key,label]of [['author','作者姓名'],['institution','学校']])if(!String(input.metadata?.[key]||'').trim())add('cover_'+key,`请在封面信息中填写${label}。`);
  for(const key of requirements.requiredCoverFields||[])if(!String(input.metadata?.[key]||'').trim())add('cover_'+key,'模板封面信息未填写完整：'+({studentId:'学号',college:'学院',graduationYear:'毕业届次',completionDate:'完成年月'}[key]||key)+'。');

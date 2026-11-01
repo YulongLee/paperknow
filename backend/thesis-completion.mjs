@@ -1,3 +1,4 @@
+import {generateSimulationData} from '../dist/workspace/simulation-data.mjs';
 import {manuscriptFigures} from '../dist/workspace/manuscript-figures.mjs';
 import {randomUUID} from 'node:crypto';
 import {normalizeThesisSnapshot,thesisHash,thesisError,isThesisReferenceChapter} from './thesis-model.mjs';
@@ -6,8 +7,8 @@ import {thesisFrontMatterKind,thesisManualBackMatter,thesisCoverFields} from '..
 const fail=(status,message)=>{throw thesisError(status,message);};
 export function savedThesisChapters(db,row){return JSON.parse(row.snapshot).outline.map(chapter=>({...chapter,record:db.prepare('SELECT * FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? ORDER BY version DESC LIMIT 1').get(row.id,chapter.id)}));}
 export function completionAssessment(db,row){const chapters=savedThesisChapters(db,row).map(({record,...chapter})=>({...chapter,text:record?.text||'',figures:JSON.parse(record?.figures||'[]')}));return thesisCompletionNeeds({snapshot:JSON.parse(row.snapshot),chapters});}
-export function completionInput(row,input,config){
- const allowed=['version','clientKey','supplement','materials','references','metadata','acknowledgements'];if(!input||Object.keys(input).some(key=>!allowed.includes(key)))fail(400,'补充资料包含不支持的字段');
+export function completionInput(row,input,config,db){
+ const allowed=['version','clientKey','supplement','materials','references','metadata','acknowledgements','simulationRunIds'];if(!input||Object.keys(input).some(key=>!allowed.includes(key)))fail(400,'补充资料包含不支持的字段');
  const snapshot=JSON.parse(row.snapshot);snapshot.requirements={...snapshot.requirements,deliveryVersion:1};const metadata={...JSON.parse(row.export_metadata||'{}')};
  if(input.metadata!==undefined){if(!input.metadata||typeof input.metadata!=='object'||Array.isArray(input.metadata)||Object.keys(input.metadata).some(key=>!Object.hasOwn(thesisCoverFields,key)||typeof input.metadata[key]!=='string'||input.metadata[key].length>200))fail(400,'封面补充信息无效');Object.assign(metadata,input.metadata);}
  if(input.supplement!==undefined&&(typeof input.supplement!=='string'||input.supplement.length>50000))fail(400,'研究补充最多 50,000 字符');
@@ -16,6 +17,15 @@ export function completionInput(row,input,config){
  if(input.acknowledgements!==undefined&&(typeof input.acknowledgements!=='string'||input.acknowledgements.length>5000))fail(400,'致谢事实最多 5,000 字符');
  if(input.acknowledgements?.trim())materials.push({name:'作者确认的致谢事实',text:input.acknowledgements.trim(),purpose:'致谢事实'});
  for(const material of materials)snapshot.materials.push({id:'material:'+randomUUID(),name:material.name,text:material.text,purpose:material.purpose==='致谢事实'?'致谢事实':'研究证据补充',confirmed:true});
+ const simulationIds=input.simulationRunIds??[];if(!Array.isArray(simulationIds)||simulationIds.length>3||simulationIds.some(id=>typeof id!=='string'||id.length>100)||new Set(simulationIds).size!==simulationIds.length)fail(400,'本次最多采用 3 份模拟数据');
+ for(const simulationId of simulationIds){
+  if(!db)fail(503,'模拟数据来源暂不可核对');const run=db.prepare('SELECT * FROM thesis_method_runs WHERE id=? AND user_id=?').get(simulationId,row.user_id);if(!run||run.status!=='completed')fail(404,'已完成的模拟任务不存在');const source=JSON.parse(run.snapshot),output=JSON.parse(run.output||'null');
+  if(source.requestKind!=='simulation'||source.simulation?.thesisId!==row.id||output?.origin!=='ai_simulation')fail(409,'这份模拟数据不属于当前论文');
+  const materialId='simulation:'+run.id;if(snapshot.materials.some(material=>material.id===materialId))continue;
+  if(source.simulation.sourceHash!==row.snapshot_hash)fail(409,'论文研究信息已变化，请根据最新信息重新生成模拟数据');
+  const generated=generateSimulationData(output.recipe,output.seed);if(generated.csv!==output.csv)fail(409,'模拟数据复现检查未通过，请重新生成');
+  snapshot.materials.push({id:materialId,name:'AI模拟数据：'+generated.recipe.title,text:generated.text,purpose:'仿真研究数据（非实测）',dataKind:'simulation',confirmed:true,simulation:{jobId:run.id,seed:generated.seed,generatorVersion:1,recipe:generated.recipe}});
+ }
  const references=input.references??[];if(!Array.isArray(references)||references.length>30||references.some(r=>!r||typeof r.title!=='string'||!r.title.trim()||typeof r.text!=='string'||!r.text.trim()))fail(400,'文献需提供真实题名与可引用正文');
  for(const reference of references)snapshot.references.push({...reference,id:'reference:'+randomUUID(),sourceLabel:'作者终稿补充文献',confirmed:true});
  return {snapshot:normalizeThesisSnapshot(snapshot,config),metadata};
@@ -25,11 +35,12 @@ export function completionInput(row,input,config){
 export function thesisCompletionPlan(db,row,basePlan,issueCodes=[]){
  const snapshot=JSON.parse(row.snapshot),saved=savedThesisChapters(db,row),needs=completionAssessment(db,row),issues=safeCompletionIssues(issueCodes),targets=new Set(needs.chapters.map(chapter=>chapter.id));
  const referencesChanged=snapshot.references.some(reference=>reference.confirmed&&reference.text?.trim()&&!saved.some(chapter=>chapter.record?.text.includes('[source:'+reference.id+']')));
- const broad=issues.includes('supplement_check')&&!targets.size||referencesChanged||issues.some(code=>/reference|citation|sources|duplicate|review_findings|raw_formula|table_numbers/.test(code));
+ const latestSimulation=snapshot.materials.filter(material=>material.dataKind==='simulation').at(-1),simulationChanged=latestSimulation&&!saved.some(chapter=>chapter.record?.text.includes('[source:'+latestSimulation.id+']'));
+ const broad=simulationChanged||issues.includes('supplement_check')&&!targets.size||referencesChanged||issues.some(code=>/reference|citation|sources|duplicate|review_findings|raw_formula|table_numbers/.test(code));
  for(const chapter of saved){if(isThesisReferenceChapter(chapter))continue;if(issues.includes('figure_review')&&JSON.parse(chapter.record?.figures||'[]').length)targets.add(chapter.id);if(broad&&!thesisManualBackMatter(chapter)||thesisFrontMatterKind(chapter)&&issues.some(code=>/abstract|keywords|english_title/.test(code)))targets.add(chapter.id);}
  const bodyChanged=saved.some(chapter=>targets.has(chapter.id)&&!thesisFrontMatterKind(chapter)&&!thesisManualBackMatter(chapter));if(bodyChanged)for(const chapter of saved.filter(thesisFrontMatterKind))targets.add(chapter.id);
  const priorQuality=row.current_run_id?db.prepare('SELECT quality FROM thesis_runs WHERE id=? AND thesis_id=?').get(row.current_run_id,row.id)?.quality:null,reviewFindings=priorQuality?(JSON.parse(priorQuality).reviews||[]).flatMap(review=>review.findings||[]):[];
- const priority=[...snapshot.materials.filter(row=>row.confirmed&&row.purpose==='研究证据补充').slice(-6),...snapshot.references.filter(row=>row.confirmed&&row.sourceLabel==='作者终稿补充文献').slice(-4)].map(row=>row.id);
+ const priority=[...(latestSimulation?[latestSimulation]:[]),...snapshot.materials.filter(row=>row.confirmed&&row.purpose==='研究证据补充').slice(-6),...snapshot.references.filter(row=>row.confirmed&&row.sourceLabel==='作者终稿补充文献').slice(-4)].map(row=>row.id);
  const plan=basePlan.filter(unit=>targets.has(unit.chapterId)).map(unit=>({...unit,sourceIds:[],completionSourceIds:priority,completion:{findings:reviewFindings.filter(finding=>typeof finding.quote==='string'&&finding.quote.length>=6&&saved.find(c=>c.id===unit.chapterId)?.record?.text.includes(finding.quote)).slice(0,6).map(({quote,explanation,suggestion,category})=>({quote:quote.slice(0,500),explanation:String(explanation||'').slice(0,500),suggestion:String(suggestion||'').slice(0,300),category})),originalText:String(saved.find(c=>c.id===unit.chapterId)?.record?.text||'').slice(0,16000),originalFigures:manuscriptFigures({text:String(saved.find(c=>c.id===unit.chapterId)?.record?.text||'').slice(0,16000),figures:JSON.parse(saved.find(c=>c.id===unit.chapterId)?.record?.figures||'[]')}),excerpted:String(saved.find(c=>c.id===unit.chapterId)?.record?.text||'').length>16000}}));
  const acknowledgementFacts=snapshot.materials.filter(row=>row.confirmed&&row.purpose==='致谢事实').map(row=>row.text).join('\n');
  for(const chapter of saved.filter(thesisManualBackMatter))if(targets.has(chapter.id)&&acknowledgementFacts.trim())plan.push({id:chapter.id+'::completion::1',chapterId:chapter.id,chapterTitle:chapter.title,sectionId:chapter.id,title:chapter.title,part:1,parts:1,targetWords:200,sourceIds:[],presentation:{},personalMatter:true,completion:{originalText:chapter.record?.text||'',acknowledgementFacts:acknowledgementFacts.slice(0,5000)}});
