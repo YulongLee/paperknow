@@ -11,6 +11,7 @@ const settle=async()=>{for(let i=0;i<5;i++)await tick();};
 const snapshot=()=>({title:'真实研究',profile:{level:'博士',discipline:'物理学',language:'中文',targetWords:8000,method:'实验记录与文献分析',researchQuestion:'材料如何变化'},materials:[{id:'m1',name:'实验笔记',text:'真实实验记录，待自行核对。'.repeat(12),purpose:'研究过程',confirmed:true}],references:[{id:'r1',title:'用户导入文献',sourceLabel:'本地题录，未核验',confirmed:true}],outline:[{id:'c1',title:'第一章 背景',targetWords:4000},{id:'c2',title:'第二章 讨论',targetWords:4000}]});
 const thesis=(overrides={})=>({id:'t1',version:1,title:'真实研究',profile:snapshot().profile,snapshot:snapshot(),outline:snapshot().outline,status:'draft',job:null,chapters:[{id:'c1',title:'第一章 背景',version:0,status:'pending',text:'',sourceIds:[]},{id:'c2',title:'第二章 讨论',version:0,status:'pending',text:'',sourceIds:[]}],...overrides});
 const quote=()=>({type:'agent',source:'credits',title:'论文分章生成',token:'quote-token',creditCost:10,expiresAt:new Date(Date.now()+60000).toISOString()});
+const missingResearch=()=>({status:'partial',stale:false,supplementCheck:{version:1,phase:'final',status:'needs_materials',coverage:{total:1,checked:1,complete:true},items:[{title:'第五章 实验结果',status:'missing',requirement:'实验结果依据',reason:'尚缺训练与测试记录',missing:['训练测试日志、准确率与响应时间'],evidence:[]}]}});
 function fixture({item=thesis(),user={id:'u1'},cap={ready:true},handler}={}){
  disposeOnlineThesis();const dom=new JSDOM('<div class="breadcrumb"><strong></strong></div><main class="dashboard"></main>',{url:'https://example.test/workspace.html#thesis/t1'});
  for(const key of ['window','document','location','AbortController'])globalThis[key]=dom.window[key];
@@ -29,6 +30,19 @@ function fixture({item=thesis(),user={id:'u1'},cap={ready:true},handler}={}){
  return {dom,ctx,calls,setItem:value=>{record=structuredClone(value);},$:selector=>document.querySelector(selector),close(){disposeOnlineThesis();dom.window.close();}};
 }
 function input(f,selector,value){const element=f.$(selector);element.value=value;element.dispatchEvent(new window.Event('input',{bubbles:true}));}
+test('a paused legacy completion distinguishes its zero progress from the saved draft and exposes exact material gaps without blocking draft download',async()=>{
+ const value=thesis({status:'needs_materials',job:{id:'legacy',operation:'completion',status:'needs_materials',stage:'needs_materials',completedSections:0,totalSections:18,canResume:true,error:'补充资料仍有缺项，请查看补充内容检查；原稿与已上传资料已保留。'},quality:missingResearch(),completionReview:null,chapters:[{id:'c1',title:'第一章 背景',version:1,status:'saved',text:'本篇已经保存的完整初稿。',sourceIds:[]}]}),f=fixture({item:value});
+ try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
+ assert.match(f.$('.thesis-progress').textContent,/初稿已保存/);assert.match(f.$('.thesis-progress').textContent,/本轮完善 0 \/ 18/);assert.doesNotMatch(f.$('[data-thesis-wait]').textContent,/本次生成已暂停/);assert.equal(f.$('#thesis-online-draft').disabled,false);assert.equal(f.$('#thesis-online-docx').disabled,true);
+ const drawer=f.$('[data-thesis-supplement-drawer]');assert.equal(drawer.open,true);assert.match(drawer.textContent,/第五章 实验结果/);assert.match(drawer.textContent,/训练测试日志、准确率与响应时间/);assert.match(f.$('[data-thesis-delivery-state]').textContent,/初稿已保存，可直接下载/);
+ const buttons=f.dom.window.document.querySelectorAll('[data-thesis-open-supplement]');assert.equal(buttons.length,2);for(const button of buttons){drawer.open=false;button.click();assert.equal(drawer.open,true);}assert.equal(f.calls.some(row=>row.data),false);
+ f.$('[data-thesis-quote="resume"]').click();await settle();assert.equal(f.calls.filter(row=>row.path==='/theses/t1/resume').length,1);assert.equal(f.calls.find(row=>row.path==='/theses/t1/quote').data.action,'resume');
+ }finally{f.close();}
+});
+test('completed draft writing with missing final facts stays downloadable and is not presented as a failed generation or a ready final',async()=>{
+ const value=thesis({status:'completed',job:{operation:'completion',status:'completed',stage:'completed',completedSections:18,totalSections:18},quality:missingResearch(),completionReview:null,chapters:[{id:'c1',title:'第一章 背景',version:1,status:'saved',text:'已有初稿与【待补充：实测结果】。',sourceIds:[]}]}),f=fixture({item:value});
+ try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.match(f.$('.thesis-progress').textContent,/初稿已生成，终稿待补资料/);assert.doesNotMatch(f.$('[data-thesis-wait]').textContent,/暂停|中断/);assert.equal(f.$('#thesis-online-draft').disabled,false);assert.equal(f.$('#thesis-online-docx').disabled,true);assert.equal(f.$('[data-thesis-supplement-drawer]').open,true);assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();}
+});
 test('confirming an outline automatically saves its account record and opens a single generation action with collapsed information settings',async()=>{
  const persisted=[],saved=[],f=fixture({handler:async path=>{if(path.startsWith('/theses/by-key/'))throw Object.assign(Error('not found'),{status:404});}});
  try{const stop=mountThesisStage({container:f.$('.dashboard'),ctx:f.ctx,getSnapshot:snapshot,autoCreate:true,createKey:'confirmed-outline-key',onCreateKey:key=>persisted.push(key),onSaved:id=>saved.push(id),onTemplateSettings:()=>{}});await stop.ready;
