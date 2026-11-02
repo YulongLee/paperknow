@@ -31,6 +31,9 @@ function fixture({item=thesis(),user={id:'u1'},cap={ready:true},handler}={}){
  return {dom,ctx,calls,setItem:value=>{record=structuredClone(value);},$:selector=>document.querySelector(selector),close(){disposeOnlineThesis();dom.window.close();}};
 }
 function input(f,selector,value){const element=f.$(selector);element.value=value;element.dispatchEvent(new window.Event('input',{bubbles:true}));}
+test('changing information after a completed final task retains explicit draft regeneration in the draft module',async()=>{
+ const f=fixture({item:thesis({status:'draft',job:{id:'old-final',purpose:'completion',operation:'completion',status:'completed',snapshotChanged:true,totalSections:2,completedSections:2},chapters:[{id:'c1',title:'第一章',version:2,text:'此前已保存的终稿内容。'}]})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;const button=f.$('[data-thesis-quote="generate"]');assert.ok(button);assert.equal(button.closest('[data-thesis-writing-panel]').dataset.thesisWritingPanel,'draft');assert.match(button.textContent,/重新生成/);assert.equal(f.calls.some(row=>row.data),false);button.click();await settle();assert.equal(f.calls.filter(row=>row.path.endsWith('/generate')).length,1);assert.equal(f.calls.find(row=>row.path.endsWith('/quote')).data.action,'generate');}finally{f.close();}
+});
 test('draft and final are two task modules, with no final controls visible in the initial draft workflow',async()=>{
  const f=fixture();try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
  assert.equal(document.querySelectorAll('[data-thesis-writing-mode]').length,2);assert.equal(f.$('[data-thesis-writing-panel="draft"]').hidden,false);assert.equal(f.$('[data-thesis-writing-panel="final"]').hidden,true);
