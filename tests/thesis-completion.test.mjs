@@ -99,3 +99,7 @@ test('only missing cover facts can be supplied after completion without another 
 test('remaining expression suggestions can be acknowledged without blocking an otherwise complete final manuscript',async t=>{
  const f=fullFixture(t,{repair:true,persistentFinding:true,expressionOnly:true});let item=await completeSaved(f);await submitFull(f,item);await f.worker.tick();item=f.get(item.id);assert.equal(item.job.status,'completed',item.job.error);assert.equal(item.completionReview.status,'ready',JSON.stringify(item.completionReview));assert.equal(item.completionReview.issues.length,0);assert.ok(item.completionReview.suggestions.length);item=(await f.request('/api/theses/'+item.id+'/completion/confirm',confirmation(item))).item;assert.equal(item.completionReview.status,'confirmed');
 });
+
+test('the first generation can create and check the complete manuscript in one purchase without prior chapter versions',async t=>{
+ const f=fullFixture(t);f.pay();let item=await f.create();assert.ok(item.chapters.every(row=>!row.text));assert.equal((await f.request('/api/theses/capabilities')).automaticManuscript,true);await submitFull(f,item);await f.worker.tick();item=f.get(item.id);assert.equal(item.job.status,'completed',item.job.error);assert.equal(item.completionReview.status,'ready',JSON.stringify(item.completionReview));assert.ok(item.completionReview.changes.every(row=>row.kind==='added'));assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_runs').get().n,1);assert.equal(f.billing.balance(f.user.id).balance,190);
+});

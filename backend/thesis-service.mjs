@@ -70,7 +70,7 @@ export function createThesisService(db,config={}){
   if(db.prepare("SELECT count(*) n FROM thesis_runs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=2)fail(429,'当前账户已有两篇论文正在排队或生成，请先等待完成');
   if(db.prepare("SELECT count(*) n FROM thesis_runs WHERE status IN ('queued','running')").get().n>=50)fail(429,'生成队列当前较忙，请稍后再试');
  }
- async function capabilities(){try{await settings();return {ready:true,reason:'',limits:thesisLimits(config),billingService:'agent',requiresEvidenceConfirmation:true,onlineReferenceVerification:false,evidenceMode:'reviewable_draft_with_optional_sources'};}catch(error){return {ready:false,reason:error.message,limits:thesisLimits(config),billingService:'agent',requiresEvidenceConfirmation:true,onlineReferenceVerification:false,evidenceMode:'reviewable_draft_with_optional_sources'};}}
+ async function capabilities(){try{await settings();return {ready:true,reason:'',automaticManuscript:config.thesisContinuousEnabled===true&&config.writingQualityEnabled===true&&config.supplementCheckEnabled===true,limits:thesisLimits(config),billingService:'agent',requiresEvidenceConfirmation:true,onlineReferenceVerification:false,evidenceMode:'reviewable_draft_with_optional_sources'};}catch(error){return {ready:false,reason:error.message,limits:thesisLimits(config),billingService:'agent',requiresEvidenceConfirmation:true,onlineReferenceVerification:false,evidenceMode:'reviewable_draft_with_optional_sources'};}}
  async function handle({path,method,user,readBody}){
   if(path!=='/api/theses'&&!/^\/api\/theses\//.test(path))return null;
   if(!user?.id)fail(401,'请先登录');

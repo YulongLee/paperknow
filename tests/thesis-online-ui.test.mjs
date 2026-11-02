@@ -29,12 +29,12 @@ function fixture({item=thesis(),user={id:'u1'},cap={ready:true},handler}={}){
  return {dom,ctx,calls,setItem:value=>{record=structuredClone(value);},$:selector=>document.querySelector(selector),close(){disposeOnlineThesis();dom.window.close();}};
 }
 function input(f,selector,value){const element=f.$(selector);element.value=value;element.dispatchEvent(new window.Event('input',{bubbles:true}));}
-test('confirming an outline automatically saves its account record and opens generation with one expanded research-information overview',async()=>{
+test('confirming an outline automatically saves its account record and opens a single generation action with collapsed information settings',async()=>{
  const persisted=[],saved=[],f=fixture({handler:async path=>{if(path.startsWith('/theses/by-key/'))throw Object.assign(Error('not found'),{status:404});}});
  try{const stop=mountThesisStage({container:f.$('.dashboard'),ctx:f.ctx,getSnapshot:snapshot,autoCreate:true,createKey:'confirmed-outline-key',onCreateKey:key=>persisted.push(key),onSaved:id=>saved.push(id),onTemplateSettings:()=>{}});await stop.ready;
- assert.deepEqual(persisted,['confirmed-outline-key']);assert.deepEqual(saved,['t1']);assert.equal(f.$('[data-thesis-create]'),null);assert.equal(f.$('.thesis-save-account'),null);assert.ok(f.$('[data-thesis-quote]'));assert.equal(f.$('[data-thesis-view-key="information-overview"]').open,true);assert.equal(f.$('.dashboard').querySelectorAll('[data-thesis-view-key="information-overview"]').length,1);
+ assert.deepEqual(persisted,['confirmed-outline-key']);assert.deepEqual(saved,['t1']);assert.equal(f.$('[data-thesis-create]'),null);assert.equal(f.$('.thesis-save-account'),null);assert.ok(f.$('[data-thesis-quote]'));assert.equal(f.$('[data-thesis-view-key="information-overview"]').open,false);assert.equal(f.$('.dashboard').querySelectorAll('[data-thesis-view-key="information-overview"]').length,1);
  assert.equal(f.calls.filter(row=>row.path==='/theses'&&row.data).length,1);assert.equal(f.calls.find(row=>row.path==='/theses'&&row.data).data.clientKey,'confirmed-outline-key');assert.equal(f.calls.filter(row=>/quote|generate/.test(row.path)).length,0);
- f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(row=>row.path.endsWith('/generate')).length,1);assert.equal(f.$('[data-thesis-view-key="information-overview"]').open,true);
+ f.$('[data-thesis-quote]').click();await settle();assert.equal(f.calls.filter(row=>row.path.endsWith('/generate')).length,1);assert.equal(f.$('[data-thesis-view-key="information-overview"]').open,false);
  }finally{f.close();}
 });
 test('a recovered automatic save reuses the existing account paper instead of creating another one',async()=>{
@@ -345,7 +345,7 @@ for(const status of ['queued','running'])test(status+' keeps verification metada
 
 test('queued, running and completed polling keeps identical retention guidance without changing its line content',async t=>{
  t.mock.timers.enable({apis:['setTimeout']});const copy='生成期间关闭页面不影响后台任务；已完成内容独立保存，正式使用前请核对。',original=thesis({status:'queued',job:{id:'run-1',status:'queued',stage:'queued',completedSections:0,totalSections:20,missingEvidence:[]}}),f=fixture({item:original});Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});
- try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;const paragraphs=()=>[...f.$('.thesis-progress').children].filter(row=>row.tagName==='P').map(row=>row.textContent);assert.deepEqual(paragraphs(),[copy]);assert.match(f.$('.thesis-progress > div').textContent,/排队中/);for(const [index,status] of ['running','completed'].entries()){f.setItem({...original,version:index+2,status,job:{...original.job,status,stage:status==='running'?'generating_section':'completed',completedSections:status==='running'?8:20}});t.mock.timers.tick(4000);await settle();assert.deepEqual(paragraphs(),[copy],status+' must not shorten the guidance and pull the editor upward');assert.equal(f.$('progress').value,status==='running'?40:100);}assert.match(f.$('.thesis-progress > div').textContent,/已完成/);assert.equal(f.calls.filter(row=>row.path==='/theses/t1'&&!row.data).length,3);assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();t.mock.timers.reset();}
+ try{const panel=mountOnlineThesis({id:'t1',ctx:f.ctx});await panel.ready;const paragraphs=()=>[...f.$('.thesis-progress').querySelectorAll('.thesis-continuity-note')].map(row=>row.textContent);assert.deepEqual(paragraphs(),[copy]);assert.match(f.$('.thesis-progress > div').textContent,/排队中/);for(const [index,status] of ['running','completed'].entries()){f.setItem({...original,version:index+2,status,job:{...original.job,status,stage:status==='running'?'generating_section':'completed',completedSections:status==='running'?8:20}});t.mock.timers.tick(4000);await settle();assert.deepEqual(paragraphs(),[copy],status+' must not shorten the guidance and pull the editor upward');assert.equal(f.$('progress').value,status==='running'?40:100);}assert.match(f.$('.thesis-progress > div').textContent,/已完成/);assert.equal(f.calls.filter(row=>row.path==='/theses/t1'&&!row.data).length,3);assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();t.mock.timers.reset();}
 });
 
 test('automatic warning updates stay inside one review window without moving its scroll position, focus or recovered edits',async t=>{
@@ -471,4 +471,24 @@ test('embedded thesis exports without a duplicate template picker',async()=>{
  const f=fixture();let returned=0;try{const panel=mountThesisStage({id:'t1',ctx:f.ctx,container:f.$('.dashboard'),onTemplateSettings:()=>returned++});await panel.ready;
  assert.equal(f.$('[data-template-file]'),null);assert.equal(f.$('[data-template-summary]'),null);assert.deepEqual([...document.querySelectorAll('.thesis-export [data-document-export]')].map(node=>node.dataset.documentExport),['draft','docx']);assert.equal(returned,0);assert.equal(f.calls.some(row=>/quote|generate/.test(row.path)),false);
  }finally{f.close();}
+});
+
+test('simple generation keeps editing and supplementary controls out of the primary reading flow',async()=>{
+ const f=fixture();try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.ok(f.$('[data-thesis-reader]'));assert.ok(f.$('[data-thesis-quote="generate"]'));assert.equal(f.$('.thesis-simple-edit').open,false);assert.equal(f.$('.thesis-simple-settings').open,false);assert.equal(f.$('[data-thesis-supplement-drawer]').open,false);assert.equal(f.$('.thesis-simple-downloads').hidden,true);assert.equal(document.querySelectorAll('[data-cover-field="author"]').length,1);assert.equal(f.$('[data-completion-cover]'),null);assert.match(f.$('.thesis-reader-empty').textContent,/论文将在这里生成/);assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();}
+});
+test('a supported one-click submission includes automatic completion and checks in the same generation job',async()=>{
+ const value=thesis();value.snapshot.requirements={deliveryVersion:1};const f=fixture({item:value,cap:{ready:true,automaticManuscript:true}});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote]').click();await settle();const quote=f.calls.find(row=>row.path.endsWith('/quote')),posts=f.calls.filter(row=>row.path.endsWith('/generate'));assert.equal(quote.data.completionScope,'full');assert.equal(quote.data.completion,true);assert.equal(posts.length,1);assert.equal(posts[0].data.completion,true);assert.equal(f.calls.some(row=>row.path.endsWith('/completion')),false);assert.equal(f.$('[data-thesis-consent]'),null);}finally{f.close();}
+});
+
+
+test('reader displays saved figures inline using the safe SVG renderer',async()=>{
+ const figure={id:'fig-read',title:'系统结构',kind:'flowchart',nodes:[{id:'in',label:'输入'},{id:'out',label:'输出'}],edges:[{from:'in',to:'out'}],caption:'已确认的结构关系'};
+ const f=fixture({item:thesis({status:'completed',chapters:[{id:'c1',title:'系统设计',version:1,status:'saved',text:'系统如下。\n\n[figure:fig-read]\n\n结构说明。',figures:[figure]}]})});
+ try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;const paper=f.$('.thesis-reader-paper');assert.ok(paper.querySelector('svg'));assert.match(paper.querySelector('svg').textContent,/输入/);assert.equal(paper.querySelector('figcaption').textContent,'已确认的结构关系');assert.doesNotMatch(paper.textContent,/\[object Object\]|\[figure:/);assert.match(paper.textContent,/结构说明/);}finally{f.close();}
+});
+
+
+test('checkpoint reader uses manuscript citation order before chapters are published',async()=>{
+ const value=thesis({status:'running',job:{id:'j1',status:'running',completedSections:1,totalSections:2},sections:[{id:'s1',chapterId:'c1',status:'completed',text:'先引用乙[source:b]，后引用甲[source:a]。'}]});value.snapshot.references=[{id:'a',title:'甲',confirmed:true},{id:'b',title:'乙',confirmed:true}];
+ const f=fixture({item:value});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.match(f.$('.thesis-reader-paper').textContent,/先引用乙〔文献1〕，后引用甲〔文献2〕/);assert.equal(f.$('[data-thesis-editor]').value,'');assert.equal(f.$('#thesis-online-docx').disabled,true);assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();}
 });

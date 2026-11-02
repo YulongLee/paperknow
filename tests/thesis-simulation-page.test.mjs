@@ -41,7 +41,7 @@ test('simulation completion leaves other supplement fields, focus, selection and
  const f=await fixture(t);await f.start();
  const panel=f.q('[data-thesis-completion]'),field=f.q('[data-completion-reference="text"]'),details=field.closest('details');
  field.value='用户正在补充的真实文献内容。'.repeat(20);field.dispatchEvent(new f.dom.window.Event('input',{bubbles:true}));field.focus();field.setSelectionRange(8,15);field.scrollTop=55;
- const cover=f.q('[data-completion-cover="author"]').closest('details');cover.open=false;
+ const cover=f.q('[data-cover-field="author"]').closest('details');cover.open=false;
  await f.complete();
  assert.equal(f.q('[data-thesis-completion]'),panel,'background completion must not replace the form');
  assert.equal(f.q('[data-completion-reference="text"]'),field);
