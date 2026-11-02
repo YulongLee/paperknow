@@ -1,3 +1,4 @@
+import {serviceMessage} from './service-message.mjs';
 import {resolveAccountProjectId} from './project-directory.mjs';
 import {withStableView} from './view-stability.mjs';
 import {validThesisQuote} from './thesis-online.mjs';
@@ -38,7 +39,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
  const identity=value=>value?.user?.id?value.user:null;
  const loginHref=()=>'/auth.html?mode=login&next='+encodeURIComponent('/workspace.html'+(win.location.search||'')+(win.location.hash||''));
  const costText=()=>quote?.source==='credits'?`本次 ${quote.creditCost} 科研积分`:quote?.source==='membership'?'本次使用 1 次会员权益':quote?.source==='bundle'?'本次使用 1 次套餐权益':'本次免费';
- const setError=value=>{error=String(value?.message||value||'暂时无法完成，请稍后重试。');};
+ const setError=value=>{error=serviceMessage(String(value?.message||value||'暂时无法完成，请稍后重试。'));};
  function request(path,data,token=epoch){
   const controller=new win.AbortController();controllers.add(controller);
   let timeout,abort;const cancelled=new Promise((_,reject)=>{abort=()=>reject(abortError());controller.signal.addEventListener('abort',abort,{once:true});});const deadline=new Promise((_,reject)=>{timeout=win.setTimeout(()=>{reject(Object.assign(new Error('请求超时，请读取最新状态或重试本次提交。'),{name:'TimeoutError'}));controller.abort();},25000);});
@@ -81,7 +82,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
   const pending=submitting&&!active(item),phase=pending?'submitting':item?.status,working=pending||active(item),failed=phase==='failed';
   if(!phase)return '';
   const title=pending?'正在提交提纲任务':statusText[phase],stage=pending?'正在保存生成请求，请稍候…':failed?stages.failed:stages[phase==='running'?item.stage:phase]||'正在根据已确认的信息生成提纲';
-  const detail=typeof item?.error==='string'?item.error:item?.error?.message,index=pending?0:phase==='queued'?1:2;
+  const detail=serviceMessage(typeof item?.error==='string'?item.error:item?.error?.message),index=pending?0:phase==='queued'?1:2;
   return `<div class="writing-outline-ai-progress writing-outline-job-progress${working?' is-active':''}${syncError?' is-stale':''}" data-outline-phase="${esc(phase)}" role="status" aria-live="polite" aria-atomic="false"><div class="writing-outline-job-progress-heading">${working?'<span class="writing-outline-job-spinner" aria-hidden="true"></span>':`<span class="writing-outline-job-result-icon" aria-hidden="true">${phase==='completed'?'✓':phase==='cancelled'?'−':'!'}</span>`}<div><strong>${esc(title)}</strong><span class="writing-outline-job-stage">${esc(stage)}</span></div>${working?`<span class="writing-outline-job-elapsed" data-outline-ai-elapsed aria-live="off">${esc(elapsedText())}</span>`:''}</div>${working?`<div class="writing-outline-job-track" role="progressbar" aria-label="论文提纲生成进度" aria-valuetext="${esc(stage)}"><span></span></div><ol class="writing-outline-job-steps" aria-label="提纲生成流程">${['提交请求','等待处理','生成提纲','填入提纲'].map((label,i)=>`<li class="${i<index?'is-done':i===index?'is-current':''}"${i===index?' aria-current="step"':''}><span aria-hidden="true">${i<index?'✓':i+1}</span>${label}</li>`).join('')}</ol><p class="writing-outline-job-sync" data-outline-ai-sync>${pending?'请求确认前请稍候，无需重复点击。':syncError?'暂时无法读取最新进度，正在重试；当前为上次同步的状态。':'进度自动更新，无需重复提交。'}</p>${!pending?'<p class="writing-outline-job-background">可离开此页面，后台任务会继续；重新打开可读取进度。</p>':''}`:''}${failed||detail?`<p class="writing-outline-ai-error writing-outline-job-error" role="alert">具体原因：${esc(String(detail||'本次任务未能返回可用提纲，请重新确认费用后再试。').trim()||'本次任务未能返回可用提纲，请重新确认费用后再试。')}</p>`:''}</div>`;
  }
  function render(){
@@ -99,7 +100,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
     if(drift)body+='<p class="writing-outline-ai-warning" role="status">论文主题或研究资料已有变化。请先核对当前信息，再重新生成；这份结果不会直接替换当前提纲。</p>';
     if(item||submitting)body+=progressMarkup();
 
-    if(quote&&!item&&!direct){body+=`<div class="writing-outline-ai-charge"><strong>${esc(costText())}</strong><details class="generation-disclosure" data-outline-ai-disclosure ${disclosureOpen?'open':''}><summary data-outline-ai-disclosure-summary tabindex="0">费用与资料说明<span class="generation-disclosure-hint">查看详情</span></summary><div class="generation-disclosure-body"><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；提纲生成与后续正文生成分别计费。</p><p>选中输入及生成结果会由阿里云内容安全服务审核。</p><label class="writing-outline-ai-consent"><input type="checkbox" data-outline-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容交由 AI 服务处理，并确认本次费用。</label></div></details></div>`;}
+    if(quote&&!item&&!direct){body+=`<div class="writing-outline-ai-charge"><strong>${esc(costText())}</strong><details class="generation-disclosure" data-outline-ai-disclosure ${disclosureOpen?'open':''}><summary data-outline-ai-disclosure-summary tabindex="0">费用与资料说明<span class="generation-disclosure-hint">查看详情</span></summary><div class="generation-disclosure-body"><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；提纲生成与后续正文生成分别计费。</p><p>所选内容及生成结果会进行内容安全检查。</p><label class="writing-outline-ai-consent"><input type="checkbox" data-outline-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容交由 AI 服务处理，并确认本次费用。</label></div></details></div>`;}
     body+='<div class="writing-outline-ai-actions">';
     if(running)body+=`<button type="button" class="btn secondary" data-outline-ai-refresh ${busy?'disabled':''}>读取最新状态</button><button type="button" class="btn secondary" data-outline-ai-cancel ${busy?'disabled':''}>停止生成</button>`;
     else if(text)body+=`${!drift?`<button type="button" class="btn secondary" data-outline-ai-retry ${busy?'disabled':''}>重试填入提纲</button>`:''}<button type="button" class="btn secondary" data-outline-ai-new ${busy?'disabled':''}>重新生成</button>`;

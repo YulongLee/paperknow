@@ -1,3 +1,4 @@
+import {serviceMessage} from './service-message.mjs';
 import {thesisPreviewItem,thesisReaderHTML,readerTextHTML} from './thesis-generation-reader.mjs';
 import {createThesisSimulationController,bindSimulationPanel,replaceSimulationPanel,simulationPending} from './thesis-simulation-client.mjs';
 import {createCompletionDraft,completionPayload,completionDraftRecord,restoreCompletionDraft,setCompletionIssues,completionPanelHTML,completionProgressText,bindCompletionPanel,updateCompletionPanelState} from './thesis-completion-panel.mjs';
@@ -99,7 +100,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  function failure(error){
   if(!current()||error.name==='AbortError')return;
   if(error.status===401){persistDraft();user=null;item=null;items=[];quote=null;researchEdits=null;coverEdits=null;edits.clear();clearTimeout(timer);}
-  notice(error.status===409?'内容版本已更新。请读取最新状态后核对，尚未保存的章节文字仍在编辑区。':error.message||'操作未完成，请稍后重试。');
+  notice(error.status===409?'内容版本已更新。请读取最新状态后核对，尚未保存的章节文字仍在编辑区。':serviceMessage(error.message||'操作未完成，请稍后重试。'));
  }
  async function mutate(action,{generation=false,completion=false,template=false,templateName=''}={}){
   if(busy||exporting||!current())return;
@@ -310,7 +311,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   const automaticRetries=Number.isSafeInteger(job?.recovery?.automaticRetries)&&job.recovery.automaticRetries>0&&job.recovery.automaticRetries<100?job.recovery.automaticRetries:0;
   const continuityTitle=continuous?'一次提交，自动连续生成':'';
   const continuityText=stopping==='cancelled'?'任务已停止，不会自动继续；再次生成需由你操作。':stopping==='cancelling'?'正在停止；停止后不会自动继续，已完成内容会保留。':recovering?`服务短暂波动，正在${automaticRetries?'第 '+automaticRetries+' 次':''}尝试恢复；已保存内容保留，无需重复提交。`:continuous&&running(item)?'按提纲继续写作，随后核验题录并审校全文；可随时停止。':continuous&&!completed?'本次处理已暂停，已保存内容保留；可核对后继续。':'生成期间关闭页面不影响后台任务；已完成内容独立保存，正式使用前请核对。';
-  const error=job?.error?typeof job.error==='string'?job.error:job.error.message||'生成中断，请核对后恢复。':'';
+  const error=serviceMessage(job?.error?typeof job.error==='string'?job.error:job.error.message||'生成中断，请核对后恢复。':'');
   const missing=[...new Set((Array.isArray(job?.missingEvidence)?job.missingEvidence:[]).filter(row=>typeof row==='string'&&row.trim()).map(row=>row.trim()))];
   const reviewItems=historical?[]:missing;
   const reviewDescription=completed?'初稿已生成，请逐项核对后使用。':running(item)?'随生成持续更新，可在窗口内滚动查看。':'生成时自动整理，不影响初稿保存和编辑。';

@@ -228,7 +228,7 @@ test('late data from a disposed account page cannot replace a newer page',async 
 });
 
 test('usage and feedback stay attached to the signed-in account without inventing quotas',async t=>{
- const f=await fixture(t,{view:'usage'});assert.match(f.doc.querySelector('#view').textContent,/12/);assert.match(f.doc.querySelector('#view').textContent,/未知/);
+ const f=await fixture(t,{view:'usage'});assert.match(f.doc.querySelector('#view').textContent,/累计使用记录1/);assert.doesNotMatch(f.doc.querySelector('#view').textContent,/Token|输入 12/);assert.match(f.doc.querySelector('#view').textContent,/未知/);
  await f.w.onlineTest.mountOnlineWorkspace(f.doc.querySelector('#online'),'help',f.ctx);input(f,'#feedback','请完善上传提示');submit(f,'#feedback-form');await settle(()=>f.notices.some(n=>n.startsWith('反馈已提交')));
  assert.equal(f.calls.find(call=>call.path==='/api/feedback'&&call.body).body.text,'请完善上传提示');
  assert.equal(f.calls.some(call=>call.path.startsWith('/api/admin')),false);
@@ -419,7 +419,7 @@ test('refreshing an edited project resets editing identity so a later new projec
 test('legacy provider metadata never appears in AI task forms or usage rows',async t=>{
  const f=await fixture(t,{view:'tasks'});assert.match(f.doc.querySelector('#online').textContent,/对应功能/);assert.equal(f.doc.querySelector('#task-form'),null);assert.doesNotMatch(f.doc.querySelector('#online').textContent,/test-provider|test-model/);
  const agent=await fixture(t,{view:'agent'});assert.match(agent.doc.querySelector('#agent-form').textContent,/AI 服务处理/);assert.doesNotMatch(agent.doc.querySelector('#online').textContent,/test-provider|test-model/);
- const usage=await fixture(t,{view:'usage'});assert.match(usage.doc.querySelector('#online').textContent,/AI 服务调用明细/);assert.doesNotMatch(usage.doc.querySelector('#online').textContent,/test-provider|test-model|未返回模型名/);assert.match(usage.doc.querySelector('#online').textContent,/12/);assert.match(usage.doc.querySelector('#online').textContent,/未知/);
+ const usage=await fixture(t,{view:'usage'});assert.match(usage.doc.querySelector('#online').textContent,/服务使用记录/);assert.doesNotMatch(usage.doc.querySelector('#online').textContent,/test-provider|test-model|未返回模型名/);assert.match(usage.doc.querySelector('#online').textContent,/累计使用记录1/);assert.doesNotMatch(usage.doc.querySelector('#online').textContent,/Token|输入 12/);
 });
 
 test('AI result previews omit model engine and raw tool identities but retain research text and material evidence',async t=>{

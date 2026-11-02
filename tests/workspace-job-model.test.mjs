@@ -10,7 +10,7 @@ test('specialized research jobs retain truthful names and their exact recovery r
   [{type:'writing',writing_kind:'proposal',writing_operation:'outline'},'开题报告 · 提纲生成','#tool/proposal'],
   [{id:'ppt-job',type:'tool_run',tool_kind:'presentation',tool_operation:'ppt'},'演示文稿创作','#tool/ppt?job=ppt-job'],
   [{type:'document_translation'},'整篇文档翻译','#tool/translation'],
-  [{type:'document_parse'},'PDF 云解析','#projects?scope=account'],
+  [{type:'document_parse'},'PDF 文献处理','#projects?scope=account'],
  ]){assert.equal(workspaceJobLabel(row),label);assert.equal(workspaceJobHref(row),href);}
  assert.equal(workspaceJobLabel({type:'unknown-provider-secret'}),'研究任务');
  assert.equal(workspaceJobHref({type:'web_similarity',id:'javascript:alert(1)'}),'#tasks?scope=account');
@@ -39,5 +39,5 @@ test('completed jobs open saved results while specialized evidence and editable 
 
 test('PPT task errors use page terminology while other task errors keep their own meaning',async()=>{
  const {workspaceJobError}=await import('../dist/workspace/workspace-job-model.mjs'),error='本次生成已达到系统处理上限，已完成章节已保存。这不是积分不足；继续生成时会从未完成部分接着处理。';
- assert.doesNotMatch(workspaceJobError({type:'tool_run',tool_operation:'ppt',error}),/章节|积分不足|系统处理上限/);assert.match(workspaceJobError({type:'tool_run',tool_operation:'ppt',error}),/页面/);assert.equal(workspaceJobError({type:'writing',error}),error);
+ assert.doesNotMatch(workspaceJobError({type:'tool_run',tool_operation:'ppt',error}),/章节|积分不足|系统处理上限/);assert.match(workspaceJobError({type:'tool_run',tool_operation:'ppt',error}),/页面/);assert.doesNotMatch(workspaceJobError({type:'writing',error}),/系统处理上限|执行预算/);assert.match(workspaceJobError({type:'writing',error}),/已保存/);
 });

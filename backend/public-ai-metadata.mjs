@@ -1,3 +1,4 @@
+import {serviceMessage} from '../dist/workspace/service-message.mjs';
 // Model routing and execution metadata belongs to operations, not customer data.
 // Project only the service-owned envelopes below; never scan or rewrite a paper,
 // source excerpt, saved revision, feedback message or user-defined data tree.
@@ -5,7 +6,6 @@ const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)
 const privateFields=new Set(['model','modelId','modelName','aiModel','provider','aiProvider','engine','agentEngine','settingsVersion','settings_version','settings_meta','providerCalls','provider_calls','runtime','runtimeConfig','baseURL','baseUrl','endpoint','apiURL','aiURL','apiKey','api_key','aiKey','authToken','authorization','sealed_settings','sealedSettings']);
 const withoutRuntime=value=>object(value)?Object.fromEntries(Object.entries(value).filter(([key])=>!privateFields.has(key))):value;
 const genericError='AI 服务暂时未能完成本次处理，请稍后重试；已保存的内容会保留。';
-const technicalIdentity=/(?:\b(?:codex|claude|anthropic|openai|deepseek|qwen|dashscope|bailian|gemini|gpt[-\s]?\d|sdk)(?:\b|[\d._/-])|百炼|千问|通义|智谱|豆包|Model\.[A-Za-z]+|ANTHROPIC_|OPENAI_|PK_AI_|PK_AGENT_|https?:\/\/\S+|api[-_ ]?key)/i;
 
 // Read local configuration only; this never tests a connection or dispatches AI.
 export async function configuredAIIdentityValues(config={}){
@@ -20,11 +20,11 @@ export async function configuredAIIdentityValues(config={}){
  return [...new Set(values)];
 }
 export function publicAIError(value,identityValues=[]){
- if(typeof value!=='string')return value;
- if(identityValues.some(identity=>typeof identity==='string'&&identity.length>=3&&value.toLowerCase().includes(identity.toLowerCase()))||technicalIdentity.test(value)||/后台.*(?:模型|Agent|连接配置)|(?:模型|Agent).*(?:配置|权限|接口|版本)/i.test(value))return genericError;
- return value.replace(/模型服务/g,'AI 服务').replace(/\bAgent\b/g,'AI');
+ return serviceMessage(value,{fallback:genericError,identityValues});
 }
-const errorFields=(value,identityValues=[])=>object(value)?{...value,...(Object.hasOwn(value,'error')?{error:publicAIError(value.error,identityValues)}:{}),...(Object.hasOwn(value,'reason')?{reason:publicAIError(value.reason,identityValues)}:{})}:value;
+const errorValue=(value,identityValues)=>object(value)?{...Object.fromEntries(Object.entries(withoutRuntime(value)).filter(([key])=>!['stack','cause','trace','debug'].includes(key))),...(typeof value.message==='string'?{message:publicAIError(value.message,identityValues)}:{})}:publicAIError(value,identityValues);
+
+const errorFields=(value,identityValues=[])=>object(value)?{...value,...(Object.hasOwn(value,'error')?{error:errorValue(value.error,identityValues)}:{}),...(Object.hasOwn(value,'reason')?{reason:publicAIError(value.reason,identityValues)}:{})}:value;
 const publicTrace=value=>Array.isArray(value)?value.filter(row=>object(row)&&['list_materials','read_material','text_statistics'].includes(row.tool)).map(row=>({tool:row.tool,status:['completed','failed','running'].includes(row.status)?row.status:'unknown',...(typeof row.materialId==='string'?{materialId:row.materialId}:{})})):value;
 const taskIdentities=value=>object(value)?['model','provider','engine'].map(key=>value[key]).filter(value=>typeof value==='string'):[];
 const publicTask=(value,identityValues=[])=>errorFields(withoutRuntime(value),[...identityValues,...taskIdentities(value)]);
@@ -71,8 +71,9 @@ export function publicAIResponse(path,value,{authorizedAdmin=false,identityValue
  const task=row=>publicTask(row,identityValues),thesis=row=>publicThesis(row,identityValues),writing=row=>publicWriting(row,identityValues);
  if(path==='/api/capabilities'){
   clean={...clean};delete clean.aiProvider;delete clean.agentEngine;
-  for(const key of ['thesis','thesisOutline','thesisMethod','writing','tools'])if(object(clean[key]))clean[key]=publicCapability(clean[key],identityValues);
- }else if(path==='/api/usage')clean={...clean,...list(clean,'items',withoutRuntime)};
+  for(const key of ['thesis','thesisOutline','thesisMethod','writing','tools','documentParsing','documentTranslation','formulaOcr','combinedDetection','aigcDetection','webSimilarity'])if(object(clean[key]))clean[key]=publicCapability(clean[key],identityValues);
+ }else if(/^\/api\/(?:document-parses|document-translations|formula-recognitions|aigc-detections|web-similarity)(?:\/|$)/.test(path||''))clean={...task(clean),...one(clean,task),...list(clean,'items',task)};
+ else if(path==='/api/usage')clean={...clean,...list(clean,'items',withoutRuntime)};
  else if(path==='/api/results'||/^\/api\/results\/[^/]+$/.test(path||''))clean={...clean,...one(clean,publicResult),...list(clean,'items',publicResult)};
  else if(path==='/api/jobs'||/^\/api\/jobs\//.test(path||''))clean={...clean,...one(clean,task),...list(clean,'items',task)};
  else if(path==='/api/theses'||path?.startsWith('/api/theses/'))clean={...(path.endsWith('/capabilities')?publicCapability(clean,identityValues):task(clean)),...one(clean,thesis),...list(clean,'items',thesis)};

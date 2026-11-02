@@ -1,3 +1,4 @@
+import {serviceMessage} from '../dist/workspace/service-message.mjs';
 import {beginDraftScope,endDraftScope} from '../dist/workspace/state.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,7 +19,7 @@ function fixture(t,{guest=false,pendingJobId,pendingContextKey,pendingClientKey,
  Object.defineProperties(w,{scrollY:{configurable:true,get:()=>position.y},scrollX:{configurable:true,get:()=>0}});w.scrollTo=opts=>{position.y=opts.top;};doc.querySelector('.dashboard').getBoundingClientRect=()=>({top:80-position.y,left:0,width:1200,height:2000,bottom:2080-position.y,right:1200});
  w.Date.now=()=>clock.now;
  w.setTimeout=(fn,delay)=>{const id=++timerId;timers.set(id,{fn,delay});return id;};w.clearTimeout=id=>timers.delete(id);
- Object.defineProperty(doc,'hidden',{configurable:true,value:false});w.structuredClone=structuredClone;w.withStableView=withStableView;w.validThesisQuote=validThesisQuote;w.resolveAccountProjectId=resolveAccountProjectId;
+ Object.defineProperty(doc,'hidden',{configurable:true,value:false});w.structuredClone=structuredClone;w.serviceMessage=serviceMessage;w.withStableView=withStableView;w.validThesisQuote=validThesisQuote;w.resolveAccountProjectId=resolveAccountProjectId;
  const api=async(path,data,options)=>{calls.push({path,data,options});const custom=onRequest&&await onRequest(path,data,options);if(custom!==undefined)return custom;if(path==='/auth/me')return user?{user}:{status:'guest'};if(path==='/theses/methods/capabilities')return {ready:true,billingService:'agent'};if(path==='/billing/quote')return quote();if(path==='/theses/methods')return {item:queued};if(path.startsWith('/theses/methods/by-key/'))throw Object.assign(new Error('任务尚未创建'),{status:404});if(path==='/theses/methods/method-1')return {item:readItem};if(path==='/theses/methods/method-1/cancel')return {item:{...queued,status:'cancelled',stage:'cancelled'}};throw Error('Unexpected path '+path);};
  w.eval(source+'\nwindow.methodTest={mountWritingMethodGenerator};');
  const options={container,ctx:{api,session:async()=>user?{user}:{status:'guest'}},getSnapshot:()=>structuredClone(brief),getContextKey:()=>JSON.stringify(brief),getProjectRef:()=>projectRef,onApply:async(text,item)=>{applies.push({text,item});return onApply?onApply(text,item):true;},onJobChange:(id,meta)=>jobs.push({id,...meta}),onCommandChange:async(key,meta)=>{commands.push({key,...meta});await onCommandChange?.(key,meta);},pendingJobId,pendingContextKey,pendingClientKey,pendingPreview,onPreviewChange,isCurrent:()=>current};

@@ -12,9 +12,9 @@ function setup(api,hash='#help?scope=account'){
  const ctx={target:document.querySelector('#view'),api,notify:text=>notices.push(text),submit:(event,fn)=>{event.preventDefault();pending=Promise.resolve().then(fn).catch(error=>notices.push(error.message));},rememberForms:()=>remembered++,esc:escape,date:value=>value||'—',icon:()=>'', $:selector=>document.querySelector(selector)};
  return {dom,ctx,notices,remembered:()=>remembered,async submit(){document.querySelector('#feedback-form').dispatchEvent(new window.Event('submit',{cancelable:true}));await pending;},async click(selector){document.querySelector(selector).click();await pending;}};
 }
-test('usage separates account cumulative totals, recent unknown tokens and storage from billing',async()=>{
+test('usage shows business records and storage without runtime measurements',async()=>{
  const env=setup(async path=>path==='/usage'?{items:[{model:'real-model',input_tokens:5,output_tokens:null,created_at:'2026-10-15'}]}:{usage:{records:120,inputTokens:2000,outputTokens:1000},storage:{fileBytes:1048576,draftBytes:0,maxAccountFileBytes:52428800,maxAccountDraftBytes:52428800}});
- try{assert.equal(await renderOnlinePersonal('usage',env.ctx),true);const text=env.ctx.target.textContent;assert.doesNotMatch(text,/real-model|未返回模型名/);assert.match(text,/AI 服务调用明细/);assert.match(text,/120/);assert.match(text,/2,000/);assert.match(text,/未知/);assert.match(text,/50.00 MB/);assert.match(text,/当前未启用积分扣减/);assert.equal(env.ctx.target.querySelector('a[href*="membership/pay"]'),null);assert.deepEqual(onlineUsageSummary([{input_tokens:3,output_tokens:2},{input_tokens:null,output_tokens:4}]),{records:2,inputTokens:3,outputTokens:6,unknownRecords:1});}finally{env.dom.window.close();}
+ try{assert.equal(await renderOnlinePersonal('usage',env.ctx),true);const text=env.ctx.target.textContent;assert.doesNotMatch(text,/real-model|未返回模型名/);assert.match(text,/服务使用记录/);assert.match(text,/120/);assert.doesNotMatch(text,/Token|2,000|输入 Token|输出 Token/);assert.match(text,/50.00 MB/);assert.match(text,/当前未启用积分扣减/);assert.equal(env.ctx.target.querySelector('a[href*="membership/pay"]'),null);assert.deepEqual(onlineUsageSummary([{input_tokens:3,output_tokens:2},{input_tokens:null,output_tokens:4}]),{records:2,inputTokens:3,outputTokens:6,unknownRecords:1});}finally{env.dom.window.close();}
 });
 test('account membership uses actual service state and existing entitlements without starting purchase',async()=>{
  const calls=[],env=setup(async(path,data)=>{calls.push([path,data]);return path==='/capabilities'?{ai:true,agent:false,payment:true}:path==='/payments/entitlements'?{items:[{type:'membership',title:'真实已有权益',description:'<img src=x>',starts_at:'2020-01-01',expires_at:'2099-01-01'}]}:{counts:{projects:2,drafts:3,results:4,files:5}};},'#membership?scope=account');
@@ -123,7 +123,7 @@ test('real membership and bundle quotas show used held and remaining with accoun
 
 test('usage state reflects billing enabled while keeping token counts separate from actual settlement history',async()=>{
  const env=setup(async path=>path==='/usage'?{items:[],billingEnabled:true,billing:{reservations:[{type:'agent',source:'membership',creditCost:0,status:'held',createdAt:'2026-10-16'}]}}:{usage:{records:0,inputTokens:0,outputTokens:0},storage:{}});
- try{await renderOnlinePersonal('usage',env.ctx);assert.match(env.ctx.target.textContent,/已启用费用核验/);assert.match(env.ctx.target.textContent,/Token 用量不直接等于积分费用/);assert.doesNotMatch(env.ctx.target.textContent,/当前未启用积分扣减/);const activity=document.querySelector('.member-billing-activity');assert.match(activity.textContent,/科研智能助手会员次数1 次预占中/);assert.ok(activity.querySelector('a[href="#tasks?scope=account"]'));}finally{env.dom.window.close();}
+ try{await renderOnlinePersonal('usage',env.ctx);assert.match(env.ctx.target.textContent,/已启用费用核验/);assert.match(env.ctx.target.textContent,/本次费用以积分及套餐结算记录为准/);assert.doesNotMatch(env.ctx.target.textContent,/Token/);assert.doesNotMatch(env.ctx.target.textContent,/当前未启用积分扣减/);const activity=document.querySelector('.member-billing-activity');assert.match(activity.textContent,/科研智能助手会员次数1 次预占中/);assert.ok(activity.querySelector('a[href="#tasks?scope=account"]'));}finally{env.dom.window.close();}
 });
 
 
@@ -161,13 +161,8 @@ test('runtime-backed writing and item quotas remain usable when the legacy gener
  try{await renderOnlinePersonal('membership',env.ctx);assert.match(env.ctx.target.textContent,/AI 写作与科研工具已开放/);assert.match(env.ctx.target.textContent,/毕业 PPT已暂停/);const links=[...document.querySelectorAll('.member-quota-rows a')].map(node=>node.getAttribute('href'));assert.deepEqual(links,['#category/writing','#category/literature?view=reading']);assert.equal(document.querySelector('a[href*="view=agent"]'),null);assert.equal(document.querySelector('a[href="#literature/reading"]'),null);}finally{env.dom.window.close();}
 });
 
-test('missing token measurements never become a claimed zero consumption total',async()=>{
- const env=setup(async path=>path==='/usage'?{items:[{input_tokens:null,output_tokens:null,created_at:'2026-10-19'}]}:{usage:{records:1,inputTokens:0,outputTokens:0,unknownRecords:1},storage:{}});
- try{await renderOnlinePersonal('usage',env.ctx);const metric=[...document.querySelectorAll('.account-personal-metric')].find(node=>node.textContent.includes('Token 用量'));assert.equal(metric.querySelector('h2').textContent,'未知');assert.match(metric.textContent,/不代表实际全部消耗/);assert.deepEqual(onlineUsageSummary([{input_tokens:null,output_tokens:null}]),{records:1,inputTokens:null,outputTokens:null,unknownRecords:1});}finally{env.dom.window.close();}
-});
-
-test('partial known token totals are marked partial while a confirmed empty account may show zero',async()=>{
- for(const partial of [true,false]){const env=setup(async path=>path==='/usage'?{items:partial?[{input_tokens:25,output_tokens:null}]:[]}:{usage:{records:partial?1:0,inputTokens:partial?25:0,outputTokens:0,unknownRecords:partial?1:0},storage:{}});try{await renderOnlinePersonal('usage',env.ctx);const metric=[...document.querySelectorAll('.account-personal-metric')].find(node=>node.textContent.includes('Token 用量'));assert.equal(metric.querySelector('h2').textContent,partial?'25（已知部分）':'0');}finally{env.dom.window.close();}}
+test('missing internal measurements never appear as consumption claims on the customer page',async()=>{
+ for(const partial of [true,false]){const env=setup(async path=>path==='/usage'?{items:partial?[{input_tokens:25,output_tokens:null}]:[]}:{usage:{records:partial?1:0,inputTokens:partial?25:0,outputTokens:0,unknownRecords:partial?1:0},storage:{}});try{await renderOnlinePersonal('usage',env.ctx);assert.doesNotMatch(env.ctx.target.textContent,/Token|输入 25|消耗 0/);const metric=[...document.querySelectorAll('.account-personal-metric')].find(node=>node.textContent.includes('累计使用记录'));assert.equal(metric.querySelector('h2').textContent,partial?'1':'0');assert.deepEqual(onlineUsageSummary([{input_tokens:null,output_tokens:null}]),{records:1,inputTokens:null,outputTokens:null,unknownRecords:1});}finally{env.dom.window.close();}}
 });
 
 test('credit and task tables keep all records but size their scroll window to the first five measured rows',async()=>{

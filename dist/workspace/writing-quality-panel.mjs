@@ -1,3 +1,4 @@
+import {serviceMessage} from './service-message.mjs';
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // Shared, read-only presentation: no requests, adoption or automatic retry.
@@ -10,7 +11,7 @@ export function writingQualityPanel(value,{references=[],scrollKey='writing-qual
   // credential-shaped values and backend API endpoints, never manuscript quotes.
   const privateDiagnostic=/(?:\b(?:apiKey|api_key|accessKeySecret|ANTHROPIC_API_KEY|OPENAI_API_KEY|maxBudgetUsd|maxCostUsd|maxOutputTokens|maxTotalTokens|maxTurns|max_tokens|max_turns|baseURL|settings_version)\b|\bsk-[a-z0-9_-]{20,}\b|https?:\/\/(?:api\.(?:anthropic|openai)\.com|dashscope(?:-intl)?\.aliyuncs\.com|127\.0\.0\.1|localhost)(?::\d+)?(?:\/[^\s]*)?)/i;
   const text=(value,fallback='部分检查尚未完成，请结合原始资料人工核对。')=>typeof value==='string'&&value.trim()?privateDiagnostic.test(value)?fallback:value.trim().slice(0,1500):fallback;
-  const reasonText=(row,fallback)=>['budget_exhausted','budget_exceeded','token_budget','cost_budget'].includes(row.reasonCode)?'本批检查未完成。':text(row.reason,fallback);
+  const reasonText=(row,fallback)=>['budget_exhausted','budget_exceeded','token_budget','cost_budget'].includes(row.reasonCode)?'本批检查未完成。':text(serviceMessage(row.reason),fallback);
   const citationLabels={matched:'题录匹配',conflict:'信息待核对',not_found:'暂未找到',unverified:'未核验',unavailable:'暂不可用'};
   const citationNotes={matched:'题录信息已对应；引文与正文论断的关系仍需核对。',conflict:'部分题录信息存在差异，请对照原始文献核对。',not_found:'本次来源暂未找到匹配记录，不代表文献不存在或虚假。',unverified:'此条尚未进行外部题录核验。',unavailable:'本次题录核验暂未完成。'};
   const citations=rows(quality?.citations?.items),summary=quality?.citations?.summary||{},refs=new Map(rows(references).map(row=>[row.id,row.title]));

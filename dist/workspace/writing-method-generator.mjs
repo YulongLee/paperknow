@@ -1,3 +1,4 @@
+import {serviceMessage} from './service-message.mjs';
 import {resolveAccountProjectId} from './project-directory.mjs';
 import {withStableView} from './view-stability.mjs';
 import {validThesisQuote} from './thesis-online.mjs';
@@ -38,7 +39,7 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
  const identity=value=>value?.user?.id?value.user:null;
  const loginHref=()=>'/auth.html?mode=login&next='+encodeURIComponent('/workspace.html'+(win.location.search||'')+(win.location.hash||''));
  const costText=()=>quote?.source==='credits'?`本次 ${quote.creditCost} 科研积分`:quote?.source==='membership'?'本次使用 1 次会员权益':quote?.source==='bundle'?'本次使用 1 次套餐权益':'本次免费';
- const setError=value=>{error=String(value?.message||value||'暂时无法完成，请稍后重试。');};
+ const setError=value=>{error=serviceMessage(String(value?.message||value||'暂时无法完成，请稍后重试。'));};
  function request(path,data,token=epoch){
   const controller=new win.AbortController();controllers.add(controller);
   let timeout,abort;const cancelled=new Promise((_,reject)=>{abort=()=>reject(abortError());controller.signal.addEventListener('abort',abort,{once:true});});const deadline=new Promise((_,reject)=>{timeout=win.setTimeout(()=>{reject(Object.assign(new Error('请求超时，请读取最新状态或重试本次提交。'),{name:'TimeoutError'}));controller.abort();},25000);});
@@ -82,7 +83,7 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
   const pending=submitting&&!active(item),phase=pending?'submitting':item?.status,working=pending||active(item),failed=phase==='failed';
   if(!phase)return '';
   const title=pending?'正在提交方法建议任务':statusText[phase],stage=pending?'正在保存生成请求，请稍候…':failed?stages.failed:stages[phase==='running'?item.stage:phase]||'正在根据已确认的信息生成方法建议';
-  const detail=typeof item?.error==='string'?item.error:item?.error?.message,index=pending?0:phase==='queued'?1:2;
+  const detail=serviceMessage(typeof item?.error==='string'?item.error:item?.error?.message),index=pending?0:phase==='queued'?1:2;
   return `<div class="writing-outline-ai-progress writing-method-ai-progress${working?' is-active':''}${syncError?' is-stale':''}" data-method-phase="${esc(phase)}" role="status" aria-live="polite" aria-atomic="false"><div class="writing-method-ai-progress-heading">${working?'<span class="writing-method-ai-spinner" aria-hidden="true"></span>':`<span class="writing-method-ai-result-icon" aria-hidden="true">${phase==='completed'?'✓':phase==='cancelled'?'−':'!'}</span>`}<div><strong>${esc(title)}</strong><span class="writing-method-ai-stage">${esc(stage)}</span></div>${working?`<span class="writing-method-ai-elapsed" data-method-ai-elapsed aria-live="off">${esc(elapsedText())}</span>`:''}</div>${working?`<div class="writing-method-ai-track" role="progressbar" aria-label="研究方法生成进度" aria-valuetext="${esc(stage)}"><span></span></div><ol class="writing-method-ai-steps" aria-label="方法建议生成流程">${['提交请求','等待处理','生成建议','预览使用'].map((label,i)=>`<li class="${i<index?'is-done':i===index?'is-current':''}"${i===index?' aria-current="step"':''}><span aria-hidden="true">${i<index?'✓':i+1}</span>${label}</li>`).join('')}</ol><p class="writing-method-ai-sync" data-method-ai-sync>${pending?'请求确认前请稍候，无需重复点击。':syncError?'暂时无法读取最新进度，正在重试；当前为上次同步的状态。':'进度自动更新，无需重复提交。'}</p>${!pending?'<p class="writing-method-ai-background">可离开此页面，后台任务会继续；重新打开可读取进度。</p>':''}`:''}${failed||detail?`<p class="writing-outline-ai-error writing-method-ai-error" role="alert">具体原因：${esc(String(detail||'本次任务未能返回可用建议，请重新确认费用后再试。').trim()||'本次任务未能返回可用建议，请重新确认费用后再试。')}</p>`:''}</div>`;
  }
  function render(){
@@ -100,7 +101,7 @@ export function mountWritingMethodGenerator({container,ctx={},getSnapshot,getCon
     if(drift)body+='<p class="writing-outline-ai-warning writing-method-ai-warning" role="status">论文主题或研究资料已有变化。请先核对当前信息，再重新生成；这份结果不会直接替换当前补充说明。</p>';
     if(item||submitting)body+=progressMarkup();
     if(completed)body+=`<div class="writing-outline-ai-preview writing-method-ai-preview"><label for="writing-method-ai-result">拟开展的研究方法建议（可编辑）</label><textarea id="writing-method-ai-result" data-scroll-key="writing-method-ai-preview" rows="12" maxlength="12000">${esc(text)}</textarea><p>生成内容尚未应用。你可以先修改建议，再点击“填入补充说明”。该方案仅供拟开展研究参考，不代表已经完成研究。</p></div>`;
-    if(quote&&!item&&!direct){body+=`<div class="writing-outline-ai-charge writing-method-ai-charge"><strong>${esc(costText())}</strong><details class="generation-disclosure" data-method-ai-disclosure ${disclosureOpen?'open':''}><summary data-method-ai-disclosure-summary tabindex="0">费用与资料说明<span class="generation-disclosure-hint">查看详情</span></summary><div class="generation-disclosure-body"><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；方法建议与后续提纲、正文生成分别计费。</p><p>选中输入及生成结果会由阿里云内容安全服务审核。</p><label class="writing-outline-ai-consent writing-method-ai-consent"><input type="checkbox" data-method-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容交由 AI 服务处理以生成拟开展的研究方案，并确认本次费用。</label></div></details></div>`;}
+    if(quote&&!item&&!direct){body+=`<div class="writing-outline-ai-charge writing-method-ai-charge"><strong>${esc(costText())}</strong><details class="generation-disclosure" data-method-ai-disclosure ${disclosureOpen?'open':''}><summary data-method-ai-disclosure-summary tabindex="0">费用与资料说明<span class="generation-disclosure-hint">查看详情</span></summary><div class="generation-disclosure-body"><p>仅在确认后提交任务。成功后结算，失败或取消按实际账单释放预占；方法建议与后续提纲、正文生成分别计费。</p><p>所选内容及生成结果会进行内容安全检查。</p><label class="writing-outline-ai-consent writing-method-ai-consent"><input type="checkbox" data-method-ai-consent ${consent?'checked':''} ${busy?'disabled':''}> 我确认有权使用上述信息，同意将论文主题、写作要求及选中资料的相关内容交由 AI 服务处理以生成拟开展的研究方案，并确认本次费用。</label></div></details></div>`;}
     body+='<div class="writing-outline-ai-actions writing-method-ai-actions">';
     if(running)body+=`<button type="button" class="btn secondary" data-method-ai-refresh ${busy?'disabled':''}>读取最新状态</button><button type="button" class="btn secondary" data-method-ai-cancel ${busy?'disabled':''}>停止生成</button>`;
     else if(completed)body+=`<button type="button" class="btn primary" data-method-ai-apply ${busy||drift||!text.trim()?'disabled':''}>${applied?'再次填入补充说明':'填入补充说明'}</button><button type="button" class="btn secondary" data-method-ai-new ${busy?'disabled':''}>重新生成</button>`;
