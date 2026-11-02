@@ -2,14 +2,33 @@ import {withStableView} from './view-stability.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const active=status=>['submitting','queued','running','recovering'].includes(status);
 const panelMarkup=new WeakMap();
-export const simulationPending=draft=>active(draft.simulationJob?.status);
-export function simulationPanelHTML(draft,{disabled=false}={}){
- const state=draft.simulationJob,working=simulationPending(draft),ready=state?.status==='completed',stages={submitting:'正在提交模拟方案任务',recovering:'正在读取已提交任务',queued:'正在排队',running:'正在设计方案并生成模拟数据',completed:'模拟数据已加入补充资料',failed:'本次模拟数据未生成',cancelled:'已停止生成'};
- return `<section class="thesis-simulation-panel" aria-label="AI模拟数据补充"><div class="thesis-simulation-heading"><div><h4>AI模拟数据补充</h4><p>为仿真研究生成数据，保留模拟方法和数据说明。不会替代真实实验或调查记录。</p></div><button type="button" class="btn secondary" data-simulation-generate ${disabled||working?'disabled':''}>${ready?'重新生成模拟数据':'AI模拟数据补充'}</button></div>${state?`<div class="thesis-simulation-status${working?' is-active':''}" role="status" aria-live="polite">${working?'<span class="writing-method-ai-spinner" aria-hidden="true"></span>':''}<strong>${esc(stages[state.status]||'正在读取状态')}</strong>${working?'<div class="writing-method-ai-track" role="progressbar" aria-label="模拟数据生成进度" aria-valuetext="'+esc(stages[state.status]||'正在处理')+'"><span></span></div>':''}${state.error?`<p class="thesis-error">${esc(state.error)}</p>`:''}</div>`:''}${ready?`<p class="thesis-simulation-badge">模拟数据 · 非实测 · ${Number(state.sampleSize)||0} 条记录</p><label>已加入的模拟资料<textarea readonly rows="6" data-simulation-preview>${esc(state.text||'')}</textarea></label>`:''}<p class="thesis-simulation-cost">生成按现有研究规划价格使用套餐或积分；失败或取消释放预占。采用后可继续自动完善仿真研究终稿，模拟说明会保留在文档中。</p>${working&&state?.jobId?'<button type="button" class="btn secondary" data-simulation-cancel>停止生成</button>':''}</section>`;
+export const simulationPending=draft=>active(draft.simulationJob?.status)||['pending','saving'].includes(draft.simulationJob?.adoptionStatus);
+export function mergeThesisSupplements(incoming,account={}){
+ const merged=structuredClone(incoming),protectedMaterial=row=>row?.dataKind==='simulation'||String(row?.id||'').startsWith('simulation:')||['研究证据补充','致谢事实'].includes(row?.purpose),protectedReference=row=>row?.sourceLabel==='作者终稿补充文献';
+ for(const [key,protectedRow]of [['materials',protectedMaterial],['references',protectedReference]]){
+  const rows=Array.isArray(merged[key])?merged[key]:[];
+  for(const saved of account[key]||[])if(protectedRow(saved)){const at=rows.findIndex(row=>row.id===saved.id);if(at<0)rows.push(structuredClone(saved));else rows[at]=structuredClone(saved);}
+  merged[key]=rows;
+ }
+ if(account.requirements?.deliveryVersion===1)merged.requirements={...merged.requirements,deliveryVersion:1};
+ return merged;
 }
-export function createThesisSimulationController({api,owner,getItem,getDraft,getUserId,isCurrent,persist,render,onCompleted,setTimer=setTimeout,clearTimer=clearTimeout}={}){
+export function completionHasUnsavedInputs(draft){return !!(draft.supplement?.trim()||draft.acknowledgements?.trim()||Object.keys(draft.metadata||{}).length||draft.materials?.length||draft.references?.length||draft.simulationRunIds?.length||Object.values(draft.reference||{}).some(value=>String(value).trim()));}
+export function synchronizeSimulationState(draft,item){
+ const rows=(item?.snapshot?.materials||[]).filter(row=>row.dataKind==='simulation'),state=draft.simulationJob;
+ const saved=state?.jobId?rows.find(row=>row.simulation?.jobId===state.jobId):!state?rows.at(-1):null;
+ if(saved){
+  draft.simulationJob={...state,status:'completed',jobId:saved.simulation.jobId,thesisId:item.id,version:item.version,adoptionStatus:'saved',error:'',text:saved.text,sampleSize:saved.simulation.recipe?.sampleSize||0,variableCount:saved.simulation.recipe?.variables?.length||0};
+  draft.simulationRunIds=(draft.simulationRunIds||[]).filter(id=>id!==saved.simulation.jobId);draft.dirty=completionHasUnsavedInputs(draft);
+ }else if(state?.status==='completed'&&state.adoptionStatus==='saved'){state.adoptionStatus='missing';state.error='这份模拟资料未保存在当前论文中，可恢复后继续使用。';}
+}
+export function simulationPanelHTML(draft,{disabled=false,recovery=null}={}){
+ const state=draft.simulationJob,working=simulationPending(draft),ready=state?.status==='completed',stages={submitting:'正在提交模拟方案任务',recovering:'正在读取已提交任务',queued:'正在排队',running:'正在设计方案并生成模拟数据',completed:state?.adoptionStatus==='saved'?'模拟资料已保存到当前论文':['pending','saving'].includes(state?.adoptionStatus)?'正在保存模拟资料':state?.adoptionStatus==='failed'?'模拟资料已生成，保存待重试':'模拟资料已生成，待保存',failed:'本次模拟数据未生成',cancelled:'已停止生成'};
+ return `<section class="thesis-simulation-panel" aria-label="AI模拟数据补充"><div class="thesis-simulation-heading"><div><h4>AI模拟数据补充</h4><p>为仿真研究生成数据，保留模拟方法和数据说明。不会替代真实实验或调查记录。</p></div><button type="button" class="btn secondary" data-simulation-generate ${disabled||working?'disabled':''}>${ready?'重新生成模拟数据':'AI模拟数据补充'}</button></div>${state?`<div class="thesis-simulation-status${working?' is-active':''}" role="status" aria-live="polite">${working?'<span class="writing-method-ai-spinner" aria-hidden="true"></span>':''}<strong>${esc(stages[state.status]||'正在读取状态')}</strong>${working?'<div class="writing-method-ai-track" role="progressbar" aria-label="模拟数据生成进度" aria-valuetext="'+esc(stages[state.status]||'正在处理')+'"><span></span></div>':''}${state.error?`<p class="thesis-error">${esc(state.error)}</p>`:''}</div>`:''}${ready?`<p class="thesis-simulation-badge">模拟数据 · 非实测 · ${Number(state.sampleSize)||0} 条记录${state.variableCount?' · '+Number(state.variableCount)+' 类指标':''}</p><label>模拟资料预览<textarea readonly rows="6" data-simulation-preview>${esc(state.text||'')}</textarea></label>`:''}${ready&&!working&&state.adoptionStatus!=='saved'?'<button type="button" class="btn secondary" data-simulation-save>保存模拟资料并继续</button>':''}${recovery&&!working&&recovery.id!==state?.jobId?`<div class="thesis-simulation-recovery"><p>找到已生成的模拟资料：${esc(recovery.title)} · ${Number(recovery.sampleSize)||0} 条记录。可直接恢复使用。</p><button type="button" class="btn secondary" data-simulation-restore>恢复已生成的模拟资料</button></div>`:''}<p class="thesis-simulation-cost">生成按现有研究规划价格使用套餐或积分；保存和恢复已有模拟资料不再次扣费。模拟数据用于仿真方法与分析，文献、封面信息等剩余缺项将单独检查。</p>${active(state?.status)&&state?.jobId?'<button type="button" class="btn secondary" data-simulation-cancel>停止生成</button>':''}</section>`;
+}
+export function createThesisSimulationController({api,owner,getItem,getDraft,getUserId,isCurrent,persist,render,onCompleted,onSave,onRestore,setTimer=setTimeout,clearTimer=clearTimeout}={}){
  let disposed=false,busy=false,timer=null;
- const current=()=>!disposed&&isCurrent(),changed=()=>{if(current()){persist();render();}},stop=()=>{if(timer!==null)clearTimer(timer);timer=null;},schedule=()=>{stop();if(current()&&simulationPending(getDraft()))timer=setTimer(()=>void refresh(),1800);};
+ const current=()=>!disposed&&isCurrent(),changed=()=>{if(current()){persist();render();}},stop=()=>{if(timer!==null)clearTimer(timer);timer=null;},schedule=()=>{stop();if(current()&&active(getDraft().simulationJob?.status))timer=setTimer(()=>void refresh(),1800);};
  function take(value){
   const draft=getDraft(),state=draft.simulationJob,item=getItem();
   if(!value?.id||value.operation!=='simulation'||value.thesisId!==state?.thesisId||String(value.userId)!==String(getUserId())||state?.jobId&&state.jobId!==value.id)throw Object.assign(Error('模拟任务不属于当前账户或请求'),{status:403});
@@ -19,7 +38,7 @@ export function createThesisSimulationController({api,owner,getItem,getDraft,get
    if(value.output?.origin!=='ai_simulation'||!String(value.output.text||'').trim())throw Object.assign(Error('未读取到带来源说明的模拟数据'),{status:422});
    if(item.id!==state.thesisId||item.version!==state.version){state.status='failed';state.error='论文信息已更新，本次数据未加入。请根据最新研究信息重新生成。';}
    else if(!(draft.simulationRunIds||[]).includes(value.id)){
-    draft.simulationRunIds=[value.id];draft.dirty=true;draft.quote=null;draft.requestKey=null;state.text=value.output.text;state.sampleSize=value.output.rows?.length||0;persist();onCompleted();return;
+    draft.simulationRunIds=[...(draft.simulationRunIds||[]),value.id];draft.dirty=true;draft.quote=null;draft.requestKey=null;state.text=value.output.text;state.sampleSize=value.output.rows?.length||0;state.variableCount=value.output.recipe?.variables?.length||value.output.statistics?.length||0;persist();onCompleted();return;
    }
   }
   changed();
@@ -35,9 +54,9 @@ export function createThesisSimulationController({api,owner,getItem,getDraft,get
   }catch(error){if(current()){if(error.status||!sent||received){state.status='failed';state.error=error.message;}else{state.status='recovering';state.error=error.message||'正在核对请求是否已提交，请勿重复点击。';}changed();}}finally{busy=false;schedule();}
  }
  async function cancel(){if(!current()||busy)return;const state=getDraft().simulationJob;if(!state?.jobId)return;busy=true;stop();try{await owner();const value=await api('/theses/methods/'+encodeURIComponent(state.jobId)+'/cancel',{});if(current())take(value.item);}catch(error){if(current()){state.error=error.message;changed();}}finally{busy=false;schedule();}}
- return {start,cancel,resume:schedule,dispose(){disposed=true;stop();}};
+ return {start,cancel,resume:schedule,save:()=>{if(current()&&!busy)void onSave?.();},restore:()=>{if(current()&&!busy)void onRestore?.();},dispose(){disposed=true;stop();}};
 }
-export function bindSimulationPanel(root,controller){root?.querySelector('[data-simulation-generate]')?.addEventListener('click',()=>void controller.start());root?.querySelector('[data-simulation-cancel]')?.addEventListener('click',()=>void controller.cancel());}
+export function bindSimulationPanel(root,controller){root?.querySelector('[data-simulation-generate]')?.addEventListener('click',()=>void controller.start());root?.querySelector('[data-simulation-cancel]')?.addEventListener('click',()=>void controller.cancel());root?.querySelector('[data-simulation-save]')?.addEventListener('click',()=>controller.save());root?.querySelector('[data-simulation-restore]')?.addEventListener('click',()=>controller.restore());}
 export function replaceSimulationPanel(host,draft,options,controller){
  if(!host)return;
  const markup=simulationPanelHTML(draft,options);if(panelMarkup.get(host)===markup&&host.firstElementChild)return;

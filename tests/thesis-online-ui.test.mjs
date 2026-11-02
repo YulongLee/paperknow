@@ -185,6 +185,16 @@ test('a changed step-four outline prominently blocks quotations until explicit v
  }finally{f.close();}
 });
 
+test('wizard outline synchronization retains cloud-adopted simulations, research supplements and final references',async()=>{
+ const local=snapshot(),saved=snapshot(),simulation={id:'simulation:existing',name:'模拟资料',dataKind:'simulation',confirmed:true,text:'完整模拟数据与参数',simulation:{jobId:'existing',seed:42,generatorVersion:1,recipe:{sampleSize:60}}},note={id:'evidence',name:'终稿补充',purpose:'研究证据补充',text:'作者提供的研究记录',confirmed:true},reference={id:'extra-reference',title:'真实文献',text:'作者核对的摘要',sourceLabel:'作者终稿补充文献',confirmed:true};saved.materials.push(simulation,note);saved.references.push(reference);saved.requirements={...saved.requirements,deliveryVersion:1};
+ const f=fixture({item:thesis({snapshot:saved})});try{
+  const stop=mountThesisStage({id:'t1',container:f.$('.dashboard'),getSnapshot:()=>structuredClone(local),ctx:f.ctx});await stop.ready;assert.equal(f.$('.thesis-snapshot-drift'),null,'cloud-only supplements are not lost wizard changes');
+  local.outline[0].title='第一章 调整后的提纲';f.$('[data-thesis-refresh]').click();await settle();f.$('[data-thesis-sync-primary]').click();await settle();
+  const write=f.calls.find(row=>row.path==='/theses/t1'&&row.data);assert.ok(write);assert.deepEqual(write.data.snapshot.materials.slice(-2),[simulation,note]);assert.deepEqual(write.data.snapshot.references.at(-1),reference);assert.equal(write.data.snapshot.requirements.deliveryVersion,1);assert.equal(write.data.snapshot.outline[0].title,local.outline[0].title);
+  assert.equal(f.$('.thesis-snapshot-drift'),null);assert.equal(f.calls.some(row=>row.path.endsWith('/generate')),false);
+ }finally{f.close();}
+});
+
 test('account-only research additions stay intact unless the user explicitly chooses to replace them',async()=>{
  const local=snapshot(),saved=snapshot();saved.materials.push({id:'account-only',name:'账户独立补充',text:'独立补充的真实资料',confirmed:true});const f=fixture({item:thesis({version:6,snapshot:saved})});
  try{const stop=mountThesisStage({id:'t1',container:f.$('.dashboard'),getSnapshot:()=>structuredClone(local),ctx:f.ctx});await stop.ready;assert.equal(f.$('[data-thesis-quote]').disabled,true);assert.match(f.$('.thesis-snapshot-drift').textContent,/账户中独立补充/);f.$('[data-thesis-use-account]').click();assert.match(f.$('.thesis-account-choice').textContent,/本次使用账户已保存的信息/);assert.equal(f.calls.some(row=>row.data),false);f.$('[data-thesis-quote]').click();await settle();assert.equal(f.$('[data-thesis-consent]'),null);assert.equal(f.calls.find(row=>row.path.endsWith('/generate')).data.version,6);assert.equal(f.calls.some(row=>row.path==='/theses/t1'&&row.data),false);assert.match(f.$('.thesis-sources').textContent,/账户独立补充/);

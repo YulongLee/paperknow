@@ -8,7 +8,7 @@ import {createThesisService} from '../backend/thesis-service.mjs';
 import {createThesisMethodService} from '../backend/thesis-method-service.mjs';
 import {startThesisMethodWorker} from '../backend/thesis-method-worker.mjs';
 import {normalizeThesisSnapshot,selectThesisEvidence} from '../backend/thesis-model.mjs';
-import {parseThesisSimulation,thesisSimulationTask,validateThesisSimulationCandidate} from '../backend/thesis-simulation-model.mjs';
+import {parseThesisSimulation,thesisSimulationTask,validateThesisSimulationCandidate,simulationResearchGaps} from '../backend/thesis-simulation-model.mjs';
 import {generateSimulationData,normalizeSimulationRecipe,simulationDisclosure} from '../dist/workspace/simulation-data.mjs';
 import {thesisDocumentPresentation} from '../dist/workspace/thesis-document.mjs';
 import {thesisExportMetadata} from '../dist/workspace/thesis-template.mjs';
@@ -45,6 +45,10 @@ test('normal and binary simulation variables stay bounded and use the declared p
 test('AI only designs a simulation recipe and must retain the synthetic marker',()=>{
  const source=snapshot(),task=thesisSimulationTask(source);assert.equal(task.skill,'thesis-simulation');assert.deepEqual(task.materials,[]);assert.match(task.instructions,/不能虚构真实受访者/);assert.equal(parseThesisSimulation(response(),source,42).seed,42);for(const value of [{complete:true,recipe:recipe()},{...candidate(),rows:[1]}, {...candidate(),synthetic:false}])assert.equal(validateThesisSimulationCandidate({text:JSON.stringify(value)},source,42).valid,false);
 });
+test('simulation context covers later chapters and current checker gaps before repeating early-chapter details',()=>{
+ const chapters=Array.from({length:24},(_,i)=>({title:'第'+(i+1)+'章',requests:Array.from({length:20},(_,j)=>'缺项'+j)})),check={items:[{title:'参考文献',status:'missing',missing:['尚缺可引用的正文']},{title:'封面',status:'sufficient',missing:['不要加入']}]},gaps=simulationResearchGaps({chapters},check);
+ assert.equal(gaps.length,60);assert.ok(gaps.includes('第24章：缺项0'));assert.ok(gaps.includes('参考文献：尚缺可引用的正文'));assert.ok(gaps.every(text=>text.length<=400));assert.ok(gaps.every(text=>!text.startsWith('封面')));const task=thesisSimulationTask({...snapshot(),simulation:{missingInformation:gaps}});assert.deepEqual(task.context.missingInformation,gaps);
+});
 test('simulation tasks are owner-bound, version-bound, durable and bill once before verified adoption as marked material',async t=>{
  const f=fixture(t);f.pay();const thesis=await f.create(),key=randomUUID(),run=await f.start(thesis,{clientKey:key});assert.equal(run.operation,'simulation');assert.equal(f.billing.balance(f.owner.id).held,10);assert.equal((await f.start(thesis,{clientKey:key})).id,run.id);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_method_runs').get().n,1);
  await assert.rejects(f.request('/api/theses/methods',{operation:'simulation',thesisId:thesis.id,version:thesis.version,clientKey:randomUUID(),consent:true},f.other),error=>error.status===404);await f.worker.tick();const done=(await f.request('/api/theses/methods/'+run.id)).item;assert.equal(done.status,'completed',done.error);assert.equal(done.output.origin,'ai_simulation');assert.equal(f.billing.balance(f.owner.id).balance,190);assert.equal(f.billing.balance(f.owner.id).held,0);
@@ -54,6 +58,20 @@ test('simulation tasks are owner-bound, version-bound, durable and bill once bef
 });
 test('failed simulation validation releases held credits and creates no usable dataset',async t=>{
  const f=fixture(t,{agentTaskRunner:async()=>({...response(),text:JSON.stringify({...candidate(),synthetic:false})})});f.pay();const run=await f.start(await f.create());await f.worker.tick();const done=(await f.request('/api/theses/methods/'+run.id)).item;assert.equal(done.status,'failed');assert.equal(done.output,null);assert.equal(f.billing.balance(f.owner.id).balance,200);assert.equal(f.billing.balance(f.owner.id).held,0);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);
+});
+
+test('same-research completed simulations can be recovered after a lost reference, with all rows and no new charge',async t=>{
+ const f=fixture(t);f.pay();const thesis=await f.create(),run=await f.start(thesis);await f.worker.tick();
+ const done=(await f.request('/api/theses/methods/'+run.id)).item,read=async()=>(await f.request('/api/theses/'+thesis.id)).item;
+ assert.deepEqual((await read()).simulationRecovery,{id:run.id,title:done.output.recipe.title,sampleSize:40,variableCount:2,createdAt:run.createdAt});
+ const adopt=async version=>(await f.request('/api/theses/'+thesis.id+'/completion',{version,clientKey:randomUUID(),simulationRunIds:[run.id]})).item;
+ const adopted=await adopt(thesis.version);assert.equal(adopted.simulationRecovery,null);assert.equal(adopted.snapshot.materials[0].text,done.output.text);
+ const removed=(await f.request('/api/theses/'+thesis.id,{version:adopted.version,snapshot:snapshot()})).item;
+ assert.equal(removed.simulationRecovery?.id,run.id,'an old same-context dataset is offered instead of requiring another paid generation');
+ const restored=await adopt(removed.version);assert.equal(restored.snapshot.materials.length,1);assert.equal(restored.snapshot.materials[0].text,done.output.text);assert.equal(restored.snapshot.materials[0].simulation.seed,done.output.seed);assert.equal(done.output.rows.length,40);
+ assert.equal(f.billing.balance(f.owner.id).balance,190);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_method_runs').get().n,1);
+ const another=await f.create('不同研究');assert.equal(another.simulationRecovery,null);await assert.rejects(f.request('/api/theses/'+thesis.id,undefined,f.other),error=>error.status===404);
+ const changed=(await f.request('/api/theses/'+thesis.id,{version:restored.version,snapshot:{...snapshot(),title:'完全不同的研究'}})).item;assert.equal(changed.simulationRecovery,null);
 });
 test('simulation data cannot be adopted by another thesis or with a changed research context',async t=>{
  const f=fixture(t),thesis=await f.create(),run=await f.start(thesis);await f.worker.tick();const another=await f.create('另一个仿真研究');await assert.rejects(f.request('/api/theses/'+another.id+'/completion',{version:another.version,clientKey:randomUUID(),simulationRunIds:[run.id]}),error=>error.status===409);await assert.rejects(f.request('/api/theses/methods/'+run.id,undefined,f.other),error=>error.status===404);

@@ -1,6 +1,6 @@
 import {serviceMessage} from './service-message.mjs';
 import {thesisPreviewItem,thesisReaderHTML,readerTextHTML} from './thesis-generation-reader.mjs';
-import {createThesisSimulationController,bindSimulationPanel,replaceSimulationPanel,simulationPending} from './thesis-simulation-client.mjs';
+import {createThesisSimulationController,bindSimulationPanel,replaceSimulationPanel,simulationPending,mergeThesisSupplements,completionHasUnsavedInputs,synchronizeSimulationState} from './thesis-simulation-client.mjs';
 import {createCompletionDraft,completionPayload,completionDraftRecord,restoreCompletionDraft,setCompletionIssues,completionPanelHTML,completionProgressText,bindCompletionPanel,updateCompletionPanelState} from './thesis-completion-panel.mjs';
 import {resolveAccountProjectId} from './project-directory.mjs';
 import {writingQualityPanel} from './writing-quality-panel.mjs';
@@ -60,6 +60,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  let accountSnapshotChoice=null,chapterPresentation=null,templateSelectionMade=false,templateMessage='',templateRefreshPending=false,templatePickerBaseline;
  const disclosureState=new Map();
  let exportLocks=[],exporting=false,completionSubmitting=false;
+ const boundRunControls=new WeakSet();
  let coverEdits=null,completionDraft=createCompletionDraft(),completionRecheckNow=false;
  const $=selector=>container.querySelector(selector);
  const dirty=()=>edits.size>0||researchEdits!==null||coverEdits!==null||completionDraft.dirty;
@@ -68,7 +69,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  const current=()=>alive&&container.isConnected;
  const clean=()=>{persistDraft();alive=false;simulationController.dispose();clearTimeout(timer);controllers.forEach(controller=>controller.abort());instances.delete(instance);document.removeEventListener('visibilitychange',visibility);win.removeEventListener('beforeunload',unload);win.removeEventListener('pagehide',pagehide);document.removeEventListener('click',outbound,true);container.removeEventListener('click',citationAction);};
  const instance={container,dispose:clean,notice,persistDraft,hasWork:()=>alive&&(busy||dirty()),busy:()=>alive&&busy,sessionChanged(next){if(user&&String(user.id)!==String(next?.id)){persistDraft();user=null;item=null;items=[];quote=null;researchEdits=null;coverEdits=null;edits.clear();message='登录账户已变化，请重新打开账户论文；本页未发送新的资料。';clean();container.innerHTML=`<section class="thesis-online-shell"><h2>账户已切换</h2><p>${escape(message)}</p><a href="#theses">重新查看账户论文</a></section>`;}}};
- const simulationController=createThesisSimulationController({api,owner,getItem:()=>item,getDraft:()=>completionDraft,getUserId:()=>user?.id,isCurrent:current,persist:persistDraft,render:renderSimulation,onCompleted:renderSimulation});
+ const simulationController=createThesisSimulationController({api,owner,getItem:()=>item,getDraft:()=>completionDraft,getUserId:()=>user?.id,isCurrent:current,persist:persistDraft,render:renderSimulation,onCompleted:simulationCompleted,onSave:saveSimulation,onRestore:restoreSimulation});
  instances.add(instance);
  container.addEventListener('click',citationAction);
  container.classList.add('thesis-online-host');
@@ -165,7 +166,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  function pagehide(){if(alive)persistDraft();}
  function outbound(event){const a=event.target?.closest?.('a[href]');if(!alive||!container.contains(a)||a.target==='_blank'||a.hasAttribute('download')||event.button>0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;const href=a.getAttribute('href');if(!href||href.startsWith('#'))return;if(busy||!persistDraft()){event.preventDefault();event.stopImmediatePropagation();notice(busy?'正在保存，请稍候再离开。':'草稿自动保存未成功，请先复制编辑内容备份并重试。');}}
  win.addEventListener('beforeunload',unload);win.addEventListener('pagehide',pagehide);document.addEventListener('click',outbound,true);
- function takeItem(next,templateSelection=false){if(!next?.id)throw Error('论文数据不完整，请重新读取。');const beforeTemplate=JSON.stringify(item?.exportTemplate);item=next;id=next.id;loaded=true;if(templateSelection)templateSelectionMade=true;if(Object.hasOwn(next,'exportTemplate')&&(beforeTemplate!==JSON.stringify(next.exportTemplate)||templateSelection))onTemplateSaved?.(next.exportTemplate,next,{explicit:templateSelection,userId:user?.id});if(!selected||(next.chapters||[]).every(chapter=>chapter.id!==selected))selected=next.chapters?.find(row=>!thesisFrontMatterKind(row)&&!thesisManualBackMatter(row)&&!isOutlineReferenceChapter(row))?.id||next.chapters?.[0]?.id||null;restoreDraft();}
+ function takeItem(next,templateSelection=false){if(!next?.id)throw Error('论文数据不完整，请重新读取。');const beforeTemplate=JSON.stringify(item?.exportTemplate);item=next;id=next.id;loaded=true;if(templateSelection)templateSelectionMade=true;if(Object.hasOwn(next,'exportTemplate')&&(beforeTemplate!==JSON.stringify(next.exportTemplate)||templateSelection))onTemplateSaved?.(next.exportTemplate,next,{explicit:templateSelection,userId:user?.id});if(!selected||(next.chapters||[]).every(chapter=>chapter.id!==selected))selected=next.chapters?.find(row=>!thesisFrontMatterKind(row)&&!thesisManualBackMatter(row)&&!isOutlineReferenceChapter(row))?.id||next.chapters?.[0]?.id||null;restoreDraft();synchronizeSimulationState(completionDraft,item);if(completionDraft.simulationJob?.status==='completed'&&!completionDraft.simulationJob.adoptionStatus&&completionDraft.simulationRunIds?.length)completionDraft.simulationJob.adoptionStatus='pending';}
  function chapterConflict(chapter,edit){return !!(chapter&&edit&&(String(chapter.text||'')!==edit.baseText||Number(chapter.version||0)!==edit.baseVersion));}
  function editState(chapter,edit){return edit?(draftStorageError?'草稿暂未保存，请复制备份':chapterConflict(chapter,edit)?'本地草稿已保存 · 账户版本变化，请先核对':'本浏览器草稿已自动保存 · 尚未更新账户正文'):chapter?.version?'已保存 · 章节版本 '+Number(chapter.version):'尚无正文';}
  async function refresh(){
@@ -260,7 +261,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  function snapshotBinding(){
   if(!item||!getSnapshot)return {blocked:false,token:JSON.stringify(['account',item?.version??'',item?.projectId||null,hasProjectSelector?String(getProjectRef()||''):''])};
   try{
-   const local=getSnapshot(),account=canonicalSnapshot(item.snapshot),current=canonicalSnapshot(local),projectId=resolvedProjectId(),projectRef=hasProjectSelector?String(getProjectRef()||''):'',localKey=JSON.stringify([current,projectId,projectRef]),accountKey=JSON.stringify([account,item.projectId||null]),different=JSON.stringify(current)!==JSON.stringify(account)||String(projectId||'')!==String(item.projectId||'');
+   const local=mergeThesisSupplements(getSnapshot(),item.snapshot),account=canonicalSnapshot(item.snapshot),current=canonicalSnapshot(local),projectId=resolvedProjectId(),projectRef=hasProjectSelector?String(getProjectRef()||''):'',localKey=JSON.stringify([current,projectId,projectRef]),accountKey=JSON.stringify([account,item.projectId||null]),different=JSON.stringify(current)!==JSON.stringify(account)||String(projectId||'')!==String(item.projectId||'');
    const acknowledged=accountSnapshotChoice?.version===item.version&&accountSnapshotChoice?.localKey===localKey&&accountSnapshotChoice?.accountKey===accountKey;
    const names={title:'论文题目',profile:'基础研究信息',requirements:'写作要求',materials:'研究材料',references:'参考文献',outline:'论文提纲与字数分配'},differences=Object.keys(names).filter(key=>JSON.stringify(current[key])!==JSON.stringify(account[key])).map(key=>names[key]);if(String(projectId||'')!==String(item.projectId||''))differences.push('所属项目');
    return {blocked:different&&!acknowledged,different,acknowledged,local,current,account,localKey,accountKey,differences,token:JSON.stringify([item.id,item.version,localKey,accountKey])};
@@ -279,6 +280,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   return `${!running(item)&&item.status!=='completed'&&thesisStatus(item)!=='completed'&&!assessThesisEvidence(item.snapshot).ready?`<section class="thesis-source-gap"><h3>可生成待核对初稿</h3><p>第二步的研究资料上传可选。只有题录也可以继续生成；缺少的数据和依据会保留待补充标记。</p><p>可在第三步补充来源摘要或正文，仅有题录不代表已读取原文。</p>${typeof onReferences==='function'?'<button type="button" class="btn secondary" data-thesis-references>可选：补充文献摘要或正文</button>':''}</section>`:''}<p>最多 ${Number(cap?.limits?.maxChapters)||30} 章 · 目标上限 ${(Number(cap?.limits?.maxTargetWords)||80000).toLocaleString('zh-CN')} 字。研究资料与文献正文可选，只有题录也可按已确认的题目、方法与提纲生成待核对初稿。</p><p>缺少的研究数据、结论依据和可核对引文会保留待补充标记，不会虚构已完成的实验、调查或文献内容。有来源正文时使用相应片段，不等同于全文研读或在线文献核验。</p>`;
  }
  async function generateThesis(action){
+  if(simulationPending(completionDraft))throw Error('模拟资料正在生成或保存，完成后即可继续。');
   if(!cap?.ready||running(item)||dirty())throw Error('请先保存修改并确认服务可用。');
   const binding=requireCurrentSnapshot(),version=item.version,automatic=action==='generate'&&cap.automaticManuscript===true&&item.snapshot?.requirements?.deliveryVersion===1;
   quote=null;generationConsent=false;
@@ -300,7 +302,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  }
  function controls(){
   if(!item)return '';
-  const binding=snapshotBinding(),active=running(item),hasText=(item.chapters||[]).some(chapter=>String(chapter.text||'').trim()),resumable=item.job?.canResume===true||['failed','cancelled'].includes(item.job?.status)&&item.status!=='draft',disabled=!cap?.ready||busy||dirty()||binding.blocked;
+  const binding=snapshotBinding(),active=running(item),hasText=(item.chapters||[]).some(chapter=>String(chapter.text||'').trim()),resumable=item.job?.canResume===true||['failed','cancelled'].includes(item.job?.status)&&item.status!=='draft',disabled=!cap?.ready||busy||dirty()||simulationPending(completionDraft)||binding.blocked;
   return `<section class="thesis-run-controls"><div class="thesis-action-row">${active?`<button type="button" class="btn secondary" data-thesis-cancel ${busy?'disabled':''}>停止生成</button>`:resumable?`<button type="button" class="btn primary" data-thesis-quote="resume" ${disabled?'disabled':''}>继续生成</button>`:!hasText||item.status==='draft'?`<button type="button" class="btn primary" data-thesis-quote="generate" ${disabled?'disabled':''}>${hasText?'重新生成论文':'生成论文'}</button>`:''}<button type="button" class="btn secondary thesis-refresh" data-thesis-refresh ${busy?'disabled':''}>刷新</button></div>${!cap?.ready?`<p class="thesis-error">${escape(cap?.reason||'生成服务暂不可用，请稍后重试。')}</p>`:''}<details class="generation-disclosure thesis-service-details"><summary data-thesis-disclosure="service">生成说明</summary><div class="generation-disclosure-body">${generationNotes()}</div></details></section>`;
  }
 
@@ -457,16 +459,58 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
    else if(!body)body='<section class="thesis-login"><h3>请先选择一篇账户论文</h3><p>从账户论文列表打开已有论文，或从毕业论文前四步确认研究信息。</p><a class="btn secondary" href="#theses">查看账户论文</a></section>';
   }else body=simpleWorkspace();
   container.innerHTML=`${prefix}<div class="thesis-online-shell thesis-simple-shell"><div data-thesis-notice role="status" aria-live="polite" ${routineNotices.has(message)?'hidden':''}>${escape(message)}</div>${body}${!library?`<div class="thesis-bottom-actions"><a href="#theses">账户论文</a></div>`:''}</div>`;
-  bind();const templateStatus=$('[data-template-status]');if(templateStatus)templateStatus.textContent=templateMessage;restoreView();if(materialFollowup(item)||item?.completionReview&&['needs_materials','check_required'].includes(item.completionReview.status)&&!running(item)){const key=JSON.stringify([item.job?.id,item.completionReview?.status,item.completionReview?.missing,item.completionReview?.issues,item.quality?.supplementCheck]);if(key!==attentionShownKey){const drawer=$('[data-thesis-supplement-drawer]');if(drawer)drawer.open=true;attentionShownKey=key;}}schedule();
+  bind();const templateStatus=$('[data-template-status]');if(templateStatus)templateStatus.textContent=templateMessage;restoreView();if(materialFollowup(item)||item?.completionReview&&['needs_materials','check_required'].includes(item.completionReview.status)&&!running(item)){const key=JSON.stringify([item.job?.id,item.completionReview?.status,item.completionReview?.missing,item.completionReview?.issues,item.quality?.supplementCheck]);if(key!==attentionShownKey){const drawer=$('[data-thesis-supplement-drawer]');if(drawer)drawer.open=true;attentionShownKey=key;}}if(!busy&&item&&!running(item)&&completionDraft.simulationJob?.adoptionStatus==='pending')queueMicrotask(()=>void saveSimulation());schedule();
  }
- function renderSimulation(){replaceSimulationPanel($('[data-thesis-simulation-host]'),completionDraft,{disabled:busy||running(item)},simulationController);updateCompletionPanelState($('[data-thesis-completion]'),completionDraft,{busy:busy||running(item)});updateExportButtons();}
+
+ function simulationCompleted(){
+  completionDraft.simulationJob.adoptionStatus='pending';persistDraft();renderSimulation();queueMicrotask(()=>void saveSimulation());
+ }
+ async function restoreSimulation(){
+  const recovery=item?.simulationRecovery;if(!recovery||busy||running(item))return;
+  completionDraft.simulationJob={status:'completed',jobId:recovery.id,thesisId:item.id,version:item.version,adoptionStatus:'pending',sampleSize:recovery.sampleSize,variableCount:recovery.variableCount,text:'',error:''};
+  completionDraft.simulationRunIds=[...new Set([...(completionDraft.simulationRunIds||[]),recovery.id])];completionDraft.dirty=true;persistDraft();await saveSimulation();
+ }
+ async function saveSimulation(){
+  if(busy||exporting||!current()||!item||running(item))return;
+  const state=completionDraft.simulationJob;if(state?.status!=='completed')return;
+  const ids=completionDraft.simulationRunIds?.length?[...completionDraft.simulationRunIds]:state.jobId?[state.jobId]:[];if(!ids.length)return;
+  const version=item.version,key=state.adoptionKey??=crypto.randomUUID();busy=true;state.adoptionStatus='saving';state.error='';completionDraft.simulationRunIds=ids;persistDraft();renderSimulation();
+  try{
+   await owner();if(!current())return;
+   const value=await api('/theses/'+encodeURIComponent(id)+'/completion',{version,clientKey:key,simulationRunIds:ids});await owner();if(!current())return;
+   takeItem(value.item);
+   if(!ids.every(jobId=>item.snapshot?.materials?.some(material=>material.dataKind==='simulation'&&material.simulation?.jobId===jobId)))throw Error('模拟资料的保存结果尚未确认，请重试保存，无需重新生成。');
+   completionDraft.simulationRunIds=(completionDraft.simulationRunIds||[]).filter(jobId=>!ids.includes(jobId));synchronizeSimulationState(completionDraft,item);completionDraft.dirty=completionHasUnsavedInputs(completionDraft);completionDraft.quote=null;completionDraft.requestKey=null;
+   if(coverEdits?.baseVersion===version)coverEdits.baseVersion=item.version;if(researchBaseVersion===version)researchBaseVersion=item.version;
+   persistDraft();
+  }catch(error){if(current()){const failed=completionDraft.simulationJob;if(failed){failed.adoptionStatus='failed';failed.adoptionKey=key;failed.error=serviceMessage(error.message||'模拟资料暂未保存，请重试保存，无需重新生成。');}persistDraft();if(error.status===401)failure(error);}}
+  finally{busy=false;if(current()){if(!item||!user)render();else refreshSimulationSaveView();}}
+ }
+ function renderSimulation(){replaceSimulationPanel($('[data-thesis-simulation-host]'),completionDraft,{disabled:busy||running(item),recovery:item?.simulationRecovery},simulationController);updateCompletionPanelState($('[data-thesis-completion]'),completionDraft,{busy:busy||running(item)});updateExportButtons();}
  function renderCompletion(){const host=$('[data-thesis-completion-host]');if(!host)return;const drawer=$('[data-thesis-supplement-drawer]');if(drawer&&completionDraft.open)drawer.open=true;withStableView(container.closest('.dashboard')||container,()=>{host.innerHTML=completionPanelHTML(item,completionDraft,{busy:busy||running(item),preparing:completionSubmitting,costText,showCover:false,embedded:true});bindCompletion();});}
  function bindCompletion(){bindSimulationPanel($('[data-thesis-simulation-host]'),simulationController);simulationController.resume();bindCompletionPanel($('[data-thesis-completion]'),completionDraft,{busy:()=>busy||running(item),changed:()=>{persistDraft();updateCompletionPanelState($('[data-thesis-completion]'),completionDraft,{busy:busy||running(item)});updateExportButtons();},render:renderCompletion,viewChapter:chapterId=>{if(!item.chapters.some(row=>row.id===chapterId))return;selected=chapterId;persistDraft();render();const panel=$('.thesis-simple-edit');if(panel)panel.open=true;const editor=$('[data-thesis-editor]');editor?.focus({preventScroll:true});editor?.scrollIntoView?.({block:'center',behavior:'smooth'});},confirm:()=>mutate(async()=>{if(dirty()||running(item))throw Error('请先保存修改并完成检查');const review=item.completionReview;if(review?.status!=='ready'||!review.fingerprint)throw Error('请读取最新的补充检查结果');await owner();const value=await api('/theses/'+encodeURIComponent(id)+'/completion/confirm',{version:item.version,runId:review.runId,fingerprint:review.fingerprint});await owner();if(!current())return;takeItem(value.item);if(item.completionReview?.status!=='confirmed')throw Error('本次补充确认尚未完成，请重试');completionRecheckNow=true;notice('补充内容已确认，正在准备终稿编排。');}),recheck:()=>$('#thesis-online-docx')?.click(),
   importFile:async(file,purpose,status)=>{if(busy||running(item))return;busy=true;updateExportButtons();try{await owner();const {importWorkspaceDocument}=await import('./document-import.mjs');const parsed=await importWorkspaceDocument(file,status,{projectId:item.projectId});if(!current())return;await owner();if(!parsed.text?.trim())throw Error('未读取到正文，请选择其他文件。');if(parsed.text.length>50000)throw Error('单份补充资料最多 50,000 字符，请选取与缺项有关的内容。');if(purpose==='reference')completionDraft.reference={title:file.name.replace(/\.[^.]+$/,''),authors:'',year:'',doi:'',text:parsed.text};else {if(completionDraft.materials.length>=10)throw Error('本次最多补充 10 份材料。');completionDraft.materials.push({name:file.name,text:parsed.text});}completionDraft.dirty=true;completionDraft.quote=null;completionDraft.requestKey=null;persistDraft();notice(purpose==='reference'?'文献正文已读取，请核对真实题名、作者与年份后加入。':'材料已读取，保存后由系统用于完善正文。');}catch(error){failure(error);}finally{busy=false;if(current())render();}},
   prepare:()=>mutate(async()=>{if(simulationPending(completionDraft))throw Error('模拟数据正在生成，请等待完成后继续');if(running(item)||edits.size||researchEdits||coverEdits)throw Error('请先保存当前章节或研究信息，再补充终稿资料。');if(Object.values(completionDraft.reference).some(value=>String(value).trim()))throw Error('请先点击“加入这篇文献”，保存文献题录与正文。');if(!completionDraft.dirty&&['ready','confirmed'].includes(item.completionReview?.status)){notice('已有完整的自动补充结果，请核对后确认或下载终稿。');return;}completionDraft.quote=null;if(completionDraft.dirty||item.snapshot?.requirements?.deliveryVersion!==1){completionDraft.requestKey??=crypto.randomUUID();const result=await api('/theses/'+encodeURIComponent(id)+'/completion',completionPayload(completionDraft,item.version));takeItem(result.item);completionDraft.dirty=false;completionDraft.materials=[];completionDraft.references=[];completionDraft.simulationRunIds=[];completionDraft.supplement='';completionDraft.acknowledgements='';completionDraft.requestKey=null;persistDraft();if(['ready','confirmed'].includes(item.completionReview?.status)){notice('信息已保存，现有正文检查已通过，请确认补充结果。');return;}}try{const value=await api('/theses/'+encodeURIComponent(id)+'/quote',{version:item.version,action:'generate',completion:true,completionScope:'full',issueCodes:completionDraft.issues});if(!validThesisQuote(value)||!Array.isArray(value.completion?.chapterTitles)||!value.completion.chapterTitles.length)throw Error('自动完善报价不完整，请重新获取。');completionDraft.quote={...value,version:item.version,clientKey:crypto.randomUUID()};completionDraft.open=true;await startCompletion();}catch(error){if(error.status===422&&/没有需要 AI/.test(error.message)){completionRecheckNow=true;notice('信息已保存，正在重新检查并排版。');}else throw error;}},{generation:true,completion:true}),
   start:()=>mutate(startCompletion,{generation:true,completion:true})});}
+
+ function bindRunControls(){
+  const once=(node,action)=>{if(!node||boundRunControls.has(node))return;boundRunControls.add(node);node.addEventListener('click',action);};
+  container.querySelectorAll('[data-thesis-quote]').forEach(button=>once(button,()=>void mutate(()=>generateThesis(button.dataset.thesisQuote),{generation:true})));
+  once($('[data-thesis-refresh]'),()=>void mutate(async()=>{await refresh();quote=null;notice(dirty()?'已读取最新状态。未保存文字仍保留，请核对后保存。':'已读取最新账户状态。');}));
+  once($('[data-thesis-cancel]'),()=>void mutate(async()=>{const value=await api('/theses/'+encodeURIComponent(id)+'/cancel',{version:item.version});takeItem(value.item);quote=null;notice('已发送停止请求，已完成章节会保留。');}));
+ }
+ function refreshSimulationSaveView(){
+  const fragment=container.ownerDocument.createElement('template');fragment.innerHTML=controls()+progress()+snapshotSummary(item.snapshot);
+  const focused=container.ownerDocument.activeElement,rect=container.contains(focused)?focused.getBoundingClientRect():null,anchor=rect&&rect.bottom>0&&rect.top<win.innerHeight?focused:null;
+  withStableView(container.closest('.dashboard')||container,()=>{
+   for(const selector of ['.thesis-run-controls','.thesis-progress','.thesis-summary','.thesis-sources','.thesis-presentations']){const existing=$(selector),next=fragment.content.querySelector(selector);if(existing&&next)patchGenerationNode(existing,next);}
+   bindRunControls();renderSimulation();
+  });
+  if(anchor?.isConnected){const delta=anchor.getBoundingClientRect().top-rect.top;if(Math.abs(delta)>.5)win.scrollTo({left:win.scrollX,top:win.scrollY+delta,behavior:'instant'});}
+  schedule();
+ }
  function bind(){
-  bindCompletion();
+  bindCompletion();bindRunControls();
   $('[data-thesis-open-editor]')?.addEventListener('click',()=>{const panel=$('.thesis-simple-edit');if(panel){panel.open=true;panel.scrollIntoView?.({block:'start',behavior:'smooth'});}});
   $('[data-thesis-confirm-download]')?.addEventListener('click',()=>{if(!busy&&!dirty())$('[data-completion-confirm]')?.click();});
   container.querySelectorAll('[data-thesis-open-supplement]').forEach(button=>button.addEventListener('click',()=>{const panel=$('[data-thesis-supplement-drawer]');if(panel){panel.open=true;panel.scrollIntoView?.({block:'start',behavior:'smooth'});}}));
@@ -475,7 +519,6 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   $('[data-thesis-create]')?.addEventListener('click',()=>void mutate(async()=>{
    await createAccountDraft();
   }));
-  $('[data-thesis-refresh]')?.addEventListener('click',()=>void mutate(async()=>{await refresh();quote=null;notice(dirty()?'已读取最新状态。未保存文字仍保留，请核对后保存。':'已读取最新账户状态。');}));
   container.querySelectorAll('[data-research-field]').forEach(input=>input.addEventListener('input',()=>{
    if(!researchEdits)researchBaseVersion=item.version;researchEdits={method:$('#thesis-research-method').value,researchQuestion:$('#thesis-research-question').value,supplement:$('#thesis-research-supplement').value};
    if(researchEdits.method===String(item.profile?.method||'')&&researchEdits.researchQuestion===String(item.profile?.researchQuestion||'')&&!researchEdits.supplement.trim()){researchEdits=null;researchBaseVersion=null;}quote=null;persistDraft();
@@ -495,12 +538,10 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   $('[data-thesis-use-account]')?.addEventListener('click',()=>{if(busy||running(item)||dirty())return;const binding=snapshotBinding();if(binding.error||!binding.different)return;accountSnapshotChoice={version:item.version,localKey:binding.localKey,accountKey:binding.accountKey};quote=null;notice('已明确选择本次使用账户已保存的信息。前四步修改尚未同步；请核对下方账户信息后重新确认费用。');render();});
   container.querySelectorAll('[data-thesis-sync],[data-thesis-sync-primary]').forEach(button=>button.addEventListener('click',()=>void mutate(async()=>{
    if(dirty()||running(item))throw Error('请先保存章节和研究信息。');
-   const snapshot=getSnapshot();canonicalSnapshot(snapshot);if(!window.confirm('将使用前四步的信息替换账户的研究信息、资料与提纲，账户中独立补充的内容请先核对。已有章节历史版本会保留，同步后可点击生成。确认同步？'))return;
+   const snapshot=mergeThesisSupplements(getSnapshot(),item.snapshot);canonicalSnapshot(snapshot);if(!window.confirm('同步前四步的研究信息与提纲，已保存的模拟数据、补充资料和章节历史会保留。确认同步？'))return;
    const value=await api('/theses/'+encodeURIComponent(id),{version:item.version,snapshot,...projectPayload()});takeItem(value.item);accountSnapshotChoice=null;quote=null;notice('已同步前四步确认资料与新提纲，原章节历史版本继续保留。请核对后重新确认生成费用。');
   })));
   container.querySelectorAll('[data-thesis-references]').forEach(button=>button.addEventListener('click',()=>{if(busy||running(item)||dirty()){notice('请先保存当前编辑内容后再返回参考文献。');return;}onReferences?.();}));
-  container.querySelectorAll('[data-thesis-quote]').forEach(button=>button.addEventListener('click',()=>void mutate(()=>generateThesis(button.dataset.thesisQuote),{generation:true})));
-  $('[data-thesis-cancel]')?.addEventListener('click',()=>void mutate(async()=>{const value=await api('/theses/'+encodeURIComponent(id)+'/cancel',{version:item.version});takeItem(value.item);quote=null;notice('已发送停止请求，已完成章节会保留。');}));
   container.querySelectorAll('[data-thesis-chapter],[data-thesis-preview-chapter]').forEach(button=>button.addEventListener('click',()=>{if(busy)return;selected=button.dataset.thesisChapter||button.dataset.thesisPreviewChapter;persistDraft();editorError='';historyChapter=null;historyItems=null;historyPreview=null;render();}));
   $('[data-thesis-history]')?.addEventListener('click',()=>void mutate(async()=>{
    const chapterId=selected,value=await api('/theses/'+encodeURIComponent(id)+'/chapters/'+encodeURIComponent(chapterId)+'/versions');
@@ -555,6 +596,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  }
  function updateExportButtons(){
   const hasText=!!thesisDocumentText(thesisPreviewItem(item)),pending=simulationPending(completionDraft),disabled=busy||dirty()||!hasText;
+  container.querySelectorAll('[data-thesis-quote]').forEach(button=>button.disabled=!cap?.ready||busy||dirty()||pending||snapshotBinding().blocked);
   for(const selector of ['#thesis-online-docx','#thesis-online-draft']){const button=$(selector);if(button){button.disabled=disabled||(selector==='#thesis-online-docx'&&(pending||running(item)||materialFollowup(item)||item.completionReview?.required&&item.completionReview.status!=='confirmed'));button.setAttribute('aria-describedby','thesis-online-delivery-state');}}
   const final=$('#thesis-online-docx');if(final){final.hidden=item.completionReview?.required===true&&item.completionReview.status!=='confirmed';final.textContent='下载终稿（DOCX）';}const initial=$('#thesis-online-draft');if(initial)initial.textContent='下载初稿（DOCX）';const confirm=$('[data-thesis-confirm-download]');if(confirm)confirm.disabled=disabled||running(item)||pending;
   const state=$('[data-thesis-delivery-state]');if(state)state.textContent=busy?'正在保存或处理资料，请稍候。':pending?'模拟数据正在生成，完成后请保存材料并自动完善。':completionDraft.dirty?'补充资料尚未应用，请先点击“保存材料并自动完善”。':dirty()?'正文或封面有未保存修改，请先保存。':!hasText?'正文尚未生成，完成后可下载。':running(item)?'正文仍在生成，可先下载已保存的可编辑初稿。':materialFollowup(item)?'初稿已保存，可直接下载；终稿需补齐所列资料并重新检查。':item.completionReview?.status==='ready'?'自动补充已完成，请确认内容后导出终稿。':item.completionReview?.required&&item.completionReview.status!=='confirmed'?'请先完成自动补充检查，再确认并导出终稿。':'';

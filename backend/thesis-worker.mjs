@@ -110,7 +110,9 @@ export function startThesisWorker(db,config={}){
     // also applies to resumed legacy completion jobs with no scope metadata.
     // Keep the report and generate supported prose with explicit gaps; the
     // final, current-manuscript check still controls final DOCX delivery.
-    if(!['materials_ready','needs_materials'].includes(supplementCheck.status))throw thesisError(503,'资料检查尚未完成，并非已确认材料缺失；请重新检查，原稿与已保存材料会继续使用。','supplement_check_unavailable');
+    // An unavailable optional preflight is retained as unfinished, never
+    // as evidence approval. Writing still uses the normal admission ledger;
+    // final delivery requires a completed, current final check.
    }
    for(const unit of plan){
     let retries=0,minimumTokens=0,retryFeedback=null;

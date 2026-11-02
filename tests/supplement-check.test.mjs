@@ -137,11 +137,13 @@ test('UI escapes user material, exposes precise missing items and makes stale ev
 });
 
 
-test('an unavailable thesis checker fails as a service check, preserves saved material and releases the reservation',async t=>{
+test('an unavailable optional thesis preflight does not block draft writing and never unlocks a final document',async t=>{
  const error=Object.assign(Error('synthetic bounded checker failure'),{code:'turn_limit',usage:{input:100,output:50},costUsd:.001}),f=fixture(t,{thesis:true,checkError:error}),snap=snapshot();snap.profile.targetWords=500;snap.outline[0].targetWords=500;let item=(await f.request('/api/theses',{clientKey:randomUUID(),snapshot:snap})).item;
  for(const chapter of item.chapters)item=(await f.request('/api/theses/'+item.id+'/chapters/'+chapter.id,{version:item.version,text:'已保存的合成说明。'})).item;
  const original=item.chapters.map(({id,text,version})=>({id,text,version})),quote=await f.request('/api/theses/'+item.id+'/quote',{version:item.version,action:'generate',completion:true});await f.request('/api/theses/'+item.id+'/generate',{version:item.version,completion:true,clientKey:randomUUID(),consent:true,billingToken:quote.token});await f.worker.tick();const done=f.get(item.id);
- assert.equal(done.job.status,'failed');assert.equal(done.quality.supplementCheck.status,'unavailable');assert.match(done.job.error,/并非已确认材料缺失/);assert.deepEqual(done.chapters.map(({id,text,version})=>({id,text,version})),original);assert.equal(f.billing.balance('owner').balance,200);assert.equal(f.billing.balance('owner').held,0);
+ assert.equal(done.job.status,'completed',done.job.error);assert.equal(done.job.completedSections,done.job.totalSections);assert.equal(done.quality.supplementCheck.status,'unavailable');assert.match(done.quality.supplementCheck.reason,/不能据此判定材料缺失/);assert.equal(supplementCheckReady(done.quality),false);assert.ok(f.calls.some(call=>call.task.skill==='thesis-section'));
+ for(const old of original)assert.equal(f.db.prepare('SELECT text FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? AND version=?').get(item.id,old.id,old.version).text,old.text);
+ assert.equal(f.billing.balance('owner').balance,190);assert.equal(f.billing.balance('owner').held,0);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,1);
 });
 
 

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
-import {createThesisSimulationController,simulationPanelHTML,bindSimulationPanel} from '../dist/workspace/thesis-simulation-client.mjs';
+import {createThesisSimulationController,simulationPanelHTML,bindSimulationPanel,mergeThesisSupplements,synchronizeSimulationState,completionHasUnsavedInputs} from '../dist/workspace/thesis-simulation-client.mjs';
 import {createCompletionDraft,completionPayload,completionDraftRecord,restoreCompletionDraft} from '../dist/workspace/thesis-completion-panel.mjs';
 
 function fixture(t,{handle}={}){
@@ -26,4 +26,21 @@ test('restored pending commands recover by their original key without submitting
 test('disposed pages do not adopt a late response and service errors show their actual reason without a confirmation dialog',async t=>{
  let release;const wait=new Promise(resolve=>release=resolve),f=fixture(t,{handle:async path=>path==='/theses/methods'?wait:null}),running=f.controller.start();for(let i=0;i<12&&!f.calls.some(row=>row.path==='/theses/methods');i++)await new Promise(resolve=>setImmediate(resolve));f.dispose();release({item:{id:'sim-1',operation:'simulation',thesisId:'paper',userId:'owner',status:'completed',output:{origin:'ai_simulation',text:'模拟数据',rows:[{}]}}});await running;assert.deepEqual(f.draft.simulationRunIds,[]);
  const unavailable=fixture(t,{handle:async path=>path==='/billing/quote'?Promise.reject(Object.assign(Error('积分不足'),{status:402})):null});await unavailable.controller.start();assert.equal(unavailable.draft.simulationJob.status,'failed');assert.match(unavailable.root.textContent,/积分不足/);assert.equal(unavailable.calls.some(row=>row.path==='/theses/methods'),false);
+});
+
+test('wizard synchronization retains exact cloud supplement provenance while honoring ordinary source edits',()=>{
+ const simulation={id:'simulation:one',dataKind:'simulation',text:'完整模拟数据',simulation:{jobId:'one',seed:42,generatorVersion:1,recipe:{sampleSize:60,variables:[{key:'x'}]}}},note={id:'evidence',purpose:'研究证据补充',text:'作者真实记录'},ack={id:'ack',purpose:'致谢事实',text:'作者确认的致谢'},reference={id:'r',sourceLabel:'作者终稿补充文献',text:'真实摘要'},account={materials:[simulation,note,ack,{id:'removed',text:'普通旧资料'}],references:[reference],requirements:{deliveryVersion:1}},incoming={materials:[{id:simulation.id,text:'失去元数据的旧副本'},{id:'new',text:'本次新资料'}],references:[],requirements:{language:'中文'}};
+ const before=structuredClone({account,incoming}),merged=mergeThesisSupplements(incoming,account);
+ assert.deepEqual(merged.materials,[simulation,incoming.materials[1],note,ack]);assert.deepEqual(merged.references,[reference]);assert.deepEqual(merged.requirements,{language:'中文',deliveryVersion:1});assert.deepEqual({account,incoming},before);
+});
+
+test('cloud-confirmed simulation clears only its own pending input and never clears unfinished author inputs',()=>{
+ const draft=createCompletionDraft(),material={dataKind:'simulation',text:'完整云端数据',simulation:{jobId:'one',recipe:{sampleSize:60,variables:[{key:'x'},{key:'y'}]}}};draft.simulationJob={jobId:'one',status:'completed',adoptionStatus:'saving'};draft.simulationRunIds=['one'];draft.reference.title='尚未加入的文献';draft.dirty=true;
+ synchronizeSimulationState(draft,{id:'paper',version:2,snapshot:{materials:[material]}});
+ assert.equal(draft.simulationJob.adoptionStatus,'saved');assert.equal(draft.simulationJob.sampleSize,60);assert.equal(draft.simulationJob.variableCount,2);assert.deepEqual(draft.simulationRunIds,[]);assert.equal(draft.dirty,true);assert.equal(completionHasUnsavedInputs(draft),true);
+ synchronizeSimulationState(draft,{id:'paper',version:3,snapshot:{materials:[]}});assert.equal(draft.simulationJob.adoptionStatus,'missing');assert.match(simulationPanelHTML(draft),/保存模拟资料并继续/);
+});
+
+test('completing another simulation appends its ID without losing earlier unadopted results or polling a completed job',async t=>{
+ const f=fixture(t);f.draft.simulationRunIds=['earlier'];await f.controller.start();f.setJob({id:'sim-1',operation:'simulation',thesisId:'paper',userId:'owner',status:'completed',output:{origin:'ai_simulation',text:'模拟记录',rows:[{}],recipe:{variables:[{key:'x'},{key:'y'}]}}});await f.poll();assert.deepEqual(f.draft.simulationRunIds,['earlier','sim-1']);assert.equal(f.draft.simulationJob.variableCount,2);const reads=f.calls.length;f.controller.resume();await new Promise(resolve=>setImmediate(resolve));assert.equal(f.calls.length,reads);
 });

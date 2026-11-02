@@ -1,5 +1,5 @@
 import {completionReview,confirmCompletionReview} from './thesis-completion-review.mjs';
-import {completionAssessment,completionInput,thesisCompletionPlan,completionManuscriptHash,assertCompletionResumeUnchanged} from './thesis-completion.mjs';
+import {recoverableThesisSimulation,completionAssessment,completionInput,thesisCompletionPlan,completionManuscriptHash,assertCompletionResumeUnchanged} from './thesis-completion.mjs';
 import {randomUUID} from 'node:crypto';
 import {thesisCoverFields} from '../dist/workspace/thesis-delivery.mjs';
 import {buildThesisBibliography} from '../dist/workspace/thesis-document.mjs';
@@ -66,7 +66,7 @@ export function createThesisService(db,config={}){
    const manuscriptChanged=meta.completion?preflight?snapshot.outline.some(chapter=>(chapterVersion(row.id,chapter.id)?.id||null)!==(baseline.get(chapter.id)||null)):quality.manuscriptHash!==completionManuscriptHash(chapters):chapters.some(chapter=>chapter.source==='manual'||chapter.stale);
    item.quality={...quality,stale:run.snapshot_hash!==row.snapshot_hash||manuscriptChanged};
   }}
-  if(!summary)item.completionReview=completionReview(db,row,run);
+  if(!summary){item.completionReview=completionReview(db,row,run);item.simulationRecovery=recoverableThesisSimulation(db,row);}
   return item;
  }
  function touch(id,status){db.prepare('UPDATE theses SET version=version+1,status=?,updated_at=? WHERE id=?').run(status,clock(),id);}

@@ -5,6 +5,19 @@ import {normalizeThesisSnapshot,thesisHash,thesisError,isThesisReferenceChapter}
 import {thesisCompletionNeeds,safeCompletionIssues} from '../dist/workspace/thesis-completion-model.mjs';
 import {thesisFrontMatterKind,thesisManualBackMatter,thesisCoverFields} from '../dist/workspace/thesis-delivery.mjs';
 const fail=(status,message)=>{throw thesisError(status,message);};
+export function recoverableThesisSimulation(db,row){
+ if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='thesis_method_runs'").get())return null;
+ const saved=new Set(JSON.parse(row.snapshot).materials.filter(material=>material.dataKind==='simulation').map(material=>material.simulation?.jobId));
+ const candidates=db.prepare("SELECT m.id,m.snapshot,m.output,m.created_at FROM jobs j JOIN thesis_method_runs m ON m.id=j.id WHERE j.user_id=? AND m.user_id=? AND j.type='thesis_method' AND j.status='completed' AND m.status='completed' AND json_extract(j.input,'$.operation')='simulation' AND json_extract(j.input,'$.thesisId')=? ORDER BY j.created_at DESC LIMIT 8").all(row.user_id,row.user_id,row.id);
+ for(const candidate of candidates){
+  if(saved.has(candidate.id))continue;
+  try{const source=JSON.parse(candidate.snapshot),output=JSON.parse(candidate.output),recipe=output.recipe;
+   if(source.requestKind!=='simulation'||source.simulation?.thesisId!==row.id||source.simulation.sourceHash!==row.snapshot_hash||output.origin!=='ai_simulation'||!recipe||!Number.isSafeInteger(recipe.sampleSize)||!Array.isArray(recipe.variables))continue;
+   return {id:candidate.id,title:String(recipe.title).slice(0,120),sampleSize:recipe.sampleSize,variableCount:recipe.variables.length,createdAt:candidate.created_at};
+  }catch{}
+ }
+ return null;
+}
 export function savedThesisChapters(db,row){return JSON.parse(row.snapshot).outline.map(chapter=>({...chapter,record:db.prepare('SELECT * FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? ORDER BY version DESC LIMIT 1').get(row.id,chapter.id)}));}
 export function completionAssessment(db,row){const chapters=savedThesisChapters(db,row).map(({record,...chapter})=>({...chapter,text:record?.text||'',figures:JSON.parse(record?.figures||'[]')}));return thesisCompletionNeeds({snapshot:JSON.parse(row.snapshot),chapters});}
 export function completionInput(row,input,config,db){

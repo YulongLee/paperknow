@@ -1,6 +1,6 @@
 import {v1CommercialEnabled} from './v1-commercial-policy.mjs';
 import {randomUUID,randomInt} from 'node:crypto';
-import {thesisSimulationTask} from './thesis-simulation-model.mjs';
+import {thesisSimulationTask,simulationResearchGaps} from './thesis-simulation-model.mjs';
 import {completionAssessment} from './thesis-completion.mjs';
 import {resolveTaskProject,projectTaskHash,taskProjectId} from './task-project-context.mjs';
 import {createBillingService} from './billing-service.mjs';
@@ -38,7 +38,9 @@ export function createThesisMethodService(db,config={}){
     const prior=db.prepare('SELECT * FROM thesis_method_runs WHERE user_id=? AND client_key=?').get(user.id,input.clientKey);
     if(prior){const saved=JSON.parse(prior.snapshot);if(saved.requestKind!=='simulation'||saved.simulation.thesisId!==input.thesisId||saved.simulation.thesisVersion!==input.version)fail(409,'此提交标识已用于其他研究规划');return response({item:serializeThesisMethod(prior,db)});}
     sourceRow=db.prepare('SELECT * FROM theses WHERE id=? AND user_id=?').get(input.thesisId,user.id);if(!sourceRow)fail(404,'论文不存在');if(sourceRow.version!==input.version)fail(409,'论文信息已变化，请读取最新状态后生成模拟数据');if(['queued','running','cancelling'].includes(sourceRow.status))fail(409,'请等待当前论文任务完成后生成模拟数据');
-    const source=JSON.parse(sourceRow.snapshot);snapshot=normalizeThesisMethodSnapshot(source,config);snapshot.requestKind='simulation';snapshot.simulation={thesisId:sourceRow.id,thesisVersion:sourceRow.version,sourceHash:sourceRow.snapshot_hash,outline:source.outline.map(row=>({title:row.title,sections:row.sections.map(section=>({title:section.title}))})),missingInformation:completionAssessment(db,sourceRow).chapters.flatMap(row=>row.requests).slice(0,15)};
+    const source=JSON.parse(sourceRow.snapshot),assessment=completionAssessment(db,sourceRow),reviewRun=sourceRow.current_run_id?db.prepare('SELECT quality,snapshot_hash FROM thesis_runs WHERE id=? AND user_id=?').get(sourceRow.current_run_id,user.id):null;
+    const check=reviewRun?.snapshot_hash===sourceRow.snapshot_hash?JSON.parse(reviewRun.quality||'null')?.supplementCheck:null;
+    snapshot=normalizeThesisMethodSnapshot(source,config);snapshot.requestKind='simulation';snapshot.simulation={thesisId:sourceRow.id,thesisVersion:sourceRow.version,sourceHash:sourceRow.snapshot_hash,outline:source.outline.map(row=>({title:row.title,sections:row.sections.map(section=>({title:section.title}))})),missingInformation:simulationResearchGaps(assessment,check)};
    }else{if(input.thesisId!==undefined||input.version!==undefined)fail(400,'方法建议不接收论文版本字段');snapshot=normalizeThesisMethodSnapshot(input.snapshot,config);}
    const projectId=resolveTaskProject(db,simulation?sourceRow.project_id:input.projectId,user),hash=projectTaskHash(thesisHash(snapshot),projectId),existing=()=>db.prepare('SELECT * FROM thesis_method_runs WHERE user_id=? AND client_key=?').get(user.id,input.clientKey);
    const old=existing();if(old){if(old.input_hash!==hash)fail(409,'此提交标识已用于其他方法建议内容');return response({item:serializeThesisMethod(old,db)});}
