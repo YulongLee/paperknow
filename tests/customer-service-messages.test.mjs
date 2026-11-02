@@ -33,3 +33,6 @@ test('redaction preserves confirmed billing outcomes without inventing a complet
  const done=serviceMessage('单次执行保护，原提纲保留；预占权益已释放，本次不扣积分或套餐次数。');assert.doesNotMatch(done,/单次执行保护/);assert.match(done,/原提纲已保留/);assert.match(done,/预占已释放/);assert.match(done,/本次不扣积分或套餐次数/);
  const pending=serviceMessage('Qwen 内容检查未完成，预占将自动释放。');assert.match(pending,/预占将释放/);assert.doesNotMatch(pending,/预占已释放/);assert.doesNotMatch(serviceMessage('MinerU service unavailable'),/已释放|不扣积分/);
 });
+test('closing an import confirmation inside a file window returns focus to the original upload button',async t=>{
+ const {doc}=dialogFixture(t),parent=doc.createElement('dialog'),button=doc.querySelector('#upload');doc.body.append(parent);parent.append(button);parent.showModal();button.focus();const pending=confirmDocumentImport('导入文件');doc.querySelector('.document-import-confirm .secondary').click();assert.equal(await pending,false);assert.equal(parent.open,true);assert.equal(doc.activeElement,button);
+});
