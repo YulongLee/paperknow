@@ -6,6 +6,7 @@ import {readFileSync} from 'node:fs';
 import {JSDOM} from 'jsdom';
 import {mountThesisStage,mountOnlineThesis,mountThesisLibrary,disposeOnlineThesis,thesisOnlineHasWork,thesisOnlineSessionChanged,validThesisQuote,thesisDocumentText} from '../dist/workspace/thesis-online.mjs';
 import {thesisSnapshotFromDraft} from '../dist/workspace/writing-model.mjs';
+import {createCompletionDraft} from '../dist/workspace/thesis-completion-panel.mjs';
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const settle=async()=>{for(let i=0;i<5;i++)await tick();};
 const snapshot=()=>({title:'真实研究',profile:{level:'博士',discipline:'物理学',language:'中文',targetWords:8000,method:'实验记录与文献分析',researchQuestion:'材料如何变化'},materials:[{id:'m1',name:'实验笔记',text:'真实实验记录，待自行核对。'.repeat(12),purpose:'研究过程',confirmed:true}],references:[{id:'r1',title:'用户导入文献',sourceLabel:'本地题录，未核验',confirmed:true}],outline:[{id:'c1',title:'第一章 背景',targetWords:4000},{id:'c2',title:'第二章 讨论',targetWords:4000}]});
@@ -30,6 +31,47 @@ function fixture({item=thesis(),user={id:'u1'},cap={ready:true},handler}={}){
  return {dom,ctx,calls,setItem:value=>{record=structuredClone(value);},$:selector=>document.querySelector(selector),close(){disposeOnlineThesis();dom.window.close();}};
 }
 function input(f,selector,value){const element=f.$(selector);element.value=value;element.dispatchEvent(new window.Event('input',{bubbles:true}));}
+test('draft and final are two task modules, with no final controls visible in the initial draft workflow',async()=>{
+ const f=fixture();try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
+ assert.equal(document.querySelectorAll('[data-thesis-writing-mode]').length,2);assert.equal(f.$('[data-thesis-writing-panel="draft"]').hidden,false);assert.equal(f.$('[data-thesis-writing-panel="final"]').hidden,true);
+ assert.equal(f.$('#thesis-online-draft').closest('[data-thesis-writing-panel]').dataset.thesisWritingPanel,'draft');assert.equal(f.$('#thesis-online-docx').closest('[data-thesis-writing-panel]').dataset.thesisWritingPanel,'final');
+ assert.equal(f.$('[data-completion-prepare]').closest('[data-thesis-writing-panel]').dataset.thesisWritingPanel,'final');assert.equal(f.$('[data-thesis-reader]').closest('[data-thesis-writing-panel]').dataset.thesisWritingPanel,'draft');assert.equal(f.calls.some(row=>row.data),false);
+ }finally{f.close();}
+});
+test('mode switches preserve the actual editor, unsaved supplemental fields, reference inputs and reader scroll without paid requests',async()=>{
+ const original=thesis({status:'completed',chapters:[{id:'c1',title:'第一章',version:1,text:'已保存的研究正文。'}]}),f=fixture({item:original});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
+ const editor=f.$('[data-thesis-editor]'),reader=f.$('.thesis-reader-scroll');input(f,'[data-thesis-editor]','尚未保存的正文修改。');reader.scrollTop=73;
+ f.$('[data-thesis-writing-mode="final"]').click();input(f,'[data-completion-field="supplement"]','新增加但尚未提交的实验资料');input(f,'[data-completion-reference="title"]','尚未加入的文献题名');
+ f.$('[data-thesis-writing-mode="draft"]').click();assert.equal(f.$('[data-thesis-editor]'),editor);assert.equal(editor.value,'尚未保存的正文修改。');assert.equal(f.$('.thesis-reader-scroll'),reader);assert.equal(reader.scrollTop,73);
+ f.$('[data-thesis-writing-mode="final"]').click();assert.equal(f.$('[data-completion-field="supplement"]').value,'新增加但尚未提交的实验资料');assert.equal(f.$('[data-completion-reference="title"]').value,'尚未加入的文献题名');
+ f.setItem({...original,version:2});f.$('[data-thesis-refresh]').click();await settle();assert.equal(f.$('[data-thesis-writing-mode="final"]').getAttribute('aria-selected'),'true');assert.equal(f.$('[data-completion-field="supplement"]').value,'新增加但尚未提交的实验资料');assert.equal(f.$('[data-thesis-editor]').value,'尚未保存的正文修改。');assert.equal(f.calls.some(row=>row.data),false);
+ }finally{f.close();}
+});
+test('final writing requires an existing draft and never starts drafting or billing just by choosing its module',async()=>{
+ const f=fixture();try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-writing-mode="final"]').click();assert.equal(f.$('.thesis-final-prerequisite').hidden,false);assert.equal(f.$('[data-thesis-final-work]').hidden,true);assert.match(f.$('.thesis-final-prerequisite').textContent,/请先完成初稿撰写/);
+ f.$('[data-completion-prepare]').click();await settle();assert.equal(f.calls.some(row=>row.data),false);assert.match(f.$('[data-thesis-notice]').textContent,/请先在初稿撰写中生成正文/);f.$('[data-thesis-select-draft]').click();assert.equal(f.$('[data-thesis-writing-panel="draft"]').hidden,false);
+ }finally{f.close();}
+});
+test('active completion stays in the final task module while visiting the draft never submits or duplicates a job',async()=>{
+ const f=fixture({item:thesis({status:'running',job:{id:'completion',purpose:'completion',operation:'completion',status:'running',totalSections:3,completedSections:1},chapters:[{id:'c1',title:'第一章',version:1,text:'此前已经保存的初稿。'}]})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
+ assert.equal(f.$('[data-thesis-writing-mode="final"]').getAttribute('aria-selected'),'true');assert.equal(f.$('.thesis-progress').closest('[data-thesis-writing-panel]').dataset.thesisWritingPanel,'final');f.$('[data-thesis-writing-mode="draft"]').click();assert.equal(f.$('[data-thesis-reader]').closest('[data-thesis-writing-panel]').dataset.thesisWritingPanel,'draft');assert.equal(f.$('.thesis-progress').closest('[data-thesis-writing-panel]').hidden,true);assert.equal(f.calls.some(row=>row.data),false);assert.equal(document.querySelectorAll('[data-thesis-task-workspace]').length,1);
+ }finally{f.close();}
+});
+test('draft download is independent of unapplied final supplements while final delivery remains protected',async()=>{
+ const f=fixture({item:thesis({status:'completed',chapters:[{id:'c1',title:'第一章',version:1,text:'已保存的研究正文。'}]})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-select-final]').click();input(f,'[data-completion-field="supplement"]','终稿尚未提交的补充资料');assert.equal(f.$('#thesis-online-draft').disabled,false);assert.equal(f.$('#thesis-online-docx').disabled,true);assert.equal(thesisOnlineHasWork(),true);assert.equal(f.calls.some(row=>row.data),false);
+ const final=f.$('[data-thesis-writing-panel="final"]');assert.equal(final.querySelector('#thesis-online-draft'),null);assert.equal(final.lastElementChild.classList.contains('thesis-simple-downloads'),true);
+ }finally{f.close();}
+});
+test('writing task selection supports keyboard navigation and focus without recreating the reader',async()=>{
+ const f=fixture();try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;const reader=f.$('[data-thesis-reader]'),draft=f.$('[data-thesis-writing-mode="draft"]');draft.focus();draft.dispatchEvent(new window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));assert.equal(document.activeElement.dataset.thesisWritingMode,'final');assert.equal(f.$('[data-thesis-writing-mode="final"]').tabIndex,0);assert.equal(draft.tabIndex,-1);assert.equal(f.$('[data-thesis-reader]'),reader);document.activeElement.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Home',bubbles:true}));assert.equal(document.activeElement,draft);assert.equal(f.calls.some(row=>row.data),false);
+ }finally{f.close();}
+});
+test('a completion finishing while the user visits draft writing cannot trigger a hidden final download',async()=>{
+ const original=thesis({status:'running',job:{id:'completion-run',purpose:'completion',operation:'completion',status:'running',totalSections:2,completedSections:1},chapters:[{id:'c1',title:'第一章',version:1,text:'此前保存的初稿正文。'}]}),f=fixture({item:original});
+ const completion={...createCompletionDraft(),recheckRunId:'completion-run'};f.dom.window.localStorage.setItem('paperknow-thesis-edits-v1:u1:t1',JSON.stringify({schema:1,actorId:'u1',thesisId:'t1',revision:'isolated-recovery',chapters:[],completion}));let downloads=0;
+ try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;const native=f.dom.window.HTMLButtonElement.prototype.click;f.dom.window.HTMLButtonElement.prototype.click=function(){if(this.id==='thesis-online-docx'){downloads++;return;}return native.call(this);};f.$('[data-thesis-writing-mode="draft"]').click();f.setItem({...original,status:'completed',version:2,job:{...original.job,status:'completed',completedSections:2}});f.$('[data-thesis-refresh]').click();await settle();assert.equal(f.$('[data-thesis-writing-mode="draft"]').getAttribute('aria-selected'),'true');assert.equal(downloads,0);assert.equal(f.calls.some(row=>row.data),false);
+ }finally{f.close();}
+});
 test('one generation click automatically prepares literature, shows a stable waiting state and quotes the updated version once',async()=>{
  let finish;const wait=new Promise(resolve=>finish=resolve),original=thesis(),prepared={...original,version:2,snapshot:{...original.snapshot,references:[{...original.snapshot.references[0],text:'这是实际检索返回的来源摘要。'.repeat(20),sourceLabel:'自动获取摘要（非全文）'}]}};
  const f=fixture({item:original,cap:{ready:true,automaticReferences:true},handler:async(path)=>{if(path==='/theses/t1/references/prepare'){await wait;f.setItem(prepared);return {item:prepared};}}});

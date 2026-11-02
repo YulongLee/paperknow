@@ -25,9 +25,9 @@ export async function downloadDefaultThesisTemplate({expectedUserId,metadata={},
  try{if(status)status.textContent='正在准备通用论文模板…';const api=await loadDocument();if(!current())return;const bytes=await api.createWritingDocx('{{论文题目}}\n{{正文}}',{documentKind:'thesis',metadata:{...metadata,title:'{{论文题目}}',institution:'{{学校}}',author:'{{作者}}',major:'{{专业}}',supervisor:'{{指导教师}}'}});if(!current())return;const result=await downloadFile('通用学位论文模板.docx',bytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',{expectedUserId:expectedUserId??scope.ownerId});if(current()&&status)status.textContent=result.message+' 可调整样式后上传；请保留 {{正文}} 占位符。';return result;}
  catch(error){if(current()&&status)status.textContent=error.message||'模板下载失败，请稍后重试。';}
 }
-export function bindDocumentExports(prefix,getText,getTitle,status,{expectedUserId,docxOnly=false,isCurrent=()=>true,getDocumentOptions=()=>({}),loadDocument=()=>import('./assets/writing-document.js'),loadFont=font,downloadFile=(...args)=>download(...args),renderDocument=renderThesisDocument,onNeedsCompletion,beforeExport,onStateChange=()=>{}}={}){
- const binding=captureDraftScope(),keys=docxOnly?['docx','draft']:['docx','pdf','draft'],progress=status?createDocumentExportProgress(status):null;
- for(const key of keys){const format=key==='draft'?'docx':key,draft=key==='draft',b=document.getElementById(prefix+'-'+key);if(!b)continue;b.addEventListener('click',async()=>{
+export function bindDocumentExports(prefix,getText,getTitle,defaultStatus,{expectedUserId,docxOnly=false,isCurrent=()=>true,getDocumentOptions=()=>({}),loadDocument=()=>import('./assets/writing-document.js'),loadFont=font,downloadFile=(...args)=>download(...args),renderDocument=renderThesisDocument,onNeedsCompletion,beforeExport,onStateChange=()=>{},getStatus=()=>defaultStatus}={}){
+ const binding=captureDraftScope(),keys=docxOnly?['docx','draft']:['docx','pdf','draft'];
+ for(const key of keys){const format=key==='draft'?'docx':key,draft=key==='draft',status=getStatus({draft,format}),progress=status?createDocumentExportProgress(status):null,b=document.getElementById(prefix+'-'+key);if(!b)continue;b.addEventListener('click',async()=>{
   const context=captureDraftScope(),current=()=>isCurrent()&&binding.isCurrent()&&context.isCurrent()&&b.isConnected&&status?.isConnected;
   if(!current())return;
   try{if(beforeExport?.({draft})===false)return;}catch(error){if(current())status.textContent=error.message||'请先完成文稿信息检查。';return;}

@@ -117,12 +117,12 @@ test('automatic simulation adoption retires the visible old review immediately w
  assert.equal(f.q('[data-completion-reference="text"]'),field);assert.equal(field.value,'作者正在补充的真实摘要');assert.match(f.q('[data-completion-review]').textContent,/正文待更新|尚未保存/);assert.doesNotMatch(f.q('[data-completion-review]').textContent,/旧检查：缺少模拟数据/);assert.match(f.q('[role="region"].thesis-completion-requests').getAttribute('aria-label'),/正文待更新/);assert.match(f.q('[data-completion-prepare]').textContent,/保存材料/);assert.equal(f.calls.filter(row=>row.path==='/theses/paper/completion').length,1);
 });
 
-test('the sole draft and final download controls follow all supplement and cover inputs',async t=>{
- const f=await fixture(t),exportArea=f.q('.thesis-export'),completion=f.q('[data-thesis-completion-host]'),delivery=f.q('[data-thesis-delivery]');
+test('final download follows supplement and cover inputs while draft download stays in its own module',async t=>{
+ const f=await fixture(t),delivery=f.q('[data-thesis-delivery]'),exportArea=delivery.closest('.thesis-export'),completion=f.q('[data-thesis-completion-host]');
  assert.ok(delivery);assert.equal(exportArea.lastElementChild,delivery);
  assert.ok(completion.compareDocumentPosition(delivery)&f.dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
  assert.equal(f.root.querySelectorAll('#thesis-online-docx').length,1);assert.equal(f.root.querySelectorAll('#thesis-online-draft').length,1);
- assert.ok(delivery.contains(f.q('#thesis-online-docx')));assert.ok(delivery.contains(f.q('[data-thesis-export-status]')));
+ assert.ok(delivery.contains(f.q('#thesis-online-docx')));assert.equal(delivery.contains(f.q('#thesis-online-draft')),false);assert.equal(f.q('#thesis-online-draft').closest('[data-thesis-writing-panel]').dataset.thesisWritingPanel,'draft');assert.ok(delivery.contains(f.q('[data-thesis-export-status]')));
  assert.equal(f.q('[data-completion-recheck]'),null,'do not repeat final export within the supplement form');
 });
 
