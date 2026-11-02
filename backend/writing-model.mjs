@@ -11,7 +11,7 @@ export const activeWritingKinds=Object.freeze(Object.fromEntries(Object.entries(
 export function assertNewWritingKind(kind){if(kind==='quick')throw thesisError(410,'快速写作已移除，请在 AI 写作中选择具体场景；已保存文稿仍可查看和导出。');}
 export const writingOperations=Object.freeze(['method','outline','draft','abstract','ideas','questionnaire']);
 const fail=(status,message,code)=>{throw thesisError(status,message,code);};
-const readableWritingSources=evidence=>evidence.sources.filter(source=>source.text.replace(/^【来源 [^\n]*，以下仅为选取片段】\n?/gm,'').replace(/\s/g,'').length>=20);
+const readableWritingSources=evidence=>evidence.sources.filter(source=>source.text.replace(/^【来源 [^\n]*，(?:以下仅为选取片段|以下为该资料完整内容)】\n?/gm,'').replace(/\s/g,'').length>=20);
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 export function normalizeWritingKind(value){const kind=value==='topic'?'idea':value;if(!Object.hasOwn(writingKinds,kind))fail(400,'请选择支持的 AI 写作功能');return kind;}
 // The graduation-thesis allocator intentionally starts at 500. Short generic

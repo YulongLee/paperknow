@@ -53,6 +53,13 @@ test('metadata-only, unconfirmed, short and proposed-plan inputs do not newly bl
  rejected(summary,unit,body(['metadata']),['metadata'],{kind:'proposal',missing:false,required:[],allowed:[]});
 });
 
+test('full-source labels do not count as evidence and keep the same twenty-character citation boundary',()=>{
+ for(const label of ['以下仅为选取片段','以下为该资料完整内容'])for(const count of [0,19,20]){
+  const text='【来源 internal；原文字符 0～'+count+' / '+count+'，'+label+'】\n'+'研'.repeat(count),value=snapshot({materials:[source('threshold',text)]}),unit=writingPlan(value,'draft')[0];
+  if(count<20)assert.doesNotThrow(()=>parse(value,unit,body()));else rejected(value,unit,body(),[],{required:['threshold'],allowed:[]});
+ }
+});
+
 test('required and already-read source IDs are limited to evidence actually selected for the current unit',()=>{
  const value=snapshot({materials:Array.from({length:11},(_,index)=>source('source-'+index,'PRIVATE-SOURCE-BODY-'+index+'这是供研究计划讨论的可读范围和局限记录。'))}),unit=writingPlan(value,'draft')[0],selected=selectThesisEvidence(value,{title:unit.title,chapterTitle:unit.chapterTitle||writingKinds.proposal}).sources.map(row=>row.id),outside=value.materials.find(row=>!selected.includes(row.id)).id;
  assert.equal(selected.length,10);rejected(value,unit,body(),[selected[0],outside,'invented'],{required:selected,allowed:[selected[0]]});
