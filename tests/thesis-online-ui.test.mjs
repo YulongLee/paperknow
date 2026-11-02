@@ -30,6 +30,24 @@ function fixture({item=thesis(),user={id:'u1'},cap={ready:true},handler}={}){
  return {dom,ctx,calls,setItem:value=>{record=structuredClone(value);},$:selector=>document.querySelector(selector),close(){disposeOnlineThesis();dom.window.close();}};
 }
 function input(f,selector,value){const element=f.$(selector);element.value=value;element.dispatchEvent(new window.Event('input',{bubbles:true}));}
+test('one generation click automatically prepares literature, shows a stable waiting state and quotes the updated version once',async()=>{
+ let finish;const wait=new Promise(resolve=>finish=resolve),original=thesis(),prepared={...original,version:2,snapshot:{...original.snapshot,references:[{...original.snapshot.references[0],text:'这是实际检索返回的来源摘要。'.repeat(20),sourceLabel:'自动获取摘要（非全文）'}]}};
+ const f=fixture({item:original,cap:{ready:true,automaticReferences:true},handler:async(path)=>{if(path==='/theses/t1/references/prepare'){await wait;f.setItem(prepared);return {item:prepared};}}});
+ try{const stop=mountThesisStage({id:'t1',container:f.$('.dashboard'),ctx:f.ctx,getSnapshot:snapshot});await stop.ready;f.$('[data-thesis-quote]').click();f.$('[data-thesis-quote]').click();await settle();assert.match(f.$('[data-thesis-wait-title]').textContent,/正在准备参考文献/);assert.equal(f.calls.filter(row=>row.path.endsWith('/references/prepare')).length,1);assert.equal(f.calls.filter(row=>row.path.endsWith('/quote')).length,0);finish();await settle();assert.equal(f.calls.filter(row=>row.path.endsWith('/generate')).length,1);assert.equal(f.calls.find(row=>row.path.endsWith('/quote')).data.version,2);assert.equal(f.calls.find(row=>row.path.endsWith('/generate')).data.version,2);assert.equal(f.$('.thesis-account-drift'),null);
+ }finally{finish();f.close();}
+});
+test('a session change during literature preparation cannot quote or submit generation for the old account',async()=>{
+ let finish,switched=false;const wait=new Promise(resolve=>finish=resolve),f=fixture({cap:{ready:true,automaticReferences:true},handler:async(path)=>{if(path==='/theses/t1/references/prepare'){await wait;switched=true;return {item:thesis({version:2})};}if(path==='/auth/me'&&switched)return {user:{id:'u2'}};}});
+ try{const stop=mountOnlineThesis({id:'t1',container:f.$('.dashboard'),ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote]').click();await settle();finish();await settle();assert.equal(f.calls.filter(row=>/\/(?:quote|generate)$/.test(row.path)).length,0);}finally{finish();f.close();}
+});
+test('a recoverable resume retains the original frozen references and never starts automatic reference preparation',async()=>{
+ const f=fixture({item:thesis({status:'failed',job:{status:'failed',canResume:true,totalSections:3,completedSections:1}}),cap:{ready:true,automaticReferences:true}});
+ try{const stop=mountOnlineThesis({id:'t1',container:f.$('.dashboard'),ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote="resume"]').click();await settle();assert.equal(f.calls.filter(row=>row.path.endsWith('/references/prepare')).length,0);assert.equal(f.calls.filter(row=>row.path.endsWith('/resume')).length,1);}finally{f.close();}
+});
+test('route disposal during reference preparation cannot paint a new page or submit a paid request',async()=>{
+ let finish;const wait=new Promise(resolve=>finish=resolve),f=fixture({cap:{ready:true,automaticReferences:true},handler:async(path)=>path==='/theses/t1/references/prepare'?(await wait,{item:thesis({version:2})}):undefined});
+ try{const stop=mountOnlineThesis({id:'t1',container:f.$('.dashboard'),ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote]').click();await settle();stop();f.$('.dashboard').innerHTML='<h1>Another page</h1>';finish();await settle();assert.equal(f.$('.dashboard').textContent,'Another page');assert.equal(f.calls.filter(row=>/\/(?:quote|generate)$/.test(row.path)).length,0);}finally{finish();f.close();}
+});
 test('a paused legacy completion distinguishes its zero progress from the saved draft and exposes exact material gaps without blocking draft download',async()=>{
  const value=thesis({status:'needs_materials',job:{id:'legacy',operation:'completion',status:'needs_materials',stage:'needs_materials',completedSections:0,totalSections:18,canResume:true,error:'补充资料仍有缺项，请查看补充内容检查；原稿与已上传资料已保留。'},quality:missingResearch(),completionReview:null,chapters:[{id:'c1',title:'第一章 背景',version:1,status:'saved',text:'本篇已经保存的完整初稿。',sourceIds:[]}]}),f=fixture({item:value});
  try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;

@@ -30,11 +30,11 @@ test('adoption preserves HTML-like source characters and never synthesizes or st
  const row={...metadata(),abstract:'<math>x & y</math>\n研究原始摘要的符号与空白保持不变。'};assert.equal(adoptReferenceAbstract(row).text,row.abstract);
 });
 
-test('search metadata stays unread until adopted and confirmed abstract can support later thesis evidence',()=>{
- const searched=normalizeReferenceSearchItem(metadata());assert.equal(searched.text,'');assert.equal(searched.scope,'metadata');assert.equal(searched.fullTextRead,false);
+test('search abstracts are automatically usable and never claim the model has read full text',()=>{
+ const searched=normalizeReferenceSearchItem(metadata(),{useAbstracts:true});assert.equal(searched.text,searched.abstract);assert.equal(searched.scope,'abstract');assert.equal(searched.fullTextRead,false);assert.equal(searched.confirmed,false);
+ assert.equal(canAdoptReferenceAbstract(searched),false);assert.equal(assessThesisEvidence({references:[searched]}).characters,0);
  const draft={title:'基于真实摘要的研究',degree:'本科',language:'中文',targetWords:1000,knowledgeFiles:[],writingReferences:[searched],outlineRows:[{id:'chapter-one',title:'第一章 研究背景',level:1,words:1000}]};
- const metadataSnapshot=thesisSnapshotFromDraft(draft);assert.equal(assessThesisEvidence(metadataSnapshot).characters,0);
- const adopted=adoptReferenceAbstract(searched);assert.equal(adopted.confirmed,false);assert.equal(assessThesisEvidence({references:[adopted]}).characters,0);
- const snapshot=thesisSnapshotFromDraft({...draft,writingReferences:[{...adopted,confirmed:true}]});assert.equal(snapshot.materials.length,0);assert.equal(snapshot.references[0].text,searched.abstract);assert.match(snapshot.references[0].sourceLabel,/来源摘要，未读取全文/);assert.equal(assessThesisEvidence(snapshot).ready,true);
- const normalized=normalizeThesisSnapshot(snapshot);assert.equal(normalized.references[0].text,searched.abstract);assert.match(normalized.references[0].sourceLabel,/来源摘要，未读取全文/);
+ const snapshot=thesisSnapshotFromDraft(draft);assert.equal(snapshot.materials.length,0);assert.equal(snapshot.references[0].text,searched.abstract);assert.match(snapshot.references[0].sourceLabel,/来源摘要/);assert.equal(assessThesisEvidence(snapshot).ready,true);
+ const normalized=normalizeThesisSnapshot(snapshot);assert.equal(normalized.references[0].text,searched.abstract);assert.match(normalized.references[0].sourceLabel,/来源摘要/);
+ const legacy=thesisSnapshotFromDraft({...draft,writingReferences:[{...searched,text:''}]});assert.equal(legacy.references[0].text,searched.abstract);assert.match(legacy.references[0].sourceLabel,/摘要（非全文）/);
 });

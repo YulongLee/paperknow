@@ -43,7 +43,8 @@ const auth=createAuthService(db,{secret:config.authCodeSecret,dailyLimit:config.
 const billing=createBillingService(db,config);
 const creditCodes=createCreditCodeService(db,{...config,billing});
 const modelBudget=createModelBudget(db,config);
-const theses=createThesisService(db,{...config,billing,modelBudget,worker,cancelThesisRun:id=>worker.cancel(id)});
+const literatureSearch=createLiteratureSearch({fetchImpl:config.literatureFetch,openAlexApiKey:config.openAlexApiKey,openAlexDailyLimit:config.openAlexDailyLimit,semanticScholarEnabled:config.semanticScholarEnabled,semanticScholarApiKey:config.semanticScholarApiKey,semanticScholarDailyLimit:config.semanticScholarDailyLimit,aminerEnabled:config.aminerEnabled,aminerApiKey:config.aminerApiKey,aminerUserId:config.aminerUserId,aminerToken:config.aminerToken,aminerDailyLimit:config.aminerDailyLimit});
+const theses=createThesisService(db,{...config,writingLiteratureSearch:literatureSearch,billing,modelBudget,worker,cancelThesisRun:id=>worker.cancel(id)});
 const thesisRenderer=config.thesisDocumentRenderer||createThesisDocumentRenderer({commandPath:config.thesisDocumentRenderCommand,enabled:config.thesisDocumentRenderEnabled});
 const thesisOutlines=createThesisOutlineService(db,{...config,billing,modelBudget,cancelThesisOutline:id=>worker.cancel(id)});
 const thesisMethods=createThesisMethodService(db,{...config,billing,modelBudget,cancelThesisMethod:id=>worker.cancel(id)});
@@ -63,7 +64,6 @@ const formulaRecognitions=createFormulaOcrService(db,config);
 const aigcDetections=createAigcDetectionService(db,{...config,billing});
 const webSimilarity=createWebSimilarityService(db,{...config,billing,cancelWebSimilarity:id=>worker.cancel(id)});
 const combinedDetections=createCombinedDetectionService(db,{...config,billing},{aigc:aigcDetections,similarity:webSimilarity});
-const literatureSearch=createLiteratureSearch({fetchImpl:config.literatureFetch,openAlexApiKey:config.openAlexApiKey,openAlexDailyLimit:config.openAlexDailyLimit,semanticScholarEnabled:config.semanticScholarEnabled,semanticScholarApiKey:config.semanticScholarApiKey,semanticScholarDailyLimit:config.semanticScholarDailyLimit,aminerEnabled:config.aminerEnabled,aminerApiKey:config.aminerApiKey,aminerUserId:config.aminerUserId,aminerToken:config.aminerToken,aminerDailyLimit:config.aminerDailyLimit});
 const literatureScope=req=>{const admin=sessionUser(db,req,config.ownerEmail)?.role==='admin';return{allowAminer:config.aminerAccess==='public'||admin,allowSemanticScholar:config.semanticScholarAccess==='public'&&config.semanticScholarCommercialLicensed===true||admin};};
 const desktopReleases=createDesktopReleaseService(db,config);
 const admin=createAdminAPI(db,worker,{...config,payments,billing,creditCodes},auth);

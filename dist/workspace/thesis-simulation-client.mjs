@@ -4,7 +4,7 @@ const active=status=>['submitting','queued','running','recovering'].includes(sta
 const panelMarkup=new WeakMap();
 export const simulationPending=draft=>active(draft.simulationJob?.status)||['pending','saving'].includes(draft.simulationJob?.adoptionStatus);
 export function mergeThesisSupplements(incoming,account={}){
- const merged=structuredClone(incoming),protectedMaterial=row=>row?.dataKind==='simulation'||String(row?.id||'').startsWith('simulation:')||['研究证据补充','致谢事实'].includes(row?.purpose),protectedReference=row=>row?.sourceLabel==='作者终稿补充文献';
+ const merged=structuredClone(incoming),protectedMaterial=row=>row?.dataKind==='simulation'||String(row?.id||'').startsWith('simulation:')||['研究证据补充','致谢事实'].includes(row?.purpose),protectedReference=row=>['作者终稿补充文献','自动获取摘要（非全文）','自动补充文献摘要（非全文）'].includes(row?.sourceLabel);
  for(const [key,protectedRow]of [['materials',protectedMaterial],['references',protectedReference]]){
   const rows=Array.isArray(merged[key])?merged[key]:[];
   for(const saved of account[key]||[])if(protectedRow(saved)){const at=rows.findIndex(row=>row.id===saved.id);if(at<0)rows.push(structuredClone(saved));else rows[at]=structuredClone(saved);}

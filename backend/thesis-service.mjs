@@ -1,4 +1,5 @@
 import {completionReview,confirmCompletionReview} from './thesis-completion-review.mjs';
+import {createWritingReferencePreparation} from './writing-reference-preparation.mjs';
 import {recoverableThesisSimulation,completionAssessment,completionInput,thesisCompletionPlan,completionManuscriptHash,assertCompletionResumeUnchanged} from './thesis-completion.mjs';
 import {randomUUID} from 'node:crypto';
 import {thesisCoverFields} from '../dist/workspace/thesis-delivery.mjs';
@@ -31,6 +32,7 @@ const expected=(input,row)=>{if(!Number.isSafeInteger(input.version)||input.vers
 export function assertThesisSettings(settings){if(!agentSettingsReady(settings))fail(503,'毕业论文生成服务尚未启用，请先保存研究资料');if(typeof settings.version!=='string'||!settings.version)fail(503,'请先在后台保存并测试 Agent 配置，生成任务需要可恢复的配置版本');return settings;}
 
 export function createThesisService(db,config={}){
+ const referencePreparation=createWritingReferencePreparation(config),referencePreparations=new Map();
  initializeThesisSchema(db);
  const continuity=createThesisContinuity(db,config);
  const exportTemplates=createThesisExportTemplates(db,config);
@@ -77,11 +79,38 @@ export function createThesisService(db,config={}){
   if(db.prepare("SELECT count(*) n FROM thesis_runs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=2)fail(429,'当前账户已有两篇论文正在排队或生成，请先等待完成');
   if(db.prepare("SELECT count(*) n FROM thesis_runs WHERE status IN ('queued','running')").get().n>=50)fail(429,'生成队列当前较忙，请稍后再试');
  }
- async function capabilities(){try{await settings();return {ready:true,reason:'',automaticManuscript:config.thesisContinuousEnabled===true&&config.writingQualityEnabled===true&&config.supplementCheckEnabled===true,limits:thesisLimits(config),billingService:'agent',requiresEvidenceConfirmation:true,onlineReferenceVerification:false,evidenceMode:'reviewable_draft_with_optional_sources'};}catch(error){return {ready:false,reason:error.message,limits:thesisLimits(config),billingService:'agent',requiresEvidenceConfirmation:true,onlineReferenceVerification:false,evidenceMode:'reviewable_draft_with_optional_sources'};}}
+ async function capabilities(){try{await settings();return {ready:true,reason:'',automaticManuscript:config.thesisContinuousEnabled===true&&config.writingQualityEnabled===true&&config.supplementCheckEnabled===true,limits:thesisLimits(config),billingService:'agent',automaticReferences:config.writingAutoReferencesEnabled!==false,requiresEvidenceConfirmation:true,onlineReferenceVerification:false,evidenceMode:'reviewable_draft_with_optional_sources'};}catch(error){return {ready:false,reason:error.message,limits:thesisLimits(config),billingService:'agent',automaticReferences:config.writingAutoReferencesEnabled!==false,requiresEvidenceConfirmation:true,onlineReferenceVerification:false,evidenceMode:'reviewable_draft_with_optional_sources'};}}
  async function handle({path,method,user,readBody}){
   if(path!=='/api/theses'&&!/^\/api\/theses\//.test(path))return null;
   if(!user?.id)fail(401,'请先登录');
   const response=(value,status=200)=>({status,value});
+  const referencePath=path.match(/^\/api\/theses\/([^/]+)\/references\/prepare$/);
+  if(referencePath){
+   if(method!=='POST')fail(405,'文献准备仅支持提交');
+   if(config.writingAutoReferencesEnabled===false)fail(503,'自动文献准备暂不可用');
+   const input=await readBody();fields(input,['version','clientKey']);clientKey(input.clientKey);
+   const id=referencePath[1],row=own(id,user),hash=thesisHash({operation:'prepare_references',thesisId:id,version:input.version});
+   const prior=db.prepare('SELECT * FROM thesis_completion_inputs WHERE user_id=? AND client_key=?').get(user.id,input.clientKey);
+   if(prior){if(prior.thesis_id!==id||prior.input_hash!==hash)fail(409,'本次文献准备标识已用于其他内容');return response({item:serialize(row)});}
+   expected(input,row);if(active.has(row.status))fail(409,'请等待当前论文任务结束后更新文献');
+   const requestKey=user.id+':'+id+':'+input.clientKey;
+   if(referencePreparations.has(requestKey))return response(await referencePreparations.get(requestKey));
+   if([...referencePreparations.keys()].some(key=>key.startsWith(user.id+':'+id+':')))fail(409,'正在准备这篇论文的参考文献，请稍候。');
+   const pending=(async()=>{
+    const result=await referencePreparation.prepare(JSON.parse(row.snapshot),{userId:user.id,isCurrent:()=>{const latest=own(id,user);return latest.version===row.version&&!active.has(latest.status);}});
+    const snapshot=normalizeThesisSnapshot({...JSON.parse(row.snapshot),references:result.references},config);
+    return thesisTransaction(db,()=>{
+     const current=own(id,user),repeated=db.prepare('SELECT * FROM thesis_completion_inputs WHERE user_id=? AND client_key=?').get(user.id,input.clientKey);
+     if(repeated){if(repeated.thesis_id!==id||repeated.input_hash!==hash)fail(409,'本次文献准备标识已用于其他内容');return {item:serialize(current),referencePreparation:result.summary};}
+     expected(input,current);if(active.has(current.status))fail(409,'当前论文正在生成，文献未被替换');
+     const json=JSON.stringify(snapshot),changed=json!==current.snapshot;assertThesisAccountQuota(db,user.id,Math.max(0,Buffer.byteLength(json)-Buffer.byteLength(current.snapshot))+512,config);
+     if(changed)db.prepare("UPDATE theses SET snapshot=?,snapshot_hash=?,version=version+1,status='draft',updated_at=? WHERE id=? AND user_id=?").run(json,thesisHash(snapshot),clock(),id,user.id);
+     db.prepare('INSERT INTO thesis_completion_inputs VALUES(?,?,?,?,?)').run(user.id,input.clientKey,id,hash,clock());
+     return {item:serialize(own(id,user)),referencePreparation:result.summary};
+    });
+   })();referencePreparations.set(requestKey,pending);
+   try{return response(await pending);}finally{referencePreparations.delete(requestKey);}
+  }
   if(path==='/api/theses/capabilities'&&method==='GET')return response(await capabilities());
   if(path==='/api/theses'){
    if(method==='GET')return response({items:db.prepare('SELECT * FROM theses WHERE user_id=? ORDER BY updated_at DESC LIMIT 200').all(user.id).map(row=>serialize(row,{summary:true})),limit:200});
