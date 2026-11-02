@@ -21,6 +21,19 @@ test('completion progress belongs only to an active completion run, never a norm
  for(const status of ['completed','failed','cancelled','needs_materials','interrupted'])assert.equal(completionProgressText({job:{...completion.job,status,stage:'checking_supplements'}}),'');
  assert.equal(completionProgressText({job:{...normal.job,operation:'generate'}},false,{completionRunId:'new-run'}),'');assert.match(completionProgressText(normal,false,{completionRunId:'new-run'}),/正在自动补齐/);assert.match(completionProgressText(base(),true,{preparing:true}),/正在保存资料/);
 });
+test('initial drafting and regeneration freeze the final-completion area even when the shared engine is a completion job',()=>{
+ const draft=createCompletionDraft();draft.recheckRunId='old-run';
+ for(const status of ['queued','running','cancelling'])for(const stage of ['queued','agent_tools','generating_section','checking_supplements','reviewing_manuscript']){
+  const item={...base(),status,job:{id:'old-run',operation:'completion',purpose:'draft',status,stage},quality:{supplementCheck:{status:'running',items:[]}}};
+  assert.equal(completionProgressText(item,true,{preparing:true,completionRunId:'old-run'}),'');const markup=completionPanelHTML(item,draft,{busy:true});assert.match(markup,/data-completion-awaiting-draft/);assert.doesNotMatch(markup,/data-completion-progress|role="progressbar"|data-completion-prepare|正在自动补齐|supplement-check-panel/);
+ }
+ const revision={...base(),status:'running',job:{id:'revision',operation:'completion',purpose:'completion',status:'running',stage:'generating_section'}};assert.match(completionProgressText(revision),/正在自动补齐/);assert.match(completionPanelHTML(revision,createCompletionDraft(),{busy:true}),/data-completion-progress/);
+ assert.match(completionPanelHTML(base(),draft),/data-completion-prepare/);
+});
+test('reopening an initial automatic draft shows one progress surface and never submits another completion job',async t=>{
+ const f=fixture(t,{handle:async path=>path==='/theses/t1'?{item:{...base(),status:'running',job:{id:'draft-run',operation:'completion',purpose:'draft',status:'running',stage:'generating_section',completedSections:3,totalSections:18}}}:null});await f.ready;
+ assert.equal(f.q('[data-completion-progress]'),null);assert.ok(f.q('[data-completion-awaiting-draft]'));assert.match(f.q('.thesis-progress').textContent,/3.*18/s);assert.doesNotMatch(f.q('.thesis-progress').textContent,/本轮完善/);assert.match(f.q('[data-thesis-supplement-drawer] summary').textContent,/初稿完成后可补充/);assert.equal(f.calls.some(row=>row.data),false);
+});
 test('reopened normal regeneration ignores an older completion recovery marker without creating any new work',async t=>{
  const f=fixture(t,{handle:async path=>path==='/theses/t1'?{item:{...base(),status:'running',job:{id:'new-normal-run',status:'running',stage:'agent_tools',completedSections:12,totalSections:18}}}:null});
  const completion=createCompletionDraft();completion.recheckRunId='old-completion-run';f.dom.window.localStorage.setItem('paperknow-thesis-edits-v1:u1:t1',JSON.stringify({schema:1,actorId:'u1',thesisId:'t1',revision:'synthetic-recovery',chapters:[],completion}));await f.ready;assert.equal(f.q('[data-completion-progress]'),null);assert.match(f.q('.thesis-progress').textContent,/12.*18/s);assert.equal(f.calls.some(row=>row.data!==undefined),false);assert.equal(f.calls.some(row=>/\/(quote|generate|completion)$/.test(row.path)),false);

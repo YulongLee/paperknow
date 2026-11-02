@@ -14,8 +14,14 @@ export function restoreCompletionDraft(value){
  const draft={...createCompletionDraft(),...value,quote:null,issues:safeCompletionIssues(value.issues)};if(!draft.metadata||Object.entries(draft.metadata).some(([key,text])=>!Object.hasOwn(thesisCoverFields,key)||typeof text!=='string'||text.length>200))throw Error('终稿封面草稿无效');for(const reference of [...draft.references,draft.reference])if(!reference||['title','authors','year','doi','text'].some(key=>typeof reference[key]!=='string'||reference[key].length>(key==='text'?50000:500)))throw Error('终稿文献草稿无效');return draft;
 }
 export function setCompletionIssues(draft,{report,formatting,additional=[]}={}){draft.open=true;draft.quote=null;draft.issues=safeCompletionIssues((report?.submission?.issues||[]).map(row=>row.code));const automatic=(report?.submission?.issues||[]).some(row=>/^(?:abstract_|keywords_|english_title|incomplete_manuscript|table_|raw_formula|duplicate_)/.test(row.code));draft.messages=[...new Set([...(report?.submission?.issues||[]).filter(row=>!/^(?:abstract_|keywords_|english_title|table_|raw_formula|duplicate_)/.test(row.code)).map(row=>row.code==='unresolved_placeholders'?'请按下方章节提示补充缺少的真实资料，系统会更新对应正文。':row.message),...(automatic?['系统将依据补齐后的正文整理摘要、关键词、英文题目及可自动处理的格式问题。']:[]),...(formatting?.unresolved||[]).map(row=>row.message),...additional].filter(value=>typeof value==='string'))].slice(0,40);}
+function completionJob(job,completionRunId){
+ if(job?.purpose==='draft')return false;
+ return job?.purpose==='completion'||job?.operation==='completion'||!job?.operation&&job?.id&&job.id===completionRunId;
+}
+export function draftGenerationActive(item,completionRunId=null){return ['queued','running','cancelling'].includes(item?.job?.status)&&!completionJob(item.job,completionRunId);}
 export function completionProgressText(item,busy=false,{preparing=false,completionRunId=null}={}){
- const job=item?.job,active=['queued','running','cancelling'].includes(job?.status),completion=job?.operation==='completion'||!job?.operation&&job?.id&&job.id===completionRunId;
+ const job=item?.job,active=['queued','running','cancelling'].includes(job?.status),completion=completionJob(job,completionRunId);
+ if(draftGenerationActive(item,completionRunId))return '';
  if(!active||!completion)return busy&&preparing?'正在保存资料并准备检查，请稍候…':'';
  if(job.status==='cancelling')return '正在停止自动完善，已完成内容会保留…';
  if(job.status==='queued')return '资料已保存，正在排队检查与完善…';
@@ -23,6 +29,7 @@ export function completionProgressText(item,busy=false,{preparing=false,completi
 }
 export function completionPrepareText(item,draft){return draft.dirty?'保存材料并自动补齐':item?.completionReview?.basisChanged?'使用已补充资料完善正文':item?.quality?.supplementCheck?.status==='unavailable'?'继续完善并重新检查':'自动补齐并检查终稿';}
 export function completionPanelHTML(item,draft,{busy=false,preparing=false,costText=()=>'',showCover=true,embedded=false}={}){
+ if(draftGenerationActive(item,draft.recheckRunId))return '<section class="thesis-completion-panel is-embedded" data-thesis-completion><div data-completion-awaiting-draft role="note"><strong>初稿生成中</strong><p>初稿完成后，可在这里补充资料并完善终稿。</p></div></section>';
  const tag=embedded?'section':'details',wait=completionProgressText(item,busy,{preparing,completionRunId:draft.recheckRunId});
  const pendingApplication=item.completionReview?.basisChanged===true||item.quality?.supplementCheck?.status==='unavailable';
  const needs=thesisCompletionNeeds(item),ack=needs.chapters.some(row=>thesisManualBackMatter(row)),disabled=busy?'disabled':'',values={...item.snapshot?.requirements,...item.profile,...item.exportMetadata,...draft.metadata};
