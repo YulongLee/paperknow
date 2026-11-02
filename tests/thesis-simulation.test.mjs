@@ -7,7 +7,7 @@ import {createBillingService,billingServiceTypes} from '../backend/billing-servi
 import {createThesisService} from '../backend/thesis-service.mjs';
 import {createThesisMethodService} from '../backend/thesis-method-service.mjs';
 import {startThesisMethodWorker} from '../backend/thesis-method-worker.mjs';
-import {normalizeThesisSnapshot,selectThesisEvidence} from '../backend/thesis-model.mjs';
+import {normalizeThesisSnapshot,selectThesisEvidence,thesisAgentTask} from '../backend/thesis-model.mjs';
 import {parseThesisSimulation,thesisSimulationTask,validateThesisSimulationCandidate,simulationResearchGaps} from '../backend/thesis-simulation-model.mjs';
 import {generateSimulationData,normalizeSimulationRecipe,simulationDisclosure} from '../dist/workspace/simulation-data.mjs';
 import {thesisDocumentPresentation} from '../dist/workspace/thesis-document.mjs';
@@ -99,4 +99,10 @@ test('a disclosed simulation thesis can pass the existing final-document checks 
 
 test('a research edit during model-setting lookup refuses stale simulation admission before reserving credits',async t=>{
  const f=fixture(t);f.pay();const thesis=await f.create(),quote=f.billing.quote(f.owner,{type:'agent'});f.config.getAgentSettings=()=>{f.db.prepare('UPDATE theses SET version=version+1 WHERE id=?').run(thesis.id);return {...settings};};await assert.rejects(f.request('/api/theses/methods',{operation:'simulation',thesisId:thesis.id,version:thesis.version,clientKey:randomUUID(),consent:true,billingToken:quote.token}),error=>error.status===409);assert.equal(f.billing.balance(f.owner.id).held,0);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_method_runs').get().n,0);
+});
+
+test('a bounded current simulation is supplied in full for completion, with explicit simulation scope and no invented measured claims',()=>{
+ const plan=recipe();plan.sampleSize=60;const generated=generateSimulationData(plan,42),material={id:'simulation:all',name:'模拟研究数据',text:generated.text,dataKind:'simulation',confirmed:true,simulation:{jobId:'all',seed:42,generatorVersion:1,recipe:plan}},source=normalizeThesisSnapshot({...snapshot(),materials:[material]}),unit={id:'c::1',chapterId:'c',chapterTitle:'仿真结果',title:'仿真结果',targetWords:500,completionSourceIds:[material.id],completion:{scope:'full',originalText:'旧稿仅有实测数据的待补充位置。'}};
+ const evidence=selectThesisEvidence(source,unit).sources[0];assert.ok(generated.text.length>2400);assert.ok(evidence.text.includes(generated.text),'all generated records, summaries and disclosure must reach the writing task');assert.deepEqual(evidence.fragments,[{start:0,end:generated.text.length,totalCharacters:generated.text.length}]);assert.match(evidence.text,/完整内容/);
+ const task=thesisAgentTask(source,unit,[]);assert.equal(task.context.revision.simulationCompletion.mode,'disclosed_simulation_analysis');assert.deepEqual(task.context.revision.simulationCompletion.sourceIds,[material.id]);assert.equal(task.context.revision.simulationCompletion.preserveObservedFacts,true);assert.match(task.instructions,/不原样继续索要实测日志/);assert.match(task.instructions,/不补造作者、学校/);assert.ok(task.materials[0].text.includes(generated.text));assert.equal(thesisAgentTask(source,{...unit,completion:undefined},[]).context.revision,undefined);
 });

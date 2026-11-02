@@ -6,6 +6,8 @@ import {createBillingService,billingServiceTypes} from '../backend/billing-servi
 import {createThesisService} from '../backend/thesis-service.mjs';
 import {startThesisWorker} from '../backend/thesis-worker.mjs';
 import {thesisAgentTask,parseThesisSection} from '../backend/thesis-model.mjs';
+import {generateSimulationData} from '../dist/workspace/simulation-data.mjs';
+import {simulationCompletionProgress} from '../backend/thesis-completion-review.mjs';
 const settings={enabled:true,engine:'claude-agent-sdk',baseURL:'https://agent.example.test',model:'test-model',apiKey:'synthetic-secret',version:'v1',maxTurns:3,maxOutputTokens:4096,maxCostUsd:.5,timeoutMs:30000};
 const source='这是自动化验收使用的合成研究材料，记录了研究方法、实验步骤及结果边界，不用于任何真实论文。'.repeat(4);
 const snapshot=()=>({title:'课堂反馈的研究',profile:{level:'本科',language:'中文',targetWords:500},requirements:{deliveryVersion:1},materials:[{id:'m1',name:'合成研究记录',text:source,confirmed:true}],references:[{id:'r1',title:'课堂反馈研究',authors:'合成作者',year:'2025',text:source,confirmed:true}],outline:[{id:'c1',title:'第一章 背景',targetWords:250},{id:'c2',title:'第二章 研究结果',targetWords:250},{id:'refs',title:'参考文献',targetWords:0}]});
@@ -102,4 +104,18 @@ test('remaining expression suggestions can be acknowledged without blocking an o
 
 test('the first generation can create and check the complete manuscript in one purchase without prior chapter versions',async t=>{
  const f=fullFixture(t);f.pay();let item=await f.create();assert.ok(item.chapters.every(row=>!row.text));assert.equal((await f.request('/api/theses/capabilities')).automaticManuscript,true);await submitFull(f,item);await f.worker.tick();item=f.get(item.id);assert.equal(item.job.status,'completed',item.job.error);assert.equal(item.completionReview.status,'ready',JSON.stringify(item.completionReview));assert.ok(item.completionReview.changes.every(row=>row.kind==='added'));assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_runs').get().n,1);assert.equal(f.billing.balance(f.user.id).balance,190);
+});
+
+test('new simulation inputs invalidate old completion results without presenting old gaps as a failed current check',async t=>{
+ const f=fullFixture(t);let item=await completeSaved(f);await submitFull(f,item);await f.worker.tick();item=f.get(item.id);assert.equal(item.completionReview.status,'ready');
+ const recipe={title:'模拟对照',purpose:'在声明的假设下分析输入响应，不是实测。',sampleSize:60,assumptions:['输入均匀分布。'],variables:[{key:'x',label:'模拟输入',distribution:'uniform',min:0,max:10},{key:'y',label:'模拟响应',distribution:'uniform',min:0,max:20}],limitations:['不能推断真实人群表现。']},generated=generateSimulationData(recipe,42),material={id:'simulation:fixture',name:'模拟对照',dataKind:'simulation',confirmed:true,text:generated.text,simulation:{jobId:'fixture',seed:42,generatorVersion:1,recipe}};
+ item=(await f.request('/api/theses/'+item.id,{version:item.version,snapshot:{...item.snapshot,materials:[...item.snapshot.materials,material],references:item.snapshot.references.map(row=>({...row,text:''}))}})).item;
+ const review=item.completionReview;assert.equal(review.status,'check_required');assert.equal(review.basisChanged,true);assert.equal(review.nextAction,'update_manuscript');assert.equal(review.reportCurrent,false);assert.deepEqual(review.missing,[]);assert.deepEqual(review.issues,[]);assert.equal(review.fingerprint,null);assert.equal(review.simulation.records,60);assert.equal(review.simulation.usedCount,0);assert.equal(review.simulationUsed,false);assert.match(review.informationMissing.join(' '),/文献题录.*摘要或正文/);assert.deepEqual(review.checks,{materials:false,manuscript:false,content:false});
+ await assert.rejects(f.request('/api/theses/'+item.id+'/completion/confirm',{version:item.version,runId:item.job.id,fingerprint:'a'.repeat(64)}),error=>error.status===409);
+});
+
+test('simulation saved, supplied, cited and checked are distinct states and never inferred from a saved dataset alone',()=>{
+ const material={id:'sim',dataKind:'simulation',simulation:{recipe:{sampleSize:60}}},value={materials:[material]},emptyRun={snapshot:JSON.stringify({materials:[]}),quality:null};
+ assert.deepEqual(simulationCompletionProgress(value,emptyRun,[]),{savedCount:1,records:60,includedCount:0,usedCount:0,checked:false});
+ const supplied={...emptyRun,snapshot:JSON.stringify(value)};assert.equal(simulationCompletionProgress(value,supplied,[{text:'模拟分析但没有来源标记'}]).usedCount,0);assert.equal(simulationCompletionProgress(value,supplied,[{text:'模拟结果[source:sim]'}]).usedCount,1);assert.equal(simulationCompletionProgress(value,supplied,[{text:'模拟结果[source:other]'}]).usedCount,0);
 });

@@ -18,7 +18,7 @@ export function synchronizeSimulationState(draft,item){
  const rows=(item?.snapshot?.materials||[]).filter(row=>row.dataKind==='simulation'),state=draft.simulationJob;
  const saved=state?.jobId?rows.find(row=>row.simulation?.jobId===state.jobId):!state?rows.at(-1):null;
  if(saved){
-  draft.simulationJob={...state,status:'completed',jobId:saved.simulation.jobId,thesisId:item.id,version:item.version,adoptionStatus:'saved',error:'',text:saved.text,sampleSize:saved.simulation.recipe?.sampleSize||0,variableCount:saved.simulation.recipe?.variables?.length||0};
+  draft.simulationJob={...state,clientKey:state?.clientKey||'saved-'+saved.simulation.jobId,status:'completed',jobId:saved.simulation.jobId,thesisId:item.id,version:item.version,adoptionStatus:'saved',error:'',text:saved.text,sampleSize:saved.simulation.recipe?.sampleSize||0,variableCount:saved.simulation.recipe?.variables?.length||0};
   draft.simulationRunIds=(draft.simulationRunIds||[]).filter(id=>id!==saved.simulation.jobId);draft.dirty=completionHasUnsavedInputs(draft);
  }else if(state?.status==='completed'&&state.adoptionStatus==='saved'){state.adoptionStatus='missing';state.error='这份模拟资料未保存在当前论文中，可恢复后继续使用。';}
 }

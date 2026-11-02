@@ -6,7 +6,7 @@ import {createCompletionDraft} from '../dist/workspace/thesis-completion-panel.m
 import {replaceSimulationPanel} from '../dist/workspace/thesis-simulation-client.mjs';
 
 const settle=async()=>{for(let i=0;i<16;i++)await new Promise(resolve=>setImmediate(resolve));};
-async function fixture(t,{saveFailures=0,recovery=false,loseSaveResponse=false,saveGate}={}){
+async function fixture(t,{saveFailures=0,recovery=false,loseSaveResponse=false,saveGate,priorReview=false}={}){
  disposeOnlineThesis();t.mock.timers.enable({apis:['setTimeout']});
  const dom=new JSDOM('<main class="dashboard"></main>',{url:'https://paperknow.test/workspace.html#thesis/paper'});
  for(const key of ['window','document','location','AbortController'])globalThis[key]=dom.window[key];
@@ -14,6 +14,7 @@ async function fixture(t,{saveFailures=0,recovery=false,loseSaveResponse=false,s
  let job={id:'sim-1',operation:'simulation',thesisId:'paper',userId:'owner',status:'queued'};
  let signedIn='owner';
  if(recovery)item.simulationRecovery={id:'sim-1',title:'已生成的仿真数据',sampleSize:2,variableCount:2};
+ if(priorReview)item.completionReview={required:true,status:'needs_materials',checks:{},missing:['旧检查：缺少模拟数据'],changes:[],issues:[]};
  const calls=[],ctx={session:async()=>({status:'ready',user:{id:signedIn}}),api:async(path,data)=>{calls.push({path,data});
   if(path==='/auth/me')return{user:{id:signedIn}};
   if(path==='/capabilities')return{thesis:{ready:true}};
@@ -23,6 +24,7 @@ async function fixture(t,{saveFailures=0,recovery=false,loseSaveResponse=false,s
    assert.deepEqual(Object.keys(data).sort(),['clientKey','simulationRunIds','version']);
    if(saveGate)await saveGate;
    if(!item.snapshot.materials.length){item.snapshot.materials.push({id:'simulation:sim-1',name:'模拟资料',text:'明确披露的模拟数据与参数说明。',confirmed:true,dataKind:'simulation',simulation:{jobId:'sim-1',seed:42,recipe:{sampleSize:2,variables:[{key:'x'},{key:'y'}]}}});item.version++;item.simulationRecovery=null;}
+   if(priorReview)item.completionReview={required:true,status:'check_required',basisChanged:true,reportCurrent:false,simulation:{savedCount:1,records:2,usedCount:0,checked:false},checks:{},changes:[],missing:[],issues:[]};
    if(loseSaveResponse){loseSaveResponse=false;throw Error('保存响应暂未收到');}return{item:structuredClone(item)};
   }
   if(path==='/theses/methods/capabilities')return{ready:true,supportsSimulation:true,billingService:'agent',billingServiceKey:'writing-planning'};
@@ -108,6 +110,11 @@ test('a lost save response recovers from the authoritative cloud material on reo
 
 test('changing accounts while free adoption is pending never repaints the old private data or starts writing',async t=>{
  let release;const f=await fixture(t,{saveGate:new Promise(resolve=>release=resolve)});await f.start();await f.complete();assert.match(f.q('.thesis-simulation-status').textContent,/正在保存/);f.setOwner('another');release();await settle();assert.match(f.root.textContent,/账户已切换/);assert.equal(f.q('[data-simulation-preview]'),null);assert.equal(f.calls.some(row=>row.path==='/theses/paper/generate'),false);
+});
+
+test('automatic simulation adoption retires the visible old review immediately without replacing author input',async t=>{
+ const f=await fixture(t,{priorReview:true}),field=f.q('[data-completion-reference="text"]');await f.start();field.value='作者正在补充的真实摘要';field.dispatchEvent(new f.dom.window.Event('input',{bubbles:true}));field.focus();await f.complete();
+ assert.equal(f.q('[data-completion-reference="text"]'),field);assert.equal(field.value,'作者正在补充的真实摘要');assert.match(f.q('[data-completion-review]').textContent,/正文待更新|尚未保存/);assert.doesNotMatch(f.q('[data-completion-review]').textContent,/旧检查：缺少模拟数据/);assert.match(f.q('[role="region"].thesis-completion-requests').getAttribute('aria-label'),/正文待更新/);assert.match(f.q('[data-completion-prepare]').textContent,/保存材料/);assert.equal(f.calls.filter(row=>row.path==='/theses/paper/completion').length,1);
 });
 
 test('the sole draft and final download controls follow all supplement and cover inputs',async t=>{

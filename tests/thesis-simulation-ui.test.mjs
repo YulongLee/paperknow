@@ -38,6 +38,7 @@ test('cloud-confirmed simulation clears only its own pending input and never cle
  const draft=createCompletionDraft(),material={dataKind:'simulation',text:'完整云端数据',simulation:{jobId:'one',recipe:{sampleSize:60,variables:[{key:'x'},{key:'y'}]}}};draft.simulationJob={jobId:'one',status:'completed',adoptionStatus:'saving'};draft.simulationRunIds=['one'];draft.reference.title='尚未加入的文献';draft.dirty=true;
  synchronizeSimulationState(draft,{id:'paper',version:2,snapshot:{materials:[material]}});
  assert.equal(draft.simulationJob.adoptionStatus,'saved');assert.equal(draft.simulationJob.sampleSize,60);assert.equal(draft.simulationJob.variableCount,2);assert.deepEqual(draft.simulationRunIds,[]);assert.equal(draft.dirty,true);assert.equal(completionHasUnsavedInputs(draft),true);
+ assert.equal(restoreCompletionDraft(completionDraftRecord(draft)).reference.title,'尚未加入的文献','cloud-confirmed simulation metadata must be a valid restorable draft');
  synchronizeSimulationState(draft,{id:'paper',version:3,snapshot:{materials:[]}});assert.equal(draft.simulationJob.adoptionStatus,'missing');assert.match(simulationPanelHTML(draft),/保存模拟资料并继续/);
 });
 
