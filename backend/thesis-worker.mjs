@@ -1,4 +1,5 @@
 import {completionContentAudit} from './thesis-completion-audit.mjs';
+import {assertExpressionRepairUnchanged} from './thesis-expression-repair.mjs';
 import {completionRepairs} from './thesis-completion-repair.mjs';
 import {runSupplementCheck} from './supplement-check.mjs';
 import {completionBaseline,completionManuscriptHash} from './thesis-completion.mjs';
@@ -184,14 +185,14 @@ export function startThesisWorker(db,config={}){
       quality.completionAudit=completionContentAudit(snapshot,completionReviewChapters(),quality,db.prepare('SELECT export_metadata FROM theses WHERE id=?').get(run.thesis_id));
       quality.completionPass=pass;quality.manuscriptHash=completionManuscriptHash(completionReviewChapters());
       if(!writeRunning(()=>{const json=JSON.stringify(quality),previous=db.prepare("SELECT length(CAST(coalesce(quality,'') AS BLOB)) bytes FROM thesis_runs WHERE id=?").get(run.id).bytes;assertThesisAccountQuota(db,run.user_id,Math.max(0,Buffer.byteLength(json)-previous),config);db.prepare('UPDATE thesis_runs SET quality=?,updated_at=? WHERE id=? AND attempt=?').run(json,clock(),run.id,run.attempt);}))return;
-      if(pass===2||quality.coverage?.complete!==true||quality.supplementCheck?.coverage?.complete!==true)break;
-      const current=db.prepare("SELECT * FROM thesis_checkpoints WHERE run_id=? AND status='completed' ORDER BY position").all(run.id),repairs=completionRepairs(snapshot,plan,current,quality,pass);
+      if(pass===2)break;
+      const current=db.prepare("SELECT * FROM thesis_checkpoints WHERE run_id=? AND status='completed' ORDER BY position").all(run.id),repairs=completionRepairs(snapshot,plan,current,quality,pass,{expressionOnly:quality.coverage?.complete!==true||quality.supplementCheck?.coverage?.complete!==true});
       let repaired=current.some(row=>JSON.parse(row.trace||'[]').some(entry=>entry.stage==='completion_repair_'+pass)),repairStopped=false;
-      for(const {unit,checkpoint,task,unitId}of repairs){
+      for(const {unit,checkpoint,task,unitId,expressionOnly}of repairs){
        stage('repairing_completion');let result;
-       try{result=await reviewDispatch({task,settings:{...runtime,maxTurns:Math.min(12,runtime.maxTurns||3),maxOutputTokens:Math.min(16384,runtime.maxOutputTokens||4096)},validateThesisOutput:candidate=>validateThesisCandidate(candidate,snapshot,unit),unitId});}
+       try{result=await reviewDispatch({task,settings:{...runtime,maxTurns:Math.min(12,runtime.maxTurns||3),maxOutputTokens:Math.min(16384,runtime.maxOutputTokens||4096)},validateThesisOutput:candidate=>{const result=validateThesisCandidate(candidate,snapshot,unit);if(result.valid!==true||!expressionOnly)return result;try{assertExpressionRepairUnchanged(checkpoint,parseThesisSection(candidate,snapshot,unit));return result;}catch(error){return{valid:false,feedback:{code:"expression_integrity",rule:error.message}};}},unitId});}
        catch(error){if(!running()||stopped)throw error;quality.automaticRepair={status:'incomplete',reason:'部分自动修正尚未完成，已补齐的内容保留。'};repairStopped=true;break;}
-       const content=parseThesisSection(result,snapshot,unit);
+       const content=parseThesisSection(result,snapshot,unit);if(expressionOnly)assertExpressionRepairUnchanged(checkpoint,content);
        if(!writeRunning(()=>{const figures=JSON.stringify(content.figures||[]),trace=JSON.stringify([...cleanTrace(result.trace),{stage:'completion_repair_'+pass}]);assertThesisAccountQuota(db,run.user_id,Math.max(0,Buffer.byteLength(content.text)+Buffer.byteLength(figures)+Buffer.byteLength(trace)-Buffer.byteLength(checkpoint.text)-Buffer.byteLength(checkpoint.figures||'[]')-Buffer.byteLength(checkpoint.trace||'[]')),config);db.prepare('UPDATE thesis_checkpoints SET text=?,source_ids=?,missing_evidence=?,figures=?,trace=?,updated_at=? WHERE run_id=? AND unit_id=?').run(content.text,JSON.stringify(content.sourceIds),JSON.stringify(content.missingEvidence||[]),figures,trace,clock(),run.id,unit.id);db.prepare('UPDATE theses SET version=version+1,updated_at=? WHERE id=? AND current_run_id=?').run(clock(),run.thesis_id,run.id);}))return;
        repaired=true;
       }

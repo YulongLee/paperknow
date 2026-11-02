@@ -32,8 +32,8 @@ export function completionReview(db,row,run){
   ...(quality?.supplementCheck?.items||[]).filter(item=>item.status==='missing').flatMap(item=>(item.missing||[]).map(text=>item.title+'：'+text))
  ])].slice(0,60);
  const findings=[...(quality?.consistency?.findings||[]),...(quality?.reviews||[]).flatMap(review=>review.findings||[])];
- const issues=[...audit.issues.filter(issue=>!/^cover_|reference_minimum|foreign_references|citations_missing/.test(issue.code)).map(issue=>({title:'终稿内容',text:issue.message})),...findings.filter(finding=>finding.severity!=='info'&&finding.category!=='language_expression').slice(0,40).map(finding=>({chapterId:finding.sectionId,title:finding.sectionTitle||'正文',text: String(finding.suggestion||finding.explanation||'本项仍需完善').slice(0,500)}))].slice(0,50);
- const suggestions=findings.filter(finding=>finding.severity==='info'||finding.category==='language_expression').slice(0,20).map(finding=>({title:finding.sectionTitle||'正文',text:String(finding.suggestion||finding.explanation||'').slice(0,500)}));
+ const issues=[...audit.issues.filter(issue=>!/^cover_|reference_minimum|foreign_references|citations_missing/.test(issue.code)).map(issue=>({title:'终稿内容',text:issue.message})),...findings.filter(finding=>finding.severity!=='info'||finding.category==='language_expression').slice(0,40).map(finding=>({chapterId:finding.sectionId,title:finding.sectionTitle||'正文',text: String(finding.suggestion||finding.explanation||'本项仍需完善').slice(0,500)}))].slice(0,50);
+ const suggestions=[];
  const checkUnavailable=quality?.supplementCheck?.status==='unavailable';
  const status=['queued','running'].includes(run.status)?'generating':run.status!=='completed'||stale||checkUnavailable?'check_required':missing.length?'needs_materials':!supplementCheckReady(quality)||issues.length||needs.chapters.some(chapter=>chapter.needsTableTitles)?'check_required':'ready';
  const fingerprint=thesisHash({runId:run.id,snapshot:row.snapshot_hash,chapters:saved.map(chapter=>[chapter.id,chapter.record?.id||null]),metadata:row.export_metadata||null,template:row.export_template||null,quality:run.quality});
