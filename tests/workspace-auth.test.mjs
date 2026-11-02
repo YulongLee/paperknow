@@ -93,7 +93,7 @@ async function fixture(fetcher,{hash='#account',allReports=async()=>[],setup}={}
  storage.setItem(keys.profile,JSON.stringify({name:'本地昵称',degree:'硕士',major:'教育学'}));
  storage.setItem(keys.drafts,JSON.stringify([{id:'draft-one',title:'未上传的研究草稿'}]));
  const reads=[];const read=(key,fallback)=>{reads.push(key);return JSON.parse(storage.getItem(key)||'null')??fallback;};
- Object.assign(dom.window,{serviceMessage},thesisReader,thesisCompletion,thesisSimulation,{createLiteratureAccountStore:()=>({setUser(){}}),thesisCoverFields,thesisFrontMatterKind,thesisManualBackMatter,helpKnowledgeMarkup,bindHelpKnowledge,supportContactsMarkup,bindSupportContacts,projectPickerOptions,hasDraftScope:()=>false,installUploadPresentation,installStoredFilePickers:()=>({dispose(){}}),installProjectPickers:()=>()=>{},selectableProjects:()=>[],setProjectDirectorySession:()=>{},updateAccountProjects:()=>false,resolveAccountProjectId,captureDraftScope,workspaceJobLabel,workspaceResultTitle,workspaceJobError,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),normalizeThesisFigures,thesisFigureTitle,renderThesisFigureSvg,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,buildThesisBibliography,withBibliographicMetadata,assessThesisEvidence,writingQualityPanel,thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,downloadDefaultThesisTemplate,createDocumentExportProgress,renderThesisDocument,showThesisExportCheck,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
+ Object.assign(dom.window,{serviceMessage},thesisReader,thesisCompletion,thesisSimulation,{renderOnlinePersonal:async()=>false,createLiteratureAccountStore:()=>({setUser(){}}),thesisCoverFields,thesisFrontMatterKind,thesisManualBackMatter,helpKnowledgeMarkup,bindHelpKnowledge,supportContactsMarkup,bindSupportContacts,projectPickerOptions,hasDraftScope:()=>false,installUploadPresentation,installStoredFilePickers:()=>({dispose(){}}),installProjectPickers:()=>()=>{},selectableProjects:()=>[],setProjectDirectorySession:()=>{},updateAccountProjects:()=>false,resolveAccountProjectId,captureDraftScope,workspaceJobLabel,workspaceResultTitle,workspaceJobError,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),normalizeThesisFigures,thesisFigureTitle,renderThesisFigureSvg,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,buildThesisBibliography,withBibliographicMetadata,assessThesisEvidence,writingQualityPanel,thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,downloadDefaultThesisTemplate,createDocumentExportProgress,renderThesisDocument,showThesisExportCheck,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
   ...taskModel,...projectModel,...assetModel,...overviewModel,homeLayout,fitHomeRows,continuationAssets,readHomeService:async()=>({cap:{},user:null}),preferences:()=>({degree:'本科',...read(keys.preferences,{})}),profile:()=>({name:'研究者',...read(keys.profile,{})}),read,list:key=>read(key,[]),write:(key,value)=>storage.setItem(key,JSON.stringify(value)),projects:()=>read(keys.projects,[]),repository:{all:allReports},formatDate:()=>'',mountNavigation:()=>({close(){}}),
   disposeLiteraturePages:()=>{},readingFeatures,mountLiteratureLanding:()=>{},mountLiteratureFeaturePage:()=>{},disposeWritingFlows:()=>{},disposeDataAnalysis:()=>{},disposeQuestionnaire:()=>{},questionnaireRouteGuard:async()=>true,questionnaireSessionChanged:()=>{},disposeFormat:()=>{},disposeResearch:()=>{},disposePresentation:()=>{},disposeRevision:()=>{},disposeAccountDraft:()=>{},accountDraftEditing:()=>false,accountDraftHasWork:()=>false,accountDraftConfirmLeave:async()=>true,accountDraftSessionChanged:()=>{},accountDraftRouteGuard:()=>true,
   disposeServicePricing:()=>{},mountServicePricing:()=>{},disposePayment:()=>{paymentCalls.push({type:'dispose'});},renderPaymentOrders:async()=>{paymentCalls.push({type:'orders'});},renderPaymentCheckout:async options=>{paymentCalls.push({type:'checkout',productId:options.productId,orderId:options.orderId});},clearEditor:()=>{},clearHelpWork:()=>{},clearSettingsWork:()=>{},clearMoreWork:()=>{},trackDialogForm:()=>()=>{},retainWritingCatalog:()=>{},isCurrentRouteChange:()=>false,
@@ -117,7 +117,7 @@ for(const hash of ['#tool/agent?project=p1','#tasks?scope=account&view=agent&pro
  }finally{f.close();}
 });
 
-test('tool, account and cloud-asset navigation avoid local summaries while search still reads newly saved drafts',async()=>{
+test('standard workspace navigation and search never substitute browser drafts for saved cloud content',async()=>{
  const f=await fixture(async()=>response(401));
  try{
   await f.api.loadWorkspaceSession();
@@ -131,7 +131,7 @@ test('tool, account and cloud-asset navigation avoid local summaries while searc
   assert.equal(f.reads.filter(key=>key===keys.drafts).length,0);assert.equal(f.document.querySelector('#asset-table-body'),null);assert.ok(f.document.querySelector('#cloud-artifact-library'));assert.equal(f.dom.window.location.hash,'#assets');assert.match(f.storage.getItem(keys.drafts),/新保存的本地研究/);
   f.storage.setItem(keys.drafts,JSON.stringify([{id:'newer-draft',title:'搜索前刚保存的研究',tool:'writing',updatedAt:'2026-10-19T05:00:00Z',stage:'draft'}]));
   f.dom.window.history.replaceState(null,'','/workspace.html#search/研究');f.api.render();
-  assert.match(f.document.querySelector('.dashboard').textContent,/搜索前刚保存的研究/);assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/新保存的本地研究/);
+  assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/搜索前刚保存的研究/);assert.match(f.storage.getItem(keys.drafts),/搜索前刚保存的研究/);assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/新保存的本地研究/);
  }finally{f.close();}
 });
 
@@ -161,24 +161,24 @@ test('a category renders while report history is pending and its active editor s
  }finally{f.close();}
 });
 
-test('home renders immediately and late reports update its local panels without restarting service loading or moving the viewport',async()=>{
+test('signed-out home ignores late browser report hydration without replacing the page or moving the viewport',async()=>{
  const pending=deferredReports();let serviceReads=0;
  const f=await fixture(async()=>response(401),{hash:'#home?scope=local',allReports:()=>pending.promise,setup:w=>{w.readHomeService=async()=>{serviceReads++;return {cap:{},user:null};};}});
  try{
-  assert.ok(f.document.querySelector('.home-refresh'));assert.ok(f.document.querySelector('[data-local-reports-status]'));assert.match(f.document.querySelector('#home-result-list').textContent,/未上传的研究草稿/);
+  assert.ok(f.document.querySelector('.home-refresh'));assert.equal(f.document.querySelector('[data-local-reports-status]'),null);assert.doesNotMatch(f.document.querySelector('#home-result-list').textContent,/未上传的研究草稿/);assert.match(f.document.querySelector('#home-resume').textContent,/登录后/);
   await settleReports();const readsBefore=serviceReads;let y=320;const scrolls=[];Object.defineProperty(f.dom.window,'scrollY',{configurable:true,get:()=>y});f.dom.window.scrollTo=options=>{scrolls.push(options);y=options.top;};
   const home=f.document.querySelector('.home-refresh');pending.resolve([lateReport]);await settleReports();
-  assert.equal(f.document.querySelector('.home-refresh'),home);assert.match(f.document.querySelector('#home-result-list').textContent,/稍后读取的比对报告/);assert.equal(f.document.querySelector('[data-local-reports-status]'),null);assert.equal(serviceReads,readsBefore);assert.equal(y,320);assert.equal(scrolls.length,0);
+  assert.equal(f.document.querySelector('.home-refresh'),home);assert.doesNotMatch(f.document.querySelector('#home-result-list').textContent,/稍后读取的比对报告/);assert.equal(f.document.querySelector('[data-local-reports-status]'),null);assert.equal(serviceReads,readsBefore);assert.equal(y,320);assert.equal(scrolls.length,0);
  }finally{f.close();}
 });
 
-test('local search still populates delayed report rows without reintroducing a local asset library',async()=>{
+test('search never adds cached report rows to cloud results when browser report reads finish',async()=>{
  for(const hash of ['#search/比对报告']){
   const pending=deferredReports(),f=await fixture(async()=>response(401),{hash,allReports:()=>pending.promise});
   try{
-   assert.ok(f.document.querySelector('[data-local-reports-status]'));assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
+   assert.equal(f.document.querySelector('[data-local-reports-status]'),null);assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
    pending.resolve([lateReport]);await settleReports();
-   assert.match(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);assert.equal(f.document.querySelector('[data-local-reports-status]'),null);
+   assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);assert.equal(f.document.querySelector('[data-local-reports-status]'),null);
    if(hash.startsWith('#assets'))assert.equal(f.document.querySelector('#asset-count').textContent,'共 2 份成果');
   }finally{f.close();}
  }
@@ -202,26 +202,26 @@ test('a late report read cannot replace an editor opened after the initial list 
    if(!changeRenderedRoute)f.dom.window.history.replaceState(null,'','/workspace.html#search/比对报告');
    pending.resolve([lateReport]);await settleReports();
    assert.equal(f.document.querySelector('#late-report-editor'),editor);assert.equal(editor.value,'待保存的正文');assert.equal(f.document.activeElement,editor);assert.equal(active,true);
-   f.dom.window.history.replaceState(null,'','/workspace.html#search/比对报告');f.api.render();assert.match(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
+   f.dom.window.history.replaceState(null,'','/workspace.html#search/比对报告');f.api.render();assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
   }finally{f.close();}
  }
 });
 
-test('report completion preserves an open dialog and updates search only after it closes',async()=>{
+test('legacy report completion preserves an open dialog and never changes cloud search after closing',async()=>{
  const pending=deferredReports(),f=await fixture(async()=>response(401),{hash:'#search/比对报告',allReports:()=>pending.promise});
  try{
   const dialog=f.document.querySelector('#workspace-dialog');f.document.querySelector('#workspace-dialog-body').innerHTML='<input id="pending-project-name" value="研究项目草稿">';dialog.setAttribute('open','');const input=f.document.querySelector('#pending-project-name');input.focus();
   pending.resolve([lateReport]);await settleReports();
   assert.equal(dialog.open,true);assert.equal(f.document.querySelector('#pending-project-name'),input);assert.equal(input.value,'研究项目草稿');assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
-  dialog.removeAttribute('open');dialog.dispatchEvent(new f.dom.window.Event('close'));await settleReports();assert.match(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
+  dialog.removeAttribute('open');dialog.dispatchEvent(new f.dom.window.Event('close'));await settleReports();assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
  }finally{f.close();}
 });
 
-test('an initial report failure preserves browser drafts and displays a recoverable search warning',async()=>{
+test('legacy report failures preserve cached drafts without presenting unrelated warnings in cloud search',async()=>{
  const pending=deferredReports(),f=await fixture(async()=>response(401),{hash:'#search/研究',allReports:()=>pending.promise});
  try{
-  assert.match(f.document.querySelector('.dashboard').textContent,/未上传的研究草稿/);pending.reject(new Error('IndexedDB unavailable'));await settleReports();
-  assert.match(f.document.querySelector('[data-local-reports-status]').textContent,/比对报告暂时无法读取/);assert.match(f.document.querySelector('.dashboard').textContent,/未上传的研究草稿/);assert.match(f.storage.getItem(keys.drafts),/未上传的研究草稿/);
+  assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/未上传的研究草稿/);pending.reject(new Error('IndexedDB unavailable'));await settleReports();
+  assert.equal(f.document.querySelector('[data-local-reports-status]'),null);assert.match(f.document.querySelector('#account-search-panel').textContent,/登录/);assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/未上传的研究草稿/);assert.match(f.storage.getItem(keys.drafts),/未上传的研究草稿/);
  }finally{f.close();}
 });
 
@@ -231,7 +231,7 @@ test('settings data routes retire local restore hooks and ignore late report hyd
  try{
   f.dom.window.history.replaceState(null,'','/workspace.html#settings/data');f.api.render();assert.equal(settingsSection,'data');assert.equal(settingsContext.exportBackup,undefined);assert.equal(settingsContext.restored,undefined);
   pending.resolve([lateReport]);await settleReports();assert.match(f.document.querySelector('.dashboard').textContent,/账户数据管理/);
-  f.dom.window.history.replaceState(null,'','/workspace.html#search/比对报告');f.api.render();assert.match(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
+  f.dom.window.history.replaceState(null,'','/workspace.html#search/比对报告');f.api.render();assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/稍后读取的比对报告/);
  }finally{f.close();}
 });
 
@@ -505,8 +505,8 @@ test('logout preserves the local workspace and late session responses cannot res
 
 
 test('workspace search finds account projects, drafts, task results and originals with correct direct routes',async()=>{
- const f=await fixture(async path=>{if(path==='/api/auth/me')return response(200,signedIn);const items=path==='/api/projects'?[{id:'p1',title:'课堂研究项目'}]:path==='/api/workspace/drafts'?[{id:'d1',title:'课堂研究草稿'}]:path==='/api/results'?[{id:'r1',title:'课堂研究成果'}]:path==='/api/files'?[{id:'f1',name:'课堂研究原件.txt'}]:null;return {ok:true,status:200,json:async()=>({items})};});
- try{f.dom.window.location.hash='#search/'+encodeURIComponent('课堂');f.api.render();await new Promise(resolve=>setTimeout(resolve,15));const panel=f.document.querySelector('#account-search-panel');assert.match(panel.textContent,/课堂研究项目/);assert.match(panel.textContent,/课堂研究草稿/);assert.match(panel.textContent,/课堂研究成果/);assert.deepEqual([...panel.querySelectorAll('a')].map(a=>a.getAttribute('href')),['#projects?project=p1','#account-draft/d1','#assets?result=r1','/api/files/f1/download']);assert.ok(panel.querySelector('a[href="#account-draft/d1"]'));assert.ok(panel.querySelector('a[href="/api/files/f1/download"]'));}finally{f.close();}
+ const calls=[],f=await fixture(async(path,options)=>{calls.push({path,options});if(path==='/api/auth/me')return response(200,signedIn);const items=path==='/api/projects'?[{id:'p1',title:'课堂研究项目'}]:path==='/api/workspace/drafts'?[{id:'d1',title:'课堂研究草稿'}]:path==='/api/results'?[{id:'r1',title:'课堂研究成果'}]:path==='/api/files'?[{id:'f1',name:'课堂研究原件.txt'}]:null;return {ok:true,status:200,json:async()=>({items})};});
+ try{f.dom.window.location.hash='#search/'+encodeURIComponent('课堂');f.api.render();await new Promise(resolve=>setTimeout(resolve,15));const panel=f.document.querySelector('#account-search-panel');assert.match(panel.textContent,/课堂研究项目/);assert.match(panel.textContent,/课堂研究草稿/);assert.match(panel.textContent,/课堂研究成果/);assert.deepEqual([...panel.querySelectorAll('a')].map(a=>a.getAttribute('href')),['#projects?project=p1','#account-draft/d1','#assets?result=r1','/api/files/f1/download']);assert.ok(panel.querySelector('a[href="#account-draft/d1"]'));assert.ok(panel.querySelector('a[href="/api/files/f1/download"]'));for(const call of calls.filter(row=>['/api/projects','/api/workspace/drafts','/api/results','/api/files'].includes(row.path)))assert.equal(call.options.headers['X-PaperKnow-User'],signedIn.id);}finally{f.close();}
 });
 
 test('a failed account search shows an unavailable state rather than claiming zero matches',async()=>{
@@ -583,12 +583,12 @@ test('home revisits reuse current account records immediately and share an in-fl
  }finally{f.close();}
 });
 
-test('explicit local home does not request account overview lists and changing to account scope loads once',async()=>{
- let reads=0;const f=await fixture(async()=>response(200,signedIn),{hash:'#home?scope=local',setup:w=>{w.readHomeService=async()=>{reads++;return accountHomeData(signedIn,'账户范围草稿');};}});
+test('old local and account home URLs use the same cloud records without changing cached drafts',async()=>{
+ let reads=0;const f=await fixture(async()=>response(200,signedIn),{hash:'#home?scope=local',setup:w=>{w.readHomeService=async()=>{reads++;return accountHomeData(signedIn,'统一保存的研究草稿');};}});
  try{
-  await settleReports();showHomeFixtureRoute(f,'#home?scope=local');await settleReports();assert.equal(reads,0);assert.match(f.document.querySelector('#home-resume').textContent,/未上传的研究草稿/);
-  showHomeFixtureRoute(f,'#home?scope=account');await settleReports();assert.equal(reads,1);assert.match(f.document.querySelector('#home-resume').textContent,/账户范围草稿/);
-  showHomeFixtureRoute(f,'#home?scope=local');assert.doesNotMatch(f.document.querySelector('#home-resume').textContent,/账户范围草稿/);await settleReports();assert.equal(reads,1);
+  await settleReports();const before=f.storage.getItem(keys.drafts);assert.equal(f.dom.window.location.hash,'#home');assert.equal(reads,1);assert.match(f.document.querySelector('#home-resume').textContent,/统一保存的研究草稿/);
+  for(const hash of ['#home?scope=local','#home?scope=account']){showHomeFixtureRoute(f,hash);await settleReports();assert.equal(f.dom.window.location.hash,'#home');assert.equal(reads,1);assert.match(f.document.querySelector('#home-resume').textContent,/统一保存的研究草稿/);assert.equal(f.document.querySelector('.studio-switch,.workspace-scope-tabs'),null);assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/本地内容|账户内容|未上传的研究草稿/);}
+  assert.equal(f.storage.getItem(keys.drafts),before);
  }finally{f.close();}
 });
 
@@ -613,7 +613,7 @@ test('changing account clears cached home records and ignores the previous accou
   user=bob;await f.api.loadWorkspaceSession(true);await settleReports();assert.equal(reads,3);assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/旧账户私人标题/);
   oldPending.resolve(accountHomeData(alice,'旧账户晚到结果'));await settleReports();assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/旧账户晚到结果|旧账户私人标题/);
   newPending.resolve(accountHomeData(bob,'新账户安全内容'));await settleReports();assert.match(f.document.querySelector('#home-resume').textContent,/新账户安全内容/);assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/旧账户/);
-  await f.api.signOutWorkspace();await settleReports();assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/新账户安全内容/);assert.match(f.document.querySelector('#home-resume').textContent,/未上传的研究草稿/);assert.equal(reads,3);
+  await f.api.signOutWorkspace();await settleReports();assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/新账户安全内容/);assert.doesNotMatch(f.document.querySelector('#home-resume').textContent,/未上传的研究草稿/);assert.match(f.document.querySelector('#home-resume').textContent,/登录后/);assert.equal(reads,3);
  }finally{oldPending.resolve(accountHomeData(alice,'旧账户晚到结果'));newPending.resolve(accountHomeData(bob,'新账户安全内容'));f.close();}
 });
 
@@ -630,7 +630,7 @@ test('home refresh authentication failures clear private cached records and rech
  let reads=0,user=signedIn,auth=0;const f=await fixture(async()=>{auth++;return response(user?200:401,user);},{hash:'#home',setup:w=>{w.readHomeService=async()=>{reads++;if(reads>1){user=null;throw Object.assign(Error('session expired'),{status:401});}return accountHomeData(signedIn,'会话失效前的私人草稿');};}});
  try{
   await settleReports();assert.match(f.document.querySelector('#home-resume').textContent,/会话失效前的私人草稿/);assert.equal(auth,1);
-  await f.api.loadHomeService({force:true});await settleReports();assert.equal(auth,2);assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/会话失效前的私人草稿/);assert.match(f.document.querySelector('#home-resume').textContent,/未上传的研究草稿/);
+  await f.api.loadHomeService({force:true});await settleReports();assert.equal(auth,2);assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/会话失效前的私人草稿/);assert.doesNotMatch(f.document.querySelector('#home-resume').textContent,/未上传的研究草稿/);assert.match(f.document.querySelector('#home-resume').textContent,/登录后/);
  }finally{f.close();}
 });
 
@@ -686,4 +686,31 @@ for(const signed of [false,true])test('membership ignores a historical local sco
 test('the price catalogue has its own membership page and keeps the membership navigation selected',async()=>{
  const mounts=[],f=await fixture(async()=>response(401),{hash:'#membership/pricing',setup:w=>{w.mountServicePricing=()=>{mounts.push('pricing');w.document.querySelector('.dashboard').innerHTML='<h2>服务价目表</h2>';};}});
  try{assert.deepEqual(mounts,['pricing']);assert.equal(f.document.querySelector('.breadcrumb strong').textContent,'服务价目表');assert.equal(f.document.querySelector('.sidebar .nav-link.active').getAttribute('href'),'#membership');assert.equal(f.document.querySelector('.workspace-scope-tabs'),null);}finally{f.close();}
+});
+
+test('guest home hides cached browser records and does not request private cloud lists',async()=>{
+ const calls=[],f=await fixture(async(path,options)=>{calls.push({path,options});return response(401);},{hash:'#home?scope=local',setup:w=>{w.readHomeService=async()=>assert.fail('private overview must not load for a guest');}});
+ try{await settleReports();assert.equal(f.dom.window.location.hash,'#home');assert.match(f.document.querySelector('#home-summary').textContent,/登录后继续你的研究/);assert.deepEqual([...f.document.querySelectorAll('.home-metric-card b')].map(row=>row.textContent),['—','—','—','—']);assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/未上传的研究草稿|本地内容|账户内容/);assert.ok(f.document.querySelector('#home-summary a[href*="auth.html"]'));assert.equal(calls.some(row=>/\/api\/(?:jobs|files|usage|projects|workspace\/drafts|results|theses)/.test(row.path)),false);assert.match(f.storage.getItem(keys.drafts),/未上传的研究草稿/);}finally{f.close();}
+});
+
+test('an unavailable cloud overview offers a real retry instead of fallback records or invented zero totals',async()=>{
+ let reads=0;const f=await fixture(async()=>response(200,signedIn),{hash:'#home',setup:w=>{w.readHomeService=async()=>{if(++reads===1)throw Object.assign(Error('temporary'),{status:503});return accountHomeData(signedIn,'重新读取的真实草稿');};}});
+ try{await settleReports();assert.match(f.document.querySelector('#home-summary').textContent,/暂时无法读取/);assert.deepEqual([...f.document.querySelectorAll('.home-metric-card b')].map(row=>row.textContent),['—','—','—','—']);assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/未上传的研究草稿|暂时没有这类成果/);const button=f.document.querySelector('[data-home-retry]');assert.ok(button);button.click();await settleReports();assert.equal(reads,2);assert.match(f.document.querySelector('#home-resume').textContent,/重新读取的真实草稿/);assert.equal(f.document.querySelector('[data-home-retry]'),null);}finally{f.close();}
+});
+
+test('overview session mismatch rechecks authentication and never becomes an endless loading or local fallback state',async()=>{
+ let user=signedIn,auth=0,reads=0;const f=await fixture(async()=>{auth++;return response(user?200:401,user);},{hash:'#home',setup:w=>{w.readHomeService=async()=>{reads++;user=null;return {cap:{},user:null};};}});
+ try{await settleReports();assert.equal(reads,1);assert.equal(auth,2);assert.match(f.document.querySelector('#home-summary').textContent,/登录后/);assert.doesNotMatch(f.document.querySelector('.home-refresh').textContent,/正在读取|未上传的研究草稿/);}finally{f.close();}
+});
+
+test('legacy task scope URLs always open the same authenticated task center while retaining filters and cached data',async()=>{
+ const calls=[],cached=[{id:'old-task',title:'旧任务缓存',status:'completed'}],job={id:'cloud-job',type:'agent',status:'completed',stage:'completed',created_at:'2026-11-02T01:00:00Z'};
+ const f=await fixture(async(path,options)=>{calls.push({path,options});if(path==='/api/auth/me')return response(200,signedIn);return {ok:true,status:200,json:async()=>({items:path==='/api/jobs'?[job]:[]})};},{hash:'#tasks?scope=local&project=cloud-p',setup:w=>w.localStorage.setItem(keys.tasks,JSON.stringify(cached))});
+ try{await settleReports();for(const hash of ['#tasks?scope=local&project=cloud-p','#tasks?scope=account&project=cloud-p']){f.dom.window.history.replaceState(null,'','/workspace.html'+hash);f.api.render();await settleReports();assert.equal(f.dom.window.location.hash,'#tasks?project=cloud-p');assert.ok(f.document.querySelector('#online-workspace'));assert.equal(f.document.querySelector('.workspace-content-scope,.workspace-scope-tabs,#task-table-body'),null);assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/旧任务缓存|本地内容|账户内容/);}assert.deepEqual(JSON.parse(f.storage.getItem(keys.tasks)),cached);assert.ok(calls.some(row=>row.path==='/api/jobs'));assert.equal(calls.some(row=>row.options?.body),false);}finally{f.close();}
+});
+
+test('top task activity opens the cloud task center and its display preference is still respected',async()=>{
+ const f=await fixture(async(path)=>path==='/api/auth/me'?response(200,signedIn):{ok:true,status:200,json:async()=>({items:[]})},{hash:'#home',setup:w=>{w.readHomeService=async()=>accountHomeData(signedIn,'已保存的文稿');}});
+ try{await settleReports();const button=f.document.querySelector('#notification-button');assert.equal(button.getAttribute('aria-label'),'查看任务动态');button.click();assert.equal(f.dom.window.location.hash,'#tasks');f.api.render();await settleReports();assert.ok(f.document.querySelector('#online-workspace'));assert.equal(f.document.querySelector('#workspace-dialog').open,false);assert.doesNotMatch(f.document.querySelector('.dashboard').textContent,/本地内容|账户内容/);}finally{f.close();}
+ const hidden=await fixture(async()=>response(401),{setup:w=>w.localStorage.setItem(keys.preferences,JSON.stringify({localActivityEnabled:false}))});try{assert.equal(hidden.document.querySelector('#notification-button').style.display,'none');}finally{hidden.close();}
 });

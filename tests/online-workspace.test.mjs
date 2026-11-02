@@ -413,7 +413,7 @@ test('pending original deletion offers a retry without exposing download or incl
 });
 
 test('refreshing an edited project resets editing identity so a later new project cannot overwrite the old one',async t=>{
- const f=await fixture(t);f.doc.querySelector('[data-account-project-edit="p1"]').click();await settle(()=>f.doc.querySelector('#project-edit-note').textContent.includes('正在编辑'));input(f,'#project-title','放弃的项目修改');f.doc.querySelector('.account-refresh').click();await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.notices.includes('已读取最新账户内容'));assert.equal(f.doc.querySelector('#project-title').value,'');input(f,'#project-title','真正的新项目');submit(f,'#project-form');await settle(()=>f.notices.includes('研究项目已创建'));assert.equal(f.calls.some(call=>call.path==='/api/projects/p1'&&call.body),false);assert.equal(f.calls.find(call=>call.path==='/api/projects'&&call.body).body.title,'真正的新项目');
+ const f=await fixture(t);f.doc.querySelector('[data-account-project-edit="p1"]').click();await settle(()=>f.doc.querySelector('#project-edit-note').textContent.includes('正在编辑'));input(f,'#project-title','放弃的项目修改');f.doc.querySelector('.account-refresh').click();await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.notices.includes('内容已更新'));assert.equal(f.doc.querySelector('#project-title').value,'');input(f,'#project-title','真正的新项目');submit(f,'#project-form');await settle(()=>f.notices.includes('研究项目已创建'));assert.equal(f.calls.some(call=>call.path==='/api/projects/p1'&&call.body),false);assert.equal(f.calls.find(call=>call.path==='/api/projects'&&call.body).body.title,'真正的新项目');
 });
 
 test('legacy provider metadata never appears in AI task forms or usage rows',async t=>{
@@ -628,7 +628,7 @@ test('account project cloud-file entry uses its distinct server count and retain
 
 test('editing-history disclosure retains the user choice when refreshing and opening a result',async t=>{
  const f=await fixture(t,{view:'results'});f.doc.querySelector('#account-editing-records').open=true;
- f.doc.querySelector('.account-refresh').click();await settle(()=>f.notices.includes('已读取最新账户内容'));
+ f.doc.querySelector('.account-refresh').click();await settle(()=>f.notices.includes('内容已更新'));
  assert.equal(f.doc.querySelector('#account-editing-records').open,true);
  f.doc.querySelector('[data-result="r1"]').click();await settle(()=>f.doc.querySelector('#revision-text'));
  assert.equal(f.doc.querySelector('#account-editing-records').open,true);
@@ -724,7 +724,7 @@ test('original file window measures variable-height rows, preserves scroll on re
  let observers=[],disconnected=0;f.w.ResizeObserver=class{constructor(callback){this.callback=callback;observers.push(this);}observe(){}disconnect(){disconnected++;}};
  const original=f.w.HTMLElement.prototype.getBoundingClientRect;let fifthBottom=455;
  f.w.HTMLElement.prototype.getBoundingClientRect=function(){if(this.matches('.account-original-window'))return{top:100};if(this.matches('.account-original-row'))return{bottom:[...this.parentElement.children].indexOf(this)===4?fifthBottom:0};return original.call(this);};
- f.doc.querySelector('.account-refresh').click();await settle(()=>f.notices.includes('已读取最新账户内容'));let window=f.doc.querySelector('.account-original-window');assert.equal(window.style.maxHeight,'355px');window.scrollTop=120;
+ f.doc.querySelector('.account-refresh').click();await settle(()=>f.notices.includes('内容已更新'));let window=f.doc.querySelector('.account-original-window');assert.equal(window.style.maxHeight,'355px');window.scrollTop=120;
  fifthBottom=335;observers.at(-1).callback();assert.equal(window.style.maxHeight,'355px');fifthBottom=515;window.scrollTop=0;observers.at(-1).callback();assert.equal(window.style.maxHeight,'415px');
  window.scrollTop=120;fifthBottom=455;f.doc.querySelector('.account-refresh').click();await settle(()=>disconnected===1);window=f.doc.querySelector('.account-original-window');assert.equal(window.scrollTop,120);assert.equal(window.style.maxHeight,'355px');
  f.w.onlineTest.disposeOnlineWorkspace();assert.equal(disconnected,2);
