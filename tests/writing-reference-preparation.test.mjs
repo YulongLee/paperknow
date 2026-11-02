@@ -22,6 +22,9 @@ test('identity matching requires the actual title, supplied DOI and publication 
  for(const candidate of [paper({title:'A different face recognition study'}),paper({doi:'10.1234/other'}),paper({year:2024})])assert.equal(sameAcademicReference(paper(),candidate),false);
  assert.match(referenceTopicQuery(snapshot().title),/dog face/);assert.equal(relevantAcademicReference(snapshot().title,paper()),true);
  for(const candidate of [paper({title:'Vietnamese idiom exercises',abstract:'Teaching foreign students using classroom exercises.'}),paper({title:'Human face recognition using deep learning',abstract:'This study only concerns human faces.'}),paper({title:'Network anomaly detection',abstract:'Deep learning network anomaly detection analysis.'})])assert.equal(relevantAcademicReference(snapshot().title,candidate),false);
+ assert.equal(relevantAcademicReference(snapshot().title,paper({title:'Network shallowing: a backyard dog case study',abstract:"This human face recognition algorithm is called the backyard dog problem. It identifies members of a family."})),false);
+ assert.equal(relevantAcademicReference(snapshot().title,paper({title:'Multispecies animal face recognition',abstract:'This study recognizes individual animals from their faces, using datasets of dogs, cattle and primates.'})),true);
+ assert.equal(relevantAcademicReference(snapshot().title,paper({title:'Visual summarization of concepts in neural networks',abstract:'This generic tool visualizes animal concepts such as dog faces and supports image recognition interpretation.'})),false);
 });
 test('metadata gains a real matching abstract without replacing the imported record, explicit source text or user notes',async()=>{
  const f=prep(async()=>[paper()]),original=snapshot();original.references.push({...paper({id:'own',title:'Author notes'}),text:'Author supplied text.',confirmed:true});const before=structuredClone(original),result=await f.service.prepare(original,{userId:'isolated'});

@@ -20,12 +20,18 @@ export function sameAcademicReference(reference,candidate){
 const topicTranslations=[['深度学习','deep learning'],['机器学习','machine learning'],['卷积神经网络','convolutional neural network'],['狗脸','dog face'],['犬脸','dog face'],['猫脸','cat face'],['羊脸','sheep face'],['牛脸','cattle face'],['动物个体','animal individual'],['人脸','human face'],['识别','recognition'],['图像分割','image segmentation'],['图像','image'],['目标检测','object detection'],['数字阅读','digital reading'],['图书馆','library'],['课堂反馈','classroom feedback']];
 export function referenceTopicQuery(title){
  const original=plain(title,200),parts=topicTranslations.filter(([word])=>original.includes(word)).map(([,word])=>word);
- return parts.length>=2?[...new Set(parts)].join(' ').slice(0,200):original;
+ const focused=parts.some(word=>/^(?:dog|cat|sheep|cattle) face$/.test(word))?parts.filter(word=>!['deep learning','machine learning','convolutional neural network'].includes(word)):parts;
+ return focused.length>=2?[...new Set(focused)].join(' ').slice(0,200):original;
 }
 export function relevantAcademicReference(title,candidate){
  const query=referenceTopicQuery(title),content=normalized(candidate.title+' '+(candidate.abstract||''));
  const species=[['狗脸','犬脸'],['猫脸'],['羊脸'],['牛脸']].find(words=>words.some(word=>String(title).includes(word)));
- if(species){const word=species[0],english={'狗脸':['dog','canine'],'猫脸':['cat','feline'],'羊脸':['sheep','ovine'],'牛脸':['cattle','bovine']}[word];if(!species.some(term=>content.includes(normalized(term)))&&!english.some(term=>new RegExp('\\b'+term+'s?\\b','i').test(candidate.title+' '+candidate.abstract)))return false;}
+ if(species){
+  const word=species[0],english={'狗脸':['dog','canine'],'猫脸':['cat','feline'],'羊脸':['sheep','ovine'],'牛脸':['cattle','bovine']}[word],visible=candidate.title+' '+candidate.abstract,title=String(candidate.title||'').replace(/[-']/g,' ');
+  const specific=english.some(term=>new RegExp('\\b'+term+'s?\\s+(?:face|facial|identification|recognition|identity|individual|biometric|nose|muzzle)\\b','i').test(title)||new RegExp('\\b(?:face|facial|identification|recognition)\\s+(?:of |for )?'+term+'s?\\b','i').test(title));
+  const animalScope=/\banimals?\b/i.test(title)&&/\b(?:face|faces|facial|biometric|biometrics|recognition)\b/i.test(title)&&english.some(term=>new RegExp('\\b'+term+'s?\\b','i').test(visible));
+  if(!species.some(term=>content.includes(normalized(term)))&&!specific&&!animalScope)return false;
+ }
  const stop=new Set(['deep','learning','based','system','research','study','using','method','analysis','with','from','the','and','design','development']);
  const words=(query.toLowerCase().match(/[a-z][a-z-]{2,}/g)||[]).filter(word=>!stop.has(word));
  if(words.length){const visible=(candidate.title+' '+candidate.abstract).toLowerCase();return words.filter(word=>visible.includes(word)).length>=Math.min(2,words.length);}
