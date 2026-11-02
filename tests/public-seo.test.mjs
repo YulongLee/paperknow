@@ -277,5 +277,5 @@ test('public capability copy reflects shipped AI workflows while retaining real 
  assert.match(text('/features/ai-reading/'),/整篇.*中英互译/);
  assert.match(text('/features/reduce-ai/'),/分段.*置信分/);assert.match(text('/features/reduce-ai/'),/不是论文 AI 字数占比|不代表论文 AI 字数占比/);
  assert.match(text('/features/similarity-check/'),/本次纳入的比对资料/);assert.match(text('/features/similarity-check/'),/不保证覆盖全部文献/);
- for(const slug of Object.keys(features).map(name=>`/features/${name}/`))assert.doesNotMatch(text(slug),/AMiner|MinerU|阿里云|GPT|Claude|Gemini/);
+ for(const slug of Object.keys(features).map(name=>`/features/${name}/`))assert.doesNotMatch(text(slug),/AMiner|MinerU|阿里云|GPT|Claude|Gemini|私有 OSS|上游/);
 });
