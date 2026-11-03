@@ -28,7 +28,7 @@ export function installUploadPresentation(root){
   }else{
    view.name.textContent=selected?file.name+(files.length>1?' 等 '+files.length+' 个文件':''):'点击选择文件';
    view.name.title=selected?files.map(row=>row.name).join('\n'):'';
-   view.size.textContent=selected?uploadFileSize(files.reduce((sum,row)=>sum+row.size,0)):(uploadFormatLabel(input.accept)||'选择当前功能需要的材料');
+   view.size.textContent=selected?uploadFileSize(files.reduce((sum,row)=>sum+row.size,0)):(input.dataset.uploadDescription||uploadFormatLabel(input.accept)||'选择当前功能需要的材料');
   }
  }
  function decorate(input){
