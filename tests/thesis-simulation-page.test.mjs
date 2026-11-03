@@ -59,8 +59,8 @@ test('simulation completion leaves other supplement fields, focus, selection and
  assert.equal(f.q('[data-thesis-completion]'),panel,'background completion must not replace the form');
  assert.equal(f.q('[data-completion-reference="text"]'),field);
  assert.equal(f.dom.window.document.activeElement,field);assert.equal(field.selectionStart,8);assert.equal(field.selectionEnd,15);assert.equal(field.scrollTop,55);assert.equal(details.open,true);assert.equal(cover.open,false);
- assert.match(f.q('[data-completion-prepare]').textContent,/保存材料/);
- assert.match(f.q('[data-thesis-delivery-state]').textContent,/保存材料并自动完善/);
+ assert.match(f.q('[data-completion-prepare]').textContent,/保存并开始完善检查/);
+ assert.match(f.q('[data-thesis-delivery-state]').textContent,/保存并开始完善检查/);
  assert.equal(f.q('#thesis-online-docx').disabled,true,'new simulation material must still pass completion before final delivery');
  assert.equal(f.q('[data-thesis-notice]').textContent,'','completion feedback stays beside the data instead of inserting a banner above the page');
  assert.match(f.q('.thesis-simulation-status').textContent,/已保存到当前论文/);
@@ -114,7 +114,7 @@ test('changing accounts while free adoption is pending never repaints the old pr
 
 test('automatic simulation adoption retires the visible old review immediately without replacing author input',async t=>{
  const f=await fixture(t,{priorReview:true}),field=f.q('[data-completion-reference="text"]');await f.start();field.value='作者正在补充的真实摘要';field.dispatchEvent(new f.dom.window.Event('input',{bubbles:true}));field.focus();await f.complete();
- assert.equal(f.q('[data-completion-reference="text"]'),field);assert.equal(field.value,'作者正在补充的真实摘要');assert.match(f.q('[data-completion-review]').textContent,/正文待更新|尚未保存/);assert.doesNotMatch(f.q('[data-completion-review]').textContent,/旧检查：缺少模拟数据/);assert.match(f.q('[role="region"].thesis-completion-requests').getAttribute('aria-label'),/正文待更新/);assert.match(f.q('[data-completion-prepare]').textContent,/保存材料/);assert.equal(f.calls.filter(row=>row.path==='/theses/paper/completion').length,1);
+ assert.equal(f.q('[data-completion-reference="text"]'),field);assert.equal(field.value,'作者正在补充的真实摘要');assert.match(f.q('[data-completion-review]').textContent,/正文待更新|尚未保存/);assert.doesNotMatch(f.q('[data-completion-review]').textContent,/旧检查：缺少模拟数据/);assert.match(f.q('[role="region"].thesis-completion-requests').getAttribute('aria-label'),/正文待更新/);assert.match(f.q('[data-completion-prepare]').textContent,/保存并开始完善检查/);assert.equal(f.calls.filter(row=>row.path==='/theses/paper/completion').length,1);
 });
 
 test('final download follows supplement and cover inputs while draft download stays in its own module',async t=>{

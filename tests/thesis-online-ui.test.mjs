@@ -64,7 +64,7 @@ test('mode switches preserve the actual editor, unsaved supplemental fields, ref
  }finally{f.close();}
 });
 test('final writing requires an existing draft and never starts drafting or billing just by choosing its module',async()=>{
- const f=fixture();try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-writing-mode="final"]').click();assert.equal(f.$('.thesis-final-prerequisite').hidden,false);assert.equal(f.$('[data-thesis-final-work]').hidden,true);assert.match(f.$('.thesis-final-prerequisite').textContent,/请先提供一份初稿/);
+ const f=fixture();try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-writing-mode="final"]').click();assert.equal(f.$('.thesis-final-prerequisite').hidden,false);assert.equal(f.$('[data-thesis-final-work]').hidden,true);assert.match(f.$('.thesis-final-prerequisite').textContent,/先上传已有初稿/);
  f.$('[data-completion-prepare]').click();await settle();assert.equal(f.calls.some(row=>row.data),false);assert.match(f.$('[data-thesis-notice]').textContent,/请先在初稿撰写中生成正文/);f.$('[data-thesis-select-draft]').click();assert.equal(f.$('[data-thesis-writing-panel="draft"]').hidden,false);
  }finally{f.close();}
 });
@@ -75,7 +75,7 @@ test('active completion stays in the final task module while visiting the draft 
 });
 test('draft download is independent of unapplied final supplements while final delivery remains protected',async()=>{
  const f=fixture({item:thesis({status:'completed',chapters:[{id:'c1',title:'第一章',version:1,text:'已保存的研究正文。'}]})});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-select-final]').click();input(f,'[data-completion-field="supplement"]','终稿尚未提交的补充资料');assert.equal(f.$('#thesis-online-draft').disabled,false);assert.equal(f.$('#thesis-online-docx').disabled,true);assert.equal(thesisOnlineHasWork(),true);assert.equal(f.calls.some(row=>row.data),false);
- const final=f.$('[data-thesis-writing-panel="final"]');assert.equal(final.querySelector('#thesis-online-draft'),null);assert.equal(final.lastElementChild.classList.contains('thesis-simple-downloads'),true);
+ const final=f.$('[data-thesis-writing-panel="final"]');assert.equal(final.querySelector('#thesis-online-draft'),null);assert.equal(final.querySelector('[data-thesis-final-stage="review"]').lastElementChild.classList.contains('thesis-simple-downloads'),true);
  }finally{f.close();}
 });
 test('writing task selection supports keyboard navigation and focus without recreating the reader',async()=>{
@@ -574,7 +574,7 @@ test('embedded thesis exports without a duplicate template picker',async()=>{
 });
 
 test('simple generation keeps editing and supplementary controls out of the primary reading flow',async()=>{
- const f=fixture();try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.ok(f.$('[data-thesis-reader]'));assert.ok(f.$('[data-thesis-quote="generate"]'));assert.equal(f.$('.thesis-simple-edit').open,false);assert.equal(f.$('.thesis-simple-settings').open,false);assert.equal(f.$('[data-thesis-supplement-drawer]').open,false);assert.equal(f.$('.thesis-simple-downloads').hidden,true);assert.equal(document.querySelectorAll('[data-cover-field="author"]').length,1);assert.equal(f.$('[data-completion-cover]'),null);assert.match(f.$('.thesis-reader-empty').textContent,/论文将在这里生成/);assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();}
+ const f=fixture();try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.ok(f.$('[data-thesis-reader]'));assert.ok(f.$('[data-thesis-quote="generate"]'));assert.equal(f.$('.thesis-simple-edit').open,false);assert.equal(f.$('.thesis-simple-settings').open,false);assert.equal(f.$('[data-thesis-writing-panel="final"]').hidden,true);assert.equal(f.$('.thesis-simple-downloads').hidden,true);assert.equal(document.querySelectorAll('[data-cover-field="author"]').length,1);assert.equal(f.$('[data-completion-cover]'),null);assert.match(f.$('.thesis-reader-empty').textContent,/论文将在这里生成/);assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();}
 });
 test('a supported one-click submission includes automatic completion and checks in the same generation job',async()=>{
  const value=thesis();value.snapshot.requirements={deliveryVersion:1};const f=fixture({item:value,cap:{ready:true,automaticManuscript:true}});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;f.$('[data-thesis-quote]').click();await settle();const quote=f.calls.find(row=>row.path.endsWith('/quote')),posts=f.calls.filter(row=>row.path.endsWith('/generate'));assert.equal(quote.data.completionScope,'full');assert.equal(quote.data.completion,true);assert.equal(posts.length,1);assert.equal(posts[0].data.completion,true);assert.equal(f.calls.some(row=>row.path.endsWith('/completion')),false);assert.equal(f.$('[data-thesis-consent]'),null);}finally{f.close();}
@@ -591,4 +591,25 @@ test('reader displays saved figures inline using the safe SVG renderer',async()=
 test('checkpoint reader uses manuscript citation order before chapters are published',async()=>{
  const value=thesis({status:'running',job:{id:'j1',status:'running',completedSections:1,totalSections:2},sections:[{id:'s1',chapterId:'c1',status:'completed',text:'先引用乙[source:b]，后引用甲[source:a]。'}]});value.snapshot.references=[{id:'a',title:'甲',confirmed:true},{id:'b',title:'乙',confirmed:true}];
  const f=fixture({item:value});try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.match(f.$('.thesis-reader-paper').textContent,/先引用乙〔文献1〕，后引用甲〔文献2〕/);assert.equal(f.$('[data-thesis-editor]').value,'');assert.equal(f.$('#thesis-online-docx').disabled,true);assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();}
+});
+
+test('final manuscript uses three functional steps, defaults to preparation and preserves pending inputs on navigation',async()=>{
+ const f=fixture({item:thesis({status:'completed',importedDraft:{id:'imported'},chapters:[{id:'c1',title:'第一章',text:'已保存的正文',version:1}]})});
+ try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;
+ assert.equal(document.querySelectorAll('[data-thesis-final-step]').length,3);assert.equal(f.$('[data-thesis-final-stage="prepare"]').hidden,false);assert.equal(f.$('[data-thesis-final-stage="source"]').hidden,true);assert.equal(f.$('[data-thesis-final-stage="review"]').hidden,true);
+ const field=f.$('[data-completion-field="supplement"]');input(f,'[data-completion-field="supplement"]','尚未保存的实验记录');field.setSelectionRange(2,4);f.$('[data-thesis-final-step="source"]').click();assert.equal(f.$('[data-thesis-final-stage="source"]').hidden,false);assert.equal(f.$('[data-draft-import-file]').closest('[data-thesis-final-stage]').dataset.thesisFinalStage,'source');
+ f.$('[data-thesis-final-next="prepare"]').click();assert.equal(f.$('[data-completion-field="supplement"]'),field);assert.equal(field.value,'尚未保存的实验记录');assert.equal(field.selectionStart,2);
+ f.$('[data-thesis-final-step="review"]').click();assert.equal(f.$('#thesis-online-docx').hidden,true);assert.equal(f.$('[data-thesis-final-continue]').hidden,false);assert.equal(f.$('[data-thesis-final-draft-download]').disabled,false);assert.equal(f.calls.filter(row=>row.data).length,0);
+ }finally{f.close();}
+});
+test('final preparation saves cover changes before evaluating completion and reuses a passed check without another charge',async()=>{
+ const start=thesis({status:'completed',importedDraft:{id:'imported'},chapters:[{id:'c1',title:'第一章',text:'已保存的正文',version:1}]}),f=fixture({item:start,handler:async(path,data)=>{
+ if(path.endsWith('/export-metadata'))return {item:{...start,version:2,exportMetadata:data.metadata,completionReview:{required:true,status:'ready',runId:'same-run',fingerprint:'f'.repeat(64),checks:{materials:true,manuscript:true,content:true},changes:[]}}};
+ }});
+ try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;input(f,'[data-cover-field="author"]','测试作者');f.$('[data-completion-prepare]').click();await settle();assert.equal(f.calls.filter(row=>row.path.endsWith('/export-metadata')).length,1);assert.equal(f.calls.filter(row=>/\/(quote|generate)$/.test(row.path)).length,0);assert.equal(f.$('[data-thesis-final-stage="review"]').hidden,false);assert.equal(document.querySelectorAll('[data-thesis-confirm-download]').length,1);assert.equal(f.$('[data-thesis-confirm-download]').hidden,false);assert.equal(f.$('#thesis-online-docx').hidden,true);assert.equal(f.$('[data-cover-field="author"]').value,'测试作者');
+ }finally{f.close();}
+});
+test('missing final evidence is shown next to supplemental inputs, while premature final delivery stays unavailable',async()=>{
+ const f=fixture({item:thesis({status:'completed',chapters:[{id:'c1',title:'第一章',text:'已保存正文',version:1}],completionReview:{required:true,status:'needs_materials',missing:['补充独立测试集的实测准确率'],changes:[]}})});
+ try{const stop=mountOnlineThesis({id:'t1',ctx:f.ctx});await stop.ready;assert.equal(f.$('[data-thesis-final-stage="prepare"]').hidden,false);assert.match(f.$('.thesis-final-missing').textContent,/独立测试集/);assert.equal(f.$('#thesis-online-docx').hidden,true);assert.equal(f.$('[data-thesis-confirm-download]'),null);assert.equal(f.$('#thesis-online-draft').disabled,false);assert.equal(f.calls.some(row=>row.data),false);}finally{f.close();}
 });
