@@ -32,11 +32,11 @@ export function createWritingQualityRunner(config={}){
   }
   flush();return batches;
  }
- return async function runWritingQuality({snapshot={},kind='writing',checkSupplements=config.supplementCheckEnabled===true,chapters=[],runtime={},runId='',signal,onStage,isCurrent=()=>true,dispatch}={}){
+ return async function runWritingQuality({snapshot={},kind='writing',checkSupplements=config.supplementCheckEnabled===true,recoverSupplements=false,chapters=[],runtime={},runId='',signal,onStage,isCurrent=()=>true,dispatch}={}){
   const active=async()=>{if(signal?.aborted)throw aborted();if(await isCurrent()!==true||signal?.aborted)throw aborted();};
   const stage=async value=>{await active();await onStage?.(value);await active();};
   await active();const requirementCharacters=Math.min(12000,typeof snapshot.requirements?.instructions==='string'?snapshot.requirements.instructions.length:0),batches=batchesFor(chapters,Math.min(22000,26000-requirementCharacters)),quality={status:'completed',checkedAt:timestamp(),citations:null,consistency:null,reviews:[],limitations:[]};let partial=false;
-  if(checkSupplements===true){quality.supplementCheck=await runSupplementCheck({snapshot,chapters,kind,phase:'final',runtime,dispatch,signal,isCurrent,onStage:stage});await active();}
+  if(checkSupplements===true){quality.supplementCheck=await runSupplementCheck({snapshot,chapters,kind,phase:'final',recover:recoverSupplements,runtime,dispatch,signal,isCurrent,onStage:stage});await active();}
   await stage('verifying_citations');
   try{
    quality.citations=await guarded(verifier.verify(Array.isArray(snapshot.references)?snapshot.references:[],{signal}),signal);await active();

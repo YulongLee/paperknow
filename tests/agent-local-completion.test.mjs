@@ -64,3 +64,10 @@ test('supplement review uses its own items contract and submits supplied evidenc
  }});
  assert.equal(report.status,'final_ready');assert.match(options.systemPrompt,/审校，不是正文写作/);assert.doesNotMatch(options.systemPrompt,/根据实际字数与来源反馈修订完整候选/);assert.match(options.systemPrompt,/无需重复调用 read_material/);
 });
+
+test('a thesis turn limit privately retains the last rejected candidate and safe diagnostics without approving it',async()=>{
+ const provider=providerFixture(),rejected={...candidate,text:'Private unfinished thesis candidate.'};
+ await assert.rejects(()=>runAgentTask({settings,task:{...task,skill:'thesis-section'},validateThesisOutput:()=>({valid:false,feedback:{code:'incomplete',count:12,min:100,max:200,target:150,rule:'Revise the current unit.'}}),dependencies:{lookup,httpsRequest:provider.requestImpl,query:({options})=>(async function*(){await primeProvider(options);const tools=options.mcpServers.paperknow.instance._registeredTools;await tools.submit_writing_output.handler({candidate:rejected});yield{...result,subtype:'error_max_turns',is_error:true,total_cost_usd:.001};})()}}),error=>{
+  assert.equal(error.code,'turn_limit');assert.deepEqual(error.retryCandidate,rejected);assert.deepEqual(error.lastValidation,{code:'incomplete',count:12,target:150,min:100,max:200});assert.equal(Object.prototype.propertyIsEnumerable.call(error,'retryCandidate'),false);assert.doesNotMatch(JSON.stringify(error),/Private unfinished/);assert.equal(error.agentTrace.at(-1).validation.code,'incomplete');return true;
+ });
+});

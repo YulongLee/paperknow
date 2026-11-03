@@ -63,7 +63,7 @@ export function computeThesisRunBudget({snapshot={},plan,settings={},config={},r
  return Math.max(runFloor,Math.min(thesisRunTokenCeiling,estimate));
 }
 
-export function classifyThesisRetry(error){
+export function classifyThesisRetry(error,{settledDispatch=null}={}){
  const code=typeof error?.code==='string'?error.code.toLowerCase():'';
  const status=Number(error?.status);
  if(Array.isArray(error?.agentTrace)&&error.agentTrace.some(row=>row?.status==='denied'))return {retryable:false,reason:'non_recoverable'};
@@ -82,6 +82,9 @@ export function classifyThesisRetry(error){
  // ceilings must not turn into an automatic second paid provider dispatch.
  const forbidden=new Set(['budget_exceeded','cost_budget','token_budget','usage_unknown','usage_incomplete','needs_materials','unknown_source','unread_source','draft_disclosure_missing','presentation_not_selected','unsupported_image','cancelled','aborted']);
  if([401,403,409,422,429,499].includes(status)||forbidden.has(code)||/(?:moderation|content_reject|permission|unauthori[sz]ed|authentication|budget)/.test(code))return {retryable:false,reason:'non_recoverable'};
+ // A timeout may be retried only after the worker has closed and fully
+ // charged its previous reservation, with room in the unchanged run budget.
+ if((code==='timeout'||status===504)&&settledDispatch?.status==='failed'&&typeof settledDispatch.id==='string'&&settledDispatch.inFlight===0&&settledDispatch.budgetExceeded===false&&Number.isSafeInteger(settledDispatch.remainingTokens)&&settledDispatch.remainingTokens>=1000&&Number.isFinite(settledDispatch.remainingCostUsd)&&settledDispatch.remainingCostUsd>=.01)return {retryable:true,reason:'funded_timeout'};
  if(!usageKnown)return {retryable:false,reason:'usage_unknown'};
  if(['truncated','max_tokens','length'].includes(code))return {retryable:true,reason:'truncated'};
  if(['turn_limit','max_turns','error_max_turns'].includes(code))return {retryable:true,reason:'turn_limit'};

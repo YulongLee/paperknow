@@ -163,3 +163,26 @@ test('the current initial-draft diagnosis drives automatic gap filling before on
  assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_runs').get().n,1);
  assert.equal((await f.request('/api/theses/'+item.id+'/completion/confirm',confirmation(item))).item.completionReview.status,'confirmed');assert.equal(f.billing.balance(f.user.id).balance,190);
 });
+
+test('turn-limit recovery revises the privately retained candidate in the same billed completion instead of requiring a manual resume',async t=>{
+ const f=fullFixture(t),runner=f.config.agentTaskRunner;let attempts=0,candidate;
+ f.config.agentTaskRunner=async args=>{
+  if(args.task.context.unit?.chapterId==='c1'){
+   attempts++;
+   if(attempts===1){candidate=JSON.parse(response(args.task).text);const error=Object.assign(Error('Synthetic turn limit'),{status:502,code:'turn_limit',usage:{input:100,output:100},costUsd:.001});Object.defineProperty(error,'retryCandidate',{value:candidate});throw error;}
+   assert.deepEqual(args.task.context.retryCandidate,candidate);assert.match(args.task.instructions,/修订起点/);
+  }
+  return runner(args);
+ };
+ f.pay();let item=await completeSaved(f);await submitFull(f,item);await f.worker.tick();item=f.get(item.id);assert.equal(item.job.status,'completed',item.job.error);assert.equal(item.job.attempt,1);assert.equal(attempts,2);assert.equal(item.completionReview.status,'ready',JSON.stringify(item.completionReview));assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_runs').get().n,1);
+});
+
+test('a timed-out completion resumes automatically only from its funded closed dispatch with the original attempt and single charge',async t=>{
+ const f=fullFixture(t),runner=f.config.agentTaskRunner;let attempts=0;
+ f.config.agentTaskRunner=async args=>{
+  if(args.task.context.unit?.chapterId==='c1'&&++attempts===1)throw Object.assign(Error('Synthetic timeout'),{status:504,code:'timeout'});
+  return runner(args);
+ };
+ f.pay();let item=await completeSaved(f);await submitFull(f,item);await f.worker.tick();item=f.get(item.id);assert.equal(item.job.status,'completed',item.job.error);assert.equal(item.job.attempt,1);assert.equal(attempts,2);assert.equal(f.billing.balance(f.user.id).balance,190);
+ const failed=f.db.prepare("SELECT * FROM thesis_execution_dispatches WHERE run_id=? AND kind='section' AND error_code='timeout'").get(item.job.id);assert.equal(failed.status,'failed');assert.equal(failed.charged_cost_micros,failed.reserved_cost_micros);assert.equal(failed.charged_tokens,failed.reserved_tokens);assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations WHERE job_id=?').get(item.job.id).n,1);
+});

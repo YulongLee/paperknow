@@ -76,3 +76,10 @@ test('only a fully accounted relay preflight denial can request a fresh section 
  for(const patch of [{reason:'actual_usage'},{usedTokens:300000},{usedTokens:182303},{inFlightTokens:100},{requestTokens:10},{requestTokens:2000000},{requestTokens:NaN},{limitTokens:NaN}])assert.equal(classifyThesisRetry({...error,executionBudget:{...error.executionBudget,...patch}}).retryable,false,JSON.stringify(patch));
  for(const patch of [{status:499},{status:403},{code:'cost_budget'},{usage:null},{usage:{input:0,output:0}}, {executionBudget:null},{agentTrace:[{tool:'unauthorized',status:'denied'}]}])assert.equal(classifyThesisRetry({...error,...patch}).retryable,false);
 });
+
+test('timeout recovery requires a closed fully funded reservation and cannot widen the original run budget',()=>{
+ const error={status:504,code:'timeout'},settled={id:'dispatch-1',status:'failed',inFlight:0,budgetExceeded:false,remainingTokens:50000,remainingCostUsd:.2};
+ assert.equal(classifyThesisRetry(error).retryable,false);assert.equal(classifyThesisRetry(error,{settledDispatch:settled}).reason,'funded_timeout');
+ for(const patch of [{status:'reserved'},{inFlight:1},{budgetExceeded:true},{remainingTokens:0},{remainingCostUsd:0},{id:null}])assert.equal(classifyThesisRetry(error,{settledDispatch:{...settled,...patch}}).retryable,false);
+ for(const patch of [{status:499},{status:403},{code:'cost_budget'},{agentTrace:[{status:'denied',tool:'Bash'}]}])assert.equal(classifyThesisRetry({...error,...patch},{settledDispatch:settled}).retryable,false);
+});

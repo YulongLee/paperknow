@@ -153,3 +153,19 @@ test('real observed elided manuscript quotations resolve to a continuous origina
  for(const quote of ['采用固定随机种子42，凭空编造的实验结论','应结合线性假设与噪声范围解释。采用固定随机种子42']){value.items[0].manuscriptQuote=quote;assert.throws(()=>parseSupplementCheck(response(value.items),input));}
  value.items[0].manuscriptQuote=text;value.items[0].evidence[0].quote='合成验收资料，记录原始数据';assert.throws(()=>parseSupplementCheck(response(value.items),input),'source evidence must still be an exact contiguous original quote');
 });
+
+test('thesis completion recovers an audit timeout by splitting its batch while retaining completed checks',async()=>{
+ const chapters=Array.from({length:6},(_,i)=>({id:'chapter-'+i,title:'章节'+i,text:'本节核对已提供的合成记录。'})),calls=[];
+ const report=await runSupplementCheck({snapshot:snapshot(),chapters,kind:'thesis',phase:'materials',recover:true,runtime:{...runtime,timeoutMs:300000},dispatch:async request=>{
+  calls.push(request);assert.equal(request.settings.timeoutMs,180000);assert.ok(request.task.context.chapters.length<=4);
+  if(calls.length===1)throw Object.assign(Error('Synthetic timeout'),{status:504,code:'timeout'});
+  return checkResponse(request.task);
+ }});
+ assert.equal(report.status,'materials_ready');assert.equal(report.coverage.checked,6);assert.equal(new Set(report.items.map(row=>row.id)).size,6);assert.equal(report.recovery.automaticRetries,1);assert.ok(calls[1].task.context.chapters.length<calls[0].task.context.chapters.length);assert.equal(new Set(calls.map(row=>row.unitId)).size,calls.length);
+});
+test('audit recovery is bounded, never retries missing facts, denied access or cancellation, and never marks an unfinished check ready',async()=>{
+ const chapters=[{id:'c',title:'研究',text:'需要核查的合成说明。'}];let calls=0;
+ const failed=await runSupplementCheck({snapshot:snapshot(),chapters,recover:true,runtime,dispatch:async()=>{calls++;throw Object.assign(Error('Persistent timeout'),{status:504,code:'timeout'});}});assert.equal(calls,3);assert.equal(failed.status,'unavailable');assert.equal(failed.coverage.checked,0);
+ for(const error of [{status:403,code:'timeout'},{status:429,code:'cost_budget'},{status:502,code:'turn_limit',agentTrace:[{status:'denied',tool:'Bash'}]}]){calls=0;await runSupplementCheck({snapshot:snapshot(),chapters,recover:true,runtime,dispatch:async()=>{calls++;throw error;}});assert.equal(calls,1);}
+ calls=0;const missing=await runSupplementCheck({snapshot:snapshot(),chapters,recover:true,runtime,dispatch:async({task})=>{calls++;return checkResponse(task,{missing:true});}});assert.equal(calls,1);assert.equal(missing.status,'needs_materials');
+});

@@ -33,20 +33,22 @@ export function parseSupplementCheck(result,task){
   return{...(checkedFigureIds.length?{checkedFigureIds}:{}),id:row.id,title:section.title,status:row.status,requirement:row.requirement,reason:row.reason,manuscriptQuote,...(manuscriptQuote!==row.manuscriptQuote?{locationNormalized:true}:{}),evidence,missing:row.missing};
  });return items;
 }
-export async function runSupplementCheck({snapshot={},chapters=[],kind='writing',phase='final',runtime={},dispatch,signal,onStage=()=>{},isCurrent=()=>true}={}){
+export async function runSupplementCheck({snapshot={},chapters=[],kind='writing',phase='final',recover=false,runtime={},dispatch,signal,onStage=()=>{},isCurrent=()=>true}={}){
  const active=async()=>{if(signal?.aborted||await isCurrent()!==true)throw Object.assign(new Error('资料检查已取消'),{name:'AbortError',status:499,code:'cancelled'});};
  const report={version:1,phase,status:'checking',checkedAt:null,items:[],coverage:{total:0,checked:0,complete:false},limitations:['检查依据为本次提供的材料，不能鉴定研究事实真伪或保证通过院校审核。']};
  const sections=[];for(const [index,chapter]of chapters.entries()){if(!chapter.text?.trim())continue;let offset=0;while(offset<chapter.text.length){const part=manuscriptPart(chapter,offset,8000);sections.push({id:'check-'+index+'-'+offset,title:String(chapter.title||'正文').slice(0,200),text:part.text,...(part.figures.length?{figures:part.figures}:{})});offset=part.end;}}
  report.coverage.total=sections.length;
  // Reserve output room for every evidence item, rather than requesting ten
  // complete items from a runtime that only permits a short response.
- const outputLimit=Math.min(4096,runtime.maxOutputTokens||4096),batchLimit=Math.min(10,Math.max(1,Math.floor((outputLimit-256)/360)));
- const batches=[];let batch=[],size=0;for(const section of sections){if(batch.length&&(size+JSON.stringify(section).length>18000||batch.length>=batchLimit)){batches.push(batch);batch=[];size=0;}batch.push(section);size+=JSON.stringify(section).length;}if(batch.length)batches.push(batch);
+ const outputLimit=Math.min(4096,runtime.maxOutputTokens||4096),normalLimit=Math.min(10,Math.max(1,Math.floor((outputLimit-256)/360))),batchLimit=recover?Math.min(normalLimit,Math.max(4,Math.ceil(sections.length/6))):normalLimit;
+ const batches=[];let batch=[],size=0;for(const section of sections){if(batch.length&&(size+JSON.stringify(section).length>(recover?12000:18000)||batch.length>=batchLimit)){batches.push(batch);batch=[];size=0;}batch.push(section);size+=JSON.stringify(section).length;}if(batch.length)batches.push(batch);
  // Large evidence sets use the same labelled, chapter-specific excerpts as
  // generation. Context overflow is explicit and never unlocks final export.
  const sources=[...(snapshot.materials||[]),...(snapshot.references||[])].filter(row=>row.confirmed!==false&&typeof row.text==='string'&&row.text.trim()).map(row=>({id:row.id,name:String(row.name||row.title||'补充资料').slice(0,240),text:row.text,...(row.dataKind?{dataKind:row.dataKind}:{})}));
  if(!sections.length||typeof dispatch!=='function'){report.status='unavailable';report.reason='资料检查尚未完成，请重新检查。';return report;}
- for(const [batchIndex,batch]of batches.entries()){
+ const pendingBatches=batches.map((batch,index)=>({batch,key:String(index+1)}));let automaticRetries=0;
+ while(pendingBatches.length){
+  const {batch,key}=pendingBatches.shift();
   const section={title:batch.map(row=>row.title).join('、')};
   await active();await onStage('checking_supplements');
   let selected=sources;
@@ -63,8 +65,15 @@ export async function runSupplementCheck({snapshot={},chapters=[],kind='writing'
   task.materials=selected.slice(0,20).map(({id,name,text})=>({id,name,text}));
   if(JSON.stringify(task.context).length>39000){report.reason='要求与资料较长，本次检查未完整覆盖，请精简重复内容后重试。';break;}
   const validateReviewOutput=result=>{try{parseSupplementCheck(result,task);return{valid:true};}catch(error){return{valid:false,feedback:error.feedback||{code:'supplement_evidence',rule:'逐项返回指定章节ID，并以 checkedFigureIds 完整列出各项提供的图片ID；证据必须逐字出自已提供的材料，缺资料时返回missing及具体缺项，不能伪造通过结论。'}};}};
-  try{const output=await dispatch({task,settings:{...runtime,maxTurns:Math.min(6,runtime.maxTurns||3),maxOutputTokens:outputLimit,timeoutMs:Math.min(90000,runtime.timeoutMs||60000)},validateReviewOutput,unitId:'supplement-'+phase+'::'+(batchIndex+1),signal});await active();report.items.push(...parseSupplementCheck(output,task));report.coverage.checked+=batch.length;}
-  catch(error){await active();report.reasonCode=['turn_limit','truncated','invalid_supplement_check','budget_exceeded','cost_budget','timeout'].includes(error.code)?error.code:'check_unavailable';report.reason='资料检查尚未完成，不能据此判定材料缺失；已有正文和材料已保留，请重新检查，无需重复上传已保存的资料。';break;}
+  try{const output=await dispatch({task,settings:{...runtime,maxTurns:Math.min(6,runtime.maxTurns||3),maxOutputTokens:outputLimit,timeoutMs:Math.min(recover?180000:90000,runtime.timeoutMs||60000)},validateReviewOutput,unitId:'supplement-'+phase+'::'+key,signal});await active();report.items.push(...parseSupplementCheck(output,task));report.coverage.checked+=batch.length;}
+  catch(error){await active();
+   const denied=error.agentTrace?.some(row=>row.status==='denied'),status=Number(error.status),retryable=!denied&&![401,403,409,422,429,499].includes(status)&&(['turn_limit','truncated','invalid_supplement_check','invalid_review_output','timeout'].includes(error.code)||status===504);
+   if(recover&&retryable&&automaticRetries<2){
+    automaticRetries++;report.recovery={automaticRetries,retainedSections:report.coverage.checked};
+    if(batch.length>1){const midpoint=Math.ceil(batch.length/2);pendingBatches.unshift({batch:batch.slice(0,midpoint),key:key+'.a'},{batch:batch.slice(midpoint),key:key+'.b'});}else pendingBatches.unshift({batch,key:key+'.retry'});
+    await onStage('auto_recovering');continue;
+   }
+   report.reasonCode=['turn_limit','truncated','invalid_supplement_check','budget_exceeded','cost_budget','timeout'].includes(error.code)?error.code:'check_unavailable';report.reason='资料检查尚未完成，不能据此判定材料缺失；已有正文和材料已保留，请重新检查，无需重复上传已保存的资料。';break;}
  }
  report.checkedAt=new Date().toISOString();report.coverage.complete=report.coverage.checked===report.coverage.total;report.status=!report.coverage.complete?'unavailable':report.items.some(row=>row.status==='missing')?'needs_materials':phase==='materials'?'materials_ready':'final_ready';
  report.limitations=[...new Set(report.limitations)];return report;
