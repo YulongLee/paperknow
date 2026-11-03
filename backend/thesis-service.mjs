@@ -1,5 +1,6 @@
 import {completionReview,confirmCompletionReview} from './thesis-completion-review.mjs';
 import {createWritingReferencePreparation} from './writing-reference-preparation.mjs';
+import {createThesisDraftImporter} from './thesis-draft-import.mjs';
 import {recoverableThesisSimulation,completionAssessment,completionInput,thesisCompletionPlan,completionManuscriptHash,assertCompletionResumeUnchanged} from './thesis-completion.mjs';
 import {randomUUID} from 'node:crypto';
 import {thesisCoverFields} from '../dist/workspace/thesis-delivery.mjs';
@@ -53,6 +54,7 @@ export function createThesisService(db,config={}){
  const own=(id,user)=>{if(!user?.id)fail(401,'请先登录');const row=db.prepare('SELECT * FROM theses WHERE id=? AND user_id=?').get(id,user.id);if(!row)fail(404,'论文不存在');return row;};
  const project=(value,user)=>{if(value===undefined||value===null||value==='')return null;if(typeof value!=='string'||!db.prepare('SELECT id FROM projects WHERE id=? AND user_id=?').get(value,user.id))fail(404,'项目不存在');return value;};
  const settings=async version=>assertThesisSettings(await config.getAgentSettings?.(version));
+ const draftImporter=createThesisDraftImporter(db,config,{own,serialize,clock});
  function chapterVersion(thesisId,chapterId){return db.prepare('SELECT * FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? ORDER BY version DESC LIMIT 1').get(thesisId,chapterId);}
  function serialize(row,{summary=false}={}){
   const snapshot=JSON.parse(row.snapshot),run=row.current_run_id?db.prepare('SELECT * FROM thesis_runs WHERE id=? AND user_id=?').get(row.current_run_id,row.user_id):null;
@@ -68,7 +70,7 @@ export function createThesisService(db,config={}){
    const manuscriptChanged=meta.completion?preflight?snapshot.outline.some(chapter=>(chapterVersion(row.id,chapter.id)?.id||null)!==(baseline.get(chapter.id)||null)):quality.manuscriptHash!==completionManuscriptHash(chapters):chapters.some(chapter=>chapter.source==='manual'||chapter.stale);
    item.quality={...quality,stale:run.snapshot_hash!==row.snapshot_hash||manuscriptChanged};
   }}
-  if(!summary){item.completionReview=completionReview(db,row,run);item.simulationRecovery=recoverableThesisSimulation(db,row);}
+  if(!summary){item.completionReview=completionReview(db,row,run);item.simulationRecovery=recoverableThesisSimulation(db,row);const imported=db.prepare('SELECT id,file_id,file_sha256,created_at,restored_at FROM thesis_draft_imports WHERE thesis_id=? AND user_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(row.id,row.user_id);if(imported&&!imported.restored_at)item.importedDraft={id:imported.id,fileId:imported.file_id,sha256:imported.file_sha256,createdAt:imported.created_at};}
   return item;
  }
  function touch(id,status){db.prepare('UPDATE theses SET version=version+1,status=?,updated_at=? WHERE id=?').run(status,clock(),id);}
@@ -82,6 +84,7 @@ export function createThesisService(db,config={}){
  async function capabilities(){try{await settings();return {ready:true,reason:'',automaticManuscript:config.thesisContinuousEnabled===true&&config.writingQualityEnabled===true&&config.supplementCheckEnabled===true,limits:thesisLimits(config),billingService:'agent',automaticReferences:config.writingAutoReferencesEnabled!==false,requiresEvidenceConfirmation:true,onlineReferenceVerification:false,evidenceMode:'reviewable_draft_with_optional_sources'};}catch(error){return {ready:false,reason:error.message,limits:thesisLimits(config),billingService:'agent',automaticReferences:config.writingAutoReferencesEnabled!==false,requiresEvidenceConfirmation:true,onlineReferenceVerification:false,evidenceMode:'reviewable_draft_with_optional_sources'};}}
  async function handle({path,method,user,readBody}){
   if(path!=='/api/theses'&&!/^\/api\/theses\//.test(path))return null;
+  const imported=await draftImporter({path,method,user,readBody});if(imported)return {status:200,...imported};
   if(!user?.id)fail(401,'请先登录');
   const response=(value,status=200)=>({status,value});
   const referencePath=path.match(/^\/api\/theses\/([^/]+)\/references\/prepare$/);

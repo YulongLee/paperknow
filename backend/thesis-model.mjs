@@ -279,6 +279,7 @@ export function assertThesisAccountQuota(db,userId,additionalBytes,config={}){
   sum(`SELECT coalesce(sum(max(512,length(CAST(c.text AS BLOB))+length(CAST(c.trace AS BLOB))+length(CAST(c.missing_evidence AS BLOB))${hasCheckpointFigures?"+length(CAST(coalesce(c.figures,'[]') AS BLOB))":''})),0) n FROM thesis_checkpoints c JOIN thesis_runs r ON r.id=c.run_id WHERE r.user_id=?`,userId)+
   sum('SELECT count(*)*512 n FROM thesis_commands WHERE user_id=?',userId)+
   (db.prepare("SELECT 1 FROM sqlite_master WHERE name='thesis_completion_inputs'").get()?sum('SELECT count(*)*512 n FROM thesis_completion_inputs WHERE user_id=?',userId):0)+
+  (db.prepare("SELECT 1 FROM sqlite_master WHERE name='thesis_draft_imports'").get()?sum('SELECT coalesce(sum(max(512,length(CAST(baseline AS BLOB)))),0) n FROM thesis_draft_imports WHERE user_id=?',userId):0)+
   (db.prepare("SELECT 1 FROM sqlite_master WHERE name='thesis_completion_confirmations'").get()?sum('SELECT count(*)*512 n FROM thesis_completion_confirmations WHERE user_id=?',userId):0)+
   (db.prepare("SELECT 1 FROM sqlite_master WHERE name='thesis_completion_quotes'").get()?sum('SELECT coalesce(sum(max(512,length(CAST(c.plan AS BLOB)))),0) n FROM thesis_completion_quotes c JOIN thesis_generation_quotes q ON q.token=c.token WHERE q.user_id=?',userId):0)+
   sum("SELECT coalesce(sum(max(512,length(CAST(snapshot AS BLOB)))+max(512,length(CAST(coalesce(output,'') AS BLOB)))),0) n FROM thesis_outline_runs WHERE user_id=?",userId)+

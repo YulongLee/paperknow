@@ -9,7 +9,7 @@ export function thesisTaskMode(item){
 export function initialThesisWritingMode(item){
  if(!thesisHasDraft(item))return 'draft';
  if(['queued','running','cancelling'].includes(item?.job?.status))return thesisTaskMode(item);
- return item?.completionReview?.required||thesisTaskMode(item)==='final'?'final':'draft';
+ return item?.importedDraft||item?.completionReview?.required||thesisTaskMode(item)==='final'?'final':'draft';
 }
 export function thesisWritingModesHTML(mode){
  return `<div class="thesis-writing-modes" role="tablist" aria-label="选择论文撰写任务">${[['draft','01','初稿撰写','按已确认的提纲撰写，预览并下载可编辑初稿'],['final','02','终稿撰写','补充缺项、自动修正并检查，确认后编排终稿']].map(([key,number,title,description])=>`<button type="button" role="tab" id="thesis-writing-${key}-tab" data-thesis-writing-mode="${key}" aria-controls="thesis-writing-${key}-panel" aria-selected="${mode===key}" tabindex="${mode===key?0:-1}"><span class="thesis-writing-mode-number" aria-hidden="true">${number}</span><span><strong>${title}</strong><small>${description}</small></span><span class="thesis-writing-mode-check" aria-hidden="true">${mode===key?'✓':'→'}</span></button>`).join('')}</div>`;

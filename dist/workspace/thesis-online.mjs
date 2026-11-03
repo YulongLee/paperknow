@@ -8,6 +8,9 @@ import {assessThesisEvidence} from './thesis-evidence.mjs';
 import {withStableView} from './view-stability.mjs';
 import {bindDocumentExports,downloadDefaultThesisTemplate} from './document-export.mjs';
 import {thesisHasDraft,thesisTaskMode,initialThesisWritingMode,thesisWritingModesHTML,applyThesisWritingMode} from './thesis-writing-modes.mjs';
+import {createDraftImportState,thesisDraftImportHTML,bindThesisDraftImport} from './thesis-draft-import.mjs';
+import {readFileBytes} from './file-bytes.mjs';
+import {reuseStoredOriginal} from './file-selection.mjs';
 import {thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,openThesisTemplateChooser,thesisTemplateChooserOpen,templateSelectionFailureMessage} from './thesis-template.mjs';
 import {toolBanner} from './tool-banner.mjs';
 import {withBibliographicMetadata,presentThesisDocument,buildThesisBibliography} from './thesis-document.mjs';
@@ -63,6 +66,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  let exportLocks=[],exporting=false,completionSubmitting=false,preparingReferences=false;
  const boundRunControls=new WeakSet();
  let coverEdits=null,completionDraft=createCompletionDraft(),completionRecheckNow=false,writingMode=null;
+ let draftImportState=createDraftImportState();
  const $=selector=>container.querySelector(selector);
  const dirty=()=>edits.size>0||researchEdits!==null||coverEdits!==null||completionDraft.dirty;
  const manuscriptDirty=()=>edits.size>0||researchEdits!==null||coverEdits!==null;
@@ -77,7 +81,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  container.classList.add('thesis-online-host');
  if(standalone){container.classList.add('creation-page');const crumb=document.querySelector('.breadcrumb strong');if(crumb)crumb.textContent='研究工作台 / 账户论文';}
  async function api(path,data){
-  const controller=new AbortController();controllers.add(controller);const timeout=setTimeout(()=>controller.abort(),path.endsWith('/references/prepare')?45000:25000);
+  const controller=new AbortController();controllers.add(controller);const timeout=setTimeout(()=>controller.abort(),path==='/files'||path.includes('/draft-import')?60000:path.endsWith('/references/prepare')?45000:25000);
   try{
    if(ctx.api){const value=await ctx.api(path,data,{signal:controller.signal});if(!current())throw new DOMException('页面已切换','AbortError');return value;}
    const response=await fetch('/api'+path,{method:data===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',headers:data===undefined?{}:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data),signal:controller.signal});
@@ -238,7 +242,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   }).join('')});
  }
  function supplementArea(){
-  const review=item.completionReview,attention=materialFollowup(item)||!running(item)&&['needs_materials','check_required'].includes(review?.status),open=attention||completionDraft.dirty||coverEdits||simulationPending(completionDraft);
+  const review=item.completionReview,attention=materialFollowup(item)||!running(item)&&['needs_materials','check_required'].includes(review?.status),open=attention||completionDraft.open||completionDraft.dirty||coverEdits||simulationPending(completionDraft)||item.importedDraft&&!review?.required;
   return `<details class="thesis-simple-supplement" data-thesis-supplement-drawer data-thesis-view-key="supplement-drawer" ${open?'open':''}><summary>补充资料与封面信息<span>${draftGenerationActive(item,completionDraft.recheckRunId)?'初稿完成后可补充':attention?'有待补充或检查的内容':'需要时再补充'}</span></summary>${coverForm()}<div data-thesis-completion-host>${completionPanelHTML(item,completionDraft,{busy:busy||running(item),preparing:completionSubmitting,costText,showCover:false,embedded:true})}</div></details>`;
  }
  function simpleWorkspace(){
@@ -250,7 +254,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   const finalDownloads=`<section class="thesis-export thesis-simple-downloads" ${hasText?'':'hidden'}><div><h3>确认并下载终稿</h3><p>${ready?'正文已完善并检查，请确认修改结果后下载。':item.completionReview?.basisChanged?'新资料已保存，请先更新正文并重新检查。':attention?'请先完成上方资料补充和自动完善。':'完成正文检查与内容确认后，按选定模板编排 DOCX。'}</p></div><footer class="thesis-delivery-footer" data-thesis-delivery><div class="thesis-action-row"><button type="button" class="btn primary" id="thesis-online-docx" data-document-export="docx" data-document-mode="final">下载终稿（DOCX）</button>${ready?`<button type="button" class="btn primary" data-thesis-confirm-download ${busy||dirty()?'disabled':''}>确认并下载终稿</button>`:''}${attention?'<button type="button" class="btn secondary" data-thesis-open-supplement>补充资料</button>':''}</div><p id="thesis-online-delivery-state" class="thesis-delivery-state" role="status" data-thesis-delivery-state></p><p role="status" data-thesis-export-status></p></footer></section>`;
   const draftHeader=`<header class="thesis-writing-panel-heading"><div><small>初稿撰写</small><h2>先把论文写完整</h2><p>使用已确认的题目、提纲和资料撰写正文，生成后可预览、编辑并下载初稿。</p></div></header>`;
   const finalHeader=`<header class="thesis-writing-panel-heading"><div><small>终稿撰写</small><h2>完善正文，检查后交付</h2><p>基于当前初稿补充缺项、修正表达与引用，确认结果后按模板编排终稿。</p></div></header>`;
-  return `${snapshotDriftPanel()}${thesisWritingModesHTML(writingMode)}<section id="thesis-writing-draft-panel" data-thesis-writing-panel="draft" role="tabpanel" aria-labelledby="thesis-writing-draft-tab" ${writingMode==='draft'?'':'hidden'}>${draftHeader}<div data-thesis-task-slot="draft"><div data-thesis-task-workspace>${studioOverview()}</div></div><div data-thesis-workspace-slot="draft">${shared}</div>${draftDownloads}</section><section id="thesis-writing-final-panel" data-thesis-writing-panel="final" role="tabpanel" aria-labelledby="thesis-writing-final-tab" ${writingMode==='final'?'':'hidden'}>${finalHeader}<section class="thesis-final-prerequisite" ${!hasText||draftActive?'':'hidden'} role="status"><strong>${draftActive?'初稿正在撰写':'请先完成初稿撰写'}</strong><p>${draftActive?'初稿完成后，再补充资料并完善终稿。切换模块不会重复提交任务。':'先按已确认的提纲生成初稿，再由系统检查缺项并完善终稿。'}</p><button type="button" class="btn secondary" data-thesis-select-draft>返回初稿撰写</button></section><div data-thesis-task-slot="final"></div><div data-thesis-final-work ${!hasText||draftActive?'hidden':''}>${supplementArea()}</div><div data-thesis-workspace-slot="final"></div>${finalDownloads}</section>${settings}`;
+  return `${snapshotDriftPanel()}${thesisWritingModesHTML(writingMode)}<section id="thesis-writing-draft-panel" data-thesis-writing-panel="draft" role="tabpanel" aria-labelledby="thesis-writing-draft-tab" ${writingMode==='draft'?'':'hidden'}>${draftHeader}<div data-thesis-task-slot="draft"><div data-thesis-task-workspace>${studioOverview()}</div></div><div data-thesis-workspace-slot="draft">${shared}</div>${draftDownloads}</section><section id="thesis-writing-final-panel" data-thesis-writing-panel="final" role="tabpanel" aria-labelledby="thesis-writing-final-tab" ${writingMode==='final'?'':'hidden'}>${finalHeader}<div data-thesis-draft-import-host>${thesisDraftImportHTML(item,draftImportState,{busy})}</div><section class="thesis-final-prerequisite" ${!hasText||draftActive?'':'hidden'} role="status"><strong>${draftActive?'初稿正在撰写':'请先提供一份初稿'}</strong><p>${draftActive?'初稿完成后，再补充资料并完善终稿。切换模块不会重复提交任务。':'可以在上方上传已有初稿，或先使用初稿撰写生成正文，再检查缺项并完善终稿。'}</p><button type="button" class="btn secondary" data-thesis-select-draft>返回初稿撰写</button></section><div data-thesis-task-slot="final"></div><div data-thesis-final-work ${!hasText||draftActive?'hidden':''}>${supplementArea()}</div><div data-thesis-workspace-slot="final"></div>${finalDownloads}</section>${settings}`;
  }
 
  function canonicalSnapshot(value){
@@ -524,7 +528,39 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   if(anchor?.isConnected){const delta=anchor.getBoundingClientRect().top-rect.top;if(Math.abs(delta)>.5)win.scrollTo({left:win.scrollX,top:win.scrollY+delta,behavior:'instant'});}
   schedule();
  }
+ function renderDraftImport(){const host=$('[data-thesis-draft-import-host]');if(!host)return;withStableView(container.closest('.dashboard')||container,()=>{host.innerHTML=thesisDraftImportHTML(item,draftImportState,{busy});bindDraftImport();});}
+ function assertDraftImportReady(){if(running(item)||simulationPending(completionDraft))throw Error('请等待当前论文任务结束后再导入初稿。');if(dirty())throw Error('当前有未保存的正文或补充资料，请先保存或处理这些修改，再导入初稿。');}
+ async function readDraftImport(file){
+  if(busy||exporting||!current())return;
+  if(!/\.docx$/i.test(file?.name||'')||!file.size||file.size>2*1024*1024){draftImportState.error='请上传不超过 2MB 的 DOCX 初稿。';renderDraftImport();return;}
+  try{assertDraftImportReady();}catch(error){draftImportState.error=error.message;renderDraftImport();return;}
+  const reading=readFileBytes(file,{maxBytes:2*1024*1024});reading.catch(()=>{});draftImportState={...createDraftImportState(),phase:'uploading',name:file.name};
+  await mutate(async()=>{try{
+   const bytes=await reading;await owner();if(!current())return;
+   let saved=await reuseStoredOriginal(file,{api,expectedUserId:user.id,projectId:item.projectId});
+   if(!saved){let binary='';for(let offset=0;offset<bytes.length;offset+=8192)binary+=String.fromCharCode(...bytes.subarray(offset,offset+8192));saved=await api('/files',{name:file.name,data:btoa(binary),expectedUserId:user.id,...(item.projectId?{projectId:item.projectId}:{})});}
+   await owner();if(!saved?.id)throw Error('未确认初稿原件保存成功，请重新选择文件。');draftImportState.phase='reading';renderDraftImport();
+   const result=await api('/theses/'+encodeURIComponent(id)+'/draft-import/preview',{version:item.version,fileId:saved.id});await owner();
+   if(!result.preview?.previewHash||!Array.isArray(result.preview.chapters)||!result.preview.chapters.length)throw Error('初稿识别结果不完整，请重新选择文件。');
+   draftImportState.preview=result.preview;draftImportState.clientKey=crypto.randomUUID();draftImportState.phase='preview';
+  }catch(error){draftImportState.phase='idle';draftImportState.error=serviceMessage(error.message||'初稿识别未完成，请重试。');throw error;}});
+ }
+ async function applyDraftImport({restore=false}={}){
+  let applied=false;
+  await mutate(async()=>{
+   assertDraftImportReady();let result;
+   if(restore){if(!item.importedDraft?.id)throw Error('没有可撤销的初稿导入记录。');result=await api('/theses/'+encodeURIComponent(id)+'/draft-import/restore',{version:item.version,importId:item.importedDraft.id});}
+   else{const preview=draftImportState.preview;if(!preview||preview.version!==item.version)throw Error('论文已更新，请重新选择初稿并核对识别结果。');result=await api('/theses/'+encodeURIComponent(id)+'/draft-import',{version:preview.version,fileId:preview.fileId,previewHash:preview.previewHash,clientKey:draftImportState.clientKey,replaceExisting:preview.replacesExisting===true});}
+   await owner();completionDraft=createCompletionDraft();completionDraft.open=true;disclosureState.set('key:supplement-drawer',true);completionRecheckNow=false;draftImportState=createDraftImportState();quote=null;takeItem(result.item);writingMode='final';persistDraft();await onSaved?.(item.id,item);applied=true;notice(restore?'已恢复导入前的正文，当前导入版本仍保留在章节历史中。':'初稿已导入，可在终稿撰写中补充、完善并检查。');
+  });
+  if(applied&&current()&&typeof getSnapshot==='function'&&!standalone)win.location.hash='#thesis/'+encodeURIComponent(id);
+ }
+ function bindDraftImport(){bindThesisDraftImport($('[data-thesis-draft-import-host]'),{
+  upload:file=>void readDraftImport(file),pick:async()=>{if(busy||running(item))return;try{assertDraftImportReady();const {openStoredFilePicker}=await import('./file-picker.mjs');if(!current())return;const thesisId=id;openStoredFilePicker({documentObject:container.ownerDocument,accept:'.docx',isCurrent:()=>current()&&id===thesisId,onSelect:file=>readDraftImport(file)});}catch(error){failure(error);}},
+  confirm:()=>void applyDraftImport(),restore:()=>void applyDraftImport({restore:true}),cancel:()=>{draftImportState=createDraftImportState();renderDraftImport();},undo:()=>{draftImportState.undoConfirm=true;draftImportState.preview=null;draftImportState.error='';renderDraftImport();}
+ });}
  function bind(){
+  bindDraftImport();
   applyThesisWritingMode(container,writingMode,{taskMode:thesisTaskMode(item)});
   const selectMode=(mode,focus=false)=>{
    if(exporting||!['draft','final'].includes(mode))return;
