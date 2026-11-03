@@ -2,12 +2,12 @@ import {simulationResearchDisclosure} from './simulation-data.mjs';
 import {normalizeThesisFigures} from './thesis-figure.mjs';
 import {isOutlineReferenceChapter} from './outline-word-budget.mjs';
 import {thesisFrontMatterKind,stripThesisOwnedHeadings} from './thesis-delivery.mjs';
-import {citationMetadataFields,recoverCitationMetadata} from './citation-import.mjs';
+import {citationMetadataFields,recoverCitationMetadata,preservedUnparsedCitation} from './citation-import.mjs';
 
 const bibliographyFields=[...new Set(['id','title','authors','year','doi','url','venue','sourceLabel',...citationMetadataFields])];
 export function thesisReferenceMetadata(row={}){
- const restored=recoverCitationMetadata(row),result={...restored,...Object.fromEntries(bibliographyFields.filter(key=>typeof row[key]==='string'&&row[key].trim()).map(key=>[key,row[key].trim()]))};
- if(restored.citationText)result.citationText=restored.citationText;else delete result.citationText;
+ const preserved=preservedUnparsedCitation(row),restored=preserved?{}:recoverCitationMetadata(row),result={...restored,...Object.fromEntries(bibliographyFields.filter(key=>typeof row[key]==='string'&&row[key].trim()).map(key=>[key,row[key].trim()]))};
+ if(preserved)result.citationText=preserved;else if(restored.citationText)result.citationText=restored.citationText;else delete result.citationText;
  if(Array.isArray(row.authorNames))result.authorNames=row.authorNames.slice(0,100).flatMap(name=>{if(typeof name==='string'&&name.trim())return[{literal:name.trim().slice(0,1000)}];if(!name||typeof name!=='object'||Array.isArray(name))return[];const value=Object.fromEntries(['literal','family','given'].filter(key=>typeof name[key]==='string'&&name[key].trim()).map(key=>[key,name[key].trim().slice(0,1000)]));return value.literal||value.family?[value]:[];});
  return result;
 }

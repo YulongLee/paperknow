@@ -2,7 +2,7 @@ import JSZip from 'jszip';
 import {extractDocxObjects} from './thesis-docx-objects.mjs';
 import {DOMParser} from '@xmldom/xmldom';
 import {createHash} from 'node:crypto';
-import {parseCitationImport} from '../dist/workspace/citation-import.mjs';
+import {importDraftReferences,remapDraftCitations} from './thesis-draft-references.mjs';
 import {formatThesisReference} from '../dist/workspace/thesis-document.mjs';
 import {thesisFrontMatterKind,thesisManualBackMatter} from '../dist/workspace/thesis-delivery.mjs';
 import {isOutlineReferenceChapter} from '../dist/workspace/outline-word-budget.mjs';
@@ -56,15 +56,11 @@ export async function parseThesisDraftDocx(bytes,{name='初稿.docx',snapshot}={
  const meaningful=groups.filter(row=>row.texts.some(text=>text.trim()));if(!meaningful.some(row=>!isOutlineReferenceChapter(row)&&!thesisFrontMatterKind(row)&&!thesisManualBackMatter(row)))fail('没有识别到可导入的正文，请检查初稿是否仅包含封面、目录或参考文献。');
  if(meaningful.length>30)fail('初稿章节超过 30 个，请合并章节后重试。');
  const characters=meaningful.reduce((sum,row)=>sum+row.texts.join('\n\n').length,0);if(characters<100||characters>200000)fail('初稿正文需为 100～200,000 个字符，请检查文件内容。');
- const sha=createHash('sha256').update(bytes).digest('hex'),references=[...(snapshot.references||[])],citationIds=new Map();
- for(const group of meaningful.filter(isOutlineReferenceChapter)){
-  const entries=group.texts.join('\n').split(/\n(?=\s*\[\d{1,3}\])/).map(text=>text.trim()).filter(Boolean);
-  for(const entry of entries){const number=entry.match(/^\[(\d{1,3})\]/)?.[1];if(!number)fail('参考文献需使用带编号的标准条目，例如 [1] 作者. 标题[J]. 期刊, 年份。请整理后重试；当前正文未改变。');try{const parsed=parseCitationImport(entry).items[0];if(!parsed)throw Error('missing citation');let reference=references.find(row=>row.doi&&parsed.doi&&row.doi.toLowerCase()===parsed.doi.toLowerCase()||key(row.title)===key(parsed.title));if(!reference){reference={...parsed,id:'draft-ref-'+sha.slice(0,16)+'-'+number,text:parsed.text||'',sourceLabel:'初稿导入参考文献，待核对原文',confirmed:true};delete reference.rawCitation;references.push(reference);}citationIds.set(number,reference.id);}catch{fail('参考文献 ['+number+'] 尚不能完整识别，请按带 [J]、[D]、[M] 等类型的标准引文整理后重试；当前正文未改变。');}}
- }
- let unmatched=0;const remap=text=>text.split(/(```[\s\S]*?```|`[^`\n]+`|\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g).map((part,index)=>index%2?part:part.replace(/\[(\d{1,3})\]/g,(match,number)=>citationIds.has(number)?'[source:'+citationIds.get(number)+']':(unmatched++,match))).join('');
+ const sha=fileSha,referenceGroups=meaningful.filter(isOutlineReferenceChapter),imported=importDraftReferences(referenceGroups,{sha,references:snapshot.references||[]}),{references,citationIds}=imported;warnings.push(...imported.warnings);
+ let unmatched=0;const remap=text=>remapDraftCitations(text,citationIds,{onUnmatched:()=>unmatched++});
  const used=new Set(),existing=snapshot.outline||[];
- const chapters=meaningful.map((group,index)=>{const known=existing.find(row=>!used.has(row.id)&&key(row.title)===key(group.title)),front=thesisFrontMatterKind(group),back=thesisManualBackMatter(group);let id=known?.id||(front?'front-'+front:back?'back-acknowledgements':'import-'+sha.slice(0,16)+'-'+index);while(used.has(id))id+='-new';used.add(id);const text=group.texts.join('\n\n');if(text.length>16000&&!isOutlineReferenceChapter(group))fail('“'+group.title+'”超过 16,000 字符，请拆分为更短的章节后导入，以便完整检查和完善。');if(/\[(?:source|figure):/i.test(text))fail('初稿包含无法确认来源的内部索引，请使用正常导出的 DOCX 文档后重试。');return{id,title:group.title,text:isOutlineReferenceChapter(group)?[...text.matchAll(/(?:^|\n)\s*\[(\d{1,3})\]/g)].map(match=>{const id=citationIds.get(match[1]);return '[source:'+id+'] '+formatThesisReference(references.find(row=>row.id===id));}).join('\n'):remap(text),targetWords:0,sections:[],sourceIds:[],...(isOutlineReferenceChapter(group)?{kind:'references'}:{})};});
+ const chapters=meaningful.map((group,index)=>{const known=existing.find(row=>!used.has(row.id)&&key(row.title)===key(group.title)),front=thesisFrontMatterKind(group),back=thesisManualBackMatter(group);let id=known?.id||(front?'front-'+front:back?'back-acknowledgements':'import-'+sha.slice(0,16)+'-'+index);while(used.has(id))id+='-new';used.add(id);const text=group.texts.join('\n\n');if(text.length>16000&&!isOutlineReferenceChapter(group))fail('“'+group.title+'”超过 16,000 字符，请拆分为更短的章节后导入，以便完整检查和完善。');if(/\[(?:source|figure):/i.test(text))fail('初稿包含无法确认来源的内部索引，请使用正常导出的 DOCX 文档后重试。');return{id,title:group.title,text:isOutlineReferenceChapter(group)?(imported.groupEntries.get(referenceGroups.indexOf(group))||[]).map(row=>'[source:'+row.id+'] '+formatThesisReference(references.find(reference=>reference.id===row.id))).join('\n'):remap(text),targetWords:0,sections:[],sourceIds:[],...(isOutlineReferenceChapter(group)?{kind:'references'}:{})};});
  if(unmatched)warnings.push('有 '+unmatched+' 处方括号数字未关联到标准题录，已保留原文，请核对其是否为引文。');
  warnings.push('导入仅整理初稿，不代表文献、研究结果或终稿已通过检查。');
- return {name,sha256:sha,characters,tableCount,chapters,references,objects,imageCount:objects.filter(row=>row.kind==='image').length,formulaCount:objects.filter(row=>row.kind==='formula').length,warnings:[...new Set(warnings)].slice(0,20),referenceCount:citationIds.size};
+ return {name,sha256:sha,characters,tableCount,chapters,references,objects,imageCount:objects.filter(row=>row.kind==='image').length,formulaCount:objects.filter(row=>row.kind==='formula').length,warnings:[...new Set(warnings)].slice(0,20),referenceCount:imported.referenceCount,referenceReviewCount:imported.reviewCount};
 }

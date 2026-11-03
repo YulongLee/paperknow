@@ -54,7 +54,7 @@ export function createWritingReferencePreparation(config={}){
   const configured=Number(config.thesisMaxSourceCharacters),limit=Number.isSafeInteger(configured)&&configured>=1000&&configured<=200000?configured:100000;
   let remaining=Math.max(0,limit-[...(snapshot.materials||[]),...references].reduce((sum,row)=>sum+String(row.text||'').length,0));
   const adopt=(reference,candidate,options)=>{const abstract=plain(candidate.abstract,Math.min(3000,remaining));if(!body(abstract))return false;Object.assign(reference,enrich(reference,{...candidate,abstract},options));remaining-=reference.text.length;return true;};
-  const pending=references.filter(row=>row.confirmed!==false&&!String(row.text||'').trim()).slice(0,8);
+  const pending=references.filter(row=>row.documentType!=='unparsed'&&row.confirmed!==false&&!String(row.text||'').trim()).slice(0,8);
   const invoke=async query=>{
    if(await isCurrent()!==true)throw Object.assign(Error('论文信息已变化，请重新打开后生成。'),{status:409});
    try{const result=await search.search(query,{clientKey:'writing-reference:'+userId,allowAminer:false,allowSemanticScholar:false});if(result.sources?.some(row=>['error','rate_limited','budget_exhausted'].includes(row.status)))unavailable=true;return result.items||[];}

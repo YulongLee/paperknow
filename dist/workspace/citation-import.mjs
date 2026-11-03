@@ -13,6 +13,7 @@ const typeCodes={J:'journal',M:'book',D:'thesis',C:'conference',N:'newspaper',R:
 const referenceDate=value=>clean(value).match(/^(\d{4})[-/](\d{2})[-/](\d{2})/)?.slice(1).join('-')||'';
 const citationLiteral=value=>clean(value).replace(/^\[\d+\]\s*/,'').replace(/\s+/g,' ').trim();
 function safeCitationText(value){const text=citationLiteral(value);return text.length<=4000&&!/\[(?:source|figure):|(?:javascript|data):|https?:\/\/[^\s/]*@/i.test(text)?text:'';}
+export function preservedUnparsedCitation(row={}){if(row.documentType!=='unparsed'||typeof row.citationText!=='string')return '';const raw=clean(row.citationText);return raw&&raw.length<=4000&&!/\[(?:source|figure|docx):/i.test(raw)?raw:'';}
 function authorName(value,literal=false){const name=plain(value),parts=!literal&&name.match(/^([^,]+),\s*([^,]+)$/);return parts?{family:parts[1].trim(),given:parts[2].trim()}:{literal:name};}
 function bibAuthors(value=''){const rows=[];let depth=0,start=0;for(let i=0;i<value.length;i++){if(value[i]==='{')depth++;else if(value[i]==='}')depth--;else if(!depth&&/^\s+and\s+/i.test(value.slice(i))){const delimiter=value.slice(i).match(/^\s+and\s+/i)[0];rows.push(value.slice(start,i).trim());i+=delimiter.length-1;start=i+1;}}rows.push(value.slice(start).trim());return rows.filter(Boolean);}
 function finish(raw,fields={}){

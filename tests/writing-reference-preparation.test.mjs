@@ -77,3 +77,6 @@ test('automatic literature is actually read, numbered by first use and linked to
 test('topic-selected automatic papers retain candidate priority alongside user-selected literature',()=>{
  const s=normalizeThesisSnapshot({...snapshot(),references:[...Array.from({length:8},(_,i)=>({...paper({id:'old'+i,title:'Previous source '+i}),text:abstract,confirmed:true})),{...paper({id:'auto',title:'Dog individual recognition'}),text:abstract,confirmed:true,sourceLabel:autoReferenceLabels[1]}]});assert.equal(selectThesisEvidence(s,thesisPlan(s)[0]).sources[0].id,'auto');
 });
+test('opaque imported citation labels are preserved without spending lookup requests on placeholder titles',async()=>{
+ const calls=[],service=createWritingReferencePreparation({writingLiteratureSearch:{listSources:()=>['crossref'],async search(query){calls.push(query.q);return {items:[],sources:[]};}}}),reference={id:'raw-ref',title:'原稿参考文献条目 2',documentType:'unparsed',citationText:'Smith, J. (2024). A supplied original citation without a type.',text:'',confirmed:true},result=await service.prepare({title:'图像识别方法',materials:[],references:[reference]},{userId:'isolated',isCurrent:()=>true});assert.deepEqual(result.references,[reference]);assert.ok(calls.every(query=>!query.includes('原稿参考文献条目')));assert.ok(result.summary.unresolvedIds.includes(reference.id));
+});
