@@ -34,10 +34,11 @@ async function fixture(t,{saveFailures=0,recovery=false,loseSaveResponse=false,s
   if(path==='/theses/methods'||path==='/theses/methods/sim-1')return{item:structuredClone(job)};
   throw Error('Unexpected '+path);
  }},root=dom.window.document.querySelector('main');
+ if(!recovery){const legacy=createCompletionDraft();legacy.simulationJob={status:'queued',clientKey:'legacy-submission',thesisId:item.id,version:item.version,jobId:'sim-1',error:'',text:''};dom.window.localStorage.setItem('paperknow-thesis-edits-v1:owner:paper',JSON.stringify({schema:1,actorId:'owner',thesisId:'paper',revision:'legacy-recovery',chapters:[],completion:legacy}));}
  let stop=mountOnlineThesis({id:item.id,container:root,ctx});await stop.ready;
  t.after(()=>{disposeOnlineThesis();dom.window.close();});
  const q=selector=>root.querySelector(selector);
- return{dom,root,q,calls,item,setOwner:id=>signedIn=id,async start(){q('[data-simulation-generate]').click();await settle();assert.ok(q('[role="progressbar"]'));},async complete(){job={...job,status:'completed',output:{origin:'ai_simulation',text:'明确披露的模拟数据与参数说明。',rows:[{},{}]}};t.mock.timers.tick(1800);await settle();assert.ok(q('[data-simulation-preview]'));},async reopen(){stop();stop=mountOnlineThesis({id:item.id,container:root,ctx});await stop.ready;t.mock.timers.tick(1800);await settle();}};
+ return{dom,root,q,calls,item,setOwner:id=>signedIn=id,async start(){assert.equal(q('[data-simulation-generate]'),null);t.mock.timers.tick(1800);await settle();assert.ok(q('[role="progressbar"]'));},async complete(){job={...job,status:'completed',output:{origin:'ai_simulation',text:'明确披露的模拟数据与参数说明。',rows:[{},{}]}};t.mock.timers.tick(1800);await settle();assert.ok(q('[data-simulation-preview]'));},async reopen(){stop();stop=mountOnlineThesis({id:item.id,container:root,ctx});await stop.ready;t.mock.timers.tick(1800);await settle();}};
 }
 
 test('pending simulation survives leaving and reopening a clean thesis without a second submission or quote',async t=>{
@@ -45,8 +46,8 @@ test('pending simulation survives leaving and reopening a clean thesis without a
  const stored=JSON.parse(f.dom.window.localStorage.getItem('paperknow-thesis-edits-v1:owner:paper'));
  assert.equal(stored?.completion?.simulationJob?.jobId,'sim-1');
  await f.reopen();assert.ok(f.q('[role="progressbar"]'));
- assert.equal(f.calls.filter(row=>row.path==='/theses/methods').length,1);
- assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,1);
+ assert.equal(f.calls.filter(row=>row.path==='/theses/methods').length,0);
+ assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,0);
  assert.ok(f.calls.some(row=>row.path==='/theses/methods/sim-1'));
 });
 
@@ -59,8 +60,8 @@ test('simulation completion leaves other supplement fields, focus, selection and
  assert.equal(f.q('[data-thesis-completion]'),panel,'background completion must not replace the form');
  assert.equal(f.q('[data-completion-reference="text"]'),field);
  assert.equal(f.dom.window.document.activeElement,field);assert.equal(field.selectionStart,8);assert.equal(field.selectionEnd,15);assert.equal(field.scrollTop,55);assert.equal(details.open,true);assert.equal(cover.open,false);
- assert.match(f.q('[data-completion-prepare]').textContent,/保存并开始完善检查/);
- assert.match(f.q('[data-thesis-delivery-state]').textContent,/保存并开始完善检查/);
+ assert.match(f.q('[data-completion-prepare]').textContent,/AI 审查并自动补齐/);
+ assert.match(f.q('[data-thesis-delivery-state]').textContent,/AI 审查并自动补齐/);
  assert.equal(f.q('#thesis-online-docx').disabled,true,'new simulation material must still pass completion before final delivery');
  assert.equal(f.q('[data-thesis-notice]').textContent,'','completion feedback stays beside the data instead of inserting a banner above the page');
  assert.match(f.q('.thesis-simulation-status').textContent,/已保存到当前论文/);
@@ -76,8 +77,8 @@ test('completed data automatically saves once, survives reload, and permits cont
  await f.reopen();assert.match(f.q('.thesis-simulation-status').textContent,/已保存到当前论文/);
  assert.equal(f.q('[data-completion-prepare]').disabled,false);
  assert.equal(f.calls.filter(row=>row.path==='/theses/paper/completion').length,1);
- assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,1);
- assert.equal(f.calls.filter(row=>row.path==='/theses/methods').length,1);
+ assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,0);
+ assert.equal(f.calls.filter(row=>row.path==='/theses/methods').length,0);
  f.q('[data-completion-prepare]').click();await settle();
  assert.equal(f.calls.filter(row=>row.path==='/theses/paper/generate').length,1,'the next click starts writing with the cloud-saved simulation');
  assert.equal(f.calls.find(row=>row.path==='/theses/paper/quote').data.version,2);
@@ -91,7 +92,7 @@ test('failed free adoption retains the generated data and retries with the same 
  f.q('[data-simulation-save]').click();await settle();
  assert.match(f.q('.thesis-simulation-status').textContent,/已保存到当前论文/);
  const saves=f.calls.filter(row=>row.path==='/theses/paper/completion');assert.equal(saves.length,2);assert.equal(saves[0].data.clientKey,saves[1].data.clientKey);
- assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,1);assert.equal(f.calls.filter(row=>row.path==='/theses/methods').length,1);
+ assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,0);assert.equal(f.calls.filter(row=>row.path==='/theses/methods').length,0);
 });
 
 test('restoring an existing completed dataset saves it without any AI request or paid quote',async t=>{
@@ -105,7 +106,7 @@ test('restoring an existing completed dataset saves it without any AI request or
 
 test('a lost save response recovers from the authoritative cloud material on reopen without a second adoption',async t=>{
  const f=await fixture(t,{loseSaveResponse:true});await f.start();await f.complete();assert.match(f.q('.thesis-simulation-status').textContent,/保存待重试/);assert.equal(f.item.version,2);
- await f.reopen();assert.match(f.q('.thesis-simulation-status').textContent,/已保存到当前论文/);assert.equal(f.calls.filter(row=>row.path==='/theses/paper/completion').length,1);assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,1);
+ await f.reopen();assert.match(f.q('.thesis-simulation-status').textContent,/已保存到当前论文/);assert.equal(f.calls.filter(row=>row.path==='/theses/paper/completion').length,1);assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,0);
 });
 
 test('changing accounts while free adoption is pending never repaints the old private data or starts writing',async t=>{
@@ -114,7 +115,7 @@ test('changing accounts while free adoption is pending never repaints the old pr
 
 test('automatic simulation adoption retires the visible old review immediately without replacing author input',async t=>{
  const f=await fixture(t,{priorReview:true}),field=f.q('[data-completion-reference="text"]');await f.start();field.value='作者正在补充的真实摘要';field.dispatchEvent(new f.dom.window.Event('input',{bubbles:true}));field.focus();await f.complete();
- assert.equal(f.q('[data-completion-reference="text"]'),field);assert.equal(field.value,'作者正在补充的真实摘要');assert.match(f.q('[data-completion-review]').textContent,/正文待更新|尚未保存/);assert.doesNotMatch(f.q('[data-completion-review]').textContent,/旧检查：缺少模拟数据/);assert.equal(f.q('.thesis-final-missing'),null,'newly adopted simulation must retire the old request beside the supplement inputs');assert.match(f.q('[role="region"].thesis-completion-requests').getAttribute('aria-label'),/正文待更新/);assert.match(f.q('[data-completion-prepare]').textContent,/保存并开始完善检查/);assert.equal(f.calls.filter(row=>row.path==='/theses/paper/completion').length,1);
+ assert.equal(f.q('[data-completion-reference="text"]'),field);assert.equal(field.value,'作者正在补充的真实摘要');assert.match(f.q('[data-completion-review]').textContent,/正文待更新|尚未保存/);assert.doesNotMatch(f.q('[data-completion-review]').textContent,/旧检查：缺少模拟数据/);assert.equal(f.q('.thesis-final-missing'),null,'newly adopted simulation must retire the old request beside the supplement inputs');assert.match(f.q('[role="region"].thesis-completion-requests').getAttribute('aria-label'),/正文待更新/);assert.match(f.q('[data-completion-prepare]').textContent,/AI 审查并自动补齐/);assert.equal(f.calls.filter(row=>row.path==='/theses/paper/completion').length,1);
 });
 
 test('final download follows supplement and cover inputs while draft download stays in its own module',async t=>{

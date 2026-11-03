@@ -1,3 +1,4 @@
+import {completionResolutions} from './thesis-completion-guidance.mjs';
 import {completionContentAudit} from './thesis-completion-audit.mjs';
 import {thesisHash,thesisError} from './thesis-model.mjs';
 import {savedThesisChapters,completionManuscriptHash} from './thesis-completion.mjs';
@@ -38,7 +39,7 @@ export function completionReview(db,row,run){
  const status=['queued','running'].includes(run.status)?'generating':run.status!=='completed'||stale||checkUnavailable?'check_required':missing.length?'needs_materials':!supplementCheckReady(quality)||issues.length||needs.chapters.some(chapter=>chapter.needsTableTitles)?'check_required':'ready';
  const fingerprint=thesisHash({runId:run.id,snapshot:row.snapshot_hash,chapters:saved.map(chapter=>[chapter.id,chapter.record?.id||null]),metadata:row.export_metadata||null,template:row.export_template||null,quality:run.quality});
  const receipt=current&&status==='ready'?db.prepare('SELECT confirmed_at FROM thesis_completion_confirmations WHERE thesis_id=? AND run_id=? AND user_id=? AND fingerprint=?').get(row.id,run.id,row.user_id,fingerprint):null;
- return {required:true,runId:run.id,status:receipt?'confirmed':status,fingerprint:current&&status==='ready'?fingerprint:null,confirmedAt:receipt?.confirmed_at||null,basisChanged:false,reportCurrent:current&&!stale,reasonCode:stale?'manuscript_updated':checkUnavailable?'check_unavailable':null,nextAction:status==='ready'?'confirm':'complete_and_check',changes,missing,issues,suggestions,informationMissing,simulation,simulationUsed:simulation.usedCount>0,checks:{materials:!stale&&supplementCheckReady(quality),manuscript:quality?.coverage?.complete===true&&!stale,content:missing.length===0&&issues.length===0&&!needs.chapters.some(chapter=>chapter.needsTableTitles)}};
+ return {required:true,runId:run.id,status:receipt?'confirmed':status,fingerprint:current&&status==='ready'?fingerprint:null,confirmedAt:receipt?.confirmed_at||null,basisChanged:false,reportCurrent:current&&!stale,reasonCode:stale?'manuscript_updated':checkUnavailable?'check_unavailable':null,nextAction:status==='ready'?'confirm':'complete_and_check',changes,missing,issues,suggestions,informationMissing,diagnosis:completionResolutions(quality?.completionDiagnosis,quality?.supplementCheck,chapters,{current:current&&!stale}),simulation,simulationUsed:simulation.usedCount>0,checks:{materials:!stale&&supplementCheckReady(quality),manuscript:quality?.coverage?.complete===true&&!stale,content:missing.length===0&&issues.length===0&&!needs.chapters.some(chapter=>chapter.needsTableTitles)}};
 }
 
 export function confirmCompletionReview(db,row,run,input,at){

@@ -1,3 +1,4 @@
+import {completionDiagnosis,withCompletionDiagnosis} from './thesis-completion-guidance.mjs';
 import {completionContentAudit} from './thesis-completion-audit.mjs';
 import {assertExpressionRepairUnchanged} from './thesis-expression-repair.mjs';
 import {completionRepairs} from './thesis-completion-repair.mjs';
@@ -80,6 +81,8 @@ export function startThesisWorker(db,config={}){
    const completionReviewChapters=()=>{const versions=manuscriptVersions(),used=[...new Set(versions.flatMap(row=>[...(row.record?.text||'').matchAll(/\[source:([^\]]+)\]/g)].map(match=>match[1])))],references=compileThesisReferences(snapshot,used);return versions.map(row=>({id:row.id,title:row.title,text:isThesisReferenceChapter(row)?references:row.record?.text||'',sourceIds:isThesisReferenceChapter(row)?snapshot.references.filter(reference=>reference.confirmed&&used.includes(reference.id)).map(reference=>reference.id):row.record?JSON.parse(row.record.source_ids):[],figures:row.record?JSON.parse(row.record.figures||'[]'):[]}));};
 
    if(continuous&&!writeRunning(()=>continuity.ensure(run,snapshot,plan,runtime)))return;
+   let diagnosis=JSON.parse(run.quality||'null')?.completionDiagnosis||null;
+   const auditingDraft=fullCompletion&&JSON.parse(run.settings_meta||'{}').completion?.purpose!=='draft'&&savedBaseline.some(row=>row.text?.trim());
    const checkSupplements=config.supplementCheckEnabled===true&&JSON.parse(run.settings_meta||'{}').supplementCheck===true;
    const runner=config.agentTaskRunner||runAgentTask;
    if(typeof runner!=='function')throw thesisError(503,'毕业论文 Agent 执行器尚未接入');
@@ -94,7 +97,7 @@ export function startThesisWorker(db,config={}){
      const account=usage=>writeAttempt(()=>{if(knownUsage(usage))db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE id=? AND attempt=?').run(usage.input,usage.output,clock(),run.id,run.attempt);else db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=? AND attempt=?').run(run.id,run.attempt);});
      try{
       if(!writeRunning(()=>db.prepare('UPDATE thesis_runs SET provider_calls=provider_calls+1 WHERE id=? AND attempt=?').run(run.id,run.attempt)))throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
-      output=await runner({settings:{...settings,maxTotalTokens:reservation.maxTotalTokens,maxCostUsd:reservation.maxCostUsd},task,validateReviewOutput,validateThesisOutput,signal:controller.signal,onStage:()=>stage(validateThesisOutput?'repairing_completion':task.context.operation==='supplement-check'?'checking_supplements':'reviewing_manuscript')});
+      output=await runner({settings:{...settings,maxTotalTokens:reservation.maxTotalTokens,maxCostUsd:reservation.maxCostUsd},task,validateReviewOutput,validateThesisOutput,signal:controller.signal,onStage:()=>stage(validateThesisOutput?'repairing_completion':task.context.operation==='supplement-check'?(auditingDraft&&task.context.phase==='materials'?'reviewing_draft':'checking_supplements'):'reviewing_manuscript')});
       account(output?.usage);accounted=true;
       if(!knownUsage(output?.usage))throw thesisError(502,'审校未返回可核算用量','usage_unknown');
       if(!running()||stopped)throw thesisError(499,'任务已停止','cancelled');
@@ -105,8 +108,9 @@ export function startThesisWorker(db,config={}){
     };
    if(checkSupplements&&completionMode&&!(fullCompletion&&Number.isSafeInteger(JSON.parse(run.quality||'null')?.completionPass))){
     const chapters=snapshot.outline.map(chapter=>({id:chapter.id,title:chapter.title,text:savedBaseline.find(row=>row.chapter_id===chapter.id)?.text||'本节尚未生成，按已确认的章节目的核对所需资料。',figures:JSON.parse(savedBaseline.find(row=>row.chapter_id===chapter.id)?.figures||'[]')}));
-    const supplementCheck=await runSupplementCheck({snapshot,chapters,kind:'thesis',phase:'materials',runtime,dispatch:reviewDispatch,signal:controller.signal,isCurrent:running,onStage:stage});
-    if(!writeRunning(()=>{const json=JSON.stringify({status:'partial',supplementCheck,manuscriptHash:completionManuscriptHash(chapters)});assertThesisAccountQuota(db,run.user_id,Buffer.byteLength(json),config);db.prepare('UPDATE thesis_runs SET quality=?,updated_at=? WHERE id=? AND attempt=?').run(json,clock(),run.id,run.attempt);}))return;
+    const supplementCheck=await runSupplementCheck({snapshot,chapters,kind:'thesis',phase:'materials',runtime,dispatch:reviewDispatch,signal:controller.signal,isCurrent:running,onStage:()=>stage(auditingDraft?'reviewing_draft':'checking_supplements')});
+    diagnosis=completionDiagnosis(supplementCheck,chapters);
+    if(!writeRunning(()=>{const json=JSON.stringify({status:'partial',supplementCheck,completionDiagnosis:diagnosis,manuscriptHash:completionManuscriptHash(chapters)});assertThesisAccountQuota(db,run.user_id,Buffer.byteLength(json),config);db.prepare('UPDATE thesis_runs SET quality=?,updated_at=? WHERE id=? AND attempt=?').run(json,clock(),run.id,run.attempt);}))return;
     // Missing research facts restrict final delivery, not draft writing. This
     // also applies to resumed legacy completion jobs with no scope metadata.
     // Keep the report and generate supported prose with explicit gaps; the
@@ -124,7 +128,7 @@ export function startThesisWorker(db,config={}){
     assertThesisSettings(await config.getAgentSettings?.());
     if(!running())return;
     const complete=db.prepare("SELECT * FROM thesis_checkpoints WHERE run_id=? AND status='completed' ORDER BY position").all(run.id);
-    const contextSections=completionMode?[...savedBaseline.filter(row=>!targetChapters.has(row.chapter_id)).map(row=>({...row,unit_id:'saved::'+row.chapter_id})),...complete]:complete;const task=thesisAgentTask(snapshot,unit,contextSections),maxTurns=Math.min(continuous?12:6,Math.max(1,Number(runtime.maxTurns)||3)),maxOutputTokens=Math.min(continuous?16384:8000,Math.max(32,Number(runtime.maxOutputTokens)||4096));
+    const contextSections=completionMode?[...savedBaseline.filter(row=>!targetChapters.has(row.chapter_id)).map(row=>({...row,unit_id:'saved::'+row.chapter_id})),...complete]:complete;const task=thesisAgentTask(snapshot,withCompletionDiagnosis(unit,diagnosis),contextSections),maxTurns=Math.min(continuous?12:6,Math.max(1,Number(runtime.maxTurns)||3)),maxOutputTokens=Math.min(continuous?16384:8000,Math.max(32,Number(runtime.maxOutputTokens)||4096));
     if(retries){task.instructions+='上一次执行未完成。本次只处理当前单元：根据 retryFeedback 中服务器给出的校验反馈修正完整候选；过短补足论证，过长精简完整句段，不追求精确等于目标，不编造依据。';if(retryFeedback)task.context.retryFeedback=retryFeedback;}
     // The runtime relay enforces maxTotalTokens against the complete actual SDK
     // request, including system instructions, tool schemas and growing history.
@@ -182,6 +186,7 @@ export function startThesisWorker(db,config={}){
      let pass=Number.isSafeInteger(restored?.completionPass)?restored.completionPass:0,existing=Number.isSafeInteger(restored?.completionPass)?restored:null;
      for(;pass<=2;pass++){
       quality=existing||await qualityRunner({snapshot,kind:'thesis',checkSupplements,chapters:completionReviewChapters(),runtime,runId:run.id,signal:controller.signal,onStage:stage,isCurrent:running,dispatch:args=>reviewDispatch({...args,unitId:'completion-quality-'+pass+'::'+args.unitId})});existing=null;
+      if(diagnosis)quality.completionDiagnosis=diagnosis;
       quality.completionAudit=completionContentAudit(snapshot,completionReviewChapters(),quality,db.prepare('SELECT export_metadata FROM theses WHERE id=?').get(run.thesis_id));
       quality.completionPass=pass;quality.manuscriptHash=completionManuscriptHash(completionReviewChapters());
       if(!writeRunning(()=>{const json=JSON.stringify(quality),previous=db.prepare("SELECT length(CAST(coalesce(quality,'') AS BLOB)) bytes FROM thesis_runs WHERE id=?").get(run.id).bytes;assertThesisAccountQuota(db,run.user_id,Math.max(0,Buffer.byteLength(json)-previous),config);db.prepare('UPDATE thesis_runs SET quality=?,updated_at=? WHERE id=? AND attempt=?').run(json,clock(),run.id,run.attempt);}))return;

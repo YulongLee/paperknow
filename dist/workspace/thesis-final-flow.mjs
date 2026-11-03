@@ -2,7 +2,7 @@ import {thesisHasDraft} from './thesis-writing-modes.mjs';
 import {draftGenerationActive} from './thesis-completion-panel.mjs';
 import {supplementCheckReady} from './supplement-check-panel.mjs';
 
-export const finalWritingSteps=[['source','准备初稿','使用当前初稿或上传 DOCX'],['prepare','补充并完善','补齐资料，自动完善与检查'],['review','核对与下载','确认修改，编排 DOCX 终稿']];
+export const finalWritingSteps=[['source','准备初稿','使用当前初稿或上传 DOCX'],['prepare','AI审查与补齐','识别缺项，自动补齐并复检'],['review','核对与下载','确认修改，编排 DOCX 终稿']];
 export function finalWritingState(item,{dirty=false,completionRunId=null}={}){
  const hasDraft=!!item&&thesisHasDraft(item),draftActive=draftGenerationActive(item,completionRunId),active=['queued','running','cancelling'].includes(item?.job?.status)||['queued','running','cancelling'].includes(item?.status),review=item?.completionReview;
  const current=hasDraft&&!draftActive&&!active&&!dirty&&!review?.basisChanged&&!review?.suggestions?.length;

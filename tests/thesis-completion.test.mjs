@@ -136,3 +136,30 @@ test('simulation saved, supplied, cited and checked are distinct states and neve
  assert.deepEqual(simulationCompletionProgress(value,emptyRun,[]),{savedCount:1,records:60,includedCount:0,usedCount:0,checked:false});
  const supplied={...emptyRun,snapshot:JSON.stringify(value)};assert.equal(simulationCompletionProgress(value,supplied,[{text:'模拟分析但没有来源标记'}]).usedCount,0);assert.equal(simulationCompletionProgress(value,supplied,[{text:'模拟结果[source:sim]'}]).usedCount,1);assert.equal(simulationCompletionProgress(value,supplied,[{text:'模拟结果[source:other]'}]).usedCount,0);
 });
+
+test('the current initial-draft diagnosis drives automatic gap filling before one final review and one billed author confirmation',async t=>{
+ const f=fullFixture(t),runner=f.config.agentTaskRunner,seen=[],request='根据已有研究记录补写对照分析与结果解释';
+ f.config.agentTaskRunner=async args=>{
+  const {task}=args;seen.push(task);
+  if(task.context.operation==='supplement-check'&&task.context.phase==='materials'){
+   assert.equal(f.db.prepare('SELECT stage FROM thesis_runs ORDER BY created_at DESC LIMIT 1').get().stage,'reviewing_draft');
+   return {text:JSON.stringify({items:task.context.chapters.map(row=>({id:row.id,status:row.title==='第二章 研究结果'?'missing':'sufficient',requirement:'对照论证的完整性',reason:'对照解释可以依据已有资料补写。',manuscriptQuote:row.text.slice(0,30),evidence:row.title==='第二章 研究结果'?[]:[{sourceId:task.context.evidence[0].id,quote:task.context.evidence[0].text.slice(0,30)}],missing:row.title==='第二章 研究结果'?[request]:[],checkedFigureIds:(row.figures||[]).map(figure=>figure.id)}))}),usage:{input:100,output:100},costUsd:.001};
+  }
+  const result=await runner(args);
+  if(task.context.unit?.chapterId==='c2'){
+   assert.ok(task.context.revision.missingInformation.includes(request),'new semantic gaps must reach the first rewrite, without a prior failed completion');assert.equal(task.context.revision.assessment.status,'checked');
+   const content=JSON.parse(result.text);content.text='对照分析与结果解释依据本次提供的研究记录补写，结论限于该记录的范围。'+content.text;result.text=JSON.stringify(content);
+  }
+  return result;
+ };
+ f.pay();let item=await completeSaved(f);await submitFull(f,item);
+ const bound=f.db.prepare('SELECT plan FROM thesis_runs WHERE id=?').get(f.get(item.id).job.id).plan;
+ assert.ok(!JSON.parse(bound).find(unit=>unit.chapterId==='c2').completion.missingInformation.includes(request));
+ await f.worker.tick();item=f.get(item.id);
+ assert.equal(item.job.status,'completed',item.job.error);assert.equal(item.completionReview.status,'ready',JSON.stringify(item.completionReview));assert.match(item.chapters.find(row=>row.id==='c2').text,/对照分析与结果解释依据/);
+ assert.ok(seen.findIndex(task=>task.context.phase==='materials')<seen.findIndex(task=>task.context.unit?.chapterId==='c2'));
+ assert.equal(f.db.prepare('SELECT plan FROM thesis_runs WHERE id=?').get(item.job.id).plan,bound,'the quote-bound plan stays immutable');
+ const diagnosis=item.completionReview.diagnosis;assert.equal(diagnosis.status,'checked');assert.equal(diagnosis.items.find(row=>row.chapterId==='c2').resolution,'resolved');assert.ok(diagnosis.items.find(row=>row.chapterId==='c2').missing.includes(request));
+ assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_runs').get().n,1);
+ assert.equal((await f.request('/api/theses/'+item.id+'/completion/confirm',confirmation(item))).item.completionReview.status,'confirmed');assert.equal(f.billing.balance(f.user.id).balance,190);
+});
