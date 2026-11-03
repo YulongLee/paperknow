@@ -4,11 +4,27 @@ import {mkdtemp,readFile,rm,stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve,sep} from 'node:path';
 import {JSDOM} from 'jsdom';
+import {createHash} from 'node:crypto';
 import {buildPublicSite} from '../scripts/build-public-site.mjs';
 import {createServer} from '../server.mjs';
 import {publicKeywordTargets,keywordFeaturePages,keywordGuidePages} from '../src/public-keyword-content.mjs';
 
 const origin='https://paperknow.cn';
+
+test('Baidu ownership verification serves the unmodified official file publicly without redirecting to login',async()=>{
+  const path='/baidu_verify_codeva-eQCVhZBbl9.html';
+  const response=await get(path);
+  assert.equal(response.status,200);
+  assert.equal(response.headers.get('location'),null);
+  assert.match(response.headers.get('content-type'),/^text\/html\b/);
+  const bytes=Buffer.from(await response.arrayBuffer());
+  assert.equal(bytes.length,32);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'),'05a18a2c22840ef527a9ab79e44f48b4274fca99674828f6b71982435e8b7b74');
+  assert.ok(!manifest.pages.some(page=>page.slug.includes('baidu_verify')),'verification is not a keyword landing page');
+  const head=await get(path,'HEAD');
+  assert.equal(head.status,200);
+  assert.equal(await head.text(),'');
+});
 const expectedModifiedAt=slug=>slug==='/guides/docx-format/'?'2026-10-29':'2026-11-04';
 const features={
   'ai-writing':'writing','ai-reading':'literature','reduce-similarity':'reduce',
