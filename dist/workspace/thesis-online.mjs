@@ -248,9 +248,9 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
  function finalState(){return finalWritingState(item,{dirty:dirty(),completionRunId:completionDraft.recheckRunId});}
  function applyFinalStep(step=finalStep){if(!item)return;finalStep=applyFinalWritingStep(container,step,finalState(),{busy:busy||exporting});return finalStep;}
  function reviewContent(){return completionReviewPanel(item.completionReview,{busy:busy||running(item),dirty:dirty(),actions:false})||`<section class="thesis-final-review-empty"><h3>完善并检查后，在这里核对结果</h3><p>系统会展示更新的章节与检查结果。确认后，再按已选模板编排终稿。</p><button type="button" class="btn secondary" data-thesis-open-supplement>前往补充并完善</button></section>`;}
+ function preparationNeeds(){const review=item.completionReview,missing=review?.basisChanged?review.informationMissing:review?.missing;return missing?.length?`<section class="thesis-final-missing" role="note"><h4>本次还需要补充</h4><ul>${missing.map(text=>`<li>${escape(text)}</li>`).join('')}</ul><p>请在下方提供相关资料，再开始完善检查。已保存的资料无需重复上传。</p></section>`:'';}
  function supplementArea(){
-  const review=item.completionReview,missing=review?.basisChanged?review.informationMissing:review?.missing,needs=missing?.length?`<section class="thesis-final-missing" role="note"><h4>本次还需要补充</h4><ul>${missing.map(text=>`<li>${escape(text)}</li>`).join('')}</ul><p>请在下方提供相关资料，再开始完善检查。已保存的资料无需重复上传。</p></section>`:'';
-  return `<details class="thesis-simple-supplement" data-thesis-supplement-drawer data-thesis-view-key="supplement-drawer" open><summary>本次补充资料<span>${draftGenerationActive(item,completionDraft.recheckRunId)?'初稿完成后可补充':'已有资料继续使用，无需重复上传'}</span></summary>${needs}${coverForm()}<div data-thesis-completion-host>${completionPanelHTML(item,completionDraft,{busy:busy||running(item),preparing:completionSubmitting,costText,showCover:false,embedded:true,guided:true,showReview:false})}</div></details>`;
+  return `<details class="thesis-simple-supplement" data-thesis-supplement-drawer data-thesis-view-key="supplement-drawer" open><summary>本次补充资料<span>${draftGenerationActive(item,completionDraft.recheckRunId)?'初稿完成后可补充':'已有资料继续使用，无需重复上传'}</span></summary>${preparationNeeds()}${coverForm()}<div data-thesis-completion-host>${completionPanelHTML(item,completionDraft,{busy:busy||running(item),preparing:completionSubmitting,costText,showCover:false,embedded:true,guided:true,showReview:false})}</div></details>`;
  }
  function simpleWorkspace(){
   writingMode??=initialThesisWritingMode(item);
@@ -537,10 +537,11 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   once($('[data-thesis-cancel]'),()=>void mutate(async()=>{const value=await api('/theses/'+encodeURIComponent(id)+'/cancel',{version:item.version});takeItem(value.item);quote=null;notice('已发送停止请求，已完成章节会保留。');}));
  }
  function refreshSimulationSaveView(){
-  const fragment=container.ownerDocument.createElement('template');fragment.innerHTML=controls()+progress()+snapshotSummary(item.snapshot)+completionPanelHTML(item,completionDraft,{busy,costText,showCover:false,embedded:true,guided:true,showReview:false})+reviewContent();
+  const fragment=container.ownerDocument.createElement('template');fragment.innerHTML=preparationNeeds()+controls()+progress()+snapshotSummary(item.snapshot)+completionPanelHTML(item,completionDraft,{busy,costText,showCover:false,embedded:true,guided:true,showReview:false})+reviewContent();
   const focused=container.ownerDocument.activeElement,rect=container.contains(focused)?focused.getBoundingClientRect():null,anchor=rect&&rect.bottom>0&&rect.top<win.innerHeight?focused:null;
   withStableView(container.closest('.dashboard')||container,()=>{
    for(const selector of ['.thesis-run-controls','.thesis-progress','.thesis-summary','.thesis-sources','.thesis-presentations','.thesis-completion-review','.supplement-check-panel','.thesis-completion-requests[role="region"]']){const existing=$(selector),next=fragment.content.querySelector(selector);if(existing&&next)patchGenerationNode(existing,next);}
+   const previousNeeds=$('.thesis-final-missing'),nextNeeds=fragment.content.querySelector('.thesis-final-missing');if(previousNeeds&&nextNeeds)patchGenerationNode(previousNeeds,nextNeeds);else if(previousNeeds)previousNeeds.remove();else if(nextNeeds)$('[data-thesis-cover]')?.before(nextNeeds.cloneNode(true));
    bindRunControls();renderSimulation();
   });
   if(anchor?.isConnected){const delta=anchor.getBoundingClientRect().top-rect.top;if(Math.abs(delta)>.5)win.scrollTo({left:win.scrollX,top:win.scrollY+delta,behavior:'instant'});}
