@@ -1,9 +1,9 @@
 // Short citation labels are a reversible view of this exact chapter and source
 // snapshot. Canonical chapter text and recovery drafts always retain raw IDs.
 const citationPattern=/\[source:([^\]]+)\]/g;
-const shortPattern=/〔(?:材料|文献|待核对来源|图片)\d+〕/g;
+const shortPattern=/〔(?:材料|文献|待核对来源|图片|原稿图片|原稿公式)\d+〕/g;
 const shortLabels=text=>[...new Set(String(text).match(shortPattern)||[])];
-export function thesisEditorPresentation(snapshot={},raw='',{bibliography,figures=[]}={}){
+export function thesisEditorPresentation(snapshot={},raw='',{bibliography,figures=[],docxObjects=[]}={}){
  const original=String(raw),known=new Map();
  const referenceNumbers=new Map((bibliography?.references||[]).map(row=>[row.id,row.number]));
  let nextReference=referenceNumbers.size;
@@ -18,10 +18,11 @@ export function thesisEditorPresentation(snapshot={},raw='',{bibliography,figure
   sourceMap.set(id,{...source,marker:match[0]});
  }
  const sources=[...sourceMap.values()],figureMap=new Map();for(const figure of figures||[])if(figure?.id&&original.includes('[figure:'+figure.id+']')&&!figureMap.has(figure.id))figureMap.set(figure.id,{token:'〔图片'+(figureMap.size+1)+'〕',marker:'[figure:'+figure.id+']'});
- const collision=[...sources,...figureMap.values()].some(source=>original.includes(source.token));
+ const objectMap=new Map();for(const object of docxObjects)if(original.includes('[docx:'+object.id+']'))objectMap.set(object.id,{token:'〔原稿'+(object.kind==='formula'?'公式':'图片')+(objectMap.size+1)+'〕',marker:'[docx:'+object.id+']'});
+ const collision=[...sources,...figureMap.values(),...objectMap.values()].some(source=>original.includes(source.token));
  if(collision)return {text:original,sources:[],bindings:[],collision:true,unmatched:[]};
- const bindings=[...sources,...figureMap.values()].map(({token,marker})=>({token,marker})),tokens=new Map([...sourceMap].map(([id,source])=>[id,source.token]));
- const text=original.replace(citationPattern,(_,id)=>tokens.get(id)).replace(/\[figure:([^\]]+)\]/g,(marker,id)=>figureMap.get(id)?.token||marker);
+ const bindings=[...sources,...figureMap.values(),...objectMap.values()].map(({token,marker})=>({token,marker})),tokens=new Map([...sourceMap].map(([id,source])=>[id,source.token]));
+ const text=original.replace(citationPattern,(_,id)=>tokens.get(id)).replace(/\[figure:([^\]]+)\]/g,(marker,id)=>figureMap.get(id)?.token||marker).replace(/\[docx:([^\]]+)\]/g,(marker,id)=>objectMap.get(id)?.token||marker);
  return {text,sources,bindings,collision:false,unmatched:shortLabels(original).filter(token=>!bindings.some(row=>row.token===token))};
 }
 export function restoreThesisEditorText(display,presentation){
@@ -35,6 +36,6 @@ export function restoreThesisEditorText(display,presentation){
 
 export function thesisEditorWordCount(text,language='中文'){
  if(typeof text!=='string')throw new TypeError('统计正文必须是文本');
- const prose=text.replace(/\[(?:source|figure):[^\]]+\]/g,'');
+ const prose=text.replace(/\[(?:source|figure|docx):[^\]]+\]/g,'');
  return /english|英文|英语/i.test(language)?(prose.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu)||[]).length:Array.from(prose.replace(/\s/g,'')).length;
 }

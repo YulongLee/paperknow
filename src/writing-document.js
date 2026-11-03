@@ -1,3 +1,5 @@
+import {insertDocxObjects,inspectDocxObjects} from './docx-object-export.js';
+import {docxObjectIds} from '../dist/workspace/docx-object-markers.mjs';
 import {writingDefaultTemplateSpec,writingDefaultTemplateMetadata} from '../dist/workspace/writing-template-catalog.mjs';
 import {highlightDraftReviewMarkers} from './writing-draft-review.js';
 import JSZip from 'jszip';
@@ -60,7 +62,7 @@ function figureCaption(block){return `图 ${block.number} ${thesisFigureTitle(bl
 const inspectFigurePng=inspectThesisFigurePng;
 export async function createWritingDocx(text,options={}){
  const figures=normalizeThesisFigures(options.metadata?.figures??options.figures);
- if(['thesis','writing'].includes(options.documentKind)){const bytes=await applyThesisDocumentTemplate(await createWritingDocx(text,{figures,figureRasterizer:options.figureRasterizer,thesisSource:true}),{...options,academicReport:options.documentKind==='writing',blocks:documentBlocks(text,figures,{thesis:true})});return options.submission?bytes:highlightDraftReviewMarkers(bytes);}
+ if(['thesis','writing'].includes(options.documentKind)){let bytes=await applyThesisDocumentTemplate(await createWritingDocx(text,{figures,figureRasterizer:options.figureRasterizer,thesisSource:true}),{...options,academicReport:options.documentKind==='writing',blocks:documentBlocks(text,figures,{thesis:true})});bytes=await insertDocxObjects(bytes,text,options.docxObjects||[]);return options.submission?bytes:highlightDraftReviewMarkers(bytes);}
  const zip=new JSZip(),blocks=documentBlocks(text,figures,{thesis:options.thesisSource===true}),formulas=new Map(),images=[];let imageBytes=0;
  async function math(raw){if(formulas.has(raw))return formulas.get(raw);let markup;try{const renderer=await formulaRenderer();markup=renderer.mathmlToOmml(renderer.renderFormulaMathML(raw),{fontSize:12,color:'000000'});}catch{markup=wordRun(raw);}formulas.set(raw,markup);return markup;}
  async function runs(value,literal=false,properties=''){if(literal)return wordRun(value,properties);const result=[];for(const part of inlineParts(value))result.push(part.formula?await math(part.formula):wordRun(part.text,properties));return result.join('');}
@@ -88,7 +90,7 @@ export async function inspectThesisExportContent(bytes,text,options={}){
   if(block.type==='figure'){const expectedName='PKFigure_'+block.figure.id,drawing=[...container.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing','docPr')].filter(node=>node.getAttribute('name')===expectedName);if(drawing.length!==1)throw Error('论文图片完整性核对未通过，已停止下载。');const blips=[...container.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main','blip')];if(blips.length!==1)throw Error('论文图片关联异常，已停止下载。');const relationship=relationships.get(blips[0].getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','embed')),target=relationship?.getAttribute('Target');if(!relationship||relationship.getAttribute('TargetMode')==='External'||!relationship.getAttribute('Type').endsWith('/image')||!/^media\/[A-Za-z0-9_-]+\.png$/.test(target||'')||!zip.file('word/'+target))throw Error('论文图片文件缺失，已停止下载。');inspectFigurePng(await zip.file('word/'+target).async('uint8array'));if(!read(container).includes(normalize(figureCaption(block))))throw Error('论文图片标题或说明缺失，已停止下载。');figureSegments++;checkedSegments++;continue;}
   if(block.type==='table'){while(container&&!(container.namespaceURI===W&&container.localName==='tbl'))container=container.parentNode;if(!container){missing.push(index);continue;}}
   const actual=block.type==='table'||!index?read(container):anchor.actual,segments=block.type==='formula'?[{text:block.text,formula:true}]:block.type==='table'?block.rows.flat().flatMap(value=>inlineParts(value)):block.literal?[{text:block.text}]:block.inlineSegments||[{text:block.text}];let cursor=0;
-  for(const segment of segments){if(segment.formula){formulaSegments++;continue;}const expected=normalize(segment.text.replace(/^\s*#{1,3}\s+/,''));if(!expected)continue;checkedSegments++;const found=actual.indexOf(expected,cursor);if(found<0){if(!index)throw Error('导出文件中的论文题目未与当前题目对应，已停止下载；请核对模板封面题名，将示例题名改为空白或 {{论文题目}} 后重新上传。');missing.push(index);}else cursor=found+expected.length;}
+  for(const segment of segments.flatMap(segment=>segment.formula?[segment]:segment.text.split(/\[docx:obj-[a-f0-9]{24}\]/g).map(text=>({...segment,text})))){if(segment.formula){formulaSegments++;continue;}const expected=normalize(segment.text.replace(/^\s*#{1,3}\s+/,''));if(!expected)continue;checkedSegments++;const found=actual.indexOf(expected,cursor);if(found<0){if(!index)throw Error('导出文件中的论文题目未与当前题目对应，已停止下载；请核对模板封面题名，将示例题名改为空白或 {{论文题目}} 后重新上传。');missing.push(index);}else cursor=found+expected.length;}
  }
  if(missing.length||JSON.stringify(order)!==JSON.stringify(expectedOrder))throw Error('导出文件正文完整性核对未通过，已停止下载；请核对模板正文区域后重试。');
  // Inspect final rendered document text too: template regions can introduce
@@ -96,7 +98,8 @@ export async function inspectThesisExportContent(bytes,text,options={}){
  // same-paragraph runs together so formatting splits cannot hide a marker.
  let visible='',priorParagraph=null;for(const node of all.filter(n=>n.localName==='t'&&[W,M].includes(n.namespaceURI))){let paragraph=node.parentNode;while(paragraph&&!(paragraph.namespaceURI===W&&paragraph.localName==='p'))paragraph=paragraph.parentNode;if(paragraph!==priorParagraph&&visible)visible+='\n';visible+=node.textContent;priorParagraph=paragraph;}
  const unresolvedPlaceholders=[...visible.matchAll(/(?:【|〔|\[|\{\{)\s*(?:待补充|待核对|待完善|请补充|待填写|来源待核对|文献信息待补全|草稿说明|To be supplied\b|To be verified\b|Draft note\b|TODO\b|TBD\b)[^\n\]】〕}]{0,500}(?:】|〕|\]|\}\})/giu)].length;
- return {status:'passed',checkedSegments,formulaSegments,figureSegments,checkedBlocks:expectedOrder.length,unresolvedPlaceholders,scope:'ordered_block_text_segments'};
+ const importedObjectSegments=await inspectDocxObjects(zip,doc,text,options.docxObjects||[]);
+ return {status:'passed',checkedSegments,formulaSegments,figureSegments,importedObjectSegments,checkedBlocks:expectedOrder.length,unresolvedPlaceholders,scope:'ordered_block_text_segments'};
 }
 
 export async function createWritingPdf(text,fontBytes){

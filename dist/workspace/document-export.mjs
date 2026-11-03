@@ -1,3 +1,4 @@
+import {resolveDocxExportObjects} from './docx-object-client.mjs';
 import {supplementCheckReady} from './supplement-check-panel.mjs';
 import {captureDraftScope} from './state.mjs';
 import {download} from './ui.mjs';
@@ -38,7 +39,7 @@ export function bindDocumentExports(prefix,getText,getTitle,defaultStatus,{expec
   const requestCompletion=async details=>{needsCompletion=true;outcome=details.reason||'needs_materials';await onNeedsCompletion?.(details);};
   try{
    onStateChange({active:true,draft});
-   const api=await loadDocument();if(!current())return;let bytes,options=await getDocumentOptions({draft});if(!current())return;options=options||{};
+   const api=await loadDocument();if(!current())return;let bytes,options=await getDocumentOptions({draft});if(!current())return;options=options||{};if(options.docxObjectOwner)options=await resolveDocxExportObjects(text,options,{signal:controller.signal});if(!current())return;
    const owner=expectedUserId??context.ownerId??options.expectedUserId;
    if(!draft&&options.requireSupplementCheck===true&&!supplementCheckReady(options.quality,{current:options.qualityCurrent!==false})){const check=options.quality?.supplementCheck,missing=check?.status==='needs_materials'&&check.coverage?.complete===true;outcome=missing?'needs_materials':'check_required';needsCompletion=true;const message=missing?'补充内容检查发现具体缺项，请按检查明细补充，系统会继续完善终稿。':'补充内容检查尚未完成，并非已确认材料缺失。请点击“重新检查并自动完善”，系统将使用已保存资料继续处理，无需重复上传。';await requestCompletion({reason:outcome,report:{submission:{issues:[{code:'supplement_check',message}]}},additional:[message]});throw Error(message);}
    if(options.documentKind==='thesis'){

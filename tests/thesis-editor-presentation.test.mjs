@@ -57,3 +57,6 @@ test('saved diagram positions use reversible short labels and never bind an unow
  const collision=thesisEditorPresentation(snapshot(),'原有〔图片1〕\n'+raw,{figures});assert.equal(collision.collision,true);assert.equal(collision.text,'原有〔图片1〕\n'+raw);assert.equal(restoreThesisEditorText(collision.text,collision).text,collision.text);
  const foreign=thesisEditorPresentation(snapshot(),raw);assert.match(foreign.text,/\[figure:fig-0123456789abcdef0123\]/);
 });
+test('original pictures and equations use reversible readable editor labels and do not inflate the word count',()=>{
+ const image='obj-'+'a'.repeat(24),formula='obj-'+'b'.repeat(24),raw='原图[docx:'+image+']与公式[docx:'+formula+']保留。',shown=thesisEditorPresentation({},raw,{docxObjects:[{id:image,kind:'image'},{id:formula,kind:'formula'}]});assert.match(shown.text,/〔原稿图片1〕/);assert.match(shown.text,/〔原稿公式2〕/);assert.deepEqual(restoreThesisEditorText(shown.text,shown),{text:raw,unmatched:[]});assert.equal(thesisEditorWordCount(raw),thesisEditorWordCount('原图与公式保留。'));
+});
