@@ -3,74 +3,110 @@
     {
       "slug": "/features/",
       "file": "features/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-11-04",
       "title": "论文与科研功能介绍"
     },
     {
       "slug": "/features/ai-writing/",
       "file": "features/ai-writing/index.html",
-      "modifiedAt": "2026-10-25",
-      "title": "AI 论文写作工具｜毕业论文五步确认与分章生成"
+      "modifiedAt": "2026-11-04",
+      "title": "AI论文写作与AI论文生成器｜毕业论文初稿生成"
     },
     {
       "slug": "/features/ai-reading/",
       "file": "features/ai-reading/index.html",
-      "modifiedAt": "2026-10-29",
+      "modifiedAt": "2026-11-04",
       "title": "AI 读文献｜文献检索上传、原文问答与总结翻译"
     },
     {
       "slug": "/features/reduce-similarity/",
       "file": "features/reduce-similarity/index.html",
-      "modifiedAt": "2026-10-18",
-      "title": "论文降重与表达优化｜AI 逐段候选、原文对照与版本保存"
+      "modifiedAt": "2026-11-04",
+      "title": "论文降重｜检测报告定向修改、段落处理与Word导出"
     },
     {
       "slug": "/features/reduce-ai/",
       "file": "features/reduce-ai/index.html",
-      "modifiedAt": "2026-10-21",
-      "title": "论文表达优化与 AI 文本鉴别｜原稿对照、逐段修改"
+      "modifiedAt": "2026-11-04",
+      "title": "论文降AI率｜报告定向修改、段落优化与整篇双降"
     },
     {
       "slug": "/features/similarity-check/",
       "file": "features/similarity-check/index.html",
-      "modifiedAt": "2026-10-27",
+      "modifiedAt": "2026-11-04",
       "title": "论文检测｜重复率检测与 AI 率检测报告"
     },
     {
       "slug": "/features/ppt/",
       "file": "features/ppt/index.html",
-      "modifiedAt": "2026-10-21",
+      "modifiedAt": "2026-11-04",
       "title": "答辩 PPT 制作｜开题、毕业与可编辑 PPTX"
     },
     {
       "slug": "/features/format/",
       "file": "features/format/index.html",
-      "modifiedAt": "2026-10-29",
-      "title": "文稿格式排版工具｜上传模板，一键排版"
+      "modifiedAt": "2026-11-04",
+      "title": "论文格式自动排版｜上传模板与原文，生成Word副本"
     },
     {
       "slug": "/features/research-tools/",
       "file": "features/research-tools/index.html",
-      "modifiedAt": "2026-10-19",
+      "modifiedAt": "2026-11-04",
       "title": "AI 科研绘图与公式编辑｜描述生成图片、LaTeX 实时预览"
+    },
+    {
+      "slug": "/features/undergraduate-thesis/",
+      "file": "features/undergraduate-thesis/index.html",
+      "modifiedAt": "2026-11-04",
+      "title": "本科毕业论文写作｜专属提纲、初稿与终稿完善"
+    },
+    {
+      "slug": "/features/masters-thesis/",
+      "file": "features/masters-thesis/index.html",
+      "modifiedAt": "2026-11-04",
+      "title": "硕士论文写作辅助｜研究问题、文献依据与章节完善"
+    },
+    {
+      "slug": "/features/proposal/",
+      "file": "features/proposal/index.html",
+      "modifiedAt": "2026-11-04",
+      "title": "开题报告生成器｜研究方案、专属提纲与Word导出"
+    },
+    {
+      "slug": "/features/literature-review/",
+      "file": "features/literature-review/index.html",
+      "modifiedAt": "2026-11-04",
+      "title": "文献综述生成器｜主题归纳、研究比较与引用整理"
+    },
+    {
+      "slug": "/features/journal-writing/",
+      "file": "features/journal-writing/index.html",
+      "modifiedAt": "2026-11-04",
+      "title": "期刊论文写作工具｜文章结构、研究资料与DOCX文稿"
+    },
+    {
+      "slug": "/features/paper-revision/",
+      "file": "features/paper-revision/index.html",
+      "modifiedAt": "2026-11-04",
+      "title": "论文自动修改与论文润色工具｜初稿审查、表达和引用完善"
     },
     {
       "slug": "/guides/",
       "file": "guides/index.html",
-      "modifiedAt": "2026-10-15",
+      "modifiedAt": "2026-11-04",
       "title": "论文与科研工具使用指南"
     },
     {
       "slug": "/guides/paper-outline/",
       "file": "guides/paper-outline/index.html",
-      "modifiedAt": "2026-10-21",
-      "title": "论文大纲生成与编辑指南｜AI 提纲、字数分配与核对"
+      "modifiedAt": "2026-11-04",
+      "title": "论文提纲自动生成｜专属结构、章节篇幅与内容设置"
     },
     {
       "slug": "/guides/material-comparison/",
       "file": "guides/material-comparison/index.html",
-      "modifiedAt": "2026-10-18",
-      "title": "本地材料比对怎么用｜正文、来源与报告核对"
+      "modifiedAt": "2026-11-04",
+      "title": "论文检测报告怎么看｜原文标注、来源对照与修改建议"
     },
     {
       "slug": "/guides/docx-format/",
@@ -81,49 +117,61 @@
     {
       "slug": "/guides/research-ppt/",
       "file": "guides/research-ppt/index.html",
-      "modifiedAt": "2026-10-21",
-      "title": "开题与毕业 PPT 制作步骤｜结构、页面与 PPTX 导出"
+      "modifiedAt": "2026-11-04",
+      "title": "开题与毕业答辩PPT制作｜材料、网页预览与PPTX导出"
     },
     {
       "slug": "/guides/research-charts/",
       "file": "guides/research-charts/index.html",
-      "modifiedAt": "2026-10-21",
-      "title": "科研基础图表制作步骤｜CSV 输入与 SVG、PNG 导出"
+      "modifiedAt": "2026-11-04",
+      "title": "AI科研绘图怎么用｜场景描述、数据与图片核对"
+    },
+    {
+      "slug": "/guides/ai-writing-vs-ghostwriting/",
+      "file": "guides/ai-writing-vs-ghostwriting/index.html",
+      "modifiedAt": "2026-11-04",
+      "title": "论文代写与AI辅助写作有什么区别？｜毕业论文工具选择"
+    },
+    {
+      "slug": "/guides/paper-writing-cost/",
+      "file": "guides/paper-writing-cost/index.html",
+      "modifiedAt": "2026-11-04",
+      "title": "论文代写多少钱？先看AI辅助写作的费用与交付范围"
     },
     {
       "slug": "/about/",
       "file": "about/index.html",
-      "modifiedAt": "2026-10-22",
+      "modifiedAt": "2026-11-04",
       "title": "关于 PaperKnow｜论文写作与科研辅助工作台"
     },
     {
       "slug": "/help/",
       "file": "help/index.html",
-      "modifiedAt": "2026-10-28",
+      "modifiedAt": "2026-11-04",
       "title": "PaperKnow 使用帮助｜登录、保存、上传与成果导出"
     },
     {
       "slug": "/privacy/",
       "file": "privacy/index.html",
-      "modifiedAt": "2026-10-28",
+      "modifiedAt": "2026-11-04",
       "title": "PaperKnow 数据与隐私说明｜账户资料、云端文件与处理范围"
     },
     {
       "slug": "/terms/",
       "file": "terms/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-11-04",
       "title": "PaperKnow 服务规则｜使用范围、成果核对与费用状态"
     },
     {
       "slug": "/contact/",
       "file": "contact/index.html",
-      "modifiedAt": "2026-10-18",
+      "modifiedAt": "2026-11-04",
       "title": "联系 PaperKnow｜产品支持与资料处理问题"
     },
     {
       "slug": "/status/",
       "file": "status/index.html",
-      "modifiedAt": "2026-10-22",
+      "modifiedAt": "2026-11-04",
       "title": "PaperKnow 功能开放状态｜账户、AI、检索与导出范围"
     }
   ]

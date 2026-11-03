@@ -1,5 +1,7 @@
 # PaperKnow：10 个 SEO 关键词与页面布局
 
+> 历史方案。2026-11-04 的当前 20 词实施映射见 [.seo/research/KEYWORD-MAP.md](../../.seo/research/KEYWORD-MAP.md)，当前标题与产品流程以该轮构建及验收为准。
+
 更新：2026-10-15。站点：https://paperknow.cn/ 。范围：关键词与现有公开页面的标题、摘要、正文和链接优化；本次不重建网站，也不新增重复落地页。
 
 ## 关键词清单

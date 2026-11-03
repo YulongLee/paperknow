@@ -7,8 +7,8 @@ import {buildPublicSamples} from './build-public-samples.mjs';
 
 const projectRoot=fileURLToPath(new URL('../',import.meta.url));
 export const siteURL='https://paperknow.cn';
-export const updatedAt='2026-10-15';
-export const homeModifiedAt='2026-10-31';
+export const updatedAt='2026-11-04';
+export const homeModifiedAt='2026-11-04';
 const siteName='PaperKnow科研助手';
 const operator='oneshowailab-paperknow';
 const email='contact@oneshowailab.com';
@@ -17,7 +17,7 @@ const json=value=>JSON.stringify(value).replace(/</g,'\\u003c');
 const categoryNames={writing:'AI 写作',literature:'文献研读',reduce:'降重复率',aigc:'降AI率',detection:'论文检测',ppt:'PPT 创作',format:'格式排版',research:'科研工具'};
 const titleFor=page=>page.title.includes('PaperKnow')?page.title:`${page.title}｜PaperKnow`;
 const homeTitle=siteName;
-const homeDescription='PaperKnow科研助手提供 10 类写作与研究任务，覆盖论文、开题报告、综述与期刊写作，衔接 PDF 文献研读与双文档翻译、论文检测、报告定向优化、PPT 创作、DOCX 智能排版、科研绘图与公式编辑，已保存的项目、文件与任务统一云端管理。';
+const homeDescription='PaperKnow科研助手提供 AI 论文写作与毕业论文初稿生成，覆盖开题报告、文献综述、期刊文章等 10 类任务，衔接 PDF 文献研读与翻译、论文检测、报告定向优化、PPT、DOCX 排版、科研绘图与公式编辑；已保存项目与文件统一云端管理。';
 
 function graphFor(page){
  const url=siteURL+page.slug;
@@ -51,14 +51,15 @@ function renderSection(section,index){
  const paragraphs=(section.paragraphs||[]).map(p=>`<p>${escape(p)}</p>`).join('');
  const items=section.items?.length?`<${section.ordered?'ol':'ul'}>${section.items.map(p=>`<li>${escape(p)}</li>`).join('')}</${section.ordered?'ol':'ul'}>`:'';
  const table=section.table?`<div class="public-table-wrap"><table><thead><tr>${section.table.headers.map(h=>`<th scope="col">${escape(h)}</th>`).join('')}</tr></thead><tbody>${section.table.rows.map(row=>`<tr>${row.map(cell=>`<td>${escape(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:'';
- return `<section class="public-section" id="section-${index+1}"><h2>${escape(section.heading)}</h2>${paragraphs}${items}${table}</section>`;
+ const links=section.links?.length?`<ul class="public-related">${section.links.map(link=>`<li><a href="${escape(link.href)}">${escape(link.label)} <span aria-hidden="true">→</span></a></li>`).join('')}</ul>`:'';
+ return `<section class="public-section" id="section-${index+1}"><h2>${escape(section.heading)}</h2>${paragraphs}${items}${table}${links}</section>`;
 }
 function breadcrumbs(page){
  const parent=page.slug.startsWith('/features/')&&page.slug!=='/features/'?['/features/','功能介绍']:page.slug.startsWith('/guides/')&&page.slug!=='/guides/'?['/guides/','使用指南']:null;
  return `<nav class="public-breadcrumb" aria-label="当前位置"><a href="/">首页</a><span aria-hidden="true">/</span>${parent?`<a href="${parent[0]}">${parent[1]}</a><span aria-hidden="true">/</span>`:''}<span aria-current="page">${escape(page.title)}</span></nav>`;
 }
 function footer(){
- return `<footer class="public-footer"><div class="public-shell public-footer-grid"><div><a class="public-brand" href="/"><img src="/brand/paperknow-symbol.svg" width="32" height="32" alt=""><span>PaperKnow</span></a><p>让每一步写作，都有清晰的方向。</p></div><nav aria-label="功能与使用"><h2>论文与科研</h2><a href="/features/">全部功能介绍</a><a href="/guides/">使用指南</a><a href="/workspace.html#home">进入工作台</a><a href="/#download">客户端下载</a></nav><nav aria-label="产品信息"><h2>了解 PaperKnow</h2><a href="/about/">产品介绍</a><a href="/help/">使用帮助</a><a href="/status/">功能开放状态</a><a href="/contact/">联系支持</a></nav><nav aria-label="数据与服务"><h2>数据与服务</h2><a href="/privacy/">数据与隐私</a><a href="/terms/">服务规则</a><a href="/workspace.html#membership/plans">方案与权益</a><a href="mailto:${email}">${email}</a></nav></div><div class="public-shell public-footer-bottom"><span>© 2026 PaperKnow</span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">浙ICP备2026052190号-5</a></div></footer>`;
+ return `<footer class="public-footer"><div class="public-shell public-footer-grid"><div><a class="public-brand" href="/"><img src="/brand/paperknow-symbol.svg" width="32" height="32" alt=""><span>PaperKnow</span></a><p>让每一步写作，都有清晰的方向。</p></div><nav aria-label="功能与使用"><h2>论文与科研</h2><a href="/features/">全部功能介绍</a><a href="/guides/">使用指南</a><a href="/workspace.html#home">进入工作台</a><a href="/#download">客户端下载</a></nav><nav aria-label="产品信息"><h2>了解 PaperKnow</h2><a href="/about/">产品介绍</a><a href="/help/">使用帮助</a><a href="/status/">功能开放状态</a><a href="/contact/">联系支持</a></nav><nav aria-label="数据与服务"><h2>数据与服务</h2><a href="/privacy/">数据与隐私</a><a href="/terms/">服务规则</a><a href="/workspace.html#membership/plans">方案与权益</a><a href="mailto:${email}">${email}</a></nav></div><div class="public-shell public-footer-bottom"><span>© 2026 PaperKnow</span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">浙ICP备2026052190号-5</a><a class="public-police-filing" href="https://beian.mps.gov.cn/#/query/webSearch?code=33010602015036" target="_blank" rel="noopener noreferrer"><img src="/brand/police-filing.png" width="18" height="20" alt="">浙公网安备33010602015036号</a></div></footer>`;
 }
 function pageCards(pages){
  return `<div class="public-card-grid">${pages.map(p=>`<a class="public-link-card" href="${p.slug}"><span class="public-card-label">${escape(p.eyebrow||'使用指南')}</span><h2>${escape(p.title)}</h2><p>${escape(p.description)}</p><span class="public-card-more">查看详情 <span aria-hidden="true">→</span></span></a>`).join('')}</div>`;
@@ -67,7 +68,7 @@ function samplesHTML(slug){
  const samples={
   '/guides/paper-outline/':{text:'下面是一份自制结构示例，用于观察标题层级与材料安排，不是 AI 生成的正文，也不包含真实研究结果。',files:[['paper-outline.txt','下载大纲结构示例（TXT）']]},
   '/guides/material-comparison/':{text:'这两份自制文本共享一个完整段落。JSON 结果由网站同版本的本地比对引擎实际计算，可用给定原文复现；不是全网查重，也不代表真实用户论文。',files:[['comparison-paper.txt','下载待比对文本'],['comparison-reference.txt','下载对照文本'],['comparison-result.json','查看实际比对结果（JSON）']]},
-  '/guides/research-charts/':{text:'下图使用自制演示数值，由网站同版本基础图表渲染函数生成。下载 CSV 后可在基础绘图中复现，不代表真实研究发现。',image:true,files:[['research-data.csv','下载示例数据（CSV）'],['research-chart.svg','下载实际生成的图形（SVG）']]}
+  '/guides/research-charts/':{text:'下图使用自制演示数值，由网站同版本基础图表渲染函数生成。CSV 与 SVG 用于核对数值和图形关系，与当前 AI 绘图生成流程分开，不代表真实研究发现。',image:true,files:[['research-data.csv','下载示例数据（CSV）'],['research-chart.svg','下载实际生成的图形（SVG）']]}
  };
  const sample=samples[slug];
  if(!sample)return '';
@@ -76,7 +77,7 @@ function samplesHTML(slug){
 function renderPage(page,pages,header){
  const sectionHTML=(page.sections||[]).map(renderSection).join('');
  const related=(page.related||[]).map(slug=>pages.find(p=>p.slug===slug)).filter(Boolean);
- const action=page.category?`/workspace.html#category/${page.category}`:'/workspace.html#home';
+ const action=page.tool?`/workspace.html#tool/${page.tool}`:page.category?`/workspace.html#category/${page.category}`:'/workspace.html#home';
  const actionText=page.ctaLabel||(page.category?`进入${categoryNames[page.category]}`:'进入工作台');
  const contactAction=page.slug==='/contact/'?`<a class="public-button" href="mailto:${email}">邮件联系支持 <span aria-hidden="true">↗</span></a>`:'';
  const cardPages=page.directory==='features'?featurePages:page.directory==='guides'?guidePages:null;
@@ -99,6 +100,8 @@ export async function buildPublicSite({outDir=resolve(projectRoot,'dist')}={}){
  for(const page of pages){
   if(!/^\/(?:[a-z0-9-]+\/)+$/.test(page.slug)||slugs.has(page.slug))throw new Error('Invalid or duplicate public page: '+page.slug);
   if(!page.title||!page.description||!page.h1||!page.intro)throw new Error('Incomplete public page: '+page.slug);
+  if(page.tool&&!['writing','proposal','summary','article'].includes(page.tool))throw new Error('Unknown public tool destination: '+page.slug);
+  for(const section of page.sections||[])for(const link of section.links||[])if(typeof link.label!=='string'||!link.label.trim()||typeof link.href!=='string'||!/^\/(?!\/)[a-zA-Z0-9/#?=&%._-]*$/.test(link.href))throw new Error('Invalid public content link: '+page.slug);
   slugs.add(page.slug);
  }
  await mkdir(outDir,{recursive:true});

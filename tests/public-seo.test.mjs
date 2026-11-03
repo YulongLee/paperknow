@@ -6,17 +6,19 @@ import {join,resolve,sep} from 'node:path';
 import {JSDOM} from 'jsdom';
 import {buildPublicSite} from '../scripts/build-public-site.mjs';
 import {createServer} from '../server.mjs';
+import {publicKeywordTargets,keywordFeaturePages,keywordGuidePages} from '../src/public-keyword-content.mjs';
 
 const origin='https://paperknow.cn';
-const refreshedPages=new Set(['/','/features/ai-writing/','/features/ai-reading/','/features/reduce-ai/','/features/similarity-check/','/features/ppt/','/guides/paper-outline/','/guides/research-ppt/','/guides/research-charts/','/about/','/help/','/status/']);
-const formatUpdatedPages=new Set(['/','/features/format/','/guides/docx-format/','/about/','/status/']);
-const expectedModifiedAt=slug=>slug==='/'?'2026-10-31':['/features/format/','/guides/docx-format/','/features/ai-reading/'].includes(slug)?'2026-10-29':['/help/','/privacy/'].includes(slug)?'2026-10-28':slug==='/features/similarity-check/'?'2026-10-27':slug==='/features/ai-writing/'?'2026-10-25':formatUpdatedPages.has(slug)?'2026-10-22':refreshedPages.has(slug)?'2026-10-21':['/features/research-tools/','/privacy/'].includes(slug)?'2026-10-19':['/features/','/guides/'].includes(slug)?'2026-10-15':'2026-10-18';
+const expectedModifiedAt=slug=>slug==='/guides/docx-format/'?'2026-10-29':'2026-11-04';
 const features={
   'ai-writing':'writing','ai-reading':'literature','reduce-similarity':'reduce',
   'reduce-ai':'aigc','similarity-check':'detection','ppt':'ppt',
   'format':'format','research-tools':'research',
+  'undergraduate-thesis':'writing','masters-thesis':'writing','proposal':'writing',
+  'literature-review':'writing','journal-writing':'writing','paper-revision':'writing',
 };
-const guides=['paper-outline','material-comparison','docx-format','research-ppt','research-charts'];
+const guides=['paper-outline','material-comparison','docx-format','research-ppt','research-charts','ai-writing-vs-ghostwriting','paper-writing-cost'];
+const directTools={'ai-writing':'writing','undergraduate-thesis':'writing','masters-thesis':'writing','proposal':'proposal','literature-review':'summary','journal-writing':'article','paper-revision':'writing'};
 const information=['about','help','privacy','terms','status','contact'];
 const expectedSlugs=[
   '/features/',...Object.keys(features).map(name=>`/features/${name}/`),
@@ -104,7 +106,7 @@ test('share metadata and structured data agree with canonical URLs without fabri
     assert.ok(nodes.some(node=>node.url===origin+slug||node['@id']===origin+slug+'#webpage'),`structured page identity: ${slug}`);
     for(const node of nodes){
       const types=Array.isArray(node['@type'])?node['@type']:[node['@type']];
-      assert.ok(!types.some(type=>['Offer','AggregateRating','Review','SearchAction'].includes(type)),`unsubstantiated schema: ${slug}`);
+      assert.ok(!types.some(type=>['Offer','AggregateRating','Review','SearchAction','FAQPage','HowTo'].includes(type)),`unsubstantiated schema: ${slug}`);
     }
   }
 });
@@ -115,17 +117,17 @@ test('homepage metadata describes shipped research workflows and keeps its own m
   for(const capability of ['10 类','PDF','翻译','报告定向优化','论文检测','PPT','DOCX','云端管理','科研绘图','公式'])assert.ok(description.includes(capability),capability);
   assert.doesNotMatch(description,/待接入|尚未开放|在线 AI 与检索能力以实际开放状态为准/);
   const data=JSON.parse(document.querySelector('script[type="application/ld+json"]').textContent)['@graph'];
-  assert.equal(data.find(node=>node['@type']==='WebPage').dateModified,'2026-10-31');
+  assert.equal(data.find(node=>node['@type']==='WebPage').dateModified,'2026-11-04');
   assert.match(data.find(node=>node['@type']==='WebApplication').description,/毕业论文五步确认与分章生成/);
   assert.equal(pages.get('/privacy/').document.querySelector('.public-updated').textContent.includes(expectedModifiedAt('/privacy/')),true);
-  assert.equal(pages.get('/terms/').document.querySelector('.public-updated').textContent.includes('2026-10-18'),true);
+  assert.equal(pages.get('/terms/').document.querySelector('.public-updated').textContent.includes('2026-11-04'),true);
 });
 
-test('all eight feature pages connect to the correct existing tool and useful public documentation',()=>{
+test('all feature pages connect to the correct existing tool and useful public documentation',()=>{
   for(const [name,category] of Object.entries(features)){
     const slug=`/features/${name}/`,{document}=pages.get(slug);
     const links=[...document.querySelectorAll('a[href]')].map(link=>link.getAttribute('href'));
-    assert.ok(links.includes(`/workspace.html#category/${category}`),`correct tool destination: ${slug}`);
+    assert.ok(links.includes(directTools[name]?`/workspace.html#tool/${directTools[name]}`:`/workspace.html#category/${category}`),`correct tool destination: ${slug}`);
     assert.ok(links.includes('/status/'),`current scope is discoverable: ${slug}`);
     assert.ok(links.includes('/privacy/'),`data policy is discoverable: ${slug}`);
     assert.ok(links.some(link=>link.startsWith('/guides/')),`next-step guide: ${slug}`);
@@ -263,19 +265,91 @@ test('unknown public paths return real 404s and unsupported methods stay rejecte
   assert.equal((await get('/features/','POST')).status,405);
 });
 
-test('public capability copy reflects shipped AI workflows while retaining real evidence and external service boundaries',()=>{
+test('public capability copy reflects current cloud, DOCX and direct-generation workflows',()=>{
  const text=slug=>pages.get(slug).document.querySelector('main').textContent;
- assert.match(text('/features/ai-writing/'),/10 项流程|10 项/);
- assert.doesNotMatch(text('/features/ai-writing/'),/其他十项.*仍.*本地模板/);
- assert.match(text('/features/ai-reading/'),/逐段翻译|按段.*对应/);assert.match(text('/features/ai-reading/'),/原文摘录|原文依据/);
- assert.doesNotMatch(text('/features/ai-reading/'),/AI 理解和自动翻译尚未开放/);
- assert.match(text('/features/reduce-similarity/'),/AI 候选|AI 修改候选/);assert.match(text('/features/reduce-ai/'),/AI 率检测.*未|AI 检测率.*未/);
- assert.match(text('/features/ppt/'),/确认.*费用/);assert.match(text('/features/research-tools/'),/不执行专业软件、仿真计算|结构示意.*不等于|不是电路仿真/);
- assert.match(text('/features/format/'),/上传格式模板/);assert.match(text('/features/format/'),/点击开始 AI 排版/);assert.doesNotMatch(text('/features/format/'),/精细排版|格式精细复核|格式精修|三类流程|三项服务/);
- assert.match(text('/features/similarity-check/'),/不能替代学校|不可以/);
- assert.match(text('/status/'),/2026 年 10 月 21 日/);assert.match(text('/status/'),/学校指定.*AI 率.*未接入/);
- assert.match(text('/features/ai-reading/'),/整篇.*中英互译/);
- assert.match(text('/features/reduce-ai/'),/分段.*置信分/);assert.match(text('/features/reduce-ai/'),/不是论文 AI 字数占比|不代表论文 AI 字数占比/);
- assert.match(text('/features/similarity-check/'),/本次纳入的比对资料/);assert.match(text('/features/similarity-check/'),/不保证覆盖全部文献/);
+ assert.match(text('/features/ai-writing/'),/10类任务/);
+ assert.match(text('/features/ai-writing/'),/初稿撰写/);
+ assert.match(text('/features/ai-writing/'),/终稿撰写/);
+ assert.match(text('/features/ai-writing/'),/点击生成会核验/);
+ assert.match(text('/features/ai-reading/'),/原文与译文/);
+ assert.match(text('/features/ai-reading/'),/原文摘录|原文依据/);
+ assert.doesNotMatch(text('/features/ai-reading/'),/结果保存在当前浏览器|AI 理解和自动翻译尚未开放/);
+ for(const slug of ['/features/reduce-similarity/','/features/reduce-ai/']){
+  assert.match(text(slug),/DOCX/);
+  assert.match(text(slug),/报告/);
+  assert.match(text(slug),/粘贴/);
+  assert.match(text(slug),/双降/);
+  assert.doesNotMatch(text(slug),/导出 TXT|导出 PDF/);
+ }
+ assert.match(text('/features/ppt/'),/预览/);
+ assert.match(text('/features/ppt/'),/直接/);
+ assert.match(text('/features/research-tools/'),/结构示意|仿真/);
+ assert.match(text('/features/format/'),/先上传模板，再上传原文，最后开始 AI 排版/);
+ assert.match(text('/features/format/'),/独立Word副本|独立可编辑 Word 副本/);
+ assert.doesNotMatch(text('/features/format/'),/格式精细复核|格式精修|三类流程|三项服务/);
+ assert.match(text('/features/similarity-check/'),/上传 DOCX 原文/);
+ assert.doesNotMatch(text('/features/similarity-check/'),/上传 DOCX、PDF 或 TXT|也可粘贴正文/);
+ assert.match(text('/features/similarity-check/'),/不保证覆盖全部文献/);
+ assert.match(text('/status/'),/2026 年 11 月 4 日/);
  for(const slug of Object.keys(features).map(name=>`/features/${name}/`))assert.doesNotMatch(text(slug),/AMiner|MinerU|阿里云|GPT|Claude|Gemini|私有 OSS|上游/);
+});
+
+test('twenty editorial keyword targets map to thirteen useful, readable public destinations',()=>{
+ assert.equal(publicKeywordTargets.length,20);
+ assert.equal(new Set(publicKeywordTargets.map(item=>item.keyword)).size,20);
+ assert.equal(new Set(publicKeywordTargets.map(item=>item.slug)).size,13);
+ for(const {keyword,slug} of publicKeywordTargets){
+  const {document}=pages.get(slug);
+  const text=document.querySelector('main').textContent.replace(/\s/g,'');
+  assert.ok(text.includes(keyword.replace(/\s/g,'')),`${keyword} must be addressed visibly on ${slug}`);
+ }
+ const introductions=new Set(),sectionSets=new Set();
+ for(const page of [...keywordFeaturePages,...keywordGuidePages]){
+  const {document}=pages.get(page.slug);
+  const sections=[...document.querySelectorAll('.public-section')];
+  assert.ok(document.querySelector('main').textContent.replace(/\s/g,'').length>700,page.slug);
+  assert.ok(sections.length>=4,page.slug);
+  assert.match(document.querySelector('main').textContent,/示例/);
+  assert.ok(document.querySelector('.public-actions a').getAttribute('href').startsWith('/workspace.html#tool/'),page.slug);
+  introductions.add(page.intro);sectionSets.add(page.sections.map(section=>section.heading).join('|'));
+ }
+ assert.equal(introductions.size,8);
+ assert.equal(sectionSets.size,8);
+});
+
+test('service comparison and cost pages explain the real offer without fabricated prices or promises',()=>{
+ for(const slug of ['/guides/ai-writing-vs-ghostwriting/','/guides/paper-writing-cost/']){
+  const text=pages.get(slug).document.querySelector('main').textContent;
+  assert.match(text,/不提供人工/);
+  assert.match(text,/AI 辅助/);
+  assert.doesNotMatch(text,/包过|保证通过|保证录用|元\/千字|低至\s*\d+元/);
+ }
+ assert.ok(pages.get('/guides/paper-writing-cost/').document.querySelector('a[href="/workspace.html#membership"]'));
+ assert.doesNotMatch(pages.get('/').document.querySelector('main').textContent,/论文代写/);
+});
+
+test('editorial links resolve to published content and every table-of-contents entry has a target',()=>{
+ for(const [slug,{document}] of pages){
+  for(const link of document.querySelectorAll('.public-section a[href],.public-toc a[href]')){
+   const value=link.getAttribute('href'),url=new URL(value,origin+slug);
+   if(url.origin!==origin)continue;
+   if(url.pathname==='/workspace.html'){
+    assert.match(url.hash,/^#(?:tool\/(?:writing|proposal|summary|article)|category\/[a-z-]+|membership|home)$/);
+   }else if(value.startsWith('#')){
+    assert.ok(document.getElementById(url.hash.slice(1)),`${slug}${value}`);
+   }else if(!url.pathname.startsWith('/samples/')){
+    assert.ok(pages.has(url.pathname),`${slug} -> ${value}`);
+   }
+  }
+ }
+});
+
+
+test('public pages retain both verified filing links and a separate footer layout',async()=>{
+ for(const [slug,{document}] of pages){
+  assert.ok(document.querySelector('a[href="https://beian.miit.gov.cn/"]'),slug);
+  assert.ok(document.querySelector('a[href="https://beian.mps.gov.cn/#/query/webSearch?code=33010602015036"]'),slug);
+ }
+ const css=await readFile('dist/public-site.css','utf8');
+ assert.match(css,/\.public-site \.public-footer\{display:block/);
 });
