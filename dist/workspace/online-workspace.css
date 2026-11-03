@@ -82,3 +82,7 @@
 .account-workspace .management-list-range{font-size:11px;line-height:1.75;color:#8090a7;margin:16px 0 0}
 .account-workspace .account-job-filters{flex-wrap:wrap}
 @media(max-width:480px){.account-workspace .account-job-filters button{flex:1 1 auto}.account-workspace .account-job-search input{font-size:16px}}
+
+/* Manuscripts awaiting author input or checks are not completed deliveries. */
+.account-workspace .tag.attention{background:#fff4df;color:#825316}
+.account-workspace .management-record-icon.attention{background:#fff4df;color:#825316}

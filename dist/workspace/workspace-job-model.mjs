@@ -1,3 +1,4 @@
+import {documentStateLabel} from './document-state.mjs';
 import {serviceMessage} from './service-message.mjs';
 import {presentationPublicError} from './presentation-model.mjs';
 const writingNames={writing:'毕业论文',proposal:'开题报告',summary:'文献综述',taskbook:'任务书',article:'期刊文章',course:'课程作业',practice:'实践报告',idea:'课题思路',topic:'课题思路',questionnaire:'问卷设计',analysis:'数据分析',quick:'快速写作'};
@@ -18,7 +19,7 @@ export function workspaceJobError(row){
  if(row?.type==='tool_run'&&(row.tool_operation==='ppt'||row.operation==='ppt'||row.tool_kind==='presentation'||row.kind==='presentation'))return serviceMessage(presentationPublicError(message));
  return row?.type==='web_similarity'&&/联网|检索|抽样|网页|候选/u.test(message)?'本次检测未完成，请读取原任务状态或联系支持；未生成检测结论。':serviceMessage(message);
 }
-export const workspaceJobStatusLabel=status=>({draft:'草稿',partial:'部分完成',preparing:'保存中',queued:'排队中',running:'处理中',completed:'已完成',failed:'失败',cancelled:'已取消',interrupted:'已中断',needs_materials:'待补充资料',budget_exceeded:'额度不足'})[status]||'状态待核对';
+const executionStatusLabel=status=>({draft:'草稿',partial:'部分完成',preparing:'保存中',queued:'排队中',running:'处理中',completed:'已完成',failed:'失败',cancelled:'已取消',interrupted:'已中断',needs_materials:'待补充资料',budget_exceeded:'已达处理上限'})[status]||'状态待核对';
 export function workspaceJobHref(row){
  const safe=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(value);
  if(row?.type==='aigc_detection'&&safe(row.id))return'#category/detection?view=ai&report='+encodeURIComponent(row.id);
@@ -39,3 +40,5 @@ export function workspaceJobHref(row){
  }
  return'#tasks?scope=account';
 }
+
+export function workspaceJobStatusLabel(row){if(typeof row==='string')return executionStatusLabel(row);return row?.historical===true?executionStatusLabel(row.status):documentStateLabel(row)||executionStatusLabel(row?.status);}

@@ -25,6 +25,8 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
   },60);
  }
  const stopFileSync=subscribeFileDeletions(win,event=>{if(publishingDeletion||!alive()||event.ownerId!==owner)return;pendingFileSync=true;flushFileSync();});
+ const regainFocus=()=>{if(!alive()||doc.visibilityState==='hidden')return;pendingFileSync=true;flushFileSync();};
+ win.addEventListener('focus',regainFocus);doc.addEventListener('visibilitychange',regainFocus);
  const paint=html=>{if(alive())withStableView(root.closest('.dashboard')||root,()=>{root.innerHTML=html;});};
  const heading=()=>`<div class="cloud-artifact-heading"><div><span class="cloud-artifact-icon">${icon('folder',22)}</span><div><h2>云端文件</h2><p>生成和上传的文件集中保存，登录后可跨设备管理。</p></div></div><div class="cloud-artifact-heading-actions"><button type="button" data-cloud-refresh aria-label="刷新云端文件"><span aria-hidden="true">↻</span>刷新</button>${data?`<button type="button" data-cloud-upload-open class="cloud-artifact-primary" aria-expanded="${uploadOpen}">${icon('plus',15)}上传文件</button>`:''}</div></div>`;
  function clearSelections(){selections.cloud.clear();selections.original.clear();bulkConfirm=null;for(const area of ['cloud','original']){bulkMessages[area]='';bulkFailures[area]=[];}}
@@ -231,5 +233,5 @@ export function mountArtifactLibrary(root,{session,notify=()=>{},fetchImpl=globa
   finally{busy=false;if(button.isConnected){button.disabled=false;button.textContent=form.matches('.cloud-artifact-upload')?'保存到云端':'保存修改';}flushFileSync();}
  }
  root.classList.add('cloud-artifact-library','card');root.addEventListener('click',action);root.addEventListener('submit',submit);root.addEventListener('change',selectFiles);void refresh();
- return {refresh,dispose(){disposed=true;stopFileSync();win.clearTimeout(syncTimer);request++;controllers.forEach(c=>c.abort());root.removeEventListener('click',action);root.removeEventListener('submit',submit);root.removeEventListener('change',selectFiles);clearSelections();}};
+ return {refresh,dispose(){disposed=true;stopFileSync();win.removeEventListener('focus',regainFocus);doc.removeEventListener('visibilitychange',regainFocus);win.clearTimeout(syncTimer);request++;controllers.forEach(c=>c.abort());root.removeEventListener('click',action);root.removeEventListener('submit',submit);root.removeEventListener('change',selectFiles);clearSelections();}};
 }

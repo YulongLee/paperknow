@@ -1,3 +1,4 @@
+import {thesisDocumentState} from './workspace-document-state.mjs';
 import {completionReview,confirmCompletionReview} from './thesis-completion-review.mjs';
 import {createWritingReferencePreparation} from './writing-reference-preparation.mjs';
 import {thesisDocxObjects} from './thesis-docx-objects.mjs';
@@ -73,6 +74,7 @@ export function createThesisService(db,config={}){
    item.quality={...quality,stale:run.snapshot_hash!==row.snapshot_hash||manuscriptChanged};
   }}
   if(!summary){const objects=thesisDocxObjects(db,row.id,row.user_id,item.chapters);if(objects.length)item.docxObjects=objects;item.completionReview=completionReview(db,row,run);item.simulationRecovery=recoverableThesisSimulation(db,row);const imported=db.prepare('SELECT id,file_id,file_sha256,created_at,restored_at FROM thesis_draft_imports WHERE thesis_id=? AND user_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(row.id,row.user_id);if(imported&&!imported.restored_at)item.importedDraft={id:imported.id,fileId:imported.file_id,sha256:imported.file_sha256,createdAt:imported.created_at};}
+  item.documentState=thesisDocumentState(db,row,run,summary?undefined:item.completionReview);
   return item;
  }
  function touch(id,status){db.prepare('UPDATE theses SET version=version+1,status=?,updated_at=? WHERE id=?').run(status,clock(),id);}

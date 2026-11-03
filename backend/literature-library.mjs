@@ -5,16 +5,17 @@ const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
 export function createLiteratureLibrary(db){
  db.exec(`CREATE TABLE IF NOT EXISTS literature_library(user_id TEXT NOT NULL REFERENCES users(id),id TEXT NOT NULL,version INTEGER NOT NULL,payload TEXT,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,id));`);
  const entry=row=>({id:row.id,version:row.version,item:row.payload?JSON.parse(row.payload):null});
+ const availableFiles=user=>db.prepare("SELECT f.id FROM files f WHERE f.user_id=? AND NOT EXISTS (SELECT 1 FROM workspace_file_deletions d WHERE d.file_id=f.id AND d.user_id=f.user_id AND d.status='pending') ORDER BY f.id").all(user.id).map(row=>row.id);
  return {
-  etag(user){return '"'+createHash('sha256').update(user.id).update(JSON.stringify(db.prepare('SELECT id,version FROM literature_library WHERE user_id=? ORDER BY id').all(user.id))).digest('hex')+'"';},
-  list(user){return {ownerId:user.id,projectIds:db.prepare('SELECT id FROM projects WHERE user_id=?').all(user.id).map(row=>row.id),fileIds:db.prepare('SELECT id FROM files WHERE user_id=?').all(user.id).map(row=>row.id),entries:db.prepare('SELECT id,version,payload FROM literature_library WHERE user_id=? ORDER BY updated_at DESC,id').all(user.id).map(entry)};},
+  etag(user){return '"'+createHash('sha256').update(user.id).update(JSON.stringify([db.prepare('SELECT id,version FROM literature_library WHERE user_id=? ORDER BY id').all(user.id),availableFiles(user),db.prepare('SELECT id FROM projects WHERE user_id=? ORDER BY id').all(user.id)])).digest('hex')+'"';},
+  list(user){return {ownerId:user.id,projectIds:db.prepare('SELECT id FROM projects WHERE user_id=?').all(user.id).map(row=>row.id),fileIds:availableFiles(user),entries:db.prepare('SELECT id,version,payload FROM literature_library WHERE user_id=? ORDER BY updated_at DESC,id').all(user.id).map(entry)};},
   save(user,input){
    if(input.expectedUserId!==user.id)fail(409,'登录账户已变化，请重新打开文献研读');
    const {id,version,item}=input;
    if(typeof id!=='string'||!id||id.length>200||!Number.isSafeInteger(version)||version<0||item!==null&&(!item||Array.isArray(item)||typeof item!=='object'||item.id!==id))fail(400,'文献保存信息无效');
-   let payload=null;
+   let payload=null,checked=null;
    if(item!==null){
-    let checked;try{checked=id==='@groups'?{id,groups:normalizeLiteratureGroups(item.groups)}:validatePaper(item);}catch(error){fail(400,error.message);}
+    try{checked=id==='@groups'?{id,groups:normalizeLiteratureGroups(item.groups)}:validatePaper(item);}catch(error){fail(400,error.message);}
     if(checked.originalOwnerId&&checked.originalOwnerId!==user.id)fail(403,'不能保存其他账户的文献原件');
     if(checked.originalFileId&&!db.prepare('SELECT id FROM files WHERE id=? AND user_id=?').get(checked.originalFileId,user.id))fail(409,'文献原件已不存在，请重新选择原件');
     if(checked.projectId&&!db.prepare('SELECT id FROM projects WHERE id=? AND user_id=?').get(checked.projectId,user.id))fail(400,'所属项目不属于当前账户');
@@ -22,6 +23,10 @@ export function createLiteratureLibrary(db){
    }
    db.exec('BEGIN IMMEDIATE');
    try{
+    if(checked?.originalFileId){
+     if(!db.prepare('SELECT id FROM files WHERE id=? AND user_id=?').get(checked.originalFileId,user.id))fail(409,'文献原件已不存在，请重新选择原件');
+     if(db.prepare("SELECT 1 FROM workspace_file_deletions WHERE file_id=? AND user_id=? AND status='pending'").get(checked.originalFileId,user.id))fail(409,'文献原件正在删除，请完成删除后再选择或保存');
+    }
     const old=db.prepare('SELECT * FROM literature_library WHERE user_id=? AND id=?').get(user.id,id);
     // Retrying a response lost in transit must not create another version.
     if(old&&(old.payload===payload)){db.exec('COMMIT');return {ownerId:user.id,entry:entry(old)};}

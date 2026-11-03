@@ -13,6 +13,18 @@ const key='paperknow-literature',paper=id=>({id,title:'Synthetic '+id,scope:'ful
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(fn){for(let i=0;i<150;i++){if(fn())return;await pause(10);}assert.fail('Timed out waiting for library synchronization');}
 function backend(t){const db=database(':memory:');t.after(()=>db.close());for(const id of ['alice','bob'])db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run(id,id+'@example.invalid',id,null,'user',new Date().toISOString());return {db,service:createLiteratureLibrary(db)};}
+test('pending source deletions invalidate library caches and cannot be relinked or saved as available',t=>{
+ const {db,service}=backend(t),user={id:'alice'},at=new Date().toISOString();
+ db.prepare('INSERT INTO files(id,user_id,name,kind,bytes,sha256,body,created_at) VALUES(?,?,?,?,?,?,?,?)').run('source','alice','Synthetic.txt','txt',1,'sha',Buffer.from('x'),at);
+ const item={...paper('linked'),originalFileId:'source',originalOwnerId:'alice'};
+ service.save(user,{expectedUserId:'alice',id:item.id,version:0,item});const before=service.etag(user);
+ db.prepare('INSERT INTO workspace_file_deletions(file_id,user_id,expected_sha256,status,created_at,updated_at) VALUES(?,?,?,?,?,?)').run('source','alice','sha','pending',at,at);
+ assert.notEqual(service.etag(user),before);assert.deepEqual(service.list(user).fileIds,[]);
+ assert.throws(()=>service.save(user,{expectedUserId:'alice',id:item.id,version:1,item:{...item,notes:[{id:'n1',text:'A retained note'}]}}),{status:409});
+ assert.equal(service.list(user).entries[0].version,1);assert.equal(service.list(user).entries[0].item.title,item.title);
+ assert.throws(()=>service.save(user,{expectedUserId:'alice',id:'alias',version:0,item:{...item,id:'alias'}}),{status:409});
+ assert.equal(service.list(user).entries.length,1);
+});
 test('cloud records are account-bound, versioned and retry-idempotent',t=>{const {service}=backend(t),alice={id:'alice'},input={expectedUserId:'alice',id:'p1',version:0,item:paper('p1')};const result=service.save(alice,input);assert.equal(result.entry.version,1);assert.equal(service.save(alice,input).entry.version,1);assert.equal(service.list({id:'bob'}).entries.length,0);assert.equal(service.list(alice).entries[0].item.text,paper('p1').text);});
 test('concurrent updates reject stale versions without overwriting the saved notes',t=>{const {service}=backend(t),user={id:'alice'},item=paper('p1');service.save(user,{expectedUserId:user.id,id:item.id,version:0,item});service.save(user,{expectedUserId:user.id,id:item.id,version:1,item:{...item,title:'New saved title'}});assert.throws(()=>service.save(user,{expectedUserId:user.id,id:item.id,version:1,item:{...item,title:'Stale title'}}),{status:409});assert.equal(service.list(user).entries[0].item.title,'New saved title');});
 test('deletion tombstones cannot be resurrected by an offline old browser',t=>{const {service}=backend(t),user={id:'alice'},item=paper('p1');service.save(user,{expectedUserId:user.id,id:item.id,version:0,item});const deleted=service.save(user,{expectedUserId:user.id,id:item.id,version:1,item:null});assert.equal(deleted.entry.version,2);assert.throws(()=>service.save(user,{expectedUserId:user.id,id:item.id,version:1,item}),{status:409});assert.throws(()=>service.save(user,{expectedUserId:user.id,id:item.id,version:2,item}),{status:409});assert.equal(service.list(user).entries[0].item,null);});

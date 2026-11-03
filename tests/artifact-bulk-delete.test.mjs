@@ -21,6 +21,17 @@ async function fixture(t,{count=12,originalCount=3,remove,session,firstName}={})
 }
 const removed=f=>f.calls.filter(row=>row.path.endsWith('/delete'));
 
+test('returning to a file tab refreshes cloud metadata while preserving selected files and unsaved edits',async t=>{
+ const f=await fixture(t,{count:2});f.select('f0');f.cloud[0].name='另一页面保存的名称.docx';
+ f.dom.window.dispatchEvent(new f.dom.window.Event('focus'));
+ await settle(()=>f.root.textContent.includes('另一页面保存的名称.docx'));
+ assert.equal(f.root.querySelector('[data-bulk-select="cloud"][value="f0"]').checked,true);
+ f.click('[data-cloud-edit="f0"]');f.root.querySelector('.cloud-artifact-metadata input').value='当前未保存的名称.docx';
+ const before=f.calls.length;f.dom.window.dispatchEvent(new f.dom.window.Event('focus'));await new Promise(resolve=>setTimeout(resolve,90));
+ assert.equal(f.calls.length,before);assert.equal(f.root.querySelector('.cloud-artifact-metadata input').value,'当前未保存的名称.docx');
+ f.view.dispose();f.dom.window.dispatchEvent(new f.dom.window.Event('focus'));await new Promise(resolve=>setTimeout(resolve,90));assert.equal(f.calls.length,before);
+});
+
 test('bulk selection supports partial and all-page state without losing an unsaved rename; confirmation can cancel safely',async t=>{
  const f=await fixture(t);f.click('[data-cloud-edit]');f.root.querySelector('.cloud-artifact-metadata input').value='尚未保存的名称.docx';f.select('f0');assert.equal(f.root.querySelector('[data-bulk-all="cloud"]').indeterminate,true);f.all();assert.equal(f.root.querySelectorAll('[data-bulk-select="cloud"]:checked').length,10);assert.equal(f.root.querySelector('.cloud-artifact-metadata input').value,'尚未保存的名称.docx');f.click('[data-bulk-remove="cloud"]');assert.equal(removed(f).length,0);assert.match(f.root.querySelector('[role=alertdialog]').textContent,/10 个云端文件/);f.click('[data-bulk-cancel]');assert.equal(f.root.querySelector('[role=alertdialog]'),null);assert.equal(removed(f).length,0);f.click('[data-bulk-clear="cloud"]');assert.equal(f.root.querySelectorAll('[data-bulk-select]:checked').length,0);assert.equal(f.root.querySelector('[data-bulk-remove="cloud"]').disabled,true);
 });

@@ -1,3 +1,4 @@
+import {documentStateGroup} from '../dist/workspace/document-state.mjs';
 import {servicePricingEntry} from '../dist/workspace/service-pricing.mjs';
 import {entitlementUnit} from '../dist/workspace/v1-pricing.mjs';
 import {helpKnowledgeMarkup,bindHelpKnowledge} from '../dist/workspace/help.mjs';
@@ -30,7 +31,7 @@ async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params=
  w.localStorage.setItem('paperknow-drafts','[{"id":"legacy-local","tool":"writing","title":"本地未上传成果"}]');
  w.download=async(name,content)=>{exportBodies.push(content);downloads.push(name);return {message:'已保存到账户云文件并发起下载。'};};
  const calls=[],navigations=[],downloads=[],notices=[];let saved=[],projects=[{id:'p1',title:'账户研究项目',degree:'本科',major:'教育学',updated_at:now}],files=[{id:'f1',name:'账户原件.txt',bytes:30,project_id:'p1'}],jobs=[{id:'pending',type:'parse',status:'queued',attempt:0,created_at:now},{id:'failed',type:'agent',status:'failed',attempt:1,created_at:now,error:'测试任务失败'}];
- Object.assign(w,{servicePricingEntry,mountProjectHistoryImport:()=>()=>{},updateAccountProjects,resolveAccountProjectId,workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel,workspaceResultTitle,workspaceJobError,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,thesisEditorPresentation,restoreThesisEditorText,presentThesisDocument});w.helpKnowledgeMarkup=helpKnowledgeMarkup;w.bindHelpKnowledge=bindHelpKnowledge;w.publicDraftCopy=publicDraftCopy;w.membershipPurchaseTiles=membershipPurchaseTiles;w.supportContactsMarkup=supportContactsMarkup;w.bindSupportContacts=bindSupportContacts;w.entitlementUnit=entitlementUnit;w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts',projects:'paperknow-projects'};w.hasDraftScope=()=>false;w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
+ Object.assign(w,{documentStateGroup,servicePricingEntry,mountProjectHistoryImport:()=>()=>{},updateAccountProjects,resolveAccountProjectId,workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel,workspaceResultTitle,workspaceJobError,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,thesisEditorPresentation,restoreThesisEditorText,presentThesisDocument});w.helpKnowledgeMarkup=helpKnowledgeMarkup;w.bindHelpKnowledge=bindHelpKnowledge;w.publicDraftCopy=publicDraftCopy;w.membershipPurchaseTiles=membershipPurchaseTiles;w.supportContactsMarkup=supportContactsMarkup;w.bindSupportContacts=bindSupportContacts;w.entitlementUnit=entitlementUnit;w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts',projects:'paperknow-projects'};w.hasDraftScope=()=>false;w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
  w.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({path,body,options});if(request){const custom=await request(path,options);if(custom)return custom;}
   let status=200,value={};
   if(path==='/api/capabilities')value={ai,agent,aiProvider:'test-provider',storage:'local'};
@@ -300,6 +301,17 @@ test('account task status filtering preserves current form input and keeps retry
  f.doc.querySelector('[data-account-job-filter="completed"]').click();assert.equal(f.doc.querySelectorAll('.account-job-row').length,0);assert.match(f.doc.querySelector('#job-list').textContent,/当前筛选下没有任务/);
  f.doc.querySelector('[data-account-job-filter="all"]').click();assert.equal(f.doc.querySelectorAll('.account-job-row').length,2);
  assert.equal(f.doc.querySelector('#agent-text').value,'尚未提交的论文正文');assert.equal(f.calls.some(call=>call.body&&call.path!=='/api/billing/quote'),false);
+});
+
+test('task center separates manuscript follow-up from completed execution and marks obsolete failures as history',async t=>{
+ const jobs=[{id:'latest',type:'thesis',thesis_id:'paper',status:'completed',attempt:1,created_at:now,documentState:{status:'check_required',hasDraft:true}}, {id:'older',type:'thesis',thesis_id:'paper',status:'failed',attempt:1,created_at:now,historical:true,currentJobId:'latest',error:'AI 执行超时，结果未提交'}];
+ const f=await fixture(t,{view:'tasks',request:async path=>path==='/api/jobs'?Response.json({items:jobs}):null});
+ const latest=f.doc.querySelector('[data-account-job-id="latest"]'),older=f.doc.querySelector('[data-account-job-id="older"]');
+ assert.match(latest.textContent,/待检查完善/);assert.doesNotMatch(latest.textContent,/已完成/);assert.ok(latest.querySelector('.tag.attention'));assert.equal(latest.querySelector('.tag.completed'),null);
+ assert.match(older.textContent,/历史任务/);assert.match(older.textContent,/该次历史任务/);assert.equal(older.querySelector('p.error'),null);
+ f.doc.querySelector('[data-account-job-filter="attention"]').click();assert.equal(f.doc.querySelectorAll('.account-job-row').length,1);assert.ok(f.doc.querySelector('[data-account-job-id="latest"]'));
+ f.doc.querySelector('[data-account-job-filter="failed"]').click();assert.equal(f.doc.querySelectorAll('.account-job-row').length,1);assert.ok(f.doc.querySelector('[data-account-job-id="older"]'));
+ assert.equal(f.calls.some(call=>call.options.method==='POST'),false);
 });
 
 function billingResponse(type,{source='credits',creditCost=12,expiresAt=new Date(Date.now()+60000).toISOString(),...rest}={}){return {ok:true,status:200,json:async()=>({token:'confirmed-'+type,type,title:({polish:'学术润色',review:'导师意见修改',agent:'科研智能助手'})[type],source,creditCost,expiresAt,policyVersion:2,...rest})};}

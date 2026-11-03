@@ -1,3 +1,4 @@
+import {documentStateLabel} from './document-state.mjs';
 import {finalWritingState,finalWritingStepsHTML,applyFinalWritingStep} from './thesis-final-flow.mjs';
 import {completionReviewPanel} from './thesis-completion-review.mjs';
 import {docxObjectHTML} from './docx-object-markers.mjs';
@@ -342,7 +343,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   const job=item.job,complete=Number(job?.completedSections)||0,total=Number(job?.totalSections)||0,percent=total?Math.min(100,Math.floor(complete/total*100)):0;
   const historical=!!job&&(item.status==='draft'||job.snapshotChanged===true),completed=!historical&&(item.status==='completed'||job?.status==='completed');
   const savedDraft=(item.chapters||[]).some(chapter=>String(chapter.text||'').trim()),completionPaused=!historical&&job?.operation==='completion'&&job.status==='needs_materials',draftWithGaps=completed&&materialFollowup(item);
-  const progressTitle=completionPaused&&savedDraft?'初稿已保存，自动完善待继续':draftWithGaps?'初稿已生成，终稿待补资料':labels[historical?item.status:thesisStatus(item)]||'已保存';
+  const progressTitle=documentStateLabel(item)||(completionPaused&&savedDraft?'初稿已保存，自动完善待继续':draftWithGaps?'初稿已生成，终稿待补资料':labels[historical?item.status:thesisStatus(item)]||'已保存');
   const stopping=!historical&&['cancelled','cancelling'].includes(item.status)?item.status:!historical&&['cancelled','cancelling'].includes(job?.status)?job.status:null;
   const continuous=!historical&&job?.continuous===true,recovering=!stopping&&running(item)&&job?.stage==='auto_recovering';
   const automaticRetries=Number.isSafeInteger(job?.recovery?.automaticRetries)&&job.recovery.automaticRetries>0&&job.recovery.automaticRetries<100?job.recovery.automaticRetries:0;
@@ -484,7 +485,7 @@ export function mountThesisStage({id=null,ctx={},container,getSnapshot,getProjec
   if(!loaded&&!loadError)body=`<div class="thesis-loading" role="status">${savingConfirmed?'正在保存已确认的提纲，即将进入正文生成…':'正在读取账户与服务状态…'}</div>`;
   else if(loadError)body=`<section class="thesis-login"><h3>暂时无法读取</h3><p>${escape(loadError)}</p><button type="button" class="btn secondary" data-thesis-reload>重新读取</button></section>`;
   else if(!user)body=loginPanel();
-  else if(library)body=items.length?`<div class="thesis-library">${items.map(row=>`<a href="#thesis/${encodeURIComponent(row.id)}"><span class="thesis-symbol">▤</span><div><h2>${escape(row.title||'未命名论文')}</h2><p>${escape(row.profile?.level||'')} · ${escape(row.profile?.discipline||'')} · ${escape(labels[thesisStatus(row)]||'已保存')}</p><small>${escape(row.updatedAt?new Date(row.updatedAt).toLocaleString('zh-CN'):'账户保存')} · 版本 ${Number(row.version)||1}</small></div><span>继续写作 →</span></a>`).join('')}</div>`:'<section class="thesis-login"><span class="thesis-symbol">▤</span><h3>从第一篇账户论文开始</h3><p>完成毕业论文前四步并保存到账户，即可在这里继续写作。</p><a class="btn primary" href="#tool/writing">新建毕业论文</a></section>';
+  else if(library)body=items.length?`<div class="thesis-library">${items.map(row=>`<a href="#thesis/${encodeURIComponent(row.id)}"><span class="thesis-symbol">▤</span><div><h2>${escape(row.title||'未命名论文')}</h2><p>${escape(row.profile?.level||'')} · ${escape(row.profile?.discipline||'')} · ${escape(documentStateLabel(row)||labels[thesisStatus(row)]||'已保存')}</p><small>${escape(row.updatedAt?new Date(row.updatedAt).toLocaleString('zh-CN'):'账户保存')} · 版本 ${Number(row.version)||1}</small></div><span>继续写作 →</span></a>`).join('')}</div>`:'<section class="thesis-login"><span class="thesis-symbol">▤</span><h3>从第一篇账户论文开始</h3><p>完成毕业论文前四步并保存到账户，即可在这里继续写作。</p><a class="btn primary" href="#tool/writing">新建毕业论文</a></section>';
   else if(!item){
    let snapshot;try{snapshot=getSnapshot?.();}catch(error){body=`<p class="thesis-error">${escape(error.message)}</p>`;}
    if(snapshot)body=`${snapshotSummary(snapshot)}<section class="thesis-save-account"><div><h3>先保存已确认的信息</h3><p>将以上论文资料保存到当前账户，不会开始生成或扣费。</p></div><button type="button" class="btn primary" data-thesis-create ${busy?'disabled':''}>${busy?'正在保存…':'保存到账户，继续生成'}</button></section>`;
