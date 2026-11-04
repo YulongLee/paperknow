@@ -186,3 +186,13 @@ test('V1 real PDFs above 100 pages are rejected before a remote submission or pa
  const pdf=await PDFDocument.create();for(let i=0;i<101;i++)pdf.addPage();const file=await f.upload(Buffer.from(await pdf.save())),response=await f.submit(file);
  assert.equal(response.status,400);assert.match(response.value.error,/100 页/);assert.equal(f.calls.create,0);assert.equal(f.db.prepare('SELECT count(*) n FROM jobs').get().n,0);
 });
+
+test('identical reuploaded PDF reuses only the same owner completed readable parse before new page counting',async t=>{
+ const f=await fixture(t),first=await f.upload(),id=(await f.submit(first)).value.id;await f.tick();await f.tick();assert.equal(f.job(id).status,'completed');
+ const second=await f.upload();assert.notEqual(first,second);const before={...f.calls};f.config.documentPageCount=async()=>{throw Error('Must reuse before page counting');};
+ const reused=await f.submit(second);assert.equal(reused.status,200);assert.equal(reused.value.id,id);assert.deepEqual(f.calls,before);assert.equal(f.db.prepare('SELECT count(*) n FROM document_parse_runs').get().n,1);
+ assert.equal((await f.request('/document-parses/'+id,undefined,f.users.bob)).status,404);
+ const bobFile=(await f.request('/files',{name:'same.pdf',data:f.source.toString('base64')},f.users.bob)).value.id;const bob=await f.submit(bobFile,{},f.users.bob);assert.equal(bob.status,201);assert.notEqual(bob.value.id,id);
+ f.db.prepare("UPDATE artifacts SET status='deleted' WHERE id=(SELECT structured_artifact_id FROM document_parse_runs WHERE id=?)").run(id);
+ const missing=await f.submit(second);assert.equal(missing.status,201);assert.notEqual(missing.value.id,id);
+});

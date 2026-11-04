@@ -1,3 +1,4 @@
+import {enrichLiteraturePaper} from './literature-import-metadata.mjs';
 import {confirmDocumentImport} from './document-import-confirm.mjs';
 import {serviceMessage} from './service-message.mjs';
 import {literatureImportQueue} from './literature-import-queue.mjs';
@@ -18,7 +19,7 @@ export function mountLiteratureBatchUpload({container,ctx,fetcher,importDocument
   if(rows.length>=200)throw Error('已保存 200 篇文献，请先整理不再需要的记录。');
   const original=/\.pdf$/i.test(file.name)?{originalFileId:parsed.originalFileId||'',originalOwnerId:parsed.originalOwnerId||''}:await saveOriginal(file,{expectedUserId:ownerId,...(fetcher?{fetchImpl:fetcher}:{})});
   if(await getOwner()!==ownerId||original.originalOwnerId!==ownerId)throw Object.assign(Error('登录账户已变化，原件保留在原账户，请返回后重试。'),{queueOwnerChanged:true});
-  const now=new Date().toISOString(),paper=validatePaper({id:win.crypto.randomUUID(),title:file.name.replace(/\.(pdf|docx|txt)$/i,'').slice(0,300),scope:'full',text:parsed.text,fileName:file.name,warnings:parsed.warnings||[],...original,notes:[],status:'unread',createdAt:now,updatedAt:now});
+  const now=new Date().toISOString(),paper=validatePaper(enrichLiteraturePaper({id:win.crypto.randomUUID(),title:file.name.replace(/\.(pdf|docx|txt)$/i,'').slice(0,300),scope:'full',text:parsed.text,fileName:file.name,warnings:parsed.warnings||[],...original,notes:[],status:'unread',createdAt:now,updatedAt:now}));
   rows=list(literatureKey);duplicate=rows.find(p=>original.originalFileId&&p.originalFileId===original.originalFileId);if(duplicate)return duplicate;if(rows.length>=200)throw Error('文献数量已达上限；已保存原件可在文件管理查看。');write(literatureKey,[paper,...rows]);return paper;
  }});
  container.className='lit-import-queue';container.innerHTML=`<header><div><span class="lit-section-eyebrow">文献上传</span><h2>处理队列 <small data-queue-summary></small></h2></div><button type="button" class="btn secondary" data-queue-clear>清理记录</button></header><p class="lit-queue-help">逐篇处理，完成后即可研读。可切换工作台页面；关闭或刷新浏览器会停止尚未提交的队列。</p><p data-queue-error role="status" hidden></p><button type="button" class="btn secondary" data-queue-resume hidden>继续队列</button><div class="lit-queue-list" data-queue-list role="region" aria-label="文献上传队列，可滚动" tabindex="0"></div><p class="lit-queue-announcement" data-queue-announcement role="status" aria-live="polite"></p>`;

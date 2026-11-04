@@ -23,3 +23,5 @@ body.hub-theme-dark .lit-ai-card{--lit-answer-detail:#b8c6da;--lit-answer-link:#
 #app .dashboard .lit-ai-results :is(.lit-ai-result-scope,.lit-ai-result summary>span,.lit-assistant-edit>summary,.lit-assistant-evidence>summary,.lit-assistant-export>summary,.lit-assistant-more>summary,.lit-assistant-result-tools>button){color:var(--lit-answer-detail);font-size:12px}
 body.hub-theme-dark .lit-reader-studio{--lit-soft:var(--pk-surface-soft,#1e2b40);--lit-accent:#9ec1ff}
 #app .dashboard .lit-ai-results .lit-ai-saved-question{background:var(--pk-blue-soft,#edf3ff)}
+
+.lit-assistant-working{display:flex;align-items:center;gap:10px;min-height:52px;padding:12px 15px;margin:10px 0;border:1px solid #d9e5ff;border-radius:12px;background:#f3f7ff;color:#264879;font-size:13px}.lit-assistant-working[hidden]{display:none}.lit-assistant-working b{font-weight:500}.lit-assistant-working>span{width:15px;height:15px;flex:0 0 15px;border:2px solid #c9d8fa;border-top-color:#3165df;border-radius:50%;animation:lit-reading-wait 1s linear infinite}@keyframes lit-reading-wait{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.lit-assistant-working>span{animation:none}}

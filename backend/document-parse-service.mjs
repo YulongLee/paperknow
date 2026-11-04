@@ -58,11 +58,17 @@ export function createDocumentParseService(db,config={}){
   if(file.storage_provider!=='aliyun_oss')fail(409,'此原件尚未保存到云端，请重新上传后解析。');
   if(db.prepare("SELECT 1 FROM workspace_file_deletions WHERE file_id=? AND status='pending'").get(file.id))fail(409,'原件正在删除，请选择其他文件');
   const hash=digest(JSON.stringify({fileId:file.id,sha256:file.sha256,consent:true}));
+  // Reuse only this owner's completed, still-readable result for identical bytes.
+  // Do this before page counting, quota reservation or any paid provider request.
+  const completedForBytes=()=>db.prepare("SELECT j.id FROM jobs j JOIN document_parse_runs d ON d.id=j.id JOIN artifacts a ON a.id=d.structured_artifact_id AND a.user_id=j.user_id AND a.status='ready' WHERE j.user_id=? AND j.type='document_parse' AND j.status='completed' AND d.source_sha256=? ORDER BY j.created_at DESC LIMIT 1").get(user.id,file.sha256);
+  const prior=db.prepare('SELECT * FROM jobs WHERE user_id=? AND idempotency_key=?').get(user.id,input.idempotencyKey);
+  if(prior){if(prior.type!=='document_parse'||prior.input_hash!==hash)fail(409,'请求编号已用于其他内容，请重新选择文件');return {status:200,value:{id:prior.id}};}
+  const reusable=completedForBytes();if(reusable)return {status:200,value:{id:reusable.id}};
   const pages=v1CommercialEnabled(db)?await commercialDocumentPages(db,file,{...config,documentTranslationPageCount:config.documentPageCount}):null;
   const created=tx(()=>{
    const existing=db.prepare('SELECT * FROM jobs WHERE user_id=? AND idempotency_key=?').get(user.id,input.idempotencyKey);
    if(existing){if(existing.type!=='document_parse'||existing.input_hash!==hash)fail(409,'请求编号已用于其他内容，请重新选择文件');return{id:existing.id,status:200};}
-   const completed=db.prepare("SELECT j.id FROM jobs j JOIN document_parse_runs d ON d.id=j.id JOIN artifacts a ON a.id=d.structured_artifact_id AND a.user_id=j.user_id AND a.status='ready' WHERE j.user_id=? AND j.type='document_parse' AND j.status='completed' AND j.input_hash=? AND d.source_sha256=? ORDER BY j.created_at DESC LIMIT 1").get(user.id,hash,file.sha256);if(completed)return{id:completed.id,status:200};
+   const completed=completedForBytes();if(completed)return{id:completed.id,status:200};
    if(!documentParsingReady(config))fail(503,documentParsingCapabilities(config).reason);
    const active=db.prepare("SELECT id FROM jobs WHERE user_id=? AND type='document_parse' AND status IN ('queued','running') AND input_hash=?").get(user.id,hash);if(active)return{id:active.id,status:200};
    if(db.prepare("SELECT count(*) n FROM jobs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=3)fail(409,'最多同时处理 3 项任务，请等待当前任务完成');

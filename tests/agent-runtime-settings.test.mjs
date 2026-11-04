@@ -42,3 +42,13 @@ test('invalid or credential-like tool names are replaced in private diagnostics'
  for(const name of [secret,'unsafe name\n'+secret,'x'.repeat(300),null])await assert.rejects(()=>runAgentTask({settings:settings.get(),task,dependencies:{lookup,query:()=> (async function*(){yield{type:'assistant',message:{content:[{type:'tool_use',name,input:{apiKey:secret}}]}};})()}}),error=>{assert.deepEqual(error.agentTrace,[{tool:'unknown_tool',status:'denied'}]);return true;});
  await assert.rejects(()=>runAgentTask({settings:settings.get(),task,dependencies:{lookup,query:()=> (async function*(){yield{...success,permission_denials:[{tool_name:'Bash',input:{command:secret}}]};})()}}),error=>{assert.equal(error.code,'permission_denied');assert.deepEqual(error.agentTrace,[{tool:'Bash',status:'denied'}]);assert.doesNotMatch(JSON.stringify(error.agentTrace),/unit-only-secret/);return true;});
 });
+
+test('literature batch reading returns only authorized ranges with independently verifiable traces in one call',async t=>{
+ const {settings}=fixture(t);settings.save('admin',valid);const sources=[{id:'one',name:'One',text:'First exact evidence.'},{id:'two',name:'Two',text:'Second exact evidence.'}];let validations=0,readTrace;
+ await assert.rejects(()=>runAgentTask({settings:settings.get(),task:{skill:'tool-task',instructions:'Read the assigned ranges once.',context:{operation:'answer'},materials:sources},validateToolOutput:candidate=>{validations++;readTrace=candidate.trace;assert.deepEqual(candidate.trace.filter(r=>r.tool==='read_material').map(r=>[r.materialId,r.offset,r.limit]),[['one',0,21],['two',0,22]]);return{valid:true};},dependencies:{lookup,query:({options})=>(async function*(){
+  const tools=options.mcpServers.paperknow.instance._registeredTools;assert.ok(options.allowedTools.includes('mcp__paperknow__read_materials'));assert.equal((await options.canUseTool('mcp__paperknow__read_materials',{})).behavior,'allow');
+  await assert.rejects(()=>tools.read_materials.handler({ranges:[{id:'one',offset:0,limit:21},{id:'other-account',offset:0,limit:10}]}),/未授权/);
+  const response=await tools.read_materials.handler({ranges:[{id:'one',offset:0,limit:21},{id:'two',offset:0,limit:22}]});assert.deepEqual(JSON.parse(response.content[0].text).materials.map(m=>m.text),sources.map(m=>m.text));
+  await tools.submit_writing_output.handler({candidate:{complete:true,text:'Evidence was read.'}});yield success;
+ })()}}),/真实用量/);assert.equal(validations,1);assert.equal(readTrace.filter(r=>r.tool==='read_material').length,2);assert.doesNotMatch(JSON.stringify(readTrace),/other-account|First exact evidence/);
+});

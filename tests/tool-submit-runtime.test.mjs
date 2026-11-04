@@ -23,7 +23,7 @@ async function execute(script,{task,validateToolOutput=true,validateWritingOutpu
 // in-process MCP tools and emits an SDK acknowledgement with fixture accounting.
 test('tool-task enables only source reading and full-candidate submission with a server-owned tool validator',async()=>{
  const result=await execute(async function*(options,f){
-  const tools=options.mcpServers.paperknow.instance._registeredTools;assert.deepEqual(Object.keys(tools).sort(),['read_material','submit_writing_output']);
+  const tools=options.mcpServers.paperknow.instance._registeredTools;assert.deepEqual(Object.keys(tools).sort(),['read_material','read_materials','submit_writing_output']);
   assert.match(options.systemPrompt,/唯一提交通道是 submit_writing_output/);for(const name of ['Bash','Read','mcp__foreign__submit_writing_output','mcp__paperknow__list_materials','mcp__paperknow__load_skill','mcp__paperknow__check_text_length'])assert.equal((await options.canUseTool(name,{})).behavior,'deny');assert.equal((await options.canUseTool('mcp__paperknow__submit_writing_output',{})).behavior,'allow');
   await tools.read_material.handler({id:'paper-1'});const accepted=decode(await tools.submit_writing_output.handler({candidate:f.candidate()}));assert.equal(accepted.accepted,true);assert.equal(accepted.frozen,true);yield {...success,result:'SDK acknowledgement cannot replace the accepted content'};
  });
@@ -85,4 +85,11 @@ for(const [label,amend,pattern,providerUsage]of [
  ['permission denial',{permission_denials:[{tool_name:'Bash'}]},/未授权工具/]
 ])test('accepted tool candidate still rejects '+label,async()=>{
  await assert.rejects(()=>execute(async function*(options,f){const tools=options.mcpServers.paperknow.instance._registeredTools;await tools.read_material.handler({id:'paper-1'});await tools.submit_writing_output.handler({candidate:f.candidate()});yield{...success,result:'ACK',...amend};},{providerUsage}),pattern);
+});
+
+test('one batch read passes the unchanged source-scope validator and full-candidate settlement path',async()=>{
+ const result=await execute(async function*(options,f){const tools=options.mcpServers.paperknow.instance._registeredTools;
+  const read=decode(await tools.read_materials.handler({ranges:[{id:'paper-1',offset:0,limit:f.text.length}]}));assert.equal(read.materials[0].text,f.text);
+  const accepted=decode(await tools.submit_writing_output.handler({candidate:f.candidate()}));assert.equal(accepted.accepted,true);yield{...success,result:'ACK'};
+ });const f=fixture();assert.equal(result.submitted,true);assert.equal(parseToolOutput(result,f.value,f.unit).citations[0].quote,f.quote);assert.equal(result.trace.filter(r=>r.tool==='read_material'&&r.status==='completed').length,1);
 });
