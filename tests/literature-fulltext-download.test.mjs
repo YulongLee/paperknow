@@ -47,4 +47,24 @@ test('HTTP search to cloud save uses real private file admission and content ded
  const r=await fetch(base+first.body.downloadUrl,{headers:{Cookie:cookie}});assert.equal(r.status,200);assert.deepEqual(Buffer.from(await r.arrayBuffer()),pdf);
  const r2=await fetch(base+first.body.downloadUrl,{headers:{Cookie:'pk_session='+createSession(app.db,'bob')}});assert.equal(r2.status,409);
  const cap=await send('/api/literature/capabilities');assert.ok(cap.body.academicSearchSources);assert.equal(cap.body.ai,undefined);
+ const queued=await send('/api/literature/files/jobs',{token,expectedUserId:'alice'}),again=await send('/api/literature/files/jobs',{token,expectedUserId:'alice'});assert.equal(queued.body.id,again.body.id);let completed;
+ for(let i=0;i<50;i++){completed=await send('/api/literature/files/jobs/'+queued.body.id);if(completed.body.status==='completed')break;await new Promise(r=>setTimeout(r,2));}
+ assert.equal(completed.body.status,'completed');assert.equal(completed.body.result.id,first.body.id);assert.equal((await send('/api/literature/files/jobs/'+queued.body.id,undefined,'pk_session='+createSession(app.db,'bob'))).status,404);assert.equal(reads,1);assert.equal(app.db.prepare('SELECT request FROM literature_fulltext_downloads WHERE id=?').get(queued.body.id).request,'{}');
+
+});
+
+test('arXiv uses its official download host and preserves the exact requested version during a transient fallback',async()=>{
+ const net=transport([{status:503},{bytes:pdf}]);const result=await createLiteraturePDFReader({lookupImpl:lookup,requestImpl:net.request})('https://arxiv.org/pdf/1706.03762v7');assert.equal(result.url,'https://arxiv.org/pdf/1706.03762v7');assert.deepEqual(net.calls.map(r=>[r.hostname,r.path]),[['export.arxiv.org','/pdf/1706.03762v7'],['arxiv.org','/pdf/1706.03762v7']]);
+});
+
+test('a background download survives a clean service restart and cannot be read by another account',async t=>{
+ const{mkdtemp,rm}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path');const dir=await mkdtemp(join(tmpdir(),'paperknow-download-test-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ let entered;const started=new Promise(r=>{entered=r;}),objects=new Map();let reads=0;
+ const config={agentConfigKey:Buffer.alloc(32,1).toString('base64'),ossBucket:'test-bucket',ossEndpoint:'https://oss-cn-shanghai.aliyuncs.com',ossRegion:'cn-shanghai',ossPrefix:'restart-fixture/',ossAccessKeyId:'test',ossAccessKeySecret:'test',requireRemoteStorage:true,ossClient:{async put(k,v){objects.set(k,Buffer.from(v));},async get(k){return{content:objects.get(k)};},async delete(k){objects.delete(k);}},openAlexApiKey:'test',literatureFetch:async()=>new Response(JSON.stringify({results:[{id:'https://openalex.org/W123',title:'Public fixture',publication_year:2024,open_access:{is_oa:true},best_oa_location:{is_oa:true,pdf_url:row.fullTextUrl}}],meta:{count:1}}),{headers:{'content-type':'application/json'}}),literaturePdfReader:async(_,{signal})=>{reads++;if(reads===1){entered();await new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(Object.assign(Error('test shutdown'),{status:499})),{once:true}));}return{bytes:pdf};}};
+ let app=createServer({dbPath:join(dir,'test.sqlite'),config});t.after(()=>app?.close());await new Promise(r=>app.server.listen(0,'127.0.0.1',r));let base='http://127.0.0.1:'+app.server.address().port;for(const id of ['alice','bob'])app.db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run(id,id+'@example.invalid',id,null,'user',new Date().toISOString());const cookie='pk_session='+createSession(app.db,'alice');
+ const send=async(path,body)=>{const r=await fetch(base+path,{method:body?'POST':'GET',headers:{Cookie:cookie,...(body?{Origin:base,'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});return{status:r.status,body:await r.json()};};
+ const search=await send('/api/literature/search?q=public&source=openalex&limit=5&page=1'),token=search.body.items[0].downloadToken,created=await send('/api/literature/files/jobs',{token,expectedUserId:'alice'});assert.equal(created.status,202);await started;await app.close();app=null;
+ app=createServer({dbPath:join(dir,'test.sqlite'),config});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+app.server.address().port;let result;
+ for(let i=0;i<100;i++){result=await send('/api/literature/files/jobs/'+created.body.id);if(result.body.status==='completed')break;await new Promise(r=>setTimeout(r,5));}
+ assert.equal(result.body.status,'completed',JSON.stringify(result));assert.equal(reads,2);assert.equal(objects.size,1);const download=await fetch(base+result.body.result.downloadUrl,{headers:{Cookie:cookie}});assert.deepEqual(Buffer.from(await download.arrayBuffer()),pdf);
 });

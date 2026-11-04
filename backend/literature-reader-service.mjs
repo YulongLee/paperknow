@@ -4,6 +4,9 @@ import {createArtifactService,serializeArtifact} from './artifact-service.mjs';
 import {createThesisDocumentRenderer} from './thesis-document-renderer.mjs';
 import {prepareTranslationPreview} from './document-translation-document.mjs';
 import {initializeDocumentTranslationSchema,documentTranslationReady} from './document-translation-service.mjs';
+import {repairAcademicTranslation,literatureTranslationQualityVersion} from './literature-translation-quality.mjs';
+import {compute} from './compute.mjs';
+import {fileBytes} from './storage.mjs';
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const validId=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,120}$/.test(v);
 const plain=v=>v&&typeof v==='object'&&!Array.isArray(v);
@@ -27,7 +30,24 @@ export function createLiteratureReaderService(db,config={}){
  const serialize=row=>({id:row.id,page:row.page,color:row.color,quote:row.quote,note:row.note,rects:JSON.parse(row.rects),version:row.version,createdAt:row.created_at,updatedAt:row.updated_at});
  function ownedJob(id,user){const row=db.prepare("SELECT j.status,j.project_id,d.* FROM document_translation_runs d JOIN jobs j ON j.id=d.id WHERE d.id=? AND d.user_id=?").get(id,user.id);if(!row)fail(404,'译文任务不存在');const source=resource('file',row.file_id,user);if(source.sha256!==row.source_sha256)fail(409,'原文已经变化，请重新选择文献');return row;}
  function cachedPreview(job,user){const row=db.prepare("SELECT a.*,p.pages FROM literature_translation_previews p JOIN artifacts a ON a.id=p.artifact_id AND a.user_id=p.user_id WHERE p.job_id=? AND p.user_id=? AND p.source_sha256=? AND a.status='ready'").get(job.id,user.id,job.source_sha256);return row?{artifact:serializeArtifact(row),pages:row.pages,sourcePages:job.page_count,alignment:'unverified'}:null;}
+ async function ensureQuality(job,user){
+  const ids=JSON.parse(job.artifacts).filter(validId),source=ids.map(id=>db.prepare("SELECT * FROM artifacts WHERE id=? AND user_id=? AND status='ready' AND kind='docx'").get(id,user.id)).find(Boolean);if(!source)return;
+  const old=db.prepare('SELECT * FROM literature_translation_quality WHERE job_id=? AND user_id=? AND source_sha256=? AND artifact_sha256=?').get(job.id,user.id,job.source_sha256,source.sha256);if(old&&JSON.parse(old.audit).version===literatureTranslationQualityVersion)return;
+  const file=resource('file',job.file_id,user),original=await fileBytes(file,config.storage);if(digest(original)!==job.source_sha256)fail(409,'原文已变化，请重新选择');
+  let native;try{native=await compute('pdfTextIndex',{body:original});}catch{native={text:''};}
+  if(!native.text?.trim()){db.prepare('INSERT OR REPLACE INTO literature_translation_quality VALUES(?,?,?,?,?)').run(job.id,user.id,job.source_sha256,source.sha256,JSON.stringify({version:literatureTranslationQualityVersion,sourceAvailable:false}));return;}
+  const bytes=await config.storage.readArtifact(source);if(digest(bytes)!==source.sha256)fail(503,'译文完整性核对未通过');const checked=await repairAcademicTranslation(bytes,{source:native});ownedJob(job.id,user);
+  const response=await artifacts({path:'/api/artifacts',method:'POST',user,readBody:async()=>({name:source.name.replace(/\.docx$/i,'_校准.docx'),data:checked.bytes.toString('base64'),sha256:digest(checked.bytes),sourceType:'literature',sourceId:job.id,projectId:job.project_id,expectedUserId:user.id})}),item=response.value.item;
+  const latest=ownedJob(job.id,user);if(latest.status!=='completed')fail(409,'译文状态已变化');const created=JSON.parse(latest.created_artifacts);if(!response.value.deduplicated&&!created.includes(item.id))created.push(item.id);
+  db.prepare('UPDATE document_translation_runs SET artifacts=?,created_artifacts=?,updated_at=? WHERE id=?').run(JSON.stringify([item.id]),JSON.stringify(created),new Date().toISOString(),job.id);
+  db.prepare('INSERT OR REPLACE INTO literature_translation_quality VALUES(?,?,?,?,?)').run(job.id,user.id,job.source_sha256,item.sha256,JSON.stringify(checked.audit));
+  for(const result of db.prepare("SELECT id,body FROM results WHERE job_id=? AND user_id=? AND type='document_translation'").all(job.id,user.id)){
+   const body=JSON.parse(result.body);body.artifacts=[item.id];body.quality=checked.audit;db.prepare('UPDATE results SET body=? WHERE id=? AND user_id=?').run(JSON.stringify(body),result.id,user.id);
+  }
+  db.prepare('DELETE FROM literature_translation_previews WHERE job_id=?').run(job.id);job.artifacts=JSON.stringify([item.id]);
+ }
  async function makePreview(job,user){
+  if(job.status==='completed')await ensureQuality(job,user);
   const existing=cachedPreview(job,user);if(existing)return existing;
   if(job.status!=='completed')fail(409,'译文仍在生成，请等待完成');
   const source=JSON.parse(job.artifacts).filter(validId).map(id=>db.prepare("SELECT * FROM artifacts WHERE id=? AND user_id=? AND status='ready' AND kind='docx'").get(id,user.id)).find(Boolean);if(!source)fail(404,'译文文件已删除，请重新翻译');

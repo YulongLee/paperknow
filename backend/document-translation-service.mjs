@@ -11,6 +11,7 @@ const fail=(status,message)=>{throw Object.assign(new Error(message),{status});}
 const idValid=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,120}$/.test(v);
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 export function initializeDocumentTranslationSchema(db){
+ db.exec("CREATE TABLE IF NOT EXISTS literature_translation_quality(job_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,source_sha256 TEXT NOT NULL,artifact_sha256 TEXT NOT NULL,audit TEXT NOT NULL)");
  initializeArtifactSchema(db);
  db.exec(`CREATE TABLE IF NOT EXISTS document_translation_runs(
   id TEXT PRIMARY KEY REFERENCES jobs(id),user_id TEXT NOT NULL REFERENCES users(id),file_id TEXT NOT NULL,

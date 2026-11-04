@@ -51,8 +51,8 @@ export function createWorkspaceDocumentImporter({fetchImpl=(...args)=>fetch(...a
 PDF 最大 ${Math.floor(limit/1024/1024)}MB、最多 ${pages} 页。上传完成后，可在任务中心查看处理进度。`);checkSignal(signal);if(!accepted)throw Object.assign(new Error('已取消导入，文件未提交解析。'),{name:'DocumentImportCancelled'});
    emit({stage:'uploading',message:stageMessages.uploading+'…',progress:null});
    if(!record.fileId){const reused=await reuseStoredOriginal(file,{api:(path,body)=>api(path,{body,signal}),expectedUserId:session.user.id,projectId}),uploaded=reused||await api('/files',{body:{name:file.name,data:await base64File(file,signal),expectedUserId:session.user.id,...(projectId?{projectId}:{})},signal});if(!uploaded.id)throw Error('原件上传未返回文件编号，请到我的项目核对原件。');record.fileId=uploaded.id;}
-   emit({stage:'queued',message:'文件已保存，正在准备文献…',progress:null});
-   const job=await api('/document-parses',{body:{fileId:record.fileId,idempotencyKey:record.idempotencyKey,consent:true,expectedUserId:session.user.id},signal});if(!job.id)throw Error('未取得解析任务编号，请先到任务中心核对。');record.id=job.id;
+   emit({stage:'queued',message:'原文已保存，可先打开阅读；正在准备全文研读…',progress:null,fileId:record.fileId,ownerId:session.user.id});
+   const job=await api('/document-parses',{body:{fileId:record.fileId,idempotencyKey:record.idempotencyKey,consent:true,expectedUserId:session.user.id},signal});if(!job.id)throw Error('未取得解析任务编号，请先到任务中心核对。');record.id=job.id;emit({stage:'queued',message:'原文已就绪，全文研读正在后台准备…',progress:null,fileId:record.fileId,ownerId:session.user.id,jobId:record.id});
   }
   const started=now();let failures=0,cancelPending=false,cancelError='';
   const cancel=async()=>{if(cancelPending)return;cancelPending=true;try{await api('/document-parses/'+encodeURIComponent(record.id)+'/cancel',{body:{},signal});}catch(error){cancelPending=false;cancelError='取消未确认，请在任务中心核对。';throw error;}};

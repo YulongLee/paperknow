@@ -1,5 +1,5 @@
 export async function saveLiteratureFullText(row,{fetcher=(...args)=>fetch(...args),signal}={}){
- const timeout=AbortSignal.timeout(65000),combined=signal?AbortSignal.any([timeout,signal]):timeout;
+ const timeout=AbortSignal.timeout(15*60000),combined=signal?AbortSignal.any([timeout,signal]):timeout;
  async function api(path,body){
   const response=await fetcher('/api'+path,{method:body?'POST':'GET',credentials:'same-origin',cache:'no-store',redirect:'error',signal:combined,...(body?{headers:{'Content-Type':'application/json','X-PaperKnow-User':body.expectedUserId},body:JSON.stringify(body)}:{})});
   let value;try{value=await response.json();}catch{throw Error('全文服务暂时无法连接，请稍后重试。');}
@@ -8,10 +8,12 @@ export async function saveLiteratureFullText(row,{fetcher=(...args)=>fetch(...ar
  try{
   if(!row?.downloadToken)throw Error('这篇文献暂未提供可直接获取的全文，请前往原文页面获取。');
   const session=await api('/auth/me');if(!session.user?.id)throw Error('请先登录，再将全文保存到云端。');
-  const result=await api('/literature/files',{token:row.downloadToken,expectedUserId:session.user.id});
+  let state=await api('/literature/files/jobs',{token:row.downloadToken,expectedUserId:session.user.id});
+  const validState=value=>value&&typeof value.id==='string'&&['queued','running','completed','failed'].includes(value.status);if(!validState(state))throw Error('文献获取状态未确认，请稍后重试。');while(!['completed','failed'].includes(state.status)){await new Promise((resolve,reject)=>{const timer=setTimeout(done,1000);function done(){combined.removeEventListener('abort',abort);resolve();}function abort(){clearTimeout(timer);reject(new DOMException('等待已停止','AbortError'));}combined.addEventListener('abort',abort,{once:true});});state=await api('/literature/files/jobs/'+encodeURIComponent(state.id));if(!validState(state))throw Error('文献获取状态未确认，请稍后重试。');}
+  if(state.status==='failed')throw Error(state.error||'全文暂未取得，请稍后重试。');const result=state.result;
   if(!result.id||result.ownerId!==session.user.id)throw Error('全文保存信息未确认，请到文件管理核对。');
   const checked=await api('/auth/me');if(checked.user?.id!==session.user.id)throw Error('登录账户已变化，文件已保存在原账户，请重新打开页面。');return result;
- }catch(error){if(signal?.aborted)throw Object.assign(Error('已停止等待全文获取，可在文件管理核对已保存的文件。'),{name:'AbortError'});if(timeout.aborted)throw Error('获取全文超时，请稍后重试；已保存的文件可在文件管理查看。');throw error;}
+ }catch(error){if(signal?.aborted)throw Object.assign(Error('已停止等待，文献获取会在后台继续；可稍后从相同文献继续查看。'),{name:'AbortError'});if(timeout.aborted)throw Error('获取全文超时，请稍后重试；已保存的文件可在文件管理查看。');throw error;}
 }
 
 export async function readSavedLiteratureFullText(paper,{fetcher=(...args)=>fetch(...args),signal,onJob=()=>{},onProgress=()=>{},pollInterval=1800,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){

@@ -57,6 +57,7 @@ const workspace=createWorkspaceService(db,{billing});
 const literatureLibrary=createLiteratureLibrary(db);
 const files=createFileService(db,config);
 const literatureDownloads=createLiteratureDownloadService({files,db,storage:config.storage,signingKey:config.agentConfigKey||config.paymentConfigKey,...(config.literaturePdfReader?{readPDF:config.literaturePdfReader}:{})});
+config.registerBackgroundCleanup?.(()=>literatureDownloads.stop());
 const artifacts=createArtifactService(db,config);
 const documentParses=createDocumentParseService(db,{...config,cancelDocumentParse:id=>worker.cancel(id)});
 const literatureReader=createLiteratureReaderService(db,config);
@@ -129,6 +130,7 @@ if(adminRequest){send(200,await admin({path,method,query:requestURL.searchParams
 if(path==='/api/credits/redemptions'&&method==='GET'){send(200,creditCodes.history(user,requestURL.searchParams));return;}
 if(path==='/api/credits/redeem'&&method==='POST'){rate(req,100);send(200,creditCodes.redeem(user,await body(req,4096),clientAddress(req,config)));return;}
 if(path==='/api/literature/library'){if(method==='GET'){const etag=literatureLibrary.etag(user);if(req.headers['if-none-match']===etag){res.writeHead(304,{'Cache-Control':'private, no-store',ETag:etag}).end();return;}send(200,literatureLibrary.list(user),{ETag:etag});return;}send(200,literatureLibrary.save(user,await body(req)));return;}
+if(path.startsWith('/api/literature/files/jobs')){if(method==='POST')rate(req,60);const result=await literatureDownloads.jobs({path,method,user,readBody:()=>body(req)});if(result){send(result.status||200,result.value);return;}}
 if(path==='/api/literature/files'&&method==='POST'){rate(req,30);const input=await body(req),controller=new AbortController(),cancel=()=>{if(!res.writableEnded)controller.abort();};req.once('aborted',cancel);res.once('close',cancel);try{send(201,await literatureDownloads.save(input,user,{signal:controller.signal}));}finally{req.removeListener('aborted',cancel);res.removeListener('close',cancel);}return;}
 if(path==='/api/theses/document-render'){
  if(method==='GET'){const status=await thesisRenderer.status();send(200,{available:status.available,busy:status.busy,maxInputBytes:status.maxInputBytes});return;}

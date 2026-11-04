@@ -26,7 +26,7 @@ test('long overviews preserve limits and tell the truth when some sections canno
 });
 test('switching a formula question to summary does not reuse the question or fabricate the displayed range',async()=>{
  const dom=new JSDOM('<div id="ai"></div>',{url:'https://reading.test',pretendToBeVisual:true});let p=structuredClone(paper),snapshot;
- const api=async(path,data)=>{if(path==='/auth/me')return{user:{id:'isolated'}};if(path==='/tool-runs/capabilities')return{ready:true};if(path==='/tool-runs/quote'){snapshot=data.snapshot;throw Error('No paid generation in this test');}throw Error('Unexpected route '+path);};
+ const api=async(path,data)=>{if(path==='/auth/me')return{user:{id:'isolated'}};if(path==='/tool-runs/reuse')return{item:null};if(path==='/tool-runs/capabilities')return{ready:true};if(path==='/tool-runs/quote'){snapshot=data.snapshot;throw Error('No paid generation in this test');}throw Error('Unexpected route '+path);};
  const ui=mountLiteratureAi({container:dom.window.document.querySelector('#ai'),layout:'assistant',initialOperation:'answer',ctx:{api},getPaper:()=>p,updatePaper:fn=>p=fn(p)});
  try{const d=dom.window.document,question=d.querySelector('[data-lit-ai-question]');question.value='Explain scaled attention formula';question.dispatchEvent(new dom.window.Event('input'));d.querySelector('[data-lit-ai-operation="read"][data-lit-assistant-mode="summary"]').click();
   assert.match(d.querySelector('[data-lit-range-label]').textContent,/7 \/ 7 节/);d.querySelector('[data-lit-ai-open]').click();for(let i=0;i<30&&!snapshot;i++)await new Promise(r=>setTimeout(r,5));

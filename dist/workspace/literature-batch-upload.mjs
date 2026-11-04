@@ -4,23 +4,27 @@ import {serviceMessage} from './service-message.mjs';
 import {literatureImportQueue} from './literature-import-queue.mjs';
 import {approveDocumentBatch,extractWorkspaceDocument} from './document-import.mjs';
 import {literatureKey,validatePaper} from './literature-model.mjs';
-import {list,write} from './state.mjs';
+import {list,write,stateStoreOwner} from './state.mjs';
 import {esc,icon} from './ui.mjs';
 
 export function mountLiteratureBatchUpload({container,ctx,fetcher,importDocument,saveOriginal,onSaved,current=()=>true}){
  const doc=container.ownerDocument,win=doc.defaultView;
  const getOwner=async()=>{const session=ctx.api?await ctx.api('/auth/me'):await (await (fetcher||fetch)('/api/auth/me',{credentials:'same-origin',cache:'no-store'})).json();return session.user?.id;};
  const queue=literatureImportQueue(win,{getOwner,approveBatch:(files,ownerId)=>approveDocumentBatch(files,ownerId,{confirmImpl:message=>confirmDocumentImport(message,{documentObject:doc})}),processFile:async(file,{ownerId,batchConsent,retryFailed,onProgress})=>{
-  const options={expectedUserId:ownerId,batchConsent,retryFailed,onProgress};
+  let earlyId=null;
+  const options={expectedUserId:ownerId,batchConsent,retryFailed,onProgress:event=>{
+   if(event.fileId&&event.ownerId===ownerId){const storeOwner=stateStoreOwner(literatureKey);if(storeOwner&&storeOwner!==ownerId)throw Object.assign(Error('账户已变化，原文件已保留'),{queueOwnerChanged:true});const rows=list(literatureKey),old=rows.find(p=>p.originalFileId===event.fileId);if(!old||old.scope==='metadata'){const now=new Date().toISOString(),early=validatePaper({...old,id:old?.id||win.crypto.randomUUID(),title:old?.title||file.name.replace(/\.pdf$/i,''),scope:'metadata',text:'',fileName:file.name,originalFileId:event.fileId,originalOwnerId:ownerId,documentParseId:event.jobId||old?.documentParseId,notes:old?.notes||[],createdAt:old?.createdAt||now,updatedAt:now});earlyId=early.id;write(literatureKey,[early,...rows.filter(p=>p.id!==early.id)]);onSaved?.();}}
+   onProgress(event);
+  }};
   const parsed=await (importDocument?importDocument(file,doc.createElement('span'),options):extractWorkspaceDocument(file,options));
   if(await getOwner()!==ownerId)throw Object.assign(Error('登录账户已变化，请返回原账户后继续此上传队列。'),{queueOwnerChanged:true});
   if(!String(parsed.text||'').trim())throw Error('未读取到可研读的正文，请检查文件。');
-  let rows=list(literatureKey),duplicate=rows.find(p=>parsed.originalFileId&&p.originalFileId===parsed.originalFileId||p.fileName===file.name&&p.text===parsed.text&&p.scope==='full');if(duplicate)return duplicate;
+  let rows=list(literatureKey),duplicate=rows.find(p=>parsed.originalFileId&&p.originalFileId===parsed.originalFileId||p.fileName===file.name&&p.text===parsed.text&&p.scope==='full');if(duplicate?.scope==='full'&&duplicate.text===parsed.text)return duplicate;
   if(rows.length>=200)throw Error('已保存 200 篇文献，请先整理不再需要的记录。');
   const original=/\.pdf$/i.test(file.name)?{originalFileId:parsed.originalFileId||'',originalOwnerId:parsed.originalOwnerId||''}:await saveOriginal(file,{expectedUserId:ownerId,...(fetcher?{fetchImpl:fetcher}:{})});
   if(await getOwner()!==ownerId||original.originalOwnerId!==ownerId)throw Object.assign(Error('登录账户已变化，原件保留在原账户，请返回后重试。'),{queueOwnerChanged:true});
-  const now=new Date().toISOString(),paper=validatePaper(enrichLiteraturePaper({id:win.crypto.randomUUID(),title:file.name.replace(/\.(pdf|docx|txt)$/i,'').slice(0,300),scope:'full',text:parsed.text,fileName:file.name,warnings:parsed.warnings||[],...original,notes:[],status:'unread',createdAt:now,updatedAt:now}));
-  rows=list(literatureKey);duplicate=rows.find(p=>original.originalFileId&&p.originalFileId===original.originalFileId);if(duplicate)return duplicate;if(rows.length>=200)throw Error('文献数量已达上限；已保存原件可在文件管理查看。');write(literatureKey,[paper,...rows]);return paper;
+  const now=new Date().toISOString(),previous=list(literatureKey).find(p=>p.id===earlyId||p.originalFileId===original.originalFileId),paper=validatePaper(enrichLiteraturePaper({...previous,id:previous?.id||win.crypto.randomUUID(),title:file.name.replace(/\.(pdf|docx|txt)$/i,'').slice(0,300),scope:'full',text:parsed.text,fileName:file.name,warnings:parsed.warnings||[],...original,documentParseId:parsed.documentParseId,notes:previous?.notes||[],status:previous?.status||'unread',createdAt:previous?.createdAt||now,updatedAt:now}));
+  rows=list(literatureKey);duplicate=rows.find(p=>original.originalFileId&&p.originalFileId===original.originalFileId);if(duplicate?.scope==='full'&&duplicate.text===parsed.text)return duplicate;if(!previous&&rows.length>=200)throw Error('文献数量已达上限；已保存原件可在文件管理查看。');write(literatureKey,[paper,...rows.filter(p=>p.id!==paper.id)]);return paper;
  }});
  container.className='lit-import-queue';container.innerHTML=`<header><div><span class="lit-section-eyebrow">文献上传</span><h2>处理队列 <small data-queue-summary></small></h2></div><button type="button" class="btn secondary" data-queue-clear>清理记录</button></header><p class="lit-queue-help">逐篇处理，完成后即可研读。可切换工作台页面；关闭或刷新浏览器会停止尚未提交的队列。</p><p data-queue-error role="status" hidden></p><button type="button" class="btn secondary" data-queue-resume hidden>继续队列</button><div class="lit-queue-list" data-queue-list role="region" aria-label="文献上传队列，可滚动" tabindex="0"></div><p class="lit-queue-announcement" data-queue-announcement role="status" aria-live="polite"></p>`;
  const $=s=>container.querySelector(s),labels={waiting:'等待处理',processing:'正在处理',completed:'已完成',failed:'未完成',cancelled:'已停止',invalid:'无法上传'};let counts='',completedIds='',viewerOwner=null;

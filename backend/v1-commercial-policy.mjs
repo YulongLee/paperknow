@@ -22,7 +22,7 @@ export function commercialToolIdentity(db,value){
   if(mode==='report')return{type:'agent',serviceKey:'revision-targeted'};
  }
  if(kind==='presentation'&&c.pages>20)return{type:'agent',serviceKey:'presentation-enhanced'};
- if(kind==='literature'&&['read','answer'].includes(operation)&&(s.materials||[]).reduce((n,m)=>n+Array.from(m.text||'').length,0)>3000)fail('单次研读选取正文最多 3,000 字符，请缩小原文范围；尚未扣费。');
+ if(kind==='literature'&&['read','answer'].includes(operation)&&(s.materials||[]).reduce((n,m)=>n+Array.from(m.text||'').length,0)>(operation==='read'?18000:3000))fail(operation==='read'?'单次章节研读最多 18,000 字符，请调整原文范围；尚未扣费。':'单次问答选取正文最多 3,000 字符，请调整原文范围；尚未扣费。');
  if(kind==='literature'&&operation==='translate'&&chars>3000)fail('片段翻译每次最多 3,000 字符；整篇 PDF 请使用整篇翻译，尚未扣费。');
  if(kind==='format'&&Number(c.documentCharacters||0)>20000)fail('智能排版每次最多 20,000 字符，请分文档处理；尚未扣费。');
  return base;

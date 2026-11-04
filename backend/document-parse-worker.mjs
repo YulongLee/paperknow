@@ -1,3 +1,4 @@
+import {restorePdfFootnotes} from './pdf-reading-text.mjs';
 import {randomUUID} from 'node:crypto';
 import {createMineruClient} from './mineru-client.mjs';
 import {createArtifactService} from './artifact-service.mjs';
@@ -40,6 +41,7 @@ export function startDocumentParseWorker(db,config={}){
  async function finish(job,parsed){
   if(!stillActive(job.id))return;
   if(parsed.pageCount!==job.expected_pages||!Array.isArray(parsed.pages)||parsed.pages.length!==job.expected_pages||parsed.pages.some((p,i)=>p.pageIndex!==i)||typeof parsed.text!=='string'||!parsed.text.trim()||parsed.text.length>documentParseLimits.maxCharacters)throw Object.assign(new Error('解析内容或页数不完整，请分章节处理或联系支持；未保存为完成结果'),{documentSafe:true});
+  try{const file=db.prepare('SELECT * FROM files WHERE id=? AND user_id=?').get(job.file_id,job.user_id);if(file&&file.sha256===job.source_sha256){const source=await fileBytes(file,config.storage);if(digest(source)===job.source_sha256){const native=await compute('pdfTextIndex',{body:source});parsed=restorePdfFootnotes(parsed,native);}}}catch{/* Scans and malformed text layers retain the verified OCR result. */}
   stage(job.id,'saving');
   const warnings=['云端识别可能存在文字、表格或公式误差，请对照原件核对。'];
   const structured={version:1,text:parsed.text,markdown:parsed.markdown,pages:parsed.pages,warnings,contentList:parsed.contentList??null,layout:parsed.layout??null};

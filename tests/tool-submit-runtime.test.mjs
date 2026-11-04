@@ -16,7 +16,10 @@ function fixture(){
 }
 async function execute(script,{task,validateToolOutput=true,validateWritingOutput,signal,runtime=settings,providerUsage}={}){
  const f=fixture(),validator=validateToolOutput===true?f.validator:validateToolOutput;
- return runAgentTask({settings:runtime,task:task||f.task,signal,...(validator!==false?{validateToolOutput:validator}:{}),...(validateWritingOutput?{validateWritingOutput}:{}),dependencies:{lookup,httpsRequest:providerFixture({usage:providerUsage}).requestImpl,query:({options})=>(async function*(){await primeProvider(options);yield*script(options,f);})()}});
+ // These cases exercise the manual-reading fallback. The preloaded production
+ // path and actual SDK stream are covered separately in literature-performance.
+ const manualTask=structuredClone(task||f.task);delete manualTask.context.unit;
+ return runAgentTask({settings:runtime,task:manualTask,signal,...(validator!==false?{validateToolOutput:validator}:{}),...(validateWritingOutput?{validateWritingOutput}:{}),dependencies:{lookup,httpsRequest:providerFixture({usage:providerUsage}).requestImpl,query:({options})=>(async function*(){await primeProvider(options);yield*script(options,f);})()}});
 }
 
 // The query double never contacts a model provider; it only invokes registered

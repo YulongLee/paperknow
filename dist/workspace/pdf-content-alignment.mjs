@@ -79,15 +79,15 @@ export function createPdfContentAlignment(sourceLines,targetLines){
  // claim corresponding content (e.g. unrelated or image-only PDFs).
  if(anchors.length)paired.push(...paragraphPairs(source,target,ai,source.length,bi,target.length));
  const pairs=paired.map(pair=>({...pair,a:groupPoints(pair.a),b:groupPoints(pair.b)})),lookup={a:new Map(),b:new Map()};for(const pair of pairs)for(const side of ['a','b'])pair[side].points.forEach((point,index)=>{const list=lookup[side].get(point.page)||[];list.push({pair,index,point});lookup[side].set(point.page,list);});
- function map(view,direction='forward'){
+ function map(view,direction='forward',targetView={}){
   const from=direction==='reverse'?'b':'a',to=from==='a'?'b':'a',page=Number(view.page)||1,y=clamp(view.fraction),x=Number.isFinite(view.readingX)?view.readingX:.2;let found=null;
   for(const {pair,index,point}of lookup[from].get(page)||[]){const dy=y-point.y,score=Math.abs(dy)+(dy<-.015?.04:0)+Math.abs(x-point.x)*.25;if(!found||score<found.score)found={pair,index,point,score};}
-  if(!found||found.score>.28)return null;const group=found.pair[from],other=found.pair[to],point=found.point,next=group.points[found.index+1];let offset=point.offset,residual=y-point.y;
+  if(!found||found.score>(found.pair.strong&&y<.08?.52:.28))return null;const group=found.pair[from],other=found.pair[to],point=found.point,next=group.points[found.index+1];let offset=point.offset,residual=y-point.y;
   if(next&&next.page===point.page&&Math.abs(next.x-point.x)<.15&&next.y>point.y&&y>=point.y&&y<=next.y){offset+=clamp((y-point.y)/(next.y-point.y))*(next.offset-point.offset);residual=0;}
   const wanted=offset/group.length*other.length;let index=0;while(index+1<other.points.length&&other.points[index+1].offset<=wanted)index++;
   const position=other.points[index],after=other.points[index+1];let fraction=position.y;
   if(after&&after.page===position.page&&Math.abs(after.x-position.x)<.15&&after.y>position.y)fraction+=clamp((wanted-position.offset)/Math.max(1,after.offset-position.offset))*(after.y-position.y);
-  return{...view,page:position.page,fraction:clamp(fraction+(Number.isFinite(view.pageHeight)?0:residual)),anchorGap:Number.isFinite(view.pageHeight)?residual*view.pageHeight+(Number(view.pageOffset)||0):0,readingX:position.x,pageCount:undefined};
+  return{...view,page:position.page,fraction:clamp(fraction+(Number.isFinite(view.pageHeight)?0:residual)),anchorGap:Number.isFinite(view.pageHeight)?residual*(Number(targetView.pageHeight)||view.pageHeight)+(Number(view.pageOffset)||0):0,readingX:position.x,pageCount:undefined,alignment:found.pair.strong?'anchor':'approximate'};
  }
  return{mode:anchors.length&&pairs.length?'content':'approximate',anchors:anchors.length,pairs,map};
 }

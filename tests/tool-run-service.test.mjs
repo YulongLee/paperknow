@@ -35,10 +35,10 @@ test('interactive lane cancellation releases its hold without cancelling general
   if(task.context.operation!=='answer'){await gate;return revised(task);}
   answerCalls++;answerStarted();await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}));throw Object.assign(Error('cancelled'),{usage:{input:10,output:10},costUsd:.001});
  }});f.pay();const general=await f.submit(),answer=await f.submit(input('answer'));const pending=f.worker.tick();await started;
- const second=await f.submit(input('answer'));await f.worker.tick();assert.equal(answerCalls,1);assert.equal(f.db.prepare('SELECT status FROM tool_runs WHERE id=?').get(second.value.item.id).status,'queued');
- await f.request('/tool-runs/jobs/'+answer.value.item.id+'/cancel',{});await f.request('/tool-runs/jobs/'+second.value.item.id+'/cancel',{});release();await pending;
+ const second=await f.submit(input('answer'));await f.worker.tick();assert.equal(answerCalls,1);assert.equal(second.value.item.id,answer.value.item.id);assert.equal(f.db.prepare('SELECT status FROM tool_runs WHERE id=?').get(second.value.item.id).status,'running');
+ await f.request('/tool-runs/jobs/'+answer.value.item.id+'/cancel',{});release();await pending;
  assert.equal(f.db.prepare('SELECT status FROM tool_runs WHERE id=?').get(general.value.item.id).status,'completed');assert.equal(f.billing.balance('alice').held,0);assert.equal(f.billing.balance('alice').balance,190);
- assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='release'").get().n,2);
+ assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='release'").get().n,1);
 });
 async function fixture(t,extra={}){
  const db=database(':memory:'),users={};for(const id of ['alice','bob']){db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run(id,id+'@example.test',id,null,'user',new Date().toISOString());users[id]={id,cookie:'pk_session='+createSession(db,id)};}
@@ -47,7 +47,7 @@ async function fixture(t,extra={}){
  t.after(async()=>{await worker.stop();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();});
  async function request(path,data,user=users.alice,origin=base){const response=await fetch(base+'/api'+path,{method:data===undefined?'GET':'POST',headers:{...(user?{Cookie:user.cookie}:{}),...(data===undefined?{}:{Origin:origin,'Content-Type':'application/json'})},body:data===undefined?undefined:JSON.stringify(data)});return{status:response.status,value:await response.json()};}
  async function submit(value=input(),extra={}){const quote=await request('/tool-runs/quote',value);if(quote.status!==200)return quote;return request('/tool-runs/jobs',{...value,clientKey:randomUUID(),billingToken:quote.value.token,consent:true,...extra});}
- function pay(){billing.saveRules({version:billing.rules().version,services:billingServiceTypes.map(({key})=>({key,mode:'paid',creditCost:10}))});const id=randomUUID(),at=new Date().toISOString();db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run(id,'alice','credits-200','paid',at);db.prepare('INSERT INTO payment_credit_ledger VALUES(?,?,?,?,?,?)').run(id,'alice','credits-200',200,'purchase',at);}
+ function pay(userId='alice'){billing.saveRules({version:billing.rules().version,services:billingServiceTypes.map(({key})=>({key,mode:'paid',creditCost:10}))});const id=randomUUID(),at=new Date().toISOString();db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run(id,userId,'credits-200','paid',at);db.prepare('INSERT INTO payment_credit_ledger VALUES(?,?,?,?,?,?)').run(id,userId,'credits-200',200,'purchase',at);}
  return{db,config,billing,worker,request,submit,pay,users};
 }
 test('queued tool work is isolated from the legacy worker, settles once and hides private runtime',async t=>{let calls=0;const f=await fixture(t,{agentTaskRunner:async({task,validateToolOutput})=>{calls++;const output=revised(task);assert.equal(validateToolOutput(output).valid,true);return output;}});f.pay();const created=await f.submit();assert.equal(created.status,202,JSON.stringify(created.value));const id=created.value.item.id,legacy=startWorker(f.db,f.config);await legacy.tick();await legacy.stop();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(id).status,'queued');await f.worker.tick();await f.worker.tick();const job=(await f.request('/tool-runs/jobs/'+id)).value.item;assert.equal(job.status,'completed',JSON.stringify(job));assert.equal(job.output.paragraphs[0].original,original);assert.equal(calls,1);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);assert.doesNotMatch(JSON.stringify(job),/private-tool-model|private-test-key|settingsVersion/);assert.equal((await f.request('/results/'+job.resultId)).value.item.type,'tool_run');});
@@ -88,4 +88,23 @@ test('one entire-paper dual submission automatically finishes every unit and set
  const created=await f.submit(value);assert.equal(created.status,202,JSON.stringify(created.value));const id=created.value.item.id;
  await f.worker.tick();await f.worker.tick();
  const job=(await f.request('/tool-runs/jobs/'+id)).value.item;assert.equal(job.status,'completed',JSON.stringify(job));assert.equal(job.output.paragraphs.length,160);assert.equal(job.output.paragraphs.map(p=>p.original).join('\n\n'),text);assert.ok(calls>1);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);assert.equal(f.db.prepare('SELECT count(*) n FROM jobs').get().n,1);
+});
+
+test('bounded reading pools run two questions and a read alongside general work, leaving the third question queued',async t=>{
+ let release,activeAnswers=0,peak=0;const gate=new Promise(r=>{release=r;});t.after(()=>release());
+ const f=await fixture(t,{literatureAnswerConcurrency:2,literatureReadConcurrency:1,agentTaskRunner:async({task})=>{
+  const op=task.context.operation;if(op==='answer'){activeAnswers++;peak=Math.max(peak,activeAnswers);}await gate;
+  if(op==='rewrite')return revised(task);if(op==='answer')activeAnswers--;
+  const ranges=task.context.unit.ranges;return result({text:'依据本次合成资料回答。',sourceIds:ranges.map(r=>r.sourceId),citations:[{sourceId:ranges[0].sourceId,quote:task.materials[0].text.slice(0,10)}]},ranges.map(r=>({tool:'read_material',status:'completed',materialId:r.sourceId,offset:r.start,limit:r.end-r.start})));
+ }});f.pay();f.pay('bob');const submitOther=async value=>{const q=(await f.request('/tool-runs/quote',value,f.users.bob)).value;return f.request('/tool-runs/jobs',{...value,clientKey:randomUUID(),billingToken:q.token,consent:true},f.users.bob);};const general=await submitOther(input()),read=await submitOther(input('read')),a=await f.submit(input('answer',{question:'First?'})),b=await f.submit(input('answer',{question:'Second?'})),c=await f.submit(input('answer',{question:'Third?'})),pending=f.worker.tick();
+ for(let n=0;n<100&&activeAnswers<2;n++)await new Promise(r=>setTimeout(r,5));
+ for(const created of [general,read,a,b])assert.equal(f.db.prepare('SELECT status FROM tool_runs WHERE id=?').get(created.value.item.id).status,'running');
+ assert.equal(f.db.prepare('SELECT status FROM tool_runs WHERE id=?').get(c.value.item.id).status,'queued');assert.equal(peak,2);release();await pending;await f.worker.tick();
+ assert.equal(f.db.prepare("SELECT count(*) n FROM tool_runs WHERE status='completed'").get().n,5);assert.equal(f.billing.balance('alice').balance,170);assert.equal(f.billing.balance('bob').balance,180);assert.equal(f.billing.balance('alice').held,0);
+});
+test('completed reading reuse is exact, owned and version-bound, and creates neither another job nor another debit',async t=>{
+ let version=runtime.version;const f=await fixture(t,{getAgentSettings:()=>({...runtime,version}),agentTaskRunner:async({task})=>{const r=task.context.unit.ranges;return result({text:'原文提供了合成验收资料。',sourceIds:r.map(x=>x.sourceId),citations:[{sourceId:r[0].sourceId,quote:task.materials[0].text.slice(0,10)}]},r.map(x=>({tool:'read_material',status:'completed',materialId:x.sourceId,offset:x.start,limit:x.end-x.start})));}});f.pay();const value=input('answer'),created=await f.submit(value);await f.worker.tick();const balance=f.billing.balance('alice').balance;
+ const reused=await f.request('/tool-runs/reuse',value);assert.equal(reused.value.item.id,created.value.item.id);assert.equal(reused.value.item.status,'completed');
+ assert.equal((await f.request('/tool-runs/reuse',value,f.users.bob)).value.item,null);assert.equal((await f.request('/tool-runs/reuse',input('answer',{question:'Changed?'}))).value.item,null);
+ version='new-runtime-version';assert.equal((await f.request('/tool-runs/reuse',value)).value.item,null);assert.equal(f.db.prepare('SELECT count(*) n FROM tool_runs').get().n,1);assert.equal(f.billing.balance('alice').balance,balance);
 });

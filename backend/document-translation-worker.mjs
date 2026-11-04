@@ -1,3 +1,4 @@
+import {repairAcademicTranslation} from './literature-translation-quality.mjs';
 import {createBillingService} from './billing-service.mjs';
 import {randomUUID} from 'node:crypto';
 import {validateTranslationDocument as docxSize} from './document-translation-document.mjs';
@@ -52,7 +53,11 @@ export function startDocumentTranslationWorker(db,config={}){
  async function finish(job,buffer,pageCount){
   if(!active(job.id))return;
   if(!Buffer.isBuffer(buffer)||buffer.length<4||buffer.length>20*1024*1024)throw safe('译文文件大小不受支持，请分章节翻译');
-  await docxSize(buffer,{source:false});if(!active(job.id))return;stage(job.id,'saving');
+  await docxSize(buffer,{source:false});if(!active(job.id))return;stage(job.id,'checking_translation');
+  let quality={version:2,sourceAvailable:false,unresolvedCitations:[]};
+  const original=db.prepare('SELECT * FROM files WHERE id=? AND user_id=?').get(job.file_id,job.user_id);
+  if(original?.kind==='pdf'&&original.sha256===job.source_sha256){const source=await fileBytes(original,config.storage);if(digest(source)!==job.source_sha256)throw safe('原文完整性核对未通过');let native;try{native=await compute('pdfTextIndex',{body:source});}catch{native={text:''};}if(native.text?.trim()){const checked=await repairAcademicTranslation(buffer,{source:native});buffer=checked.bytes;quality=checked.audit;}}
+  if(!active(job.id))return;stage(job.id,'saving');
   const stem=job.file_name.replace(/\.(?:pdf|docx)$/i,'').replace(/[\x00-\x1f\x7f/\\\u202a-\u202e\u2066-\u2069]/g,'_').slice(0,130)||'文档';
   const response=await artifacts({path:'/api/artifacts',method:'POST',user:{id:job.user_id},readBody:async()=>({name:stem+'_译文_'+job.target_language+'.docx',data:buffer.toString('base64'),sha256:digest(buffer),projectId:job.project_id,sourceType:'literature',sourceId:job.id,expectedUserId:job.user_id})});
   const item=response.value.item;
@@ -61,7 +66,8 @@ export function startDocumentTranslationWorker(db,config={}){
   tx(()=>{
    if(!active(job.id))return;const id=randomUUID(),at=clock();billing.settle(job.id);
    db.prepare("UPDATE document_translation_runs SET page_count=?,provider_state='done',updated_at=? WHERE id=?").run(pageCount,at,job.id);
-   db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(id,job.user_id,job.project_id,job.id,'document_translation',job.file_name+' · 文档翻译',JSON.stringify({documentTranslationId:job.id,fileName:job.file_name,sourceLanguage:job.source_language,targetLanguage:job.target_language,pageCount,artifacts:[item.id],scope:'整篇文档译文保存在账户私有云存储，下载为DOCX；专业术语、公式、表格及排版需核对。'}),at);
+   db.prepare('INSERT OR REPLACE INTO literature_translation_quality VALUES(?,?,?,?,?)').run(job.id,job.user_id,job.source_sha256,item.sha256,JSON.stringify(quality));
+   db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(id,job.user_id,job.project_id,job.id,'document_translation',job.file_name+' · 文档翻译',JSON.stringify({documentTranslationId:job.id,fileName:job.file_name,sourceLanguage:job.source_language,targetLanguage:job.target_language,pageCount,artifacts:[item.id],quality,scope:'译文已进行术语、数字与引文检查，文件保存在账户云端。'}),at);
    db.prepare("UPDATE jobs SET status='completed',stage='completed',result_id=?,error=NULL,updated_at=? WHERE id=? AND status='running'").run(id,at,job.id);
   });
  }

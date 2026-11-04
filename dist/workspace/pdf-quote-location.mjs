@@ -1,7 +1,7 @@
-const normalized=text=>String(text||'').normalize('NFKC').replace(/\\(?:cdot|times|left|right)\b/g,'').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
+const normalized=text=>String(text||'').normalize('NFKC').replace(/\\(?:cdot|times|left|right|sqrt|frac|operatorname|mathrm|mathbf|mathbb|text)\b/g,'').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
 // Only exact normalized text is accepted. Ambiguous or scanned content never
 // guesses a page. Returned geometry comes from the actual PDF text layer.
-export function locatePdfQuote(lines,quote){
+function exactQuote(lines,quote){
  const target=normalized(quote);if(target.length<12)return null;
  const pages=new Map();for(const line of lines){const list=pages.get(line.page)||[];list.push(line);pages.set(line.page,list);}
  const matches=[];
@@ -10,4 +10,13 @@ export function locatePdfQuote(lines,quote){
   const hits=spans.filter(s=>s.end>at&&s.start<at+target.length).map(s=>s.line);matches.push({page,fraction:Math.max(0,(hits[0]?.y||0)-.08),lines:hits});
  }
  return matches.length===1?matches[0]:null;
+}
+export function locatePdfQuote(lines,quote){
+ const exact=exactQuote(lines,quote);if(exact)return exact;
+ // PDF and LaTeX can order fraction/superscript glyphs differently. Locate a
+ // long verbatim prose anchor around the equation, never approximate the math
+ // or guess a page from a paragraph number. Ambiguous anchors remain rejected.
+ const prose=String(quote||'').split(/\$\$?[\s\S]*?\$\$?|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]/g).filter(s=>normalized(s).length>=45&&s.trim().split(/\s+/).length>=6);
+ const hits=prose.map(p=>exactQuote(lines,p)).filter(Boolean);if(!hits.length||new Set(hits.map(h=>h.page)).size!==1)return null;
+ return{page:hits[0].page,fraction:Math.min(...hits.map(h=>h.fraction)),lines:[...new Set(hits.flatMap(h=>h.lines))],anchor:'verbatim-prose'};
 }

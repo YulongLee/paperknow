@@ -37,6 +37,7 @@ const agentSettings=createAgentSettings(db,config);config={...config,agentSettin
 const researchImageSettings=createResearchImageSettings(db,config);config={...config,researchImageSettings,getResearchImageSettings:version=>researchImageSettings.get(version)};
 const legacyWorker=startWorker(db,config),thesisWorker=startThesisWorker(db,config),outlineWorker=startThesisOutlineWorker(db,config),methodWorker=startThesisMethodWorker(db,config),writingWorker=startWritingWorker(db,config),toolWorker=startToolRunWorker(db,config),documentWorker=startDocumentParseWorker(db,config),translationWorker=startDocumentTranslationWorker(db,config),webSimilarityWorker=startWebSimilarityWorker(db,config);
 const worker={async tick(){await legacyWorker.tick();await thesisWorker.tick();await outlineWorker.tick();await methodWorker.tick();await writingWorker.tick();await toolWorker.tick();await documentWorker.tick();await translationWorker.tick();await webSimilarityWorker.tick();},cancel(id){legacyWorker.cancel(id);thesisWorker.cancel(id);outlineWorker.cancel(id);methodWorker.cancel(id);writingWorker.cancel(id);toolWorker.cancel(id);documentWorker.cancel(id);translationWorker.cancel(id);webSimilarityWorker.cancel(id);},async stop(){await Promise.all([legacyWorker.stop(),thesisWorker.stop(),outlineWorker.stop(),methodWorker.stop(),writingWorker.stop(),toolWorker.stop(),documentWorker.stop(),translationWorker.stop(),webSimilarityWorker.stop()]);}};
+const backgroundCleanups=[];config={...config,registerBackgroundCleanup:fn=>backgroundCleanups.push(fn)};
 const api=createAPI(db,worker,config),root=resolve('dist');
 const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2','.txt':'text/plain; charset=utf-8','.xml':'application/xml; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.csv':'text/csv; charset=utf-8'};
 const publicPages=new Map();
@@ -94,6 +95,6 @@ const server=http.createServer(async(req,res)=>{
 server.requestTimeout=120000;server.headersTimeout=15000;
 monitoring.start();
 let closePromise;
-return {server,db,worker,monitoring,close(){return closePromise??=(async()=>{const connectionsClosed=new Promise(r=>server.close(r));await Promise.all([monitoring.stop(),worker.stop(),connectionsClosed]);db.close();})();}};
+return {server,db,worker,monitoring,close(){return closePromise??=(async()=>{const connectionsClosed=new Promise(r=>server.close(r));await Promise.all([monitoring.stop(),worker.stop(),...backgroundCleanups.map(fn=>fn()),connectionsClosed]);db.close();})();}};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){loadLocalEnvironment();const app=createServer();const port=Number(process.env.PORT||5173);app.server.listen(port,'127.0.0.1',()=>console.log(`PaperKnow: http://127.0.0.1:${port}/workspace.html`));for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>void app.close().then(()=>process.exit(0)));}
