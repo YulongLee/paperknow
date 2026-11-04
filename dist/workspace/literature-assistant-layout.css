@@ -1,0 +1,50 @@
+/* Conversation owns the height; optional tools share the compact composer. */
+#app .dashboard .lit-reader-studio .lit-reader-assistant{overflow:hidden}
+#app .dashboard .lit-reader-studio [data-compact-assistant=true]{min-height:0;overflow:hidden}
+#app .dashboard .lit-reader-studio [data-compact-assistant=true] .lit-ai-card{min-height:0;overflow:hidden}
+#app .dashboard .lit-reader-studio [data-compact-assistant=true] .lit-ai-head{padding:12px 16px;min-height:54px;border-bottom:1px solid var(--pk-border,#e5eaf3);gap:10px}
+[data-compact-assistant=true] .lit-ai-head>div{flex:1;min-width:0}
+[data-compact-assistant=true] .lit-ai-head>.lit-ai-source-badge{display:none}
+.lit-assistant-expand{display:inline-flex;align-items:center;gap:5px;padding:6px 8px;border:0;border-radius:7px;background:transparent;color:var(--pk-muted,#53647e);font-family:inherit;font-size:12px;line-height:1.5;cursor:pointer}
+.lit-assistant-expand:hover{color:var(--lit-accent,#315cdd);background:var(--lit-soft,#f0f4ff)}
+#app .dashboard .lit-reader-studio [data-compact-assistant=true] .lit-ai-results{min-height:0;padding:20px;flex:1 1 0;background:var(--pk-surface,#fff);scroll-padding:20px;scrollbar-gutter:stable}
+#app .dashboard .lit-reader-studio [data-compact-assistant=true] .lit-ai-results>header{display:none}
+#app .dashboard .lit-reader-studio [data-compact-assistant=true] .lit-ai-result-scope{display:none}
+.lit-assistant-composer{order:4;flex:0 0 auto;position:relative;padding:12px 14px 10px;border-top:1px solid var(--pk-border,#e4eaf3);background:var(--pk-surface,#fff)}
+#app .dashboard .lit-reader-studio .lit-assistant-composer>.lit-ai-inputs{padding:0;margin:0;border:0;background:transparent}
+#app .dashboard .lit-reader-studio .lit-assistant-composer .lit-ai-question{display:block;margin:0}
+#app .dashboard .lit-reader-studio .lit-assistant-composer .lit-ai-question textarea{display:block;min-height:48px;max-height:112px;height:48px;resize:none;transition:none;padding:10px 12px;font:14px/1.65 system-ui,-apple-system,"PingFang SC",sans-serif;color:var(--pk-text,#1d2b43);border:1px solid var(--pk-border,#dce4f0);border-radius:11px;background:var(--pk-surface-soft,#f8faff)}
+.lit-assistant-composer textarea:focus{outline:2px solid #8dabf5;outline-offset:1px}
+.lit-assistant-compose-footer{display:flex;align-items:center;gap:7px;min-height:39px;margin-top:8px}
+#app .dashboard .lit-reader-studio .lit-assistant-compose-footer>.lit-ai-actions{margin:0 0 0 auto;padding:0;display:flex;width:auto;flex:0 0 auto;border:0;background:none}
+#app .dashboard .lit-reader-studio .lit-assistant-compose-footer .lit-ai-actions>.btn{width:auto;min-height:34px;padding:7px 13px;gap:6px;font-size:12px;border-radius:8px}
+.lit-assistant-tools,.lit-assistant-compose-footer>.lit-assistant-range{position:static;margin:0;border:0;padding:0;font-size:12px;min-width:0}
+.lit-assistant-compose-footer>.lit-assistant-range[open]{padding:0;border:0}
+.lit-assistant-tools>summary,.lit-assistant-compose-footer>.lit-assistant-range>summary{display:flex;align-items:center;gap:5px;list-style:none;padding:6px 7px;border-radius:7px;color:var(--pk-muted,#53647e);font-size:12px;cursor:pointer;white-space:nowrap}
+.lit-assistant-tools>summary::-webkit-details-marker,.lit-assistant-compose-footer>.lit-assistant-range>summary::-webkit-details-marker{display:none}
+.lit-assistant-tools>summary:hover,.lit-assistant-compose-footer>.lit-assistant-range>summary:hover{background:var(--lit-soft,#eff4ff);color:var(--lit-accent,#315cdd)}
+.lit-assistant-compose-footer>.lit-assistant-range>summary>b{display:none}
+#app .dashboard .lit-reader-studio .lit-assistant-composer .lit-assistant-tools>.lit-ai-tabs{position:absolute;z-index:15;left:14px;bottom:calc(100% + 8px);display:grid;grid-template-columns:1fr;gap:3px;width:200px;max-height:280px;overflow:auto;margin:0;padding:7px;background:var(--pk-surface,#fff);border:1px solid var(--pk-border,#dce4f0);border-radius:12px;box-shadow:0 12px 32px #182c4c24}
+#app .dashboard .lit-reader-studio .lit-assistant-tools .lit-ai-tabs button{text-align:left;padding:9px 12px;font-size:13px;border-radius:7px;color:var(--pk-text,#263a56)}
+.lit-assistant-range-panel{position:absolute;z-index:15;left:14px;right:14px;bottom:calc(100% + 8px);padding:16px;max-height:260px;overflow:auto;border:1px solid var(--pk-border,#dce4f0);border-radius:12px;background:var(--pk-surface,#fff);box-shadow:0 12px 32px #182c4c24}
+.lit-assistant-range-panel>fieldset{margin:0!important;min-width:0;border:0;padding:0}
+.lit-assistant-range-panel legend{display:none}
+.lit-assistant-mode-hint{margin:0 0 4px!important;font-size:12px!important;line-height:1.7;color:var(--pk-muted,#53647e)}
+.lit-assistant-sr-only{position:absolute!important;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+#app .dashboard .lit-reader-studio [data-compact-assistant=true] .lit-ai-quick-questions{justify-content:center;margin:20px 0 0;gap:8px}
+#app .dashboard .lit-reader-studio [data-compact-assistant=true] .lit-ai-quick-questions button{font-size:12px;padding:8px 10px;border-radius:8px;min-height:35px}
+.lit-assistant-result-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 15px;margin-top:12px}
+#app .dashboard .lit-reader-studio .lit-assistant-result-toolbar>.lit-assistant-result-tools{display:flex;margin:0;gap:15px}
+.lit-assistant-result-toolbar>.lit-assistant-evidence,.lit-assistant-result-toolbar>.lit-assistant-more{margin:0;min-width:0;font-size:12px}
+.lit-assistant-result-toolbar>.lit-assistant-evidence>summary,.lit-assistant-result-toolbar>.lit-assistant-more>summary{padding:4px 0;cursor:pointer}
+.lit-assistant-result-toolbar>:is(.lit-assistant-evidence,.lit-assistant-more)[open]{flex-basis:100%;order:3}
+.lit-assistant-result-toolbar>.lit-assistant-more>div{padding:12px;border:1px solid var(--pk-border,#e2e8f2);border-radius:9px;background:var(--pk-surface-soft,#f8faff);max-height:min(280px,25dvh);overflow:auto}
+.lit-assistant-result-toolbar .lit-assistant-edit,.lit-assistant-result-toolbar .lit-assistant-export{margin:0 0 10px}
+.lit-assistant-result-toolbar .lit-assistant-export>div{display:flex;flex-wrap:wrap;gap:6px;padding-top:8px}
+.lit-assistant-result-toolbar .btn{font-size:11px!important;min-height:30px;padding:5px 9px}
+#app .dashboard .lit-reader-studio .lit-reader-notebook:not([open]){padding:7px 15px;min-height:30px}
+#app .dashboard .lit-reader-studio[data-assistant-expanded=true]:not([data-focus=true]):not([data-pdf-compare=true]) .lit-reader-columns{grid-template-columns:minmax(0,1fr)}
+#app .dashboard .lit-reader-studio[data-assistant-expanded=true]:not([data-focus=true]):not([data-pdf-compare=true]) .lit-reading-main,#app .dashboard .lit-reader-studio[data-assistant-expanded=true]:not([data-focus=true]):not([data-pdf-compare=true]) .lit-reader-divider{display:none}
+[data-assistant-expanded=true] .lit-ai-results>:is(.lit-ai-result,.lit-assistant-draft){max-width:900px;margin-left:auto;margin-right:auto}
+@media(max-width:700px){#app .dashboard .lit-reader-studio [data-compact-assistant=true] .lit-ai-head{padding:4px 12px;min-height:46px}#app .dashboard .lit-reader-studio [data-compact-assistant=true] .lit-ai-results{padding:15px}.lit-assistant-composer{padding:10px}.lit-assistant-compose-footer{gap:2px;min-height:35px;margin-top:6px}.lit-assistant-tools>summary,.lit-assistant-compose-footer>.lit-assistant-range>summary{font-size:11px;padding:6px 5px}.lit-assistant-range-panel{left:10px;right:10px}.lit-assistant-tools>.lit-ai-tabs{left:10px!important}.lit-assistant-result-toolbar{gap:5px 12px}#app .dashboard .lit-reader-studio .lit-reader-notebook:not([open]){padding:5px 12px;min-height:28px;font-size:11px}}
+@media(max-width:999px){.lit-reader-studio[data-assistant-expanded=true]:not([data-focus=true]):not([data-pdf-compare=true])>.lit-reader-topbar,.lit-reader-studio[data-assistant-expanded=true]:not([data-focus=true]):not([data-pdf-compare=true])>.lit-reader-mobile-views{display:none}#app .dashboard .lit-reader-studio[data-assistant-expanded=true]:not([data-focus=true]):not([data-pdf-compare=true]) .lit-reader-columns{height:calc(100dvh - 110px)}#app .dashboard .lit-reader-studio[data-assistant-expanded=true]:not([data-focus=true]):not([data-pdf-compare=true]) .lit-reader-assistant{display:flex;height:100%}}

@@ -28,6 +28,20 @@ function fixture(t,{papers=[paper()],fetcher}={}){
  return {w,$,ctx,calls,notices,jobs,scrolls,fetcher:fetchImpl,papers:()=>JSON.parse(localStorage.getItem(literatureKey)),input(selector,value){const node=$(selector);node.value=value;node.dispatchEvent(new w.Event('input',{bubbles:true}));}};
 }
 
+test('enlarging the conversation preserves an in-flight answer, its question and a single purchase',async t=>{
+ const f=fixture(t);let submitted=false,release;const gate=new Promise(resolve=>{release=resolve;});t.after(()=>release());
+ const ctx={...f.ctx,api:async(path,data)=>{if(path==='/tool-runs/jobs'){submitted=true;await gate;}return f.ctx.api(path,data);}};
+ mountLiteratureReader('saved-paper',ctx,'answer');f.input('[data-lit-ai-question]','What method does the original paper describe?');
+ f.$('[data-lit-ai-open]').click();await until(()=>submitted);
+ f.$('[data-lit-assistant-expand]').click();assert.equal(f.$('.lit-reader-studio').dataset.assistantExpanded,'true');
+ assert.equal(f.$('[data-lit-ai-question]').value,'What method does the original paper describe?');
+ f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(f.$('.lit-reader-studio').dataset.assistantExpanded,'false');
+ release();await until(()=>f.papers()[0].aiResults.length===1);
+ assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/quote').length,1);
+ f.$('[data-lit-assistant-expand]').click();f.$('[data-reader-layout-reset]').click();assert.equal(f.$('.lit-reader-studio').dataset.assistantExpanded,'false');
+ assert.equal(f.$('[data-lit-ai-question]').value,'What method does the original paper describe?');
+});
+
 test('the entrance combines search, upload and saved papers without another operation picker or automatic AI task',async t=>{
  const f=fixture(t),ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher});await ui.ready;
  assert.ok(f.$('#ld-query'));assert.ok(f.$('[data-desk-upload]'));assert.ok(f.$('[data-desk-cloud]'));assert.equal(f.$('.lit-feature-grid'),null);assert.equal(f.$('[data-reading-workflow]'),null);assert.equal(f.$('.lit-desk-file a').getAttribute('href'),'#literature/saved-paper?tab=answer');assert.equal(f.$('.lit-desk-file img'),null);assert.equal(f.calls.filter(c=>c.url?.includes('/literature/search')||c.path).length,0);
