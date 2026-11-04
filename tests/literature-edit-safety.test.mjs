@@ -93,3 +93,9 @@ test('short reading ranges are disabled before a quote while short translation r
  f.$('[data-lit-ai-operation="translate"]').click();assert.equal(f.$('[data-lit-ai-open]').disabled,false);
  f.$('[data-lit-ai-operation="read"]').click();assert.equal(f.$('[data-lit-ai-open]').disabled,true);f.input('[data-lit-ai-end]','2');assert.equal(f.$('[data-lit-ai-open]').disabled,false);assert.equal(f.calls.length,0);
 });
+
+test('a citation clicked while viewing notes restores the original PDF pane before locating evidence',async t=>{
+ const f=setup(t),p=seed(f);Object.assign(p,{fileName:'source.pdf',originalFileId:'owned-pdf',originalOwnerId:'alice'});localStorage.setItem(literatureKey,JSON.stringify([p]));mountLiteratureReader(p.id,f.ctx,'notes');
+ assert.equal(f.$('#reader-pdf-pane').hidden,true);assert.equal(f.$('#reader-notes-pane').hidden,false);f.$('[data-lit-source]').click();await new Promise(r=>setImmediate(r));
+ assert.equal(f.$('#reader-pdf-pane').hidden,false);assert.equal(f.$('#reader-notes-pane').hidden,true);assert.equal(f.$('[data-read-tab="pdf"]').classList.contains('active'),true);
+});
