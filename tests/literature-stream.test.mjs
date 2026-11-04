@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import http from'node:http';import{randomUUID}from'node:crypto';import{JSDOM}from'jsdom';
 import{database}from'../backend/database.mjs';import{createSession}from'../backend/auth.mjs';import{createAPI}from'../backend/api.mjs';import{startToolRunWorker}from'../backend/tool-run-worker.mjs';import{createReadingWireObserver}from'../backend/literature-execution.mjs';import{streamLiteratureAnswer}from'../dist/workspace/literature-answer-stream.mjs';import{mountLiteratureAi}from'../dist/workspace/literature-ai.mjs';
+import{mountToolJobPanel}from'../dist/workspace/tool-job-panel.mjs';
 const source='This authorized synthetic source reports a value of 27.3 in Table 2.';
 const settings={enabled:true,engine:'claude-agent-sdk',baseURL:'https://fixture.example/anthropic',model:'stream-fixture',apiKey:'not-a-real-key',version:'stream-fixture-v1',maxTurns:4,maxOutputTokens:2048,maxCostUsd:.1,timeoutMs:10000};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));const until=async check=>{for(let i=0;i<200;i++){if(check())return;await sleep(5);}assert.ok(check(),'Expected stream state');};
@@ -54,4 +55,22 @@ test('closing a response stream does not cancel generation, and a revoked sessio
  let release;const gate=new Promise(r=>{release=r;});t.after(()=>release());const f=await backend(t,async args=>{args.onText('A permitted partial answer for the current owner.');await gate;return output(args.task);});const work=f.worker.tick();
  const first=await f.request('/tool-runs/jobs/'+f.id+'/events');assert.match(first.headers.get('content-type'),/text\/event-stream/);assert.equal(first.headers.get('x-accel-buffering'),'no');await first.body.cancel();assert.equal(f.db.prepare('SELECT status FROM tool_runs WHERE id=?').get(f.id).status,'running');
  const text=[],waiting=streamLiteratureAnswer({id:f.id,ownerId:'alice',fetcher:(path,o)=>fetch(f.base+path,{...o,headers:{...o.headers,Cookie:f.alice}}),onText:t=>text.push(t)});await until(()=>text.length>0);f.db.prepare('DELETE FROM sessions WHERE user_id=?').run('alice');await assert.rejects(waiting,/登录状态/);assert.equal(f.db.prepare('SELECT status FROM tool_runs WHERE id=?').get(f.id).status,'running');release();await work;
+});
+
+test('a transient identity heartbeat failure recovers the existing answer without another generation or charge',async t=>{
+ const dom=new JSDOM('<main class="dashboard"><section id="job"></section></main>',{url:'https://paperknow.test/workspace.html',pretendToBeVisual:true}),w=dom.window;globalThis.document=w.document;
+ let guard,controller,failAuth=false,posted=0,quotes=0,applied=0;const partial=[],interval=w.setInterval.bind(w),job={id:'heartbeat-job',kind:'literature',operation:'answer',status:'running',output:null,totalUnits:1,completedUnits:0};
+ w.setInterval=(fn,ms)=>{if(ms===5000)guard=fn;return interval(fn,ms);};
+ w.fetch=async(_path,options)=>new Response(new ReadableStream({start(c){controller=c;options.signal.addEventListener('abort',()=>c.error(Object.assign(Error('Aborted'),{name:'AbortError'})),{once:true});}}),{headers:{'Content-Type':'text/event-stream'}});
+ const snapshot={title:'Synthetic paper',question:'What value?',materials:[{id:'p1',name:'Paper',text:source}],context:{answerEvidencePolicy:'grounded-v2'}};
+ const panel=mountToolJobPanel({container:w.document.querySelector('#job'),kind:'literature',operation:'answer',compactReading:true,autoApply:true,getSnapshot:()=>snapshot,onPartial:text=>partial.push(text),onApply:()=>{applied++;},ctx:{api:async path=>{
+  if(path==='/auth/me'){if(failAuth){failAuth=false;throw Error('Temporary connection failure');}return{user:{id:'alice'}};}
+  if(path==='/tool-runs/reuse')return{item:null};if(path==='/tool-runs/capabilities')return{ready:true};
+  if(path==='/tool-runs/quote'){quotes++;return{type:'agent',source:'credits',title:'Reading',token:'fixture',creditCost:10,expiresAt:new Date(Date.now()+60000).toISOString()};}
+  if(path==='/tool-runs/jobs'){posted++;return{item:structuredClone(job)};}if(path==='/tool-runs/jobs/heartbeat-job')return{item:structuredClone(job)};throw Error(path);
+ }}});t.after(()=>{panel.dispose();w.close();});
+ await panel.generate();await until(()=>!!guard&&!!controller);controller.enqueue(event('answer',{text:'The first approved part.'}));await until(()=>partial.includes('The first approved part.'));
+ failAuth=true;guard();job.status='completed';job.completedUnits=1;job.output={text:'The final approved answer.',sourceIds:['p1'],citations:[{sourceId:'p1',quote:source}]};
+ const deadline=Date.now()+4000;while(!applied&&Date.now()<deadline)await sleep(10);
+ assert.equal(applied,1);assert.equal(posted,1);assert.equal(quotes,1);assert.equal(panel.hasWork(),false);
 });
