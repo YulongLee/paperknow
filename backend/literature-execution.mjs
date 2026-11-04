@@ -67,3 +67,13 @@ export function createReadingPreviewObserver(onText){
   if(e.type==='content_block_stop')blocks.delete(e.index);
  };
 }
+
+// Observe normalized upstream packets before SDK delivery: some SDK versions
+// aggregate tool arguments before yielding their assistant event. This does not
+// publish anything; the preview publisher still moderates every visible snapshot.
+export function createReadingWireObserver(contentType,onText){
+ const observer=createReadingPreviewObserver(onText),decoder=new TextDecoder();let buffer='',disabled=false;
+ const streaming=/text\/event-stream/i.test(contentType),json=/application\/(?:[\w.+-]*\+)?json/i.test(contentType);
+ function consume(){let match;while((match=/\r?\n\r?\n/.exec(buffer))){const packet=buffer.slice(0,match.index);buffer=buffer.slice(match.index+match[0].length);const data=packet.split(/\r?\n/).filter(line=>line.startsWith('data:')).map(line=>line.slice(5).replace(/^ /,'')).join('\n');if(!data||data==='[DONE]')continue;try{observer({type:'stream_event',event:JSON.parse(data)});}catch{/* Incomplete/invalid preview never changes execution or accounting. */}}}
+ return{write(bytes){if(disabled||!streaming&&!json)return;buffer+=decoder.decode(bytes,{stream:true});if(buffer.length>2000000){disabled=true;buffer='';return;}if(streaming)consume();},end(){if(disabled)return;buffer+=decoder.decode();if(streaming)consume();else if(json)try{observer({type:'assistant',message:JSON.parse(buffer)});}catch{}buffer='';}};
+}

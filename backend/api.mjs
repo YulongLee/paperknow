@@ -18,6 +18,8 @@ import {createThesisService} from './thesis-service.mjs';
 import {createThesisDocumentRenderer,convertThesisDocumentPayload} from './thesis-document-renderer.mjs';
 import {createThesisOutlineService} from './thesis-outline-service.mjs';
 import {createQuestionnaireService} from './questionnaire-service.mjs';
+import {createLiteratureStreamService} from './literature-stream.mjs';
+import {serializeToolRun} from './tool-run-service.mjs';
 import {createToolRunService} from './tool-run-service.mjs';
 import {createWritingService} from './writing-service.mjs';
 import {createThesisMethodService} from './thesis-method-service.mjs';
@@ -51,6 +53,8 @@ const thesisOutlines=createThesisOutlineService(db,{...config,billing,modelBudge
 const thesisMethods=createThesisMethodService(db,{...config,billing,modelBudget,cancelThesisMethod:id=>worker.cancel(id)});
 const writing=createWritingService(db,{...config,billing,modelBudget,cancelWriting:id=>worker.cancel(id)});
 const tools=createToolRunService(db,{...config,billing,modelBudget,cancelToolRun:id=>worker.cancel(id)});
+const literatureStream=createLiteratureStreamService(db,{getUser:req=>sessionUser(db,req,config.ownerEmail),serialize:serializeToolRun});
+config.registerBackgroundCleanup?.(()=>literatureStream.close());
 const questionnaires=createQuestionnaireService(db,config);
 const payments=createPaymentService(db,{...config,billing});
 const workspace=createWorkspaceService(db,{billing});
@@ -166,6 +170,8 @@ if(path==='/api/billing/rules'&&method==='GET'){send(200,billing.rules());return
 if(path==='/api/billing/quote'&&method==='POST'){rate(req,60);const input=await body(req);if(Object.hasOwn(input,'context'))fail(400,'请从对应功能获取费用');send(200,billing.quote(user,input));return;}
 if(path==='/api/account/export'&&method==='GET'){const t=Date.now();for(const [id,item] of archiveAttempts)if(item.until<=t)archiveAttempts.delete(id);const item=archiveAttempts.get(user.id)||{count:0,until:t+600000};if(item.count>=5)fail(429,'账户资料导出较频繁，请十分钟后再试');item.count++;archiveAttempts.set(user.id,item);}
 if(path==='/api/questionnaires'||path.startsWith('/api/questionnaires/')){if(method==='POST')rate(req,300);const response=await questionnaires.handle({path,method,user,query:requestURL.searchParams,readBody:()=>body(req),clientKey:clientAddress(req,config)});if(response?.body!==undefined){res.writeHead(response.status||200,{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...response.headers});res.end(response.body);return;}if(response){send(response.status,response.value);return;}fail(404,'问卷接口不存在');}
+const readingEvents=path.match(/^\/api\/tool-runs\/jobs\/([A-Za-z0-9_-]{1,120})\/events$/);
+if(readingEvents&&method==='GET'){rate(req,120);literatureStream(req,res,user,readingEvents[1],value=>publicAIResponse(path,value,{authorizedAdmin:false,identityValues}));return;}
 if(path==='/api/tool-runs'||path.startsWith('/api/tool-runs/')){if(method==='POST')rate(req,60);const response=await tools.handle({path,method,user,readBody:()=>body(req)});if(response){send(response.status,response.value);return;}fail(404,'科研工具接口不存在');}
 if(path==='/api/writing'||path.startsWith('/api/writing/')){if(method==='POST')rate(req,60);const response=await writing.handle({path,method,user,readBody:()=>body(req)});if(response){send(response.status,response.value);return;}fail(404,'写作接口不存在');}
 if(path==='/api/theses'||path.startsWith('/api/theses/')){if(method==='POST')rate(req,60);const response=await thesisMethods.handle({path,method,user,readBody:()=>body(req)})||await thesisOutlines.handle({path,method,user,readBody:()=>body(req)})||await theses.handle({path,method,user,readBody:()=>body(req)});if(response){if(response.body){res.writeHead(response.status||200,{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...response.headers});res.end(response.body);}else send(response.status,response.value);return;}fail(404,'论文接口不存在');}
