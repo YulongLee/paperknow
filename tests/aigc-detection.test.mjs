@@ -90,12 +90,15 @@ test('unknown segment yields no whole-document conclusion and mixed known labels
  const known=fixture(t,{client:{async detect(content){return{label:content[0]==='A'?'aigc':'ugc',confidence:content[0]==='A'?99:98};}}});
  const mixed=(await known.completed({text:'A'.repeat(5000)+'B'.repeat(100)})).value;assert.equal(mixed.verdict,'mixed');assert.equal(mixed.conclusive,true);assert.deepEqual(mixed.parts.map(row=>row.confidence),[99,98]);
  const unknown=fixture(t,{client:{async detect(){return{label:'undetermined',confidence:null};}}});const item=(await unknown.completed()).value;assert.equal(item.status,'failed');assert.equal(item.verdict,'undetermined');assert.equal(item.conclusive,false);assert.equal(item.parts[0].confidence,null);assert.equal(item.completedParts,1);assert.match(item.error,/未取得有效鉴别结论/);
+ const heading=fixture(t,{client:{async detect(content){return content.startsWith('标题')?{label:'undetermined',confidence:null}:{label:'ugc',confidence:96};}}});
+ const partial=(await heading.completed({text:'标题\n'+ '合成测试正文。'.repeat(80)})).value;
+ assert.equal(partial.status,'completed');assert.equal(partial.conclusive,false);assert.equal(partial.verdict,'undetermined');assert.deepEqual(partial.parts.map(part=>part.label),['undetermined','ugc']);assert.equal(partial.completedParts,2);
 });
 
 test('long-text budgets preflight entire task before any call and survive restart/failure',async t=>{
  const f=fixture(t,{config:{aigcDetectionGlobalDailyCalls:1}});await assert.rejects(f.submit({text:'x'.repeat(5001)}),{status:429});assert.equal(f.calls.length,0);assert.equal(f.db.prepare('SELECT count(*) n FROM aigc_detections').get().n,0);
  const units=fixture(t,{config:{aigcDetectionGlobalDailyBillingUnits:1}});await assert.rejects(units.submit({text:'x'.repeat(1001)}),{status:429});assert.equal(units.calls.length,0);
- const user=fixture(t,{config:{aigcDetectionUserDailyLimit:1},client:{async detect(){throw Error('unit-aigc-secret');}}});const failed=(await user.completed()).value;assert.equal(failed.status,'failed');assert.doesNotMatch(failed.error,/unit-aigc|secret/);const restart=fixture(t,{db:user.db,config:{aigcDetectionUserDailyLimit:1},client:{detect(){assert.fail('never replay');}}});assert.equal((await restart.submit()).value.id,failed.id);await assert.rejects(restart.submit({text:'new text'}),{status:429});
+ const user=fixture(t,{config:{aigcDetectionUserDailyLimit:1},client:{async detect(){throw Error('unit-aigc-secret');}}});const failed=(await user.completed()).value;assert.equal(failed.status,'failed');assert.doesNotMatch(failed.error,/unit-aigc|secret/);const restart=fixture(t,{db:user.db,config:{aigcDetectionUserDailyLimit:1},client:{detect(){assert.fail('never replay');}}});const key=user.db.prepare('SELECT idempotency_key FROM aigc_detection_requests WHERE detection_id=?').get(failed.id).idempotency_key;assert.equal((await restart.submit({idempotencyKey:key})).value.id,failed.id);await assert.rejects(restart.submit({text:'new text'}),{status:429});
 });
 
 test('parallel submissions coalesce, per-owner/global concurrency is bounded and partial failure stops later calls',async t=>{
@@ -105,7 +108,7 @@ test('parallel submissions coalesce, per-owner/global concurrency is bounded and
 });
 
 test('stale interrupted rows fail safely and no GET or new key resubmits plaintext',async t=>{
- const f=fixture(t),done=(await f.completed()).value;f.db.prepare("UPDATE aigc_detections SET status='running',updated_at='2000-01-01T00:00:00.000Z' WHERE id=?").run(done.id);const restored=(await f.get(done.id)).value;assert.equal(restored.status,'failed');assert.equal((await f.submit()).value.id,done.id);assert.equal(f.calls.length,1);
+ const f=fixture(t),done=(await f.completed()).value;const key=f.db.prepare('SELECT idempotency_key FROM aigc_detection_requests WHERE detection_id=?').get(done.id).idempotency_key;f.db.prepare("UPDATE aigc_detections SET status='running',updated_at='2000-01-01T00:00:00.000Z' WHERE id=?").run(done.id);const restored=(await f.get(done.id)).value;assert.equal(restored.status,'failed');assert.equal((await f.submit({idempotencyKey:key})).value.id,done.id);assert.equal(f.calls.length,1);
 });
 
 test('stale DB rows do not release actual SDK slots or apply late verdicts to failed work',async t=>{

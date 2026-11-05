@@ -8,6 +8,7 @@ import {moderateTextOrFail} from './moderated-agent.mjs';
 import {createBillingService} from './billing-service.mjs';
 import {createWebSimilaritySearch} from './web-similarity-search.mjs';
 import {createWebSourceReader} from './web-similarity-source.mjs';
+import {generateWebSimilarityAdvice,verifiedAdviceInputs} from './web-similarity-advice.mjs';
 import {initializeWebSimilaritySchema,webSimilarityReady,readWebSimilarityArtifact,saveWebSimilarityArtifact,removeWebSimilarityArtifacts} from './web-similarity-service.mjs';
 import {includedDetectionHeld,detectionWasFunded,detectionPricing,detectionTrialSearchCount} from './detection-entitlements.mjs';
 import {webSimilarityLimits,webSimilarityVersion,planWebQueries,webSimilarityDay,webSimilarityFileName} from './web-similarity-model.mjs';
@@ -32,7 +33,9 @@ export function startWebSimilarityWorker(db,config={}){
    return;
   }
   busy=true;const controller=new AbortController(),signal=controller.signal;controllers.set(job.id,controller);
-  const timer=setTimeout(()=>controller.abort(),300000);timer.unref?.();let attempted=0;const usages=[];
+  // Twelve bounded searches followed by source reads can exceed the old
+  // five-minute ceiling even though each individual call remains bounded.
+  const timer=setTimeout(()=>controller.abort(),480000);timer.unref?.();let attempted=0,adviceUsage=null;const usages=[];
   try{
    if(!db.prepare("UPDATE jobs SET status='running',stage='reading_input',attempt=attempt+1,updated_at=? WHERE id=? AND status='queued'").run(clock(),job.id).changes)return;
    if(detectionPricing(config.billing,'detection-similarity').pointsCharged&&!includedDetectionHeld(db,job.user_id,job.id,'detection-similarity'))throw safeError('本次检测费用预占已失效；请查看原任务。');
@@ -62,8 +65,10 @@ export function startWebSimilarityWorker(db,config={}){
     catch(error){if(signal.aborted||!active(job.id))return;searches[i]={paragraphId:query.paragraphId,searched:false,sourceCount:0};}
    });
    if(!active(job.id)||signal.aborted)return;
-   // Stable query order prevents response timing from choosing the report's evidence.
-   for(const result of searchResults)for(const source of (result||[]).slice(0,10)){
+   // Give each sampled passage a chance to contribute sources before taking
+   // additional results from the same query, independent of response timing.
+   for(let rank=0;rank<10;rank++)for(const result of searchResults){
+    const source=result?.[rank];if(!source)continue;
     try{const u=new URL(source.url);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)continue;u.hash='';if(!candidates.has(u.href))candidates.set(u.href,{title:String(source.title||'公开网页').slice(0,300),url:u.href});}catch{}
    }
    coverage.candidateSources=candidates.size;saveCoverage(job.id,coverage);
@@ -88,6 +93,17 @@ export function startWebSimilarityWorker(db,config={}){
    const report=await (config.webSimilarityCompute||compute)('webSimilarity',{text:payload.text,title:payload.title,sources,id:job.id},signal);
    if(!active(job.id)||signal.aborted)return;
    report.id=job.id;report.createdAt=clock();report.mode='web';report.scope='public-web-sources';report.algorithm=webSimilarityVersion;report.semanticStatus='not_calculated';
+   if(config.webSimilarityAdviceEnabled===true&&report.similarChars>0){
+    try{
+     const generated=await (config.webSimilarityAdvice||generateWebSimilarityAdvice)(report,config,{signal});
+     if(Array.isArray(generated)){
+      const allowed=new Set(verifiedAdviceInputs(report).map(item=>item.paragraphId)),seen=new Set();
+      report.advice=generated.filter(item=>allowed.has(item?.paragraphId)&&!seen.has(item.paragraphId)&&typeof item.advice==='string'&&item.advice.trim()&&Array.from(item.advice).length<=240&&!/[\x00-\x1f\x7f<>]|https?:\/\/|www\./i.test(item.advice)&&(seen.add(item.paragraphId),true)).slice(0,5).map(item=>({paragraphId:item.paragraphId,advice:item.advice.trim()}));
+      adviceUsage=generated.usage||null;
+     }
+    }catch{/* Suggestions are optional and must never prevent a valid report. */}
+   }
+   if(!active(job.id)||signal.aborted)return;
    report.citationPolicy='未自动扣除引用；请人工核对规范引用，避免将有引用的文字直接视为不当使用。';
    report.web={...coverage,querySamples:plan.queries,searches,sources:sourceStates,limitations:[
     `本次从 ${plan.totalParagraphs} 个正文段落中选取 ${plan.sampledParagraphs} 段、${plan.queries.length} 个片段进行检索；不是逐句穷尽检索。`,
@@ -117,10 +133,13 @@ export function startWebSimilarityWorker(db,config={}){
    clearTimeout(timer);
    tx(()=>{if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status==='running')db.prepare("UPDATE jobs SET status='failed',stage='interrupted',error='本次检测被中断，未生成完整报告，预占权益将释放。',updated_at=? WHERE id=?").run(clock(),job.id);if(db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status!=='completed')billing.release(job.id);reconcileCombinedParents(db,billing,job.id);});
    if(attempted){
-    db.prepare('UPDATE web_similarity_runs SET usage=?,updated_at=? WHERE id=?').run(JSON.stringify(usages),clock(),job.id);
+    db.prepare('UPDATE web_similarity_runs SET usage=?,updated_at=? WHERE id=?').run(JSON.stringify(adviceUsage?[...usages,{kind:'advice',...adviceUsage}]:usages),clock(),job.id);
     const tokens=key=>usages.length===attempted&&usages.every(u=>Number.isSafeInteger(u?.[key])&&u[key]>=0)?usages.reduce((n,u)=>n+u[key],0):null;
     db.prepare('INSERT OR IGNORE INTO usage VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),job.user_id,job.id,'configured_search_endpoint',config.webSimilarityModel||'qwen3.8-flash',tokens('inputTokens'),tokens('outputTokens'),0,clock());
    }
+   // usage.job_id is unique; record the extra model invocation as its own
+   // deterministic row so admin totals include it without a second charge.
+   if(adviceUsage?.attempted){try{db.prepare('INSERT OR IGNORE INTO usage VALUES(?,?,?,?,?,?,?,?,?)').run('similarity-advice:'+job.id,job.user_id,null,'similarity_advice',adviceUsage.model||'configured',adviceUsage.inputTokens??null,adviceUsage.outputTokens??null,0,clock());}catch{/* Cleanup must continue even if usage persistence fails. */}}
    const completed=db.prepare('SELECT status FROM jobs WHERE id=?').get(job.id)?.status==='completed';
    try{await removeWebSimilarityArtifacts(db,config,job,{inputOnly:completed});}catch{/* owned cleanup metadata remains for the next maintenance tick */}
    controllers.delete(job.id);busy=false;

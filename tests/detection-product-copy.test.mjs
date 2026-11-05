@@ -36,6 +36,34 @@ test('user text containing technical terms remains verbatim in original and sour
  }finally{dom.window.close();}
 });
 
+test('AI advice is escaped and shown only alongside a verified matching paragraph',()=>{
+ const text='本研究整理真实教学记录，分析反馈资料与教学目标之间的关系，并对研究结论提供实际材料支持。';
+ const original=text+'\n\n此处是没有相似来源的独立原创内容，需要保持正常展示，不显示任何修改建议。';
+ const source={id:'source',title:'实际来源',text,kind:'web',url:'https://example.org/source'};
+ const report={...analyzeDocument(parseDocument(original),[source]),mode:'web',advice:[{paragraphId:'p-1',advice:'<script>不应执行</script> 核对真实引用'},{paragraphId:'p-2',advice:'不应出现在未匹配段落'}]};
+ const dom=new JSDOM(reportHtml(report));try{
+  const rows=dom.window.document.querySelectorAll('.report-review-row');
+  assert.match(rows[0].querySelector('.report-review-detail').textContent,/核对真实引用/);
+  assert.equal(rows[0].querySelector('.report-review-detail script'),null);
+  assert.equal(rows[1].querySelector('.report-review-detail').textContent,'');
+ }finally{dom.window.close();}
+});
+
+test('report states partial source discovery and limits the percentage to compared material',()=>{
+ const text='本研究整理真实教学记录，分析反馈资料与教学目标之间的关系，并对研究结论提供实际材料支持。';
+ const source={id:'source',title:'公开材料',text,kind:'web',url:'https://example.org/source'};
+ const base={...analyzeDocument(parseDocument(text),[source]),mode:'web'};
+ const partial=new JSDOM(reportHtml({...base,web:{sampledParagraphs:2,totalParagraphs:8,searchComplete:true}}));
+ const full=new JSDOM(reportHtml({...base,web:{sampledParagraphs:8,totalParagraphs:8,searchComplete:true}}));
+ const old=new JSDOM(reportHtml(base));
+ try{
+  assert.match(partial.window.document.body.textContent,/本次资料相似占比/);
+  assert.match(partial.window.document.body.textContent,/根据正文部分内容查找资料/);
+  assert.match(full.window.document.body.textContent,/根据正文部分内容查找资料/);
+  assert.doesNotMatch(old.window.document.body.textContent,/根据正文部分内容查找资料/);
+ }finally{partial.window.close();full.window.close();old.window.close();}
+});
+
 test('historical result suffixes and diagnostic task errors use product copy without changing stored records',()=>{
  const row={id:'r1',type:'web_similarity',title:'联网查重研究 · 联网来源查重',created_at:'2026-10-27T00:00:00Z',error:'候选网页未取得，未继续联网检索。'},before=JSON.stringify(row);
  assert.equal(workspaceResultTitle(row),'联网查重研究 · 论文重复率检测');

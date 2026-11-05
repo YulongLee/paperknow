@@ -58,15 +58,15 @@ test('AIGC bundles hold and settle one use per new text; cached submissions and 
 });
 
 test('failed and cancelled AIGC work releases its exact allowance and late upstream verdicts cannot settle it',async t=>{
- const f=fixture(t,{cloud:async()=>{throw Error('private upstream failure');}}),order=f.grant('detection-aigc'),service=f.aigc(),first=await f.submitAigc(service);await service.waitForIdle();assert.equal(f.used(order).used,0);assert.equal(f.used(order).held,0);assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(first.value.id).status,'released');assert.equal((await f.submitAigc(service)).value.id,first.value.id);
+ const f=fixture(t,{cloud:async()=>{throw Error('private upstream failure');}}),order=f.grant('detection-aigc'),service=f.aigc(),key=randomUUID(),first=await f.submitAigc(service,{idempotencyKey:key});await service.waitForIdle();assert.equal(f.used(order).used,0);assert.equal(f.used(order).held,0);assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(first.value.id).status,'released');assert.equal((await f.submitAigc(service,{idempotencyKey:key})).value.id,first.value.id);
  const started=deferred(),answer=deferred(),g=fixture(t,{cloud:async()=>{started.resolve();await answer.promise;return{label:'aigc',confidence:96};}}),grant=g.grant('detection-aigc'),pending=g.aigc(),created=await g.submitAigc(pending);await started.promise;
  await pending.handle({path:'/api/aigc-detections/'+created.value.id+'/cancel',method:'POST',user:g.user,readBody:async()=>({expectedUserId:g.user.id})});assert.equal(g.used(grant).held,0);assert.equal(g.db.prepare('SELECT status FROM jobs WHERE id=?').get(created.value.id).status,'cancelled');answer.resolve();await pending.waitForIdle();assert.equal(g.used(grant).used,0);assert.equal(g.db.prepare('SELECT status FROM aigc_detections WHERE id=?').get(created.value.id).status,'failed');
 });
 
 test('AIGC restart releases metered work without replay, and the generic worker cannot claim its mirror',async t=>{
- const started=deferred(),answer=deferred(),f=fixture(t,{cloud:async()=>{started.resolve();await answer.promise;return{label:'ugc',confidence:95};}}),order=f.grant('detection-aigc'),service=f.aigc(),first=await f.submitAigc(service);await started.promise;
+ const started=deferred(),answer=deferred(),f=fixture(t,{cloud:async()=>{started.resolve();await answer.promise;return{label:'ugc',confidence:95};}}),order=f.grant('detection-aigc'),service=f.aigc(),key=randomUUID(),first=await f.submitAigc(service,{idempotencyKey:key});await started.promise;
  const legacy=startWorker(f.db,f.config);await legacy.tick();await legacy.stop();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.value.id).status,'running');assert.equal(f.used(order).held,1);
- const restored=f.aigc();assert.equal(f.used(order).held,0);assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.value.id).status,'failed');assert.equal((await f.submitAigc(restored)).value.id,first.value.id);answer.resolve();await service.waitForIdle();assert.equal(f.used(order).used,0);assert.equal(f.calls.length,1);
+ const restored=f.aigc();assert.equal(f.used(order).held,0);assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.value.id).status,'failed');assert.equal((await f.submitAigc(restored,{idempotencyKey:key})).value.id,first.value.id);answer.resolve();await service.waitForIdle();assert.equal(f.used(order).used,0);assert.equal(f.calls.length,1);
 });
 
 test('web source comparison settles only after a complete private report and remains idempotent',async t=>{

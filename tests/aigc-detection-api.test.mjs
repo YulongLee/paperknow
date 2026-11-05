@@ -33,8 +33,8 @@ test('HTTP creates asynchronous owner-scoped record, supports reload history and
  assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);
 });
 
-test('ambiguous provider failure becomes safe failed record; identical text is never automatically repeated',async t=>{
- let calls=0;const f=await fixture(t,{client:{async detect(){calls++;throw new Error('AccessKey unit-aigc-secret private server stack');}}});const submitted=await f.submit(),failed=await f.wait(submitted.value.id);assert.equal(failed.value.status,'failed');assert.equal(failed.value.conclusive,false);assert.equal(failed.value.verdict,'undetermined');assert.doesNotMatch(JSON.stringify(failed.value),/AccessKey|unit-aigc|private server|stack/);assert.equal((await f.submit()).value.id,failed.value.id);assert.equal(calls,1);
+test('failed tasks can be explicitly retried with a new key, while repeating the old key never duplicates a call',async t=>{
+ let calls=0;const f=await fixture(t,{client:{async detect(){calls++;if(calls===1)throw new Error('AccessKey unit-aigc-secret private server stack');return{label:'ugc',confidence:95};}}});const key=crypto.randomUUID(),submitted=await f.submit({idempotencyKey:key}),failed=await f.wait(submitted.value.id);assert.equal(failed.value.status,'failed');assert.equal(failed.value.conclusive,false);assert.equal(failed.value.verdict,'undetermined');assert.doesNotMatch(JSON.stringify(failed.value),/AccessKey|unit-aigc|private server|stack/);assert.equal((await f.submit({idempotencyKey:key})).value.id,failed.value.id);assert.equal(calls,1);const next=await f.submit();assert.notEqual(next.value.id,failed.value.id);assert.equal((await f.wait(next.value.id)).value.status,'completed');assert.equal(calls,2);assert.equal((await f.submit({idempotencyKey:key})).value.id,failed.value.id);
 });
 
 test('submitted paper and its standard AI report survive reload in private OSS without another detector call',async t=>{

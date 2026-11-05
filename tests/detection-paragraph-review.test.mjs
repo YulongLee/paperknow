@@ -48,7 +48,7 @@ test('old chunk verdicts remain range references and cannot become independent p
 });
 test('inconclusive paragraph stops new paid calls, joins started calls and never concludes success',async t=>{
  let resolveSecond;const f=fixture(t,content=>content.startsWith('A')?Promise.resolve({label:'undetermined',confidence:null}):new Promise(resolve=>resolveSecond=resolve));
- const pending=await f.submit('A正文\nB正文\nC正文\nD正文');await tick();assert.equal(f.calls.length,2);assert.ok(resolveSecond);resolveSecond({label:'ugc',confidence:94});await f.service.waitForIdle();assert.equal(f.calls.length,2);const row=(await f.get(pending.value.id)).value;assert.equal(row.status,'failed');assert.equal(row.conclusive,false);assert.equal(row.completedParts,2);
+ const pending=await f.submit('A'.repeat(100)+'\nB正文\nC正文\nD正文');await tick();assert.equal(f.calls.length,2);assert.ok(resolveSecond);resolveSecond({label:'ugc',confidence:94});await f.service.waitForIdle();assert.equal(f.calls.length,2);const row=(await f.get(pending.value.id)).value;assert.equal(row.status,'failed');assert.equal(row.conclusive,false);assert.equal(row.completedParts,2);
 });
 test('two simultaneous jobs share one detector concurrency bound and cancellation prevents queued calls',async t=>{
  let active=0,peak=0;const pending=[];const f=fixture(t,()=>{active++;peak=Math.max(peak,active);return new Promise(resolve=>pending.push(()=>{active--;resolve({label:'ugc',confidence:92});}));});
@@ -62,7 +62,7 @@ test('source review keeps full original on the left and all matching identities 
  const report=analyzeDocument(parseDocument(text,'原文'),[source]);const before=JSON.stringify(report),dom=new JSDOM(reportHtml(report)),doc=dom.window.document,row=doc.querySelector('.report-review-row');
  assert.equal(row.querySelector('.report-review-original .report-text').textContent,text);assert.match(row.querySelector('.report-review-detail').textContent,/实际研究材料/);assert.doesNotMatch([...row.querySelectorAll('.report-review-original mark')].map(n=>n.textContent).join(''),/末尾原创说明/);assert.equal(row.querySelectorAll('.report-source-match').length,1);assert.match(row.querySelector('.report-source-excerpt').textContent,/正文中有真实文字匹配/);assert.equal(JSON.stringify(report),before);dom.window.close();
 });
-test('candidate queries cover six distinct paragraphs before repeating a paragraph',()=>{
+test('candidate queries cover distinct paragraphs before repeating a paragraph',()=>{
  const parsed=parseDocument(Array.from({length:8},(_,i)=>String.fromCharCode(65+i).repeat(250)).join('\n\n'));
- const plan=publicWebQueryPlan(parsed);assert.equal(plan.queries.length,6);assert.equal(plan.sampledParagraphs,6);assert.equal(new Set(plan.queries.map(q=>q.paragraphId)).size,6);assert.deepEqual(publicWebQueryPlan(parsed,0).queries,[]);
+ const plan=publicWebQueryPlan(parsed);assert.equal(plan.queries.length,8);assert.equal(plan.sampledParagraphs,8);assert.equal(new Set(plan.queries.map(q=>q.paragraphId)).size,8);assert.deepEqual(publicWebQueryPlan(parsed,0).queries,[]);
 });
