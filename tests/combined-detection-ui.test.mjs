@@ -44,3 +44,23 @@ test('restored joint partial results offer both reports and explain the fee was 
 test('a failed child shows its safe reason and keeps the available report accessible',async t=>{
  const item={id:'joint-1',status:'failed',error:'本次联合检测未扣费。',children:[{id:'web-1',kind:'similarity',status:'completed'},{id:'ai-1',kind:'aigc',status:'failed',error:'检测服务暂不可用。'}]};const f=await setup(t,{recent:item}),result=f.root.querySelector('[data-joint-result]');assert.match(result.textContent,/未扣费/);assert.match(result.textContent,/AI 率检测未完成：检测服务暂不可用/);assert.equal(result.querySelectorAll('a').length,1);assert.match(result.textContent,/重新上传论文/);
 });
+
+test('completed joint reports have distinct, accessible cards and independently addressable reports',async t=>{
+ const item={id:'joint-1',status:'completed',children:[{id:'web-1',kind:'similarity',status:'completed'},{id:'ai-1',kind:'aigc',status:'completed'}]};
+ const f=await setup(t,{recent:item}),result=f.root.querySelector('[data-joint-result]'),region=result.querySelector('section[aria-label="联合检测结果"]');
+ assert.ok(region);const cards=[...region.querySelectorAll('article')];assert.equal(cards.length,2);assert.deepEqual(cards.map(card=>card.getAttribute('aria-label')),['重复率报告','AI 率报告']);
+ assert.deepEqual(cards.map(card=>card.querySelector('a')?.hash),['#category/detection?view=web&report=web-1','#category/detection?view=ai&report=ai-1']);
+ for(const card of cards){assert.ok(card.querySelector('h4'));assert.match(card.textContent,/已生成/);assert.ok(card.querySelector('a').textContent.trim());}
+ assert.doesNotMatch(region.textContent,/未扣费|未完成|部分结果/);assert.equal(f.calls.filter(call=>call.body?.text).length,0);
+});
+test('partial report and failed report have separate accurate accessible state without duplicate fee notes',async t=>{
+ const item={id:'joint-1',status:'completed',partial:true,error:'AI 检测部分正文暂无法判定，已展示两份报告，本次未扣费。',children:[{id:'web-1',kind:'similarity',status:'completed'},{id:'ai-1',kind:'aigc',status:'completed',partial:true}]};
+ const f=await setup(t,{recent:item}),region=f.root.querySelector('[aria-label="联合检测结果"]'),cards=[...region.querySelectorAll('article')];
+ assert.equal((region.textContent.match(/未扣费/g)||[]).length,1);assert.match(cards[1].textContent,/部分结果/);assert.doesNotMatch(cards[0].textContent,/部分结果/);assert.equal(cards[1].querySelector('a').hash,'#category/detection?view=ai&report=ai-1');
+ await f.upload('new.docx');assert.equal(f.root.querySelector('[aria-label="联合检测结果"]'),null);
+});
+test('failure keeps working report usable while unavailable card has no clickable report and escapes the reason',async t=>{
+ const item={id:'joint-1',status:'failed',error:'本次联合检测未扣费。',children:[{id:'web-1',kind:'similarity',status:'completed'},{id:'ai-1',kind:'aigc',status:'failed',error:'检测暂不可用 <img src=x>'}]};
+ const f=await setup(t,{recent:item}),region=f.root.querySelector('[aria-label="联合检测结果"]'),cards=[...region.querySelectorAll('article')];
+ assert.equal(cards.length,2);assert.ok(cards[0].querySelector('a'));assert.equal(cards[1].querySelector('a'),null);assert.match(cards[1].textContent,/未完成/);assert.match(cards[1].textContent,/<img src=x>/);assert.equal(cards[1].querySelector('img'),null);assert.match(region.textContent,/重新上传论文/);
+});
