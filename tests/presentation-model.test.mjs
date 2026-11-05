@@ -40,3 +40,17 @@ test('completed presentation progress uses delivered page counts after transient
  assert.equal(presentationProgress({...completed,status:'running'}).pageText,'1 / 6 页');
  assert.equal(presentationProgress({status:'completed',progress:{currentPage:1,totalPages:12}}).pageText,'12 / 12 页');
 });
+
+test('editable base export keeps native content, theme and notes across each layout',async()=>{
+ const {createPresentation}=await import('../src/presentation-export.js'),{default:JSZip}=await import('jszip');
+ const deck={...base,theme:'focus',author:'测试作者',slides:[{title:'封面标题',body:'真实研究概要',layout:'cover',notes:''},{title:'研究背景',body:'真实要点一\n真实要点二',layout:'content',notes:'研究备注'},{title:'研究设计',body:'左栏材料\n右栏材料',layout:'twoColumn',notes:''},{title:'结语',body:'感谢聆听',layout:'closing',notes:''}]};
+ const zip=await JSZip.loadAsync(await createPresentation(deck).write({outputType:'nodebuffer'}));
+ for(let i=0;i<deck.slides.length;i++){const xml=await zip.file(`ppt/slides/slide${i+1}.xml`).async('string');assert.match(xml,new RegExp(deck.slides[i].title));assert.match(xml,/<p:sp>/);assert.doesNotMatch(xml,/<p:pic>/);}
+ assert.match(await zip.file('ppt/slides/slide3.xml').async('string'),/左栏材料/);assert.match(await zip.file('ppt/slides/slide3.xml').async('string'),/右栏材料/);assert.match(await zip.file('ppt/notesSlides/notesSlide2.xml').async('string'),/研究备注/);
+});
+
+test('short content lines remain independent editable text blocks without invented sequence or omitted wording',async()=>{
+ const {createPresentation}=await import('../src/presentation-export.js'),{default:JSZip}=await import('jszip');const deck={...base,theme:'academic',slides:[{title:'研究目标',body:'研究问题：识别局限。\n研究目标：建立流程。\n研究方法：比较结果。',layout:'content',notes:''}]};
+ const zip=await JSZip.loadAsync(await createPresentation(deck).write({outputType:'nodebuffer'})),xml=await zip.file('ppt/slides/slide1.xml').async('string');
+ for(const line of deck.slides[0].body.split('\n'))assert.match(xml,new RegExp(line));assert.ok((xml.match(/<p:txBody>/g)||[]).length>=5);assert.doesNotMatch(xml,/<p:pic>|<a:prstGeom prst="(?:rightArrow|leftArrow)"/);
+});

@@ -31,3 +31,15 @@ test('English content keeps complete words in readable lines while preserving ev
 test('real PPTX compilation retains every diagram, original value, editable text and speaker note',async t=>{
  if(!getPptMasterRuntimeStatus().ready)return t.skip('原生编译器未安装');const f=visualFixture(),slides=f.slides.map(slide=>validatedPresentationLayout(f.value,slide,f.plan)),rendered=await createPptMasterRuntime().render({slides,title:f.value.snapshot.title}),zip=await JSZip.loadAsync(rendered.pptx);assert.equal(rendered.validation.slideCount,8);assert.ok(rendered.validation.nativeShapeCount>150);for(const [i,slide]of slides.entries()){const xml=await zip.file('ppt/slides/slide'+(i+1)+'.xml').async('string');assert.doesNotMatch(xml,/<p:pic\b/);assert.match(xml,/<a:t>/);if(i===1)assert.match(xml,/prst="(?:chevron|triangle|rtTriangle)"|<a:custGeom/);if(i===4){assert.match(xml,/82.5%/);assert.match(xml,/91.2%/);assert.match(xml,/0%/);}assert.ok(zip.file('ppt/notesSlides/notesSlide'+(i+1)+'.xml'));}
 });
+
+test('fallback visual cards use restrained alternating surfaces and a consistent footer without adding data',()=>{
+ const f=visualFixture(),page=validatedPresentationLayout(f.value,f.slides[1],f.plan),doc=new DOMParser().parseFromString(page.svg,'image/svg+xml');
+ const group=Array.from(doc.getElementsByTagName('g')).find(n=>n.getAttribute('id')==='visual-process');const cards=Array.from(group.getElementsByTagName('rect')).filter(n=>n.getAttribute('rx')==='14');
+ assert.ok(cards.length>=2);assert.notEqual(cards[0].getAttribute('fill'),cards[1].getAttribute('fill'));assert.ok(Array.from(doc.getElementsByTagName('line')).some(n=>n.getAttribute('id')==='footer-rule'));assert.equal(validatePptMasterVisibleText(page.svg,f.slides[1],f.plan),true);
+});
+
+test('visual cover uses the selected dark palette and keeps editable readable text',()=>{
+ const f=visualFixture(),page=validatedPresentationLayout(f.value,f.slides[0],f.plan),doc=new DOMParser().parseFromString(page.svg,'image/svg+xml');
+ const rect=Array.from(doc.getElementsByTagName('rect')).find(n=>n.getAttribute('id')==='background');assert.equal(rect.getAttribute('fill'),f.plan.palette.primary);
+ const title=Array.from(doc.getElementsByTagName('g')).find(n=>n.getAttribute('id')==='slide-title');assert.equal(title.getElementsByTagName('text')[0].getAttribute('fill'),'#FFFFFF');assert.equal(validatePptMasterVisibleText(page.svg,f.slides[0],f.plan),true);
+});

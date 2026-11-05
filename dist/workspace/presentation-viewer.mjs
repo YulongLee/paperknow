@@ -44,7 +44,7 @@ export function mountPresentationViewer({container,artifact,ownerId,api,fetch:fe
    if(!response.ok)throw Error(response.status===401?'请登录后查看预览。':response.status===409?'账户已变化，请切回任务所属账户后重新加载预览。':response.status===403?'当前账户无权查看这份预览，请确认登录账户。':response.status===404?'预览文件已删除或不存在，仍可尝试下载 PPTX。':'预览暂未加载，请稍后重试。');
    if(Number(response.headers?.get('content-length'))>20*1024*1024)throw Error('预览文件过大，请下载 PPTX 查看。');
    const html=await response.text();if(!current())return;pages=presentationPreviewPages(html,win,artifact.pageCount);wait.hidden=true;frame.hidden=false;controls.hidden=false;status.textContent='共 '+pages.length+' 页';
-   pages.forEach((_,i)=>{const button=doc.createElement('button');button.type='button';button.textContent=String(i+1);button.setAttribute('aria-label','预览第 '+(i+1)+' 页');button.onclick=()=>show(i);nav.append(button);});show(0);
+   pages.forEach((svg,i)=>{const button=doc.createElement('button'),image=doc.createElement('img'),label=doc.createElement('span');button.type='button';button.className='presentation-viewer-thumbnail';button.setAttribute('aria-label','预览第 '+(i+1)+' 页');image.alt='';image.loading='lazy';image.decoding='async';image.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);label.textContent=String(i+1).padStart(2,'0');button.append(image,label);button.onclick=()=>show(i);nav.append(button);});show(0);
   }catch(error){if(current()){pages=[];frame.srcdoc='';wait.hidden=false;wait.classList.add('is-error');wait.querySelector('span').hidden=true;wait.querySelector('p').textContent=request.signal.aborted?'预览加载超时，请重新加载预览。':/failed to fetch|fetch failed|networkerror|load failed|network request/i.test(error.message||'')?'网络连接暂时中断，请检查连接后重新加载预览。':error.message;status.textContent='预览暂不可用';retry.hidden=false;}}
   finally{win.clearTimeout(timer);if(requestController===request)requestController=null;loading=false;if(current())stage.setAttribute('aria-busy','false');}
  }
@@ -61,5 +61,5 @@ export function mountPresentationViewer({container,artifact,ownerId,api,fetch:fe
   if(event.target.matches?.('input,textarea,select,[contenteditable="true"]'))return;
   if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();show(event.key==='Home'?0:event.key==='End'?pages.length-1:index+(event.key==='ArrowLeft'?-1:1));}
  },{signal:controller.signal,capture:true});
- void load();return{dispose(){expand(false);live=false;controller.abort();requestController?.abort();pages=[];frame.srcdoc='';},show};
+ void load();return{dispose(){expand(false);live=false;controller.abort();requestController?.abort();pages=[];frame.srcdoc='';nav.replaceChildren();},show};
 }

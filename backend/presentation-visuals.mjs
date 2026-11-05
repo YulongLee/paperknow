@@ -53,7 +53,7 @@ export function presentationVisualArrangement(slide,plan,bodySize,titleSize,wrap
   const horizontal=kind==='process'&&rows.length<=4,cols=horizontal?rows.length:kind==='process'?1:rows.length===2?2:rows.length===4?2:3,count=Math.ceil(rows.length/cols),gap=kind==='process'?38:24,w=(1136-gap*(cols-1))/cols,available=(bottom-bodyTop-24*(count-1))/count,desired=horizontal?Math.max(...rows.map(row=>wrapBody(row.text,w-48).length*bodySize*1.5+118)):cols>1?Math.max(...rows.map(row=>wrapBody(row.text,w-48).length*bodySize*1.5+102)):available,h=Math.min(available,Math.max(count===1?270:190,desired)),offset=count===1?Math.max(0,(available-h)/3):0;
   for(const [i,row]of rows.entries()){
    const col=i%cols,r=Math.floor(i/cols),x=72+col*(w+gap),y=bodyTop+offset+r*(h+24),vertical=kind==='process'&&!horizontal;
-   art+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="${p.secondary}" stroke="${p.divider}" stroke-width="1"/>`;
+   art+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="${i%2===0?p.secondary:p.background}" stroke="${p.divider}" stroke-width="1"/><rect x="${x+20}" y="${y+8}" width="32" height="3" rx="1.5" fill="${p.accent}"/>`;
    const iconSize=vertical?Math.min(48,h-12):horizontal?64:48,ix=x+20,iy=vertical?y+(h-iconSize)/2:y+18;art+=glyph(row.text,ix,iy,iconSize,p);
    const bx=vertical?x+88:x+12,by=vertical?y+4:y+iconSize+30,bw=vertical?w-108:w-24,bh=vertical?h-8:h-iconSize-38;
    if(!add(row,bx,by,bw,bh,vertical))return null;
