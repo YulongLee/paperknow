@@ -26,5 +26,6 @@ export function aigcLabelCoverage(value){
  const item=normalizeAigcResult(value);let offset=0,aiCharacters=0,humanCharacters=0,unknownCharacters=0;
  const valid=item.fullyCompleted&&item.parts.every((part,index)=>{const ok=part.index===index&&part.start===offset&&part.end>part.start&&part.end<=item.characters&&part.characters===part.end-part.start;offset=part.end;if(!part.skipped){const weight=item.analysisVersion===AIGC_PARAGRAPH_VERSION?(part.effectiveCharacters??part.characters):part.characters;if(part.label==='aigc')aiCharacters+=weight;else if(part.label==='ugc')humanCharacters+=weight;else unknownCharacters+=weight;}return ok;})&&offset===item.characters;
  const testedCharacters=aiCharacters+humanCharacters+unknownCharacters,available=Boolean(valid&&item.verdict!=='undetermined'&&unknownCharacters===0&&testedCharacters>0);
- return {available,ratio:available?aiCharacters/testedCharacters:null,aiCharacters,humanCharacters,unknownCharacters,testedCharacters};
+ const judgedCharacters=aiCharacters+humanCharacters,partialAvailable=Boolean(valid&&unknownCharacters>0&&judgedCharacters>0&&testedCharacters>0);
+ return {available,ratio:available?aiCharacters/testedCharacters:null,partialAvailable,partialRatio:partialAvailable?aiCharacters/judgedCharacters:null,coverageRatio:partialAvailable?judgedCharacters/testedCharacters:null,judgedCharacters,aiCharacters,humanCharacters,unknownCharacters,testedCharacters};
 }
