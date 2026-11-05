@@ -18,7 +18,8 @@ export function commercialToolIdentity(db,value){
   const mode=c.revisionProduct?.mode;
   if(mode==='paragraph'){if(chars>1000)fail('段落优化每次最多 1,000 字符，请分段提交；尚未扣费。');return {type:'agent',serviceKey:'revision-paragraph'};}
   if(['polish','review'].includes(base.type)){if(chars>3000)fail('局部修改每次最多 3,000 字符；整篇文稿请使用整篇优化功能，尚未扣费。');return base;}
-  if(chars>10000)fail('整篇优化每次最多 10,000 字符，请分章节提交；尚未扣费。');
+  const wholeLimit=mode==='dual'?20000:10000;
+  if(chars>wholeLimit)fail(`整篇优化每次最多 ${wholeLimit.toLocaleString('en-US')} 字符，请分章节提交；尚未扣费。`);
   if(mode==='report')return{type:'agent',serviceKey:'revision-targeted'};
  }
  if(kind==='presentation'&&c.pages>20)return{type:'agent',serviceKey:'presentation-enhanced'};
