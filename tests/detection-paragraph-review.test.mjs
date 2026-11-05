@@ -46,9 +46,9 @@ test('old chunk verdicts remain range references and cannot become independent p
  const text='第一段原文。\n第二段原文。',size=Array.from(text).length,item={id:'legacy-record',status:'completed',characters:size,partCount:1,completedParts:1,parts:[{index:0,start:0,end:size,characters:size,label:'aigc',confidence:90}],verdict:'aigc'};
  const dom=new JSDOM(aigcReportHtml(item,{text})),doc=dom.window.document;assert.equal(doc.querySelectorAll('[data-ai-paragraph]').length,2);assert.doesNotMatch(doc.body.textContent,/本段独立分析/);assert.equal([...doc.querySelectorAll('.report-review-detail')].filter(n=>n.textContent.includes('本段没有独立判断结果')).length,2);dom.window.close();
 });
-test('inconclusive paragraph stops new paid calls, joins started calls and never concludes success',async t=>{
- let resolveSecond;const f=fixture(t,content=>content.startsWith('A')?Promise.resolve({label:'undetermined',confidence:null}):new Promise(resolve=>resolveSecond=resolve));
- const pending=await f.submit('A'.repeat(100)+'\nB正文\nC正文\nD正文');await tick();assert.equal(f.calls.length,2);assert.ok(resolveSecond);resolveSecond({label:'ugc',confidence:94});await f.service.waitForIdle();assert.equal(f.calls.length,2);const row=(await f.get(pending.value.id)).value;assert.equal(row.status,'failed');assert.equal(row.conclusive,false);assert.equal(row.completedParts,2);
+test('inconclusive paragraph does not stop later work or become a full conclusion',async t=>{
+ const f=fixture(t,content=>Promise.resolve(content.startsWith('A')?{label:'undetermined',confidence:null}:{label:'ugc',confidence:94}));
+ const pending=await f.submit('A'.repeat(100)+'\nB正文\nC正文\nD正文');await f.service.waitForIdle();assert.equal(f.calls.length,4);const row=(await f.get(pending.value.id)).value;assert.equal(row.status,'completed');assert.equal(row.conclusive,false);assert.equal(row.completedParts,4);assert.match(row.error,/本次未扣费/);assert.equal(aigcLabelCoverage(normalizeAigcResult(row)).available,false);
 });
 test('two simultaneous jobs share one detector concurrency bound and cancellation prevents queued calls',async t=>{
  let active=0,peak=0;const pending=[];const f=fixture(t,()=>{active++;peak=Math.max(peak,active);return new Promise(resolve=>pending.push(()=>{active--;resolve({label:'ugc',confidence:92});}));});

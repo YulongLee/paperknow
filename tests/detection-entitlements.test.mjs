@@ -179,10 +179,19 @@ test('nonempty undetermined AIGC segments keep diagnostics and release the packa
  const f=fixture(t,{cloud:async text=>text[0]==='A'?{label:'ugc',confidence:96}:{label:'undetermined',confidence:null}}),order=f.grant('detection-aigc',1),service=f.aigc();
  const created=await f.submitAigc(service,{text:'A'.repeat(5000)+'B'.repeat(100)});await service.waitForIdle();
  const item=(await service.handle({path:'/api/aigc-detections/'+created.value.id,method:'GET',user:f.user})).value;
- assert.equal(item.status,'failed');assert.equal(item.completedParts,2);assert.deepEqual(item.parts.map(part=>part.label),['ugc','undetermined']);assert.equal(item.parts[0].confidence,96);assert.equal(item.conclusive,false);assert.match(item.error,/未结算/);
+ assert.equal(item.status,'completed');assert.equal(item.completedParts,2);assert.deepEqual(item.parts.map(part=>part.label),['ugc','undetermined']);assert.equal(item.parts[0].confidence,96);assert.equal(item.conclusive,false);assert.match(item.error,/本次未扣费/);
  assert.equal(f.used(order).held,0);assert.equal(f.used(order).used,0);assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(item.id).status,'released');assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,0);
 });
 
+test('270 paragraph partial results remain usable, release the entitlement, and preserve the old report on retry',async t=>{
+ const f=fixture(t,{cloud:async text=>text.startsWith('UNKNOWN')?{label:'undetermined',confidence:null}:{label:'ugc',confidence:94}}),order=f.grant('detection-aigc',1),service=f.aigc();
+ const text=Array.from({length:270},(_,i)=>(i===8?'UNKNOWN':'段落'+i)+'测'.repeat(48)).join('\n');
+ const first=await f.submitAigc(service,{text});await service.waitForIdle();
+ const row=(await service.handle({path:'/api/aigc-detections/'+first.value.id,method:'GET',user:f.user})).value;
+ assert.equal(row.status,'completed');assert.equal(row.partCount,270);assert.equal(row.completedParts,270);assert.equal(row.parts[8].label,'undetermined');assert.equal(row.parts[269].label,'ugc');assert.equal(f.calls.length,270);assert.equal(row.conclusive,false);assert.match(row.error,/本次未扣费/);assert.equal(f.used(order).held,0);assert.equal(f.used(order).used,0);assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(row.id).status,'released');
+ const second=await f.submitAigc(service,{text});assert.notEqual(second.value.id,row.id);await service.waitForIdle();assert.equal(f.calls.length,540);assert.equal(f.used(order).used,0);assert.equal(f.used(order).held,0);
+ const old=await service.handle({path:'/api/aigc-detections/'+row.id+'/report',method:'GET',user:f.user});assert.equal(old.value.text,text);assert.equal(old.value.item.id,row.id);assert.equal(old.value.item.parts[8].label,'undetermined');
+});
 test('whitespace-only AIGC segments do not create an extra provider call or block valid paid delivery',async t=>{
  const f=fixture(t),order=f.grant('detection-aigc',1),service=f.aigc(),created=await f.submitAigc(service,{text:' '.repeat(5000)+'B'.repeat(100)});await service.waitForIdle();
  const item=(await service.handle({path:'/api/aigc-detections/'+created.value.id,method:'GET',user:f.user})).value;
@@ -243,6 +252,12 @@ test('V1 joint detection releases full price on partial failure and cannot be fo
  const f=combinedFixture(t,{cloud:async()=>{throw Error('synthetic detector failure');}}),first=(await f.submit()).value;await f.aigc.waitForIdle();await f.worker.tick();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id).status,'failed');assert.equal(f.billing.balance(f.user.id).balance,1000);assert.equal(f.billing.balance(f.user.id).held,0);
  await assert.rejects(f.similarity.handle({path:'/api/web-similarity',method:'POST',user:f.user,readBody:async()=>({text:paragraph,title:'Forged',consent:true,expectedUserId:f.user.id,idempotencyKey:randomUUID(),fundingParent:first.id})}),{status:400});
  assert.throws(()=>attachCombinedChild(f.db,{parentId:first.id,userId:'bob',childId:first.children[0].id,key:'detection-similarity',text:paragraph}),{status:409});
+});
+test('V1 joint detection releases the parent if an AI paragraph is undetermined',async t=>{
+ const f=combinedFixture(t,{cloud:async text=>text.startsWith('UNKNOWN')?{label:'undetermined',confidence:null}:{label:'ugc',confidence:94}});
+ const text='UNKNOWN'+'测'.repeat(60)+'\n'+paragraph;const first=(await f.submit({text})).value;await f.aigc.waitForIdle();await f.worker.tick();
+ assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id).status,'failed');assert.equal(f.billing.balance(f.user.id).balance,1000);assert.equal(f.billing.balance(f.user.id).held,0);
+ const child=f.db.prepare("SELECT child_id FROM combined_detection_children WHERE parent_id=? AND service_key='detection-aigc'").get(first.id);const result=(await f.aigc.handle({path:'/api/aigc-detections/'+child.child_id,method:'GET',user:f.user})).value;assert.equal(result.status,'completed');assert.equal(result.completedParts,2);assert.equal(result.conclusive,false);
 });
 test('V1 joint detection rejects stale prices and invalid text before any hold or provider call',async t=>{
  const f=combinedFixture(t);await assert.rejects(f.submit({expectedCreditCost:99}),{status:409});await assert.rejects(f.submit({text:'too short'}),{status:400});assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);assert.equal(f.calls.length,0);

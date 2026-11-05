@@ -30,6 +30,12 @@ test('unknown labels remain explicit and are not reported as human-written or ze
  try{assert.equal(dom.window.document.querySelector('.report-verdict').textContent,'暂不能明确判定');assert.equal(dom.window.document.querySelectorAll('.report-table .report-tag-unknown').length,2);assert.doesNotMatch(dom.window.document.body.textContent,/99 \/ 100|101 \/ 100|0%|100%/);}finally{dom.window.close();}
 });
 
+test('partial report retains available labels, explicitly marks missing conclusions and never displays a whole-paper rate',()=>{
+ const item=result({error:'部分正文暂无法判定，已展示可用结果，本次未扣费。',conclusive:false,parts:[{index:0,start:0,end:4,characters:4,label:'ugc',confidence:95},{index:1,start:4,end:8,characters:4,label:'undetermined',confidence:null}]});
+ const dom=new JSDOM(aigcReportHtml(item,{text:'研究😀。真实原稿'}));
+ try{const content=dom.window.document.body.textContent;assert.match(content,/部分结果/);assert.match(content,/部分正文暂无法判定.*本次未扣费/);assert.match(content,/已取得结果的范围中未标记疑似 AI 内容/);assert.match(content,/暂不能明确判定/);assert.match(content,/暂不能计算/);assert.doesNotMatch(content,/报告状态\s*检测完成|0\.0%|100\.0%/);}finally{dom.window.close();}
+});
+
 test('date normalization keeps only valid public record dates and omits internal fields',()=>{
  const item=normalizeAigcResult(result({createdAt:'2026-10-19T06:00:00+08:00',updatedAt:'<script>',model:'private-model'}));assert.equal(item.createdAt,'2026-10-18T22:00:00.000Z');assert.equal(item.updatedAt,'');assert.equal(item.model,undefined);
 });

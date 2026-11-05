@@ -94,6 +94,32 @@ test('failed and running AI tasks offer no completed report export',async()=>{
  for(const status of ['running','failed']){const item=complete({status,completedParts:0,parts:[]}),f=fixture((url,body)=>url==='/api/aigc-detections'&&!body?response({items:[item]}):url==='/api/aigc-detections/task-1'?response(item):null);try{await f.panel.ready;assert.equal(f.$('[data-aigc-report-download]'),null);assert.equal(f.$('[data-aigc-report-preview]'),null);assert.equal(f.calls.some(call=>call.body),false);}finally{f.close();}}
 });
 
+test('failed task explains recognized cause without leaking unknown server errors or claiming success',async()=>{
+ for(const [error,expected] of [
+  ['部分正文未取得有效鉴别结论，已保留分段记录，本次未结算。',/部分正文未获得有效检测结果/],
+  ['本次文本鉴别暂未完成，已保留记录，不会自动重复提交。',/检测等待时间过长/],
+  ['provider key sk-secret <script>private</script>',/检测服务暂时未能完成处理/],
+  [undefined,/检测服务暂时未能完成处理/]
+ ]){
+  const item=complete({status:'failed',completedParts:0,parts:[],error});
+  const f=fixture((url,body)=>url==='/api/aigc-detections'&&!body?response({items:[item]}):url==='/api/aigc-detections/task-1'?response(item):null);
+  try{await f.panel.ready;assert.match(f.$('[data-aigc-result]').textContent,expected);assert.match(f.$('[data-aigc-result]').textContent,/预占费用已释放/);assert.match(f.$('[data-aigc-status]').textContent,/本次检测未完成/);assert.doesNotMatch(f.$('#host').textContent,/sk-secret|provider key|private|请逐段核对/);assert.equal(f.calls.some(call=>call.body),false);assert.equal(normalizeAigcResult(item).error,undefined);}finally{f.close();}
+ }
+});
+
+test('a failed submission is reported as failed rather than a successful restored task',async()=>{
+ const item=complete({status:'failed',completedParts:0,parts:[],error:'正文未取得有效鉴别结论，已保留分段记录，本次未结算。'});
+ const f=fixture((url,body)=>url==='/api/aigc-detections'&&body?response(item,202):null);
+ try{await f.panel.ready;f.input('需要检测的正文');f.$('[data-aigc-start]').click();await settle();assert.match(f.$('[data-aigc-result]').textContent,/正文未获得有效检测结果/);assert.match(f.$('[data-aigc-status]').textContent,/本次检测未完成/);assert.doesNotMatch(f.$('[data-aigc-status]').textContent,/检测已完成|读取原提交/);assert.equal(f.calls.filter(call=>call.body).length,1);}finally{f.close();}
+});
+
+test('partial detected results remain accessible with a clear no-charge notice and no whole-document percentage',async()=>{
+ const error='部分正文暂无法判定，已展示可用结果，本次未扣费。',text='abcdefghijkl';
+ const item=complete({reportAvailable:true,error,conclusive:false,partCount:2,completedParts:2,parts:[{index:0,start:0,end:6,characters:6,label:'aigc',confidence:85},{index:1,start:6,end:12,characters:6,label:'undetermined',confidence:null}]});
+ const f=fixture((url,body)=>url==='/api/aigc-detections'&&!body?response({items:[item]}):url==='/api/aigc-detections/task-1'?response(item):url==='/api/aigc-detections/task-1/report'?response({item,text}):null);
+ try{await f.panel.ready;const result=f.$('[data-aigc-result]');assert.match(result.textContent,/部分检测结果/);assert.match(result.textContent,/部分正文暂无法判定.*本次未扣费/);assert.match(result.textContent,/尚不能判定片段/);assert.match(f.$('[data-aigc-status]').textContent,/本次未扣费/);assert.match(f.$('[data-aigc-report-download]').textContent,/下载部分检测报告/);assert.equal(f.$('[data-aigc-coverage]'),null);assert.doesNotMatch(result.textContent,/下载完整检测报告/);assert.equal(f.calls.some(call=>call.body),false);assert.equal(normalizeAigcResult(normalizeAigcResult(item)).partialResult,true);}finally{f.close();}
+});
+
 test('a failed cloud report export leaves the completed result available and never announces success',async()=>{
  let exports=0;const item=complete(),f=fixture((url,body)=>url==='/api/aigc-detections'&&!body?response({items:[item]}):url==='/api/aigc-detections/task-1'?response(item):null,{exportFile:async()=>{exports++;throw Error('private upstream stack');}});
  try{await f.panel.ready;f.$('[data-aigc-report-download]').click();await settle();assert.equal(exports,1);assert.equal(f.$('[data-aigc-result]').hidden,false);assert.equal(f.$('[data-aigc-report-download]').disabled,false);assert.match(f.$('[data-aigc-status]').textContent,/未能确认保存或下载.*结果仍保留/);assert.doesNotMatch(f.$('[data-aigc-status]').textContent,/已保存|private|stack/);}finally{f.close();}

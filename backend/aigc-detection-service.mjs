@@ -11,6 +11,7 @@ const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const validId=value=>typeof value==='string'&&/^[-A-Za-z0-9_]{1,120}$/.test(value);
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 const notice='本报告按本次分段标签统计疑似 AI 片段占比，分段置信分不代表 AI 字数占比；不能替代学校指定的检测报告。';
+const partialMessage='部分正文暂无法判定，已展示可用结果，本次未扣费。';
 export function initializeAigcDetectionSchema(db){
  db.exec(`CREATE TABLE IF NOT EXISTS aigc_detections(
   id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),input_hash TEXT NOT NULL,
@@ -45,11 +46,11 @@ export function createAigcDetectionService(db,config={}, {client}={}){
   return{id:row.id,analysisVersion:row.partition_version||'length-v1',title:row.title||'送检论文',reportAvailable:Boolean(row.input_artifact_id),reportReady:Boolean(row.html_artifact_id),...(row.report_error?{reportError:row.report_error}:{}),status:row.status,characters:row.characters,partCount:row.part_count,completedParts:row.completed_parts,parts,counts,verdict,conclusive:complete&&verdict!=='undetermined',...(row.error?{error:row.error}:{}),createdAt:row.created_at,updatedAt:row.updated_at,notice,...(cached?{cached:true}:{})};
  };
  const archive=createAigcReportArchive(db,config,row=>summarize(row));
- function finish(id,status,{message,requestIds}={}){return atomic(()=>{
+ function finish(id,status,{message,requestIds,partial=false}={}){return atomic(()=>{
   const row=db.prepare('SELECT status,billing_job_id FROM aigc_detections WHERE id=?').get(id);if(!row||row.status!=='running')return false;
   const at=new Date().toISOString();
   db.prepare("UPDATE aigc_detections SET status=?,error=?,request_ids=COALESCE(?,request_ids),updated_at=? WHERE id=? AND status='running'").run(status,message||null,requestIds?JSON.stringify(requestIds):null,at,id);
-  if(row.billing_job_id){db.prepare("UPDATE jobs SET status=?,stage=?,error=?,updated_at=? WHERE id=? AND status='running'").run(status,status,message||null,at,row.billing_job_id);if(status==='completed')billing?.settle(row.billing_job_id);else billing?.release(row.billing_job_id);}
+  if(row.billing_job_id){const jobStatus=partial?'failed':status;db.prepare("UPDATE jobs SET status=?,stage=?,error=?,updated_at=? WHERE id=? AND status='running'").run(jobStatus,jobStatus,message||null,at,row.billing_job_id);if(status==='completed'&&!partial)billing?.settle(row.billing_job_id);else billing?.release(row.billing_job_id);}
   reconcileCombinedParents(db,billing,id);
   return true;
  });}
@@ -58,7 +59,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
  // Only new metered rows have mirrors; historical detection records are untouched.
  if(billing)for(const row of db.prepare("SELECT id FROM aigc_detections WHERE status='running' AND billing_job_id IS NOT NULL").all())finish(row.id,'failed',{message:'服务切换中断了本次鉴别，套餐预占次数已释放；不会自动重复提交。'});
  async function process(id,prepared,text){
-  const started=Date.now(),parts=prepared.parts.map(({content,...part})=>({...part,...(part.effectiveCharacters===0?{skipped:true,skipReason:content.trim()?'non_text':'whitespace'}:{}),label:'undetermined',confidence:null})),requestIds=[];let stopped=false;
+  const started=Date.now(),deadlineMs=Math.min(3600000,limits.totalTimeoutMs+prepared.calls*limits.timeoutMs),parts=prepared.parts.map(({content,...part})=>({...part,...(part.effectiveCharacters===0?{skipped:true,skipReason:content.trim()?'non_text':'whitespace'}:{}),label:'undetermined',confidence:null})),requestIds=[];let stopped=false;
   try{
    await archive.storeInput(id,text);
    await concurrentDetection(prepared.parts,limits.maxConcurrent,async part=>withDetectorSlot(async()=>{
@@ -66,7 +67,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
     try{
     const funding=db.prepare('SELECT status,billing_job_id,user_id FROM aigc_detections WHERE id=?').get(id);if(funding?.status!=='running')return;if(funding.billing_job_id&&!includedDetectionHeld(db,funding.user_id,id,'detection-aigc'))throw aigcDetectionError('detection_hold_missing',409,'本次检测费用预占已失效，未继续调用检测。');
     if(part.effectiveCharacters===0){db.prepare('UPDATE aigc_detections SET completed_parts=completed_parts+1,updated_at=? WHERE id=?').run(new Date().toISOString(),id);return;}
-    const remainingMs=limits.totalTimeoutMs-(Date.now()-started);if(remainingMs<=0)throw aigcDetectionError('aigc_detection_timeout',504,'本次文本鉴别暂未完成，已保留记录，不会自动重复提交。');
+    const remainingMs=deadlineMs-(Date.now()-started);if(remainingMs<=0)throw aigcDetectionError('aigc_detection_timeout',504,'本次文本鉴别暂未完成，已保留记录，不会自动重复提交。');
     // Mark attempted before the potentially billed call. A timeout or a missing
     // business verdict never releases the provider-side operational allowance.
     db.prepare('UPDATE aigc_detections SET attempted_parts=attempted_parts+1,updated_at=? WHERE id=?').run(new Date().toISOString(),id);
@@ -76,14 +77,14 @@ export function createAigcDetectionService(db,config={}, {client}={}){
     parts[part.index]={...parts[part.index],label:result.label,confidence:result.label==='undetermined'?null:result.confidence};
     if(typeof result.requestId==='string'&&/^[-A-Za-z0-9_.]{1,150}$/.test(result.requestId))requestIds.push(result.requestId);
     db.prepare("UPDATE aigc_detections SET completed_parts=completed_parts+1,parts=?,request_ids=?,updated_at=? WHERE id=? AND status='running'").run(JSON.stringify(parts),JSON.stringify(requestIds),new Date().toISOString(),id);
-    if(result.label==='undetermined'&&part.effectiveCharacters>=40)throw aigcDetectionError('aigc_detection_inconclusive',502,'部分正文未取得有效鉴别结论，已保留分段记录，本次未结算。');
     }catch(error){stopped=true;throw error;}
     }));
    // An inconclusive paragraph (often a short heading) is not an error. Keep
    // its unknown label so the report cannot claim full coverage or a rate.
    // With no usable verdict anywhere, do not settle for an empty report.
    if(!parts.some(part=>part.effectiveCharacters>0&&['aigc','ugc'].includes(part.label)))throw aigcDetectionError('aigc_detection_inconclusive',502,'正文未取得有效鉴别结论，已保留分段记录，本次未结算。');
-   if(db.isOpen!==false&&finish(id,'completed')&&aigcReportStorageReady(config)){try{await archive.report(id);}catch{/* The original remains in OSS. Report reads repair publication without another detector call. */}}
+   const partial=parts.some(part=>part.label==='undetermined'&&!part.skipped&&part.effectiveCharacters>=40);
+   if(db.isOpen!==false&&finish(id,'completed',{partial,message:partial?partialMessage:undefined})&&aigcReportStorageReady(config)){try{await archive.report(id);}catch{/* The original remains in OSS. Report reads repair publication without another detector call. */}}
   }catch(error){
    const safe=error?.aigcDetectionSafe?error:aigcDetectionError('aigc_detection_unavailable',503,'文本鉴别暂未完成，已保留处理记录，不会自动重复提交。');
    if(typeof safe.aigcRequestId==='string'&&/^[-A-Za-z0-9_.]{1,150}$/.test(safe.aigcRequestId))requestIds.push(safe.aigcRequestId);
@@ -113,7 +114,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    const alias=db.prepare('SELECT * FROM aigc_detection_requests WHERE user_id=? AND idempotency_key=?').get(user.id,input.idempotencyKey);
    if(alias){if(alias.input_hash!==hash&&alias.input_hash!==aigcInputHash(input.text,'length-v1'))fail(409,'此请求编号已用于其他文本，请重新确认提交');return{row:own(alias.detection_id,user),cached:true};}
    const prior=db.prepare('SELECT * FROM aigc_detections WHERE user_id=? AND input_hash=?').get(user.id,hash);
-   if(prior&&prior.status!=='failed'){db.prepare('INSERT INTO aigc_detection_requests VALUES(?,?,?,?)').run(user.id,input.idempotencyKey,prior.id,hash);return{row:prior,cached:true};}
+   if(prior&&prior.status!=='failed'&&prior.error!==partialMessage){db.prepare('INSERT INTO aigc_detection_requests VALUES(?,?,?,?)').run(user.id,input.idempotencyKey,prior.id,hash);return{row:prior,cached:true};}
    if(v1CommercialEnabled(db)&&Array.from(input.text||'').length>20000)fail(400,'单次检测最多 20,000 字符，请分章节提交；尚未扣费。');
    assertDetectionPrice(input,billing,'detection-aigc');
    if(!aigcDetectionConfigured(config)||cloud.ready===false||typeof cloud.detect!=='function')fail(503,'文本鉴别暂未开放，请稍后再试。');
@@ -121,7 +122,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    if(db.prepare("SELECT count(*) n FROM aigc_detections WHERE status='running'").get().n>=limits.maxConcurrent)fail(429,'文本鉴别当前繁忙，请稍后再试');
    // An explicit new submission may retry a failed task. The original request
    // key still resolves to its original record; no timeout causes an auto-retry.
-   if(prior?.status==='failed')db.prepare('UPDATE aigc_detections SET input_hash=? WHERE id=? AND status=\'failed\'').run(hash+':failed:'+prior.id,prior.id);
+   if(prior&&(prior.status==='failed'||prior.error===partialMessage))db.prepare('UPDATE aigc_detections SET input_hash=? WHERE id=?').run(hash+':previous:'+prior.id,prior.id);
    const id=randomUUID(),created=new Date().toISOString(),parts=prepared.parts.map(({content,...part})=>({...part,...(part.effectiveCharacters===0?{skipped:true,skipReason:content.trim()?'non_text':'whitespace'}:{}),label:'undetermined',confidence:null}));
    db.prepare("INSERT INTO aigc_detections(id,user_id,input_hash,status,characters,part_count,reserved_calls,reserved_billing_units,parts,created_at,updated_at) VALUES(?,?,?,'running',?,?,?,?,?,?,?)").run(id,user.id,hash,prepared.characters,parts.length,prepared.calls,prepared.billingUnits,JSON.stringify(parts),created,created);
    db.prepare('UPDATE aigc_detections SET title=?,partition_version=? WHERE id=?').run(input.title?.trim()||'送检论文',AIGC_PARAGRAPH_VERSION,id);
