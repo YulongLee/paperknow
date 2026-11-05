@@ -38,3 +38,23 @@
 @media(max-width:760px){.dashboard .ppt-template-filters{gap:8px;padding:12px}.dashboard .ppt-template-filters label{font-size:11px}.dashboard .ppt-template-filters select,.dashboard .ppt-notes-setting select{font-size:16px}.dashboard .ppt-outline-summary{display:block}.dashboard .ppt-outline-summary>.btn{margin-top:12px}.ppt-parity-preview .ppt-slide{min-height:190px;padding:20px}.ppt-parity-preview .ppt-slide h3{font-size:21px}.ppt-parity-preview .ppt-slide p{font-size:13px}}
 @media(max-width:480px){.dashboard .ppt-template-filters{grid-template-columns:1fr}.dashboard .ppt-start-settings .ppt-notes-setting{grid-column:1/-1}.ppt-parity-preview .layout-twoColumn>p{column-count:1}.ppt-custom-outline textarea{font-size:16px}}
 
+
+/* 版式库：以封面构图呈现可选主题。 */
+.dashboard .ppt-commercial .ppt-template-filters{background:#f8faff;border-color:#e2eaf6;border-radius:14px;gap:14px;padding:16px}
+.dashboard .ppt-commercial .ppt-template-count{margin:16px 0;color:#536b8e;font-size:13px}
+.dashboard .ppt-commercial .ppt-template-item{border-color:#e1e9f4;border-radius:14px;padding:8px;gap:4px;box-shadow:0 5px 20px #263b5c09;transition:border-color .18s,box-shadow .18s}
+.dashboard .ppt-commercial .ppt-template-item:has(.ppt-mode-template.selected){border-color:#3973f4;box-shadow:0 0 0 1px #3973f4,0 7px 22px #366deb16}
+.dashboard .ppt-commercial .ppt-template-item .ppt-mode-template{padding:0;outline:0;background:transparent}
+.dashboard .ppt-commercial .ppt-cover-thumb{display:block;width:100%;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:#1c3354}
+.dashboard .ppt-commercial .ppt-cover-thumb svg{display:block;width:100%;height:100%}
+.dashboard .ppt-commercial .ppt-mode-template>.ppt-template-meta{padding:12px 8px 6px;gap:8px}
+.dashboard .ppt-commercial .ppt-mode-template>.ppt-template-meta>b{font-size:14px;font-weight:650;color:#203655}
+.dashboard .ppt-commercial .ppt-mode-template>.ppt-template-meta>small{color:#647997;font-size:11px}
+.dashboard .ppt-commercial .ppt-mode-template.selected>.ppt-template-meta>small{color:#2463e7;font-weight:650}
+.dashboard .ppt-commercial .ppt-template-item>p{font-size:12px;line-height:1.6;color:#60738d;margin:0 8px 5px}
+.dashboard .ppt-commercial .ppt-template-item>.ppt-template-preview-button{margin:3px 8px 7px;text-align:center}
+.dashboard .ppt-commercial .ppt-template-expand{display:block;margin:18px auto 0;padding:9px 18px;border:1px solid #d5e1f3;border-radius:9px;background:#fff;color:#315ca7;font:inherit;font-size:12px;cursor:pointer}
+.dashboard .ppt-commercial .ppt-template-expand:hover{border-color:#82a6ee;background:#f5f8ff}.dashboard .ppt-commercial .ppt-template-expand:focus-visible{outline:3px solid #4285dd;outline-offset:3px}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-template-item{background:#172a40;border-color:#344c68}.hub-theme-dark .dashboard .ppt-commercial .ppt-mode-template>.ppt-template-meta>b{color:#e2ecfa}.hub-theme-dark .dashboard .ppt-commercial .ppt-mode-template>.ppt-template-meta>small,.hub-theme-dark .dashboard .ppt-commercial .ppt-template-item>p{color:#bbcae0}.hub-theme-dark .dashboard .ppt-commercial .ppt-template-expand{background:#1c3049;border-color:#456183;color:#dae8fc}
+@media(max-width:760px){.dashboard .ppt-commercial .ppt-mode-template-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}@media(max-width:480px){.dashboard .ppt-commercial .ppt-mode-template-grid{grid-template-columns:minmax(0,1fr)}}@media(prefers-reduced-motion:reduce){.dashboard .ppt-commercial .ppt-template-item{transition:none}}
+.ppt-parity-preview .ppt-slide.cover{position:relative;overflow:hidden;isolation:isolate}.ppt-parity-preview .ppt-cover-ornament{position:absolute;z-index:-1;right:4%;top:12%;width:25%;aspect-ratio:1;opacity:.42;border:2px solid var(--ppt-accent);pointer-events:none}.ppt-parity-preview .ornament-orbit{border-radius:50%;box-shadow:inset 0 0 0 18px #ffffff0c,inset 0 0 0 20px #ffffff2c}.ppt-parity-preview .ornament-ribbon{border:0;background:linear-gradient(112deg,transparent 25%,var(--ppt-accent) 26% 45%,transparent 46% 56%,#ffffff5c 57% 68%,transparent 69%)}.ppt-parity-preview .ornament-geometry{border-radius:10px;transform:rotate(8deg);box-shadow:-25px 25px 0 -4px #ffffff25}.ppt-parity-preview .ornament-minimal{border:0;border-top:3px solid var(--ppt-accent);border-bottom:3px solid var(--ppt-accent);height:22%;aspect-ratio:auto}

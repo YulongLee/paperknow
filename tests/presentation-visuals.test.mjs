@@ -43,3 +43,16 @@ test('visual cover uses the selected dark palette and keeps editable readable te
  const rect=Array.from(doc.getElementsByTagName('rect')).find(n=>n.getAttribute('id')==='background');assert.equal(rect.getAttribute('fill'),f.plan.palette.primary);
  const title=Array.from(doc.getElementsByTagName('g')).find(n=>n.getAttribute('id')==='slide-title');assert.equal(title.getElementsByTagName('text')[0].getAttribute('fill'),'#FFFFFF');assert.equal(validatePptMasterVisibleText(page.svg,f.slides[0],f.plan),true);
 });
+
+test('all templates preserve the selected theme and distinct editable cover motifs',async()=>{
+ const {themes}=await import('../dist/workspace/presentation-model.mjs');
+ const seen=new Set();
+ for(const [id,theme] of Object.entries(themes)){
+  const f=visualFixture();f.value.snapshot.context.theme=id;const plan=pptMasterDesignPlan(f.value,f.slides,{sourceIds:f.plan.sourceIds});
+  assert.equal(plan.theme,id);assert.equal(plan.coverVariant,theme.coverVariant);assert.equal(plan.palette.primary,'#'+theme.dark);assert.equal(plan.palette.accent,'#'+theme.accent);
+  const slide={...f.slides[0],title:'研究背景与技术方法'.repeat(12)},page=validatedPresentationLayout(f.value,slide,plan),doc=new DOMParser().parseFromString(page.svg,'image/svg+xml');
+  assert.equal(validatePptMasterVisibleText(page.svg,slide,plan),true);assert.match(page.svg,/template-(?:orbit|ribbon|block|line)/);assert.doesNotMatch(page.svg,/<image|href=|<script/);
+  const title=Array.from(doc.getElementsByTagName('g')).find(n=>n.getAttribute('id')==='slide-title').getAttribute('data-pptx-bounds').split(' ').map(Number);assert.ok(title[0]+title[2]<=1024);seen.add(plan.coverVariant);
+ }
+ assert.deepEqual([...seen].sort(),['geometry','minimal','orbit','ribbon']);
+});

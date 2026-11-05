@@ -11,15 +11,30 @@ export function createPresentation(deck){
   slide.background={color:dark?t.dark:'F7F9FD'};
   if(dark){
    slide.addShape(pptx.ShapeType.rect,{x:10.7,y:0,w:2.63,h:7.5,line:{color:t.accent,transparency:100},fill:{color:t.accent,transparency:82}});
-   slide.addShape(pptx.ShapeType.ellipse,{x:9.4,y:-.85,w:3.8,h:3.8,line:{color:'FFFFFF',transparency:87,width:1},fill:{color:t.dark,transparency:100}});
-   slide.addShape(pptx.ShapeType.ellipse,{x:10.1,y:-.15,w:2.4,h:2.4,line:{color:'FFFFFF',transparency:91,width:1},fill:{color:t.dark,transparency:100}});
+   // Cover illustration stays in a dedicated right-hand zone, leaving a
+   // separate, bounded area for arbitrary user-provided titles and content.
+   if(t.coverVariant==='ribbon'){
+    slide.addShape(pptx.ShapeType.parallelogram,{x:9.15,y:2.15,w:3.45,h:3.0,line:{color:t.accent,transparency:100},fill:{color:t.accent,transparency:64}});
+    slide.addShape(pptx.ShapeType.parallelogram,{x:9.45,y:2.15,w:.36,h:3.0,line:{color:t.accent,transparency:100},fill:{color:t.accent,transparency:8}});
+   }else if(t.coverVariant==='geometry'){
+    slide.addShape(pptx.ShapeType.roundRect,{x:9.2,y:2.15,w:3.15,h:3.0,rectRadius:.12,line:{color:t.accent,transparency:100},fill:{color:t.accent,transparency:70}});
+    slide.addShape(pptx.ShapeType.roundRect,{x:9.42,y:2.37,w:2.7,h:2.56,rectRadius:.08,line:{color:t.accent,width:1.5},fill:{color:t.dark,transparency:35}});
+    slide.addShape(pptx.ShapeType.rect,{x:11.7,y:4.48,w:.32,h:.32,line:{color:t.accent,transparency:100},fill:{color:t.accent}});
+   }else if(t.coverVariant==='minimal'){
+    slide.addShape(pptx.ShapeType.rect,{x:9.2,y:2.15,w:3.15,h:3.0,line:{color:t.accent,transparency:100},fill:{color:t.accent,transparency:78}});
+    slide.addShape(pptx.ShapeType.line,{x:9.42,y:4.88,w:2.7,h:0,line:{color:t.accent,width:2}});
+   }else{
+    slide.addShape(pptx.ShapeType.ellipse,{x:9.28,y:2.12,w:3.1,h:3.1,line:{color:t.accent,transparency:100},fill:{color:t.accent,transparency:70}});
+    slide.addShape(pptx.ShapeType.ellipse,{x:9.62,y:2.46,w:2.42,h:2.42,line:{color:t.accent,width:1.5},fill:{color:t.dark,transparency:100}});
+    slide.addShape(pptx.ShapeType.line,{x:9.75,y:5.38,w:2.15,h:0,line:{color:t.accent,width:3}});
+   }
   }else{
    slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:13.33,h:.1,line:{color:t.accent,transparency:100},fill:{color:t.accent}});
    slide.addShape(pptx.ShapeType.roundRect,{x:.64,y:2.12,w:12.05,h:4.55,rectRadius:.12,line:{color:'E2EAF5',width:.8},fill:{color:'FFFFFF'}});
   }
   slide.addText('PaperKnow · '+deck.scenario,{x:.75,y:.36,w:10.5,h:.27,fontSize:10.5,color:dark?'DCE6F5':t.accent,margin:0,fit:'shrink'});
   slide.addShape(pptx.ShapeType.rect,{x:.75,y:dark?1.55:1.7,w:dark?1.04:.66,h:.045,line:{color:t.accent,transparency:100},fill:{color:t.accent}});
-  slide.addText(s.title,{x:.75,y:dark?1.95:.9,w:11.55,h:dark?1.5:.78,fontSize:dark?34:26,bold:true,color:dark?'FFFFFF':t.dark,breakLine:false,fit:'shrink',margin:0,valign:'mid'});
+  slide.addText(s.title,{x:.75,y:dark?1.95:.9,w:dark?7.8:11.55,h:dark?1.5:.78,fontSize:dark?34:26,bold:true,color:dark?'FFFFFF':t.dark,breakLine:false,fit:'shrink',margin:0,valign:'mid'});
   const textOpts={fontSize:dark?20:18,color:dark?'E2EAF5':'344762',breakLine:false,fit:'shrink',paraSpaceAfterPt:14,margin:0,valign:'top'};
   if(s.layout==='twoColumn'){
    const lines=s.body.split('\n'),middle=Math.ceil(lines.length/2);
@@ -38,8 +53,8 @@ export function createPresentation(deck){
     slide.addShape(pptx.ShapeType.ellipse,{x:1.23,y:y+rowHeight/2-.045,w:.09,h:.09,line:{color:t.accent,transparency:100},fill:{color:t.accent}});
     slide.addText(line,{...textOpts,x:1.5,y:y+.14,w:10.48,h:rowHeight-.28,valign:'mid'});
    });
-  }else slide.addText(s.body,{...textOpts,x:dark?.78:1.06,y:dark?3.92:2.53,w:dark?10.5:11.1,h:dark?2.12:3.75,align:closing?'center':'left'});
-  if(cover&&deck.author)slide.addText('作者：'+deck.author,{x:.78,y:6.35,w:10.5,h:.34,fontSize:13,color:'E2EAF5',fit:'shrink',margin:0});
+  }else slide.addText(s.body,{...textOpts,x:dark?.78:1.06,y:dark?3.92:2.53,w:dark?7.75:11.1,h:dark?2.12:3.75,align:closing?'center':'left'});
+  if(cover&&deck.author)slide.addText('作者：'+deck.author,{x:.78,y:6.35,w:7.75,h:.34,fontSize:13,color:'E2EAF5',fit:'shrink',margin:0});
   slide.addText(`${String(i+1).padStart(2,'0')} / ${String(deck.slides.length).padStart(2,'0')}`,{x:11.55,y:7,w:1,h:.22,fontSize:10,color:dark?'DCE6F5':'778AA8',align:'right',margin:0});
   if(s.notes)slide.addNotes(s.notes);
  }

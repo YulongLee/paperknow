@@ -18,10 +18,10 @@ function lines(text,size,space){
 }
 
 function arrangement(slide,plan,composition,bodySize,titleSize){
- const content=pptMasterVisibleContent(slide,plan),title=content[0],footer=content.at(-1),body=content.slice(1,-1),titleLines=lines(title.text,titleSize,1112),titleHeight=titleLines.length*titleSize*1.5+16;
+ const content=pptMasterVisibleContent(slide,plan),title=content[0],footer=content.at(-1),body=content.slice(1,-1),titleLines=lines(title.text,titleSize,composition==='cover'?928:1112),titleHeight=titleLines.length*titleSize*1.5+16;
  const top=composition==='cover'||composition==='ending'?92:44,bodyTop=top+titleHeight+24,bottom=624;
  if(bodyTop>=bottom)return null;
- const blocks=[{...title,x:72,y:top,w:1136,h:titleHeight,size:titleSize,lines:titleLines}],split=composition==='split',columns=split?2:1,cut=Math.ceil(body.length/columns),gap=split?48:0,w=split?544:1136;
+ const blocks=[{...title,x:72,y:top,w:composition==='cover'?952:1136,h:titleHeight,size:titleSize,lines:titleLines}],split=composition==='split',columns=split?2:1,cut=Math.ceil(body.length/columns),gap=split?48:0,w=split?544:1136;
  for(let col=0;col<columns;col++){
   const group=body.slice(col*cut,(col+1)*cut),prepared=group.map((row,index)=>{const size=composition==='spotlight'&&col===0&&index===0?Math.max(bodySize,30):bodySize,wrapped=lines(row.text,size,w-24);return{...row,size,lines:wrapped,h:wrapped.length*size*1.5+16};}),space=bottom-bodyTop,total=prepared.reduce((n,row)=>n+row.h,0),gaps=prepared.length>1?Math.min(22,Math.max(12,(space-total)/(prepared.length-1))):0;
   if(total+gaps*Math.max(0,prepared.length-1)>space)return null;
@@ -50,6 +50,12 @@ export function validatedPresentationLayout(value,slide,plan){
  if(page.composition==='sequence')for(const [index,row]of body.entries())decoration+=`<circle id="sequence-node-${index}" data-pptx-role="decoration" cx="52" cy="${row.y+row.size}" r="4" fill="${p.accent}"/>`;
  if(page.composition==='editorial')for(const [index,row]of body.slice(0,-1).entries())decoration+=`<line id="editorial-rule-${index}" data-pptx-role="decoration" x1="84" y1="${row.y+row.h+5}" x2="1196" y2="${row.y+row.h+5}" stroke="${p.divider}" stroke-width="1"/>`;
  if(visual)decoration=`<rect id="theme-bar" data-pptx-role="decoration" x="40" y="48" width="8" height="64" fill="${p.accent}"/>`+visual.decoration;
+ if(page.role==='cover'){
+  const stroke=darkPage?p.accent:p.primary;
+  // Four editable motifs are confined to the right edge and never cover source text.
+  const motifs={orbit:`<circle id="template-orbit-a" data-pptx-role="decoration" cx="1195" cy="87" r="45" fill="none" stroke="${stroke}" stroke-width="2"/><circle id="template-orbit-b" data-pptx-role="decoration" cx="1195" cy="87" r="25" fill="none" stroke="${stroke}" stroke-width="2"/>`,ribbon:`<polygon id="template-ribbon" data-pptx-role="decoration" points="1110,0 1140,0 1260,120 1230,120" fill="${stroke}"/>`,geometry:`<rect id="template-block-a" data-pptx-role="decoration" x="1162" y="32" width="40" height="40" fill="none" stroke="${stroke}" stroke-width="3"/><rect id="template-block-b" data-pptx-role="decoration" x="1210" y="80" width="32" height="32" fill="${stroke}"/>`,minimal:`<line id="template-line-a" data-pptx-role="decoration" x1="1120" y1="50" x2="1238" y2="50" stroke="${stroke}" stroke-width="3"/><line id="template-line-b" data-pptx-role="decoration" x1="1160" y1="67" x2="1238" y2="67" stroke="${stroke}" stroke-width="2"/>`};
+  decoration+=motifs[plan.coverVariant]||motifs.orbit;
+ }
  // A consistent fine rule anchors the page number without adding content or implying data.
  decoration+=`<line id="footer-rule" data-pptx-role="decoration" x1="72" y1="640" x2="1208" y2="640" stroke="${darkPage?p.accent:p.divider}" stroke-width="1"/>`;
  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="${page.role}"><rect id="background" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="${darkPage?p.primary:p.background}"/>${decoration}${blocks.map(row=>`<g id="${row.id}" data-pptx-bounds="${row.x} ${row.y} ${row.w} ${row.h}">${row.lines.map((text,index)=>`<text x="${row.x+12}" y="${row.y+row.size+8+index*row.size*1.5}" font-family="${font}" font-size="${row.size}"${row.role==='title'||row.boldFirst&&index===0?' font-weight="700"':''} fill="${darkPage?'#FFFFFF':row.role==='footer'?p.muted:p.text}">${xml(text)}</text>`).join('')}</g>`).join('')}</svg>`;

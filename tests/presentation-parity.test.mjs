@@ -31,11 +31,11 @@ function fixture(t,{hash='#tool/ppt?mode=ai',rows=[],realPanel=false,extract=asy
  f.mount();t.after(()=>{fail=false;w.pptParity.disposePresentation();w.close();});return f;
 }
 
-test('six real templates filter by complete independent attributes without inventing empty results',()=>{
- assert.equal(Object.keys(model.themes).length,6);assert.deepEqual(parity.presentationTemplateCatalog.map(row=>row.id),Object.keys(model.themes));
+test('twelve real templates filter by complete independent attributes without inventing empty results',()=>{
+ assert.equal(Object.keys(model.themes).length,12);assert.deepEqual(parity.presentationTemplateCatalog.map(row=>row.id),Object.keys(model.themes));
  assert.deepEqual(parity.filterPresentationTemplates({industry:'学术研究',style:'正式',color:'深蓝'}).map(row=>row.id),['formal']);
  assert.equal(parity.filterPresentationTemplates({style:'正式',color:'青绿'}).length,0);
- assert.equal(parity.filterPresentationTemplates({style:'all',color:'all'}).length,6);
+ assert.equal(parity.filterPresentationTemplates({style:'all',color:'all'}).length,12);
 });
 test('AI creation shows a single generation action across template changes and keeps page editing after generation',t=>{
  const f=fixture(t);
@@ -121,3 +121,13 @@ test('dedicated parity styles target presentation and modal classes with keyboar
  const css=await readFile(new URL('../dist/workspace/presentation-parity.css',import.meta.url),'utf8');assert.match(css,/ppt-template-filters/);assert.match(css,/:focus-visible/);assert.match(css,/@media\(max-width:480px\)/);assert.doesNotMatch(css,/\.format-|\.revision-|\.detection-/);
 });
 
+
+
+test('template gallery displays distinct cover previews and expands to every selectable theme',t=>{
+ const f=fixture(t);f.seed();let buttons=[...f.w.document.querySelectorAll('[data-ppt-template]')];assert.equal(buttons.length,6);assert.equal(f.q('[data-ppt-templates-expand]').getAttribute('aria-expanded'),'false');
+ const before=buttons.map(b=>b.querySelector('svg').outerHTML);assert.equal(new Set(before).size,6);assert.ok(buttons.every(b=>b.querySelector('svg[aria-label]')));
+ f.click('[data-ppt-templates-expand]');buttons=[...f.w.document.querySelectorAll('[data-ppt-template]')];assert.equal(buttons.length,Object.keys(model.themes).length);assert.equal(f.q('[data-ppt-templates-expand]').getAttribute('aria-expanded'),'true');
+ const id='teal',index=Object.keys(model.themes).indexOf(id);f.click('[data-ppt-template="ai-'+index+'"]');assert.equal(f.snapshot().context.theme,id);assert.equal(f.q('[data-ppt-template="ai-'+index+'"]').getAttribute('aria-pressed'),'true');
+ f.click('[data-ppt-templates-expand]');assert.ok(f.q('[data-ppt-template="ai-'+index+'"]'));assert.equal(f.snapshot().context.theme,id);
+ f.click('[data-ppt-template-preview="'+id+'"]');assert.ok(f.q('.ppt-parity-preview .ornament-geometry'));
+});

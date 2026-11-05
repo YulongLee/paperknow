@@ -43,7 +43,10 @@ export function presentationVisualArrangement(slide,plan,bodySize,titleSize,wrap
   let y=bodyTop;for(const row of rows){const h=wrapBody(row.text,688).length*bodySize*1.5+16;if(!add(row,72,y,712,h)||y+h>bottom)return null;y+=h+16;}
   const center=kind==='cover'?355:(bodyTop+bottom)/2,radius=kind==='cover'?159:Math.min(159,(bottom-bodyTop)/2-12),size=Math.min(218,radius*1.4);
   if(radius<40)return null;
-  art=`<circle cx="1045" cy="${center}" r="${radius}" fill="${p.secondary}"/><circle cx="1045" cy="${center}" r="${radius*0.8}" fill="none" stroke="${p.divider}" stroke-width="2"/>`+glyph(slide.title+' '+slide.body,1045-size/2,center-size/2,size,p)+`<rect x="940" y="${center+radius+16}" width="210" height="6" fill="${p.accent}"/>`;
+  const icon=glyph(slide.title+' '+slide.body,1045-size/2,center-size/2,size,p);
+  const orbit=`<circle cx="1045" cy="${center}" r="${radius}" fill="${p.secondary}"/><circle cx="1045" cy="${center}" r="${radius*0.8}" fill="none" stroke="${p.divider}" stroke-width="2"/>`+icon+`<rect x="940" y="${center+radius+16}" width="210" height="6" fill="${p.accent}"/>`;
+  const motifs={orbit,ribbon:`<polygon points="875,${center-140} 1095,${center-140} 1215,${center+140} 995,${center+140}" fill="${p.secondary}"/><polygon points="900,${center-140} 928,${center-140} 1048,${center+140} 1020,${center+140}" fill="${p.accent}"/>`+icon,geometry:`<rect x="885" y="${center-140}" width="300" height="280" rx="20" fill="${p.secondary}"/><rect x="905" y="${center-120}" width="260" height="240" rx="12" fill="${p.background}" stroke="${p.divider}" stroke-width="2"/>`+icon+`<rect x="1145" y="${center+95}" width="28" height="28" fill="${p.accent}"/>`,minimal:`<rect x="885" y="${center-140}" width="300" height="280" fill="${p.secondary}"/>`+icon+`<line x1="905" y1="${center+120}" x2="1165" y2="${center+120}" stroke="${p.accent}" stroke-width="3"/>`};
+  art=kind==='cover'?(motifs[plan.coverVariant]||orbit):orbit;
  }else if(kind==='bars'){
   const chart=presentationChartRows(slide),max=['%','％'].includes(chart[0].unit)?100:Math.max(...chart.map(row=>row.value)),height=(bottom-bodyTop)/rows.length;
   if(height<bodySize*1.5+34)return null;
