@@ -249,15 +249,32 @@ test('V1 joint detection settles only one 149-credit hold after both reports and
  for(const c of again.value.children)assert.equal(c.status,'completed');
 });
 test('V1 joint detection releases full price on partial failure and cannot be forged from the public child input',async t=>{
- const f=combinedFixture(t,{cloud:async()=>{throw Error('synthetic detector failure');}}),first=(await f.submit()).value;await f.aigc.waitForIdle();await f.worker.tick();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id).status,'failed');assert.equal(f.billing.balance(f.user.id).balance,1000);assert.equal(f.billing.balance(f.user.id).held,0);
+ const f=combinedFixture(t,{cloud:async()=>{throw Error('synthetic detector failure');}}),first=(await f.submit()).value;await f.aigc.waitForIdle();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id).status,'running');assert.equal(f.billing.balance(f.user.id).held,149);await f.worker.tick();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id).status,'failed');assert.equal(f.billing.balance(f.user.id).balance,1000);assert.equal(f.billing.balance(f.user.id).held,0);
  await assert.rejects(f.similarity.handle({path:'/api/web-similarity',method:'POST',user:f.user,readBody:async()=>({text:paragraph,title:'Forged',consent:true,expectedUserId:f.user.id,idempotencyKey:randomUUID(),fundingParent:first.id})}),{status:400});
+ const restored=(await f.joint.handle({path:'/api/combined-detections/'+first.id,method:'GET',user:f.user})).value;assert.equal(restored.children.find(c=>c.kind==='similarity').status,'completed');assert.equal(restored.children.find(c=>c.kind==='aigc').status,'failed');assert.doesNotMatch(JSON.stringify(restored),/synthetic detector failure/);
  assert.throws(()=>attachCombinedChild(f.db,{parentId:first.id,userId:'bob',childId:first.children[0].id,key:'detection-similarity',text:paragraph}),{status:409});
 });
 test('V1 joint detection releases the parent if an AI paragraph is undetermined',async t=>{
  const f=combinedFixture(t,{cloud:async text=>text.startsWith('UNKNOWN')?{label:'undetermined',confidence:null}:{label:'ugc',confidence:94}});
- const text='UNKNOWN'+'测'.repeat(60)+'\n'+paragraph;const first=(await f.submit({text})).value;await f.aigc.waitForIdle();await f.worker.tick();
+ const text='UNKNOWN'+'测'.repeat(60)+'\n'+paragraph;const first=(await f.submit({text})).value;await f.aigc.waitForIdle();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id).status,'running');assert.equal(f.billing.balance(f.user.id).held,149);await f.worker.tick();
  assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id).status,'failed');assert.equal(f.billing.balance(f.user.id).balance,1000);assert.equal(f.billing.balance(f.user.id).held,0);
  const child=f.db.prepare("SELECT child_id FROM combined_detection_children WHERE parent_id=? AND service_key='detection-aigc'").get(first.id);const result=(await f.aigc.handle({path:'/api/aigc-detections/'+child.child_id,method:'GET',user:f.user})).value;assert.equal(result.status,'completed');assert.equal(result.completedParts,2);assert.equal(result.conclusive,false);
+ const restored=(await f.joint.handle({path:'/api/combined-detections/'+first.id,method:'GET',user:f.user})).value;assert.equal(restored.status,'completed');assert.equal(restored.partial,true);assert.equal(restored.completed,2);assert.equal(restored.children.find(c=>c.kind==='aigc').partial,true);assert.equal(restored.children.find(c=>c.kind==='similarity').status,'completed');
+});
+test('joint retries failed input with a new key while preserving old idempotency and history',async t=>{
+ let fail=true;const f=combinedFixture(t,{cloud:async()=>{if(fail)throw Error('internal');return{label:'ugc',confidence:95};}}),key=randomUUID();
+ const first=(await f.submit({idempotencyKey:key})).value;await f.aigc.waitForIdle();await f.worker.tick();assert.equal((await f.submit({idempotencyKey:key})).value.id,first.id);await assert.rejects(f.submit({idempotencyKey:key,text:paragraph+'changed'}),{status:409});
+ fail=false;const retry=(await f.submit()).value;assert.notEqual(retry.id,first.id);await f.aigc.waitForIdle();await f.worker.tick();assert.equal((await f.joint.handle({path:'/api/combined-detections/'+retry.id,method:'GET',user:f.user})).value.status,'completed');assert.equal((await f.submit({idempotencyKey:key})).value.id,first.id);assert.equal(f.billing.balance(f.user.id).balance,851);
+});
+test('retry of partial joint detection preserves both historical reports without additional calls on reads or idempotent replay',async t=>{
+ let unknown=true;const f=combinedFixture(t,{cloud:async text=>unknown&&text.startsWith('UNKNOWN')?{label:'undetermined',confidence:null}:{label:'ugc',confidence:94}}),text='UNKNOWN'+'测'.repeat(60)+'\n'+paragraph,key=randomUUID();
+ const first=(await f.submit({text,idempotencyKey:key})).value;await f.aigc.waitForIdle();await f.worker.tick();const old=(await f.joint.handle({path:'/api/combined-detections/'+first.id,method:'GET',user:f.user})).value;
+ assert.equal(old.partial,true);assert.equal(old.status,'completed');const ai=old.children.find(c=>c.kind==='aigc'),web=old.children.find(c=>c.kind==='similarity');assert.equal(ai.status,'completed');assert.equal(web.status,'completed');
+ const beforeReads=f.calls.length,firstAi=(await f.aigc.handle({path:'/api/aigc-detections/'+ai.id+'/report',method:'GET',user:f.user})).value,firstWeb=(await f.similarity.handle({path:'/api/web-similarity/'+web.id+'/report',method:'GET',user:f.user})).value;
+ assert.equal(firstAi.text,text);assert.equal(firstAi.item.id,ai.id);assert.equal(firstWeb.report.id,web.id);assert.equal(f.calls.length,beforeReads);
+ unknown=false;const second=(await f.submit({text})).value;assert.notEqual(second.id,first.id);await f.aigc.waitForIdle();await f.worker.tick();const afterRetry=f.calls.length;
+ const oldReplay=(await f.submit({text,idempotencyKey:key})).value;assert.equal(oldReplay.id,first.id);assert.equal(oldReplay.partial,true);const oldAi=(await f.aigc.handle({path:'/api/aigc-detections/'+ai.id+'/report',method:'GET',user:f.user})).value,oldWeb=(await f.similarity.handle({path:'/api/web-similarity/'+web.id+'/report',method:'GET',user:f.user})).value;
+ assert.equal(oldAi.text,text);assert.equal(oldAi.item.id,ai.id);assert.equal(oldAi.item.parts[0].label,'undetermined');assert.equal(oldWeb.report.id,web.id);assert.equal(f.calls.length,afterRetry);
 });
 test('V1 joint detection rejects stale prices and invalid text before any hold or provider call',async t=>{
  const f=combinedFixture(t);await assert.rejects(f.submit({expectedCreditCost:99}),{status:409});await assert.rejects(f.submit({text:'too short'}),{status:400});assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);assert.equal(f.calls.length,0);
