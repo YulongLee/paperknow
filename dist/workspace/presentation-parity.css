@@ -67,3 +67,12 @@
 .ppt-cover-sample strong{font-size:clamp(12px,1.2vw,20px);line-height:1.35;letter-spacing:.02em}.ppt-cover-sample small{font-size:clamp(9px,.65vw,12px);color:#ffffffe8}
 .ppt-parity-preview .ppt-preview-cover{max-width:720px;margin:14px auto 20px}.ppt-parity-preview .ppt-cover-sample strong{font-size:clamp(18px,2.5vw,32px)}.ppt-parity-preview .ppt-cover-sample small{font-size:14px}
 .dashboard .ppt-commercial .ppt-cover-sample strong,.ppt-parity-preview .ppt-cover-sample strong{color:#fff}.dashboard .ppt-commercial .ppt-cover-sample small,.ppt-parity-preview .ppt-cover-sample small{color:#f2f5fa}
+
+/* A shared template selection heading keeps the chosen style visible in every scene. */
+.dashboard .ppt-commercial .ppt-template-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:26px 0 16px;padding:18px 20px;background:#f5f8ff;border:1px solid #dce7f8;border-radius:12px}
+.dashboard .ppt-commercial .ppt-template-heading h3{display:flex;align-items:center;gap:10px;margin:0;color:#1b3152;font-size:16px}
+.dashboard .ppt-commercial .ppt-template-heading p{margin:7px 0 0;color:#607694;font-size:13px;line-height:1.5}
+.dashboard .ppt-commercial .ppt-template-current{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;color:#607694;font-size:12px}
+.dashboard .ppt-commercial .ppt-template-current strong{color:#245acb;font-size:14px}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-template-heading{background:#182c44;border-color:#395371}.hub-theme-dark .dashboard .ppt-commercial .ppt-template-heading h3,.hub-theme-dark .dashboard .ppt-commercial .ppt-template-current strong{color:#e2ecfa}.hub-theme-dark .dashboard .ppt-commercial .ppt-template-heading p,.hub-theme-dark .dashboard .ppt-commercial .ppt-template-current{color:#bbcae0}
+@media(max-width:480px){.dashboard .ppt-commercial .ppt-template-heading{align-items:flex-start;flex-direction:column;gap:10px;padding:15px}.dashboard .ppt-commercial .ppt-template-current{align-items:flex-start;flex-direction:row;gap:8px}}

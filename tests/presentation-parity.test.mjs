@@ -90,6 +90,27 @@ test('delete auto-saves honestly with a recoverable complete page backup',async 
 test('all PPT scenes generate directly without custom outline or empty-structure choices',t=>{
  const f=fixture(t);for(const mode of ['ai','proposal','thesis']){f.click('[data-ppt-mode="'+mode+'"]');assert.equal(f.q('[data-action="generate"]'),null);assert.equal(f.q('[data-action="custom-outline"]'),null);assert.equal(f.q('.ppt-outline-summary'),null);assert.ok(f.q('[data-action="ai-generate"]'));}
 });
+test('each PPT creation scene saves and restores its chosen template in the generation snapshot',t=>{
+ const f=fixture(t), ids=['teal','crimson','forest'];
+ for(const [index,mode] of ['ai','proposal','thesis'].entries()){
+  if(index)f.click('[data-ppt-mode="'+mode+'"]');
+  f.seed();f.edit('[data-field="title"]','Template test '+mode);
+  assert.equal(f.w.document.querySelectorAll('.ppt-template-heading').length,1);
+  assert.match(f.q('.ppt-template-heading h3').textContent,/选择 PPT 模板/);
+  assert.match(f.q('[data-ppt-workflow-step="2"]').textContent,/选择 PPT 模板/);
+  f.click('[data-ppt-templates-expand]');
+  const theme=ids[index],themeIndex=Object.keys(model.themes).indexOf(theme);
+  f.click('[data-ppt-template="'+mode+'-'+themeIndex+'"]');
+  assert.equal(f.q('.ppt-template-current strong').textContent,model.themes[theme].name);
+  assert.equal(f.snapshot().context.theme,theme);
+  assert.equal(f.snapshot().mode,mode);
+  assert.equal(f.q('[data-ppt-template="'+mode+'-'+themeIndex+'"]').getAttribute('aria-pressed'),'true');
+  assert.equal(f.w.pptParity.presentationRouteGuard(),true);
+  const saved=f.rows().find(row=>row.presentation?.title==='Template test '+mode);
+  assert.ok(saved);assert.equal(saved.presentation.theme,theme);
+  f.mount(saved.id);assert.equal(f.snapshot().context.theme,theme);
+ }
+});
 test('template filters preserve the selected theme and explicit preview uses its real palette',t=>{
  const f=fixture(t);f.seed();f.click('[data-ppt-template="ai-2"]');f.edit('[data-ppt-filter="style"]','正式','change');f.edit('[data-ppt-filter="color"]','青绿','change');assert.match(f.q('.ppt-template-count').textContent,/找到 0/);assert.equal(f.snapshot().context.theme,'focus');f.edit('[data-ppt-filter="color"]','all','change');f.click('[data-ppt-template-preview="indigo"]');assert.match(f.q('.ppt-parity-preview .ppt-slide').getAttribute('style'),/#6554A5/);f.click('#ppt-use-preview-theme');assert.equal(f.snapshot().context.theme,'indigo');assert.equal(f.rows()[0].presentation.theme,'indigo');
 });
