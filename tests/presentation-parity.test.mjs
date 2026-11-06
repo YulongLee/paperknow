@@ -156,8 +156,10 @@ test('template gallery displays distinct cover previews and expands to every sel
 test('whole template previews use shared family tokens and provide six informative page types',t=>{
  const f=fixture(t);f.seed();
  assert.equal(f.w.document.querySelectorAll('.ppt-template-item').length,6);
- for(const item of f.w.document.querySelectorAll('.ppt-template-item'))assert.equal(item.querySelectorAll('.ppt-template-inner-thumbs svg').length,2);
+ for(const item of f.w.document.querySelectorAll('.ppt-template-item'))assert.equal(item.querySelectorAll('.ppt-template-inner-thumbs img').length,2);
  assert.ok(f.q('.ppt-template-recommended'));
+ assert.equal(f.w.document.querySelectorAll('.ppt-template-inner-thumbs svg').length,0);
+ for(const image of f.w.document.querySelectorAll('.ppt-template-inner-thumbs img')){assert.match(image.getAttribute('src'),/^data:image\/svg\+xml;charset=utf-8,/);const svg=decodeURIComponent(image.getAttribute('src').split(',')[1]);assert.match(svg,/<svg/);assert.doesNotMatch(svg,/<image|<script|(?:href|src)=/);}
  for(const id of ['academic','indigo','slate','sand']){
   if(f.w.document.querySelectorAll('[data-ppt-template]').length<12)f.click('[data-ppt-templates-expand]');
   f.click('[data-ppt-template-preview="'+id+'"]');
@@ -168,8 +170,8 @@ test('whole template previews use shared family tokens and provide six informati
   assert.equal(root.querySelector('.ppt-cover-thumb em'),null);
   assert.equal(root.querySelector('.ppt-cover-sample text:last-child').getAttribute('y'),'428');
   assert.deepEqual([...root.querySelectorAll('[data-template-preview-page]')].map(node=>node.dataset.templatePreviewPage),['cover','agenda','process','results','comparison','ending']);
-  assert.equal(root.querySelectorAll('svg[data-template-family="'+style.family+'"]').length,5);
-  assert.ok(root.querySelector('[data-template-page="results"]').textContent.includes('示例数据'));
+  assert.equal(root.querySelectorAll('img[data-template-family="'+style.family+'"]').length,5);
+  assert.ok(decodeURIComponent(root.querySelector('[data-template-page="results"]').getAttribute('src').split(',')[1]).includes('示例数据'));
   f.click('#ppt-use-preview-theme');
   assert.equal(f.snapshot().context.theme,id);
  }
