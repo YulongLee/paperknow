@@ -17,18 +17,18 @@ export function parsePresentationOutline(value){
  return normalizePresentationOutline(value.replace(/\r\n?/g,'\n').split('\n').filter(line=>line.trim()));
 }
 export const presentationTemplateCatalog=Object.freeze([
- Object.freeze({id:'academic',industry:['学术研究','教育教学'],style:'简洁',color:'蓝色',description:'清晰标题与开放留白，适合研究与课堂汇报。'}),
- Object.freeze({id:'formal',industry:['学术研究','项目汇报'],style:'正式',color:'深蓝',description:'深色封面与稳重层级，适合开题与正式答辩。'}),
- Object.freeze({id:'focus',industry:['学术研究','教育教学'],style:'清新',color:'青绿',description:'轻盈色彩与分区内容，适合方法与发现展示。'}),
- Object.freeze({id:'slate',industry:['项目汇报','学术研究'],style:'简洁',color:'石墨',description:'克制灰调与宽留白，适合阶段进展与项目总结。'}),
- Object.freeze({id:'indigo',industry:['教育教学','项目汇报'],style:'正式',color:'靛紫',description:'靛紫重点与分栏信息，适合课程、方案与计划。'}),
- Object.freeze({id:'sand',industry:['教育教学','学术研究'],style:'清新',color:'暖棕',description:'暖色强调与浅色内容区，适合文献与人文汇报。'}),
- Object.freeze({id:'cobalt',industry:['学术研究','项目汇报'],style:'正式',color:'蓝色',description:'清晰的几何层次，适合科研进展与论文答辩。'}),
- Object.freeze({id:'crimson',industry:['学术研究','教育教学'],style:'正式',color:'红色',description:'沉稳学院红，适合毕业答辩与开题汇报。'}),
- Object.freeze({id:'forest',industry:['学术研究','项目汇报'],style:'清新',color:'绿色',description:'自然绿与圆形构图，适合生态、生命科学汇报。'}),
- Object.freeze({id:'teal',industry:['学术研究','项目汇报'],style:'简洁',color:'青绿',description:'科技青与几何结构，适合理工和技术方案。'}),
- Object.freeze({id:'ink',industry:['学术研究','项目汇报'],style:'简洁',color:'石墨',description:'墨色留白与线条，适合学术会议和研究汇报。'}),
- Object.freeze({id:'amber',industry:['教育教学','学术研究'],style:'正式',color:'暖棕',description:'柔和暖金与简洁边饰，适合人文与文献汇报。'})
+ Object.freeze({id:'academic',industry:['学术研究','教育教学'],style:'简洁',color:'蓝色',description:'典雅书房与学位帽，适合毕业答辩。'}),
+ Object.freeze({id:'formal',industry:['学术研究','项目汇报'],style:'正式',color:'红色',description:'校园建筑与学院红，适合开题及毕业汇报。'}),
+ Object.freeze({id:'focus',industry:['学术研究','教育教学'],style:'清新',color:'青绿',description:'实验器皿与分子视觉，适合生命科学。'}),
+ Object.freeze({id:'slate',industry:['项目汇报','学术研究'],style:'简洁',color:'石墨',description:'建筑模型与设计稿，适合设计方案汇报。'}),
+ Object.freeze({id:'indigo',industry:['教育教学','项目汇报'],style:'正式',color:'靛紫',description:'智能芯片与神经网络，适合人工智能研究。'}),
+ Object.freeze({id:'sand',industry:['教育教学','学术研究'],style:'清新',color:'暖棕',description:'典藏书籍与艺术雕塑，适合人文研究。'}),
+ Object.freeze({id:'cobalt',industry:['学术研究','项目汇报'],style:'正式',color:'蓝色',description:'数据中心与数字设备，适合信息技术汇报。'}),
+ Object.freeze({id:'crimson',industry:['学术研究','教育教学'],style:'正式',color:'红色',description:'水墨书院与梅花，适合国风人文主题。'}),
+ Object.freeze({id:'forest',industry:['学术研究','项目汇报'],style:'清新',color:'绿色',description:'自然生态与显微镜，适合生态研究。'}),
+ Object.freeze({id:'teal',industry:['学术研究','项目汇报'],style:'简洁',color:'青绿',description:'风电与光伏，适合新能源研究。'}),
+ Object.freeze({id:'ink',industry:['学术研究','项目汇报'],style:'简洁',color:'石墨',description:'黑白会场空间，适合学术会议报告。'}),
+ Object.freeze({id:'amber',industry:['教育教学','学术研究'],style:'正式',color:'暖棕',description:'暖色教室与书籍，适合教学与教育研究。'})
 ]);
 export function filterPresentationTemplates(filters={}){
  return presentationTemplateCatalog.filter(row=>Object.entries(filters).every(([key,value])=>{if(!value||value==='all')return true;if(key==='industry')return row.industry.includes(value);return ['style','color'].includes(key)&&row[key]===value;}));

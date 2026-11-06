@@ -56,3 +56,9 @@ test('thumbnail navigation reflects verified delivery pages without extra reques
  for(const [i,button] of buttons.entries()){const img=button.querySelector('img');assert.equal(img.alt,'');assert.equal(img.loading,'lazy');assert.match(img.src,/^data:image\/svg\+xml;charset=utf-8,/);assert.match(decodeURIComponent(img.src.split(',').slice(1).join(',')),new RegExp('图文版第'+(i+1)+'页'));assert.equal(button.getAttribute('aria-label'),'预览第 '+(i+1)+' 页');}
  buttons[1].click();assert.equal(buttons[1].getAttribute('aria-current'),'page');assert.equal(buttons[0].getAttribute('aria-current'),'false');assert.match(f.container.querySelector('iframe').srcdoc,/图文版第2页/);assert.equal(f.calls.filter(c=>c.url).length,1);f.viewer.dispose();assert.equal(f.container.querySelectorAll('.presentation-viewer-thumbnail').length,0);
 });
+test('selected template uses only a fixed local cover image and preserves later pages',async t=>{
+ const first=svg('cover').replace('<rect ', '<rect id="background" ');
+ const body='<section class="page" data-template-theme="teal">'+first+'</section><section class="page">'+svg('second')+'</section>';
+ const f=fixture(t,{body});await until(()=>!f.container.querySelector('iframe').hidden);const stage=f.container.querySelector('.presentation-viewer-stage'),frame=f.container.querySelector('iframe');assert.match(stage.style.backgroundImage,/ppt-templates\/teal\.png/);assert.match(frame.srcdoc,/id="background"[^>]*fill="none"/);f.container.querySelector('[data-pv-next]').click();assert.equal(stage.style.backgroundImage,'');
+ const bad=fixture(t,{body:body.replace('teal','unknown')});await until(()=>!bad.container.querySelector('iframe').hidden);assert.equal(bad.container.querySelector('.presentation-viewer-stage').style.backgroundImage,'');assert.doesNotMatch(bad.container.querySelector('iframe').srcdoc,/fill="none"/);
+});

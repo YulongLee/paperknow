@@ -1,9 +1,10 @@
-import {createPptMasterRuntime,PPT_MASTER_REVISION} from './ppt-master-runtime.mjs';
+import {createPptMasterRuntime,PPT_MASTER_REVISION,validatePptMasterPackage} from './ppt-master-runtime.mjs';
 import {pptMasterDesignPlan,pptMasterSlideTask,parsePptMasterSlideOutput,validatePptMasterSlideCandidate} from './ppt-master-model.mjs';
 import {toolStorageCheck} from './tool-run-service.mjs';
 import {savePresentationDelivery} from './presentation-delivery.mjs';
 import {validatedPresentationLayout} from './presentation-layout.mjs';
 import {presentationVisualRetained} from './presentation-visuals.mjs';
+import {loadTemplateArtwork,addTemplateArtwork} from './presentation-template-art.mjs';
 import {presentationGenerationStatus} from './presentation-readiness.mjs';
 export {presentationGenerationStatus} from './presentation-readiness.mjs';
 
@@ -12,7 +13,7 @@ export async function generatePptMasterPresentation(db,config,{row,value,output,
  const active=()=>!signal?.aborted&&isActive();
  const check=()=>{if(!active())throw Object.assign(new Error('演示任务已停止'),{status:499});};
  check();onStage('planning');
- const plan=pptMasterDesignPlan(value,output.slides,{sourceIds:output.sourceIds}),slides=[];let validatedOnly=false,recoveryReason=null;
+ const plan=pptMasterDesignPlan(value,output.slides,{sourceIds:output.sourceIds}),artwork=await loadTemplateArtwork(plan.theme),slides=[];plan.coverArtwork=Boolean(artwork);let validatedOnly=false,recoveryReason=null;
  for(const [index,slide] of output.slides.entries()){
   check();onStage('authoring');const unitId='design-'+slide.id;
   const checkpoint=db.prepare('SELECT output FROM tool_checkpoints WHERE run_id=? AND unit_id=?').get(row.id,unitId);
@@ -42,6 +43,8 @@ export async function generatePptMasterPresentation(db,config,{row,value,output,
  const renderer=config.pptMasterRenderer||((input)=>createPptMasterRuntime({runtimeRoot:config.pptMasterRuntimeRoot,pythonPath:config.pptMasterPython}).render(input));
  onStage('exporting');const rendered=await renderer({slides,signal,title:value.snapshot.title});check();
  if(!Buffer.isBuffer(rendered?.pptx))throw Object.assign(new Error('演示文件未通过导出校验，未结算本次费用'),{status:502});
- const delivery=await savePresentationDelivery(db,config,{runId:row.id,userId:row.user_id,title:value.snapshot.title,slides,pptx:rendered.pptx,revision:PPT_MASTER_REVISION,isActive,signal,onStage});check();
+ const decorated=artwork?await addTemplateArtwork(rendered.pptx,artwork):rendered.pptx;
+ if(artwork)await validatePptMasterPackage(decorated,{slideCount:slides.length,slides,trustedBackground:artwork});
+ const delivery=await savePresentationDelivery(db,config,{runId:row.id,userId:row.user_id,title:value.snapshot.title,slides,pptx:decorated,coverTheme:artwork?plan.theme:null,coverArtwork:artwork,revision:PPT_MASTER_REVISION,isActive,signal,onStage});check();
  return{...output,...delivery,presentationMetadata:{author:plan.metadata.author}};
 }

@@ -1,5 +1,7 @@
 // Read the owned delivery, never a storage URL or SVG supplied in task JSON.
 let closeExpandedViewer=null;
+const coverThemes=new Set(['academic','formal','focus','slate','indigo','sand','cobalt','crimson','forest','teal','ink','amber']);
+function previewCoverTheme(html){const tag=html.match(/<section\b[^>]*class=["']page["'][^>]*>/)?.[0]||'',value=tag.match(/\sdata-template-theme=["']([a-z]+)["']/)?.[1];return coverThemes.has(value)?value:null;}
 const safeId=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,120}$/.test(value);
 const tags=new Set(['svg','g','rect','circle','ellipse','line','polyline','polygon','path','text','tspan']);
 export function presentationPreviewPages(html,win,expectedPages){
@@ -21,9 +23,9 @@ export function presentationPreviewPages(html,win,expectedPages){
   return new win.XMLSerializer().serializeToString(svg);
  });
 }
-const frameSource=svg=>`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:white}svg{display:block;width:100%;height:100%}</style></head><body>${svg}</body></html>`;
+const frameSource=svg=>`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}svg{display:block;width:100%;height:100%}</style></head><body>${svg}</body></html>`;
 export function mountPresentationViewer({container,artifact,ownerId,api,fetch:fetchOverride,isCurrent=()=>true}={}){
- const doc=container.ownerDocument,win=doc.defaultView,controller=new win.AbortController();let live=true,pages=[],index=0,loading=false,requestController=null,expanded=false,bodyOverflow='',returnFocus=null;
+ const doc=container.ownerDocument,win=doc.defaultView,controller=new win.AbortController();let live=true,pages=[],coverTheme=null,index=0,loading=false,requestController=null,expanded=false,bodyOverflow='',returnFocus=null;
  const current=()=>live&&container.isConnected&&isCurrent();
  if(!doc.querySelector('link[data-presentation-viewer-style]')){const link=doc.createElement('link');link.rel='stylesheet';link.href='/workspace/presentation-viewer.css';link.dataset.presentationViewerStyle='';doc.head.append(link);}
  container.classList.add('presentation-viewer');container.setAttribute('aria-label','生成版 PPT 在线预览');container.setAttribute('role','region');
@@ -32,7 +34,7 @@ export function mountPresentationViewer({container,artifact,ownerId,api,fetch:fe
  // The frame displays passive SVG only. Keep keyboard focus in the viewer so
  // arrows and Escape work after clicking a page, including in embedded browsers.
  frame.tabIndex=-1;stage.tabIndex=0;stage.setAttribute('role','group');stage.setAttribute('aria-label','演示页面，使用左右方向键翻页');stage.addEventListener('click',()=>stage.focus(),{signal:controller.signal});
- function show(next){if(!current()||!pages.length)return;index=Math.max(0,Math.min(pages.length-1,next));frame.srcdoc=frameSource(pages[index]);frame.title='生成版演示文稿 · 第 '+(index+1)+' 页';$('[data-pv-count]').textContent=(index+1)+' / '+pages.length+' 页';$('[data-pv-prev]').disabled=index===0;$('[data-pv-next]').disabled=index===pages.length-1;for(const [i,button]of [...nav.children].entries()){button.setAttribute('aria-current',i===index?'page':'false');}}
+ function show(next){if(!current()||!pages.length)return;index=Math.max(0,Math.min(pages.length-1,next));stage.style.backgroundImage=index===0&&coverTheme?`url("/workspace/assets/ppt-templates/${coverTheme}.png")`:'';stage.style.backgroundSize='cover';stage.style.backgroundPosition='center';frame.srcdoc=frameSource(pages[index]);frame.title='生成版演示文稿 · 第 '+(index+1)+' 页';$('[data-pv-count]').textContent=(index+1)+' / '+pages.length+' 页';$('[data-pv-prev]').disabled=index===0;$('[data-pv-next]').disabled=index===pages.length-1;for(const [i,button]of [...nav.children].entries()){button.setAttribute('aria-current',i===index?'page':'false');}}
  async function load(){
   if(loading||!current())return;loading=true;retry.hidden=true;status.textContent='正在读取演示页面…';wait.hidden=false;wait.classList.remove('is-error');wait.querySelector('p').textContent='正在加载预览…';wait.querySelector('span').hidden=false;frame.hidden=true;controls.hidden=true;stage.setAttribute('aria-busy','true');nav.replaceChildren();
   const request=new win.AbortController();requestController=request;const timer=win.setTimeout(()=>request.abort(),25000);
@@ -43,8 +45,8 @@ export function mountPresentationViewer({container,artifact,ownerId,api,fetch:fe
    const response=await fetcher('/api/artifacts/'+artifact.previewArtifactId+'/download?'+new win.URLSearchParams({expectedUserId:ownerId}),{credentials:'same-origin',cache:'no-store',signal:request.signal});
    if(!response.ok)throw Error(response.status===401?'请登录后查看预览。':response.status===409?'账户已变化，请切回任务所属账户后重新加载预览。':response.status===403?'当前账户无权查看这份预览，请确认登录账户。':response.status===404?'预览文件已删除或不存在，仍可尝试下载 PPTX。':'预览暂未加载，请稍后重试。');
    if(Number(response.headers?.get('content-length'))>20*1024*1024)throw Error('预览文件过大，请下载 PPTX 查看。');
-   const html=await response.text();if(!current())return;pages=presentationPreviewPages(html,win,artifact.pageCount);wait.hidden=true;frame.hidden=false;controls.hidden=false;status.textContent='共 '+pages.length+' 页';
-   pages.forEach((svg,i)=>{const button=doc.createElement('button'),image=doc.createElement('img'),label=doc.createElement('span');button.type='button';button.className='presentation-viewer-thumbnail';button.setAttribute('aria-label','预览第 '+(i+1)+' 页');image.alt='';image.loading='lazy';image.decoding='async';image.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);label.textContent=String(i+1).padStart(2,'0');button.append(image,label);button.onclick=()=>show(i);nav.append(button);});show(0);
+   const html=await response.text();if(!current())return;pages=presentationPreviewPages(html,win,artifact.pageCount);coverTheme=previewCoverTheme(html);if(coverTheme){const svg=new win.DOMParser().parseFromString(pages[0],'image/svg+xml'),bg=svg.querySelector('#background');if(bg&&bg.localName==='rect')bg.setAttribute('fill','none');pages[0]=new win.XMLSerializer().serializeToString(svg.documentElement);}wait.hidden=true;frame.hidden=false;controls.hidden=false;status.textContent='共 '+pages.length+' 页';
+   pages.forEach((svg,i)=>{const button=doc.createElement('button'),image=doc.createElement('img'),label=doc.createElement('span');button.type='button';button.className='presentation-viewer-thumbnail';button.setAttribute('aria-label','预览第 '+(i+1)+' 页');image.alt='';image.loading='lazy';image.decoding='async';image.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);if(i===0&&coverTheme){button.style.backgroundImage=`url("/workspace/assets/ppt-templates/${coverTheme}.png")`;button.style.backgroundSize='cover';button.style.backgroundPosition='center';}label.textContent=String(i+1).padStart(2,'0');button.append(image,label);button.onclick=()=>show(i);nav.append(button);});show(0);
   }catch(error){if(current()){pages=[];frame.srcdoc='';wait.hidden=false;wait.classList.add('is-error');wait.querySelector('span').hidden=true;wait.querySelector('p').textContent=request.signal.aborted?'预览加载超时，请重新加载预览。':/failed to fetch|fetch failed|networkerror|load failed|network request/i.test(error.message||'')?'网络连接暂时中断，请检查连接后重新加载预览。':error.message;status.textContent='预览暂不可用';retry.hidden=false;}}
   finally{win.clearTimeout(timer);if(requestController===request)requestController=null;loading=false;if(current())stage.setAttribute('aria-busy','false');}
  }

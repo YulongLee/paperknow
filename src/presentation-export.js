@@ -3,13 +3,16 @@ import {themes,validateDeck} from '../dist/workspace/presentation-model.mjs';
 
 // Base export uses native PowerPoint text and shapes, so edits remain possible.
 // A generated PPTX is saved separately; this is the editable editor's layout.
-export function createPresentation(deck){
+export function createPresentation(deck,coverData=null){
  validateDeck(deck);const pptx=new pptxgen();pptx.layout='LAYOUT_WIDE';pptx.author=deck.author||'PaperKnow 用户';pptx.subject='用户核对后的学术演示';pptx.title=deck.title;pptx.lang=deck.language==='英文'?'en-US':'zh-CN';pptx.theme={headFontFace:'Microsoft YaHei',bodyFontFace:'Microsoft YaHei',lang:pptx.lang};
  const t=themes[deck.theme]||themes.academic;
  for(const [i,s]of deck.slides.entries()){
   const slide=pptx.addSlide(),cover=s.layout==='cover',closing=s.layout==='closing',dark=cover||closing;
   slide.background={color:dark?t.dark:'F7F9FD'};
-  if(dark){
+  if(cover&&coverData){
+   slide.addImage({data:coverData,x:0,y:0,w:13.333333,h:7.5});
+   slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:8.65,h:7.5,line:{color:"101F33",transparency:100},fill:{color:"101F33",transparency:28}});
+  }else if(dark){
    slide.addShape(pptx.ShapeType.rect,{x:10.7,y:0,w:2.63,h:7.5,line:{color:t.accent,transparency:100},fill:{color:t.accent,transparency:82}});
    // Cover illustration stays in a dedicated right-hand zone, leaving a
    // separate, bounded area for arbitrary user-provided titles and content.
@@ -60,4 +63,14 @@ export function createPresentation(deck){
  }
  return pptx;
 }
-export async function exportPresentation(deck){return createPresentation(deck).write({outputType:'uint8array',compression:true});}
+export async function exportPresentation(deck){
+ let coverData=null;
+ if(typeof window!=='undefined'&&Object.hasOwn(themes,deck.theme)){
+  const response=await fetch('/workspace/assets/ppt-templates/'+encodeURIComponent(deck.theme)+'.png');
+  if(!response.ok)throw Error('模板图片加载失败，请稍后重试');
+  const blob=await response.blob();
+  if(blob.size>4*1024*1024||blob.type!=='image/png')throw Error('模板图片无法读取，请稍后重试');
+  coverData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('模板图片无法读取，请稍后重试'));reader.readAsDataURL(blob);});
+ }
+ return createPresentation(deck,coverData).write({outputType:'uint8array',compression:true});
+}
