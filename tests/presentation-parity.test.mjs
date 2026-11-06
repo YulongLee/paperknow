@@ -112,7 +112,7 @@ test('each PPT creation scene saves and restores its chosen template in the gene
  }
 });
 test('template filters preserve the selected theme and explicit preview uses its real palette',t=>{
- const f=fixture(t);f.seed();f.click('[data-ppt-template="ai-2"]');f.edit('[data-ppt-filter="style"]','正式','change');f.edit('[data-ppt-filter="color"]','青绿','change');assert.match(f.q('.ppt-template-count').textContent,/找到 0/);assert.equal(f.snapshot().context.theme,'focus');f.edit('[data-ppt-filter="color"]','all','change');f.click('[data-ppt-template-preview="indigo"]');assert.match(f.q('.ppt-parity-preview .ppt-slide').getAttribute('style'),/#6554A5/);f.click('#ppt-use-preview-theme');assert.equal(f.snapshot().context.theme,'indigo');assert.equal(f.rows()[0].presentation.theme,'indigo');
+ const f=fixture(t);f.seed();f.click('[data-ppt-template="ai-2"]');f.edit('[data-ppt-filter="style"]','正式','change');f.edit('[data-ppt-filter="color"]','青绿','change');assert.match(f.q('.ppt-template-count').textContent,/找到 0/);assert.equal(f.snapshot().context.theme,'focus');f.edit('[data-ppt-filter="color"]','all','change');f.click('[data-ppt-template-preview="indigo"]');assert.equal(f.q('.ppt-parity-preview').dataset.templateFamily,'technology');assert.equal(f.w.document.querySelectorAll('[data-template-preview-page]').length,6);f.click('#ppt-use-preview-theme');assert.equal(f.snapshot().context.theme,'indigo');assert.equal(f.rows()[0].presentation.theme,'indigo');
 });
 test('all scenes expose notes and author fields with real snapshot state and legacy premium compatibility',t=>{
  const f=fixture(t);for(const mode of ['ai','proposal','thesis']){if(mode!=='ai')f.click('[data-ppt-mode="'+mode+'"]');f.seed();f.edit('[data-field="author"]','Synthetic Owner');f.edit('[data-field="language"]','英文','change');f.edit('[data-field="notesMode"]','none','change');assert.equal(f.snapshot().context.notesMode,'none');assert.equal(f.snapshot().context.author,'Synthetic Owner');assert.equal(f.snapshot().language,'英文');assert.doesNotMatch(f.q('.dashboard').textContent,/联网搜索|AI 配图|docmee|qwen|deepseek/i);}assert.equal(f.q('[data-ppt-tier]'),null);assert.equal(f.q('.ppt-plan-row'),null);f.edit('[data-field="notesMode"]','detailed','change');assert.equal(f.snapshot().context.notesMode,'detailed');
@@ -123,9 +123,9 @@ test('imported materials remain editable and are passed completely without a fal
 test('one-click PPT generation checks typed notes then submits once without a fee panel',async t=>{
  const f=fixture(t,{realPanel:true}),requests=[];f.seed();f.edit('[data-field="notesMode"]','none','change');f.ctx.api=async(path,data)=>{requests.push({path,data});if(path==='/auth/me')return {user:{id:'owner'}};if(path==='/tool-runs/capabilities')return {ready:true,presentation:{ready:true}};if(path==='/tool-runs/quote')return {type:'agent',source:'credits',creditCost:10,title:'Synthetic quote',token:'token',expiresAt:new Date(Date.now()+60000).toISOString()};if(path==='/tool-runs/jobs')return {item:{id:'ppt-direct',status:'queued',kind:'presentation',operation:'ppt'}};throw Error('Unexpected request '+path);};f.click('[data-action="ai-generate"]');await until(()=>requests.some(row=>row.path==='/tool-runs/jobs'));assert.equal(requests.find(row=>row.path==='/tool-runs/quote').data.snapshot.context.notesMode,'none');assert.equal(requests.filter(row=>row.path==='/tool-runs/jobs').length,1);assert.equal(requests.find(row=>row.path==='/tool-runs/jobs').data.billingToken,'token');assert.equal(f.q('[data-tj-consent]'),null);assert.equal(f.q('[data-tj-start]'),null);
 });
-test('all six basic PPTX exports contain actual theme colors, native text and independent author text',async()=>{
+test('all twelve basic PPTX exports contain the shared family colors, native text and independent author text',async()=>{
  for(const [id,theme]of Object.entries(model.themes)){
-  const deck={...initial,theme:id,author:'Synthetic Author',slides:model.buildSlides(initial)},zip=await JSZip.loadAsync(await exportPresentation(deck)),xml=await zip.file('ppt/slides/slide1.xml').async('string');assert.match(xml,new RegExp(theme.accent));assert.match(xml,new RegExp(theme.dark));assert.match(xml,/作者：Synthetic Author/);assert.match(xml,/<p:sp>/);assert.doesNotMatch(xml,/<p:pic>/);
+  const deck={...initial,theme:id,author:'Synthetic Author',slides:model.buildSlides(initial)},zip=await JSZip.loadAsync(await exportPresentation(deck)),xml=await zip.file('ppt/slides/slide1.xml').async('string');assert.match(xml,new RegExp(parity.presentationTemplateStyle(id).palette.accent.slice(1)));assert.match(xml,new RegExp(parity.presentationTemplateStyle(id).coverText.slice(1)));assert.match(xml,/作者：Synthetic Author/);assert.match(xml,/<p:sp>/);assert.doesNotMatch(xml,/<p:pic>/);
  }
 });
 test('printing exports complete escaped body with natural continuation instead of fixed-height overlapping pages',t=>{
@@ -133,7 +133,7 @@ test('printing exports complete escaped body with natural continuation instead o
 });
 test('author metadata is visible and immutable on the generated cover, never leaked into other pages',()=>{
  const value={operation:'ppt',snapshot:{title:initial.title,language:'中文',mode:'ai',context:{pages:6,theme:'indigo',author:'Synthetic Author'},materials:[]}},slides=model.buildSlides(initial).map((slide,index)=>({...slide,id:'slide-'+(index+1),notes:''})),plan=pptMasterDesignPlan(value,slides);
- assert.equal(plan.palette.accent,'#6554A5');assert.deepEqual(plan.metadata,{author:'Synthetic Author'});assert.equal(pptMasterVisibleContent(slides[0],plan).find(row=>row.id==='presentation-author').text,'作者：Synthetic Author');assert.equal(pptMasterVisibleContent(slides[1],plan).some(row=>row.id==='presentation-author'),false);assert.equal(pptMasterSlideTask(value,slides[0],plan).context.design.metadata.author,'Synthetic Author');
+ assert.equal(plan.palette.accent,parity.presentationTemplateStyle('indigo').palette.accent);assert.deepEqual(plan.metadata,{author:'Synthetic Author'});assert.equal(pptMasterVisibleContent(slides[0],plan).find(row=>row.id==='presentation-author').text,'作者：Synthetic Author');assert.equal(pptMasterVisibleContent(slides[1],plan).some(row=>row.id==='presentation-author'),false);assert.equal(pptMasterSlideTask(value,slides[0],plan).context.design.metadata.author,'Synthetic Author');
  const visible=pptMasterVisibleContent(slides[0],plan),xml=value=>value.replace(/&/g,'&amp;').replace(/</g,'&lt;'),svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="cover"><rect x="0" y="0" width="1280" height="720" fill="#FFFFFF"/>'+visible.map((row,index)=>{const footer=row.role==='footer',y=footer?670:30+index*145;return '<g id="'+row.id+'" data-pptx-bounds="50 '+y+' 1180 '+(footer?40:130)+'"><text x="65" y="'+(y+(footer?25:60))+'" font-family="Arial" font-size="'+(row.role==='title'?40:footer?16:24)+'" fill="#302A50">'+xml(row.text)+'</text></g>';}).join('')+'</svg>',material=pptMasterSlideTask(value,slides[0],plan).materials[0],result={text:JSON.stringify({complete:true,slide:slides[0],svg,sourceIds:[material.id]}),trace:[{tool:'read_material',status:'completed',materialId:material.id,offset:0,limit:material.text.length}]};
  assert.equal(parsePptMasterSlideOutput(result,value,slides[0],plan).svg,svg);assert.throws(()=>parsePptMasterSlideOutput({...result,text:result.text.replace('作者：Synthetic Author','作者：Different')},value,slides[0],plan),/不得省略或添加/);
  assert.throws(()=>pptMasterDesignPlan({...value,snapshot:{...value.snapshot,context:{...value.snapshot.context,author:'Bad\nAuthor'}}},slides),/单行/);
@@ -151,4 +151,37 @@ test('template gallery displays distinct cover previews and expands to every sel
  const id='teal',index=Object.keys(model.themes).indexOf(id);f.click('[data-ppt-template="ai-'+index+'"]');assert.equal(f.snapshot().context.theme,id);assert.equal(f.q('[data-ppt-template="ai-'+index+'"]').getAttribute('aria-pressed'),'true');
  f.click('[data-ppt-templates-expand]');assert.ok(f.q('[data-ppt-template="ai-'+index+'"]'));assert.equal(f.snapshot().context.theme,id);
  f.click('[data-ppt-template-preview="'+id+'"]');assert.equal(f.q('.ppt-parity-preview .ppt-cover-thumb img').getAttribute('src'),'/workspace/assets/ppt-templates/teal.png');
+});
+
+test('whole template previews use shared family tokens and provide six informative page types',t=>{
+ const f=fixture(t);f.seed();
+ assert.equal(f.w.document.querySelectorAll('.ppt-template-item').length,6);
+ for(const item of f.w.document.querySelectorAll('.ppt-template-item'))assert.equal(item.querySelectorAll('.ppt-template-inner-thumbs svg').length,2);
+ assert.ok(f.q('.ppt-template-recommended'));
+ for(const id of ['academic','indigo','slate','sand']){
+  if(f.w.document.querySelectorAll('[data-ppt-template]').length<12)f.click('[data-ppt-templates-expand]');
+  f.click('[data-ppt-template-preview="'+id+'"]');
+  const root=f.q('.ppt-template-deck-preview'),style=parity.presentationTemplateStyle(id);
+  assert.equal(root.dataset.templateFamily,style.family);
+  assert.equal(root.querySelectorAll('[data-template-preview-page]').length,6);
+  assert.equal(root.querySelector('.ppt-cover-sample').getAttribute('viewBox'),'0 0 1280 720');
+  assert.equal(root.querySelector('.ppt-cover-thumb em'),null);
+  assert.equal(root.querySelector('.ppt-cover-sample text:last-child').getAttribute('y'),'428');
+  assert.deepEqual([...root.querySelectorAll('[data-template-preview-page]')].map(node=>node.dataset.templatePreviewPage),['cover','agenda','process','results','comparison','ending']);
+  assert.equal(root.querySelectorAll('svg[data-template-family="'+style.family+'"]').length,5);
+  assert.ok(root.querySelector('[data-template-page="results"]').textContent.includes('示例数据'));
+  f.click('#ppt-use-preview-theme');
+  assert.equal(f.snapshot().context.theme,id);
+ }
+});
+test('scene recommendations reorder without changing a saved template or hiding any family',t=>{
+ const f=fixture(t);f.seed();f.click('[data-ppt-templates-expand]');f.click('[data-ppt-template="ai-9"]');
+ for(const mode of ['proposal','thesis','ai']){
+  f.click('[data-ppt-mode="'+mode+'"]');
+  if(f.w.document.querySelectorAll('[data-ppt-template]').length<12)f.click('[data-ppt-templates-expand]');
+  assert.equal(f.w.document.querySelectorAll('[data-ppt-template]').length,12);
+  const recommended=[...f.w.document.querySelectorAll('.ppt-template-item')].filter(row=>row.querySelector('.ppt-template-recommended')).map(row=>row.querySelector('[data-ppt-template-preview]').dataset.pptTemplatePreview);
+  assert.deepEqual(recommended,parity.presentationTemplateRecommendations(mode));
+ }
+ assert.equal(f.snapshot().context.theme,'teal');
 });

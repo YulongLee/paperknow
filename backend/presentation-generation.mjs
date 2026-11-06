@@ -8,27 +8,36 @@ import {loadTemplateArtwork,addTemplateArtwork} from './presentation-template-ar
 import {presentationGenerationStatus} from './presentation-readiness.mjs';
 export {presentationGenerationStatus} from './presentation-readiness.mjs';
 
+export function restorePresentationDesignCheckpoint(value,slide,plan,saved){
+ const material=pptMasterSlideTask(value,slide,plan).materials[0];
+ // Prove the stored content, geometry and source contract before refreshing its
+ // appearance. Old accepted pages may predate the current family palette.
+ const previous=parsePptMasterSlideOutput({text:JSON.stringify({complete:true,slide:{id:slide.id,title:slide.title,body:slide.body,layout:slide.layout,notes:slide.notes},svg:saved.svg,sourceIds:[material.id]}),trace:[{tool:'read_material',status:'completed',materialId:material.id,offset:0,limit:material.text.length}]},value,slide,{...plan,enforceTheme:false});
+ try{return validatedPresentationLayout(value,slide,plan);}catch(error){if(error.code!=='ppt_layout_capacity')throw error;return previous;}
+}
+
 export async function generatePptMasterPresentation(db,config,{row,value,output,signal,isActive,onStage,runAuthor,onLayout=()=>{}}){
  const readiness=presentationGenerationStatus(config);if(!readiness.ready)throw Object.assign(new Error(readiness.reason),{status:503});
  const active=()=>!signal?.aborted&&isActive();
  const check=()=>{if(!active())throw Object.assign(new Error('演示任务已停止'),{status:499});};
  check();onStage('planning');
- const plan=pptMasterDesignPlan(value,output.slides,{sourceIds:output.sourceIds}),artwork=await loadTemplateArtwork(plan.theme),slides=[];plan.coverArtwork=Boolean(artwork);let validatedOnly=false,recoveryReason=null;
+ const plan=pptMasterDesignPlan(value,output.slides,{sourceIds:output.sourceIds}),artwork=await loadTemplateArtwork(plan.theme),slides=[];plan.coverArtwork=Boolean(artwork);plan.enforceTheme=true;let validatedOnly=false,recoveryReason=null;
  for(const [index,slide] of output.slides.entries()){
   check();onStage('authoring');const unitId='design-'+slide.id;
   const checkpoint=db.prepare('SELECT output FROM tool_checkpoints WHERE run_id=? AND unit_id=?').get(row.id,unitId);
   if(checkpoint){
    const saved=JSON.parse(checkpoint.output);
    // Resume only the same immutable page and re-run the full current validator.
-   const material=pptMasterSlideTask(value,slide,plan,slides).materials[0];
-   slides.push(parsePptMasterSlideOutput({text:JSON.stringify({complete:true,slide:{id:slide.id,title:slide.title,body:slide.body,layout:slide.layout,notes:slide.notes},svg:saved.svg,sourceIds:[material.id]}),trace:[{tool:'read_material',status:'completed',materialId:material.id,offset:0,limit:material.text.length}]},value,slide,plan));
+   const restored=restorePresentationDesignCheckpoint(value,slide,plan,saved);
+   db.prepare('UPDATE tool_checkpoints SET output=? WHERE run_id=? AND unit_id=?').run(JSON.stringify(restored),row.id,unitId);
+   slides.push(restored);onLayout({method:restored.layoutMethod==='validated'?'validated':'ai',page:index+1,reason:'restored_template'});
    continue;
   }
   let baseline=null;try{baseline=validatedPresentationLayout(value,slide,plan);}catch(error){if(error.code!=='ppt_layout_capacity')throw error;}
   if(index===0&&plan.coverVariant&&!baseline)throw Object.assign(Error('封面文字过多，无法在所选模板中安全排版，请精简后重试'),{code:'ppt_layout_capacity',status:422});
   const task=pptMasterSlideTask(value,slide,plan,slides);if(baseline){task.context.startingSvg=baseline.svg;task.context.visualKind=baseline.visualKind;task.instructions+='\ncontext.startingSvg 是已通过完整校验的当前页面，已按内容绘制可编辑图示。以它为起点调整视觉；保持 visual-* 图示组、图形、所有内容组 ID、文字和 bounds 契约，不得退化为纯文字。流程箭头仅表达页面明确的流程，数据条仅表达页面已有的同单位数值，禁止添加数据、结论或无依据的关系。先确保页面可交付，再改善构图；不要反复重新设计。';}
   let parsed;
-  try{if(validatedOnly){if(!baseline)throw Object.assign(Error('当前页文字过密，无法安全完成排版'),{code:'ppt_layout_capacity',status:422});parsed=baseline;onLayout({method:'validated',page:index+1,reason:recoveryReason});}else{const generated=await runAuthor(task,candidate=>validatePptMasterSlideCandidate(candidate,value,slide,plan));check();parsed=parsePptMasterSlideOutput(generated,value,slide,plan);}}
+  try{if(baseline&&plan.designStyle){parsed=baseline;onLayout({method:'validated',page:index+1,reason:'selected_design_system'});}else if(validatedOnly){if(!baseline)throw Object.assign(Error('当前页文字过密，无法安全完成排版'),{code:'ppt_layout_capacity',status:422});parsed=baseline;onLayout({method:'validated',page:index+1,reason:recoveryReason});}else{const generated=await runAuthor(task,candidate=>validatePptMasterSlideCandidate(candidate,value,slide,plan));check();parsed=parsePptMasterSlideOutput(generated,value,slide,plan);}}
   catch(error){check();if(error.presentationFallbackSafe!==true||!baseline)throw error;parsed=baseline;validatedOnly=true;recoveryReason=error.code;onLayout({method:'validated',page:index+1,reason:error.code});}
   // A safe text-only candidate is still visually incomplete. Preserve the
   // content-derived editable diagram without spending another repair call.

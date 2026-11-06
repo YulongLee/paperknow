@@ -1,5 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {themes as presentationThemes} from '../dist/workspace/presentation-model.mjs';
+import {presentationTemplateStyle} from '../dist/workspace/presentation-design-system.mjs';
 import {DOMParser} from '@xmldom/xmldom';
 import {validatePptMasterSvg} from './ppt-master-runtime.mjs';
 import {thesisError} from './thesis-model.mjs';
@@ -12,23 +13,11 @@ const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)
 const normalizedText=value=>String(value).replace(/\s/gu,'');
 const children=node=>Array.from(node.childNodes||[]).filter(child=>child.nodeType===1);
 const fields=['id','title','body','layout','notes'];
-const themes=Object.freeze({
- academic:{primary:'#18345B',accent:'#286AFF',background:'#FFFFFF',secondary:'#F3F6FC',text:'#172B4D',muted:'#5E6E88',divider:'#DBE3EF'},
- formal:{primary:'#112F45',accent:'#1C4668',background:'#FFFFFF',secondary:'#F1F5F8',text:'#173244',muted:'#5C7180',divider:'#D9E3E9'},
- focus:{primary:'#173E48',accent:'#168B89',background:'#FFFFFF',secondary:'#EEF8F7',text:'#173E48',muted:'#5D777D',divider:'#D4E9E7'},
- slate:{primary:'#243446',accent:'#51647A',background:'#FFFFFF',secondary:'#F0F3F6',text:'#243446',muted:'#647387',divider:'#DCE3EB'},
- indigo:{primary:'#302A50',accent:'#6554A5',background:'#FFFFFF',secondary:'#F4F1FA',text:'#302A50',muted:'#776B91',divider:'#E2DCEE'},
- sand:{primary:'#493829',accent:'#A5733D',background:'#FFFFFF',secondary:'#FAF5ED',text:'#493829',muted:'#88715B',divider:'#E9DDCD'},
- cobalt:{primary:'#102E53',accent:'#3684D7',background:'#FFFFFF',secondary:'#EDF4FC',text:'#152E4C',muted:'#60768D',divider:'#D7E5F3'},
- crimson:{primary:'#542832',accent:'#B74450',background:'#FFFFFF',secondary:'#FBF1F2',text:'#4E2B32',muted:'#84696E',divider:'#EEDDE0'},
- forest:{primary:'#193E35',accent:'#489173',background:'#FFFFFF',secondary:'#EEF7F2',text:'#1E4036',muted:'#5E796B',divider:'#D9EAE0'},
- teal:{primary:'#123946',accent:'#159EAE',background:'#FFFFFF',secondary:'#EDF8F9',text:'#183C44',muted:'#607C80',divider:'#D7EBED'},
- ink:{primary:'#252F3F',accent:'#73829A',background:'#FFFFFF',secondary:'#F1F3F6',text:'#293343',muted:'#6E7B8E',divider:'#DEE4EB'},
- amber:{primary:'#4A3828',accent:'#BD8B4B',background:'#FFFFFF',secondary:'#FAF5EC',text:'#49392B',muted:'#846F59',divider:'#EBE0D0'}
-});
+
 const compositions=Object.freeze({
  cover:'大字标题与非对称实色主题场，正文作为清楚的副信息，留出大面积呼吸空间。',
  ending:'留白结尾，标题与简练正文形成收束；延续封面母题但改变比例。',
+ agenda:'清晰目录：按已有条目排布标题与细规则线，不新增条目、数字或结论。',
  editorial:'编辑式构图：标题建立强层级，正文用开放分区、竖向规则线和不同宽度组织。',
  split:'非等宽双栏：按既有文字顺序排布语义组，用留白与一条分界建立关系。',
  spotlight:'强调已有重点：让第一条正文获得较强视觉权重，其余文字形成较轻的支撑区。',
@@ -51,12 +40,13 @@ export function pptMasterDesignPlan(value,slides,options={}){
  const s=value?.snapshot;if(value?.operation!=='ppt'||!s||!Array.isArray(slides)||slides.length!==s.context?.pages||slides.length<6||slides.length>30)fail('PPT Master 页数与已确认内容不一致');
  const accepted=slides.map(semanticSlide);if(accepted.some((slide,index)=>slide.id!=='slide-'+(index+1)))fail('PPT Master 页面顺序不一致');
  const sourceIds=originalSourceIds(value,options.sourceIds??options.originalSources);
- const theme=Object.hasOwn(themes,s.context?.theme)?s.context.theme:'academic';
+ const theme=Object.hasOwn(presentationThemes,s.context?.theme)?s.context.theme:'academic';
+ const designStyle=presentationTemplateStyle(theme);
  const fontFamily=/^(?:en|english|英语|英文)/i.test(s.language||'')?'Arial':'Microsoft YaHei';
  const author=s.context?.author??'';if(typeof author!=='string'||author.length>100||/[\u0000-\u001f\u2028\u2029]/u.test(author))fail('PPT Master 作者署名应为不超过100字符的单行文字');
- return {version:1,engine:'ppt-master',canvas:{width:1280,height:720,viewBox:'0 0 1280 720'},theme,coverVariant:presentationThemes[theme]?.coverVariant||'orbit',palette:{...themes[theme]},typography:{fontFamily,title:46,body:26,caption:16},sourceIds,metadata:{author:author.trim()},
+ return {version:1,engine:'ppt-master',canvas:{width:1280,height:720,viewBox:'0 0 1280 720'},theme,coverVariant:presentationThemes[theme]?.coverVariant||'orbit',designStyle,palette:{...designStyle.palette},typography:{fontFamily,title:46,body:26,caption:16},sourceIds,metadata:{author:author.trim()},
   motif:'标题区保持稳定左边界与短强调线；每页使用相同字体、色板与右下角页码。封面采用 '+({orbit:'同心圆环',ribbon:'斜向色带',geometry:'几何方块',minimal:'简洁平行线'}[presentationThemes[theme]?.coverVariant]||'同心圆环')+' 视觉母题，装饰位于右侧，正文仍完整可读。封面、内容和结尾用面积与留白改变节奏。',
-  slides:accepted.map((slide,index)=>{let composition=index===0?'cover':index===accepted.length-1?'ending':slide.layout==='twoColumn'?'split':['editorial','spotlight','split','sequence'][(index-1)%4];if(composition==='sequence'&&!/(?:步骤|流程|路线|阶段|实施|设计|方法|process|method|step|stage|approach)/i.test(slide.title))composition='editorial';return{id:slide.id,page:index+1,role:index===0?'cover':index===accepted.length-1?'ending':'content',composition,reference:compositions[composition],title:slide.title};})};
+  slides:accepted.map((slide,index)=>{let composition=index===0?'cover':index===accepted.length-1?'ending':/目录|汇报结构|报告结构|agenda|contents/i.test(slide.title)?'agenda':slide.layout==='twoColumn'?'split':['editorial','spotlight','split','sequence'][(index-1)%4];if(composition==='sequence'&&!/(?:步骤|流程|路线|阶段|实施|设计|方法|process|method|step|stage|approach)/i.test(slide.title))composition='editorial';return{id:slide.id,page:index+1,role:index===0?'cover':index===accepted.length-1?'ending':'content',composition,reference:compositions[composition],title:slide.title};})};
 }
 
 export function pptMasterVisibleContent(slide,plan){
@@ -72,7 +62,7 @@ export function pptMasterSlideTask(value,slide,plan,previous=[]){
  const material=slideMaterial(accepted,plan),sourceIds=originalSourceIds(value,plan.sourceIds);
  const prior=(Array.isArray(previous)?previous:[]).slice(-2).map(item=>({id:item.id,composition:item.composition||plan.slides.find(row=>row.id===item.id)?.composition||''}));
  return {skill:'tool-task',materials:[material],instructions,context:{operation:'ppt-master-slide',title:value.snapshot.title,language:value.snapshot.language,mode:value.snapshot.mode,
-  design:{version:plan.version,canvas:plan.canvas,theme:plan.theme,coverVariant:plan.coverVariant,palette:plan.palette,typography:plan.typography,metadata:plan.metadata,motif:plan.motif,current:row,previous:prior,roster:plan.slides.map(({id,title,composition})=>({id,title,composition}))},
+  design:{version:plan.version,canvas:plan.canvas,theme:plan.theme,coverVariant:plan.coverVariant,designStyle:plan.designStyle,palette:plan.palette,typography:plan.typography,metadata:plan.metadata,motif:plan.motif,current:row,previous:prior,roster:plan.slides.map(({id,title,composition})=>({id,title,composition}))},
   visibleContent:pptMasterVisibleContent(accepted,plan),source:{id:material.id,characters:material.text.length,provenance:'已通过原始授权材料阅读及内容校验；只可排版，不可添加新事实。',evidenceSourceIds:sourceIds},
   outputSchema:{complete:true,slide:accepted,svg:'当前一页的完整可编辑 SVG 字符串',sourceIds:[material.id]}}};
 }
@@ -145,6 +135,16 @@ export function validatePptMasterVisibleText(svg,slide,plan){
  return true;
 }
 
+function validateSelectedTheme(svg,slide,plan){
+ if(!plan.designStyle||!plan.enforceTheme)return;
+ const doc=new DOMParser().parseFromString(svg,'image/svg+xml'),page=plan.slides.find(row=>row.id===slide.id),style=plan.designStyle;
+ const background=children(doc.documentElement).find(node=>node.getAttribute('id')==='background');
+ const expected=page.role==='cover'?style.coverSurface:plan.palette.background;
+ if(!background||background.tagName!=='rect'||background.getAttribute('fill').toUpperCase()!==expected.toUpperCase())fail('PPT Master 页面背景必须使用当前所选模板色板');
+ const textColors=new Set([plan.palette.text,plan.palette.muted,plan.palette.accent,style.coverText,style.coverMuted].map(value=>value.toUpperCase()));
+ for(const node of Array.from(doc.getElementsByTagName('*')).filter(node=>['text','tspan'].includes(node.tagName)))if(!textColors.has(inherited(node,'fill','#000000').toUpperCase()))fail('PPT Master 文字必须使用当前所选模板色板');
+}
+
 export function parsePptMasterSlideOutput(result,value,slide,plan){
  let candidate;try{candidate=JSON.parse(result.text.trim());}catch{fail('PPT Master 未返回完整 JSON 页面');}
  if(!object(candidate)||candidate.complete!==true||Object.keys(candidate).some(key=>!['complete','slide','svg','sourceIds'].includes(key)))fail('PPT Master 页面结果结构不正确');
@@ -152,7 +152,7 @@ export function parsePptMasterSlideOutput(result,value,slide,plan){
  const material=slideMaterial(accepted,plan),ids=candidate.sourceIds;
  if(!Array.isArray(ids)||ids.length!==1||ids[0]!==material.id)fail('PPT Master 页面未关联当前已读取材料');
  const spans=(result.trace||[]).filter(row=>row.tool==='read_material'&&row.status==='completed'&&row.materialId===material.id).map(row=>[row.offset||0,(row.offset||0)+(row.limit||6000)]).sort((a,b)=>a[0]-b[0]);let covered=0;for(const [start,end] of spans)if(start<=covered)covered=Math.max(covered,end);if(covered<material.text.length)fail('PPT Master 必须完整读取当前不可变页面材料');
- const svg=validatePptMasterSvg(candidate.svg);validatePptMasterVisibleText(svg,accepted,plan);
+ const svg=validatePptMasterSvg(candidate.svg);validatePptMasterVisibleText(svg,accepted,plan);validateSelectedTheme(svg,accepted,plan);
  const sourceIds=originalSourceIds(value,plan.sourceIds),composition=plan.slides.find(row=>row.id===accepted.id).composition;
  return {...accepted,svg,sourceIds,evidenceSourceIds:[...sourceIds],authorSourceIds:[material.id],composition,requiresReview:true};
 }
