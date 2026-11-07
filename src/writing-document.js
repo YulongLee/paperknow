@@ -152,5 +152,5 @@ export async function createWritingPdf(text,fontBytes){
 export async function createWritingTemplateDocx(kind){
  const spec=writingDefaultTemplateSpec(kind);if(!spec)throw Error('未找到对应的通用写作模板。');
  const metadata=writingDefaultTemplateMetadata(kind);
- return createWritingDocx(metadata.title+'\n{{正文}}',{documentKind:spec.kind==='writing'?'thesis':'writing',writingKind:spec.kind,metadata,proposalBlank:spec.kind==='proposal'});
+ return createWritingDocx(metadata.title+'\n{{正文}}',{documentKind:spec.kind==='writing'?'thesis':'writing',writingKind:spec.kind,metadata,templateBlank:true});
 }

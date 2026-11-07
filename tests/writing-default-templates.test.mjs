@@ -2,31 +2,43 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import {writingDefaultTemplates,writingDefaultTemplateSpec} from '../dist/workspace/writing-template-catalog.mjs';
-import {createWritingDocx,createWritingTemplateDocx,inspectThesisDocxTemplate,inspectThesisExportContent,defaultWritingTemplateProfile,runThesisLayoutAgent} from '../src/writing-document.js';
+import {createWritingDocx,createWritingTemplateDocx,inspectThesisDocxTemplate,inspectThesisExportContent,defaultThesisTemplateProfile,defaultWritingTemplateProfile,runThesisLayoutAgent} from '../src/writing-document.js';
 import {writingStandardPanel} from '../dist/workspace/writing-standard-panel.mjs';
+import {thesisTemplatePanel} from '../dist/workspace/thesis-template.mjs';
 import {writingExportTemplate} from '../dist/workspace/writing-standard.mjs';
 const xmlOf=async bytes=>(await JSZip.loadAsync(bytes)).file('word/document.xml').async('string');
 
-test('each writing capability has an explicit versioned generic format without imposing a common outline',()=>{
+test('every Word default has a verified source and separate writing guidance',()=>{
  assert.deepEqual(Object.keys(writingDefaultTemplates).sort(),['writing','proposal','summary','taskbook','article','course','practice','idea','quick','questionnaire','analysis'].sort());
- for(const [kind,spec]of Object.entries(writingDefaultTemplates)){assert.equal(spec.kind,kind);assert.equal(spec.id,'paperknow-'+kind+(kind==='proposal'?'-v2':'-v1'));assert.ok(spec.name.includes('模板'));assert.equal(spec.outline,undefined);}
+ for(const [kind,spec]of Object.entries(writingDefaultTemplates)){
+  assert.equal(spec.kind,kind);assert.equal(spec.id,'paperknow-'+kind+(kind==='questionnaire'?'-v1':'-v2'));assert.ok(spec.name.includes('模板'));assert.equal(spec.outline,undefined);
+  if(kind==='questionnaire'){assert.equal(spec.source,undefined);continue;}
+  assert.match(spec.source.url,/^https:\/\//);assert.match(spec.source.attachment,/^https:\/\//);assert.match(spec.source.sha256,/^[a-f0-9]{64}$/);assert.ok(spec.guide.length>=3);
+ }
+ assert.equal(writingDefaultTemplates.quick.source,writingDefaultTemplates.article.source);
+ assert.ok(thesisTemplatePanel(null).includes(writingDefaultTemplates.writing.source.url));
+ for(const kind of ['proposal','summary','taskbook','article','course','practice','idea'])assert.ok(writingStandardPanel(kind,{}).includes(writingDefaultTemplates[kind].source.url));
  assert.equal(writingDefaultTemplateSpec('__proto__'),null);assert.equal(writingDefaultTemplateSpec('constructor'),null);assert.equal(writingDefaultTemplateSpec('topic').kind,'idea');assert.equal(writingDefaultTemplateSpec('thesis').kind,'writing');
 });
 
-for(const kind of Object.keys(writingDefaultTemplates).filter(kind=>kind!=='writing'))test(kind+' has a real downloadable DOCX template with one recognized body slot and reusable styles',async()=>{
+for(const kind of Object.keys(writingDefaultTemplates))test(kind+' has a real downloadable DOCX template with one recognized body slot and reusable styles',async()=>{
  const spec=writingDefaultTemplates[kind],bytes=await createWritingTemplateDocx(kind),profile=await inspectThesisDocxTemplate(bytes),xml=await xmlOf(bytes);
- assert.ok(bytes.byteLength>1000);assert.equal(profile.placement.mode,'explicit_slot');assert.equal((xml.match(/\{\{正文\}\}/g)||[]).length,1);assert.ok(xml.includes('{{标题}}'));
+ assert.ok(bytes.byteLength>1000);assert.equal(profile.placement.mode,'explicit_slot');assert.equal((xml.match(/\{\{正文\}\}/g)||[]).length,1);assert.ok(xml.includes(kind==='writing'?'{{论文题目}}':'{{标题}}'));
+ for(const [,prompt]of spec.guide)assert.ok(xml.includes(prompt));
  const selected={version:1,status:'ready',bytes},text='合成'+spec.title+'验收\n任务分析\n这是用于验证通用格式的合成内容，不代表已经开展真实研究。';
- const options={documentKind:'writing',writingKind:kind,template:selected,metadata:{title:'合成'+spec.title+'验收',institution:'测试学校',author:'测试作者',major:'测试专业',supervisor:'测试教师',chapterTitles:['任务分析']}},output=await createWritingDocx(text,options),actual=await xmlOf(output);
- assert.ok(actual.includes('测试作者'));assert.equal(actual.includes('{{正文}}'),false);assert.equal(actual.includes('{{论文题目}}'),false);assert.equal(actual.includes('{{学校}}'),false);assert.equal(actual.includes('{{单位}}'),false);assert.equal(actual.includes('{{标题}}'),false);await inspectThesisExportContent(output,text,options);
+ const options={documentKind:kind==='writing'?'thesis':'writing',writingKind:kind,template:selected,metadata:{title:'合成'+spec.title+'验收',institution:'测试学校',author:'测试作者',major:'测试专业',supervisor:'测试教师',chapterTitles:['任务分析']}},output=await createWritingDocx(text,options),actual=await xmlOf(output);
+ assert.ok(actual.includes('测试作者'));assert.equal(actual.includes('{{正文}}'),false);assert.equal(actual.includes('{{论文题目}}'),false);assert.equal(actual.includes('{{学校}}'),false);assert.equal(actual.includes('{{单位}}'),false);assert.equal(actual.includes('{{标题}}'),false);assert.doesNotMatch(actual,/\{\{(?:学号|学院|专业|作者|指导教师)\}\}/u);for(const [,prompt]of spec.guide)assert.ok(!actual.includes(prompt));await inspectThesisExportContent(output,text,options);
 });
 
-for(const kind of ['proposal','summary','taskbook','article','course','practice','idea','quick','analysis'])test(kind+' uses its generic format automatically and passes the same format checks as an uploaded template',async()=>{
- const profile=defaultWritingTemplateProfile(kind),spec=writingDefaultTemplates[kind],title='通用格式合成验收',text=title+'\n问题分析\n本段只用于排版功能验收，实际文章按用户确认的提纲组织。\n方法讨论\n讨论已有资料的适用范围和需要核对的研究条件。',options={documentKind:'writing',writingKind:kind,metadata:{title,chapterTitles:['问题分析','方法讨论']}},bytes=await createWritingDocx(text,options);
+for(const kind of ['writing','proposal','summary','taskbook','article','course','practice','idea','quick','analysis'])test(kind+' uses its generic format automatically and passes the same format checks as an uploaded template',async()=>{
+ const profile=kind==='writing'?defaultThesisTemplateProfile():defaultWritingTemplateProfile(kind),spec=writingDefaultTemplates[kind],title='通用格式合成验收',text=title+'\n问题分析\n本段只用于排版功能验收，实际文章按用户确认的提纲组织。\n方法讨论\n讨论已有资料的适用范围和需要核对的研究条件。',options={documentKind:kind==='writing'?'thesis':'writing',writingKind:kind,metadata:{title,author:'格式验收作者',chapterTitles:['问题分析','方法讨论']}},bytes=await createWritingDocx(text,options);
  assert.equal(profile.templateId,spec.id);assert.equal(profile.templateName,spec.name);
  const result=await runThesisLayoutAgent(bytes,{profile,verifyContent:value=>inspectThesisExportContent(value,text,options)});assert.equal(result.report.unresolved.length,0);
  const zip=await JSZip.loadAsync(result.bytes),styles=await zip.file('word/styles.xml').async('string'),xml=await xmlOf(result.bytes);
- assert.ok(styles.includes('w:val="'+(spec.format.bodySize||24)+'"'));assert.equal(xml.includes('{{'),false);assert.equal(xml.includes('TOC \\o'),false);assert.equal(xml.includes('独创性声明'),false);
+ assert.ok(styles.includes('w:val="'+(spec.format.bodySize||24)+'"'));assert.equal(xml.includes('{{'),false);assert.equal(xml.includes('TOC \\o'),kind==='writing');assert.equal(xml.includes('独创性声明'),false);
+ for(const [side,value]of Object.entries(spec.format.page))assert.ok(xml.includes(`w:${side}="${value}"`));
+ assert.equal(xml.includes('PaperKnow Writing Cover'),Boolean(spec.format.cover||spec.format.inlineForm));
+ for(const [,prompt]of spec.guide)assert.ok(!xml.includes(prompt));
 });
 
 test('an uploaded template overrides the type default and resetting explicitly returns to the generic format',async()=>{

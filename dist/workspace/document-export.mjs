@@ -1,3 +1,4 @@
+import {writingDefaultTemplateMetadata} from './writing-template-catalog.mjs';
 import {resolveDocxExportObjects} from './docx-object-client.mjs';
 import {supplementCheckReady} from './supplement-check-panel.mjs';
 import {captureDraftScope} from './state.mjs';
@@ -23,7 +24,7 @@ async function templateBytes(template,ownerId){
 }
 export async function downloadDefaultThesisTemplate({expectedUserId,metadata={},status,isCurrent=()=>true,loadDocument=()=>import('./assets/writing-document.js'),downloadFile=(...args)=>download(...args)}={}){
  const scope=captureDraftScope(),current=()=>isCurrent()&&scope.isCurrent()&&(!status||status.isConnected);
- try{if(status)status.textContent='正在准备通用论文模板…';const api=await loadDocument();if(!current())return;const bytes=await api.createWritingDocx('{{论文题目}}\n{{正文}}',{documentKind:'thesis',metadata:{...metadata,title:'{{论文题目}}',institution:'{{学校}}',author:'{{作者}}',major:'{{专业}}',supervisor:'{{指导教师}}'}});if(!current())return;const result=await downloadFile('通用学位论文模板.docx',bytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',{expectedUserId:expectedUserId??scope.ownerId});if(current()&&status)status.textContent=result.message+' 可调整样式后上传；请保留 {{正文}} 占位符。';return result;}
+ try{if(status)status.textContent='正在准备通用论文模板…';const api=await loadDocument();if(!current())return;const bytes=await api.createWritingDocx('{{论文题目}}\n{{正文}}',{documentKind:'thesis',templateBlank:true,metadata:{level:metadata.level,language:metadata.language,...writingDefaultTemplateMetadata('writing')}});if(!current())return;const result=await downloadFile('通用学位论文模板.docx',bytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',{expectedUserId:expectedUserId??scope.ownerId});if(current()&&status)status.textContent=result.message+' 可调整样式后上传；请保留 {{正文}} 占位符。';return result;}
  catch(error){if(current()&&status)status.textContent=error.message||'模板下载失败，请稍后重试。';}
 }
 export function bindDocumentExports(prefix,getText,getTitle,defaultStatus,{expectedUserId,docxOnly=false,isCurrent=()=>true,getDocumentOptions=()=>({}),loadDocument=()=>import('./assets/writing-document.js'),loadFont=font,downloadFile=(...args)=>download(...args),renderDocument=renderThesisDocument,onNeedsCompletion,beforeExport,onStateChange=()=>{},getStatus=()=>defaultStatus}={}){

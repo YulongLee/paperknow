@@ -13,7 +13,7 @@ async function fixture({styles=normal,body=para('合成模板正文，用于识�
 }
 
 test('default thesis profile is complete, independent, bounded and JSON serializable',()=>{
- const a=defaultThesisTemplateProfile(),b=defaultThesisTemplateProfile();assert.equal(a.version,1);assert.deepEqual(Object.keys(a.rules.styles),['Normal','Title','Heading1','Heading2','Heading3','Abstract','References','TableText']);assert.equal(a.rules.styles.Normal.firstLineChars,200);assert.equal(a.rules.styles.Normal.size,24);assert.equal(a.rules.styles.Title.size,44);assert.equal(a.rules.styles.Heading1.pageBreakBefore,true);assert.equal(a.rules.styles.TableText.firstLineChars,0);for(const value of Object.values(a.rules.page))assert.ok(Number.isInteger(value));a.rules.styles.Normal.size=400;assert.equal(b.rules.styles.Normal.size,24);assert.deepEqual(JSON.parse(JSON.stringify(b)),b);
+ const a=defaultThesisTemplateProfile(),b=defaultThesisTemplateProfile();assert.equal(a.version,1);assert.deepEqual(Object.keys(a.rules.styles),['Normal','Title','Heading1','Heading2','Heading3','Abstract','References','TableText']);assert.equal(a.rules.styles.Normal.firstLineChars,200);assert.equal(a.rules.styles.Normal.size,24);assert.equal(a.rules.styles.Title.size,32);assert.equal(a.rules.styles.Normal.eastAsia,'仿宋');assert.equal(a.rules.page.left,1800);assert.equal(a.rules.styles.Heading1.pageBreakBefore,true);assert.equal(a.rules.styles.TableText.firstLineChars,0);for(const value of Object.values(a.rules.page))assert.ok(Number.isInteger(value));a.rules.styles.Normal.size=400;assert.equal(b.rules.styles.Normal.size,24);assert.deepEqual(JSON.parse(JSON.stringify(b)),b);
 });
 
 test('reads actual fonts, half-point sizes, exact spacing and all page settings',async()=>{

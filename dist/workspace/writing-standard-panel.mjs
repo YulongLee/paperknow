@@ -1,5 +1,4 @@
 import {writingDefaultTemplateSpec} from './writing-template-catalog.mjs';
-import {proposalTemplateSource} from './proposal-standard.mjs';
 import {writingStandardSpec,writingStandardFields,writingExportTemplate,writingStandardRequirements} from './writing-standard.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function proposalWritingRequirementsPanel(data){
@@ -13,21 +12,23 @@ export function proposalWritingRequirementsPanel(data){
 
 export function writingStandardPanel(kind,data,{compact=false}={}){
  const spec=writingStandardSpec(kind);if(!spec)return '';
- const fields=writingStandardFields(kind),selected=writingExportTemplate(kind,data),metadata=data[fields.metadata]||{},name=(writingDefaultTemplateSpec(kind)?.name||'通用'+spec.title+'模板')+'（默认）';
+ const fields=writingStandardFields(kind),selected=writingExportTemplate(kind,data),metadata=data[fields.metadata]||{},defaultSpec=writingDefaultTemplateSpec(kind),name=(defaultSpec?.name||'通用'+spec.title+'模板')+'（默认）';
  // Legacy export summaries must not bring template controls back to delivery.
  if(compact)return '';
- const coverFields=kind==='article'?[['institution','作者单位'],['author','作者']]:(kind==='quick'||kind==='idea')?[['author','作者']]:[['institution','学校'],['college','学院'],['author','姓名'],['studentId','学号'],['supervisor','指导教师']];
- const cover=`<details class="wf-drawer" data-optional-fields open><summary>${kind==='article'||(kind==='quick'||kind==='idea')?'作者信息':'文档封面信息'}（按实际要求填写）</summary><div class="wf-field-grid">${coverFields.map(([key,label])=>`<label class="wf-field"><span>${label}（可选）</span><input data-wf-cover="${key}" value="${esc(metadata[key]||'')}" maxlength="100"></label>`).join('')}</div><p class="wf-muted">用于填写模板已识别的栏目，不发送给写作模型。</p></details>`;
+ const source=defaultSpec?.source,sourceNote=source&&!selected?`参考 <a href="${esc(source.url)}" target="_blank" rel="noopener noreferrer">${esc(source.name)}</a> 适配。`:'';
+ const authorOnly=kind==='article'||kind==='quick',labels={institution:kind==='article'?'作者单位':kind==='idea'?'单位':'学校',college:'学院',major:'专业',author:authorOnly||kind==='idea'?'作者':'姓名',studentId:'学号',supervisor:'指导教师'};
+ const coverFields=(selected&&!authorOnly&&kind!=='idea'?Object.keys(labels):defaultSpec?.fields||Object.keys(labels)).map(key=>[key,labels[key]]);
+ const cover=`<details class="wf-drawer" data-optional-fields open><summary>${authorOnly?'作者信息':defaultSpec?.format.cover||kind==='proposal'?'文档封面信息':'文档基本信息'}（按实际要求填写）</summary><div class="wf-field-grid">${coverFields.map(([key,label])=>`<label class="wf-field"><span>${label}（可选）</span><input data-wf-cover="${key}" value="${esc(metadata[key]||'')}" maxlength="100"></label>`).join('')}</div><p class="wf-muted">用于填写模板已识别的栏目，不发送给写作模型。</p></details>`;
  const recognition=`<details class="wf-drawer"><summary>模板适用范围与识别结果</summary><p class="wf-muted">格式选择不重新生成正文，不扣写作费用。导出时读取所选模板，检查字体、字号、行距、页边距和表格。</p>${selected?.profile?.summary?.length?'<ul class="wf-muted">'+selected.profile.summary.map(row=>'<li>'+esc(row)+'</li>').join('')+'</ul>':''}${selected?.profile?.warnings?.length?'<ul class="wf-muted">'+selected.profile.warnings.map(row=>'<li>'+esc(typeof row==='string'?row:row?.message||'部分模板设置需核对。')+'</li>').join('')+'</ul>':''}<p class="wf-muted">模板中实际定义的样式用于排版；仅写在说明文字中的要求，请先落实到模板样式中。模板需保留明确的正文区域或独立的 {{正文}} 占位符。通用模板不代替学校或期刊的官方要求。</p></details>`;
  const controls=`  <div class="wf-actions"><button type="button" class="btn secondary" data-wf-template-choose>${selected?'替换'+spec.upload+'模板':'上传'+spec.upload+'模板'}</button><button type="button" class="btn secondary" data-wf-template-stored>从文件管理选择</button>${selected?'<button type="button" class="btn secondary" data-wf-template-reset>恢复默认</button>':''}<button type="button" class="btn secondary" data-wf-template-download>下载通用模板</button></div>
   <input type="file" data-template-file data-no-file-library accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
   <p class="wf-muted" data-template-status role="status" aria-live="polite">模板支持 DOCX，最大 2MB。保留明确的正文区域或独立的 {{正文}} 占位符。</p>`;
  if(kind==='proposal')return `<section class="wf-proposal-standard wf-proposal-format" data-wf-standard data-wf-proposal-standard aria-labelledby="wf-proposal-format-title" aria-busy="false">
-  <div class="wf-standard-heading"><div><h3 id="wf-proposal-format-title">Word 排版（可选）</h3><p class="wf-muted">当前使用 ${esc(selected?.source?.name||name)}。${selected?'导出时应用所选格式。':'导出时自动应用独立封面和正文版式。参考 <a href="'+proposalTemplateSource.url+'" target="_blank" rel="noopener noreferrer">'+proposalTemplateSource.name+'公开模板</a>。'}</p></div></div>
+  <div class="wf-standard-heading"><div><h3 id="wf-proposal-format-title">Word 排版（可选）</h3><p class="wf-muted">当前使用 ${esc(selected?.source?.name||name)}。${selected?'导出时应用所选格式。':'导出时自动应用独立封面和正文版式。'+sourceNote}</p></div></div>
   ${controls}${cover}${selected?recognition:''}
  </section>`;
  return `<section class="wf-proposal-standard" data-wf-standard aria-busy="false">
-  <div class="wf-standard-heading"><div><span class="wf-kicker">格式模板与撰写规范</span><h3>${esc(selected?.source?.name||name)}</h3><p class="wf-muted">先确定${esc(spec.authority)}要求，再生成提纲和正文；已有内容后更换格式模板会保留正文与确认提纲。</p></div></div>
+  <div class="wf-standard-heading"><div><span class="wf-kicker">格式模板与撰写规范</span><h3>${esc(selected?.source?.name||name)}</h3><p class="wf-muted">先确定${esc(spec.authority)}要求，再生成提纲和正文；已有内容后更换格式模板会保留正文与确认提纲。${sourceNote}</p></div></div>
   ${controls}
   ${cover}${recognition}
   <label class="wf-field"><span>${spec.authority}补充要求（可选）</span><textarea data-wf-field="${fields.requirements}" rows="3" maxlength="3000" placeholder="如栏目顺序、篇幅、引用格式、交付要求等。">${esc(writingStandardRequirements(kind,data))}</textarea></label>${data[fields.templateText]?`<details class="wf-drawer" data-optional-fields open><summary>撰写栏目与要求（可编辑）</summary><textarea data-wf-field="${fields.templateText}" rows="6" maxlength="6000">${esc(data[fields.templateText]||'')}</textarea><p class="wf-muted">只作为结构与填写要求使用；示例、签名与评审意见不会自动成为正文事实。</p></details>`:''}<details class="wf-drawer"><summary>${spec.title}撰写要点与规范参考</summary><dl class="wf-standard-guide">${spec.guidance.map(([title,text])=>`<dt>${esc(title)}</dt><dd>${esc(text)}</dd>`).join('')}</dl><p class="wf-muted">具体要求以${spec.authority}当前规定为准。通用模板不代替官方表格或投稿模板。</p>${spec.sources.map(([title,url])=>`<a href="${url}" target="_blank" rel="noopener noreferrer">${esc(title)} ↗</a>`).join('<br>')}</details>
