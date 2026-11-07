@@ -1,4 +1,5 @@
 import {writingDefaultTemplateSpec} from './writing-template-catalog.mjs';
+import {proposalTemplateSource} from './proposal-standard.mjs';
 import {writingStandardSpec,writingStandardFields,writingExportTemplate,writingStandardRequirements} from './writing-standard.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function proposalWritingRequirementsPanel(data){
@@ -22,7 +23,7 @@ export function writingStandardPanel(kind,data,{compact=false}={}){
   <input type="file" data-template-file data-no-file-library accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
   <p class="wf-muted" data-template-status role="status" aria-live="polite">模板支持 DOCX，最大 2MB。保留明确的正文区域或独立的 {{正文}} 占位符。</p>`;
  if(kind==='proposal')return `<section class="wf-proposal-standard wf-proposal-format" data-wf-standard data-wf-proposal-standard aria-labelledby="wf-proposal-format-title" aria-busy="false">
-  <div class="wf-standard-heading"><div><h3 id="wf-proposal-format-title">Word 排版（可选）</h3><p class="wf-muted">当前使用 ${esc(selected?.source?.name||name)}。${selected?'导出时应用所选格式。':'可以直接生成，导出时自动排版。'}</p></div></div>
+  <div class="wf-standard-heading"><div><h3 id="wf-proposal-format-title">Word 排版（可选）</h3><p class="wf-muted">当前使用 ${esc(selected?.source?.name||name)}。${selected?'导出时应用所选格式。':'导出时自动应用独立封面和正文版式。参考 <a href="'+proposalTemplateSource.url+'" target="_blank" rel="noopener noreferrer">'+proposalTemplateSource.name+'公开模板</a>。'}</p></div></div>
   ${controls}${cover}${selected?recognition:''}
  </section>`;
  return `<section class="wf-proposal-standard" data-wf-standard aria-busy="false">

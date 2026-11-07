@@ -1,8 +1,11 @@
 // Product defaults describe document presentation, never a compulsory outline.
-const template=(kind,title,fields,format={})=>Object.freeze({id:'paperknow-'+kind+'-v1',kind,title,name:'通用'+title+'模板',fields:Object.freeze(fields),format:Object.freeze(format)});
+const template=(kind,title,fields,format={},version=1)=>Object.freeze({id:'paperknow-'+kind+'-v'+version,kind,title,name:'通用'+title+'模板',fields:Object.freeze(fields),format:Object.freeze(format)});
 export const writingDefaultTemplates=Object.freeze({
  writing:template('writing','学位论文',['institution','author','major','supervisor']),
- proposal:template('proposal','开题报告',['institution','college','author','studentId','major','supervisor']),
+ proposal:template('proposal','开题报告',['institution','college','major','author','studentId','supervisor'],{
+  titleSize:52,titleFont:'宋体',bodySize:24,headingSize:24,subheadingSize:24,tableSize:24,
+  page:Object.freeze({top:1440,bottom:1440,left:1800,right:1800,header:851,footer:992})
+ },2),
  summary:template('summary','文献综述',['institution','author','major','supervisor'],{referencesSize:21}),
  taskbook:template('taskbook','任务书',['institution','author','major','supervisor'],{headingSize:28,tableSize:24}),
  article:template('article','期刊文章',['institution','author'],{titleSize:32,bodySize:21,line:300,headingSize:24,subheadingSize:21,referencesSize:21,margin:25}),

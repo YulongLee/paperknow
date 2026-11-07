@@ -1,4 +1,5 @@
 import {writingDefaultTemplateSpec} from '../dist/workspace/writing-template-catalog.mjs';
+import {proposalTemplateSections} from '../dist/workspace/proposal-standard.mjs';
 import JSZip from 'jszip';
 import {DOMParser,XMLSerializer} from '@xmldom/xmldom';
 import {defaultThesisTemplateProfile,defaultWritingTemplateProfile,prepareThesisDocxTemplate} from './thesis-template-profile.js';
@@ -37,6 +38,38 @@ function cover(title,metadata){
  const known=labels.filter(([key])=>String(metadata[key]||'').trim()).map(([key,label])=>p(`${label}：${metadata[key]}`,'Normal','<w:jc w:val="center"/><w:ind w:firstLine="0" w:firstLineChars="0"/><w:spacing w:before="180" w:after="0"/>')).join('');
  const degree=String(metadata.level||'').trim(),kind=['专科','本科','硕士','博士'].includes(degree)?degree+'毕业论文':'研究论文';
  return p(metadata.institution||'','Normal','<w:jc w:val="center"/><w:ind w:firstLine="0" w:firstLineChars="0"/>')+p(kind,'FrontHeading','<w:jc w:val="center"/><w:pageBreakBefore w:val="0"/><w:spacing w:before="1600" w:after="800"/>')+p(title,'Title')+p('','Normal','<w:spacing w:after="800"/>')+known;
+}
+const proposalCoverCaption='PaperKnow Proposal Cover';
+const proposalCoverFields={
+ title:['题目','Research topic','标题'],
+ institution:['学校','University','学校'],
+ college:['学院','School','学院'],
+ major:['专业','Major','专业'],
+ author:['姓名','Student name','作者'],
+ studentId:['学号','Student ID','学号'],
+ supervisor:['指导教师','Supervisor','指导教师'],
+};
+function proposalCover(title,metadata,page,blank){
+ const english=/^(?:en|english|英语|英文)/i.test(String(metadata.language||'')),width=Math.min(7360,contentWidth(page)),labelWidth=Math.min(2127,Math.round(width/3)),valueWidth=width-labelWidth;
+ const fields=writingDefaultTemplateSpec('proposal').fields,values=[['title',title],...fields.map(key=>[key,String(metadata[key]||'').trim()])];
+ const rows=values.filter(([,value])=>value).map(([key,value])=>[proposalCoverFields[key][english?1:0],value]);
+ if(blank)rows.push(['日期','']);
+ const cell=(value,cellWidth,label)=>`<w:tc><w:tcPr><w:tcW w:w="${cellWidth}" w:type="dxa"/>${label?'':'<w:tcBorders><w:bottom w:val="single" w:sz="4" w:color="000000"/></w:tcBorders>'}<w:vAlign w:val="center"/></w:tcPr>${p(value,'TableText',`<w:jc w:val="${label?'left':'center'}"/><w:spacing w:before="80" w:after="80"/><w:ind w:firstLine="0" w:firstLineChars="0"/>`)}</w:tc>`;
+ return p(english?'Research Proposal':'开题报告','Title','<w:keepNext/><w:spacing w:before="1860" w:after="1020"/>')+
+  `<w:tbl><w:tblPr><w:tblW w:w="${width}" w:type="dxa"/><w:jc w:val="center"/><w:tblLayout w:type="fixed"/><w:tblCaption w:val="${proposalCoverCaption}"/></w:tblPr><w:tblGrid><w:gridCol w:w="${labelWidth}"/><w:gridCol w:w="${valueWidth}"/></w:tblGrid>${rows.map(([label,value])=>`<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="640" w:hRule="atLeast"/></w:trPr>${cell(label,labelWidth,true)}${cell(value,valueWidth,false)}</w:tr>`).join('')}</w:tbl>`;
+}
+const proposalGuideStyles='<w:style w:type="paragraph" w:styleId="PKProposalGuideHeading"><w:name w:val="PaperKnow Proposal Guide Heading"/><w:basedOn w:val="PKHeading1"/><w:next w:val="PKProposalGuidePrompt"/></w:style><w:style w:type="paragraph" w:styleId="PKProposalGuidePrompt"><w:name w:val="PaperKnow Proposal Guide Prompt"/><w:basedOn w:val="PKNormal"/></w:style>';
+const proposalGuide=()=>proposalTemplateSections.map(([title,prompt])=>p(title,'ProposalGuideHeading')+p(prompt,'ProposalGuidePrompt')).join('');
+function removeEmptyProposalCoverRows(root,values){
+ const labels=new Map(Object.entries(proposalCoverFields).filter(([key])=>key!=='title').flatMap(([, [zh,en,field]])=>[[zh,field],[en,field]]));
+ for(const table of children(root,'tbl')){
+  if(children(children(table,'tblPr')[0],'tblCaption')[0]?.getAttributeNS(W,'val')!==proposalCoverCaption)continue;
+  for(const row of children(table,'tr')){
+   const cells=children(row,'tc');if(cells.length!==2||cells.some(cell=>children(cell).some(node=>node.localName!=='tcPr'&&!plainTemplateParagraph(node))))continue;
+   const label=texts(cells[0]).trim(),value=texts(cells[1]).trim(),field=labels.get(label);
+   if((label==='日期'&&!value)||(field&&value==='{{'+field+'}}'&&!String(values[field]??'').trim()))table.removeChild(row);
+  }
+ }
 }
 function addBookmark(node,{id,name}){
  const doc=node.ownerDocument,start=doc.createElementNS(W,'w:bookmarkStart'),end=doc.createElementNS(W,'w:bookmarkEnd');start.setAttributeNS(W,'w:id',String(id));start.setAttributeNS(W,'w:name',name);end.setAttributeNS(W,'w:id',String(id));node.insertBefore(start,node.childNodes[1]||null);node.appendChild(end);
@@ -160,11 +193,13 @@ function plainTemplateParagraph(node,{preserveBookmarks=false}={}){
 function proposalTemplateFiller(node,values){
  if(!plainTemplateParagraph(node))return false;
  const value=texts(node).trim();
+ const style=children(children(node,'pPr')[0],'pStyle')[0]?.getAttributeNS(W,'val');
+ if((style==='PKProposalGuideHeading'&&proposalTemplateSections.some(([title])=>title===value))||(style==='PKProposalGuidePrompt'&&proposalTemplateSections.some(([,prompt])=>prompt===value)))return true;
  if(/^(?:[【〔\[]\s*)?(?:填写说明|填写示例|填写提示|模板说明|模板示例)\s*[:：]\s*\S/u.test(value))return true;
  // Blank metadata from our generic template can disappear. School form labels
  // and signature fields retain their original placement and styles.
  const field=/^(学校|学院|作者|学号|专业|指导教师)[:：]\s*\{\{\1\}\}$/.exec(value);
- return Boolean(field&&children(children(node,'pPr')[0],'pStyle')[0]?.getAttributeNS(W,'val')==='PKAbstract'&&!String(values[field[1]]??'').trim());
+ return Boolean(field&&style==='PKAbstract'&&!String(values[field[1]]??'').trim());
 }
 async function fillTemplateSlot(source,body,rules,metadata,proposal){
  const document=parse(await readXml(source.file('word/document.xml'))),root=document.getElementsByTagNameNS(W,'body')[0];
@@ -172,6 +207,7 @@ async function fillTemplateSlot(source,body,rules,metadata,proposal){
  const area=slotContentArea(root,slot,rules.page),wrapped=parse(`<w:body xmlns:w="${W}" xmlns:r="${R}" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">${fitTables(body,area.width,area.height,rules.styles.Normal)}</w:body>`);
  const values=templateMetadataValues(metadata,proposal);
  if(proposal){
+  removeEmptyProposalCoverRows(root,values);
   for(const node of children(root,'p'))if(proposalTemplateFiller(node,values))root.removeChild(node);
   const ordered=children(root),before=ordered[ordered.indexOf(slot)-1],inserted=children(wrapped.documentElement)[0],firstTitle=metadata.chapterTitles?.[0];
   if(plainTemplateParagraph(before,{preserveBookmarks:true})&&inserted?.localName==='p'&&texts(before).trim()===texts(inserted).trim()&&displayHeading(firstTitle?.title??firstTitle??'')===texts(inserted).trim()){
@@ -413,7 +449,7 @@ async function mergeGeneratedFigureImages(original,target,document,reserved){
  return {count,relationships};
 }
 
-export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},template=null,submission=false,academicReport=false,writingKind,chapterTitles=metadata.chapterTitles||[]}={}){
+export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},template=null,submission=false,academicReport=false,writingKind,chapterTitles=metadata.chapterTitles||[],proposalBlank=false}={}){
  const original=await JSZip.loadAsync(bytes),doc=parse(await readXml(original.file('word/document.xml'))),nodes=children(doc.getElementsByTagNameNS(W,'body')[0]).filter(n=>n.localName!=='sectPr');
  if(nodes.length!==blocks.length)throw Error('论文段落结构不一致，未导出不完整文件。');
  const proposal=academicReport&&writingKind==='proposal';
@@ -461,11 +497,15 @@ export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},t
  zip.file('word/pk-footer.xml',footer);
  const header=references.references.match(/<w:headerReference[^>]+\/>/g)?.join('')||'',customFooter=references.references.match(/<w:footerReference[^>]+\/>/g)?.join('')||'';
  const fields=writingDefaultTemplateSpec(writingKind)?.fields||[],labels={institution:writingKind==='article'?'作者单位':'学校',college:'学院',author:'作者',studentId:'学号',major:'专业',supervisor:'指导教师'},info=fields.filter(key=>String(metadata[key]||'').trim()).map(key=>p(labels[key]+'：'+String(metadata[key]),'Abstract')).join('');
- const documentBody=academicReport?p(title,'Title')+(!source||proposal?info:'')+front.join('')+body+section(page,{header,refs:customFooter}):cover(title,metadata)+sectionBreak(section(page,{cover:true}))+front.join('')+contents(headings,width)+sectionBreak(section(page,{front:true}))+body+section(page,{header,refs:customFooter});
+ const bodySection=section(page,{header,refs:customFooter});
+ let documentBody;
+ if(proposal&&!source)documentBody=proposalCover(title,metadata,page,proposalBlank)+sectionBreak(section(page,{cover:true}))+(proposalBlank?proposalGuide():'')+front.join('')+body+bodySection;
+ else if(academicReport)documentBody=p(title,'Title')+(!source||proposal?info:'')+front.join('')+body+bodySection;
+ else documentBody=cover(title,metadata)+sectionBreak(section(page,{cover:true}))+front.join('')+contents(headings,width)+sectionBreak(section(page,{front:true}))+body+bodySection;
  zip.file('word/document.xml',`<w:document xmlns:w="${W}" xmlns:r="${R}" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>${documentBody}</w:body></w:document>`);
  const originalStylePart=source?await relatedPart(source,'styles','word/styles.xml'):null,styles=source?.file(originalStylePart)?parse(await readXml(source.file(originalStylePart))):parse(`<w:styles xmlns:w="${W}"><w:docDefaults><w:rPrDefault><w:rPr>${rPr(rules.styles.Normal)}</w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>${pPr(rules.styles.Normal)}</w:pPr></w:pPrDefault></w:docDefaults></w:styles>`);
  for(const n of [...styles.getElementsByTagNameNS(W,'style')])if(/^PK(?:Normal|Title|FrontHeading|Heading[123]|Abstract|References|TableText|Code|TOC[123]|TOC|TOCTitle|Header|FigureCaption|TableCaption|ReferenceHeading|AcknowledgementHeading|AppendixHeading)$/.test(n.getAttributeNS(W,'styleId')))n.parentNode.removeChild(n);
- const additions=parse(`<w:styles xmlns:w="${W}">${styleEntries(rules)}</w:styles>`);for(const n of children(additions.documentElement))styles.documentElement.appendChild(styles.importNode(n,true));zip.file('word/styles.xml',xml(styles));
+ const additions=parse(`<w:styles xmlns:w="${W}">${styleEntries(rules)}${proposal&&!source&&proposalBlank?proposalGuideStyles:''}</w:styles>`);for(const n of children(additions.documentElement))styles.documentElement.appendChild(styles.importNode(n,true));zip.file('word/styles.xml',xml(styles));
  let sharedRelationships='';if(source?.file('word/_rels/document.xml.rels'))for(const rel of parse(await readXml(source.file('word/_rels/document.xml.rels'))).getElementsByTagNameNS(P,'Relationship')){const type=rel.getAttribute('Type');if(![R+'/theme',R+'/fontTable',R+'/numbering'].includes(type))continue;const target=rel.getAttribute('Target'),part=resolvePart('word/document.xml',target);await references.copy(part);sharedRelationships+=`<Relationship Id="pkShared${sharedRelationships.length}" Type="${esc(type)}" Target="${esc(target)}"/>`;}
  zip.file('word/_rels/document.xml.rels',`<Relationships xmlns="${P}"><Relationship Id="pkStyles" Type="${R}/styles" Target="styles.xml"/><Relationship Id="pkSettings" Type="${R}/settings" Target="settings.xml"/><Relationship Id="pkFooter" Type="${R}/footer" Target="pk-footer.xml"/>${references.relationships}${sharedRelationships}${generatedImages.relationships}</Relationships>`);
  zip.file('_rels/.rels',`<Relationships xmlns="${P}"><Relationship Id="rId1" Type="${R}/officeDocument" Target="word/document.xml"/></Relationships>`);

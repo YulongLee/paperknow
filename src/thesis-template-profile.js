@@ -22,6 +22,7 @@ export function defaultWritingTemplateProfile(kind){
   const f=spec.format,styles=profile.rules.styles;
   Object.assign(styles.Normal,{size:f.bodySize||24,line:f.line||360,firstLineChars:f.firstLineChars??200});
   Object.assign(styles.Title,{size:f.titleSize||36});
+  if(f.titleFont)styles.Title.eastAsia=f.titleFont;
   Object.assign(styles.Heading1,{size:f.headingSize||32,line:f.line||360});
   Object.assign(styles.Heading2,{size:f.subheadingSize||28,line:f.line||360});
   Object.assign(styles.Heading3,{size:f.subheadingSize||24,line:f.line||360});
@@ -29,9 +30,10 @@ export function defaultWritingTemplateProfile(kind){
   Object.assign(styles.References,{size:f.referencesSize||24,line:f.line||360});
   Object.assign(styles.TableText,{size:f.tableSize||21});
   if(f.margin)for(const side of ['top','bottom','left','right'])profile.rules.page[side]=mm(f.margin);
+  if(f.page)Object.assign(profile.rules.page,f.page);
   profile.templateId=spec.id;profile.templateName=spec.name;profile.writingKind=spec.kind;
  }
- profile.summary=[spec?spec.name+'（默认）；A4 纸，按当前文章的实际提纲连续排版。':'通用学术报告版式；按文档自身结构连续排版。'];
+ profile.summary=[spec?.kind==='proposal'?'通用开题报告模板（默认）；A4，独立封面，正文按确认的提纲排版。':spec?spec.name+'（默认）；A4 纸，按当前文章的实际提纲连续排版。':'通用学术报告版式；按文档自身结构连续排版。'];
  return profile;
 }
 

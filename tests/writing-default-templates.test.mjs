@@ -9,7 +9,7 @@ const xmlOf=async bytes=>(await JSZip.loadAsync(bytes)).file('word/document.xml'
 
 test('each writing capability has an explicit versioned generic format without imposing a common outline',()=>{
  assert.deepEqual(Object.keys(writingDefaultTemplates).sort(),['writing','proposal','summary','taskbook','article','course','practice','idea','quick','questionnaire','analysis'].sort());
- for(const [kind,spec]of Object.entries(writingDefaultTemplates)){assert.equal(spec.kind,kind);assert.equal(spec.id,'paperknow-'+kind+'-v1');assert.ok(spec.name.includes('模板'));assert.equal(spec.outline,undefined);}
+ for(const [kind,spec]of Object.entries(writingDefaultTemplates)){assert.equal(spec.kind,kind);assert.equal(spec.id,'paperknow-'+kind+(kind==='proposal'?'-v2':'-v1'));assert.ok(spec.name.includes('模板'));assert.equal(spec.outline,undefined);}
  assert.equal(writingDefaultTemplateSpec('__proto__'),null);assert.equal(writingDefaultTemplateSpec('constructor'),null);assert.equal(writingDefaultTemplateSpec('topic').kind,'idea');assert.equal(writingDefaultTemplateSpec('thesis').kind,'writing');
 });
 

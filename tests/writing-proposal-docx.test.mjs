@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import {DOMParser} from '@xmldom/xmldom';
 import {createWritingDocx,createWritingTemplateDocx,inspectThesisDocxTemplate,inspectThesisExportContent,runThesisLayoutAgent} from '../src/writing-document.js';
+import {proposalTemplateSections} from '../dist/workspace/proposal-standard.mjs';
 
 const word='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const title='开放街区步行研究',heading='研究范围与取样方法';
@@ -16,12 +17,18 @@ async function inspect(bytes){
  return {zip,xml,paragraphs:[...doc.getElementsByTagNameNS(word,'p')].map(paragraph=>paragraph.textContent)};
 }
 function options(extra={}){return {...report,metadata:{...report.metadata,...extra}};}
+function customFixture(source,metadata){return createWritingDocx(source,{documentKind:'writing',metadata});}
 
 test('default proposal uses only provided cover values and one copy of the approved text',async()=>{
  const empty=await inspect(await createWritingDocx(text,report));
- assert.deepEqual(empty.paragraphs,[title,heading,body]);
+ assert.deepEqual(empty.paragraphs.filter(Boolean),['开题报告','题目',title,heading,body]);
  const details=await inspect(await createWritingDocx(text,options(fields)));
- assert.deepEqual(details.paragraphs,[title,'学院：城市设计学院','作者：测试作者','学号：20260108',heading,body]);
+ assert.deepEqual(details.paragraphs.filter(Boolean),['开题报告','题目',title,'学院','城市设计学院','姓名','测试作者','学号','20260108',heading,body]);
+ assert.equal((details.xml.match(/<w:sectPr>/g)||[]).length,2);
+ assert.match(details.xml,/<w:pgMar w:top="1440" w:bottom="1440" w:left="1800" w:right="1800"/);
+ assert.equal((details.xml.match(/<w:pgNumType w:fmt="decimal" w:start="1"\/>/g)||[]).length,1);
+ const english=await inspect(await createWritingDocx(text,options({...fields,language:'English'})));
+ assert.deepEqual(english.paragraphs.filter(Boolean).slice(0,4),['Research Proposal','Research topic',title,'School']);
  assert.doesNotMatch(details.xml,/TOC|毕业论文|独创性声明|\{\{/);
 });
 
@@ -29,17 +36,19 @@ test('the downloadable generic proposal template can be reused without empty opt
  const template={bytes:await createWritingTemplateDocx('proposal')},profile=await inspectThesisDocxTemplate(template.bytes);
  assert.equal(profile.placement.mode,'explicit_slot');
  const original=await inspect(template.bytes);
- assert.ok(original.paragraphs.includes('学院：{{学院}}'));
- assert.ok(original.paragraphs.includes('学号：{{学号}}'));
+ assert.ok(original.paragraphs.includes('{{学院}}'));
+ assert.ok(original.paragraphs.includes('{{学号}}'));
+ assert.ok(original.paragraphs.includes('日期'));
+ for(const [label,prompt] of proposalTemplateSections){assert.ok(original.paragraphs.includes(label));assert.ok(original.paragraphs.includes(prompt));}
  const selected={...options({author:fields.author}),template};
  const bytes=await createWritingDocx(text,selected),result=await inspect(bytes);
- assert.deepEqual(result.paragraphs,[title,'作者：测试作者',heading,body]);
+ assert.deepEqual(result.paragraphs.filter(Boolean),['开题报告','题目',title,'姓名','测试作者',heading,body]);
  assert.equal((await inspectThesisExportContent(bytes,text,selected)).unresolvedPlaceholders,0);
 });
 
 test('school proposal body slot removes only labeled samples and a duplicated opening heading',async()=>{
  const source=['{{课题名称}}','学院：{{学院}}','学号：{{学号}}','指导教师：{{指导教师}}','【填写说明：示例段落，请删去】',heading,'{{正文}}','模板示例：示范段落','导师评审意见','导师签字：________'].join('\n');
- const original=await createWritingDocx(source,{...report,metadata:{title:'{{课题名称}}',chapterTitles:[heading]}});
+ const original=await customFixture(source,{title:'{{课题名称}}',chapterTitles:[heading]});
  const archive=await JSZip.loadAsync(original),sample=await archive.file('word/document.xml').async('string');
  archive.file('word/document.xml',sample.replace('学院：{{学院}}','学院：</w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>{{学</w:t></w:r><w:r><w:t>院}}').replace(/w:left="\d+"/g,'w:left="1984"').replace('<w:r><w:t xml:space="preserve">'+heading,'<w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">'+heading));
  const template={bytes:await archive.generateAsync({type:'uint8array'})},selected={...options(fields),template};
@@ -69,7 +78,7 @@ test('format-only proposal template applies its style and does not discard provi
 
 test('recognized school proposal body preserves the final approval form',async()=>{
  const original='{{标题}}\n学院：{{学院}}\n一、研究范围\n这里是学校模板的正文样例，用于确认正文区域和版式。\n指导教师评审意见\n指导教师签字：________';
- const template={bytes:await createWritingDocx(original,{...report,metadata:{title:'{{标题}}'}})},selected={...options(fields),template};
+ const template={bytes:await customFixture(original,{title:'{{标题}}'})},selected={...options(fields),template};
  const profile=await inspectThesisDocxTemplate(template.bytes);
  assert.equal(profile.placement.mode,'recognized_body');
  const bytes=await createWritingDocx(text,selected),result=await inspect(bytes);
@@ -79,7 +88,7 @@ test('recognized school proposal body preserves the final approval form',async()
 
 test('export check reports unknown school template fields and leaves brace syntax in author text alone',async()=>{
  const source='{{标题}}\n{{正文}}\n项目编号：{{项目编号}}';
- const template={bytes:await createWritingDocx(source,{...report,metadata:{title:'{{标题}}'}})};
+ const template={bytes:await customFixture(source,{title:'{{标题}}'})};
  const revised=text+'\n界面将 {{记录字段}} 显示为研究变量占位语法。';
  const selected={...report,template},bytes=await createWritingDocx(revised,selected);
  const check=await inspectThesisExportContent(bytes,revised,selected);

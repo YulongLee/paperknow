@@ -1,4 +1,15 @@
 // Writing requirements are document instructions, never research evidence.
+export const proposalTemplateSource=Object.freeze({
+ name:'中国石油大学（华东）教务处',
+ url:'https://jwc.upc.edu.cn/_t34/2024/1128/c520a446997/page.psp',
+});
+export const proposalTemplateSections=Object.freeze([
+ ['选题依据','说明课题来源、研究背景、研究目的及实际价值。'],
+ ['文献综述','归纳已阅读的相关研究，明确与本课题有关的进展及待解决的问题。'],
+ ['研究内容与技术路线','说明研究对象、拟解决的问题、方法、实施步骤与可行性。'],
+ ['进度安排与预期成果','列出各阶段的计划、时间和预期交付物。'],
+ ['参考文献','列出正文实际引用的文献。'],
+]);
 export const proposalGuidance=Object.freeze([
  ['选题依据','交代研究背景、目的与意义，基于已读文献分析研究现状和具体问题。'],
  ['研究目标与内容','明确研究问题、拟开展的工作及预期目标，按实际课题组织层次。'],
@@ -7,6 +18,7 @@ export const proposalGuidance=Object.freeze([
  ['参考文献','只引用实际提供并读取的真实来源；篇数、外文比例等按学校要求核对。']
 ]);
 export const proposalGuidanceSources=Object.freeze([
+ [proposalTemplateSource.name+'开题报告模板',proposalTemplateSource.url],
  ['四川农业大学本科开题报告撰写规范','https://syzx.sicau.edu.cn/info/1025/1410.htm'],
  ['常州大学研究生开题内容要求','https://gs.cczu.edu.cn/2024/0925/c1824a371327/page.htm']
 ]);
