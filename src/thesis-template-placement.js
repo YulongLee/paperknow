@@ -11,6 +11,7 @@ const visibleLabel=text=>compact(text).replace(/[（(].*$/,'').replace(/[:：].*
 const firstChapter=text=>/^(?:第[一1壹]章|[一壹]、|1[.．、\s](?!\d))/.test(text.trim())&&!/[。！？；;]/.test(text)&&text.length<=120;
 const chapterText=text=>/^(?:第[一二三四五六七八九十百零〇壹贰叁肆伍陆柒捌玖拾\d]+[章节篇]|[一二三四五六七八九十]+、|\d{1,2}[.．、\s](?!\d))/.test(text.trim())&&!/[。！？；;]/.test(text)&&text.length<=120;
 const dotted=text=>/[.…·]{3,}|\.{3,}/.test(text)||/\t\s*[IVXivx\d]+\s*$/.test(text);
+const proposalReviewLabel=text=>/^(?:开题评审意见|(?:指导教师|导师|开题评审小组|开题小组|评审小组|专家组|教研室|院系|学院)(?:评审意见|审查意见|审核意见|意见|签字|签名))[:：]?[_＿—-]*$/u.test(compact(text));
 function roleName(value){const s=value.replace(/[_-]/g,' '),number=s.match(/(?:heading|标题|標題)\s*([123一二三])/i);if(number)return 'Heading'+({'一':1,'二':2,'三':3}[number[1]]||number[1]);if(/^(?:Normal|Body\s*Text|正文(?:文本|内容|首行缩进|段落)?|论文正文|标准|標準)$/i.test(s))return 'Normal';if(/^(?:Title|论文标题)$/i.test(s))return 'Title';if(/^(?:Abstract|摘要正文)$/i.test(s))return 'Abstract';if(/^(?:References|Bibliography|参考文献|參考文獻)$/i.test(s))return 'References';if(/^(?:Table\s*(?:Text|Content)|表格(?:文字|正文))$/i.test(s))return 'TableText';return null;}
 function special(text){const label=visibleLabel(text);if(/^(?:摘要|中文摘要)$/i.test(label))return 'abstract_zh';if(/^(?:Abstract|英文摘要)$/i.test(label))return 'abstract_en';if(/^(?:目录|contents|tableofcontents)$/i.test(label))return 'toc';if(/^(?:参考文献|已使用的参考文献|references|bibliography)$/i.test(label))return 'references';if(/^(?:致谢|acknowledg(?:e)?ments?)$/i.test(label))return 'acknowledgements';if(/^(?:附录[A-Z一二三四五六七八九十\d]*|appendix(?:[A-Z\d]+)?|appendices)$/i.test(label))return 'appendix';return null;}
 function styleInfo(stylesDocument){
@@ -43,7 +44,7 @@ function roleSamples(rows,regions,styles){
 
 // This is placement analysis only. The caller must validate the DOCX package
 // and external relationships before using any source XML in an export.
-export function analyzeThesisTemplatePlacement(document,stylesDocument){
+export function analyzeThesisTemplatePlacement(document,stylesDocument,{preserveProposalReview=false}={}){
  const root=all(document,'body')[0];if(!root)throw Error('DOCX 模板缺少正文。');const nodes=children(root),styles=styleInfo(stylesDocument),rows=nodes.map((node,index)=>{const pr=node.localName==='p'?one(node,'pPr'):null,styleId=attr(one(pr,'pStyle'),'val'),info=styles.effective(styleId),outline=attr(one(pr,'outlineLvl'),'val'),text=ownText(node),instructions=all(node,'instrText').map(n=>n.textContent).join(' '),tocStyle=/^(?:TOC\d*|目录[一二三\d]*)$/i.test(info.name||styleId);return {node,index,text,styleId,role:info.role,outline:outline!==''?Number(outline):info.outline,kind:special(text),toc:tocStyle||dotted(text)||/\bTOC\b/i.test(instructions),section:node.localName==='sectPr'||all(node,'sectPr').length>0};});
  const sections=all(document,'sectPr').length,base={version:1,mode:'ambiguous',preservesTemplate:false,sections,candidate:null,regions:[],roleStyles:{},roleSamples:{},warnings:[]};
  const slots=rows.filter(row=>row.node.localName==='p'&&/^\s*\{\{(?:正文|PAPERKNOW_CONTENT)\}\}\s*$/.test(row.text));
@@ -55,9 +56,13 @@ export function analyzeThesisTemplatePlacement(document,stylesDocument){
  const firstCandidates=rows.filter(row=>row.index>after&&!row.toc&&!row.kind&&row.node.localName==='p'&&(row.outline===undefined||row.outline===0)&&firstChapter(row.text)),firstFamily=row=>/^第/.test(row.text.trim())?'chapter':/^[一壹]、/.test(row.text.trim())?'chinese':'decimal',firstEnd=firstCandidates.length?rows.find(row=>row.index>firstCandidates[0].index&&['references','acknowledgements','appendix'].includes(row.kind)&&!row.toc)?.index??rows.length:rows.length,firsts=firstCandidates.filter(row=>row.index<firstEnd&&firstFamily(row)===firstFamily(firstCandidates[0]));
  let start=firsts[0];if(!start){const candidates=rows.filter(row=>row.index>after&&!row.toc&&!row.kind&&row.outline===0&&row.text.trim().length>0&&row.text.length<=120);if(candidates.length&&toc)start=candidates[0];}
  if(!start||firsts.length>1)return {...base,warnings:[firsts.length>1?'检测到多个可能的第一章，无法可靠区分示例和实际正文。请在要替换的正文区域放置独立 {{正文}} 占位符。':'无法可靠识别学校模板的正文区域。请在封面、声明之后放置独立 {{正文}} 占位符，或使用提供的通用模板。']};
- const following=rows.slice(start.index+1).filter(row=>row.text.trim()&&!row.toc),hasBody=following.some(row=>row.text.length>=20||row.role==='Normal'||row.node.localName==='tbl');
+ const templateEnd=rows.findLast(row=>row.node.localName==='sectPr')?.index??rows.length;
+ // A proposal can end with the school's approval form. Identify a standalone
+ // label (or the first cell label of a table) before slicing writable regions.
+ const review=preserveProposalReview&&rows.slice(start.index+1,templateEnd).find(row=>!row.toc&&proposalReviewLabel(row.node.localName==='tbl'?all(row.node,'p').map(ownText).find(text=>text.trim())||'':row.text));
+ const finalIndex=review?review.index:templateEnd,following=rows.slice(start.index+1,finalIndex).filter(row=>row.text.trim()&&!row.toc),hasBody=following.some(row=>row.text.length>=20||row.role==='Normal'||row.node.localName==='tbl');
  if(!hasBody)return {...base,warnings:['模板只有章节标题，没有可确认的正文样例。请使用独立 {{正文}} 占位符标明填充位置。']};
- const finalIndex=rows.findLast(row=>row.node.localName==='sectPr')?.index??rows.length,back=rows.filter(row=>row.index>start.index&&['references','acknowledgements','appendix'].includes(row.kind)&&!row.toc),end=back[0]?.index??finalIndex;
+ const back=following.filter(row=>['references','acknowledgements','appendix'].includes(row.kind)),end=back[0]?.index??finalIndex;
  const regions=[{kind:'body',startIndex:start.index,endIndex:end,label:'论文正文'}];
  for(let i=0;i<back.length;i++){const row=back[i];regions.push({kind:row.kind,startIndex:row.index,endIndex:back[i+1]?.index??finalIndex,label:visibleLabel(row.text).slice(0,96)});}
  if(toc&&toc.index<start.index){const boundary=rows.slice(toc.index+1,start.index).find(row=>row.section);regions.push({kind:'toc',startIndex:toc.index,endIndex:boundary?boundary.index+1:start.index,label:'目录'});}

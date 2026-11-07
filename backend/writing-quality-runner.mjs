@@ -1,4 +1,5 @@
 import {manuscriptFigures,manuscriptPart} from '../dist/workspace/manuscript-figures.mjs';
+import {proposalModelInstructions} from '../dist/workspace/proposal-standard.mjs';
 import {runSupplementCheck} from './supplement-check.mjs';
 import {createCitationVerifier,auditWritingConsistency,writingReviewTask,parseWritingReview} from './writing-quality.mjs';
 
@@ -33,6 +34,7 @@ export function createWritingQualityRunner(config={}){
   flush();return batches;
  }
  return async function runWritingQuality({snapshot={},kind='writing',checkSupplements=config.supplementCheckEnabled===true,recoverSupplements=false,chapters=[],runtime={},runId='',signal,onStage,isCurrent=()=>true,dispatch}={}){
+  if(kind==='proposal'&&snapshot.requirements?.instructions)snapshot={...snapshot,requirements:{...snapshot.requirements,instructions:proposalModelInstructions(snapshot.requirements.instructions)}};
   const active=async()=>{if(signal?.aborted)throw aborted();if(await isCurrent()!==true||signal?.aborted)throw aborted();};
   const stage=async value=>{await active();await onStage?.(value);await active();};
   await active();const requirementCharacters=Math.min(12000,typeof snapshot.requirements?.instructions==='string'?snapshot.requirements.instructions.length:0),batches=batchesFor(chapters,Math.min(22000,26000-requirementCharacters)),quality={status:'completed',checkedAt:timestamp(),citations:null,consistency:null,reviews:[],limitations:[]};let partial=false;

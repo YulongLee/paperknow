@@ -120,13 +120,15 @@ export function createCitationVerifier({fetchImpl=globalThis.fetch,openAlexApiKe
 
 function sectionsFrom(chapters){
  if(!Array.isArray(chapters)||chapters.length>200)throw Object.assign(new Error('全文检查最多处理 200 个章节单元'),{status:400});
- return chapters.map((row,index)=>{if(!object(row)||typeof row.text!=='string'||row.text.length>200000)throw Object.assign(new Error('全文检查章节内容无效'),{status:400});return {id:clean(row.id||row.unitId||'section-'+(index+1),160),title:clean(row.title||row.chapterTitle||'章节 '+(index+1),300),text:row.text,figures:manuscriptFigures(row),sourceIds:Array.isArray(row.sourceIds)?row.sourceIds.filter(value=>typeof value==='string').slice(0,240):null};});
+ return chapters.map((row,index)=>{if(!object(row)||typeof row.text!=='string'||row.text.length>200000)throw Object.assign(new Error('全文检查章节内容无效'),{status:400});return {id:clean(row.id||row.unitId||'section-'+(index+1),160),title:clean(row.title||row.chapterTitle||'章节 '+(index+1),300),sectionKey:typeof row.sectionKey==='string'&&row.sectionKey?row.sectionKey:null,text:row.text,figures:manuscriptFigures(row),sourceIds:Array.isArray(row.sourceIds)?row.sourceIds.filter(value=>typeof value==='string').slice(0,240):null};});
 }
 export function auditWritingConsistency({chapters=[],references=[],materials=[],maxFindings=100}={}){
  const sections=sectionsFrom(chapters),known=new Set([...references,...materials].filter(row=>object(row)&&row.confirmed!==false).map(row=>row.id)),findings=[],titles=new Map(),paragraphs=new Map();let detected=0;
  const add=(section,category,quote,offset,explanation,extra={})=>{detected++;if(findings.length<integer(maxFindings,100,1,300))findings.push({id:'quality-'+detected,sectionId:section.id,sectionTitle:section.title,category,severity:'warning',quote:quote.slice(0,500),offset,explanation,...extra});};
  for(const section of sections){
-  const title=normalized(section.title);if(title&&titles.has(title))add(section,'duplicate_title',section.title,0,'章节标题重复，请核对是否需要区分写作范围。',{field:'title',relatedSectionId:titles.get(title)});else if(title)titles.set(title,section.id);
+  const title=normalized(section.title),earlier=titles.get(title);
+  if(title&&earlier&&(!section.sectionKey||earlier.sectionKey!==section.sectionKey))add(section,'duplicate_title',section.title,0,'章节标题重复，请核对是否需要区分写作范围。',{field:'title',relatedSectionId:earlier.id});
+  else if(title&&!earlier)titles.set(title,{id:section.id,sectionKey:section.sectionKey});
   for(const match of section.text.matchAll(/【(?:待补充|待核对|草稿说明)[：:][^】]{1,1000}】|\[(?:待补充|待核对|草稿说明)[：:][^\]]{1,1000}\]|\[(?:To be supplied|To be verified|Draft note):[^\]]{1,1000}\]/gi))add(section,'unresolved_placeholder',match[0],match.index,'正文仍有明确的待补充或待核对事项，需要人工处理。');
   const marked=new Set();for(const match of section.text.matchAll(/\[source:([^\]\n]{1,200})\]/g)){marked.add(match[1]);if(!known.has(match[1]))add(section,'unknown_citation',match[0],match.index,'该引用标识未对应本次已确认资料或文献。');else if(section.sourceIds&&!section.sourceIds.includes(match[1]))add(section,'citation_list_mismatch',match[0],match.index,'正文引用标识未列入该章节的来源清单。');}
   if(section.sourceIds)for(const source of new Set(section.sourceIds))if(!marked.has(source))add(section,'uncited_source',source,0,'章节来源清单中的此标识没有对应正文引用标记。',{field:'sourceIds'});

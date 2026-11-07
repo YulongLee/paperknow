@@ -97,7 +97,19 @@ export async function inspectThesisExportContent(bytes,text,options={}){
  // explicit pending items that were absent from the manuscript input. Keep
  // same-paragraph runs together so formatting splits cannot hide a marker.
  let visible='',priorParagraph=null;for(const node of all.filter(n=>n.localName==='t'&&[W,M].includes(n.namespaceURI))){let paragraph=node.parentNode;while(paragraph&&!(paragraph.namespaceURI===W&&paragraph.localName==='p'))paragraph=paragraph.parentNode;if(paragraph!==priorParagraph&&visible)visible+='\n';visible+=node.textContent;priorParagraph=paragraph;}
- const unresolvedPlaceholders=[...visible.matchAll(/(?:【|〔|\[|\{\{)\s*(?:待补充|待核对|待完善|请补充|待填写|来源待核对|文献信息待补全|草稿说明|To be supplied\b|To be verified\b|Draft note\b|TODO\b|TBD\b)[^\n\]】〕}]{0,500}(?:】|〕|\]|\}\})/giu)].length;
+ const pendingMarker=/(?:【|〔|\[|\{\{)\s*(?:待补充|待核对|待完善|请补充|待填写|来源待核对|文献信息待补全|草稿说明|To be supplied\b|To be verified\b|Draft note\b|TODO\b|TBD\b)[^\n\]】〕}]{0,500}(?:】|〕|\]|\}\})/giu;
+ let unresolvedPlaceholders=[...visible.matchAll(pendingMarker)].length;
+ if(options.writingKind==='proposal'&&options.template){
+  // Check retained school-template regions separately. The author's actual
+  // paragraphs can discuss brace-delimited syntax and are not template fields.
+  const bodyParagraphs=new Set([...anchors.values()].map(({paragraph})=>paragraph)),title=String(options.metadata?.title||blocks[0]?.text||'').trim();
+  for(const paragraph of doc.getElementsByTagNameNS(W,'p')){
+   if(bodyParagraphs.has(paragraph))continue;
+   const line=[...paragraph.getElementsByTagNameNS(W,'t')].map(node=>node.textContent).join('').trim();
+   if(line===title)continue;
+   unresolvedPlaceholders+=[...line.replace(pendingMarker,'').matchAll(/\{\{\s*[\p{L}\p{N}_-][\p{L}\p{N} _-]{0,39}\s*\}\}/gu)].length;
+  }
+ }
  const importedObjectSegments=await inspectDocxObjects(zip,doc,text,options.docxObjects||[]);
  return {status:'passed',checkedSegments,formulaSegments,figureSegments,importedObjectSegments,checkedBlocks:expectedOrder.length,unresolvedPlaceholders,scope:'ordered_block_text_segments'};
 }

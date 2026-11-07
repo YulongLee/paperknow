@@ -2,7 +2,7 @@
 const template=(kind,title,fields,format={})=>Object.freeze({id:'paperknow-'+kind+'-v1',kind,title,name:'通用'+title+'模板',fields:Object.freeze(fields),format:Object.freeze(format)});
 export const writingDefaultTemplates=Object.freeze({
  writing:template('writing','学位论文',['institution','author','major','supervisor']),
- proposal:template('proposal','开题报告',['institution','author','major','supervisor']),
+ proposal:template('proposal','开题报告',['institution','college','author','studentId','major','supervisor']),
  summary:template('summary','文献综述',['institution','author','major','supervisor'],{referencesSize:21}),
  taskbook:template('taskbook','任务书',['institution','author','major','supervisor'],{headingSize:28,tableSize:24}),
  article:template('article','期刊文章',['institution','author'],{titleSize:32,bodySize:21,line:300,headingSize:24,subheadingSize:21,referencesSize:21,margin:25}),
@@ -15,6 +15,6 @@ export const writingDefaultTemplates=Object.freeze({
 });
 export function writingDefaultTemplateSpec(kind){const key=kind==='thesis'?'writing':kind==='topic'?'idea':kind;return typeof key==='string'&&Object.hasOwn(writingDefaultTemplates,key)?writingDefaultTemplates[key]:null;}
 export function writingDefaultTemplateMetadata(kind){
- const spec=writingDefaultTemplateSpec(kind),placeholders={institution:'{{学校}}',author:'{{作者}}',major:'{{专业}}',supervisor:'{{指导教师}}'};
+ const spec=writingDefaultTemplateSpec(kind),placeholders={institution:'{{学校}}',college:'{{学院}}',author:'{{作者}}',studentId:'{{学号}}',major:'{{专业}}',supervisor:'{{指导教师}}'};
  return {title:spec?.kind==='writing'?'{{论文题目}}':'{{标题}}',...Object.fromEntries((spec?.fields||[]).map(key=>[key,key==='institution'&&spec?.kind==='article'?'{{单位}}':placeholders[key]]))};
 }

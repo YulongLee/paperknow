@@ -44,7 +44,7 @@ for(const kind of ['summary','taskbook','article','course','practice'])test(kind
 
 for(const kind of ['taskbook','course'])test(kind+' can confirm the reference step without inventing unnecessary references',()=>{const f=fixture(kind);try{f.row.writingFlow.stage=writingFlowSpecs[kind].panels.indexOf('references');localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();assert.match(f.$('[data-wf-next]').textContent,/无需文献/);f.$('[data-wf-next]').click();assert.equal(f.save().stage,writingFlowSpecs[kind].panels.indexOf('outline'));assert.equal(f.save().references.length,0);}finally{f.close();}});
 
-for(const kind of ['proposal','summary','article'])test(kind+' still requires reference selection at the explicit reference step',()=>{const f=fixture(kind);try{f.row.writingFlow.references=[];f.row.writingFlow.stage=writingFlowSpecs[kind].panels.indexOf('references');localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();f.$('[data-wf-next]').click();assert.equal(f.save().stage,writingFlowSpecs[kind].panels.indexOf('references'));assert.match(f.$('[data-wf-error]').textContent,/至少一篇参考文献/);}finally{f.close();}});
+for(const kind of ['summary','article'])test(kind+' still requires reference selection at the explicit reference step',()=>{const f=fixture(kind);try{f.row.writingFlow.references=[];f.row.writingFlow.stage=writingFlowSpecs[kind].panels.indexOf('references');localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();f.$('[data-wf-next]').click();assert.equal(f.save().stage,writingFlowSpecs[kind].panels.indexOf('references'));assert.match(f.$('[data-wf-error]').textContent,/至少一篇参考文献/);}finally{f.close();}});
 
 for(const kind of Object.keys(writingFlowSpecs))test(kind+' manuscript export has just two DOCX modes and opens missing-information guidance without a paid request',async()=>{
  const f=fixture(kind);try{f.row.writingFlow.body='研究说明【待补充：具体研究范围】';localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();assert.deepEqual([...document.querySelectorAll('[data-wf-export] [data-document-export]')].map(node=>node.dataset.documentExport),['draft','docx']);assert.equal(f.$('[data-wf-export] input[type="file"]'),null);assert.equal(f.$('[data-wf-export] [data-wf-version]'),null);assert.equal(f.$('[data-wf-txt]'),null);assert.equal(f.$('#wf-body-pdf'),null);f.$('#wf-body-docx').click();await settle();assert.equal(f.$('[data-wf-completion]').open,true);assert.match(f.$('[data-wf-completion]').textContent,/具体研究范围/);assert.match(f.$('#writing-status').textContent,/补充窗口/);assert.equal(f.calls.length,0);assert.equal(f.save().body,'研究说明【待补充：具体研究范围】');}finally{f.close();}
@@ -98,4 +98,66 @@ for(const kind of Object.keys(writingFlowSpecs))test(kind+' keeps all template c
 test('expression-only hints remain visible in quality checks without becoming final-material requirements',()=>{
  const text='此外，本节解释研究对象与适用条件。';
  for(const severity of ['info','warning']){const finding={sectionId:'c1',category:'language_expression',severity,quote:'此外，本节解释研究对象',suggestion:'按实际关系调整衔接。'},quality={consistency:{findings:[finding]},reviews:[{findings:[finding]}]};assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,true);quality.reviews[0].findings.push({...finding,category:'source_support'});assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,false);}
+});
+
+
+test('proposal can explicitly skip references and continue to a draft without inventing a citation',async()=>{
+ const f=fixture('proposal');
+ try{
+  const flow=f.row.writingFlow;
+  Object.assign(flow,{stage:2,unlocked:2,notes:'',body:'',outlineConfirmed:false});
+  localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();
+  assert.match(f.$('[data-wf-next]').textContent,/暂不添加文献/);
+  f.$('[data-wf-next]').click();assert.equal(f.save().stage,3);
+  f.$('[data-wf-next]').click();assert.equal(f.save().stage,4);
+  assert.equal(f.$('[data-wf-export]').hidden,true);
+  assert.equal(f.$('[data-wf-delivery]').hidden,true);
+  f.$('[data-wf-generate="draft"]').click();await settle();
+  assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);
+  assert.deepEqual(f.calls.find(row=>row.path==='/writing/jobs').data.snapshot.references,[]);
+  assert.equal(f.$('[data-wf-export]').hidden,false);
+  assert.equal(f.$('[data-wf-delivery]').hidden,false);
+  assert.equal(f.$('[data-template-file]'),null);
+ }finally{f.close();}
+});
+
+test('proposal materials step restores its research-plan task instead of a pending final-review task',async()=>{
+ const f=fixture('proposal',async path=>{
+  if(path==='/writing/jobs/proposal-method')return{item:{id:'proposal-method',kind:'proposal',operation:'method',status:'running',completedUnits:0,totalUnits:1,output:null}};
+ });
+ try{
+  const flow=f.row.writingFlow,snapshot=writingFlowSnapshot('proposal',flow);
+  const job=(itemId)=>({itemId,ownerId:'alice',snapshot,contextKey:JSON.stringify(snapshot),status:'running'});
+  Object.assign(flow,{stage:1,jobs:{method:job('proposal-method'),completion:job('proposal-final')}});
+  localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();await settle();
+  assert.ok(f.calls.some(row=>row.path==='/writing/jobs/proposal-method'));
+  assert.equal(f.calls.some(row=>row.path==='/writing/jobs/proposal-final'),false);
+  assert.equal(f.$('[data-wf-method-ai]').hidden,false);
+ }finally{f.close();}
+});
+
+test('failed proposal draft opens the existing recovery guidance before a body exists',async()=>{
+ const f=fixture('proposal',async path=>path==='/writing/jobs'?{item:{id:'failed-draft',kind:'proposal',operation:'draft',status:'failed',completedUnits:1,totalUnits:2,error:'需核对已提供的实验说明',output:null}}:undefined);
+ try{
+  f.row.writingFlow.body='';localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();
+  assert.equal(f.$('[data-wf-delivery]').hidden,true);
+  f.$('[data-wf-generate="draft"]').click();await settle();
+  assert.equal(f.$('[data-wf-delivery]').hidden,false);
+  assert.equal(f.$('[data-wf-completion]').open,true);
+  assert.equal(f.$('[data-wf-export]').hidden,true);
+  assert.match(f.$('[data-wf-delivery-status]').textContent,/核对已提供的实验说明/);
+ }finally{f.close();}
+});
+
+test('proposal step 2 separates writing instructions from one format panel after research materials and the plan',()=>{
+ const f=fixture('proposal');
+ try{
+  f.mount();f.settings();
+  const background=f.$('[data-wf-proposal-background]'),plan=f.$('[data-wf-proposal-plan]'),requirements=f.$('[data-wf-proposal-requirements]'),layout=f.$('[data-wf-proposal-standard]');
+  const before=(a,b)=>Boolean(a.compareDocumentPosition(b)&window.Node.DOCUMENT_POSITION_FOLLOWING);
+  assert.ok(before(background,plan)&&before(plan,requirements)&&before(requirements,layout));
+  assert.ok(requirements.querySelector('[data-wf-field="proposalRequirements"]'));
+  assert.equal(layout.querySelector('[data-wf-field="proposalRequirements"]'),null);
+  assert.equal(layout.querySelectorAll('input[type="file"]').length,1);
+ }finally{f.close();}
 });
