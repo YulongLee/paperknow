@@ -7,6 +7,7 @@ import {createPptMasterRuntime,getPptMasterRuntimeStatus} from '../backend/ppt-m
 import JSZip from 'jszip';
 import {presentationTemplateStyle} from '../dist/workspace/presentation-design-system.mjs';
 import {DOMParser} from '@xmldom/xmldom';
+import {selectPresentationIllustration,validPresentationIllustrationPlacement} from '../dist/workspace/presentation-illustration-assets.mjs';
 import {visualFixture} from './fixtures/presentation-visuals.mjs';
 
 test('process, architecture, comparisons and sourced numeric bars are editable visuals with exact accepted text',()=>{
@@ -67,4 +68,22 @@ test('four template systems keep readable content and closing pages while agenda
  }
  assert.deepEqual([...families].sort(),['academic','editorial','report','technology']);
  for(const bad of ['__proto__','constructor','missing'])assert.equal(presentationTemplateStyle(bad).family,'academic');
+});
+
+
+test('narrative and dense interior pages reserve real illustration space without changing accepted wording',()=>{
+ const f=visualFixture(),slide={...f.slides[5],title:'机器学习模型选型',body:'采用同一数据集复核两种方法的适用范围与样本差异。'.repeat(9)};
+ const asset=selectPresentationIllustration(slide,f.value.snapshot);
+ assert.equal(asset,'network');
+ f.plan.illustrations=new Map([[slide.id,asset],[f.slides[4].id,'analysis']]);
+ const page=validatedPresentationLayout(f.value,slide,f.plan);
+ assert.equal(page.visualKind,'editorial-artwork');
+ assert.ok(validPresentationIllustrationPlacement(page.artwork));
+ assert.equal(page.body,slide.body);
+ const doc=new DOMParser().parseFromString(page.svg,'image/svg+xml');
+ const body=Array.from(doc.getElementsByTagName('g')).find(node=>node.getAttribute('id')==='content-1');
+ const [x,,w]=body.getAttribute('data-pptx-bounds').split(' ').map(Number);
+ assert.ok(x+w<page.artwork.x);
+ assert.equal(validatePptMasterVisibleText(page.svg,slide,f.plan),true);
+ assert.equal(validatedPresentationLayout(f.value,f.slides[4],f.plan).visualKind,'bars');
 });

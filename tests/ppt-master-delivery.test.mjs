@@ -124,6 +124,19 @@ test('owned presentation HTTP lifecycle publishes three private files and settle
  assert.equal(f.uploads.length,3);for(const upload of f.uploads){assert.match(upload.key,/^paperknow\/users\/alice\/exports\//);assert.equal(upload.options.headers['x-oss-object-acl'],'private');assert.equal(upload.options.headers['Content-Disposition'],'attachment');}
  const list=(await f.request('/artifacts')).value;assert.equal(list.total,3);assert.equal((await f.request('/artifacts',undefined,'bob')).value.total,0);
  for(const artifact of completed.output.artifacts){const downloaded=await f.call(artifact.downloadUrl+'?expectedUserId=alice');assert.equal(downloaded.status,200);assert.match(downloaded.headers.get('content-disposition'),/^attachment/);assert.equal(downloaded.headers.get('x-content-type-options'),'nosniff');const bytes=Buffer.from(await downloaded.arrayBuffer());assert.equal(bytes.length,artifact.bytes);if(artifact.role==='deck'){const zip=await JSZip.loadAsync(bytes);assert.ok(zip.file('ppt/media/paperknow-template.png'));assert.match(await zip.file('ppt/slides/slide1.xml').async('string'),/<a:t>/);}if(artifact.role==='preview'){assert.match(bytes.toString(),/<svg/);assert.match(bytes.toString(),/Content-Security-Policy/);}if(artifact.role==='sources'){const zip=await JSZip.loadAsync(bytes);assert.equal(Object.keys(zip.files).filter(name=>/^slides\/slide-\d+\.svg$/.test(name)).length,6);assert.match(await zip.file('notes/slide-01.txt').async('string'),/合成资料/);assert.doesNotMatch(await zip.file('manifest.json').async('string'),/apiKey|private-synthetic|revision/);}assert.equal((await f.call(artifact.downloadUrl,undefined,'bob')).status,404);assert.equal((await f.call(artifact.downloadUrl+'?expectedUserId=bob')).status,409);}
+ const deliveredDeck=await JSZip.loadAsync(f.uploads.find(upload=>upload.key.endsWith('.pptx')).buffer);
+ const deliveredSources=await JSZip.loadAsync(f.uploads.find(upload=>upload.key.endsWith('.zip')).buffer);
+ const deliveredPreview=f.uploads.find(upload=>upload.key.endsWith('.html')).buffer.toString();
+ const illustration=JSON.parse(await deliveredSources.file('manifest.json').async('string')).pages[1].artwork;
+ assert.ok(illustration);const {asset,x,y,w,h,file}=illustration;
+ const slide2=await deliveredDeck.file('ppt/slides/slide2.xml').async('string');
+ assert.match(slide2,/<p:pic>/);assert.match(slide2,/<a:t>.*样本来自三次测量/);
+ assert.ok(slide2.includes(`<a:off x="${x*9525}" y="${y*9525}"/><a:ext cx="${w*9525}" cy="${h*9525}"/>`));
+ assert.ok(deliveredPreview.includes(`data-slide-art="${asset},${x},${y},${w},${h}"`));
+ assert.ok(deliveredPreview.includes(`left:${100*x/1280}%;top:${100*y/720}%;width:${100*w/1280}%;height:${100*h/720}%`));
+ const originalImage=await deliveredSources.file(file).async('nodebuffer');
+ assert.deepEqual(await deliveredDeck.file('ppt/media/paperknow-illustration-2.png').async('nodebuffer'),originalImage);
+ assert.equal(deliveredPreview.split(originalImage.toString('base64')).length,2,'standalone preview embeds a reused image only once');
  assert.doesNotMatch(JSON.stringify(completed),/private-synthetic|synthetic-secret|storage_key|settings_version|runtimeRoot/);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.db.prepare('SELECT count(*) n FROM results WHERE job_id=?').get(job.id).n,1);assert.equal((await f.request('/results/'+completed.resultId)).value.item.body.presentation.artifactId,completed.output.presentation.artifactId);
  const acknowledged=await f.request('/tool-runs/jobs',{...job.command,billingToken:'expired-after-completion'});assert.equal(acknowledged.status,200);assert.equal(acknowledged.value.item.id,job.id);await f.worker.tick();assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.authorCalls(),1);assert.equal(f.uploads.length,3);
 });

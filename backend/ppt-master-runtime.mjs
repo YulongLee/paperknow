@@ -6,6 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DOMParser, XMLSerializer} from '@xmldom/xmldom';
 import JSZip from 'jszip';
+import {presentationArtworkParts,presentationArtworkPicture,presentationCoverArtworkPart,presentationImageRelationship} from './presentation-template-art.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 export const PPT_MASTER_COMMIT='b113d23720260c411ee47b2b05a73615f954deeb';
@@ -17,6 +18,8 @@ const SVG_NS='http://www.w3.org/2000/svg';
 const DML_NS='http://schemas.openxmlformats.org/drawingml/2006/main';
 const PML_NS='http://schemas.openxmlformats.org/presentationml/2006/main';
 const REL_NS='http://schemas.openxmlformats.org/package/2006/relationships';
+const DRAWING_REL_NS='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const CONTENT_TYPES_NS='http://schemas.openxmlformats.org/package/2006/content-types';
 const tags=new Set(['svg','g','rect','circle','ellipse','line','polyline','polygon','path','text','tspan']);
 const common=new Set(['id','fill','stroke','fill-opacity','stroke-opacity','opacity','stroke-width','stroke-linecap','stroke-linejoin','stroke-dasharray','font-family','font-size','font-weight','font-style','text-anchor','dominant-baseline','xml:space','data-pptx-role']);
 const geometry={svg:new Set(['xmlns','width','height','viewBox','data-pptx-page-role']),g:new Set(['data-pptx-bounds','data-pptx-role']),rect:new Set(['x','y','width','height','rx','ry']),circle:new Set(['cx','cy','r']),ellipse:new Set(['cx','cy','rx','ry']),line:new Set(['x1','y1','x2','y2']),polyline:new Set(['points']),polygon:new Set(['points']),path:new Set(['d']),text:new Set(['x','y','dx','dy']),tspan:new Set(['x','y','dx','dy'])};
@@ -181,7 +184,7 @@ export function validatePptMasterSlides(slides){
 }
 
 /** Checks every OPC relationship and refuses raster-only or active-content exports. */
-export async function validatePptMasterPackage(input,{slideCount,slides,maxOutputBytes=PPT_MASTER_MAX_OUTPUT_BYTES,trustedBackground}={}){
+export async function validatePptMasterPackage(input,{slideCount,slides,maxOutputBytes=PPT_MASTER_MAX_OUTPUT_BYTES,trustedBackground,trustedArtwork}={}){
   const bytes=Buffer.from(input??[]);
   if(bytes.length<200||bytes.length>Math.min(maxOutputBytes,PPT_MASTER_MAX_OUTPUT_BYTES)||!bytes.subarray(0,2).equals(Buffer.from('PK')))throw packageInvalid();
   // JSZip indexes entries by name and would conceal duplicate central-directory
@@ -214,17 +217,26 @@ export async function validatePptMasterPackage(input,{slideCount,slides,maxOutpu
     if(!Number.isSafeInteger(size)||size<0||size>10*1024*1024||(expanded+=size)>64*1024*1024||!/(?:\.xml|\.rels|\.jpeg|\.jpg|\.png)$/.test(original))throw packageInvalid();
   }
   for(const name of ['[Content_Types].xml','_rels/.rels','ppt/presentation.xml'])if(!zip.file(name))throw packageInvalid();
-  if(trustedBackground){
-    if(!Buffer.isBuffer(trustedBackground)||!zip.file('ppt/media/paperknow-template.png')||entries.some(e=>!e.dir&&e.name.startsWith('ppt/media/')&&e.name!=='ppt/media/paperknow-template.png'))throw packageInvalid();
-    const relationshipFile=zip.file('ppt/slides/_rels/slide1.xml.rels');if(!relationshipFile)throw packageInvalid();
-    const relationshipDoc=parseXML((await relationshipFile.async('string')).replace(/^\s*<\?xml\s[^?]*\?>/,''),packageInvalid);
-    const images=Array.from(relationshipDoc.getElementsByTagNameNS(REL_NS,'Relationship')).filter(r=>r.getAttribute('Type').endsWith('/image'));
-    if(images.length!==1||images[0].getAttribute('Id')!=='rIdPaperKnowArtwork'||images[0].getAttribute('Target')!=='../media/paperknow-template.png'||images[0].getAttribute('TargetMode'))throw packageInvalid();
-    const image=await zip.file('ppt/media/paperknow-template.png').async('nodebuffer');
-    if(!image.equals(trustedBackground))throw packageInvalid();
-  }
   const slideFiles=entries.filter(e=>/^ppt\/slides\/slide[1-9]\d*\.xml$/.test(e.name));
   if(!Number.isInteger(slideCount)||slideCount<1||slideCount>40||slideFiles.length!==slideCount)throw packageInvalid();
+  let artworkParts;try{
+    artworkParts=presentationArtworkParts(trustedArtwork,slideCount);
+    if(trustedBackground)artworkParts.push(presentationCoverArtworkPart(trustedBackground));
+  }catch{throw packageInvalid();}
+  const artworkBySlide=new Map(artworkParts.map(artwork=>[`ppt/slides/slide${artwork.page}.xml`,artwork]));
+  const artworkByRels=new Map(artworkParts.map(artwork=>[`ppt/slides/_rels/slide${artwork.page}.xml.rels`,artwork]));
+  const artworkMedia=new Map(artworkParts.map(artwork=>[`ppt/media/${artwork.fileName}`,artwork.bytes]));
+  for(const entry of entries){
+    if(entry.dir||entry.name==='docProps/thumbnail.jpeg'||artworkMedia.has(entry.name))continue;
+    if(/^ppt\/media\//i.test(entry.name)||/\.(?:png|jpe?g)$/i.test(entry.name))throw packageInvalid();
+  }
+  for(const [name,expected] of artworkMedia){
+    const image=zip.file(name);
+    if(!image||image._data.uncompressedSize!==expected.length)throw packageInvalid();
+    let actual;try{actual=await image.async('nodebuffer');}catch{throw packageInvalid();}
+    if(!actual.equals(expected))throw packageInvalid();
+  }
+  const matchedImageRels=new Set();
   let nativeShapeCount=0;
   for(const entry of entries){
     if(entry.dir||!/(?:\.xml|\.rels)$/.test(entry.name))continue;
@@ -232,21 +244,43 @@ export async function validatePptMasterPackage(input,{slideCount,slides,maxOutpu
     // XML declarations are permitted for OOXML, never processing instructions.
     const doc=parseXML(raw.replace(/^\s*<\?xml\s[^?]*\?>/,''),packageInvalid);
     if(doc.getElementsByTagNameNS(DML_NS,'hlinkClick').length||doc.getElementsByTagNameNS(DML_NS,'hlinkMouseOver').length)throw packageInvalid();
+    if(entry.name==='[Content_Types].xml'&&artworkMedia.size){
+      const defaults=Array.from(doc.getElementsByTagNameNS(CONTENT_TYPES_NS,'Default')).filter(item=>item.getAttribute('Extension').toLowerCase()==='png');
+      const overrides=Array.from(doc.getElementsByTagNameNS(CONTENT_TYPES_NS,'Override'));
+      if(defaults.length!==1||defaults[0].getAttribute('ContentType')!=='image/png'||overrides.some(item=>artworkMedia.has(item.getAttribute('PartName').slice(1))))throw packageInvalid();
+    }
     if(entry.name.endsWith('.rels')){
       if(doc.documentElement.namespaceURI!==REL_NS||doc.documentElement.localName!=='Relationships')throw packageInvalid();
       const base=entry.name==='_rels/.rels'?'':path.posix.dirname(entry.name).replace(/(?:^|\/)\_rels$/,'');
+      const artwork=artworkByRels.get(entry.name),ids=new Set();
       for(const rel of Array.from(doc.getElementsByTagNameNS(REL_NS,'Relationship'))){
-        const target=rel.getAttribute('Target'),type=rel.getAttribute('Type');
-        if(trustedBackground&&type.endsWith('/image')&&(entry.name!=='ppt/slides/_rels/slide1.xml.rels'||rel.getAttribute('Id')!=='rIdPaperKnowArtwork'||target!=='../media/paperknow-template.png'))throw packageInvalid();
-        if(!target||rel.getAttribute('TargetMode')||/[\\\x00-\x20?#%]/.test(target)||/^[a-z][a-z\d+.-]*:/i.test(target)||target.startsWith('/')||/(?:hyperlink|oleObject|attachedTemplate|externalLink|vbaProject|control)$/i.test(type))throw packageInvalid();
+        const id=rel.getAttribute('Id'),target=rel.getAttribute('Target'),type=rel.getAttribute('Type');
+        if(!id||ids.has(id)||!target||rel.getAttribute('TargetMode')||/[\\\x00-\x20?#%]/.test(target)||/^[a-z][a-z\d+.-]*:/i.test(target)||target.startsWith('/')||/(?:hyperlink|oleObject|attachedTemplate|externalLink|vbaProject|control)$/i.test(type))throw packageInvalid();
+        ids.add(id);
         const resolved=path.posix.normalize(path.posix.join(base,target));
         if(resolved.startsWith('../')||!zip.file(resolved))throw packageInvalid();
+        if(/(?:^|\/)image$/i.test(type)||artworkMedia.has(resolved)){
+          if(!artwork||rel.parentNode!==doc.documentElement||id!==artwork.relId||type!==presentationImageRelationship||target!==`../media/${artwork.fileName}`)throw packageInvalid();
+          matchedImageRels.add(entry.name);
+        }
       }
     }
+    const pics=doc.getElementsByTagNameNS(PML_NS,'pic'),blips=doc.getElementsByTagNameNS(DML_NS,'blip');
+    const artwork=artworkBySlide.get(entry.name);
+    if(artwork){
+      if(pics.length!==1||blips.length!==1)throw packageInvalid();
+      const picture=pics[0],tree=picture.parentNode;
+      const id=picture.getElementsByTagNameNS(PML_NS,'cNvPr')[0]?.getAttribute('id');
+      if(tree.namespaceURI!==PML_NS||tree.localName!=='spTree'||tree.parentNode.namespaceURI!==PML_NS||tree.parentNode.localName!=='cSld'||tree.parentNode.parentNode!==doc.documentElement||!/^\d+$/.test(id??''))throw packageInvalid();
+      const expected=parseXML(`<root xmlns:p="${PML_NS}" xmlns:a="${DML_NS}" xmlns:r="${DRAWING_REL_NS}">${presentationArtworkPicture(artwork,id)}</root>`,packageInvalid).documentElement.firstChild;
+      const serializer=new XMLSerializer();
+      if(serializer.serializeToString(picture)!==serializer.serializeToString(expected))throw packageInvalid();
+      if(Array.from(doc.getElementsByTagNameNS(PML_NS,'cNvPr')).filter(item=>item.getAttribute('id')===id).length!==1)throw packageInvalid();
+      const siblings=Array.from(tree.childNodes).filter(node=>node.nodeType===1);
+      if(artwork.page===1?siblings[siblings.indexOf(picture)-1]?.localName!=='grpSpPr':siblings.at(-1)!==picture)throw packageInvalid();
+    }else if(pics.length||blips.length)throw packageInvalid();
     if(/^ppt\/slides\/slide\d+\.xml$/.test(entry.name)){
-      const pics=doc.getElementsByTagNameNS(PML_NS,'pic'),blips=doc.getElementsByTagNameNS(DML_NS,'blip');
-      const isCover=entry.name==='ppt/slides/slide1.xml';
-      if(doc.documentElement.namespaceURI!==PML_NS||doc.documentElement.localName!=='sld'||(trustedBackground&&isCover?(pics.length!==1||blips.length!==1||blips[0].getAttribute('r:embed')!=='rIdPaperKnowArtwork'):(pics.length||blips.length)))throw packageInvalid();
+      if(doc.documentElement.namespaceURI!==PML_NS||doc.documentElement.localName!=='sld')throw packageInvalid();
       const shapes=doc.getElementsByTagNameNS(PML_NS,'sp').length;
       if(!shapes||!doc.getElementsByTagNameNS(DML_NS,'t').length)throw packageInvalid();
       if(slides){
@@ -260,6 +294,7 @@ export async function validatePptMasterPackage(input,{slideCount,slides,maxOutpu
       nativeShapeCount+=shapes;
     }
   }
+  if(matchedImageRels.size!==artworkByRels.size)throw packageInvalid();
   for(let i=1;i<=slideCount;i++)if(!zip.file(`ppt/slides/slide${i}.xml`))throw packageInvalid();
   return{slideCount,nativeShapeCount,bytes:bytes.length};
 }

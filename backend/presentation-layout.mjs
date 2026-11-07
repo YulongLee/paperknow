@@ -1,6 +1,6 @@
 import {pptMasterVisibleContent,validatePptMasterVisibleText} from './ppt-master-model.mjs';
 import {validatePptMasterSvg} from './ppt-master-runtime.mjs';
-import {presentationVisualArrangement} from './presentation-visuals.mjs';
+import {presentationVisualArrangement,presentationVisualKind,presentationIllustratedArrangement} from './presentation-visuals.mjs';
 
 const xml=value=>String(value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[ch]));
 const width=(value,size)=>Array.from(value).reduce((sum,ch)=>sum+(ch===' '?0.3:/[\u2E80-\uFFFF]/u.test(ch)?1:/[MW@#%]/.test(ch)?0.85:/[ilI.,:;'!|]/.test(ch)?0.3:0.56)*size,0);
@@ -36,7 +36,13 @@ function arrangement(slide,plan,composition,bodySize,titleSize){
 export function validatedPresentationLayout(value,slide,plan){
  const page=plan.slides.find(row=>row.id===slide.id);if(!page)throw Error('页面设计计划缺失');
  let blocks,visual=null;
- for(const [bodySize,titleSize]of [[26,page.role==='cover'?48:40],[24,36],[22,32]]){visual=presentationVisualArrangement(slide,plan,bodySize,titleSize,lines);if(visual){blocks=visual.blocks;break;}}
+ const asset=plan.illustrations?.get(slide.id),kind=presentationVisualKind(slide);
+ const variants=[[26,page.role==='cover'?48:40],[24,36],[22,32]];
+ const illustrated=()=>{for(const [bodySize,titleSize] of variants){const candidate=presentationIllustratedArrangement(slide,plan,asset,bodySize,titleSize,lines);if(candidate)return candidate;}return null;};
+ if(asset&&['concepts','illustration'].includes(kind))visual=illustrated();
+ if(!visual)for(const [bodySize,titleSize] of variants){visual=presentationVisualArrangement(slide,plan,bodySize,titleSize,lines);if(visual)break;}
+ if(!visual&&asset)visual=illustrated();
+ if(visual)blocks=visual.blocks;
  if(!blocks)
  for(const composition of [...new Set([page.composition,'editorial'])]){
   for(const [bodySize,titleSize] of [[26,page.role==='cover'?52:44],[24,38],[22,32]]){blocks=arrangement(slide,plan,composition,bodySize,titleSize);if(blocks)break;}
@@ -67,5 +73,5 @@ export function validatedPresentationLayout(value,slide,plan){
  decoration+=`<line id="footer-rule" data-pptx-role="decoration" x1="72" y1="640" x2="1208" y2="640" stroke="${p.divider}" stroke-width="1"/>`;
  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="${page.role}"><rect id="background" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="${surface}"/>${decoration}${blocks.map(row=>`<g id="${row.id}" data-pptx-bounds="${row.x} ${row.y} ${row.w} ${row.h}">${row.lines.map((text,index)=>`<text x="${row.x+12}" y="${row.y+row.size+8+index*row.size*1.5}" font-family="${font}" font-size="${row.size}"${row.role==='title'||row.boldFirst&&index===0?' font-weight="700"':''} fill="${row.role==='footer'?muted:foreground}">${xml(text)}</text>`).join('')}</g>`).join('')}</svg>`;
  const checked=validatePptMasterSvg(svg);validatePptMasterVisibleText(checked,slide,plan);
- return {...Object.fromEntries(['id','title','body','layout','notes'].map(key=>[key,slide[key]??''])),svg:checked,sourceIds:[...plan.sourceIds],evidenceSourceIds:[...plan.sourceIds],authorSourceIds:[],composition:page.composition,visualKind:visual?.kind||null,layoutMethod:'validated',requiresReview:true};
+ return {...Object.fromEntries(['id','title','body','layout','notes'].map(key=>[key,slide[key]??''])),svg:checked,sourceIds:[...plan.sourceIds],evidenceSourceIds:[...plan.sourceIds],authorSourceIds:[],composition:page.composition,visualKind:visual?.kind||null,...(visual?.artwork?{artwork:visual.artwork}:{}),layoutMethod:'validated',requiresReview:true};
 }

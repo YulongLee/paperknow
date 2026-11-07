@@ -1,10 +1,12 @@
+import {readFile} from 'node:fs/promises';
 import {createPptMasterRuntime,PPT_MASTER_REVISION,validatePptMasterPackage} from './ppt-master-runtime.mjs';
 import {pptMasterDesignPlan,pptMasterSlideTask,parsePptMasterSlideOutput,validatePptMasterSlideCandidate} from './ppt-master-model.mjs';
 import {toolStorageCheck} from './tool-run-service.mjs';
 import {savePresentationDelivery} from './presentation-delivery.mjs';
 import {validatedPresentationLayout} from './presentation-layout.mjs';
 import {presentationVisualRetained} from './presentation-visuals.mjs';
-import {loadTemplateArtwork,addTemplateArtwork} from './presentation-template-art.mjs';
+import {loadTemplateArtwork,addPresentationArtwork} from './presentation-template-art.mjs';
+import {selectPresentationIllustration,presentationIllustrationAlt,presentationIllustrationAssetPath} from '../dist/workspace/presentation-illustration-assets.mjs';
 import {presentationGenerationStatus} from './presentation-readiness.mjs';
 export {presentationGenerationStatus} from './presentation-readiness.mjs';
 
@@ -16,12 +18,24 @@ export function restorePresentationDesignCheckpoint(value,slide,plan,saved){
  try{return validatedPresentationLayout(value,slide,plan);}catch(error){if(error.code!=='ppt_layout_capacity')throw error;return previous;}
 }
 
+async function loadInteriorArtwork(slides,language){
+ const assets=new Map();
+ return Promise.all(slides.flatMap((slide,index)=>{
+  if(!slide.artwork)return [];
+  const {asset}=slide.artwork,pathname=presentationIllustrationAssetPath(asset);
+  if(!pathname)throw Error('Invalid presentation illustration');
+  if(!assets.has(asset))assets.set(asset,readFile(new URL('../dist'+pathname,import.meta.url)));
+  return [assets.get(asset).then(bytes=>({...slide.artwork,page:index+1,alt:presentationIllustrationAlt(asset,language),bytes}))];
+ }));
+}
+
 export async function generatePptMasterPresentation(db,config,{row,value,output,signal,isActive,onStage,runAuthor,onLayout=()=>{}}){
  const readiness=presentationGenerationStatus(config);if(!readiness.ready)throw Object.assign(new Error(readiness.reason),{status:503});
  const active=()=>!signal?.aborted&&isActive();
  const check=()=>{if(!active())throw Object.assign(new Error('演示任务已停止'),{status:499});};
  check();onStage('planning');
- const plan=pptMasterDesignPlan(value,output.slides,{sourceIds:output.sourceIds}),artwork=await loadTemplateArtwork(plan.theme),slides=[];plan.coverArtwork=Boolean(artwork);plan.enforceTheme=true;let validatedOnly=false,recoveryReason=null;
+ const plan=pptMasterDesignPlan(value,output.slides,{sourceIds:output.sourceIds}),artwork=await loadTemplateArtwork(plan.theme),slides=[];plan.coverArtwork=Boolean(artwork);plan.enforceTheme=true;
+ plan.illustrations=new Map(output.slides.slice(1,-1).map(slide=>[slide.id,selectPresentationIllustration(slide,value.snapshot)]));let validatedOnly=false,recoveryReason=null;
  for(const [index,slide] of output.slides.entries()){
   check();onStage('authoring');const unitId='design-'+slide.id;
   const checkpoint=db.prepare('SELECT output FROM tool_checkpoints WHERE run_id=? AND unit_id=?').get(row.id,unitId);
@@ -42,7 +56,7 @@ export async function generatePptMasterPresentation(db,config,{row,value,output,
   // A safe text-only candidate is still visually incomplete. Preserve the
   // content-derived editable diagram without spending another repair call.
   if(index===0&&baseline&&plan.coverVariant){if(parsed.layoutMethod!=='validated')onLayout({method:'validated',page:index+1,reason:'selected_template'});parsed=baseline;}
-  else if(baseline?.visualKind&&!presentationVisualRetained(parsed.svg,baseline.visualKind)){parsed=baseline;onLayout({method:'validated',page:index+1,reason:'ppt_visual_restored'});}
+  else if(baseline?.visualKind&&parsed!==baseline&&(baseline.artwork||!presentationVisualRetained(parsed.svg,baseline.visualKind))){parsed=baseline;onLayout({method:'validated',page:index+1,reason:'ppt_visual_restored'});}
   if(parsed.layoutMethod!=='validated')onLayout({method:'ai',page:index+1});
   const json=JSON.stringify(parsed);
   toolStorageCheck(db,row.user_id,Buffer.byteLength(json),config);
@@ -52,8 +66,9 @@ export async function generatePptMasterPresentation(db,config,{row,value,output,
  const renderer=config.pptMasterRenderer||((input)=>createPptMasterRuntime({runtimeRoot:config.pptMasterRuntimeRoot,pythonPath:config.pptMasterPython}).render(input));
  onStage('exporting');const rendered=await renderer({slides,signal,title:value.snapshot.title});check();
  if(!Buffer.isBuffer(rendered?.pptx))throw Object.assign(new Error('演示文件未通过导出校验，未结算本次费用'),{status:502});
- const decorated=artwork?await addTemplateArtwork(rendered.pptx,artwork):rendered.pptx;
- if(artwork)await validatePptMasterPackage(decorated,{slideCount:slides.length,slides,trustedBackground:artwork});
- const delivery=await savePresentationDelivery(db,config,{runId:row.id,userId:row.user_id,title:value.snapshot.title,slides,pptx:decorated,coverTheme:artwork?plan.theme:null,coverArtwork:artwork,revision:PPT_MASTER_REVISION,isActive,signal,onStage});check();
+ const interiorArtwork=await loadInteriorArtwork(slides,value.snapshot.language);check();
+ const decorated=await addPresentationArtwork(rendered.pptx,interiorArtwork,artwork);
+ if(artwork||interiorArtwork.length)await validatePptMasterPackage(decorated,{slideCount:slides.length,slides,trustedBackground:artwork,trustedArtwork:interiorArtwork});
+ const delivery=await savePresentationDelivery(db,config,{runId:row.id,userId:row.user_id,title:value.snapshot.title,slides,pptx:decorated,coverTheme:artwork?plan.theme:null,coverArtwork:artwork,interiorArtwork,revision:PPT_MASTER_REVISION,isActive,signal,onStage});check();
  return{...output,...delivery,presentationMetadata:{author:plan.metadata.author}};
 }
