@@ -37,6 +37,28 @@ test('an explicit missing item cannot be dismissed as not_required; proposal pla
  const explicit=task();explicit.context.chapters[0].text='【待补充：实际观察记录】';const value=JSON.parse(checkResponse(explicit).text);value.items[0]={...value.items[0],status:'not_required',evidence:[]};assert.throws(()=>parseSupplementCheck(response(value.items),explicit));
  const plan=supplementCheckTask({kind:'proposal',chapters:[{id:'s',title:'拟研究方案',text:'拟在下一阶段开展观察，目前尚未实施。'}]});assert.equal(parseSupplementCheck(checkResponse(plan),plan)[0].status,'not_required');assert.match(plan.instructions,/开题报告.*不要求尚未实施/);assert.match(plan.instructions,/AI建议.*不能证明研究已经实施/);
 });
+
+test('a plan or demonstration is not automatically accepted as proof of an asserted real-world problem',()=>{
+ const input=supplementCheckTask({kind:'proposal',chapters:[{id:'s',title:'研究背景',text:'高校图书馆数字阅读服务存在检索引导不清与移动界面体验不佳的问题。'}],materials:[{id:'m',name:'用户资料',text:'拟改善检索引导和移动端界面，演示人员完成三次模拟检索。'}]});
+ const row={id:'s',status:'sufficient',requirement:'研究背景',reason:'提供研究方案。',manuscriptQuote:input.context.chapters[0].text,evidence:[{sourceId:'m',quote:input.context.evidence[0].text}],missing:[]};
+ const flagged=parseSupplementCheck(response([row]),input)[0];assert.equal(flagged.status,'missing');assert.match(flagged.missing[0],/调查|观察/);
+ const noEvidence={...row,status:'not_required',evidence:[]};assert.equal(parseSupplementCheck(response([noEvidence]),input)[0].status,'missing');
+ const hypothesis={...input,context:{...input.context,chapters:[{...input.context.chapters[0],text:'高校图书馆可能存在检索引导不清的问题，有待验证。'}]}};
+ const hypothesisRow={...noEvidence,manuscriptQuote:hypothesis.context.chapters[0].text};assert.equal(parseSupplementCheck(response([hypothesisRow]),hypothesis)[0].status,'not_required');
+ const observed={...input,context:{...input.context,evidence:[{id:'m',name:'调查报告',text:'实际调查结果显示读者反馈存在检索困难。'}]}};
+ const observedRow={...row,evidence:[{sourceId:'m',quote:observed.context.evidence[0].text}]};assert.equal(parseSupplementCheck(response([observedRow]),observed)[0].status,'sufficient');
+ const shortQuote={...row,evidence:[{sourceId:'m',quote:'检索引导和移动端界面'}]};assert.equal(parseSupplementCheck(response([shortQuote]),input)[0].status,'missing','generic excerpt does not discard immediate plan/simulation context');
+ for(const text of ['尚无证据证明存在检索引导不清的问题。','不能证明存在检索引导不清的问题。','不存在检索引导不清的问题。']){const safe={...input,context:{...input.context,chapters:[{...input.context.chapters[0],text}]}};assert.equal(parseSupplementCheck(response([{...noEvidence,manuscriptQuote:text}]),safe)[0].status,'not_required');}
+ const mixed={...input,context:{...input.context,evidence:[{id:'m',name:'调查材料',text:'研究者拟定后续改进方案。十名读者反馈检索步骤不清晰。模拟检索作为补充演示。'}]}};
+ const realQuote={...row,evidence:[{sourceId:'m',quote:'十名读者反馈检索步骤不清晰'}]};assert.equal(parseSupplementCheck(response([realQuote]),mixed)[0].status,'sufficient','explicit observed feedback is not rejected just because a plan occurs nearby');
+});
+
+test('unsupported asserted problem stops the final readiness gate even if the model marks it not required',async()=>{
+ const snapshot={materials:[{id:'m',name:'模拟材料',confirmed:true,text:'拟改善检索引导，演示人员完成三次模拟检索。'}],references:[]};
+ const chapters=[{id:'c1',title:'研究背景',text:'高校图书馆数字阅读服务存在检索引导不清与移动界面体验不佳的问题。'}];
+ const result=await runSupplementCheck({snapshot,chapters,kind:'proposal',dispatch:async({task})=>response(task.context.chapters.map(chapter=>({id:chapter.id,status:'not_required',requirement:'研究背景',reason:'无需补充。',manuscriptQuote:chapter.text,evidence:[],missing:[]})))});
+ assert.equal(result.coverage.complete,true);assert.equal(result.status,'needs_materials');assert.equal(result.items[0].status,'missing');assert.ok(chapters[0].text.includes(result.items[0].manuscriptQuote));
+});
 test('full report is derived from all returned section items; incomplete, cancelled and stale checks never unlock a final',async()=>{
  const chapters=Array.from({length:9},(_,i)=>({id:'c'+i,title:'章节'+i,text:'研究文本。'.repeat(500)})),calls=[];
  const report=await runSupplementCheck({snapshot:snapshot(),chapters,runtime,dispatch:async request=>{calls.push(request);return checkResponse(request.task);}});

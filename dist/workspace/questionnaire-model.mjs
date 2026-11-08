@@ -30,6 +30,18 @@ export function normalizeScaleOptions(value,{legacyDefault=false,points}={}){
  if(options.every(option=>/^[-+]?\d+(?:\.\d+)?$/.test(option))&&!options.every((option,index)=>option===String(index+1)))throw Error('数值量表应从 1 开始连续排列；文字量表按选项顺序计分。');
  return options;
 }
+// Strip only isolated model process messages from an AI-authored introduction.
+// Never replace or synthesize the participant-facing consent and privacy text.
+function cleanAIIntroduction(value){
+ const intro=text(value,2000,'问卷说明');
+ const stripped=intro.split(/(?<=[。！？!?\n])/u).filter(sentence=>{
+  const s=sentence.trim();
+  return !/^(?:当前|本次|本)?问卷(?:暂时|暂|目前)?不支持自动跳题(?:逻辑|功能)?(?:[，,]请自行判断作答)?[。！？!?]?$/u.test(s)&&
+   !/^(?:所有|本次|本问卷的?)?(?:结果|数据)(?:均|都)?为待人工核对的草稿数据[。！？!?]?$/u.test(s);
+ }).join('').trim();
+ if(!stripped)throw Error('AI 问卷缺少受访者说明，请重新生成。');
+ return stripped;
+}
 export function normalizeAIQuestionnaire(output,requirements={}){
  const count=requestedQuestionCount(requirements),points=requestedScalePoints(requirements);
  if(!output||!Array.isArray(output.questions)||output.questions.length!==count)throw Error(`本次要求 ${count} 道题，生成数量不一致，未替换现有问卷。`);
@@ -43,8 +55,16 @@ export function normalizeAIQuestionnaire(output,requirements={}){
   // Ask the model to repair only an unambiguous dimension mismatch. Agree/
   // disagree is valid for statements, but not for a direct convenience rating.
   if(row.type==='scale'&&typeof row.title==='string'&&/(?:便利|便捷)程度|评价.{0,40}(?:便利|便捷)|评价.{0,60}体验[：:，,]?.{0,60}能否/.test(row.title)&&!/同意|赞同/.test(row.title)&&Array.isArray(row.options)&&row.options.some(option=>typeof option==='string'&&/不同意|不赞同|同意|赞同/.test(option)))optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'scale',field:'options',code:'scale_dimension_mismatch',expectedExact:points});
+  // Only catch the unambiguous, unqualified "at least once" form. Do not
+  // speculate about open-ended ranges or rewrite a respondent's selections.
+  if(row.type==='single'&&Array.isArray(row.options)){
+   const units=new Set(row.options.map(option=>typeof option==='string'?option.trim().match(/^每(天|日|周|星期|月|年)(?:至少|最少|不少于)(?:一|1)次$/u)?.[1]:null).filter(Boolean).map(value=>value==='星期'?'周':value==='日'?'天':value));
+   if(units.size>=2)optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'single',field:'options',code:'frequency_overlap'});
+  }
+  if(row.type==='multiple'&&Array.isArray(row.options)&&row.options.some(option=>typeof option==='string'&&/^(?:以上|上述)(?:均|都)?(?:未|不|没有)(?:使用|选择|接触|适用)(?:过)?(?:任何一项)?$/u.test(option.trim())))optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'multiple',field:'options',code:'exclusive_multiple_option'});
+  if(row.type==='scale'&&typeof row.title==='string'&&/(?:满意|评价)/u.test(row.title)&&/(?:速度|速率)/u.test(row.title)&&/(?:校外|异地)/u.test(row.title)&&/(?:多设备|不同设备|多终端|不同终端)/u.test(row.title))optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'scale',field:'title',code:'multiple_dimensions'});
  }
- if(optionIssues.length){const first=optionIssues[0],message=first.code==='scale_dimension_mismatch'?'量表选项应与问题询问的体验或便利程度一致。':first.questionType==='scale'?`本次量表须保留 ${points} 个分值与对应含义。`:first.questionType==='text'?'文本题不能附带预设答案。':'AI 选择题需要 2～10 个选项。';throw Object.assign(Error(message),{validationCode:'questionnaire_options',validationField:'questions',validationIssues:optionIssues.slice(0,10),validationIssueCount:optionIssues.length});}
+ if(optionIssues.length){const first=optionIssues[0],message=first.code==='scale_dimension_mismatch'?'量表选项应与问题询问的体验或便利程度一致。':first.code==='frequency_overlap'?'使用频率选项存在重叠，请调整为互不重叠的区间。':first.code==='exclusive_multiple_option'?'多选题的“均未使用”选项不能与其他选项同时选择，请调整题目。':first.code==='multiple_dimensions'?'同一满意度问题包含多个不同维度，请分别明确。':first.questionType==='scale'?`本次量表须保留 ${points} 个分值与对应含义。`:first.questionType==='text'?'文本题不能附带预设答案。':'AI 选择题需要 2～10 个选项。';throw Object.assign(Error(message),{validationCode:'questionnaire_options',validationField:'questions',validationIssues:optionIssues.slice(0,10),validationIssueCount:optionIssues.length});}
  const ids=new Set(),questions=output.questions.map(row=>{
   if(!row||typeof row!=='object'||Array.isArray(row)||Object.keys(row).some(key=>!['id','type','title','options','required'].includes(key))||!['single','multiple','scale','text'].includes(row.type)||typeof row.required!=='boolean')throw Error('问卷题目类型、必填标记或字段无效。');
   const id=text(row.id,60,'题号');if(!/^[A-Za-z0-9_-]+$/.test(id)||['__proto__','constructor','prototype'].includes(id)||ids.has(id))throw Error('问卷题号重复或无效。');ids.add(id);
@@ -65,7 +85,7 @@ export function normalizeAIQuestionnaire(output,requirements={}){
   const hint=/[\u4e00-\u9fff]/.test(q.title)?'（未使用者可跳过）':' (Skip if you have not used this service)';
   return {...q,required:false,title:q.title.length+hint.length<=500?q.title+hint:q.title};
  }):questions;
- return{title:text(output.title,200,'问卷标题'),introduction:text(output.introduction,2000,'问卷说明'),questions:safeQuestions};
+ return{title:text(output.title,200,'问卷标题'),introduction:cleanAIIntroduction(output.introduction),questions:safeQuestions};
 }
 
 // A compact editor change detector only; it never authorizes access or verifies evidence.

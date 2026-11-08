@@ -8,6 +8,13 @@ const make=questions=>({title:'阅读调查',introduction:'匿名自愿参与',q
 const nonuser={id:'q1',type:'single',title:'是否使用过数字阅读服务？',options:['从未使用过','使用过'],required:true};
 const experience={id:'q2',type:'scale',title:'您对服务的使用体验满意吗？',options:scale,required:true};
 const general={id:'q3',type:'single',title:'您的年级是？',options:['一年级','二年级'],required:true};
+test('AI questionnaire introduction removes only isolated generation notes while preserving informed consent',()=>{
+ const input=make([nonuser,experience,general]);input.introduction='本调查仅用于学术研究。\n参与完全自愿，可以随时退出。我们不收集姓名或联系方式。当前问卷不支持自动跳题逻辑，请自行判断作答。所有结果为待人工核对的草稿数据。感谢您的参与。';
+ const before=structuredClone(input),output=normalizeAIQuestionnaire(input,{outputCount:3,scalePoints:5});
+ assert.equal(output.introduction,'本调查仅用于学术研究。\n参与完全自愿，可以随时退出。我们不收集姓名或联系方式。感谢您的参与。');
+ assert.deepEqual(input,before);assert.deepEqual(normalizeAIQuestionnaire(output,{outputCount:3,scalePoints:5}),output);
+ const only=make([nonuser,experience,general]);only.introduction='当前问卷不支持自动跳题逻辑，请自行判断作答。所有结果为待人工核对的草稿数据。';assert.throws(()=>normalizeAIQuestionnaire(only,{outputCount:3}),/缺少受访者说明/);
+});
 test('non-users can skip required experience items while their scale and unrelated required questions are preserved',()=>{
  const input=make([nonuser,experience,general]),before=structuredClone(input);
  const out=normalizeAIQuestionnaire(input,{outputCount:3,scalePoints:5});
@@ -47,4 +54,25 @@ test('non-user screening and experience questions from different batches are rec
  const completed=plan.map(unit=>({id:unit.id,...make(Array.from({length:unit.questionCount},(_,i)=>{let n=unit.questionStart+i;if(n===1)return nonuser;if(n===9)return {...experience,id:'q9'};return {...general,id:'q'+n,title:'您的年级 '+n+' 是？'};})),sourceIds:[]}));
  const out=aggregateWritingQuestionnaire(snap,plan,completed);
  assert.equal(out.questions[8].required,false);assert.match(out.questions[8].title,/未使用者可跳过/);assert.match(out.text,/未使用者可跳过/);
+});
+
+test('explicit overlapping lower-bound frequency choices require repair, disjoint ranges are allowed',()=>{
+ const q={...general,title:'使用频率',options:['每周至少一次','每月至少一次','从未使用']};
+ assert.throws(()=>normalizeAIQuestionnaire(make([nonuser,experience,q]),{outputCount:3}),e=>e.validationIssues.some(i=>i.code==='frequency_overlap'));
+ const safe={...q,options:['每周至少一次','每月1至3次','更少','从未使用']};assert.doesNotThrow(()=>normalizeAIQuestionnaire(make([nonuser,experience,safe]),{outputCount:3}));
+});
+test('multiple choice rejects explicit none-of-the-above because the live form has no mutual exclusion',()=>{
+ const q={...general,type:'multiple',title:'使用过哪些服务？',options:['电子书','数据库','以上均未使用过']};
+ assert.throws(()=>normalizeAIQuestionnaire(make([nonuser,experience,q]),{outputCount:3}),e=>e.validationIssues.some(i=>i.code==='exclusive_multiple_option'));
+ assert.doesNotThrow(()=>normalizeAIQuestionnaire(make([nonuser,experience,{...q,options:['电子书','数据库','其他']}]),{outputCount:3}));
+});
+test('the specifically combined speed off-campus and multi-device satisfaction dimensions are flagged',()=>{
+ const q={...experience,title:'您对访问速度、校外访问和多设备使用的满意程度如何？'};
+ assert.throws(()=>normalizeAIQuestionnaire(make([nonuser,q,general]),{outputCount:3}),e=>e.validationIssues.some(i=>i.code==='multiple_dimensions'));
+ assert.doesNotThrow(()=>normalizeAIQuestionnaire(make([nonuser,{...q,title:'您对校外访问的满意程度如何？'},general]),{outputCount:3}));
+});
+test('repair feedback identifies safe issue codes without copying private titles or options',()=>{
+ const snap=normalizeWritingSnapshot({title:'阅读调查',profile:{level:'本科',language:'中文',targetWords:500},requirements:{outputCount:3,scalePoints:5},materials:[],references:[],outline:[]}),unit=writingPlan(snap,'questionnaire')[0];
+ const q={...general,title:'PRIVATE 标识频率',options:['每周至少一次','每月至少一次','从未使用']},candidate={...make([nonuser,experience,q]),complete:true,source_ids:[]};
+ const result=validateWritingCandidate({text:JSON.stringify(candidate),trace:[]},'questionnaire','questionnaire',snap,unit);assert.equal(result.valid,false);assert.equal(result.feedback.issues[0].code,'frequency_overlap');assert.match(result.feedback.rule,/区间互不重叠/);assert.doesNotMatch(JSON.stringify(result.feedback),/PRIVATE/);
 });
