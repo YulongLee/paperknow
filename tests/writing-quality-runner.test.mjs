@@ -15,6 +15,12 @@ test('quality runner performs metadata verification, deterministic audit and ind
  assert.equal(quality.status,'completed');assert.deepEqual(stages,['verifying_citations','checking_consistency','reviewing_manuscript']);assert.deepEqual(calls.map(row=>row.kind),['citations','review']);assert.equal(calls[1].request.task.skill,'writing-review');assert.equal(calls[1].request.unitId,'quality-review::1');assert.ok(calls[1].request.settings.maxTurns<=runtime.maxTurns);assert.ok(calls[1].request.settings.maxOutputTokens<=runtime.maxOutputTokens);assert.ok(calls[1].request.settings.timeoutMs<=runtime.timeoutMs);assert.deepEqual(input,before);assert.equal(quality.coverage.complete,true);assert.equal(quality.reviews[0].status,'completed');
 });
 
+test('actual review dispatch sees bounded cited user text and retains privacy and coverage under long requirements',async()=>{
+ const snapshot={title:'证据对照',requirements:{instructions:'规范'.repeat(6000)},references:[{id:'cited',confirmed:true,scope:'abstract',text:'用户已确认摘要。'.repeat(250)},{id:'private',confirmed:true,text:'这篇未被引用的私人材料'}]},input=[{id:'one',title:'章节',text:'正文引用[source:cited]。'+'文'.repeat(30000)}];
+ let calls=0;const quality=await plainRunner()({snapshot,chapters:input,runtime,dispatch:async({task})=>{calls++;assert.ok(JSON.stringify(task.context).length<=39000);assert.doesNotMatch(JSON.stringify(task),/这篇未被引用的私人材料/);if(calls===1){assert.equal(task.context.sourceEvidence.items[0].id,'cited');assert.equal(task.context.sourceEvidence.items[0].scope,'abstract');}return response();}});
+ assert.equal(quality.coverage.complete,true);assert.ok(calls>=2);assert.equal(quality.status,'completed');
+});
+
 test('all manuscript chapters are reviewed in bounded batches, including the end of a long manuscript',async()=>{
  const input=chapters(9,7000),captured=[];const quality=await plainRunner()({snapshot:{title:'长论文'},chapters:input,runtime,dispatch:async({task,validateReviewOutput})=>{captured.push(task);const result=response(task.context.manuscriptExcerpts.map(finding));assert.equal(validateReviewOutput(result).valid,true);return result;}});
  assert.ok(captured.length>=3);assert.deepEqual(new Set(quality.reviews.flatMap(row=>row.sectionIds)),new Set(input.map(row=>row.id)));assert.equal(quality.coverage.reviewedCharacters,input.reduce((sum,row)=>sum+row.text.length,0));assert.equal(quality.coverage.complete,true);

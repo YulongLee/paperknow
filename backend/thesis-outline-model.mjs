@@ -1,4 +1,4 @@
-import {academicWritingStyle} from './academic-writing-style.mjs';
+import {academicWritingInstructions as academicWritingStyle} from './academic-writing-style.mjs';
 import {normalizeThesisSnapshot,selectThesisEvidence,thesisError} from './thesis-model.mjs';
 import {allocateOutlineWordBudget,isOutlineReferenceChapter} from '../dist/workspace/outline-word-budget.mjs';
 import {applyOutlinePresentationRecommendations} from '../dist/workspace/outline-content-recommendations.mjs';

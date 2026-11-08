@@ -56,6 +56,13 @@ for(const kind of ['proposal','article','taskbook','practice'])test(kind+' uses 
 test('a truncated JSON candidate automatically recovers without accepting a malformed checkpoint',async t=>{
  let first=true;const f=fixture(t,{runner:async({task})=>{if(first){first=false;return output(task,{text:'{"complete":true,"text":'});}return output(task);}}),item=await f.submit();await f.worker.tick();assert.equal(f.get(item.id).status,'completed',f.get(item.id).error);assert.equal(f.calls.length,9);assert.equal(f.get(item.id).recovery.automaticRetries,1);assert.equal(f.db.prepare('SELECT count(*) n FROM writing_checkpoints WHERE run_id=?').get(item.id).n,8);
 });
+test('request-window recovery preserves only safe length feedback without accepting the failed candidate or inventing source reads',async t=>{
+ let first=true;const f=fixture(t,{runner:async({task,settings})=>{
+  if(first){first=false;throw Object.assign(Error('next request exceeds its window'),{code:'budget_exceeded',status:429,usage:{input:1000,output:100},costUsd:.005,lastValidation:{code:'word_limit',count:1890,target:1000,min:800,max:1200,privateText:'not for retry'},executionBudget:{reason:'request_reservation',inFlightTokens:0,limitTokens:settings.maxTotalTokens,usedTokens:1100,requestTokens:settings.maxTotalTokens+1000}});}
+  if(task.context.unit.position===0){assert.deepEqual(task.context.retryLengthFeedback,{code:'word_limit',count:1890,target:1000,min:800,max:1200});assert.equal(task.context.retryCandidate,undefined);assert.match(task.instructions,/重新读取所需材料/);}
+  return output(task);
+ }}),item=await f.submit();await f.worker.tick();assert.equal(f.get(item.id).status,'completed',f.get(item.id).error);assert.equal(f.get(item.id).completedUnits,8);assert.equal(f.billing.balance('alice').balance,190);
+});
 test('new recovery budgets remain owner-bound, version-bound and immutable across reconstruction',async t=>{
  const f=fixture(t),item=await f.submit(),run=f.db.prepare('SELECT * FROM writing_runs WHERE id=?').get(item.id),plan=JSON.parse(run.plan),ledger=f.ledger(),saved=ledger.ensure(run,snapshot(),plan,runtime);
  assert.ok(saved.costLimit>.5);assert.throws(()=>ledger.ensure({...run,user_id:'bob'},snapshot(),plan,runtime),error=>error.status===404);assert.throws(()=>f.db.prepare('UPDATE writing_execution_budgets SET cost_limit_micros=50000000 WHERE run_id=?').run(item.id),/不可扩展/);
