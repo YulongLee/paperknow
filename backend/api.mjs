@@ -141,7 +141,7 @@ if(path==='/api/theses/document-render'){
  rate(req,60);const value=await body(req);
  if(value.expectedUserId!==user.id)fail(409,'登录账户已变化，请刷新后重新导出');
  const controller=new AbortController(),cancel=()=>{if(!res.writableEnded)controller.abort();};req.once('aborted',cancel);res.once('close',cancel);
- try{send(200,await convertThesisDocumentPayload(thesisRenderer,value,{signal:controller.signal}));}finally{req.removeListener('aborted',cancel);res.removeListener('close',cancel);}
+ try{send(200,await convertThesisDocumentPayload(thesisRenderer,value,{signal:controller.signal}));}catch(error){if(error.code==='document_render_busy'){send(429,{error:'页面检查繁忙，正在等待处理。',code:'DOCUMENT_RENDER_BUSY'});return;}throw error;}finally{req.removeListener('aborted',cancel);res.removeListener('close',cancel);}
  return;
 }
 if(path==='/api/combined-detections'||path.startsWith('/api/combined-detections/')){if(method==='POST')rate(req,20);const response=await combinedDetections.handle({path,method,user,readBody:()=>body(req)});send(response.status||200,response.value);return;}

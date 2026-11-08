@@ -9,7 +9,7 @@ export const writingReportSources = {
     fields: ['college', 'author', 'studentId'],
     // Use the manuscript title and the body instructions following the cover and assessment sheet.
     format: {
-      cover: '课程作业', titleSize: 36, titleFont: '宋体', bodySize: 24, bodyFont: '宋体',
+      cover: '课程作业', coverEnglish: 'Course Paper', titleSize: 36, titleFont: '宋体', bodySize: 24, bodyFont: '宋体',
       line: 360, lineRule: 'auto', headingSize: 24, referencesSize: 21,
       page: {top: 1440, right: 1418, bottom: 1191, left: 1418, header: 851, footer: 992},
     },
@@ -29,7 +29,7 @@ export const writingReportSources = {
     fields: ['major', 'author', 'studentId', 'supervisor'],
     // The cover and the practice record are separate Word sections with matching margins.
     format: {
-      cover: '实践报告', titleSize: 52, titleFont: '黑体', bodySize: 24, bodyFont: '宋体',
+      cover: '实践报告', coverEnglish: 'Practice Report', titleSize: 52, titleFont: '黑体', bodySize: 24, bodyFont: '宋体',
       headingSize: 32, subheadingSize: 28, tableSize: 24,
       page: {top: 1440, right: 1800, bottom: 1440, left: 1800, header: 851, footer: 992},
     },
@@ -50,7 +50,7 @@ export const writingReportSources = {
     fields: ['author', 'institution'],
     // Use the project-description section, with the stated fill-in size and its exact line spacing.
     format: {
-      cover: '课题思路', titleSize: 48, titleFont: '黑体', bodySize: 24, bodyFont: '仿宋',
+      cover: '课题思路', coverEnglish: 'Research Proposal', titleSize: 48, titleFont: '黑体', bodySize: 24, bodyFont: '仿宋',
       line: 400, lineRule: 'exact', headingSize: 28, subheadingSize: 28, tableSize: 24,
       page: {top: 1440, right: 1474, bottom: 1440, left: 1474, header: 851, footer: 992},
     },

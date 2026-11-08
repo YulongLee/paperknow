@@ -35,7 +35,7 @@ export const writingAcademicSources = {
     fields: ['institution', 'college', 'major', 'author', 'studentId', 'supervisor'],
     // Take body metrics from the numbered section, after the standalone cover.
     format: {
-      cover: '文献综述', coverSize: 52, titleSize: 44, titleFont: '黑体', bodySize: 24, bodyFont: '宋体',
+      cover: '文献综述', coverEnglish: 'Literature Review', coverSize: 52, titleSize: 44, titleFont: '黑体', bodySize: 24, bodyFont: '宋体',
       line: 440, lineRule: 'exact', headingSize: 32, subheadingSize: 28, thirdHeadingSize: 28, thirdHeadingFont: '楷体', referencesSize: 24,
       page: {top: 1440, right: 1797, bottom: 1440, left: 1797, header: 851, footer: 992},
     },

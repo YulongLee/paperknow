@@ -28,7 +28,7 @@ test('unchanged supplemental reports keep their DOM and scroll position during t
  try{f.mount();f.$('[data-wf-generate="draft"]').click();await settle();const list=f.$('.supplement-check-items');assert.ok(list);list.scrollTop=42;f.$('[data-wj-refresh]').click();await settle();assert.equal(f.$('.supplement-check-items'),list);assert.equal(list.scrollTop,42);record={...record,output:{quality:{supplementCheck:{...check,status:'needs_materials',items:[{...check.items[0],status:'missing',missing:['新增的实际观察记录']}]}}}};f.$('[data-wj-refresh]').click();await settle();assert.notEqual(f.$('.supplement-check-items'),list);assert.match(f.$('[data-wf-supplement-report]').textContent,/新增的实际观察记录/);assert.equal(f.save().body,'原有正文');}finally{f.close();}
 });
 
-test('automatic adoption saves the new body to the account instead of recapturing the old textarea',async()=>{const f=fixture(),beforeFetch=globalThis.fetch;let cloud={id:'draft',title:f.row.title,tool:'proposal',project_id:'',version:1,payload:f.row};try{globalThis.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):null;let value;if(path==='/api/auth/me')value={user:{id:'alice'}};else if(path==='/api/projects')value={items:[]};else if(path==='/api/workspace/drafts/draft'){if(body)cloud={...cloud,...body,version:cloud.version+1};value={item:cloud};}else throw Error(path);return{ok:true,status:200,json:async()=>value};};await mountAccountDraft('draft',{...f.ctx,notify(){},mount:row=>mountWritingFlow({kind:'proposal',container:f.$('.dashboard'),ctx:f.ctx,draftId:row.id}),saveNative:async()=>{assert.equal(flushEditorDraft(),true);return true;}});f.$('[data-wf-generate="draft"]').click();await settle();assert.equal(cloud.payload.writingFlow.body,'系统自动完成的当前版本');assert.equal(f.$('[data-wf-field="body"]').value,cloud.payload.writingFlow.body);assert.equal(cloud.payload.writingFlow.versions[0].text,'原有正文');assert.equal(cloud.payload.writingFlow.jobs.draft.appliedItemId,'new-job');assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);}finally{f.close();globalThis.fetch=beforeFetch;}});
+test('automatic adoption saves the new body to the account instead of recapturing the old textarea',async()=>{const f=fixture(),beforeFetch=globalThis.fetch;let cloud={id:'draft',title:f.row.title,tool:'proposal',project_id:'',version:1,payload:f.row};try{globalThis.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):null;let value;if(path==='/api/auth/me')value={user:{id:'alice'}};else if(path==='/api/projects')value={items:[]};else if(path==='/api/workspace/drafts/draft'){if(body)cloud={...cloud,...body,version:cloud.version+1};value={item:cloud};}else throw Error(path);return{ok:true,status:200,json:async()=>value};};await mountAccountDraft('draft',{...f.ctx,notify(){},mount:row=>mountWritingFlow({kind:'proposal',container:f.$('.dashboard'),ctx:f.ctx,draftId:row.id}),saveNative:async()=>{assert.equal(f.$('#writing-save').disabled,false,'native save must not be required while controls are disabled');assert.equal(flushEditorDraft(),true);return true;}});f.$('[data-wf-generate="draft"]').click();await settle();assert.equal(cloud.payload.writingFlow.body,'系统自动完成的当前版本');assert.equal(f.$('[data-wf-field="body"]').value,cloud.payload.writingFlow.body);assert.equal(cloud.payload.writingFlow.versions[0].text,'原有正文');assert.equal(cloud.payload.writingFlow.jobs.draft.appliedItemId,'new-job');assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);}finally{f.close();globalThis.fetch=beforeFetch;}});
 
 test('delivery checks distinguish future research from explicit missing facts and escape untrusted material text',()=>{const normal=assessWritingDelivery({kind:'proposal',text:'拟于下学期采集访谈资料，并按计划开展研究。'});assert.equal(normal.ready,true);const issue=assessWritingDelivery({kind:'practice',text:'观察结果【待补充：<img src=x onerror=alert(1)>】'});assert.equal(issue.ready,false);const dom=new JSDOM(writingDeliveryMarkup({assessment:issue,open:true,canComplete:true}));assert.equal(dom.window.document.querySelector('img'),null);assert.match(dom.window.document.body.textContent,/<img/);dom.window.close();});
 
@@ -159,5 +159,47 @@ test('proposal step 2 separates writing instructions from one format panel after
   assert.ok(requirements.querySelector('[data-wf-field="proposalRequirements"]'));
   assert.equal(layout.querySelector('[data-wf-field="proposalRequirements"]'),null);
   assert.equal(layout.querySelectorAll('input[type="file"]').length,1);
+ }finally{f.close();}
+});
+
+test('restoring historical versions cannot reuse the current manuscript check',async()=>{
+ const f=fixture('article');try{
+  const data=f.row.writingFlow;
+  const previous='旧研究的图书馆调查结果，受访对象为学生。';
+  const current='新研究的课程教学比较结果，参与者为教师。';
+  Object.assign(data,{title:'课程教师研究',body:current,canonicalBody:current,qualityText:current,
+   quality:{status:'completed',supplementCheck:{status:'complete',coverage:{complete:true},missing:[]}},
+   versions:[{id:'legacy',text:previous,qualityText:previous,quality:{status:'completed',supplementCheck:{status:'complete',coverage:{complete:true},missing:[]}},sourceSnapshot:{materials:[],references:[]},createdAt:new Date().toISOString()}]});
+  data.bodyInputKey=JSON.stringify(writingFlowSnapshot('article',data));
+  localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();
+  f.$('[data-wf-restore="legacy"]').click();
+  const saved=f.save();
+  assert.equal(saved.body,previous);
+  assert.notEqual(saved.bodyInputKey,JSON.stringify(writingFlowSnapshot('article',saved)));
+  assert.equal(saved.completionCheck,null);
+  f.$('#wf-body-docx').click();await settle();
+  assert.equal(f.$('[data-wf-completion]').open,true);
+  assert.match(f.$('#writing-status').textContent,/请先/);
+  assert.equal(f.calls.length,0,'an unverified restored version must not reach final export');
+  assert.ok(f.$('#wf-body-draft'),'draft export remains available');
+ }finally{f.close();}
+});
+
+test('a restored version retains its verified input and canonical text when its requirements match',()=>{
+ const f=fixture('article');try{
+  const data=f.row.writingFlow;
+  const text='基于真实来源的合成研究分析正文。';
+  const inputKey=JSON.stringify(writingFlowSnapshot('article',data));
+  data.body='当前文稿';data.bodyInputKey=inputKey;
+  data.versions=[{id:'verified',text,canonicalBody:text,bodyInputKey:inputKey,qualityText:text,
+   quality:{status:'completed',supplementCheck:{status:'complete',coverage:{complete:true},missing:[]}},
+   sourceSnapshot:{materials:[],references:[]},createdAt:new Date().toISOString()}];
+  localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();
+  f.$('[data-wf-restore="verified"]').click();
+  const saved=f.save();
+  assert.equal(saved.bodyInputKey,inputKey);assert.equal(saved.canonicalBody,text);assert.equal(saved.qualityText,text);
+  assert.equal(saved.completionCheck,null);
+  clearEditor();disposeWritingFlows();f.mount();
+  const reopened=f.save();assert.equal(reopened.bodyInputKey,inputKey);assert.equal(reopened.canonicalBody,text);
  }finally{f.close();}
 });

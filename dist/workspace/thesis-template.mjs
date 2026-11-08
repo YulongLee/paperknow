@@ -56,6 +56,7 @@ export async function uploadThesisTemplate(file,{api,expectedUserId,projectId,is
  if(bytes.length!==file.size||bytes[0]!==80||bytes[1]!==75)throw Error('文件不是有效的 DOCX，请从 Word 重新另存后上传。');
  const profile=await inspectTemplate(bytes);if(!isCurrent())throw new DOMException('页面已切换','AbortError');
  if(!profile||profile.version!==1||!Array.isArray(profile.recognized)||!profile.recognized.length)throw Error('未识别到可用的 Word 排版规则，请上传含正文样式的 DOCX 模板。');
+ if(profile.placement?.mode==='ambiguous')throw Error('无法确定模板正文的填写位置。请在正文位置保留一个独立的 {{正文}} 段落，或使用通用模板。');
  const digest=await globalThis.crypto.subtle.digest('SHA-256',bytes);if(!isCurrent())throw new DOMException('页面已切换','AbortError');
  const sha256=Array.from(new Uint8Array(digest),v=>v.toString(16).padStart(2,'0')).join('');let binary='';for(let index=0;index<bytes.length;index+=8192)binary+=String.fromCharCode(...bytes.subarray(index,index+8192));
  const value=await reuseStoredOriginal(file,{api,expectedUserId,projectId})||await api('/files',{name:file.name,data:btoa(binary),expectedUserId,...(projectId?{projectId}:{})});

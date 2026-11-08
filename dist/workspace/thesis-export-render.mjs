@@ -1,11 +1,23 @@
-export async function renderThesisDocument(bytes,{expectedUserId,signal,fetchImpl=globalThis.fetch}={}){
+export async function renderThesisDocument(bytes,{expectedUserId,signal,fetchImpl=globalThis.fetch,onWait=()=>{}}={}){
  if(!expectedUserId)throw Error('请先登录，再进行论文分页与目录检查。');
  if(!(bytes instanceof Uint8Array)||!bytes.length||bytes.length>2*1024*1024)throw Error('论文排版文件需在 2MB 以内，请精简模板中的大图或嵌入字体后重试。');
  const controller=new AbortController(),abort=()=>controller.abort(),timer=setTimeout(abort,135000);signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
  try{
   let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
-  const response=await fetchImpl('/api/theses/document-render',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-PaperKnow-User':expectedUserId},body:JSON.stringify({data:btoa(binary),expectedUserId}),signal:controller.signal});
-  const value=await response.json();if(!response.ok)throw Error(value.error||'论文页面生成未完成，请稍后重试。');
+  let value;
+  for(let attempt=0;attempt<40;attempt++){
+   const response=await fetchImpl('/api/theses/document-render',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-PaperKnow-User':expectedUserId},body:JSON.stringify({data:btoa(binary),expectedUserId}),signal:controller.signal});
+   value=await response.json();
+   if(response.ok)break;
+   if(response.status!==429||value.code!=='DOCUMENT_RENDER_BUSY')throw Error(value.error||'文档页面检查未完成，请稍后重试。');
+   if(attempt===39)throw Error('页面检查等待时间较长，请稍后重新导出。');
+   onWait();
+   await new Promise((resolve,reject)=>{
+    const stop=()=>{clearTimeout(wait);reject(new DOMException('已取消','AbortError'));};
+    const wait=setTimeout(()=>{controller.signal.removeEventListener('abort',stop);resolve();},2500+Math.random()*500);
+    if(controller.signal.aborted)stop();else controller.signal.addEventListener('abort',stop,{once:true});
+   });
+  }
   if(typeof value.data!=='string'||value.data.length>40*1024*1024||!Number.isSafeInteger(value.pages)||value.pages<1)throw Error('论文页面检查结果不完整，请稍后重试。');
   const decoded=atob(value.data),pdf=Uint8Array.from(decoded,c=>c.charCodeAt(0));if(new TextDecoder().decode(pdf.subarray(0,5))!=='%PDF-')throw Error('论文页面结果格式无效，请重试。');
   let docxBytes;

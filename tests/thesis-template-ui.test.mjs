@@ -39,3 +39,8 @@ test('template summary is read-only and directs the user back to knowledge witho
  assert.equal(root.querySelector('input,[data-template-choose],[data-template-clear],[data-template-download]'),null);
  assert.ok(root.querySelector('[data-template-manage]'));dom.window.close();
 });
+
+test('ambiguous templates are rejected before saving their original',async()=>{
+ const file={name:'学校模板.docx',size:4,arrayBuffer:async()=>new Uint8Array([80,75,3,4]).buffer};
+ await assert.rejects(uploadThesisTemplate(file,{expectedUserId:'u1',inspectTemplate:async()=>({...inspected,placement:{mode:'ambiguous'}}),api:async()=>assert.fail('ambiguous template must not be uploaded')}),/正文.*位置/);
+});

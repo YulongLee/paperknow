@@ -62,9 +62,9 @@ test('supplement batching preserves emoji at text boundaries without dropping or
  assert.equal(report.status,'final_ready');assert.equal(parts.join(''),text);assert.ok(parts.every(part=>part.isWellFormed()));assert.equal(parts[1].slice(0,2),'🧪');
  assert.match(supplementCheckPanel({status:'materials_ready',coverage:{checked:1,total:1},items:[]}),/资料已齐，可继续完善正文/);
 });
-function fixture(t,{kind='proposal',thesis=false,checkError=null}={}){
+function fixture(t,{kind='proposal',thesis=false,checkError=null,continuous=false}={}){
  const db=database(':memory:'),user={id:'owner'},at=new Date().toISOString();db.prepare('INSERT INTO users(id,name,role,created_at) VALUES(?,?,?,?)').run(user.id,'合成验收','user',at);let missing=false;const calls=[];
- const config={supplementCheckEnabled:true,writingQualityEnabled:true,thesisContinuousEnabled:true,writingPollMs:60000,thesisPollMs:60000,getAgentSettings:()=>({...runtime}),citationVerifier:{verify:async()=>({items:[],summary:{},limitations:[]})},agentTaskRunner:async args=>{calls.push(args);const {task}=args;if(task.context.operation==='supplement-check'){if(checkError)throw checkError;return checkResponse(task,{missing});}if(task.skill==='writing-review')return{text:JSON.stringify({complete:true,findings:[],limitations:[]}),usage:{input:50,output:50},costUsd:.001};if(thesis&&task.context.unit.frontMatter){const english=task.context.unit.frontMatter==='abstract_en',text=english?'English title: A Synthetic Evidence Test\n'+('This synthetic study describes the supplied methods and evidence with clearly stated limitations. '.repeat(17))+'\nKey words: feedback; study; evidence':'研究方法和材料以用户实际提供的记录为依据，并说明证据范围。'.repeat(14)+'\n关键词：课堂反馈；研究；证据';return{text:JSON.stringify({text,source_ids:[],missing_evidence:[],complete:true,figures:[],draft:false}),usage:{input:100,output:300},costUsd:.001};}return{text:JSON.stringify({text:'研'.repeat(task.context.unit.targetWords)+'[source:record]',source_ids:['record'],missing_evidence:[],complete:true}),trace:[{tool:'read_material',status:'completed',materialId:'record'}],usage:{input:100,output:200},costUsd:.001};}};
+ const config={supplementCheckEnabled:true,writingQualityEnabled:true,writingContinuousEnabled:continuous,thesisContinuousEnabled:true,writingPollMs:60000,thesisPollMs:60000,getAgentSettings:()=>({...runtime}),citationVerifier:{verify:async()=>({items:[],summary:{},limitations:[]})},agentTaskRunner:async args=>{calls.push(args);const {task}=args;if(task.context.operation==='supplement-check'){if(checkError){const error=typeof checkError==='function'?checkError(task):checkError;if(error)throw error;}return checkResponse(task,{missing});}if(task.skill==='writing-review')return{text:JSON.stringify({complete:true,findings:[],limitations:[]}),usage:{input:50,output:50},costUsd:.001};if(thesis&&task.context.unit.frontMatter){const english=task.context.unit.frontMatter==='abstract_en',text=english?'English title: A Synthetic Evidence Test\n'+('This synthetic study describes the supplied methods and evidence with clearly stated limitations. '.repeat(17))+'\nKey words: feedback; study; evidence':'研究方法和材料以用户实际提供的记录为依据，并说明证据范围。'.repeat(14)+'\n关键词：课堂反馈；研究；证据';return{text:JSON.stringify({text,source_ids:[],missing_evidence:[],complete:true,figures:[],draft:false}),usage:{input:100,output:300},costUsd:.001};}return{text:JSON.stringify({text:'研'.repeat(task.context.unit.targetWords)+'[source:record]',source_ids:['record'],missing_evidence:[],complete:true}),trace:[{tool:'read_material',status:'completed',materialId:'record'}],usage:{input:100,output:200},costUsd:.001};}};
  const billing=createBillingService(db,config);config.billing=billing;billing.saveRules({version:billing.rules().version,services:billingServiceTypes.map(({key})=>({key,mode:'paid',creditCost:10}))});const order=randomUUID();db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run(order,user.id,'credits-200','paid',at);db.prepare('INSERT INTO payment_credit_ledger VALUES(?,?,?,?,?,?)').run(order,user.id,'credits-200',200,'purchase',at);
  const service=thesis?createThesisService(db,config):createWritingService(db,config),worker=thesis?startThesisWorker(db,config):startWritingWorker(db,config);t.after(async()=>{await worker.stop();db.close();});
  const request=async(path,body)=>(await service.handle({path,method:body===undefined?'GET':'POST',user,readBody:async()=>body})).value;
@@ -168,4 +168,26 @@ test('audit recovery is bounded, never retries missing facts, denied access or c
  const failed=await runSupplementCheck({snapshot:snapshot(),chapters,recover:true,runtime,dispatch:async()=>{calls++;throw Object.assign(Error('Persistent timeout'),{status:504,code:'timeout'});}});assert.equal(calls,3);assert.equal(failed.status,'unavailable');assert.equal(failed.coverage.checked,0);
  for(const error of [{status:403,code:'timeout'},{status:429,code:'cost_budget'},{status:502,code:'turn_limit',agentTrace:[{status:'denied',tool:'Bash'}]}]){calls=0;await runSupplementCheck({snapshot:snapshot(),chapters,recover:true,runtime,dispatch:async()=>{calls++;throw error;}});assert.equal(calls,1);}
  calls=0;const missing=await runSupplementCheck({snapshot:snapshot(),chapters,recover:true,runtime,dispatch:async({task})=>{calls++;return checkResponse(task,{missing:true});}});assert.equal(calls,1);assert.equal(missing.status,'needs_materials');
+});
+
+test('continuous writing automatically recovers a transient supplement check without an extra purchase',async t=>{
+ let failures=0;
+ const f=fixture(t,{continuous:true,checkError:()=>failures++===0?Object.assign(Error('temporary timeout'),{status:504,code:'timeout',usage:{input:10,output:10},costUsd:.001}):null});
+ const item=await f.submit();await f.worker.tick();const done=f.get(item.id);
+ assert.equal(done.status,'completed',done.error);
+ assert.equal(done.output.quality.supplementCheck.status,'final_ready');
+ assert.equal(done.output.quality.supplementCheck.recovery.automaticRetries,1);
+ assert.equal(f.calls.filter(call=>call.task.context.operation==='supplement-check').length,2);
+ assert.equal(f.billing.balance('owner').balance,190);assert.equal(f.billing.balance('owner').held,0);
+});
+
+test('continuous completion recovers a transient materials preflight before rewriting and settles once',async t=>{
+ let failures=0;
+ const f=fixture(t,{continuous:true,checkError:()=>failures++===0?Object.assign(Error('temporary timeout'),{status:504,code:'timeout',usage:{input:10,output:10},costUsd:.001}):null});
+ const text='用户实际写下的待核对正文。'.repeat(18),item=await f.submit(snapshot(),{text});await f.worker.tick();const done=f.get(item.id);
+ assert.equal(done.status,'completed',done.error);
+ assert.equal(done.output.quality.supplementCheck.status,'final_ready');
+ assert.ok(f.calls.filter(call=>call.task.context.operation==='supplement-check').length>=3);
+ assert.equal(f.billing.balance('owner').balance,190);assert.equal(f.billing.balance('owner').held,0);
+ assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,1);
 });
