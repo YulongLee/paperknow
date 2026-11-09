@@ -3,7 +3,7 @@ import {isSimulationMaterial,normalizeSimulationRecipe,simulationDisclosure} fro
 import {assertThesisChartEvidence} from './thesis-chart-evidence.mjs';
 import {thesisFigureKinds} from '../dist/workspace/thesis-figure-rich.mjs';
 import {manuscriptPart} from '../dist/workspace/manuscript-figures.mjs';
-import {academicWritingStyle,academicFigureStyle} from './academic-writing-style.mjs';
+import {academicWritingInstructions as academicWritingStyle,academicFigureStyle} from './academic-writing-style.mjs';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {isOutlineReferenceChapter} from '../dist/workspace/outline-word-budget.mjs';

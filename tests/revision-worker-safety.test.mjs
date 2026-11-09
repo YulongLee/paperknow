@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {database} from '../backend/database.mjs';
 import {createToolRunService} from '../backend/tool-run-service.mjs';
-import {startToolRunWorker} from '../backend/tool-run-worker.mjs';
+import {startToolRunWorker,toolRunCostBudget} from '../backend/tool-run-worker.mjs';
 import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
 
 // Controlled worker integration: real quote/start, plan/checkpoints/settlement,
@@ -62,4 +62,23 @@ test('corrupt checkpoint identity or protected span stops resume before another 
 test('unknown usage/cost, cancellation and token limits still fail closed with the new revision contract',async t=>{
  for(const extra of [{usage:null},{costUsd:null},{usage:{input:999,output:2}}]){const f=fixture(t,{toolMaxTokens:1000,runner:async({task})=>output(task,extra)}),created=await f.submit(),id=created.value.item.id;await f.worker.tick();assert.equal(f.get(id).status,'failed');assert.equal(f.get(id).completedUnits,0);assert.equal(f.billing.balance(f.user.id).balance,200);}
  let enter,finish;const entered=new Promise(resolve=>{enter=resolve;}),pending=new Promise(resolve=>{finish=resolve;}),f=fixture(t,{runner:async({task})=>{enter();await pending;return output(task);}}),created=await f.submit(),id=created.value.item.id,tick=f.worker.tick();await entered;f.worker.cancel(id);finish();await tick;assert.equal(f.get(id).status,'cancelled');assert.equal(f.get(id).completedUnits,0);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='release'").get().n,1);
+});
+
+
+test('long dual cost budget is bounded to the eligible Unicode length and never changes other task budgets',()=>{
+ const dual=text=>({kind:'revision',operation:'rewrite',snapshot:{text,context:{plan:'dual',revisionProduct:{mode:'dual'}}}});
+ assert.equal(toolRunCostBudget(dual('字'.repeat(10000)),.5),.5);assert.equal(toolRunCostBudget(dual('字'.repeat(10001)),.5),1);assert.equal(toolRunCostBudget(dual('字'.repeat(20000)),.5),1);assert.equal(toolRunCostBudget(dual('字'.repeat(20001)),.5),.5);assert.equal(toolRunCostBudget(dual('😀'.repeat(10001)),.5),1);
+ assert.equal(toolRunCostBudget(dual('字'.repeat(12000)),1.5),2);assert.equal(toolRunCostBudget(dual('字'.repeat(12000)),3),3);
+ const input=dual('字'.repeat(12000));for(const other of [{...input,kind:'literature'},{...input,operation:'translate'},{...input,snapshot:{...input.snapshot,context:{plan:'strong',revisionProduct:{mode:'dual'}}}},{...input,snapshot:{...input.snapshot,context:{plan:'dual',revisionProduct:{mode:'report'}}}}])assert.equal(toolRunCostBudget(other,.5),.5);
+});
+
+test('long dual job allocates a bounded SDK budget across all units and settles once',async t=>{
+ const settings={maxCostUsd:.5},f=fixture(t,{settings,runner:async({task})=>output(task,{costUsd:.095})});const paragraphs=Array.from({length:9},(_,i)=>`Synthetic paragraph ${i} `.padEnd(1800,String.fromCharCode(65+i))),text=paragraphs.join('\n\n');
+ const value={kind:'revision',operation:'rewrite',snapshot:{title:'Synthetic long dual',text,mode:'reduce',context:{plan:'dual',revisionProduct:{version:1,kind:'aigc',mode:'dual'}}}};const created=await f.submit(value),id=created.value.item.id;await f.worker.tick();const job=f.get(id);assert.equal(job.status,'completed',JSON.stringify(job));assert.equal(f.calls.length,9);assert.equal(f.calls[0].settings.maxCostUsd,1);for(let i=1;i<f.calls.length;i++)assert.ok(f.calls[i].settings.maxCostUsd<f.calls[i-1].settings.maxCostUsd);assert.deepEqual(job.output.paragraphs.map(p=>p.original),paragraphs);assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,1);assert.equal(settings.maxCostUsd,.5);
+});
+
+test('exhausting long dual budget releases the hold and resumes only the missing units',async t=>{
+ let cost=.12;const f=fixture(t,{settings:{maxCostUsd:.5},runner:async({task})=>output(task,{costUsd:cost})}),paragraphs=Array.from({length:9},(_,i)=>`Record ${i} `.padEnd(1800,String.fromCharCode(65+i))),text=paragraphs.join('\n\n');
+ const value={kind:'revision',operation:'rewrite',snapshot:{title:'Synthetic long resume',text,mode:'reduce',context:{plan:'dual',revisionProduct:{version:1,kind:'aigc',mode:'dual'}}}};const first=await f.submit(value),id=first.value.item.id;await f.worker.tick();const failed=f.get(id);assert.equal(failed.status,'failed');assert.ok(failed.completedUnits>0&&failed.completedUnits<9);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.billing.balance(f.user.id).held,0);const completed=failed.completedUnits;cost=.02;
+ const retry=await f.submit(value,{resumeFromJobId:id});await f.worker.tick();const done=f.get(retry.value.item.id);assert.equal(done.status,'completed');assert.equal(f.calls.length,completed+1+(9-completed));assert.deepEqual(done.output.paragraphs.map(p=>p.original),paragraphs);assert.equal(f.billing.balance(f.user.id).balance,190);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,1);
 });

@@ -25,7 +25,7 @@ const definitions=[
  ['revision','降重复率 · 原文优化',['revision-reduce'],'整篇最多 10,000 字符','#category/reduce'],
  ['revision','降 AI 率 · 原文优化',['revision-aigc'],'整篇最多 10,000 字符','#category/aigc'],
  ['revision','检测报告定向优化',['revision-targeted'],'检测报告＋DOCX 原文；最多 10,000 字符','#category/reduce'],
- ['revision','AIGC 与重复率双向优化',['revision-dual'],'整篇最多 10,000 字符','#category/reduce'],
+ ['revision','AIGC 与重复率双向优化',['revision-dual'],'整篇最多 20,000 字符','#category/reduce'],
  ['revision','段落表达优化',['revision-paragraph'],'每次最多 1,000 字符','#category/reduce'],
  ['revision','学术润色',['polish'],'局部修改，每次最多 3,000 字符','#tool/polish','base'],
  ['revision','导师意见修改',['review'],'局部修改，每次最多 3,000 字符','#tool/review','base'],

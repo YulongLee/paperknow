@@ -128,6 +128,22 @@ const manuscript=()=>[{id:'methods',title:'研究方法',text:'本文采用问�
 const aiFinding=(extra={})=>({sectionId:'methods',quote:'本文采用问卷方法',category:'claim_scope',severity:'warning',explanation:'建议进一步澄清这是拟开展的方法。',suggestion:'保留拟开展的措辞并由作者核对。',...extra});
 const aiResult=(findings=[],extra={})=>({text:JSON.stringify({complete:true,findings,limitations:['仅检查已提供草稿片段。'],...extra})});
 
+test('source review receives only cited confirmed text with an explicit limited scope',()=>{
+ const snapshot={materials:[{id:'m',confirmed:true,text:'真实材料的确认内容'.repeat(200)},{id:'private',confirmed:true,text:'未引用的隐私内容'},{id:'unconfirmed',confirmed:false,text:'未确认内容'}],references:[{id:'a',confirmed:true,scope:'abstract',text:'已采纳摘要文字仅用于这一有限证据范围。'},{id:'metadata',confirmed:true,title:'没有正文的题录'}]};
+ const chapters=[{id:'one',text:'先讨论[source:m]，再引用摘要[source:a]，并包含[source:unconfirmed]和[source:metadata]。'}];
+ const before=structuredClone(snapshot),task=writingReviewTask({snapshot,chapters});
+ assert.deepEqual(task.context.sourceEvidence.items.map(row=>row.id),['m','a']);
+ assert.equal(task.context.sourceEvidence.citedCount,4);assert.equal(task.context.sourceEvidence.providedCount,2);assert.equal(task.context.sourceEvidence.limited,true);
+ assert.equal(task.context.sourceEvidence.items[0].text.length,1200);assert.equal(task.context.sourceEvidence.items[0].excerpted,true);assert.equal(task.context.sourceEvidence.items[1].scope,'abstract');
+ assert.doesNotMatch(JSON.stringify(task),/未引用的隐私内容|未确认内容/);assert.match(task.instructions,/不证明完整原文没有该事项/);assert.deepEqual(snapshot,before);
+});
+
+test('source review caps evidence and excludes ambiguous duplicate identifiers',()=>{
+ const materials=Array.from({length:8},(_,i)=>({id:'s'+i,confirmed:true,text:'事实'.repeat(1000)}));materials.push({id:'s0',confirmed:true,text:'不同内容'});
+ const task=writingReviewTask({snapshot:{materials},chapters:[{id:'one',text:materials.slice(0,8).map(row=>'引用[source:'+row.id+']。').join('')}]});
+ assert.ok(task.context.sourceEvidence.items.length<=6);assert.ok(task.context.sourceEvidence.items.reduce((n,row)=>n+row.text.length,0)<=4000);assert.ok(!task.context.sourceEvidence.items.some(row=>row.id==='s0'));assert.equal(task.context.sourceEvidence.limited,true);
+});
+
 test('review task includes bounded real excerpts, reports partial coverage and does not grant network or hidden-source tools',()=>{
  const chapters=[{id:'a',title:'章节',text:'研'.repeat(27000)},{id:'b',title:'未提供章节',text:'PRIVATE-EXCLUDED-SECTION'}],task=writingReviewTask({snapshot:{title:'论文',profile:{level:'硕士',language:'中文'},materials:[{text:'PRIVATE-SOURCE-BODY'}]},chapters});
  assert.equal(task.skill,'writing-review');assert.equal(task.context.manuscriptExcerpts.length,1);assert.equal(task.context.manuscriptExcerpts[0].text.length,26000);assert.equal(task.context.scope.excerpted,true);assert.equal(task.context.manuscriptExcerpts[0].totalCharacters,27000);assert.deepEqual(task.materials,[]);assert.doesNotMatch(JSON.stringify(task),/PRIVATE-EXCLUDED|PRIVATE-SOURCE-BODY/);assert.match(task.instructions,/不调用网络/);

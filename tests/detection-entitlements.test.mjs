@@ -58,15 +58,15 @@ test('AIGC bundles hold and settle one use per new text; cached submissions and 
 });
 
 test('failed and cancelled AIGC work releases its exact allowance and late upstream verdicts cannot settle it',async t=>{
- const f=fixture(t,{cloud:async()=>{throw Error('private upstream failure');}}),order=f.grant('detection-aigc'),service=f.aigc(),first=await f.submitAigc(service);await service.waitForIdle();assert.equal(f.used(order).used,0);assert.equal(f.used(order).held,0);assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(first.value.id).status,'released');assert.equal((await f.submitAigc(service)).value.id,first.value.id);
+ const f=fixture(t,{cloud:async()=>{throw Error('private upstream failure');}}),order=f.grant('detection-aigc'),service=f.aigc(),key=randomUUID(),first=await f.submitAigc(service,{idempotencyKey:key});await service.waitForIdle();assert.equal(f.used(order).used,0);assert.equal(f.used(order).held,0);assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(first.value.id).status,'released');assert.equal((await f.submitAigc(service,{idempotencyKey:key})).value.id,first.value.id);
  const started=deferred(),answer=deferred(),g=fixture(t,{cloud:async()=>{started.resolve();await answer.promise;return{label:'aigc',confidence:96};}}),grant=g.grant('detection-aigc'),pending=g.aigc(),created=await g.submitAigc(pending);await started.promise;
  await pending.handle({path:'/api/aigc-detections/'+created.value.id+'/cancel',method:'POST',user:g.user,readBody:async()=>({expectedUserId:g.user.id})});assert.equal(g.used(grant).held,0);assert.equal(g.db.prepare('SELECT status FROM jobs WHERE id=?').get(created.value.id).status,'cancelled');answer.resolve();await pending.waitForIdle();assert.equal(g.used(grant).used,0);assert.equal(g.db.prepare('SELECT status FROM aigc_detections WHERE id=?').get(created.value.id).status,'failed');
 });
 
 test('AIGC restart releases metered work without replay, and the generic worker cannot claim its mirror',async t=>{
- const started=deferred(),answer=deferred(),f=fixture(t,{cloud:async()=>{started.resolve();await answer.promise;return{label:'ugc',confidence:95};}}),order=f.grant('detection-aigc'),service=f.aigc(),first=await f.submitAigc(service);await started.promise;
+ const started=deferred(),answer=deferred(),f=fixture(t,{cloud:async()=>{started.resolve();await answer.promise;return{label:'ugc',confidence:95};}}),order=f.grant('detection-aigc'),service=f.aigc(),key=randomUUID(),first=await f.submitAigc(service,{idempotencyKey:key});await started.promise;
  const legacy=startWorker(f.db,f.config);await legacy.tick();await legacy.stop();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.value.id).status,'running');assert.equal(f.used(order).held,1);
- const restored=f.aigc();assert.equal(f.used(order).held,0);assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.value.id).status,'failed');assert.equal((await f.submitAigc(restored)).value.id,first.value.id);answer.resolve();await service.waitForIdle();assert.equal(f.used(order).used,0);assert.equal(f.calls.length,1);
+ const restored=f.aigc();assert.equal(f.used(order).held,0);assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.value.id).status,'failed');assert.equal((await f.submitAigc(restored,{idempotencyKey:key})).value.id,first.value.id);answer.resolve();await service.waitForIdle();assert.equal(f.used(order).used,0);assert.equal(f.calls.length,1);
 });
 
 test('web source comparison settles only after a complete private report and remains idempotent',async t=>{
@@ -179,10 +179,19 @@ test('nonempty undetermined AIGC segments keep diagnostics and release the packa
  const f=fixture(t,{cloud:async text=>text[0]==='A'?{label:'ugc',confidence:96}:{label:'undetermined',confidence:null}}),order=f.grant('detection-aigc',1),service=f.aigc();
  const created=await f.submitAigc(service,{text:'A'.repeat(5000)+'B'.repeat(100)});await service.waitForIdle();
  const item=(await service.handle({path:'/api/aigc-detections/'+created.value.id,method:'GET',user:f.user})).value;
- assert.equal(item.status,'failed');assert.equal(item.completedParts,2);assert.deepEqual(item.parts.map(part=>part.label),['ugc','undetermined']);assert.equal(item.parts[0].confidence,96);assert.equal(item.conclusive,false);assert.match(item.error,/未结算/);
+ assert.equal(item.status,'completed');assert.equal(item.completedParts,2);assert.deepEqual(item.parts.map(part=>part.label),['ugc','undetermined']);assert.equal(item.parts[0].confidence,96);assert.equal(item.conclusive,false);assert.match(item.error,/本次未扣费/);
  assert.equal(f.used(order).held,0);assert.equal(f.used(order).used,0);assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(item.id).status,'released');assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,0);
 });
 
+test('270 paragraph partial results remain usable, release the entitlement, and preserve the old report on retry',async t=>{
+ const f=fixture(t,{cloud:async text=>text.startsWith('UNKNOWN')?{label:'undetermined',confidence:null}:{label:'ugc',confidence:94}}),order=f.grant('detection-aigc',1),service=f.aigc();
+ const text=Array.from({length:270},(_,i)=>(i===8?'UNKNOWN':'段落'+i)+'测'.repeat(48)).join('\n');
+ const first=await f.submitAigc(service,{text});await service.waitForIdle();
+ const row=(await service.handle({path:'/api/aigc-detections/'+first.value.id,method:'GET',user:f.user})).value;
+ assert.equal(row.status,'completed');assert.equal(row.partCount,270);assert.equal(row.completedParts,270);assert.equal(row.parts[8].label,'undetermined');assert.equal(row.parts[269].label,'ugc');assert.equal(f.calls.length,270);assert.equal(row.conclusive,false);assert.match(row.error,/本次未扣费/);assert.equal(f.used(order).held,0);assert.equal(f.used(order).used,0);assert.equal(f.db.prepare('SELECT status FROM billing_reservations WHERE job_id=?').get(row.id).status,'released');
+ const second=await f.submitAigc(service,{text});assert.notEqual(second.value.id,row.id);await service.waitForIdle();assert.equal(f.calls.length,540);assert.equal(f.used(order).used,0);assert.equal(f.used(order).held,0);
+ const old=await service.handle({path:'/api/aigc-detections/'+row.id+'/report',method:'GET',user:f.user});assert.equal(old.value.text,text);assert.equal(old.value.item.id,row.id);assert.equal(old.value.item.parts[8].label,'undetermined');
+});
 test('whitespace-only AIGC segments do not create an extra provider call or block valid paid delivery',async t=>{
  const f=fixture(t),order=f.grant('detection-aigc',1),service=f.aigc(),created=await f.submitAigc(service,{text:' '.repeat(5000)+'B'.repeat(100)});await service.waitForIdle();
  const item=(await service.handle({path:'/api/aigc-detections/'+created.value.id,method:'GET',user:f.user})).value;
@@ -240,9 +249,32 @@ test('V1 joint detection settles only one 149-credit hold after both reports and
  for(const c of again.value.children)assert.equal(c.status,'completed');
 });
 test('V1 joint detection releases full price on partial failure and cannot be forged from the public child input',async t=>{
- const f=combinedFixture(t,{cloud:async()=>{throw Error('synthetic detector failure');}}),first=(await f.submit()).value;await f.aigc.waitForIdle();await f.worker.tick();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id).status,'failed');assert.equal(f.billing.balance(f.user.id).balance,1000);assert.equal(f.billing.balance(f.user.id).held,0);
+ const f=combinedFixture(t,{cloud:async()=>{throw Error('synthetic detector failure');}}),first=(await f.submit()).value;await f.aigc.waitForIdle();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id).status,'running');assert.equal(f.billing.balance(f.user.id).held,149);await f.worker.tick();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id).status,'failed');assert.equal(f.billing.balance(f.user.id).balance,1000);assert.equal(f.billing.balance(f.user.id).held,0);
  await assert.rejects(f.similarity.handle({path:'/api/web-similarity',method:'POST',user:f.user,readBody:async()=>({text:paragraph,title:'Forged',consent:true,expectedUserId:f.user.id,idempotencyKey:randomUUID(),fundingParent:first.id})}),{status:400});
+ const restored=(await f.joint.handle({path:'/api/combined-detections/'+first.id,method:'GET',user:f.user})).value;assert.equal(restored.children.find(c=>c.kind==='similarity').status,'completed');assert.equal(restored.children.find(c=>c.kind==='aigc').status,'failed');assert.doesNotMatch(JSON.stringify(restored),/synthetic detector failure/);
  assert.throws(()=>attachCombinedChild(f.db,{parentId:first.id,userId:'bob',childId:first.children[0].id,key:'detection-similarity',text:paragraph}),{status:409});
+});
+test('V1 joint detection releases the parent if an AI paragraph is undetermined',async t=>{
+ const f=combinedFixture(t,{cloud:async text=>text.startsWith('UNKNOWN')?{label:'undetermined',confidence:null}:{label:'ugc',confidence:94}});
+ const text='UNKNOWN'+'测'.repeat(60)+'\n'+paragraph;const first=(await f.submit({text})).value;await f.aigc.waitForIdle();assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id).status,'running');assert.equal(f.billing.balance(f.user.id).held,149);await f.worker.tick();
+ assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(first.id).status,'failed');assert.equal(f.billing.balance(f.user.id).balance,1000);assert.equal(f.billing.balance(f.user.id).held,0);
+ const child=f.db.prepare("SELECT child_id FROM combined_detection_children WHERE parent_id=? AND service_key='detection-aigc'").get(first.id);const result=(await f.aigc.handle({path:'/api/aigc-detections/'+child.child_id,method:'GET',user:f.user})).value;assert.equal(result.status,'completed');assert.equal(result.completedParts,2);assert.equal(result.conclusive,false);
+ const restored=(await f.joint.handle({path:'/api/combined-detections/'+first.id,method:'GET',user:f.user})).value;assert.equal(restored.status,'completed');assert.equal(restored.partial,true);assert.equal(restored.completed,2);assert.equal(restored.children.find(c=>c.kind==='aigc').partial,true);assert.equal(restored.children.find(c=>c.kind==='similarity').status,'completed');
+});
+test('joint retries failed input with a new key while preserving old idempotency and history',async t=>{
+ let fail=true;const f=combinedFixture(t,{cloud:async()=>{if(fail)throw Error('internal');return{label:'ugc',confidence:95};}}),key=randomUUID();
+ const first=(await f.submit({idempotencyKey:key})).value;await f.aigc.waitForIdle();await f.worker.tick();assert.equal((await f.submit({idempotencyKey:key})).value.id,first.id);await assert.rejects(f.submit({idempotencyKey:key,text:paragraph+'changed'}),{status:409});
+ fail=false;const retry=(await f.submit()).value;assert.notEqual(retry.id,first.id);await f.aigc.waitForIdle();await f.worker.tick();assert.equal((await f.joint.handle({path:'/api/combined-detections/'+retry.id,method:'GET',user:f.user})).value.status,'completed');assert.equal((await f.submit({idempotencyKey:key})).value.id,first.id);assert.equal(f.billing.balance(f.user.id).balance,851);
+});
+test('retry of partial joint detection preserves both historical reports without additional calls on reads or idempotent replay',async t=>{
+ let unknown=true;const f=combinedFixture(t,{cloud:async text=>unknown&&text.startsWith('UNKNOWN')?{label:'undetermined',confidence:null}:{label:'ugc',confidence:94}}),text='UNKNOWN'+'测'.repeat(60)+'\n'+paragraph,key=randomUUID();
+ const first=(await f.submit({text,idempotencyKey:key})).value;await f.aigc.waitForIdle();await f.worker.tick();const old=(await f.joint.handle({path:'/api/combined-detections/'+first.id,method:'GET',user:f.user})).value;
+ assert.equal(old.partial,true);assert.equal(old.status,'completed');const ai=old.children.find(c=>c.kind==='aigc'),web=old.children.find(c=>c.kind==='similarity');assert.equal(ai.status,'completed');assert.equal(web.status,'completed');
+ const beforeReads=f.calls.length,firstAi=(await f.aigc.handle({path:'/api/aigc-detections/'+ai.id+'/report',method:'GET',user:f.user})).value,firstWeb=(await f.similarity.handle({path:'/api/web-similarity/'+web.id+'/report',method:'GET',user:f.user})).value;
+ assert.equal(firstAi.text,text);assert.equal(firstAi.item.id,ai.id);assert.equal(firstWeb.report.id,web.id);assert.equal(f.calls.length,beforeReads);
+ unknown=false;const second=(await f.submit({text})).value;assert.notEqual(second.id,first.id);await f.aigc.waitForIdle();await f.worker.tick();const afterRetry=f.calls.length;
+ const oldReplay=(await f.submit({text,idempotencyKey:key})).value;assert.equal(oldReplay.id,first.id);assert.equal(oldReplay.partial,true);const oldAi=(await f.aigc.handle({path:'/api/aigc-detections/'+ai.id+'/report',method:'GET',user:f.user})).value,oldWeb=(await f.similarity.handle({path:'/api/web-similarity/'+web.id+'/report',method:'GET',user:f.user})).value;
+ assert.equal(oldAi.text,text);assert.equal(oldAi.item.id,ai.id);assert.equal(oldAi.item.parts[0].label,'undetermined');assert.equal(oldWeb.report.id,web.id);assert.equal(f.calls.length,afterRetry);
 });
 test('V1 joint detection rejects stale prices and invalid text before any hold or provider call',async t=>{
  const f=combinedFixture(t);await assert.rejects(f.submit({expectedCreditCost:99}),{status:409});await assert.rejects(f.submit({text:'too short'}),{status:400});assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,0);assert.equal(f.calls.length,0);

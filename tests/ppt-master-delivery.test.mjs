@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import {randomUUID} from 'node:crypto';
 import JSZip from 'jszip';
+import {DOMParser} from '@xmldom/xmldom';
 import {database} from '../backend/database.mjs';
 import {createAPI} from '../backend/api.mjs';
 import {createSession} from '../backend/auth.mjs';
@@ -17,6 +18,18 @@ const input=()=>({kind:'presentation',operation:'ppt',snapshot:{title:'【合成
 const fixtureZip=new JSZip();fixtureZip.file('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>',{date:new Date('2026-01-01T00:00:00Z')});fixtureZip.file('ppt/presentation.xml','<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>',{date:new Date('2026-01-01T00:00:00Z')});
 const fixtureBuffer=await fixtureZip.generateAsync({type:'nodebuffer'});
 const xml=value=>String(value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[ch]));
+async function mockNativePresentation(slides){
+ const zip=new JSZip(),rel='http://schemas.openxmlformats.org/package/2006/relationships';
+ zip.file('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>');
+ zip.file('_rels/.rels',`<Relationships xmlns="${rel}"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/></Relationships>`);
+ zip.file('ppt/presentation.xml','<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>');
+ for(const [index,slide] of slides.entries()){
+  const content=Array.from(new DOMParser().parseFromString(slide.svg,'image/svg+xml').getElementsByTagName('text')).map(n=>xml(n.textContent)).join('');
+  zip.file(`ppt/slides/slide${index+1}.xml`,`<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:cSld><p:spTree><p:grpSpPr></p:grpSpPr><p:sp><p:cNvPr id="2" name="text"/><a:t>${content}</a:t></p:sp></p:spTree></p:cSld></p:sld>`);
+  zip.file(`ppt/slides/_rels/slide${index+1}.xml.rels`,`<Relationships xmlns="${rel}"></Relationships>`);
+ }
+ return zip.generateAsync({type:'nodebuffer'});
+}
 const result=(body,materials)=>({text:JSON.stringify({complete:true,...body}),trace:materials.map(row=>({tool:'read_material',status:'completed',materialId:row.id,offset:0,limit:row.text.length})),usage:{input:100,output:100},costUsd:.001});
 function author({task,validateToolOutput}){
  let output;
@@ -38,7 +51,7 @@ async function fixture(t,extra={}){
  for(const id of ['alice','bob']){db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run(id,id+'@example.invalid',id,null,'user',new Date().toISOString());users[id]={id,cookie:'pk_session='+createSession(db,id)};}
  const storage=createStorage({ossBucket:'synthetic-ppt-bucket',ossEndpoint:'https://oss-cn-shanghai.aliyuncs.com',ossRegion:'cn-shanghai',ossPrefix:'paperknow/',ossAccessKeyId:'synthetic-id',ossAccessKeySecret:'synthetic-secret'},{async put(key,value,options){const upload={key,buffer:Buffer.from(value),options};uploads.push(upload);await hooks.beforePut?.(upload);objects.set(key,Buffer.from(value));},async get(key){return{content:objects.get(key)};},async delete(key){await hooks.beforeDelete?.(key);removals.push(key);objects.delete(key);}});
  let authorCalls=0,rendererCalls=0,worker;
- const config={storage,getAI:()=>({enabled:false}),getAgentSettings:version=>!version||version===runtime.version?{...runtime}:null,agentTaskRunner:async args=>{authorCalls++;return author(args);},pptMasterEnabled:true,pptMasterRenderer:async({slides,signal})=>{rendererCalls++;assert.equal(slides.length,6);assert.equal(signal.aborted,false);return{pptx:fixtureBuffer};},toolPollMs:60000,...extra};
+ const config={storage,getAI:()=>({enabled:false}),getAgentSettings:version=>!version||version===runtime.version?{...runtime}:null,agentTaskRunner:async args=>{authorCalls++;return author(args);},pptMasterEnabled:true,pptMasterRenderer:async({slides,signal})=>{rendererCalls++;assert.equal(slides.length,6);assert.equal(signal.aborted,false);return{pptx:await mockNativePresentation(slides)};},toolPollMs:60000,...extra};
  const billing=createBillingService(db,config);config.billing=billing;
  const api=createAPI(db,{cancel(id){worker?.cancel(id);}},config),server=http.createServer((req,res)=>void api(req,res));worker=startToolRunWorker(db,config);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+server.address().port;
  t.after(async()=>{for(const waiting of gates)waiting.release();await worker.stop();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();});
@@ -52,8 +65,8 @@ async function fixture(t,extra={}){
 function uncharged(f,id){assert.equal(f.billing.balance('alice').balance,200);assert.equal(f.billing.balance('alice').held,0);assert.equal(f.eventCount('settle',id),0);assert.equal(f.eventCount('release',id),1);assert.equal(f.db.prepare('SELECT count(*) n FROM results WHERE job_id=?').get(id).n,0);}
 
 test('text-only page redesigns retain the content diagram and settle once without further model repair',async t=>{
- let visualPages=0,calls=0;const f=await fixture(t,{agentTaskRunner:async args=>{calls++;const output=author(args);if(args.task.context.operation==='ppt-master-slide'){const candidate=JSON.parse(output.text);candidate.svg=candidate.svg.replace(/<g id="visual-[^"]+">[\s\S]*?<\/g>/g,'');output.text=JSON.stringify(candidate);assert.equal(args.validateToolOutput(output).valid,true);}return output;},pptMasterRenderer:async({slides})=>{visualPages=slides.filter(s=>s.visualKind&&s.svg.includes('id="visual-'+s.visualKind+'"')).length;return{pptx:fixtureBuffer};}});
- f.pay();const job=await f.submit();await f.worker.tick();const item=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(item.status,'completed');assert.equal(visualPages,5);assert.equal(calls,7);assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.eventCount('release',job.id),0);const metrics=JSON.parse(f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(job.id).metrics);assert.equal(metrics.presentationLayout.validatedPages,5);assert.equal(metrics.presentationLayout.aiPages,1);
+ let visualPages=0,calls=0;const f=await fixture(t,{agentTaskRunner:async args=>{calls++;const output=author(args);if(args.task.context.operation==='ppt-master-slide'){const candidate=JSON.parse(output.text);candidate.svg=candidate.svg.replace(/<g id="visual-[^"]+">[\s\S]*?<\/g>/g,'');output.text=JSON.stringify(candidate);assert.equal(args.validateToolOutput(output).valid,true);}return output;},pptMasterRenderer:async({slides})=>{visualPages=slides.filter(s=>s.visualKind&&s.svg.includes('id="visual-'+s.visualKind+'"')).length;return{pptx:await mockNativePresentation(slides)};}});
+ f.pay();const job=await f.submit();await f.worker.tick();const item=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(item.status,'completed');assert.equal(visualPages,4);assert.equal(calls,1);assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.eventCount('release',job.id),0);const metrics=JSON.parse(f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(job.id).metrics);assert.equal(metrics.presentationLayout.validatedPages,6);assert.equal(metrics.presentationLayout.aiPages,0);
 });
 
 test('twelve-page content repairs the exact second batch and delivers all pages with one settlement',async t=>{
@@ -65,11 +78,11 @@ test('twelve-page content repairs the exact second batch and delivers all pages 
    for(let i=0;i<8;i++)assert.equal(args.validateToolOutput(bad).feedback.presentation.expectedCount,6);
   }
   return author(args);
- },pptMasterRenderer:async({slides})=>{rendered++;assert.deepEqual(slides.map(s=>s.id),Array.from({length:12},(_,i)=>'slide-'+(i+1)));if(getPptMasterRuntimeStatus().ready){nativeProof=await createPptMasterRuntime().render({slides});assert.equal(nativeProof.validation.slideCount,12);assert.ok(nativeProof.validation.nativeShapeCount>=12);return nativeProof;}return{pptx:fixtureBuffer};}});
+ },pptMasterRenderer:async({slides})=>{rendered++;assert.deepEqual(slides.map(s=>s.id),Array.from({length:12},(_,i)=>'slide-'+(i+1)));if(getPptMasterRuntimeStatus().ready){nativeProof=await createPptMasterRuntime().render({slides});assert.equal(nativeProof.validation.slideCount,12);assert.ok(nativeProof.validation.nativeShapeCount>=12);return nativeProof;}return{pptx:await mockNativePresentation(slides)};}});
  f.pay();const value=input();value.snapshot.context.pages=12;const job=await f.submit(value);await f.worker.tick();
  const completed=(await f.request('/tool-runs/jobs/'+job.id)).value.item;
  assert.equal(completed.status,'completed',JSON.stringify(completed));assert.equal(completed.output.slides.length,12);assert.equal(completed.completedUnits,2);assert.equal(completed.progress.completedPages,12);assert.equal(rendered,1);
- assert.deepEqual(tasks.filter(t=>t.operation==='ppt').map(t=>t.unit),['unit-0','unit-1']);assert.equal(tasks.filter(t=>t.operation==='ppt-master-slide').length,12);
+ assert.deepEqual(tasks.filter(t=>t.operation==='ppt').map(t=>t.unit),['unit-0','unit-1']);assert.equal(tasks.filter(t=>t.operation==='ppt-master-slide').length,0);
  const diagnostic=f.db.prepare('SELECT code,metrics FROM tool_diagnostics WHERE run_id=?').get(job.id),metrics=JSON.parse(diagnostic.metrics);
  assert.equal(diagnostic.code,'ppt_completed_after_repair');assert.equal(metrics.presentationValidation.rejected,8);assert.equal(metrics.presentationValidation.recent.length,6);
  for(const r of metrics.presentationValidation.recent){assert.equal(r.code,'ppt_page_count');assert.equal(r.unitId,'unit-1');assert.equal(r.expectedCount,6);assert.equal(r.actualCount,1);}
@@ -90,7 +103,7 @@ test('second-batch failure records safe repair causes and explicit resume skips 
    }
   }
   return author(args);
- },pptMasterRenderer:async({slides})=>{assert.equal(slides.length,12);return{pptx:fixtureBuffer};}});
+ },pptMasterRenderer:async({slides})=>{assert.equal(slides.length,12);return{pptx:await mockNativePresentation(slides)};}});
  f.pay();const value=input();value.snapshot.context.pages=12;const job=await f.submit(value);await f.worker.tick();
  const failed=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(failed.status,'failed');assert.equal(failed.completedUnits,1);uncharged(f,job.id);assert.equal(f.uploads.length,0);
  const diagnostic=f.db.prepare('SELECT code,metrics FROM tool_diagnostics WHERE run_id=?').get(job.id);assert.equal(diagnostic.code,'turn_limit');assert.equal(JSON.parse(diagnostic.metrics).presentationValidation.recent[0].code,'ppt_completion');
@@ -107,12 +120,12 @@ test('unavailable presentation generation rejects the quote before reserving poi
 test('owned presentation HTTP lifecycle publishes three private files and settles ten points once',async t=>{
  const f=await fixture(t);f.pay();const job=await f.submit();assert.equal(f.billing.balance('alice').held,10);
  assert.equal((await f.request('/tool-runs/jobs/'+job.id,undefined,null)).status,401);assert.equal((await f.request('/tool-runs/jobs/'+job.id,undefined,'bob')).status,404);
- await f.worker.tick();const completed=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(completed.status,'completed',JSON.stringify(completed));assert.equal(completed.snapshot.text,source);assert.equal(completed.snapshot.context.pages,6);assert.equal(completed.completedUnits,1);assert.equal(completed.totalUnits,1);assert.equal(completed.progress.completedPages,6);assert.equal(completed.output.slides.length,6);assert.equal(completed.output.artifacts.length,3);assert.deepEqual(completed.output.artifacts.map(item=>item.role),['deck','preview','sources']);assert.equal(f.authorCalls(),7);assert.equal(f.rendererCalls(),1);
+ await f.worker.tick();const completed=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(completed.status,'completed',JSON.stringify(completed));assert.equal(completed.snapshot.text,source);assert.equal(completed.snapshot.context.pages,6);assert.equal(completed.completedUnits,1);assert.equal(completed.totalUnits,1);assert.equal(completed.progress.completedPages,6);assert.equal(completed.output.slides.length,6);assert.equal(completed.output.artifacts.length,3);assert.deepEqual(completed.output.artifacts.map(item=>item.role),['deck','preview','sources']);assert.equal(f.authorCalls(),1);assert.equal(f.rendererCalls(),1);
  assert.equal(f.uploads.length,3);for(const upload of f.uploads){assert.match(upload.key,/^paperknow\/users\/alice\/exports\//);assert.equal(upload.options.headers['x-oss-object-acl'],'private');assert.equal(upload.options.headers['Content-Disposition'],'attachment');}
  const list=(await f.request('/artifacts')).value;assert.equal(list.total,3);assert.equal((await f.request('/artifacts',undefined,'bob')).value.total,0);
- for(const artifact of completed.output.artifacts){const downloaded=await f.call(artifact.downloadUrl+'?expectedUserId=alice');assert.equal(downloaded.status,200);assert.match(downloaded.headers.get('content-disposition'),/^attachment/);assert.equal(downloaded.headers.get('x-content-type-options'),'nosniff');const bytes=Buffer.from(await downloaded.arrayBuffer());assert.equal(bytes.length,artifact.bytes);if(artifact.role==='deck')assert.deepEqual(bytes,fixtureBuffer);if(artifact.role==='preview'){assert.match(bytes.toString(),/<svg/);assert.match(bytes.toString(),/Content-Security-Policy/);}if(artifact.role==='sources'){const zip=await JSZip.loadAsync(bytes);assert.equal(Object.keys(zip.files).filter(name=>/^slides\/slide-\d+\.svg$/.test(name)).length,6);assert.match(await zip.file('notes/slide-01.txt').async('string'),/合成资料/);assert.doesNotMatch(await zip.file('manifest.json').async('string'),/apiKey|private-synthetic|revision/);}assert.equal((await f.call(artifact.downloadUrl,undefined,'bob')).status,404);assert.equal((await f.call(artifact.downloadUrl+'?expectedUserId=bob')).status,409);}
+ for(const artifact of completed.output.artifacts){const downloaded=await f.call(artifact.downloadUrl+'?expectedUserId=alice');assert.equal(downloaded.status,200);assert.match(downloaded.headers.get('content-disposition'),/^attachment/);assert.equal(downloaded.headers.get('x-content-type-options'),'nosniff');const bytes=Buffer.from(await downloaded.arrayBuffer());assert.equal(bytes.length,artifact.bytes);if(artifact.role==='deck'){const zip=await JSZip.loadAsync(bytes);assert.ok(zip.file('ppt/media/paperknow-template.png'));assert.match(await zip.file('ppt/slides/slide1.xml').async('string'),/<a:t>/);}if(artifact.role==='preview'){assert.match(bytes.toString(),/<svg/);assert.match(bytes.toString(),/Content-Security-Policy/);}if(artifact.role==='sources'){const zip=await JSZip.loadAsync(bytes);assert.equal(Object.keys(zip.files).filter(name=>/^slides\/slide-\d+\.svg$/.test(name)).length,6);assert.match(await zip.file('notes/slide-01.txt').async('string'),/合成资料/);assert.doesNotMatch(await zip.file('manifest.json').async('string'),/apiKey|private-synthetic|revision/);}assert.equal((await f.call(artifact.downloadUrl,undefined,'bob')).status,404);assert.equal((await f.call(artifact.downloadUrl+'?expectedUserId=bob')).status,409);}
  assert.doesNotMatch(JSON.stringify(completed),/private-synthetic|synthetic-secret|storage_key|settings_version|runtimeRoot/);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.db.prepare('SELECT count(*) n FROM results WHERE job_id=?').get(job.id).n,1);assert.equal((await f.request('/results/'+completed.resultId)).value.item.body.presentation.artifactId,completed.output.presentation.artifactId);
- const acknowledged=await f.request('/tool-runs/jobs',{...job.command,billingToken:'expired-after-completion'});assert.equal(acknowledged.status,200);assert.equal(acknowledged.value.item.id,job.id);await f.worker.tick();assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.authorCalls(),7);assert.equal(f.uploads.length,3);
+ const acknowledged=await f.request('/tool-runs/jobs',{...job.command,billingToken:'expired-after-completion'});assert.equal(acknowledged.status,200);assert.equal(acknowledged.value.item.id,job.id);await f.worker.tick();assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.authorCalls(),1);assert.equal(f.uploads.length,3);
 });
 
 test('ready files stay absent from listing and blocked from download until all uploads and billing complete',async t=>{
@@ -164,43 +177,43 @@ test('a job deadline before the content loop releases the hold and cannot leave 
 
 for(const [label,pptMasterMaxTokens,expected] of [['default',undefined,1000000],['configured',1500000,1500000],['upper bound',2000000,2000000],['invalid override',2000001,1000000]])test('PPT worker uses '+label+' dedicated tokens while preserving the saved aggregate dollar cap',async t=>{
  const settings=[];const f=await fixture(t,{pptMasterMaxTokens,toolMaxTokens:1000,agentTaskRunner:async args=>{settings.push(args.settings);return author(args);}});f.pay();const job=await f.submit();await f.worker.tick();
- const completed=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(completed.status,'completed',JSON.stringify(completed));assert.equal(settings.length,7);
+ const completed=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(completed.status,'completed',JSON.stringify(completed));assert.equal(settings.length,1);
  for(const [index,setting] of settings.entries()){assert.equal(setting.maxTotalTokens,expected-index*200);assert.ok(Math.abs(setting.maxCostUsd-(index===0?runtime.maxCostUsd:Math.min(.12,runtime.maxCostUsd-index*.001)))<1e-10);assert.equal(setting.maxTurns,index===0?runtime.maxTurns:4);assert.equal(setting.maxOutputTokens,runtime.maxOutputTokens);}
  assert.equal(f.eventCount('settle',job.id),1);
 });
 
 test('a full content plan can finish all twelve pages within the frozen budget without another paid layout call',async t=>{
  let contentCalls=0;
- const f=await fixture(t,{agentTaskRunner:async args=>{assert.equal(args.task.context.operation,'ppt');contentCalls++;return {...author(args),costUsd:.2475};},pptMasterRenderer:async({slides})=>{assert.equal(slides.length,12);assert.ok(slides.every(slide=>slide.layoutMethod==='validated'));return{pptx:fixtureBuffer};}});
+ const f=await fixture(t,{agentTaskRunner:async args=>{assert.equal(args.task.context.operation,'ppt');contentCalls++;return {...author(args),costUsd:.2475};},pptMasterRenderer:async({slides})=>{assert.equal(slides.length,12);assert.ok(slides.every(slide=>slide.layoutMethod==='validated'));return{pptx:await mockNativePresentation(slides)};}});
  f.pay();const value=input();value.snapshot.context.pages=12;const job=await f.submit(value);await f.worker.tick();const completed=(await f.request('/tool-runs/jobs/'+job.id)).value.item;
  assert.equal(completed.status,'completed',JSON.stringify(completed));assert.equal(contentCalls,2);assert.equal(completed.completedUnits,2);assert.equal(completed.progress.completedPages,12);assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.billing.balance('alice').balance,190);
- const metrics=JSON.parse(f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(job.id).metrics);assert.equal(metrics.presentationLayout.validatedPages,12);assert.equal(metrics.presentationLayout.reasons.budget_exceeded,12);assert.equal(metrics.sdkCost.used,.495);
+ const metrics=JSON.parse(f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(job.id).metrics);assert.equal(metrics.presentationLayout.validatedPages,12);assert.equal(metrics.presentationLayout.reasons.layout_repair,12);assert.equal(metrics.sdkCost.used,.495);
 });
 
-test('a bounded failed page design uses a validated editable layout and continues the remaining pages once',async t=>{
+test('a standard page uses the selected template without invoking an unnecessary model layout',async t=>{
  let layoutCalls=0;
  const f=await fixture(t,{agentTaskRunner:async args=>{if(args.task.context.operation==='ppt-master-slide'){layoutCalls++;assert.ok(args.task.context.startingSvg);assert.ok(args.settings.maxTurns<=4);if(args.task.context.design.current.page===1)throw Object.assign(Error('Synthetic layout repair exhausted'),{code:'turn_limit',status:502,usage:{input:500,output:100},costUsd:.01});}return author(args);}});
  f.pay();const job=await f.submit();await f.worker.tick();const completed=(await f.request('/tool-runs/jobs/'+job.id)).value.item;
- assert.equal(completed.status,'completed',JSON.stringify(completed));assert.equal(layoutCalls,1);assert.equal(f.eventCount('settle',job.id),1);assert.equal(completed.progress.completedPages,6);
- const metrics=JSON.parse(f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(job.id).metrics);assert.equal(metrics.presentationLayout.validatedPages,6);assert.equal(metrics.presentationLayout.aiPages,0);assert.equal(metrics.presentationLayout.reasons.turn_limit,6);
+ assert.equal(completed.status,'completed',JSON.stringify(completed));assert.equal(layoutCalls,0);assert.equal(f.eventCount('settle',job.id),1);assert.equal(completed.progress.completedPages,6);
+ const metrics=JSON.parse(f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(job.id).metrics);assert.equal(metrics.presentationLayout.validatedPages,6);assert.equal(metrics.presentationLayout.aiPages,0);assert.equal(metrics.presentationLayout.reasons.layout_repair,6);
 });
 
 test('unknown usage and cancellation never become a successful fallback deck',async t=>{
  for(const kind of ['unknown','cancel']){
-  let f;f=await fixture(t,{agentTaskRunner:async args=>{if(args.task.context.operation==='ppt-master-slide'){if(kind==='cancel')f.worker.cancel(f.db.prepare("SELECT id FROM tool_runs WHERE status='running'").get().id);throw Object.assign(Error('Synthetic stopped author'),{code:'turn_limit',status:502,...(kind==='unknown'?{}:{usage:{input:50,output:10},costUsd:.001})});}return author(args);}});f.pay();const job=await f.submit();await f.worker.tick();const row=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(row.status,kind==='cancel'?'cancelled':'failed');assert.equal(row.output,null);assert.equal(f.rendererCalls(),0);uncharged(f,job.id);
+  let f;f=await fixture(t,{agentTaskRunner:async args=>{if(args.task.context.operation==='ppt'){if(kind==='cancel')f.worker.cancel(f.db.prepare("SELECT id FROM tool_runs WHERE status='running'").get().id);throw Object.assign(Error('Synthetic stopped author'),{code:'turn_limit',status:502,...(kind==='unknown'?{}:{usage:{input:50,output:10},costUsd:.001})});}return author(args);}});f.pay();const job=await f.submit();await f.worker.tick();const row=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(row.status,kind==='cancel'?'cancelled':'failed');assert.equal(row.output,null);assert.equal(f.rendererCalls(),0);uncharged(f,job.id);
  }
 });
 
-test('two completed content batches do not misclassify a failed first-page authorization as completed layout',async t=>{
- const f=await fixture(t,{agentTaskRunner:async args=>{if(args.task.context.operation==='ppt-master-slide')throw Object.assign(Error('Synthetic access denied'),{code:'access_denied',status:403,usage:{input:20,output:10},costUsd:.001});return author(args);}});
+test('two completed batches preserve the exact design progress when a complex page authorization fails',async t=>{
+ const f=await fixture(t,{agentTaskRunner:async args=>{if(args.task.context.operation==='ppt-master-slide')throw Object.assign(Error('Synthetic access denied'),{code:'access_denied',status:403,usage:{input:20,output:10},costUsd:.001});const output=author(args);if(args.task.context.unit.start===0){const candidate=JSON.parse(output.text);candidate.slides[1].body=source.repeat(25);output.text=JSON.stringify(candidate);}return output;}});
  f.pay();const value=input();value.snapshot.context.pages=12;const job=await f.submit(value);await f.worker.tick();const row=(await f.request('/tool-runs/jobs/'+job.id)).value.item;
- assert.equal(row.status,'failed');assert.equal(row.completedUnits,2);assert.equal(row.totalUnits,2);assert.equal(row.progress.stage,'authoring');assert.equal(row.progress.completedPages,0);assert.equal(f.rendererCalls(),0);uncharged(f,job.id);
+ assert.equal(row.status,'failed');assert.equal(row.completedUnits,2);assert.equal(row.totalUnits,2);assert.equal(row.progress.stage,'authoring');assert.equal(row.progress.completedPages,1);assert.equal(f.rendererCalls(),0);uncharged(f,job.id);assert.equal(f.db.prepare('SELECT code FROM tool_diagnostics WHERE run_id=?').get(job.id).code,'access_denied');
  f.db.prepare('DELETE FROM tool_diagnostics WHERE run_id=?').run(job.id);assert.equal((await f.request('/tool-runs/jobs/'+job.id)).value.item.progress.stage,'authoring','legacy failures without a saved phase recover their real layout stage');
 });
 
-test('the observed SDK cost-budget stop finishes with checked layouts instead of spending on each later page',async t=>{
+test('selected layouts avoid a known SDK cost-budget failure without invoking its model call',async t=>{
  let calls=0;const f=await fixture(t,{agentTaskRunner:async args=>{if(args.task.context.operation==='ppt-master-slide'){calls++;throw Object.assign(Error('Agent 已达到预算上限，结果未完成'),{code:'cost_budget',status:502,usage:{input:8290,output:1036},costUsd:.04736525});}return author(args);}});
  f.pay();const job=await f.submit();await f.worker.tick();const row=(await f.request('/tool-runs/jobs/'+job.id)).value.item;
- assert.equal(row.status,'completed',JSON.stringify(row));assert.equal(calls,1);assert.equal(row.progress.completedPages,6);assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.billing.balance('alice').balance,190);
- const metrics=JSON.parse(f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(job.id).metrics);assert.equal(metrics.presentationLayout.reasons.cost_budget,6);assert.ok(metrics.sdkCost.used<metrics.sdkCost.limit);
+ assert.equal(row.status,'completed',JSON.stringify(row));assert.equal(calls,0);assert.equal(row.progress.completedPages,6);assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.billing.balance('alice').balance,190);
+ const metrics=JSON.parse(f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(job.id).metrics);assert.equal(metrics.presentationLayout.reasons.layout_repair,6);assert.ok(metrics.sdkCost.used<metrics.sdkCost.limit);
 });

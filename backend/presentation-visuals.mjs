@@ -8,7 +8,7 @@ export function presentationChartRows(slide){
 }
 export function presentationVisualKind(slide){
  const n=paragraphs(slide).length;if(slide.layout==='cover')return 'cover';if(slide.layout==='closing')return 'closing';
- if(!n)return null;if(n===1||n>6)return 'illustration';if(presentationChartRows(slide))return 'bars';
+ if(!n)return null;if(/目录|汇报结构|报告结构|agenda|contents/i.test(slide.title))return 'agenda';if(n===1||n>6)return 'illustration';if(presentationChartRows(slide))return 'bars';
  if(/流程|步骤|技术路线|工作流|pipeline|workflow|steps|procedure/i.test(slide.title))return 'process';
  if(/架构|系统结构|组成|模块|framework|architecture|components/i.test(slide.title))return 'architecture';
  if(/对比|比较|差异|优势|contrast|compar|versus/i.test(slide.title)||slide.layout==='twoColumn')return 'comparison';
@@ -43,17 +43,25 @@ export function presentationVisualArrangement(slide,plan,bodySize,titleSize,wrap
   let y=bodyTop;for(const row of rows){const h=wrapBody(row.text,688).length*bodySize*1.5+16;if(!add(row,72,y,712,h)||y+h>bottom)return null;y+=h+16;}
   const center=kind==='cover'?355:(bodyTop+bottom)/2,radius=kind==='cover'?159:Math.min(159,(bottom-bodyTop)/2-12),size=Math.min(218,radius*1.4);
   if(radius<40)return null;
-  art=`<circle cx="1045" cy="${center}" r="${radius}" fill="${p.secondary}"/><circle cx="1045" cy="${center}" r="${radius*0.8}" fill="none" stroke="${p.divider}" stroke-width="2"/>`+glyph(slide.title+' '+slide.body,1045-size/2,center-size/2,size,p)+`<rect x="940" y="${center+radius+16}" width="210" height="6" fill="${p.accent}"/>`;
+  const icon=glyph(slide.title+' '+slide.body,1045-size/2,center-size/2,size,p);
+  const orbit=`<circle cx="1045" cy="${center}" r="${radius}" fill="${p.secondary}"/><circle cx="1045" cy="${center}" r="${radius*0.8}" fill="none" stroke="${p.divider}" stroke-width="2"/>`+icon+`<rect x="940" y="${center+radius+16}" width="210" height="6" fill="${p.accent}"/>`;
+  const motifs={orbit,ribbon:`<polygon points="875,${center-140} 1095,${center-140} 1215,${center+140} 995,${center+140}" fill="${p.secondary}"/><polygon points="900,${center-140} 928,${center-140} 1048,${center+140} 1020,${center+140}" fill="${p.accent}"/>`+icon,geometry:`<rect x="885" y="${center-140}" width="300" height="280" rx="20" fill="${p.secondary}"/><rect x="905" y="${center-120}" width="260" height="240" rx="12" fill="${p.background}" stroke="${p.divider}" stroke-width="2"/>`+icon+`<rect x="1145" y="${center+95}" width="28" height="28" fill="${p.accent}"/>`,minimal:`<rect x="885" y="${center-140}" width="300" height="280" fill="${p.secondary}"/>`+icon+`<line x1="905" y1="${center+120}" x2="1165" y2="${center+120}" stroke="${p.accent}" stroke-width="3"/>`};
+  art=kind==='cover'?(motifs[plan.coverVariant]||orbit):orbit;
+ }else if(kind==='agenda'){
+  const h=(bottom-bodyTop)/rows.length;if(h<bodySize*1.5+20)return null;
+  for(const [i,row]of rows.entries()){const y=bodyTop+i*h;art+=`<rect x="84" y="${y+18}" width="7" height="7" fill="${p.accent}"/><line x1="108" y1="${y+h-10}" x2="1190" y2="${y+h-10}" stroke="${p.divider}" stroke-width="1"/>`;if(!add(row,108,y,1082,h-16,true))return null;}
  }else if(kind==='bars'){
   const chart=presentationChartRows(slide),max=['%','％'].includes(chart[0].unit)?100:Math.max(...chart.map(row=>row.value)),height=(bottom-bodyTop)/rows.length;
   if(height<bodySize*1.5+34)return null;
-  rows.forEach((row,i)=>{const y=bodyTop+i*height;art+=`<rect x="84" y="${y+height-20}" width="1088" height="12" rx="6" fill="${p.secondary}"/>${(chart[i].value/max)*1088>=0.000001?`<rect x="84" y="${y+height-20}" width="${Number(((chart[i].value/max)*1088).toFixed(6))}" height="12" rx="6" fill="${i===chart.length-1?p.primary:p.accent}"/>`:''}`;});
+  rows.forEach((row,i)=>{const y=bodyTop+i*height;art+=`<rect x="84" y="${y+height-20}" width="1088" height="12" rx="6" fill="${p.secondary}"/>${(chart[i].value/max)*1088>=0.000001?`<rect x="84" y="${y+height-20}" width="${Number(((chart[i].value/max)*1088).toFixed(6))}" height="12" rx="6" fill="${i===chart.length-1?p.text:p.accent}"/>`:''}`;});
   for(const [i,row]of rows.entries())if(!add(row,72,bodyTop+i*height,1136,height-28))return null;
  }else{
   const horizontal=kind==='process'&&rows.length<=4,cols=horizontal?rows.length:kind==='process'?1:rows.length===2?2:rows.length===4?2:3,count=Math.ceil(rows.length/cols),gap=kind==='process'?38:24,w=(1136-gap*(cols-1))/cols,available=(bottom-bodyTop-24*(count-1))/count,desired=horizontal?Math.max(...rows.map(row=>wrapBody(row.text,w-48).length*bodySize*1.5+118)):cols>1?Math.max(...rows.map(row=>wrapBody(row.text,w-48).length*bodySize*1.5+102)):available,h=Math.min(available,Math.max(count===1?270:190,desired)),offset=count===1?Math.max(0,(available-h)/3):0;
   for(const [i,row]of rows.entries()){
    const col=i%cols,r=Math.floor(i/cols),x=72+col*(w+gap),y=bodyTop+offset+r*(h+24),vertical=kind==='process'&&!horizontal;
-   art+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="${p.secondary}" stroke="${p.divider}" stroke-width="1"/>`;
+   art+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${plan.designStyle?.cardRadius??14}" fill="${kind==='concepts'||kind==='comparison'?'none':i%2===0?p.secondary:p.background}" stroke="${kind==='concepts'||kind==='comparison'?'none':p.divider}" stroke-width="1"/><rect x="${x+20}" y="${y+8}" width="32" height="3" rx="1.5" fill="${p.accent}"/>`;
+   if(kind==='comparison'&&col>0)art+=`<line x1="${x-12}" y1="${y+14}" x2="${x-12}" y2="${y+h-14}" stroke="${p.divider}" stroke-width="1"/>`;
+   if(kind==='concepts')art+=`<line x1="${x+20}" y1="${y+h-8}" x2="${x+w-20}" y2="${y+h-8}" stroke="${p.divider}" stroke-width="1"/>`;
    const iconSize=vertical?Math.min(48,h-12):horizontal?64:48,ix=x+20,iy=vertical?y+(h-iconSize)/2:y+18;art+=glyph(row.text,ix,iy,iconSize,p);
    const bx=vertical?x+88:x+12,by=vertical?y+4:y+iconSize+30,bw=vertical?w-108:w-24,bh=vertical?h-8:h-iconSize-38;
    if(!add(row,bx,by,bw,bh,vertical))return null;
@@ -74,5 +82,5 @@ export function presentationVisualRetained(svg,kind){
   if(node.tagName==='rect'&&(Number(node.getAttribute('width'))<4||Number(node.getAttribute('height'))<4))return false;
   if(node.tagName==='circle'&&Number(node.getAttribute('r'))<2)return false;
   return true;
- });return visible.length>=(kind==='cover'?4:kind==='bars'?3:6);
+ });return visible.length>=(kind==='cover'?4:kind==='bars'||kind==='agenda'?3:6);
 }

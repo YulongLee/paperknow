@@ -69,9 +69,11 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
   if(supplementCheck.status!=='materials_ready')throw thesisError(422,supplementCheck.status==='needs_materials'?'补充资料仍有缺项，请查看“补充内容检查”后继续补充；原稿与已上传资料已保留。':'补充资料检查尚未完成，请稍后重试；原稿与材料已保留。','supplement_incomplete');
  }
  for(const unit of plan){
-  let retries=0,minimumTokens=0,lastOutput;while(true){lastOutput=null;try{
+  let retries=0,minimumTokens=0,lastOutput,retryLengthFeedback=null;while(true){lastOutput=null;try{
   if(controller.signal.aborted||!running())return;if(completed.some(value=>value.id===unit.id))break;
-  const began=Date.now(),task=writingCompletionTask(writingTask(row.kind,row.operation,snapshot,unit,completed),unit);let output=await dispatch(task,maxTurns,runtime.timeoutMs,unit,[],minimumTokens),parsed;if(!output)return;lastOutput=output;
+  const began=Date.now();let task=writingCompletionTask(writingTask(row.kind,row.operation,snapshot,unit,completed),unit);
+  if(retryLengthFeedback){task={...task,context:{...task.context,retryLengthFeedback},instructions:task.instructions+'上一轮候选未达字数要求，未保存。context.retryLengthFeedback 是服务器对上一轮候选的实际计数；请重新读取所需材料，一次按目标组织完整正文并提交原有校验。不要把上一轮候选当作已通过的正文或证据。'};}
+  let output=await dispatch(task,maxTurns,runtime.timeoutMs,unit,[],minimumTokens),parsed;if(!output)return;lastOutput=output;
   try{parsed=parseWritingOutput(output,row.kind,row.operation,snapshot,unit);}catch(error){
    const sourceIssue=error.validationCode==='source_attribution',lengthIssue=error.code==='word_limit';
    if(!sourceIssue&&!lengthIssue||repairTurns<2)throw error;
@@ -89,7 +91,7 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
   }
   if(row.operation==='questionnaire')aggregateWritingQuestionnaire(snapshot,plan,[...completed,{id:unit.id,...parsed}],{partial:true});
   transaction(()=>{if(!running())return;const json=JSON.stringify({...parsed,title:parsed.title||unit.title,targetWords:unit.targetWords});writingStorageCheck(db,row.user_id,Buffer.byteLength(json),config);db.prepare('INSERT INTO writing_checkpoints VALUES(?,?,?,?,?)').run(row.id,unit.id,unit.position,json,clock());});completed.push({id:unit.id,title:unit.title,targetWords:unit.targetWords,...parsed});break;
-  }catch(error){if(!error.usage&&lastOutput?.usage)error.usage=lastOutput.usage;const retry=classifyWritingRetry(error);if(continuous&&!stopped&&!controller.signal.aborted&&running()&&retries<2&&retry.retryable){retries++;minimumTokens=Math.max(minimumTokens,retry.minimumTokens||0);reportStage('auto_recovering');continue;}throw error;}}
+  }catch(error){if(!error.usage&&lastOutput?.usage)error.usage=lastOutput.usage;const retry=classifyWritingRetry(error);if(continuous&&!stopped&&!controller.signal.aborted&&running()&&retries<2&&retry.retryable){const feedback=error.lastValidation;if(feedback?.code==='word_limit'&&['count','target','min','max'].every(key=>Number.isSafeInteger(feedback[key])&&feedback[key]>=0)&&feedback.min<=feedback.target&&feedback.target<=feedback.max&&feedback.count!==feedback.target)retryLengthFeedback={code:'word_limit',count:feedback.count,target:feedback.target,min:feedback.min,max:feedback.max};retries++;minimumTokens=Math.max(minimumTokens,retry.minimumTokens||0);reportStage('auto_recovering');continue;}throw error;}}
  }
  completed.sort((a,b)=>plan.findIndex(unit=>unit.id===a.id)-plan.findIndex(unit=>unit.id===b.id));
  let quality=null;

@@ -13,7 +13,7 @@ const ok=data=>({ok:true,json:async()=>data});
 test('the customer catalogue uses exact published tariffs, groups equal degree prices and covers executable services',()=>{
  const data=fixture(),before=JSON.stringify(data),c=buildServicePriceCatalogue(data);
  assert.equal(c.rows.find(row=>row.title==='毕业论文').cost,1000);assert.equal(c.rows.find(row=>row.title==='PPT 创作').cost,199);
- assert.equal(c.rows.find(row=>row.keys.includes('detection-combined')).cost,149);assert.equal(c.rows.find(row=>row.keys.includes('writing-planning')).mode,'free');
+ assert.equal(c.rows.find(row=>row.keys.includes('detection-combined')).cost,149);assert.equal(c.rows.find(row=>row.keys.includes('writing-planning')).mode,'free');assert.match(c.rows.find(row=>row.keys.includes('revision-dual')).range,/20,000/);assert.match(c.rows.find(row=>row.keys.includes('revision-targeted')).range,/10,000/);
  const keys=new Set(c.rows.flatMap(row=>row.keys));for(const {key}of toolBillingServiceTypes.filter(row=>row.key!=='writing-analysis'))assert.ok(keys.has(key),key);
  assert.ok(!keys.has('agent'));assert.ok(!keys.has('writing-analysis'));assert.equal(JSON.stringify(data),before);
 });

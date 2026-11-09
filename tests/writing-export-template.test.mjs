@@ -19,11 +19,11 @@ async function templateFile(){
  const bytes=await zip.generateAsync({type:'uint8array'});
  return {bytes,name:'新开题排版.docx',size:bytes.length,arrayBuffer:async()=>bytes.buffer};
 }
-async function fixture(t,{kind='proposal',failSave=false,delayUpload=false,account=true}={}){
+async function fixture(t,{kind='proposal',failSave=false,delayUpload=false,delaySave=false,account=true}={}){
  const dom=new JSDOM('<main class="dashboard"></main>',{url:'https://paperknow.test/workspace.html#tool/'+kind});
  for(const key of ['window','document','localStorage','location','AbortController','MutationObserver','FormData'])globalThis[key]=dom.window[key];
  const fields=writingStandardFields(kind),spec=writingFlowSpecs[kind],calls=[],artifacts=[],downloads=[],originalFetch=globalThis.fetch;
- let releaseUpload;const uploadGate=new Promise(resolve=>{releaseUpload=resolve;});
+ let releaseUpload,releaseSave;const uploadGate=new Promise(resolve=>{releaseUpload=resolve;}),saveGate=new Promise(resolve=>{releaseSave=resolve;});
  const flow={version:1,title:'模板替换验收',level:'本科',major:'信息管理',language:'中文',targetWords:1000,instructions:'',notes:'研究尚未开展，拟使用公开资料完成分析。',materials:[],references:[],outline:[{id:'c1',title:'拟开展研究',targetWords:1000}],outlineConfirmed:true,body:'拟开展研究\n本研究拟使用公开资料开展比较分析，研究尚未实施。',stage:spec.steps.length-1,unlocked:spec.steps.length-1,jobs:{},versions:[],completed:spec.panels.slice(0,-1),[fields.template]:structuredClone(original),[fields.templateText]:'学校要求：说明拟开展计划。'};
  flow.bodyInputKey=JSON.stringify(writingFlowSnapshot(kind,flow));
  // This fixture represents a previously checked plan; export-only template
@@ -36,7 +36,7 @@ async function fixture(t,{kind='proposal',failSave=false,delayUpload=false,accou
   if(path==='/api/auth/me')return json({user:{id:'alice'}});
   if(path==='/api/projects')return json({items:[]});
   if(path==='/api/workspace/drafts/draft'){
-   if(body){if(failSave)return new Response(JSON.stringify({error:'模拟账户保存失败'}),{status:409});cloud={...cloud,...body,version:cloud.version+1};}
+   if(body){if(delaySave)await saveGate;if(failSave)return new Response(JSON.stringify({error:'模拟账户保存失败'}),{status:409});cloud={...cloud,...body,version:cloud.version+1};}
    return json({item:structuredClone(cloud)});
   }
   if(path==='/api/files'){files.set('new-template',Buffer.from(body.data,'base64'));return json({id:'new-template'});}
@@ -55,9 +55,9 @@ async function fixture(t,{kind='proposal',failSave=false,delayUpload=false,accou
  }};
  dom.window.HTMLAnchorElement.prototype.click=function(){downloads.push(this.download);};
  async function mount(){if(!account){localStorage.setItem(keys.drafts,JSON.stringify([cloud.payload]));mountWritingFlow({kind,container:document.querySelector('.dashboard'),ctx,draftId:'draft'});return;}await mountAccountDraft('draft',{notify(){},mount:row=>mountWritingFlow({kind,container:document.querySelector('.dashboard'),ctx,draftId:row.id}),saveNative:()=>flushEditorDraft()});}
- t.after(()=>{releaseUpload();disposeAccountDraft();clearEditor();disposeWritingFlows();globalThis.fetch=originalFetch;clearTimeout(document.getElementById('artifact-export-notice')?._artifactTimer);dom.window.close();});
+ t.after(()=>{releaseUpload();releaseSave();disposeAccountDraft();clearEditor();disposeWritingFlows();globalThis.fetch=originalFetch;clearTimeout(document.getElementById('artifact-export-notice')?._artifactTimer);dom.window.close();});
  await mount();
- return {dom,fields,calls,artifacts,downloads,releaseUpload,ctx,get cloud(){return cloud;},mount,
+ return {dom,fields,calls,artifacts,downloads,releaseUpload,releaseSave,ctx,get cloud(){return cloud;},mount,
   q:selector=>document.querySelector(selector),local:()=>list(keys.drafts)[0].writingFlow,
   settings(){document.querySelector('[data-writing-step="'+((spec.panels.includes('materials')?spec.panels.indexOf('materials'):0)+1)+'"]').click();assert.ok(document.querySelector('[data-wf-knowledge] [data-template-file]'));},
   result(){document.querySelector('[data-writing-step="'+spec.steps.length+'"]').click();assert.equal(document.querySelectorAll('[data-wf-export] [data-document-export]').length,2);assert.equal(document.querySelector('[data-wf-export] [data-template-file]'),null);},
@@ -72,7 +72,7 @@ for(const kind of Object.keys(writingStandards).filter(kind=>kind!=='quick'))tes
  f.select(file);assert.equal(f.q('[data-writing-step="'+writingFlowSpecs[kind].steps.length+'"]').disabled,true);
  await until(()=>!f.q('[data-wf-template-choose]').disabled);
  const saved=f.cloud.payload.writingFlow;
- assert.equal(saved[f.fields.exportTemplate].source.fileId,'new-template');
+ assert.equal(saved[f.fields.exportTemplate]?.source?.fileId,'new-template',JSON.stringify({status:f.q('[data-template-status]')?.textContent,error:f.q('[data-wf-error]')?.textContent,calls:f.calls.map(row=>row.path)}));
  assert.equal(saved[f.fields.template].source.fileId,'original');
  assert.equal(saved.body,before.body);assert.equal(saved.outlineConfirmed,true);assert.equal(saved.stage,writingFlowSpecs[kind].panels.includes('materials')?writingFlowSpecs[kind].panels.indexOf('materials'):0);assert.equal(saved.unlocked,before.unlocked);
  assert.deepEqual(saved.outline,before.outline);assert.deepEqual(writingFlowSnapshot(kind,saved),writingFlowSnapshot(kind,before));
@@ -81,6 +81,18 @@ for(const kind of Object.keys(writingStandards).filter(kind=>kind!=='quick'))tes
  assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
  await f.mount();assert.equal(f.local()[f.fields.exportTemplate].source.fileId,'new-template');
  assert.equal(f.q('[aria-current="step"]').dataset.writingStep,String(saved.stage+1));f.result();assert.equal(writingExportTemplate(kind,f.local()).source.name,'新开题排版.docx');
+});
+
+test('template controls remain locked when a render is requested during cloud save',async t=>{
+ const f=await fixture(t,{kind:'taskbook',delaySave:true}),file=await templateFile();f.select(file);
+ await until(()=>f.calls.some(row=>row.path==='/api/workspace/drafts/draft'&&row.body));
+ const button=f.q('[data-wf-template-choose]');assert.equal(button.disabled,true);
+ const suggestion=f.q('[data-wf-word-suggestion]');assert.ok(suggestion);
+ // Simulate a queued UI update attempting to render while the account save is pending.
+ suggestion.dispatchEvent(new f.dom.window.Event('click',{bubbles:true}));
+ assert.equal(f.q('[data-wf-template-choose]'),button);assert.equal(button.disabled,true);
+ f.releaseSave();await until(()=>f.cloud.payload.writingFlow[f.fields.exportTemplate]?.source?.fileId==='new-template');
+ await until(()=>!f.q('[data-wf-template-choose]').disabled);
 });
 
 test('the actual final export reads the replacement template from the cloud and applies its font and margin',async t=>{

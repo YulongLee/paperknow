@@ -78,3 +78,13 @@ test('enhanced presentations honour the matching historical allowance while new 
  const g=fixture(t);g.grant([{key:'presentation-thesis',title:'Scoped defence PPT',quantity:1}],{version:'2026-10-31-v1',maxSlides:20},'bundle-bachelor','bundle');
  assert.equal(g.quote('presentation-enhanced',{...context,legacyPresentationKey:'presentation-thesis'}).source,'credits');
 });
+
+
+test('whole dual revisions accept up to 20,000 characters, retain scoped bundles, and reject overflow before billing',t=>{
+ const f=fixture(t),snapshot=text=>({mode:'reduce',text,context:{plan:'dual',revisionProduct:{mode:'dual'}}}),request=text=>({kind:'revision',operation:'rewrite',snapshot:snapshot(text)});
+ for(const length of [10000,10001,20000])assert.equal(commercialToolIdentity(f.db,request('字'.repeat(length))).serviceKey,'revision-dual');
+ assert.throws(()=>commercialToolIdentity(f.db,request('字'.repeat(20001))),/20,000/);
+ const item={key:'revision-dual',title:'双降',quantity:1};f.grant([item],{version:'2026-10-31-v1',maxRevisionChars:10000},'bundle-rewrite','bundle');
+ assert.equal(f.quote('revision-dual',{kind:'revision',characters:10000}).source,'bundle');const long=f.quote('revision-dual',{kind:'revision',characters:10001});assert.equal(long.source,'credits');assert.equal(long.creditCost,399);
+ const report={kind:'revision',operation:'rewrite',snapshot:{mode:'reduce',text:'字'.repeat(10001),context:{plan:'strong',revisionProduct:{mode:'report'}}}};assert.throws(()=>commercialToolIdentity(f.db,report),/10,000/);
+});

@@ -20,7 +20,7 @@ export function combinedChildFunded(db,userId,childId,key,{heldOnly=true}={}){
 export function reconcileCombinedParents(db,billing,childId){
  if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='combined_detection_children'").get())return;
  for(const row of db.prepare("SELECT DISTINCT j.id FROM combined_detection_children c JOIN jobs j ON j.id=c.parent_id WHERE c.child_id=? AND j.status='running'").all(childId)){
-  const rows=db.prepare('SELECT j.status FROM combined_detection_children c JOIN jobs j ON j.id=c.child_id WHERE c.parent_id=?').all(row.id),done=rows.length===2&&rows.every(c=>c.status==='completed'),broken=rows.some(c=>['failed','cancelled'].includes(c.status));
+  const rows=db.prepare('SELECT j.status FROM combined_detection_children c JOIN jobs j ON j.id=c.child_id WHERE c.parent_id=?').all(row.id),terminal=rows.length===2&&rows.every(c=>['completed','failed','cancelled'].includes(c.status)),done=terminal&&rows.every(c=>c.status==='completed'),broken=terminal&&!done;
   if(done||broken){db.prepare("UPDATE jobs SET status=?,stage=?,error=?,updated_at=? WHERE id=? AND status='running'").run(done?'completed':'failed',done?'completed':'failed',done?null:'部分检测未能完成，本次联合检测预占已释放，已完成报告保留。',new Date().toISOString(),row.id);if(done)billing.settle(row.id);else billing.release(row.id);}
  }
 }

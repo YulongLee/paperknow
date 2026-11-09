@@ -181,7 +181,7 @@ export function validatePptMasterSlides(slides){
 }
 
 /** Checks every OPC relationship and refuses raster-only or active-content exports. */
-export async function validatePptMasterPackage(input,{slideCount,slides,maxOutputBytes=PPT_MASTER_MAX_OUTPUT_BYTES}={}){
+export async function validatePptMasterPackage(input,{slideCount,slides,maxOutputBytes=PPT_MASTER_MAX_OUTPUT_BYTES,trustedBackground}={}){
   const bytes=Buffer.from(input??[]);
   if(bytes.length<200||bytes.length>Math.min(maxOutputBytes,PPT_MASTER_MAX_OUTPUT_BYTES)||!bytes.subarray(0,2).equals(Buffer.from('PK')))throw packageInvalid();
   // JSZip indexes entries by name and would conceal duplicate central-directory
@@ -214,6 +214,15 @@ export async function validatePptMasterPackage(input,{slideCount,slides,maxOutpu
     if(!Number.isSafeInteger(size)||size<0||size>10*1024*1024||(expanded+=size)>64*1024*1024||!/(?:\.xml|\.rels|\.jpeg|\.jpg|\.png)$/.test(original))throw packageInvalid();
   }
   for(const name of ['[Content_Types].xml','_rels/.rels','ppt/presentation.xml'])if(!zip.file(name))throw packageInvalid();
+  if(trustedBackground){
+    if(!Buffer.isBuffer(trustedBackground)||!zip.file('ppt/media/paperknow-template.png')||entries.some(e=>!e.dir&&e.name.startsWith('ppt/media/')&&e.name!=='ppt/media/paperknow-template.png'))throw packageInvalid();
+    const relationshipFile=zip.file('ppt/slides/_rels/slide1.xml.rels');if(!relationshipFile)throw packageInvalid();
+    const relationshipDoc=parseXML((await relationshipFile.async('string')).replace(/^\s*<\?xml\s[^?]*\?>/,''),packageInvalid);
+    const images=Array.from(relationshipDoc.getElementsByTagNameNS(REL_NS,'Relationship')).filter(r=>r.getAttribute('Type').endsWith('/image'));
+    if(images.length!==1||images[0].getAttribute('Id')!=='rIdPaperKnowArtwork'||images[0].getAttribute('Target')!=='../media/paperknow-template.png'||images[0].getAttribute('TargetMode'))throw packageInvalid();
+    const image=await zip.file('ppt/media/paperknow-template.png').async('nodebuffer');
+    if(!image.equals(trustedBackground))throw packageInvalid();
+  }
   const slideFiles=entries.filter(e=>/^ppt\/slides\/slide[1-9]\d*\.xml$/.test(e.name));
   if(!Number.isInteger(slideCount)||slideCount<1||slideCount>40||slideFiles.length!==slideCount)throw packageInvalid();
   let nativeShapeCount=0;
@@ -228,13 +237,16 @@ export async function validatePptMasterPackage(input,{slideCount,slides,maxOutpu
       const base=entry.name==='_rels/.rels'?'':path.posix.dirname(entry.name).replace(/(?:^|\/)\_rels$/,'');
       for(const rel of Array.from(doc.getElementsByTagNameNS(REL_NS,'Relationship'))){
         const target=rel.getAttribute('Target'),type=rel.getAttribute('Type');
+        if(trustedBackground&&type.endsWith('/image')&&(entry.name!=='ppt/slides/_rels/slide1.xml.rels'||rel.getAttribute('Id')!=='rIdPaperKnowArtwork'||target!=='../media/paperknow-template.png'))throw packageInvalid();
         if(!target||rel.getAttribute('TargetMode')||/[\\\x00-\x20?#%]/.test(target)||/^[a-z][a-z\d+.-]*:/i.test(target)||target.startsWith('/')||/(?:hyperlink|oleObject|attachedTemplate|externalLink|vbaProject|control)$/i.test(type))throw packageInvalid();
         const resolved=path.posix.normalize(path.posix.join(base,target));
         if(resolved.startsWith('../')||!zip.file(resolved))throw packageInvalid();
       }
     }
     if(/^ppt\/slides\/slide\d+\.xml$/.test(entry.name)){
-      if(doc.documentElement.namespaceURI!==PML_NS||doc.documentElement.localName!=='sld'||doc.getElementsByTagNameNS(PML_NS,'pic').length||doc.getElementsByTagNameNS(DML_NS,'blip').length)throw packageInvalid();
+      const pics=doc.getElementsByTagNameNS(PML_NS,'pic'),blips=doc.getElementsByTagNameNS(DML_NS,'blip');
+      const isCover=entry.name==='ppt/slides/slide1.xml';
+      if(doc.documentElement.namespaceURI!==PML_NS||doc.documentElement.localName!=='sld'||(trustedBackground&&isCover?(pics.length!==1||blips.length!==1||blips[0].getAttribute('r:embed')!=='rIdPaperKnowArtwork'):(pics.length||blips.length)))throw packageInvalid();
       const shapes=doc.getElementsByTagNameNS(PML_NS,'sp').length;
       if(!shapes||!doc.getElementsByTagNameNS(DML_NS,'t').length)throw packageInvalid();
       if(slides){

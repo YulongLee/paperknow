@@ -98,8 +98,10 @@ export function createWebSimilarityService(db,config={}){
   const input=webSimilarityInput(await readBody(),user),plan=planWebQueries(input.parsed),hash=digest(JSON.stringify({version:webSimilarityVersion,text:input.text,title:input.title}));
   const reserved=tx(()=>{
    const existing=db.prepare('SELECT * FROM jobs WHERE user_id=? AND idempotency_key=?').get(user.id,input.idempotencyKey);
-   if(existing){if(existing.type!=='web_similarity'||![hash,digest(JSON.stringify({version:'public-web-exact-1.0',text:input.text,title:input.title}))].includes(existing.input_hash))fail(409,'请求编号已用于其他内容，请重新确认正文。');return{id:existing.id,existing:true};}
-   const duplicate=db.prepare("SELECT j.id FROM jobs j JOIN web_similarity_runs r ON r.id=j.id WHERE j.user_id=? AND j.type='web_similarity' AND j.input_hash=? AND (j.status IN ('preparing','queued','running','completed') OR r.queries_attempted>0) AND (j.status IN ('preparing','queued','running') OR j.created_at>=?) ORDER BY j.created_at DESC LIMIT 1").get(user.id,hash,new Date(Date.now()-86400000).toISOString());
+   if(existing){const legacyHashes=['public-web-exact-1.0','public-web-exact-2.0'].map(version=>digest(JSON.stringify({version,text:input.text,title:input.title})));if(existing.type!=='web_similarity'||![hash,...legacyHashes].includes(existing.input_hash))fail(409,'请求编号已用于其他内容，请重新确认正文。');return{id:existing.id,existing:true};}
+   // The same request key above remains idempotent. A new, explicit submission
+   // may retry failed or cancelled work, even when a search was attempted.
+   const duplicate=db.prepare("SELECT j.id FROM jobs j JOIN web_similarity_runs r ON r.id=j.id WHERE j.user_id=? AND j.type='web_similarity' AND j.input_hash=? AND (j.status IN ('preparing','queued','running') OR (j.status='completed' AND j.created_at>=?)) ORDER BY j.created_at DESC LIMIT 1").get(user.id,hash,new Date(Date.now()-86400000).toISOString());
    if(duplicate)return{id:duplicate.id,existing:true};
    if(v1CommercialEnabled(db)&&Array.from(input.text||'').length>20000)fail(400,'单次检测最多 20,000 字符，请分章节提交；尚未扣费。');
    assertDetectionPrice(input,config.billing,'detection-similarity');

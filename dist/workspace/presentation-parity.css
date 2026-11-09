@@ -38,3 +38,69 @@
 @media(max-width:760px){.dashboard .ppt-template-filters{gap:8px;padding:12px}.dashboard .ppt-template-filters label{font-size:11px}.dashboard .ppt-template-filters select,.dashboard .ppt-notes-setting select{font-size:16px}.dashboard .ppt-outline-summary{display:block}.dashboard .ppt-outline-summary>.btn{margin-top:12px}.ppt-parity-preview .ppt-slide{min-height:190px;padding:20px}.ppt-parity-preview .ppt-slide h3{font-size:21px}.ppt-parity-preview .ppt-slide p{font-size:13px}}
 @media(max-width:480px){.dashboard .ppt-template-filters{grid-template-columns:1fr}.dashboard .ppt-start-settings .ppt-notes-setting{grid-column:1/-1}.ppt-parity-preview .layout-twoColumn>p{column-count:1}.ppt-custom-outline textarea{font-size:16px}}
 
+
+/* 版式库：以封面构图呈现可选主题。 */
+.dashboard .ppt-commercial .ppt-template-filters{background:#f8faff;border-color:#e2eaf6;border-radius:14px;gap:14px;padding:16px}
+.dashboard .ppt-commercial .ppt-template-count{margin:16px 0;color:#536b8e;font-size:13px}
+.dashboard .ppt-commercial .ppt-template-item{border-color:#e1e9f4;border-radius:14px;padding:8px;gap:4px;box-shadow:0 5px 20px #263b5c09;transition:border-color .18s,box-shadow .18s}
+.dashboard .ppt-commercial .ppt-template-item:has(.ppt-mode-template.selected){border-color:#3973f4;box-shadow:0 0 0 1px #3973f4,0 7px 22px #366deb16}
+.dashboard .ppt-commercial .ppt-template-item .ppt-mode-template{padding:0;outline:0;background:transparent}
+.dashboard .ppt-commercial .ppt-cover-thumb{display:block;width:100%;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:#1c3354}
+.dashboard .ppt-commercial .ppt-cover-thumb svg{display:block;width:100%;height:100%}
+.dashboard .ppt-commercial .ppt-mode-template>.ppt-template-meta{padding:12px 8px 6px;gap:8px}
+.dashboard .ppt-commercial .ppt-mode-template>.ppt-template-meta>b{font-size:14px;font-weight:650;color:#203655}
+.dashboard .ppt-commercial .ppt-mode-template>.ppt-template-meta>small{color:#647997;font-size:11px}
+.dashboard .ppt-commercial .ppt-mode-template.selected>.ppt-template-meta>small{color:#2463e7;font-weight:650}
+.dashboard .ppt-commercial .ppt-template-item>p{font-size:12px;line-height:1.6;color:#60738d;margin:0 8px 5px}
+.dashboard .ppt-commercial .ppt-template-item>.ppt-template-preview-button{margin:3px 8px 7px;text-align:center}
+.dashboard .ppt-commercial .ppt-template-expand{display:block;margin:18px auto 0;padding:9px 18px;border:1px solid #d5e1f3;border-radius:9px;background:#fff;color:#315ca7;font:inherit;font-size:12px;cursor:pointer}
+.dashboard .ppt-commercial .ppt-template-expand:hover{border-color:#82a6ee;background:#f5f8ff}.dashboard .ppt-commercial .ppt-template-expand:focus-visible{outline:3px solid #4285dd;outline-offset:3px}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-template-item{background:#172a40;border-color:#344c68}.hub-theme-dark .dashboard .ppt-commercial .ppt-mode-template>.ppt-template-meta>b{color:#e2ecfa}.hub-theme-dark .dashboard .ppt-commercial .ppt-mode-template>.ppt-template-meta>small,.hub-theme-dark .dashboard .ppt-commercial .ppt-template-item>p{color:#bbcae0}.hub-theme-dark .dashboard .ppt-commercial .ppt-template-expand{background:#1c3049;border-color:#456183;color:#dae8fc}
+@media(max-width:760px){.dashboard .ppt-commercial .ppt-mode-template-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}@media(max-width:480px){.dashboard .ppt-commercial .ppt-mode-template-grid{grid-template-columns:minmax(0,1fr)}}@media(prefers-reduced-motion:reduce){.dashboard .ppt-commercial .ppt-template-item{transition:none}}
+.ppt-parity-preview .ppt-slide.cover{position:relative;overflow:hidden;isolation:isolate}.ppt-parity-preview .ppt-cover-ornament{position:absolute;z-index:-1;right:4%;top:12%;width:25%;aspect-ratio:1;opacity:.42;border:2px solid var(--ppt-accent);pointer-events:none}.ppt-parity-preview .ornament-orbit{border-radius:50%;box-shadow:inset 0 0 0 18px #ffffff0c,inset 0 0 0 20px #ffffff2c}.ppt-parity-preview .ornament-ribbon{border:0;background:linear-gradient(112deg,transparent 25%,var(--ppt-accent) 26% 45%,transparent 46% 56%,#ffffff5c 57% 68%,transparent 69%)}.ppt-parity-preview .ornament-geometry{border-radius:10px;transform:rotate(8deg);box-shadow:-25px 25px 0 -4px #ffffff25}.ppt-parity-preview .ornament-minimal{border:0;border-top:3px solid var(--ppt-accent);border-bottom:3px solid var(--ppt-accent);height:22%;aspect-ratio:auto}
+
+/* Template previews use the same artwork as the generated cover. */
+.dashboard .ppt-commercial .ppt-cover-thumb,.ppt-parity-preview .ppt-cover-thumb{position:relative;display:block;aspect-ratio:16/9;overflow:hidden;border-radius:8px;background:#18345b}
+.dashboard .ppt-commercial .ppt-cover-thumb img,.ppt-parity-preview .ppt-cover-thumb img{display:block;width:100%;height:100%;object-fit:cover}
+.dashboard .ppt-commercial .ppt-cover-thumb::after,.ppt-parity-preview .ppt-cover-thumb::after{content:"";position:absolute;inset:0;width:65%;background:rgba(16,31,51,.72);pointer-events:none}
+.ppt-cover-sample{position:absolute;z-index:1;left:7%;top:31%;width:55%;display:grid;gap:10px;text-align:left;color:white;text-shadow:0 1px 6px #0008}
+.ppt-cover-sample strong{font-size:clamp(12px,1.2vw,20px);line-height:1.35;letter-spacing:.02em}.ppt-cover-sample small{font-size:clamp(9px,.65vw,12px);color:#ffffffe8}
+.ppt-parity-preview .ppt-preview-cover{max-width:720px;margin:14px auto 20px}.ppt-parity-preview .ppt-cover-sample strong{font-size:clamp(18px,2.5vw,32px)}.ppt-parity-preview .ppt-cover-sample small{font-size:14px}
+.dashboard .ppt-commercial .ppt-cover-sample strong,.ppt-parity-preview .ppt-cover-sample strong{color:#fff}.dashboard .ppt-commercial .ppt-cover-sample small,.ppt-parity-preview .ppt-cover-sample small{color:#f2f5fa}
+
+/* A shared template selection heading keeps the chosen style visible in every scene. */
+.dashboard .ppt-commercial .ppt-template-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:26px 0 16px;padding:18px 20px;background:#f5f8ff;border:1px solid #dce7f8;border-radius:12px}
+.dashboard .ppt-commercial .ppt-template-heading h3{display:flex;align-items:center;gap:10px;margin:0;color:#1b3152;font-size:16px}
+.dashboard .ppt-commercial .ppt-template-heading p{margin:7px 0 0;color:#607694;font-size:13px;line-height:1.5}
+.dashboard .ppt-commercial .ppt-template-current{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;color:#607694;font-size:12px}
+.dashboard .ppt-commercial .ppt-template-current strong{color:#245acb;font-size:14px}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-template-heading{background:#182c44;border-color:#395371}.hub-theme-dark .dashboard .ppt-commercial .ppt-template-heading h3,.hub-theme-dark .dashboard .ppt-commercial .ppt-template-current strong{color:#e2ecfa}.hub-theme-dark .dashboard .ppt-commercial .ppt-template-heading p,.hub-theme-dark .dashboard .ppt-commercial .ppt-template-current{color:#bbcae0}
+@media(max-width:480px){.dashboard .ppt-commercial .ppt-template-heading{align-items:flex-start;flex-direction:column;gap:10px;padding:15px}.dashboard .ppt-commercial .ppt-template-current{align-items:flex-start;flex-direction:row;gap:8px}}
+
+/* Whole-deck previews share the production template design tokens. */
+.dashboard .ppt-commercial .ppt-cover-thumb,.ppt-parity-preview .ppt-cover-thumb{background:var(--ppt-cover-surface,#fff);border-radius:6px}
+.dashboard .ppt-commercial .ppt-cover-thumb::after,.ppt-parity-preview .ppt-cover-thumb::after{width:var(--ppt-cover-width,65%);background:var(--ppt-cover-surface,#fff);opacity:var(--ppt-cover-overlay,1)}
+.dashboard .ppt-commercial .ppt-cover-sample,.ppt-parity-preview .ppt-cover-sample{left:6.6%;top:19%;width:56%;gap:9px;text-shadow:none;color:var(--ppt-cover-text,#172b4d)}
+.dashboard .ppt-commercial .ppt-cover-sample strong,.ppt-parity-preview .ppt-cover-sample strong{color:var(--ppt-cover-text,#172b4d);font-size:clamp(12px,1.15vw,18px);letter-spacing:0;line-height:1.4}
+.dashboard .ppt-commercial .ppt-cover-sample small,.ppt-parity-preview .ppt-cover-sample small{color:var(--ppt-cover-muted,#53677f);font-size:clamp(8px,.62vw,10px)}
+.ppt-cover-sample i{display:block;width:18%;height:3px;background:var(--ppt-cover-accent,#286aff);margin-bottom:6px}.ppt-cover-sample em{font-size:clamp(7px,.58vw,9px);color:var(--ppt-cover-muted,#53677f);font-style:normal;margin-top:13px}
+.ppt-template-slide-image{display:block;width:100%;height:100%;object-fit:contain}
+.dashboard .ppt-commercial .ppt-template-item{gap:0;padding:7px}
+.dashboard .ppt-commercial .ppt-template-item .ppt-mode-template.selected{background:transparent;border-color:transparent;box-shadow:none}
+.dashboard .ppt-commercial .ppt-template-item .ppt-mode-template>.ppt-cover-thumb{display:block;padding:0;background:var(--ppt-cover-surface,#fff)}
+.dashboard .ppt-commercial .ppt-template-card-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px;padding:0 4px 0 6px}
+.dashboard .ppt-commercial .ppt-template-card-footer>.ppt-template-meta{display:flex;align-items:center;min-width:0;gap:7px}
+.dashboard .ppt-commercial .ppt-template-card-footer>.ppt-template-meta>b{font-size:13px;color:#203655;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dashboard .ppt-commercial .ppt-template-card-footer>.ppt-template-meta>small{font-size:11px;color:#2463e7;flex:none}
+.dashboard .ppt-commercial .ppt-template-card-footer>.ppt-template-preview-button{flex:none;margin:0;min-height:36px;padding:5px 10px;font-size:12px}
+.hub-theme-dark .dashboard .ppt-commercial .ppt-template-card-footer>.ppt-template-meta>b{color:#e2ecfa}.hub-theme-dark .dashboard .ppt-commercial .ppt-template-card-footer>.ppt-template-meta>small{color:#a9c8ff}
+.dashboard .ppt-commercial .ppt-template-item .ppt-mode-template:focus-visible,.dashboard .ppt-commercial .ppt-template-preview-button:focus-visible{outline:2px solid #3973f4;outline-offset:2px}
+.ppt-template-deck-preview{max-width:960px;gap:20px}.ppt-template-deck-preview>header>span{display:inline-block;color:#275eb5;background:#edf4ff;border-radius:5px;padding:4px 8px;font-size:12px}.ppt-template-deck-preview>header>p{font-size:13px;color:#61728a;margin:8px 0 0;line-height:1.8}
+.ppt-template-preview-pages{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.ppt-template-preview-pages figure{margin:0;min-width:0}.ppt-template-preview-canvas{aspect-ratio:16/9;border:1px solid #dce4ef;border-radius:7px;overflow:hidden;background:#fff}.ppt-template-preview-canvas>.ppt-cover-thumb{border-radius:0;width:100%;height:100%}.ppt-template-preview-pages figcaption{display:flex;align-items:center;gap:8px;margin-top:7px;color:#435775;font-size:12px}.ppt-template-preview-pages figcaption>span{color:#8290a3;font-size:10px;letter-spacing:.08em}
+.ppt-template-deck-preview .ppt-cover-sample strong{font-size:clamp(16px,1.8vw,25px)}.ppt-template-deck-preview .ppt-cover-sample small{font-size:11px}.ppt-template-deck-preview .ppt-cover-sample em{font-size:10px}.ppt-template-deck-preview>footer{display:flex;align-items:center;gap:12px;border-top:1px solid #e3e9f2;padding-top:16px}.ppt-template-deck-preview #ppt-preview-theme-status{font-size:12px;margin:0;color:#b44040}
+@media(min-width:1800px){.dashboard .ppt-commercial .ppt-mode-template-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:760px){.ppt-template-preview-pages{grid-template-columns:minmax(0,1fr)}.ppt-template-deck-preview .ppt-cover-sample strong{font-size:clamp(16px,4.5vw,27px)}.ppt-template-deck-preview>footer{position:sticky;bottom:0;background:#fff;padding-bottom:6px;z-index:2}}
+@media(max-width:480px){.dashboard .ppt-commercial .ppt-cover-sample strong{font-size:16px}.dashboard .ppt-commercial .ppt-cover-sample small{font-size:10px}.dashboard .ppt-commercial .ppt-cover-sample em{font-size:9px}.ppt-template-deck-preview .ppt-cover-sample strong{font-size:17px}.ppt-template-deck-preview .ppt-cover-sample small{font-size:9px}.ppt-template-deck-preview .ppt-cover-sample em{font-size:8px}.ppt-template-deck-preview .ppt-cover-sample{gap:6px}.ppt-template-deck-preview .ppt-cover-sample i{margin-bottom:0}.ppt-template-deck-preview .ppt-cover-sample em{margin-top:5px}}
+.hub-theme-dark .ppt-template-deck-preview>footer{background:#172a40}.hub-theme-dark .ppt-template-preview-pages figcaption{color:#c4d3e8}.hub-theme-dark .ppt-template-deck-preview>header>p{color:#b8c9e2}
+/* A fixed slide viewBox scales all cover text exactly with its canvas. */
+.dashboard .ppt-commercial .ppt-cover-thumb>.ppt-cover-sample,.ppt-parity-preview .ppt-cover-thumb>.ppt-cover-sample{position:absolute;inset:0;left:0;top:0;z-index:1;display:block;width:100%;height:100%;padding:0;margin:0;background:none;border:0;border-radius:0;text-shadow:none;overflow:visible}

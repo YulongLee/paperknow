@@ -18,10 +18,10 @@ function lines(text,size,space){
 }
 
 function arrangement(slide,plan,composition,bodySize,titleSize){
- const content=pptMasterVisibleContent(slide,plan),title=content[0],footer=content.at(-1),body=content.slice(1,-1),titleLines=lines(title.text,titleSize,1112),titleHeight=titleLines.length*titleSize*1.5+16;
+ const content=pptMasterVisibleContent(slide,plan),title=content[0],footer=content.at(-1),body=content.slice(1,-1),titleLines=lines(title.text,titleSize,composition==='cover'?(plan.coverArtwork?688:928):1112),titleHeight=titleLines.length*titleSize*1.5+16;
  const top=composition==='cover'||composition==='ending'?92:44,bodyTop=top+titleHeight+24,bottom=624;
  if(bodyTop>=bottom)return null;
- const blocks=[{...title,x:72,y:top,w:1136,h:titleHeight,size:titleSize,lines:titleLines}],split=composition==='split',columns=split?2:1,cut=Math.ceil(body.length/columns),gap=split?48:0,w=split?544:1136;
+ const blocks=[{...title,x:72,y:top,w:composition==='cover'?(plan.coverArtwork?712:952):1136,h:titleHeight,size:titleSize,lines:titleLines}],split=composition==='split',columns=split?2:1,cut=Math.ceil(body.length/columns),gap=split?48:0,w=split?544:composition==='cover'&&plan.coverArtwork?712:1136;
  for(let col=0;col<columns;col++){
   const group=body.slice(col*cut,(col+1)*cut),prepared=group.map((row,index)=>{const size=composition==='spotlight'&&col===0&&index===0?Math.max(bodySize,30):bodySize,wrapped=lines(row.text,size,w-24);return{...row,size,lines:wrapped,h:wrapped.length*size*1.5+16};}),space=bottom-bodyTop,total=prepared.reduce((n,row)=>n+row.h,0),gaps=prepared.length>1?Math.min(22,Math.max(12,(space-total)/(prepared.length-1))):0;
   if(total+gaps*Math.max(0,prepared.length-1)>space)return null;
@@ -43,14 +43,29 @@ export function validatedPresentationLayout(value,slide,plan){
   if(blocks)break;
  }
  if(!blocks)throw Object.assign(Error('当前页文字过密，无法在可读字号下完成排版；已保存内容保留'),{code:'ppt_layout_capacity',status:422});
- const p=plan.palette,font=xml(plan.typography.fontFamily),ending=page.role==='ending',body=blocks.filter(row=>row.role==='body');
+ const p=plan.palette,style=plan.designStyle,font=xml(plan.typography.fontFamily),ending=page.role==='ending',cover=page.role==='cover',darkPage=style?style.family==='technology':ending||cover&&(Boolean(visual)||Boolean(plan.coverArtwork)),surface=cover&&style?style.coverSurface:darkPage?p.background:p.background,foreground=cover&&style?style.coverText:p.text,muted=cover&&style?style.coverMuted:p.muted,body=blocks.filter(row=>row.role==='body');
  let decoration=page.role==='cover'?`<rect id="theme-panel" data-pptx-role="decoration" x="988" y="0" width="292" height="720" fill="${p.secondary}"/><rect id="theme-rule" data-pptx-role="decoration" x="0" y="0" width="24" height="720" fill="${p.primary}"/><rect id="theme-bar" data-pptx-role="decoration" x="72" y="52" width="96" height="8" fill="${p.accent}"/>`:`<rect id="theme-bar" data-pptx-role="decoration" x="40" y="48" width="8" height="64" fill="${ending?'#FFFFFF':p.accent}"/>`;
  if(page.composition==='split'&&body.length>1)decoration+=`<line id="column-divider" data-pptx-role="decoration" x1="640" y1="${body[0].y}" x2="640" y2="624" stroke="${p.divider}" stroke-width="2"/>`;
  if(page.composition==='spotlight'&&body.length){const row=body[0];decoration+=`<rect id="highlight-field" data-pptx-role="decoration" x="${row.x}" y="${row.y}" width="${row.w}" height="${row.h}" fill="${p.secondary}"/>`;}
  if(page.composition==='sequence')for(const [index,row]of body.entries())decoration+=`<circle id="sequence-node-${index}" data-pptx-role="decoration" cx="52" cy="${row.y+row.size}" r="4" fill="${p.accent}"/>`;
  if(page.composition==='editorial')for(const [index,row]of body.slice(0,-1).entries())decoration+=`<line id="editorial-rule-${index}" data-pptx-role="decoration" x1="84" y1="${row.y+row.h+5}" x2="1196" y2="${row.y+row.h+5}" stroke="${p.divider}" stroke-width="1"/>`;
  if(visual)decoration=`<rect id="theme-bar" data-pptx-role="decoration" x="40" y="48" width="8" height="64" fill="${p.accent}"/>`+visual.decoration;
- const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="${page.role}"><rect id="background" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="${ending?p.primary:p.background}"/>${decoration}${blocks.map(row=>`<g id="${row.id}" data-pptx-bounds="${row.x} ${row.y} ${row.w} ${row.h}">${row.lines.map((text,index)=>`<text x="${row.x+12}" y="${row.y+row.size+8+index*row.size*1.5}" font-family="${font}" font-size="${row.size}"${row.role==='title'||row.boldFirst&&index===0?' font-weight="700"':''} fill="${ending?'#FFFFFF':row.role==='footer'?p.muted:p.text}">${xml(text)}</text>`).join('')}</g>`).join('')}</svg>`;
+ if(page.role==='cover'&&!plan.coverArtwork){
+  const stroke=darkPage?p.accent:p.primary;
+  // Four editable motifs are confined to the right edge and never cover source text.
+  const motifs={orbit:`<circle id="template-orbit-a" data-pptx-role="decoration" cx="1195" cy="87" r="45" fill="none" stroke="${stroke}" stroke-width="2"/><circle id="template-orbit-b" data-pptx-role="decoration" cx="1195" cy="87" r="25" fill="none" stroke="${stroke}" stroke-width="2"/>`,ribbon:`<polygon id="template-ribbon" data-pptx-role="decoration" points="1110,0 1140,0 1260,120 1230,120" fill="${stroke}"/>`,geometry:`<rect id="template-block-a" data-pptx-role="decoration" x="1162" y="32" width="40" height="40" fill="none" stroke="${stroke}" stroke-width="3"/><rect id="template-block-b" data-pptx-role="decoration" x="1210" y="80" width="32" height="32" fill="${stroke}"/>`,minimal:`<line id="template-line-a" data-pptx-role="decoration" x1="1120" y1="50" x2="1238" y2="50" stroke="${stroke}" stroke-width="3"/><line id="template-line-b" data-pptx-role="decoration" x1="1160" y1="67" x2="1238" y2="67" stroke="${stroke}" stroke-width="2"/>`};
+  decoration+=motifs[plan.coverVariant]||motifs.orbit;
+ }
+ if(cover&&plan.coverArtwork)decoration=`<rect id="artwork-text-backdrop" data-pptx-role="decoration" x="0" y="0" width="${style?.coverTextWidth||830}" height="720" fill="${style?.coverSurface||'#101F33'}" opacity="${style?.coverOverlay??.72}"/><rect id="cover-accent" data-pptx-role="decoration" x="84" y="52" width="80" height="5" fill="${p.accent}"/>`;
+ if(style&&!cover){
+  const f=style.family;
+  const header=f==='academic'?`<rect x="52" y="52" width="4" height="46" fill="${p.accent}"/>`:f==='technology'?`<rect x="72" y="26" width="160" height="4" fill="${p.accent}"/><line x1="1070" y1="26" x2="1208" y2="26" stroke="${p.divider}" stroke-width="2"/>`:f==='report'?`<rect x="0" y="0" width="20" height="720" fill="${p.accent}"/><rect x="72" y="26" width="56" height="4" fill="${p.accent}"/>`:`<rect x="30" y="24" width="1220" height="672" fill="none" stroke="${p.divider}" stroke-width="1"/><line x1="84" y1="30" x2="210" y2="30" stroke="${p.accent}" stroke-width="3"/>`;
+  decoration=decoration.replace(/<rect id="theme-bar"[^>]*\/>/,'')+header;
+  if(ending)decoration+=f==='technology'?`<circle cx="1100" cy="180" r="120" fill="none" stroke="${p.divider}" stroke-width="2"/>`:f==='report'?`<rect x="1110" y="80" width="98" height="450" fill="${p.secondary}"/>`:`<line x1="84" y1="70" x2="340" y2="70" stroke="${p.accent}" stroke-width="3"/>`;
+ }
+ // A consistent fine rule anchors the page number without adding content or implying data.
+ decoration+=`<line id="footer-rule" data-pptx-role="decoration" x1="72" y1="640" x2="1208" y2="640" stroke="${p.divider}" stroke-width="1"/>`;
+ const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-pptx-page-role="${page.role}"><rect id="background" data-pptx-role="background" x="0" y="0" width="1280" height="720" fill="${surface}"/>${decoration}${blocks.map(row=>`<g id="${row.id}" data-pptx-bounds="${row.x} ${row.y} ${row.w} ${row.h}">${row.lines.map((text,index)=>`<text x="${row.x+12}" y="${row.y+row.size+8+index*row.size*1.5}" font-family="${font}" font-size="${row.size}"${row.role==='title'||row.boldFirst&&index===0?' font-weight="700"':''} fill="${row.role==='footer'?muted:foreground}">${xml(text)}</text>`).join('')}</g>`).join('')}</svg>`;
  const checked=validatePptMasterSvg(svg);validatePptMasterVisibleText(checked,slide,plan);
  return {...Object.fromEntries(['id','title','body','layout','notes'].map(key=>[key,slide[key]??''])),svg:checked,sourceIds:[...plan.sourceIds],evidenceSourceIds:[...plan.sourceIds],authorSourceIds:[],composition:page.composition,visualKind:visual?.kind||null,layoutMethod:'validated',requiresReview:true};
 }

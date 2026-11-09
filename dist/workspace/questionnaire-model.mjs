@@ -40,8 +40,11 @@ export function normalizeAIQuestionnaire(output,requirements={}){
   if(!row||!['single','multiple','scale','text'].includes(row.type))continue;
   const expectedMin=row.type==='scale'?points:row.type==='text'?0:2,expectedMax=row.type==='scale'?points:row.type==='text'?0:10,actualOptionsCount=Array.isArray(row.options)?row.options.length:null;
   if(actualOptionsCount===null||actualOptionsCount<expectedMin||actualOptionsCount>expectedMax)optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:row.type,field:'options',code:'option_count',actualOptionsCount,expectedMin,expectedMax,...(row.type==='scale'?{expectedExact:points}:{})});
+  // Ask the model to repair only an unambiguous dimension mismatch. Agree/
+  // disagree is valid for statements, but not for a direct convenience rating.
+  if(row.type==='scale'&&typeof row.title==='string'&&/(?:便利|便捷)程度|评价.{0,40}(?:便利|便捷)|评价.{0,60}体验[：:，,]?.{0,60}能否/.test(row.title)&&!/同意|赞同/.test(row.title)&&Array.isArray(row.options)&&row.options.some(option=>typeof option==='string'&&/不同意|不赞同|同意|赞同/.test(option)))optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'scale',field:'options',code:'scale_dimension_mismatch',expectedExact:points});
  }
- if(optionIssues.length){const first=optionIssues[0],message=first.questionType==='scale'?`本次量表须保留 ${points} 个分值与对应含义。`:first.questionType==='text'?'文本题不能附带预设答案。':'AI 选择题需要 2～10 个选项。';throw Object.assign(Error(message),{validationCode:'questionnaire_options',validationField:'questions',validationIssues:optionIssues.slice(0,10),validationIssueCount:optionIssues.length});}
+ if(optionIssues.length){const first=optionIssues[0],message=first.code==='scale_dimension_mismatch'?'量表选项应与问题询问的体验或便利程度一致。':first.questionType==='scale'?`本次量表须保留 ${points} 个分值与对应含义。`:first.questionType==='text'?'文本题不能附带预设答案。':'AI 选择题需要 2～10 个选项。';throw Object.assign(Error(message),{validationCode:'questionnaire_options',validationField:'questions',validationIssues:optionIssues.slice(0,10),validationIssueCount:optionIssues.length});}
  const ids=new Set(),questions=output.questions.map(row=>{
   if(!row||typeof row!=='object'||Array.isArray(row)||Object.keys(row).some(key=>!['id','type','title','options','required'].includes(key))||!['single','multiple','scale','text'].includes(row.type)||typeof row.required!=='boolean')throw Error('问卷题目类型、必填标记或字段无效。');
   const id=text(row.id,60,'题号');if(!/^[A-Za-z0-9_-]+$/.test(id)||['__proto__','constructor','prototype'].includes(id)||ids.has(id))throw Error('问卷题号重复或无效。');ids.add(id);
@@ -51,7 +54,18 @@ export function normalizeAIQuestionnaire(output,requirements={}){
   else{if(!Array.isArray(raw)||raw.length<2||raw.length>10)throw Error('AI 选择题需要 2～10 个选项。');options=raw.map(option=>text(option,150,'选择题选项'));if(new Set(options.map(option=>option.normalize('NFKC').toLocaleLowerCase())).size!==options.length)throw Error('问卷选项不能重复。');}
   return{id,type:row.type,title,options,required:row.required};
  });
- return{title:text(output.title,200,'问卷标题'),introduction:text(output.introduction,2000,'问卷说明'),questions};
+ // Published forms currently have no branching. When a screening option
+ // explicitly includes non-users, don't force them to invent an experience.
+ // Keep the scale intact and let respondents skip only clearly experience-
+ // specific questions; authors can still revise the result before publishing.
+ const hasNonUsers=questions.some(q=>q.options.some(o=>/^(?:从未使用(?:过)?|没有使用(?:过)?|未使用(?:过)?|从未接触(?:过)?|从未购买(?:过)?|never used)$/i.test(o.trim())));
+ const safeQuestions=hasNonUsers?questions.map(q=>{
+  if(!q.required||!['single','multiple','scale'].includes(q.type)||q.options.some(o=>/不适用|未使用|从未使用|无法评价|not applicable|never used/i.test(o)))return q;
+  if(!/(?:使用|体验|满意|便利|便捷|评价|服务质量|accessibility|satisfaction|experience)/i.test(q.title))return q;
+  const hint=/[\u4e00-\u9fff]/.test(q.title)?'（未使用者可跳过）':' (Skip if you have not used this service)';
+  return {...q,required:false,title:q.title.length+hint.length<=500?q.title+hint:q.title};
+ }):questions;
+ return{title:text(output.title,200,'问卷标题'),introduction:text(output.introduction,2000,'问卷说明'),questions:safeQuestions};
 }
 
 // A compact editor change detector only; it never authorizes access or verifies evidence.

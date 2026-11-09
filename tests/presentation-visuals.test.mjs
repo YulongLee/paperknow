@@ -5,6 +5,7 @@ import {presentationVisualKind,presentationChartRows,presentationVisualRetained}
 import {validatedPresentationLayout} from '../backend/presentation-layout.mjs';
 import {createPptMasterRuntime,getPptMasterRuntimeStatus} from '../backend/ppt-master-runtime.mjs';
 import JSZip from 'jszip';
+import {presentationTemplateStyle} from '../dist/workspace/presentation-design-system.mjs';
 import {DOMParser} from '@xmldom/xmldom';
 import {visualFixture} from './fixtures/presentation-visuals.mjs';
 
@@ -30,4 +31,40 @@ test('English content keeps complete words in readable lines while preserving ev
 });
 test('real PPTX compilation retains every diagram, original value, editable text and speaker note',async t=>{
  if(!getPptMasterRuntimeStatus().ready)return t.skip('原生编译器未安装');const f=visualFixture(),slides=f.slides.map(slide=>validatedPresentationLayout(f.value,slide,f.plan)),rendered=await createPptMasterRuntime().render({slides,title:f.value.snapshot.title}),zip=await JSZip.loadAsync(rendered.pptx);assert.equal(rendered.validation.slideCount,8);assert.ok(rendered.validation.nativeShapeCount>150);for(const [i,slide]of slides.entries()){const xml=await zip.file('ppt/slides/slide'+(i+1)+'.xml').async('string');assert.doesNotMatch(xml,/<p:pic\b/);assert.match(xml,/<a:t>/);if(i===1)assert.match(xml,/prst="(?:chevron|triangle|rtTriangle)"|<a:custGeom/);if(i===4){assert.match(xml,/82.5%/);assert.match(xml,/91.2%/);assert.match(xml,/0%/);}assert.ok(zip.file('ppt/notesSlides/notesSlide'+(i+1)+'.xml'));}
+});
+
+test('fallback visual cards use restrained alternating surfaces and a consistent footer without adding data',()=>{
+ const f=visualFixture(),page=validatedPresentationLayout(f.value,f.slides[1],f.plan),doc=new DOMParser().parseFromString(page.svg,'image/svg+xml');
+ const group=Array.from(doc.getElementsByTagName('g')).find(n=>n.getAttribute('id')==='visual-process');const cards=Array.from(group.getElementsByTagName('rect')).filter(n=>n.getAttribute('rx')===String(f.plan.designStyle.cardRadius));
+ assert.ok(cards.length>=2);assert.notEqual(cards[0].getAttribute('fill'),cards[1].getAttribute('fill'));assert.ok(Array.from(doc.getElementsByTagName('line')).some(n=>n.getAttribute('id')==='footer-rule'));assert.equal(validatePptMasterVisibleText(page.svg,f.slides[1],f.plan),true);
+});
+
+test('visual cover uses the selected family surface and keeps editable readable text',()=>{
+ const f=visualFixture(),page=validatedPresentationLayout(f.value,f.slides[0],f.plan),doc=new DOMParser().parseFromString(page.svg,'image/svg+xml');
+ const rect=Array.from(doc.getElementsByTagName('rect')).find(n=>n.getAttribute('id')==='background');assert.equal(rect.getAttribute('fill'),f.plan.designStyle.coverSurface);
+ const title=Array.from(doc.getElementsByTagName('g')).find(n=>n.getAttribute('id')==='slide-title');assert.equal(title.getElementsByTagName('text')[0].getAttribute('fill'),f.plan.designStyle.coverText);assert.equal(validatePptMasterVisibleText(page.svg,f.slides[0],f.plan),true);
+});
+
+test('all templates preserve the selected theme and distinct editable cover motifs',async()=>{
+ const {themes}=await import('../dist/workspace/presentation-model.mjs');
+ const seen=new Set();
+ for(const [id,theme] of Object.entries(themes)){
+  const f=visualFixture();f.value.snapshot.context.theme=id;const plan=pptMasterDesignPlan(f.value,f.slides,{sourceIds:f.plan.sourceIds});
+  assert.equal(plan.theme,id);assert.equal(plan.coverVariant,theme.coverVariant);assert.deepEqual(plan.palette,presentationTemplateStyle(id).palette);
+  const slide={...f.slides[0],title:'研究背景与技术方法'.repeat(12)},page=validatedPresentationLayout(f.value,slide,plan),doc=new DOMParser().parseFromString(page.svg,'image/svg+xml');
+  assert.equal(validatePptMasterVisibleText(page.svg,slide,plan),true);assert.match(page.svg,/template-(?:orbit|ribbon|block|line)/);assert.doesNotMatch(page.svg,/<image|href=|<script/);
+  const title=Array.from(doc.getElementsByTagName('g')).find(n=>n.getAttribute('id')==='slide-title').getAttribute('data-pptx-bounds').split(' ').map(Number);assert.ok(title[0]+title[2]<=1024);seen.add(plan.coverVariant);
+ }
+ assert.deepEqual([...seen].sort(),['geometry','minimal','orbit','ribbon']);
+});
+
+
+test('four template systems keep readable content and closing pages while agenda and comparisons use open layouts',()=>{
+ const families=new Set();
+ for(const theme of ['academic','indigo','slate','sand']){const f=visualFixture();f.value.snapshot.context.theme=theme;const plan=pptMasterDesignPlan(f.value,f.slides,{sourceIds:f.plan.sourceIds});plan.coverArtwork=true;families.add(plan.designStyle.family);
+ for(const slide of f.slides){const page=validatedPresentationLayout(f.value,slide,plan);assert.equal(validatePptMasterVisibleText(page.svg,slide,plan),true);if(slide.layout==='cover')assert.match(page.svg,/artwork-text-backdrop/);else assert.match(page.svg,new RegExp('fill="'+plan.palette.background+'"'));}
+ const agenda={...f.slides[1],title:'汇报目录',body:'研究背景\n研究方法\n研究结果\n结论'};const page=validatedPresentationLayout(f.value,agenda,plan);assert.equal(page.visualKind,'agenda');assert.equal(validatePptMasterVisibleText(page.svg,agenda,plan),true);assert.equal(presentationVisualRetained(page.svg,'agenda'),true);
+ }
+ assert.deepEqual([...families].sort(),['academic','editorial','report','technology']);
+ for(const bad of ['__proto__','constructor','missing'])assert.equal(presentationTemplateStyle(bad).family,'academic');
 });

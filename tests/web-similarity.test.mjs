@@ -60,6 +60,14 @@ test('idempotency and same-input duplicate requests do not resubmit searches or 
  await f.worker.tick();const calls=f.calls.length;assert.equal((await f.submit()).value.item.id,id);await f.worker.tick();assert.equal(f.calls.length,calls);
 });
 
+test('older 2.0 task remains recoverable by its original request key while a new request runs the new plan',async t=>{
+ const f=await fixture(t),key=crypto.randomUUID(),first=(await f.submit({idempotencyKey:key})).value.item.id;
+ await f.worker.tick();assert.equal(f.job(first).status,'completed');
+ f.db.prepare('UPDATE jobs SET input_hash=? WHERE id=?').run(digest(JSON.stringify({version:'public-web-exact-2.0',text,title:'合成流程测试'})),first);
+ assert.equal((await f.submit({idempotencyKey:key})).value.item.id,first);
+ const next=(await f.submit()).value.item.id;assert.notEqual(next,first);await f.worker.tick();assert.equal(f.job(next).status,'completed');
+});
+
 test('unavailable source bodies and generated-only URLs never turn into a zero-percent success',async t=>{
  const f=await fixture(t,{webSimilaritySourceReader:async()=>{throw Error('secret upstream diagnostic');}}),id=(await f.submit()).value.item.id;await f.worker.tick();
  assert.equal(f.job(id).status,'failed');assert.match(f.job(id).error,/未取得足够的比对资料/);assert.doesNotMatch(f.job(id).error,/secret|upstream/);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);assert.equal(f.objects.size,0);
@@ -67,9 +75,33 @@ test('unavailable source bodies and generated-only URLs never turn into a zero-p
  const empty=await fixture(t,{webSimilaritySearch:{async search(){return{searched:false,sources:[],usage:{}};}}}),second=(await empty.submit()).value.item.id;await empty.worker.tick();assert.equal(empty.job(second).status,'failed');assert.match(empty.job(second).error,/未生成检测结论/);
 });
 
+test('explicit new submission can retry failed searches without replaying an idempotent request',async t=>{
+ let available=false;
+ const f=await fixture(t,{webSimilaritySourceReader:async()=>{if(!available)throw Error('source offline');return{url:'https://public.example.org/paper',title:'真实来源',text:paragraph,contentHash:digest(paragraph),fetchedAt:new Date().toISOString()};}});
+ const key=crypto.randomUUID(),first=(await f.submit({idempotencyKey:key})).value.item.id;
+ await f.worker.tick();assert.equal(f.job(first).status,'failed');assert.ok(f.calls.length>0);
+ assert.equal((await f.submit({idempotencyKey:key})).value.item.id,first);
+ available=true;const second=(await f.submit()).value.item.id;assert.notEqual(second,first);
+ await f.worker.tick();assert.equal(f.job(second).status,'completed');
+});
+
 test('partial source failures publish explicit limited coverage without using the failed text in the denominator or hits',async t=>{
  const f=await fixture(t,{webSimilaritySearch:{async search(){return{searched:true,sources:[{url:'https://public.example.org/ok',title:'可读'},{url:'https://public.example.org/unavailable',title:'不可读'}],usage:{}};}},webSimilaritySourceReader:async url=>{if(url.endsWith('unavailable'))throw Error('blocked');return{url,title:'真实原文',text:paragraph,contentHash:digest(paragraph),fetchedAt:new Date().toISOString()};}}),id=(await f.submit()).value.item.id;
  await f.worker.tick();const report=(await f.request('/'+id+'/report')).value.report;assert.equal(report.web.fetchedSources,1);assert.equal(report.web.failedSources,1);assert.equal(report.web.searchComplete,false);assert.match(report.web.limitations.join(''),/来源范围受限/);assert.equal(report.sources.length,1);
+});
+
+test('optional AI advice is restricted to actual matches and provider failure cannot fail the detection',async t=>{
+ const advice=async()=>{const rows=[{paragraphId:'p-1',advice:'核对引用并结合实际研究调整表达。'},{paragraphId:'p-2',advice:'未匹配时不能展示。'}];Object.defineProperty(rows,'usage',{value:{attempted:true,model:'test-model',inputTokens:100,outputTokens:20}});return rows;};
+ const f=await fixture(t,{webSimilarityAdviceEnabled:true,webSimilarityAdvice:advice});
+ const id=(await f.submit()).value.item.id;await f.worker.tick();const report=(await f.request('/'+id+'/report')).value.report;
+ assert.deepEqual(report.advice,[{paragraphId:'p-1',advice:'核对引用并结合实际研究调整表达。'}]);
+ const usage=JSON.parse(f.db.prepare('SELECT usage FROM web_similarity_runs WHERE id=?').get(id).usage);assert.ok(usage.some(row=>row?.kind==='advice'&&row.inputTokens===100&&row.outputTokens===20));
+ const meter=f.db.prepare("SELECT * FROM usage WHERE id=?").get('similarity-advice:'+id);assert.equal(meter.provider,'similarity_advice');assert.equal(meter.input_tokens,100);assert.equal(meter.output_tokens,20);assert.equal(meter.billable,0);
+ const f2=await fixture(t,{webSimilarityAdviceEnabled:true,webSimilarityAdvice:async()=>{throw Error('provider failed');}});
+ const other=(await f2.submit()).value.item.id;await f2.worker.tick();assert.equal(f2.job(other).status,'completed');
+ assert.equal((await f2.request('/'+other+'/report')).value.report.advice,undefined);
+ const f3=await fixture(t,{webSimilarityAdviceEnabled:true,webSimilarityAdvice:async()=>{const rows=[];Object.defineProperty(rows,'usage',{value:{attempted:true,model:'test-model',inputTokens:null,outputTokens:null}});return rows;}});
+ const unknown=(await f3.submit()).value.item.id;await f3.worker.tick();const unknownUsage=f3.db.prepare('SELECT input_tokens,output_tokens FROM usage WHERE id=?').get('similarity-advice:'+unknown);assert.equal(unknownUsage.input_tokens,null);assert.equal(unknownUsage.output_tokens,null);
 });
 
 test('cancellation while a search is in flight does not publish late results or replay the unknown request',async t=>{
@@ -112,7 +144,16 @@ test('parallel search and source reads preserve deterministic evidence order and
  let searches=0,searchActive=0,searchPeak=0,readActive=0,readPeak=0;
  const f=await fixture(t,{webSimilaritySearch:{async search(){const i=searches++;searchActive++;searchPeak=Math.max(searchPeak,searchActive);await new Promise(r=>setTimeout(r,i%2?1:8));searchActive--;return{searched:true,sources:[0,1].map(n=>({title:'来源'+i+'-'+n,url:'https://public.example.org/'+i+'-'+n})),usage:{}};}},webSimilaritySourceReader:async url=>{readActive++;readPeak=Math.max(readPeak,readActive);await new Promise(r=>setTimeout(r,url.endsWith('-0')?8:1));readActive--;if(url.endsWith('2-1'))throw Error('unreadable');return{url,title:url.split('/').at(-1),text:paragraph+url,contentHash:digest(paragraph+url),fetchedAt:new Date().toISOString()};}});
  const manuscript=Array.from({length:8},(_,i)=>String.fromCharCode(65+i).repeat(50)+paragraph).join('\n\n'),id=(await f.submit({text:manuscript})).value.item.id;
- await f.worker.tick();assert.equal(f.job(id).status,'completed');assert.equal(searches,6);assert.equal(searchPeak,2);assert.equal(readPeak,3);
- const report=(await f.request('/'+id+'/report')).value.report,expected=Array.from({length:6},(_,i)=>[i+'-0',i+'-1']).flat().filter(n=>n!=='2-1');
+ await f.worker.tick();assert.equal(f.job(id).status,'completed');assert.equal(searches,8);assert.equal(searchPeak,2);assert.equal(readPeak,3);
+ const report=(await f.request('/'+id+'/report')).value.report,expected=[0,1].flatMap(rank=>Array.from({length:8},(_,i)=>i+'-'+rank)).filter(n=>n!=='2-1');
  assert.deepEqual(report.sources.map(s=>s.title),expected);assert.equal(report.web.failedSources,1);assert.equal(report.sources.some(s=>s.url.endsWith('2-1')),false);assert.equal(report.web.searchComplete,false);
+});
+
+test('sources from a single query cannot crowd out all other sampled passages',async t=>{
+ let query=0;
+ const f=await fixture(t,{webSimilaritySearch:{async search(){const i=query++;return{searched:true,sources:Array.from({length:10},(_,n)=>({title:`${i}-${n}`,url:`https://public.example.org/${i}-${n}`}))};}},webSimilaritySourceReader:async url=>({url,title:url.split('/').at(-1),text:paragraph+url,contentHash:digest(paragraph+url),fetchedAt:new Date().toISOString()})});
+ const manuscript=Array.from({length:8},(_,i)=>String.fromCharCode(65+i).repeat(50)+paragraph).join('\n\n'),id=(await f.submit({text:manuscript})).value.item.id;
+ await f.worker.tick();const report=(await f.request('/'+id+'/report')).value.report;
+ assert.equal(report.web.candidateSources,80);assert.equal(report.web.fetchedSources,24);
+ for(let i=0;i<8;i++)assert.ok(report.sources.some(s=>s.title===`${i}-0`));
 });

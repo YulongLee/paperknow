@@ -127,3 +127,10 @@ for(const kind of ['similarity','aigc'])test(kind+' manuscript uploads reject ot
  for(const mode of ['report','dual']){f.choose(mode);for(const file of ['论文.pdf','论文.txt','论文.doc']){f.file(file);await new Promise(r=>setImmediate(r));assert.match(f.$('#revision-service-file-status').textContent,/仅支持 DOCX/);}}
  assert.equal(reads,0);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);f.file('论文.DOCX');await settle(()=>/已读取/.test(f.$('#revision-service-file-status').textContent));assert.equal(reads,1);
 });
+
+for(const kind of ['similarity','aigc'])test(kind+' dual long document states the real limit and rejects oversize before a quote without losing its input',async t=>{
+ const text='文字'.repeat(10000)+'😀',f=fixture(t,{kind,dependencies:{importDocument:async()=>({text})}});f.choose('dual');assert.match(f.$('[data-product-description]').textContent,/20,000/);assert.match(f.$('[data-product-file-note]').textContent,/排版、图片/);f.file();await settle(()=>/20,001/.test(f.$('#revision-service-file-status').textContent));assert.match(f.$('[data-product-error]').textContent,/尚未扣费/);f.submit();await settle(()=>/尚未扣费/.test(f.$('[data-product-error]').textContent));assert.equal(f.calls.filter(c=>/quote|jobs/.test(c.path)).length,0);assert.match(f.$('#revision-service-file-status').textContent,/论文.docx/);
+});
+test('dual submission accepts a document above the former 10,000 character ceiling with a single task',async t=>{
+ const text=Array.from({length:12},(_,i)=>'第'+i+'段'+('研究材料内容。'.repeat(150))).join('\n\n'),f=fixture(t,{dependencies:{importDocument:async()=>({text})}});assert.ok(Array.from(text).length>10000&&Array.from(text).length<20000);f.choose('dual');f.file();await settle(()=>/已读取/.test(f.$('#revision-service-file-status').textContent));f.submit();await settle(()=>!f.$('[data-product-result]').hidden);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);assert.equal(f.calls.find(c=>c.path==='/tool-runs/jobs').data.snapshot.text,text);
+});
