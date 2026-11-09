@@ -22,6 +22,15 @@ const {mountWriting}=await import('../dist/workspace/writing.mjs');
 const {clearEditor}=await import('../dist/workspace/edit-guard.mjs');
 bootstrap.dom.window.close();
 
+test('thesis knowledge step directs users to its existing school template selector',async()=>{
+ const f=fixture();try{
+  mountWriting(undefined,undefined,f.ctx);f.input('#writing-title','测试论文');f.$('#writing-generate').click();await settle();
+  assert.equal(f.$('.dashboard').dataset.writingStage,'2');assert.ok(f.$('#writing-knowledge-template'));
+  assert.match(f.$('.knowledge-upload-heading').textContent,/学校格式模板可在上方选择/);
+  assert.doesNotMatch(f.$('.knowledge-upload-heading').textContent,/最后一步|无需在此上传/);
+ }finally{f.close();}
+});
+
 test('five-step transitions keep the viewport and do not force focus away from the user',async()=>{
  const f=fixture();
  try{

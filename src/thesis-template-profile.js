@@ -9,32 +9,46 @@ import {readExplicitThesisRequirements,applyExplicitThesisRequirements} from './
 const mm=value=>Math.round(value*1440/25.4);
 const style=(overrides={})=>({eastAsia:'宋体',ascii:'Times New Roman',size:24,bold:false,alignment:'both',line:360,lineRule:'auto',firstLineChars:200,firstLine:0,hanging:0,before:0,after:0,pageBreakBefore:false,...overrides});
 
-export function defaultThesisTemplateProfile(){
- return {version:1,rules:{page:{width:11906,height:16838,top:mm(30),bottom:mm(25),left:mm(30),right:mm(25),header:mm(15),footer:mm(15),gutter:0},styles:{Normal:style(),Title:style({eastAsia:'黑体',size:44,bold:true,alignment:'center',firstLineChars:0,line:360,before:240,after:240}),Heading1:style({eastAsia:'黑体',size:32,bold:true,alignment:'center',firstLineChars:0,line:360,before:480,after:360,pageBreakBefore:true}),Heading2:style({eastAsia:'黑体',size:28,bold:true,alignment:'left',firstLineChars:0,line:360,before:240,after:120}),Heading3:style({eastAsia:'黑体',size:24,bold:true,alignment:'left',firstLineChars:0,line:360,before:120,after:120}),Abstract:style(),References:style({firstLineChars:0,hanging:480}),TableText:style({size:21,alignment:'left',line:240,firstLineChars:0})}},recognized:[],unresolved:[],warnings:[],summary:['通用学位论文模板；最终格式请按学位授予单位要求核对。']};
+function baselineTemplateProfile(){
+ return {version:1,rules:{page:{width:11906,height:16838,top:mm(30),bottom:mm(25),left:mm(30),right:mm(25),header:mm(15),footer:mm(15),gutter:0},styles:{Normal:style(),Title:style({eastAsia:'黑体',size:44,bold:true,alignment:'center',firstLineChars:0,line:360,before:240,after:240}),Heading1:style({eastAsia:'黑体',size:32,bold:true,alignment:'center',firstLineChars:0,line:360,before:480,after:360,pageBreakBefore:true}),Heading2:style({eastAsia:'黑体',size:28,bold:true,alignment:'left',firstLineChars:0,line:360,before:240,after:120}),Heading3:style({eastAsia:'黑体',size:24,bold:true,alignment:'left',firstLineChars:0,line:360,before:120,after:120}),Abstract:style(),References:style({alignment:'left',firstLineChars:0,hanging:480}),TableText:style({size:21,alignment:'left',line:240,firstLineChars:0})}},recognized:[],unresolved:[],warnings:[],summary:['通用学位论文模板；最终格式请按学位授予单位要求核对。']};
 }
 
-export function defaultWritingTemplateProfile(kind){
- const profile=defaultThesisTemplateProfile();
- Object.assign(profile.rules.styles.Title,{size:36,before:120,after:240});
- Object.assign(profile.rules.styles.Heading1,{pageBreakBefore:false,alignment:'left',before:240,after:120});
- const spec=writingDefaultTemplateSpec(kind);
- if(spec){
-  const f=spec.format,styles=profile.rules.styles;
-  Object.assign(styles.Normal,{size:f.bodySize||24,line:f.line||360,firstLineChars:f.firstLineChars??200});
-  Object.assign(styles.Title,{size:f.titleSize||36});
-  Object.assign(styles.Heading1,{size:f.headingSize||32,line:f.line||360});
-  Object.assign(styles.Heading2,{size:f.subheadingSize||28,line:f.line||360});
-  Object.assign(styles.Heading3,{size:f.subheadingSize||24,line:f.line||360});
-  Object.assign(styles.Abstract,{size:f.bodySize||24,line:f.line||360});
-  Object.assign(styles.References,{size:f.referencesSize||24,line:f.line||360});
-  Object.assign(styles.TableText,{size:f.tableSize||21});
-  if(f.margin)for(const side of ['top','bottom','left','right'])profile.rules.page[side]=mm(f.margin);
-  profile.templateId=spec.id;profile.templateName=spec.name;profile.writingKind=spec.kind;
- }
- profile.summary=[spec?spec.name+'（默认）；A4 纸，按当前文章的实际提纲连续排版。':'通用学术报告版式；按文档自身结构连续排版。'];
+function applyDefaultFormat(profile,spec){
+ if(!spec)return;
+ const f=spec.format,styles=profile.rules.styles;
+ const apply=(role,{font,size,spacing=false}={})=>Object.assign(styles[role],{
+  ...(font?{eastAsia:font}:{}),...(size?{size}:{}),
+  ...(spacing&&f.line?{line:f.line,lineRule:f.lineRule||'auto'}:{})
+ });
+ apply('Normal',{font:f.bodyFont,size:f.bodySize,spacing:true});
+ if(f.firstLineChars!==undefined)styles.Normal.firstLineChars=f.firstLineChars;
+ apply('Title',{font:f.titleFont,size:f.titleSize});
+ apply('Heading1',{font:f.headingFont,size:f.headingSize,spacing:true});
+ apply('Heading2',{font:f.subheadingFont,size:f.subheadingSize,spacing:true});
+ apply('Heading3',{font:f.thirdHeadingFont||f.subheadingFont,size:f.thirdHeadingSize||f.subheadingSize,spacing:true});
+ apply('Abstract',{font:f.bodyFont,size:f.bodySize,spacing:true});
+ apply('References',{font:f.bodyFont,size:f.referencesSize,spacing:true});
+ apply('TableText',{font:f.bodyFont,size:f.tableSize});
+ if(f.margin)for(const side of ['top','bottom','left','right'])profile.rules.page[side]=mm(f.margin);
+ if(f.page)Object.assign(profile.rules.page,f.page);
+ profile.templateId=spec.id;profile.templateName=spec.name;profile.writingKind=spec.kind;
+}
+
+export function defaultThesisTemplateProfile(){
+ const profile=baselineTemplateProfile();
+ applyDefaultFormat(profile,writingDefaultTemplateSpec('writing'));
  return profile;
 }
 
+export function defaultWritingTemplateProfile(kind){
+ const profile=baselineTemplateProfile();
+ Object.assign(profile.rules.styles.Title,{size:36,before:120,after:240});
+ Object.assign(profile.rules.styles.Heading1,{pageBreakBefore:false,alignment:'left',before:240,after:120});
+ const spec=writingDefaultTemplateSpec(kind);
+ applyDefaultFormat(profile,spec);
+ profile.summary=[spec?.kind==='proposal'||spec?.format.cover?spec.name+'（默认）；A4，独立封面，正文按确认的结构排版。':spec?spec.name+'（默认）；A4，按文档自身结构连续排版。':'通用学术报告版式；按文档自身结构连续排版。'];
+ return profile;
+}
 
 export async function inspectThesisDocxTemplate(bytes){return inspectTemplate(bytes);}
 export async function prepareThesisDocxTemplate(bytes){
@@ -65,7 +79,7 @@ async function inspectTemplate(bytes,{includeBytes=false,requireStatic=false}={}
  if(requireStatic&&staticPictures)throw Error('模板图片字段尚未转换完成，请重新选择模板。');
  for(const doc of docs.values())hyperlinks+=inspectActiveContent(doc);
  if(!document.getElementsByTagNameNS(W,'body').length)throw Error('模板缺少 Word 正文。');
- const result=defaultThesisTemplateProfile(),{rules,recognized,unresolved,warnings}=result;
+ const result=baselineTemplateProfile(),{rules,recognized,unresolved,warnings}=result;
  if(staticPictures)warnings.push('模板中的旧图片引用将使用文档内已保存的图片，导出时不读取原电脑或网络路径；上传原件保持不变。');
  if(hyperlinks)warnings.push('模板包含普通网页或邮件超链接；不会抓取链接内容，导出后请核对链接是否仍适用。');
  const stylesDoc=docs.get(relatedPart(docs,'styles','word/styles.xml')),styles=new Map();

@@ -30,6 +30,26 @@ export function normalizeScaleOptions(value,{legacyDefault=false,points}={}){
  if(options.every(option=>/^[-+]?\d+(?:\.\d+)?$/.test(option))&&!options.every((option,index)=>option===String(index+1)))throw Error('数值量表应从 1 开始连续排列；文字量表按选项顺序计分。');
  return options;
 }
+// Strip only isolated model process messages from an AI-authored introduction.
+// Never replace or synthesize the participant-facing consent and privacy text.
+function cleanAIIntroduction(value,{removeMissingSkipOption=false,hasRequired=false}={}){
+ const intro=text(value,2000,'问卷说明').replace(hasRequired?/(?:或|、|和)\s*跳过(?:任何|所有)不(?:想|愿)回答的(?:题目|问题)/gu:/(?!)/g,'').replace(/(?:当前|本次|本)?问卷(?:暂时|暂|目前)?不支持自动跳题(?:逻辑|功能)?[，,]\s*(?=约需|预计|作答约需)/gu,'');
+ const stripped=intro.split(/(?<=[。！？!?\n])/u).filter(sentence=>{
+  const s=sentence.trim();
+  if(hasRequired&&/^(?:(?:任何|所有)(?:不(?:想|愿)回答的)?(?:题目|问题)(?:均|都)?(?:可|可以)跳过|(?:你|您)?(?:可|可以)跳过(?:任何|所有)不(?:想|愿)回答的(?:题目|问题))[。！？!?]?$/u.test(s))return false;
+  if(removeMissingSkipOption&&/(?:未使用|从未使用|没有使用).{0,35}(?:选择|勾选|请选择).{0,25}(?:未使用|未体验|不适用)|(?:选择|勾选|请选择).{0,20}(?:未使用|未体验|不适用).{0,25}(?:未使用|从未使用|没有使用)/u.test(s))return false;
+  return !/^(?:当前|本次|本)?问卷(?:暂时|暂|目前)?不支持自动跳题(?:逻辑|功能)?(?:[，,]请自行判断作答)?[。！？!?]?$/u.test(s)&&
+   !/^(?:所有|本次|本问卷的?)?(?:结果|数据)(?:均|都)?为待人工核对的草稿数据[。！？!?]?$/u.test(s);
+ }).join('').trim();
+ if(!stripped)throw Error('AI 问卷缺少受访者说明，请重新生成。');
+ return stripped;
+}
+function neverUsedOption(q,value){const option=String(value||'').trim();return /^(?:从未使用(?:过)?|从不使用(?:过)?|没有使用(?:过)?|未使用(?:过)?|从未接触(?:过)?|从未购买(?:过)?|never used)$/i.test(option)||/(?:使用|阅读|访问).{0,80}(?:频率|次数)|(?:频率|次数).{0,80}(?:使用|阅读|访问)/u.test(String(q?.title||''))&&(/(?:从未|从不|未使用|没有使用)/u.test(option)||/^0\s*次$/u.test(option.normalize('NFKC')));}
+function weeklyIntervals(options){return options.flatMap(value=>{const m=String(value||'').normalize('NFKC').trim().match(/^每(?:周|星期)\s*(\d+|[一二三四五六七])\s*(?:至|到|[-~～])\s*(\d+|[一二三四五六七])\s*次$/u);if(!m)return [];const a=number(m[1]),b=number(m[2]);return Number.isSafeInteger(a)&&Number.isSafeInteger(b)&&a>=1&&b<=7&&a<=b?[[a,b]]:[];});}
+// Frequency categories must share a defined observation window. We never
+// approximate months or semesters as a fixed number of weeks.
+function frequencyUnits(options){return new Set(options.flatMap(value=>{const option=String(value||'').trim(),match=option.match(/^(?:几乎)?每天|^每(天|日|周|星期|月|学期|年)/u);if(!match)return [];return [!match[1]?'day':({天:'day',日:'day',周:'week',星期:'week',月:'month',学期:'semester',年:'year'})[match[1]]];}));}
+function boundedCountIntervals(options){const rows=[];for(const value of options){const option=String(value||'').normalize('NFKC').trim().replace(/\s*[（(][^（）()]*[）)]\s*$/u,''),range=option.match(/^(\d+)\s*(?:至|到|[-~～])\s*(\d+)\s*次$/u),above=option.match(/^(\d+)\s*次(?:及|或)?以上$/u),exact=option.match(/^(\d+)\s*次$/u);if(range){const a=Number(range[1]),b=Number(range[2]);if(a>b)return null;rows.push([a,b]);}else if(above)rows.push([Number(above[1]),Infinity]);else if(exact){const n=Number(exact[1]);rows.push([n,n]);}else if(/^(?:不确定|不愿回答)$/u.test(option))continue;else return null;}return rows.length?rows.sort((a,b)=>a[0]-b[0]):null;}
 export function normalizeAIQuestionnaire(output,requirements={}){
  const count=requestedQuestionCount(requirements),points=requestedScalePoints(requirements);
  if(!output||!Array.isArray(output.questions)||output.questions.length!==count)throw Error(`本次要求 ${count} 道题，生成数量不一致，未替换现有问卷。`);
@@ -43,8 +63,21 @@ export function normalizeAIQuestionnaire(output,requirements={}){
   // Ask the model to repair only an unambiguous dimension mismatch. Agree/
   // disagree is valid for statements, but not for a direct convenience rating.
   if(row.type==='scale'&&typeof row.title==='string'&&/(?:便利|便捷)程度|评价.{0,40}(?:便利|便捷)|评价.{0,60}体验[：:，,]?.{0,60}能否/.test(row.title)&&!/同意|赞同/.test(row.title)&&Array.isArray(row.options)&&row.options.some(option=>typeof option==='string'&&/不同意|不赞同|同意|赞同/.test(option)))optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'scale',field:'options',code:'scale_dimension_mismatch',expectedExact:points});
+  // Only catch the unambiguous, unqualified "at least once" form. Do not
+  // speculate about open-ended ranges or rewrite a respondent's selections.
+  if(row.type==='single'&&Array.isArray(row.options)){
+   const units=new Set(row.options.map(option=>typeof option==='string'?option.trim().match(/^每(天|日|周|星期|月|年)(?:至少|最少|不少于)(?:一|1)次$/u)?.[1]:null).filter(Boolean).map(value=>value==='星期'?'周':value==='日'?'天':value));
+   if(units.size>=2)optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'single',field:'options',code:'frequency_overlap'});
+   const ranges=weeklyIntervals(row.options).sort((a,b)=>a[0]-b[0]),never=row.options.some(option=>neverUsedOption(row,option)),belowOne=row.options.some(option=>typeof option==='string'&&/^每月(?:少于|不到|低于)\s*(?:1|一)次/u.test(option.trim())),overlap=ranges.some((value,i)=>i>0&&value[0]<=ranges[i-1][1])||never&&belowOne,hasWeeklyLowerBound=row.options.some(option=>typeof option==='string'&&/^每(?:周|星期)(?:至少|最少|不少于)\s*(?:\d+|[一二三四五六七])次/u.test(option.trim())),gap=ranges.some((value,i)=>i>0&&value[0]>ranges[i-1][1]+1)||ranges.length>=1&&ranges.at(-1)[1]<6&&!hasWeeklyLowerBound&&row.options.some(option=>typeof option==='string'&&/(?:几乎)?每天/.test(option));if(overlap&&!optionIssues.some(issue=>issue.questionIndex===index+1&&issue.code==='frequency_overlap'))optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'single',field:'options',code:'frequency_overlap'});if(gap)optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'single',field:'options',code:'frequency_gap'});
+   const ambiguousDaily=ranges.length>0&&ranges.at(-1)[1]>=6&&row.options.some(option=>typeof option==='string'&&/几乎每天/.test(option)),ambiguousLow=never&&row.options.some(option=>typeof option==='string'&&/^每(?:学期|年).{0,12}(?:几次|偶尔).{0,12}(?:或更少|及以下|以下)/u.test(option.trim())),ambiguousRelative=row.options.some(option=>typeof option==='string'&&/^每(?:周|月|学期|年).{0,8}(?:几次|偶尔|更少)/u.test(option.trim()))&&row.options.some(option=>typeof option==='string'&&/\d|[一二三四五六七八九]次/u.test(option));if(ambiguousDaily||ambiguousLow||ambiguousRelative)optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'single',field:'options',code:'frequency_ambiguous'});
+   const frequencyQuestion=typeof row.title==='string'&&/(?:频率|多久|多频繁|(?:使用|访问|阅读).{0,80}次数)/u.test(row.title);if(frequencyQuestion){const reference=[row.title,output.introduction,requirements.instructions].filter(value=>typeof value==='string').join(' '),units=frequencyUnits(row.options),period=/(?:过去|最近|近|本|上一|上个|上)(?:\s*\d+\s*(?:天|日|周|个月|月|年)|[一二三四五六七八九十两]+(?:天|日|周|个月|月|年|学期)|(?:这|该)?(?:周|月|年|学期))/u.test(reference),countRanges=boundedCountIntervals(row.options);if(!period)optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'single',field:'title',code:'frequency_period'});if(units.size>1)optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'single',field:'options',code:'frequency_mixed_units'});if(countRanges){const countOverlap=countRanges.some((range,i)=>i>0&&range[0]<=countRanges[i-1][1]),countGap=countRanges[0][0]!==0||countRanges.at(-1)[1]!==Infinity||countRanges.some((range,i)=>i>0&&range[0]>countRanges[i-1][1]+1);if(countOverlap&&!optionIssues.some(issue=>issue.questionIndex===index+1&&issue.code==='frequency_overlap'))optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'single',field:'options',code:'frequency_overlap'});if(countGap&&!optionIssues.some(issue=>issue.questionIndex===index+1&&issue.code==='frequency_gap'))optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'single',field:'options',code:'frequency_gap'});}}
+   if(row.options.some(option=>typeof option==='string'&&/[（(]\s*(?:结束|终止)(?:作答|填写|问卷)\s*[）)]/u.test(option)&&!/(?:自行|手动)/u.test(option)))optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'single',field:'options',code:'unsupported_branching'});
+   if(typeof row.title==='string'&&/高校.{0,12}(?:在读|在校)/u.test(row.title)&&row.options.some(option=>typeof option==='string'&&/本科/.test(option))&&row.options.some(option=>typeof option==='string'&&/(?:硕士|博士)/.test(option))&&!row.options.some(option=>typeof option==='string'&&/(?:专科|高职)/.test(option))&&!/(?:仅限|仅|只|不含|不包括|排除).{0,18}(?:本科|专科|高职)/u.test(String(requirements.instructions||'')))optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'single',field:'options',code:'education_coverage'});
+  }
+  if(row.type==='multiple'&&Array.isArray(row.options)&&row.options.some(option=>typeof option==='string'&&/^(?:(?:以上|上述)(?:均|都)?(?:未|不|没有)(?:使用|选择|接触|适用)(?:过)?(?:任何一项)?|(?:从未|未|没有)(?:使用|遇到|接触)(?:过)?(?:相关服务|问题|相关问题)?|(?:几乎)?没有固定渠道或(?:从未|未|没有)使用(?:过)?|(?:基本|几乎)?不使用上述服务|未遇到\s*[\/／或]\s*未使用)$/u.test(option.trim())))optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'multiple',field:'options',code:'exclusive_multiple_option'});
+  if(row.type==='scale'&&typeof row.title==='string'&&/(?:满意|评价)/u.test(row.title)&&((/(?:速度|速率)/u.test(row.title)&&/(?:校外|异地)/u.test(row.title)&&/(?:多设备|不同设备|多终端|不同终端)/u.test(row.title))||/(?:搜索|检索).{0,12}(?:速度|速率).{0,20}筛选.{0,20}(?:界面|操作)/u.test(row.title)||/能否找到.{0,30}(?:校外|异地)访问/u.test(row.title)||/(?:馆藏|资源).{0,12}(?:覆盖|范围).{0,20}(?:访问权限|权限).{0,20}(?:付费|费用)/u.test(row.title)))optionIssues.push({questionIndex:index+1,questionId:'q'+(index+1),questionType:'scale',field:'title',code:'multiple_dimensions'});
  }
- if(optionIssues.length){const first=optionIssues[0],message=first.code==='scale_dimension_mismatch'?'量表选项应与问题询问的体验或便利程度一致。':first.questionType==='scale'?`本次量表须保留 ${points} 个分值与对应含义。`:first.questionType==='text'?'文本题不能附带预设答案。':'AI 选择题需要 2～10 个选项。';throw Object.assign(Error(message),{validationCode:'questionnaire_options',validationField:'questions',validationIssues:optionIssues.slice(0,10),validationIssueCount:optionIssues.length});}
+ if(optionIssues.length){const first=optionIssues[0],message=first.code==='scale_dimension_mismatch'?'量表选项应与问题询问的体验或便利程度一致。':first.code==='frequency_overlap'?'使用频率选项存在重叠，请调整为互不重叠的区间。':first.code==='frequency_gap'?'使用频率区间可能存在遗漏，请补全并明确边界。':first.code==='frequency_ambiguous'?'使用频率选项的范围存在歧义，请明确互斥边界。':first.code==='frequency_period'?'使用频率题缺少统一的观察时间范围。':first.code==='frequency_mixed_units'?'频率选项混用不同时间单位，请按同一观察期划分次数。':first.code==='unsupported_branching'?'当前表单不能自动结束作答，请改为清晰的手动作答说明。':first.code==='education_coverage'?'高校在读选项缺少专科或高职，请核对调查范围。':first.code==='exclusive_multiple_option'?'多选题的“均未使用”选项不能与其他选项同时选择，请调整题目。':first.code==='multiple_dimensions'?'同一满意度问题包含多个不同维度，请分别明确。':first.questionType==='scale'?`本次量表须保留 ${points} 个分值与对应含义。`:first.questionType==='text'?'文本题不能附带预设答案。':'AI 选择题需要 2～10 个选项。';throw Object.assign(Error(message),{validationCode:'questionnaire_options',validationField:'questions',validationIssues:optionIssues.slice(0,10),validationIssueCount:optionIssues.length});}
  const ids=new Set(),questions=output.questions.map(row=>{
   if(!row||typeof row!=='object'||Array.isArray(row)||Object.keys(row).some(key=>!['id','type','title','options','required'].includes(key))||!['single','multiple','scale','text'].includes(row.type)||typeof row.required!=='boolean')throw Error('问卷题目类型、必填标记或字段无效。');
   const id=text(row.id,60,'题号');if(!/^[A-Za-z0-9_-]+$/.test(id)||['__proto__','constructor','prototype'].includes(id)||ids.has(id))throw Error('问卷题号重复或无效。');ids.add(id);
@@ -58,14 +91,17 @@ export function normalizeAIQuestionnaire(output,requirements={}){
  // explicitly includes non-users, don't force them to invent an experience.
  // Keep the scale intact and let respondents skip only clearly experience-
  // specific questions; authors can still revise the result before publishing.
- const hasNonUsers=questions.some(q=>q.options.some(o=>/^(?:从未使用(?:过)?|没有使用(?:过)?|未使用(?:过)?|从未接触(?:过)?|从未购买(?:过)?|never used)$/i.test(o.trim())));
- const safeQuestions=hasNonUsers?questions.map(q=>{
-  if(!q.required||!['single','multiple','scale'].includes(q.type)||q.options.some(o=>/不适用|未使用|从未使用|无法评价|not applicable|never used/i.test(o)))return q;
+ const hasSkipHint=value=>/(?:从未|未曾|未|没有).{0,12}(?:使用|体验|接触).{0,20}(?:(?<!不)可|可以|请|无需|不必).{0,8}(?:跳过|不作答|不回答)/iu.test(value)||/(?:skip.{0,25}(?:not|never).{0,10}(?:used|use)|(?:not|never).{0,10}(?:used|use).{0,25}skip)/iu.test(value);
+ const suffix='（未使用者可跳过）',normalizedQuestions=questions.map(q=>{let title=q.title;if(title.endsWith(suffix)){const prior=title.slice(0,-suffix.length);if(hasSkipHint(prior))title=prior;}if(q.required&&q.options.some(option=>neverUsedOption(q,option)))title=title.replace(/[（(]([^（）()]{1,60})[）)]/gu,(whole,inside)=>hasSkipHint(inside)?'':whole).trim();return title===q.title?q:{...q,title};});
+ const hasNonUsers=normalizedQuestions.some(q=>q.options.some(o=>neverUsedOption(q,o)));
+ const safeQuestions=hasNonUsers?normalizedQuestions.map(q=>{
+  if(!['single','multiple','scale'].includes(q.type)||q.options.some(o=>neverUsedOption(q,o)||/不适用|未使用|从未使用|无法评价|not applicable|never used/i.test(o)))return q;
   if(!/(?:使用|体验|满意|便利|便捷|评价|服务质量|accessibility|satisfaction|experience)/i.test(q.title))return q;
   const hint=/[\u4e00-\u9fff]/.test(q.title)?'（未使用者可跳过）':' (Skip if you have not used this service)';
-  return {...q,required:false,title:q.title.length+hint.length<=500?q.title+hint:q.title};
- }):questions;
- return{title:text(output.title,200,'问卷标题'),introduction:text(output.introduction,2000,'问卷说明'),questions:safeQuestions};
+  const title=q.title;return {...q,required:false,title:hasSkipHint(title)||title.includes(hint)||title.length+hint.length>500?title:title+hint};
+ }):normalizedQuestions;
+ const missingSkipOption=hasNonUsers&&safeQuestions.some(q=>['single','multiple','scale'].includes(q.type)&&/(?:使用|体验|满意|便利|便捷|评价|服务质量|accessibility|satisfaction|experience)/i.test(q.title)&&!q.options.some(o=>neverUsedOption(q,o)||/未使用|未体验|不适用|无法评价|never used|not applicable/i.test(o)));
+ return{title:text(output.title,200,'问卷标题'),introduction:cleanAIIntroduction(output.introduction,{removeMissingSkipOption:missingSkipOption,hasRequired:safeQuestions.some(row=>row.required)}),questions:safeQuestions};
 }
 
 // A compact editor change detector only; it never authorizes access or verifies evidence.

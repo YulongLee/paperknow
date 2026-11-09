@@ -21,7 +21,7 @@ export const journalTiers=['普通','中文核心','SCI'];
 export const articleResearchTypes=['不限','定量','定性','混合','理论','应用','案例','比较','实验'];
 export const ideaAdvancedFields=[['workExperience','工作经历',200],['workLocation','学习 / 工作地点',200],['researchObjective','研究目标',2000],['researchQuestion','研究问题',100],['researchMethod','拟采用方法',1000],['expectedOutputs','预期成果',100],['supervisorMajor','导师专业',100],['supervisorPublicationDirection','导师发表方向',100],['supervisorResearchField','导师研究领域',100]];
 export function flowWordSuggestions(kind,data={}){
- kind=writingFlowKind(kind);if(kind==='proposal')return[5000];if(kind==='summary')return[({专科:5000,本科:5000,硕士:10000,博士:15000})[flowLevel(data.level)]||10000];
+ kind=writingFlowKind(kind);if(kind==='proposal')return[3000,5000];if(kind==='summary')return[({专科:5000,本科:5000,硕士:10000,博士:15000})[flowLevel(data.level)]||10000];
  if(kind==='article')return data.journalTier==='SCI'?[8000,15000]:data.journalTier==='中文核心'?[8000,15000]:[3000,8000];
  if(kind==='course')return[5000,10000];if(kind==='practice')return[3000,5000];if(kind==='quick')return[10000,15000];return[1000,2000,3000];
 }

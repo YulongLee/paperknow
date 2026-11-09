@@ -8,6 +8,7 @@ import fontkit from '@pdf-lib/fontkit';
 import {applyThesisDocumentTemplate} from './thesis-document.js';
 import {DOMParser} from '@xmldom/xmldom';
 import {normalizeThesisFigures,thesisFigureTitle,rasterizeThesisFigure,inspectThesisFigurePng} from '../dist/workspace/thesis-figure.mjs';
+import {planFigureCaptions} from '../dist/workspace/figure-caption-reference.mjs';
 export {runThesisLayoutAgent,inspectThesisLayout} from './thesis-layout-agent.js';
 export {auditThesisExport,auditThesisSubmission} from './thesis-export-check.js';
 export {inspectThesisDocxTemplate,defaultThesisTemplateProfile,defaultWritingTemplateProfile} from './thesis-template-profile.js';
@@ -38,16 +39,22 @@ function tableCells(text){
  if(!hasPipe)return null;cells.push(current.trim());if(text.trim().startsWith('|'))cells.shift();if(text.trim().endsWith('|')&&!escaped(text.trim(),text.trim().length-1))cells.pop();return cells.map(value=>inlineParts(value).map(part=>part.formula?part.text:part.text.replace(/\\\|/g,'|')).join(''));
 }
 function documentBlocks(value,figures=[],{thesis=false}={}){
- const lines=documentLines(value),blocks=[],byId=new Map(figures.map(figure=>[figure.id,figure])),usedFigures=new Set();let fence=null;
+ const lines=documentLines(value),blocks=[],byId=new Map(figures.map(figure=>[figure.id,figure])),usedFigures=new Set(),captionPlan=planFigureCaptions(lines,figures);let fence=null;
  for(let index=0;index<lines.length;index++){
-  const line=lines[index],marker=line.text.match(/^\s*(`{3,}|~{3,})/);
+  if(captionPlan.skipped.has(index))continue;const line=lines[index],marker=line.text.match(/^\s*(`{3,}|~{3,})/);
   if(marker){if(!fence)fence=marker[1];else if(marker[1][0]===fence[0]&&marker[1].length>=fence.length)fence=null;blocks.push({...line,...(thesis?{text:'',codeBoundary:true}:{}),literal:true});continue;}
   if(fence){blocks.push({...line,literal:true});continue;}
   const figureMatch=line.text.trim().match(/^\[figure:([A-Za-z][A-Za-z0-9_-]{0,39})\]$/);
-  if(figureMatch){const id=figureMatch[1],figure=byId.get(id);if(!figure)throw Error('正文中的图片未找到对应结构，请重新生成该节图片后导出。');if(usedFigures.has(id))throw Error('正文图片标记重复，请为每张图片保留一个位置。');usedFigures.add(id);blocks.push({...line,type:'figure',figure,number:usedFigures.size});continue;}
+  if(figureMatch){const id=figureMatch[1],figure=byId.get(id);if(!figure)throw Error('正文中的图片未找到对应结构，请重新生成该节图片后导出。');if(usedFigures.has(id))throw Error('正文图片标记重复，请为每张图片保留一个位置。');usedFigures.add(id);blocks.push({...line,type:'figure',figure,number:captionPlan.numbers.get(index)||usedFigures.size});continue;}
   if(/\[figure:[^\]]*\]/.test(line.text))throw Error('论文图片标记须独立一行，请调整后重新导出。');
   const trimmed=line.text.trim(),delimiters=trimmed.startsWith('$$')?['$$','$$']:trimmed.startsWith('\\[')?['\\[','\\]']:null;
   if(delimiters){let end=index,raw=trimmed,closing=raw.indexOf(delimiters[1],delimiters[0].length);while(closing<0&&end+1<lines.length&&raw.length<=4000){raw+='\n'+lines[++end].text;closing=raw.indexOf(delimiters[1],delimiters[0].length);}if(closing>=0&&!raw.slice(closing+delimiters[1].length).trim()&&raw.slice(delimiters[0].length,closing).trim()){blocks.push({type:'formula',text:raw,level:3});index=end;continue;}}
+  // Some generated Markdown wraps a standalone caption in one cell. Treat
+  // the pipes as markup only when the following block is a real table.
+  const wrapped=line.text.match(/^\s*\|\s*((?:表\s*\d+(?:[.\-－]\d+)?|Table\s+\d+(?:[.\-－]\d+)?)(?:\s*[:：.、]\s*|\s+)\S[^|]*)\s*\|\s*$/i);if(wrapped){let next=index+1;while(next<lines.length&&!lines[next].text.trim())next++;const h=lines[next]&&tableCells(lines[next].text),d=lines[next+1]&&tableCells(lines[next+1].text);if(h?.length>=2&&h.length<=20&&d?.length===h.length&&(d.every(cell=>/^:?-{3,}:?$/.test(cell))||h.every(cell=>/^:?-{3,}:?$/.test(cell)))){blocks.push({...line,text:wrapped[1].trim()});continue;}}
+  // Recover the common AI shape caption / separator / header / data only
+  // when a caption and complete, matching multi-column rows are present.
+  const reversed=tableCells(line.text),nextHeader=lines[index+1]&&tableCells(lines[index+1].text),firstRow=lines[index+2]&&tableCells(lines[index+2].text);let prior=index-1;while(prior>=0&&!lines[prior].text.trim())prior--;const priorText=prior>=0?lines[prior].text.trim().replace(/^\|\s*/, '').replace(/\s*\|$/, ''):'';if(reversed?.length>=2&&reversed.length<=20&&reversed.every(cell=>/^:?-{3,}:?$/.test(cell))&&nextHeader?.length===reversed.length&&firstRow?.length===reversed.length&&/^(?:表\s*\d+(?:[.\-－]\d+)?|Table\s+\d+(?:[.\-－]\d+)?)(?:\s*[:：.、]\s*|\s+)\S/i.test(priorText)){const rows=[nextHeader],align=reversed.map(cell=>cell.startsWith(':')&&cell.endsWith(':')?'center':cell.endsWith(':')?'right':'left');index++;while(index+1<lines.length){const row=tableCells(lines[index+1].text);if(!row||row.length!==nextHeader.length)break;rows.push(row);index++;}blocks.push({type:'table',rows,align});continue;}
   const header=tableCells(line.text),separator=lines[index+1]&&tableCells(lines[index+1].text);
   if(header?.length&&header.length<=20&&separator?.length===header.length&&separator.every(cell=>/^:?-{3,}:?$/.test(cell))){const rows=[header],align=separator.map(cell=>cell.startsWith(':')&&cell.endsWith(':')?'center':cell.endsWith(':')?'right':'left');index++;while(index+1<lines.length){const row=tableCells(lines[index+1].text);if(!row||row.length!==header.length)break;rows.push(row);index++;}blocks.push({type:'table',rows,align});continue;}
   blocks.push(line);
@@ -97,7 +104,19 @@ export async function inspectThesisExportContent(bytes,text,options={}){
  // explicit pending items that were absent from the manuscript input. Keep
  // same-paragraph runs together so formatting splits cannot hide a marker.
  let visible='',priorParagraph=null;for(const node of all.filter(n=>n.localName==='t'&&[W,M].includes(n.namespaceURI))){let paragraph=node.parentNode;while(paragraph&&!(paragraph.namespaceURI===W&&paragraph.localName==='p'))paragraph=paragraph.parentNode;if(paragraph!==priorParagraph&&visible)visible+='\n';visible+=node.textContent;priorParagraph=paragraph;}
- const unresolvedPlaceholders=[...visible.matchAll(/(?:【|〔|\[|\{\{)\s*(?:待补充|待核对|待完善|请补充|待填写|来源待核对|文献信息待补全|草稿说明|To be supplied\b|To be verified\b|Draft note\b|TODO\b|TBD\b)[^\n\]】〕}]{0,500}(?:】|〕|\]|\}\})/giu)].length;
+ const pendingMarker=/(?:【|〔|\[|\{\{)\s*(?:待补充|待核对|待完善|请补充|待填写|来源待核对|文献信息待补全|草稿说明|To be supplied\b|To be verified\b|Draft note\b|TODO\b|TBD\b)[^\n\]】〕}]{0,500}(?:】|〕|\]|\}\})/giu;
+ let unresolvedPlaceholders=[...visible.matchAll(pendingMarker)].length;
+ if(options.writingKind==='proposal'&&options.template){
+  // Check retained school-template regions separately. The author's actual
+  // paragraphs can discuss brace-delimited syntax and are not template fields.
+  const bodyParagraphs=new Set([...anchors.values()].map(({paragraph})=>paragraph)),title=String(options.metadata?.title||blocks[0]?.text||'').trim();
+  for(const paragraph of doc.getElementsByTagNameNS(W,'p')){
+   if(bodyParagraphs.has(paragraph))continue;
+   const line=[...paragraph.getElementsByTagNameNS(W,'t')].map(node=>node.textContent).join('').trim();
+   if(line===title)continue;
+   unresolvedPlaceholders+=[...line.replace(pendingMarker,'').matchAll(/\{\{\s*[\p{L}\p{N}_-][\p{L}\p{N} _-]{0,39}\s*\}\}/gu)].length;
+  }
+ }
  const importedObjectSegments=await inspectDocxObjects(zip,doc,text,options.docxObjects||[]);
  return {status:'passed',checkedSegments,formulaSegments,figureSegments,importedObjectSegments,checkedBlocks:expectedOrder.length,unresolvedPlaceholders,scope:'ordered_block_text_segments'};
 }
@@ -140,5 +159,5 @@ export async function createWritingPdf(text,fontBytes){
 export async function createWritingTemplateDocx(kind){
  const spec=writingDefaultTemplateSpec(kind);if(!spec)throw Error('未找到对应的通用写作模板。');
  const metadata=writingDefaultTemplateMetadata(kind);
- return createWritingDocx(metadata.title+'\n{{正文}}',{documentKind:spec.kind==='writing'?'thesis':'writing',writingKind:spec.kind,metadata});
+ return createWritingDocx(metadata.title+'\n{{正文}}',{documentKind:spec.kind==='writing'?'thesis':'writing',writingKind:spec.kind,metadata,templateBlank:true});
 }

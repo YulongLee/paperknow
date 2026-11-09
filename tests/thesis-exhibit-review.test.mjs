@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {manuscriptFigures,manuscriptPart,assertCheckedFigures} from '../dist/workspace/manuscript-figures.mjs';
 import {writingReviewTask,parseWritingReview} from '../backend/writing-quality.mjs';
+import {layoutThesisFigure} from '../dist/workspace/thesis-figure.mjs';
 import {createWritingQualityRunner} from '../backend/writing-quality-runner.mjs';
 import {supplementCheckTask,parseSupplementCheck,runSupplementCheck} from '../backend/supplement-check.mjs';
 import {thesisCompletionNeeds,safeCompletionIssues} from '../dist/workspace/thesis-completion-model.mjs';
@@ -18,7 +19,7 @@ function supplementResult(task,{status='not_required',checked=true}={}){return r
 
 test('review receives actual diagram nodes, relationships and captions and requires exact image coverage',()=>{
  const original=chapter(),before=structuredClone(original),task=writingReviewTask({chapters:[original]});
- assert.deepEqual(task.context.manuscriptExcerpts[0].figures,original.figures);assert.match(task.instructions,/表头、单位|表格以 table_consistency/);
+ const enriched=task.context.manuscriptExcerpts[0].figures;const {renderedPositions,...actualFigure}=enriched[0];assert.deepEqual(actualFigure,original.figures[0]);assert.deepEqual(renderedPositions,layoutThesisFigure(original.figures[0]).nodes.map(({id,x,y,width,height})=>({id,x,y,width,height})));assert.match(task.instructions,/实际渲染位置/);assert.match(task.instructions,/表头、单位|表格以 table_consistency/);
  assert.deepEqual(parseWritingReview(reviewed(task),task).checkedFigureIds,['flow']);
  for(const checkedFigureIds of [undefined,[],['other'],['flow','flow']])assert.throws(()=>parseWritingReview(result({complete:true,findings:[],limitations:[],checkedFigureIds}),task),/图片/);
  assert.deepEqual(original,before);assert.throws(()=>assertCheckedFigures(['foreign'],[]));

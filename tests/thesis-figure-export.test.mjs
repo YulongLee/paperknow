@@ -28,3 +28,30 @@ test('image and long caption fit the slot section height together instead of usi
 });
 test('an image caption that itself exceeds the section cannot silently produce an overflowing page',async()=>{const template=await read(await createWritingDocx('{{论文题目}}\n{{正文}}'));template.zip.file('word/document.xml',template.xml.replace('w:h="16838"','w:h="5000"'));await assert.rejects(createWritingDocx(manuscript,{...options,metadata:{title:metadata.title,figures:[{...figure(),title:'题'.repeat(200),caption:'说'.repeat(500)}]},template:{status:'ready',bytes:await serialize(template.zip)}}),/可用高度不足/);});
 test('generated figures fit the actual two-column text width as well as page height',async()=>{const template=await read(await createWritingDocx('{{论文题目}}\n{{正文}}'));template.zip.file('word/document.xml',template.xml.replace('<w:sectPr>','<w:sectPr><w:cols w:num="2" w:space="720"/>'));const result=await createWritingDocx(manuscript,{...options,template:{status:'ready',bytes:await serialize(template.zip)}}),out=await read(result),drawing=[...out.document.getElementsByTagNameNS(WP,'docPr')].find(node=>node.getAttribute('name')==='PKFigure_fig-test');assert.ok(Number(drawing.parentNode.getElementsByTagNameNS(WP,'extent')[0].getAttribute('cx'))<=(11906-2880-720)/2*635);});
+
+test('a single-cell caption immediately before a real table exports as an ordinary editable title',async()=>{
+ const text='合成文档\n| 表1 模型对比 |\n\n| 模型 | 特点 |\n| --- | --- |\n| A | 注意力 |',result=await createWritingDocx(text,{documentKind:'writing',metadata:{title:'合成文档'}}),{document}=await read(result),paragraphs=[...document.getElementsByTagNameNS(W,'p')].map(p=>[...p.getElementsByTagNameNS(W,'t')].map(t=>t.textContent).join(''));
+ assert.ok(paragraphs.includes('表1 模型对比'));assert.ok(!paragraphs.includes('| 表1 模型对比 |'));assert.equal(document.getElementsByTagNameNS(W,'tbl').length,1);assert.equal((await inspectThesisExportContent(result,text,{metadata:{title:'合成文档'}})).status,'passed');
+});
+
+test('caption, separator, header, and data export as an actual editable Word table',async()=>{
+ const text='合成文档\n| 表1 模拟观察维度 |\n| --- | --- | --- |\n| 维度 | 环节 | 指标 |\n| 效率 | 检索 | 时间 |\n| 准确性 | 输入 | 次数 |',result=await createWritingDocx(text,{documentKind:'writing',metadata:{title:'合成文档'}}),{document}=await read(result);
+ const tables=[...document.getElementsByTagNameNS(W,'tbl')],cells=tables.map(table=>[...table.getElementsByTagNameNS(W,'tc')].map(cell=>[...cell.getElementsByTagNameNS(W,'t')].map(t=>t.textContent).join('')));assert.ok(cells.some(row=>['维度','环节','指标','效率','检索','时间','准确性','输入','次数'].every(value=>row.includes(value))),JSON.stringify(cells));assert.equal((await inspectThesisExportContent(result,text,{metadata:{title:'合成文档'}})).status,'passed');
+ const paragraphs=[...document.getElementsByTagNameNS(W,'p')].map(p=>[...p.getElementsByTagNameNS(W,'t')].map(t=>t.textContent).join(''));assert.ok(paragraphs.includes('表1 模拟观察维度'));assert.ok(!paragraphs.some(value=>value.includes('| 维度 |')));
+});
+
+test('actual course-table shape preserves every real cell in a Word table',async()=>{
+ const text='方案\n| 表1 可用性复测方案的观测维度与变量定义（均为拟采集项） |\n| --- | --- | --- |\n| 观测维度 | 对应演示环节 | 计划指标（拟采集） |\n| 任务效率 | 全流程计时 | 完成时间（秒）、是否成功 |\n| 操作准确性 | 输入词语、打开结果 | 误触与偏离路径次数 |',result=await createWritingDocx(text,{documentKind:'writing',metadata:{title:'方案'}}),{document}=await read(result),tables=[...document.getElementsByTagNameNS(W,'tbl')];
+ const expected=['观测维度','对应演示环节','计划指标（拟采集）','任务效率','全流程计时','完成时间（秒）、是否成功','操作准确性','输入词语、打开结果','误触与偏离路径次数'];
+ assert.ok(tables.some(table=>{const cells=[...table.getElementsByTagNameNS(W,'tc')].map(cell=>[...cell.getElementsByTagNameNS(W,'t')].map(t=>t.textContent).join(''));return expected.every(value=>cells.includes(value));}));assert.equal((await inspectThesisExportContent(result,text,{metadata:{title:'方案'}})).status,'passed');
+});
+
+test('a matching adjacent existing figure caption is exported once with its original chapter number',async()=>{
+ const f={...figure(),title:'技术接受模型与用户需求层次的映射关系',caption:'图中是概念关系。'},text='合成文档\n如图2-1所示，展示概念关系。\n[figure:fig-test]\n图2-1 技术接受模型与用户需求层次的映射关系\n后续说明。',metadata={title:'合成文档',figures:[f]},bytes=await createWritingDocx(text,{documentKind:'writing',metadata,figureRasterizer:async()=>png}),{document}=await read(bytes),paragraphs=[...document.getElementsByTagNameNS(W,'p')].map(p=>[...p.getElementsByTagNameNS(W,'t')].map(t=>t.textContent).join(''));
+ assert.equal(paragraphs.filter(value=>value.includes('技术接受模型与用户需求层次的映射关系')).length,1);assert.ok(paragraphs.some(value=>value.includes('图 2-1 技术接受模型与用户需求层次的映射关系')));assert.ok(paragraphs.some(value=>value.includes('如图2-1所示')));assert.equal((await inspectThesisExportContent(bytes,text,{metadata})).status,'passed');
+});
+
+test('a different or ambiguous adjacent figure caption is preserved rather than silently deleted',async()=>{
+ const text='合成文档\n[figure:fig-test]\n图2-1 不同的标题\n其他内容。',metadata={title:'合成文档',figures:[figure()]},bytes=await createWritingDocx(text,{documentKind:'writing',metadata,figureRasterizer:async()=>png}),{document}=await read(bytes),values=[...document.getElementsByTagNameNS(W,'p')].map(p=>[...p.getElementsByTagNameNS(W,'t')].map(t=>t.textContent).join(''));
+ assert.ok(values.some(value=>value.includes('图2-1 不同的标题')));assert.ok(values.some(value=>value.includes('图 1 研究材料处理流程')));
+});

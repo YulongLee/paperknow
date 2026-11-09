@@ -19,6 +19,14 @@ test('selected tables, math, code and figures validate together and retain stabl
  assert.equal(parsed.figures.length,1);assert.match(parsed.figures[0].id,/^fig-[a-f0-9]{20}$/);assert.ok(parsed.text.includes('[figure:'+parsed.figures[0].id+']'));assert.equal(parsed.wordCount,500);assert.equal(validateWritingCandidate(result,'article','draft',snapshot,unit).valid,true);assert.deepEqual(parseWritingOutput(result,'article','draft',snapshot,unit),parsed);
 });
 
+test('flattened pipe tables in model output are recovered before saving and validation',()=>{
+ const snapshot=make(),unit=writingPlan(snapshot,'draft')[0];
+ const extra='正文。表1 指标定义| 维度 | 指标 || --- | --- || 效率 | 时间 || 效果 | 完成率 |后文。';
+ const parsed=parseWritingOutput(respond(candidate(unit,extra)),'course','draft',snapshot,unit);
+ assert.match(parsed.text,/表1 指标定义\n\| 维度 \| 指标 \|\n\| --- \| --- \|/);
+ assert.match(parsed.text,/\| 效果 \| 完成率 \|\n后文。/);
+});
+
 for(const [key,extra]of [['table','\n| 指标 | 说明 |\n| --- | --- |\n| k | 定义 |'],['formula','\n$$x=y$$'],['code','\n```python\nx=1\n```'],['image','\n[figure:flow]\n']])test('turning off '+key+' rejects unauthorized output without granting sibling permissions',()=>{
  const snapshot=make(),unit=writingPlan(snapshot,'draft')[1],body={...candidate(unit,extra),...(key==='image'?{figures:[figure()]}:{})};assert.throws(()=>parseWritingOutput(respond(body),'article','draft',snapshot,unit),error=>error.code==='presentation_not_selected');
 });

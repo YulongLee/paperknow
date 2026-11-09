@@ -1,4 +1,5 @@
-import {writingDefaultTemplateSpec} from '../dist/workspace/writing-template-catalog.mjs';
+import {writingDefaultTemplates,writingDefaultTemplateSpec} from '../dist/workspace/writing-template-catalog.mjs';
+import {proposalTemplateSections} from '../dist/workspace/proposal-standard.mjs';
 import JSZip from 'jszip';
 import {DOMParser,XMLSerializer} from '@xmldom/xmldom';
 import {defaultThesisTemplateProfile,defaultWritingTemplateProfile,prepareThesisDocxTemplate} from './thesis-template-profile.js';
@@ -11,15 +12,15 @@ const parse=value=>new DOMParser().parseFromString(value,'application/xml'),xml=
 const readXml=async file=>decodeThesisTemplateXml(await file.async('uint8array'));
 const children=(node,name)=>node?[...node.childNodes].filter(n=>n.nodeType===1&&(!name||n.namespaceURI===W&&n.localName===name)):[];
 const texts=node=>[...node.getElementsByTagNameNS(W,'t')].map(n=>n.textContent).join('');
-const run=value=>`<w:r><w:t xml:space="preserve">${esc(value)}</w:t></w:r>`;
-const p=(value,style='Normal',extra='')=>`<w:p><w:pPr><w:pStyle w:val="PK${style}"/>${extra}</w:pPr>${run(value)}</w:p>`;
+const run=(value,size)=>`<w:r>${size?`<w:rPr><w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr>`:''}<w:t xml:space="preserve">${esc(value)}</w:t></w:r>`;
+const p=(value,style='Normal',extra='',size)=>`<w:p><w:pPr><w:pStyle w:val="PK${style}"/>${extra}</w:pPr>${run(value,size)}</w:p>`;
 const displayHeading=value=>String(value).trim().replace(/^#{1,3}\s+/,'');
 const referenceHeading=value=>!/^参考文献整理原文/.test(displayHeading(value))&&/^(?:参考文献|已使用的参考文献)|^(?:references|bibliography)$/i.test(displayHeading(value));
 const nonCitationHeading=value=>/^(?:待引用文献|参考文献整理原文|研究材料来源|引用核对提示)/.test(displayHeading(value));
 const heading=(value)=>{const s=String(value).trim();if(referenceHeading(s)||nonCitationHeading(s))return 1;if(/^#{1,3}\s+/.test(s))return s.match(/^#+/)[0].length;if(s.length>120||/[。！？；;]/u.test(s))return 0;if(/^\d+\.\d+\.\d+(?:\s|[、.．])/u.test(s))return 3;if(/^\d+\.\d+(?:\s|[、.．])/u.test(s))return 2;if(/^(?:第.{1,12}[章节篇]|\d{1,2}[、.．\s]|[一二三四五六七八九十]+[、．]|参考文献|已使用的参考文献|待引用文献|研究材料来源|附录|致谢|引用核对提示)/u.test(s)||/^(?:绪论|引言|研究背景|研究方法|材料与方法|结果|讨论|结论|总结|结论与展望|references|bibliography)$/i.test(s))return 1;return 0;};
 const abstract=value=>/^(?:摘\s*要|abstract)$/i.test(displayHeading(value));
 function rPr(rule){return `<w:rFonts w:ascii="${esc(rule.ascii)}" w:hAnsi="${esc(rule.ascii)}" w:eastAsia="${esc(rule.eastAsia)}"/><w:b w:val="${rule.bold?1:0}"/><w:color w:val="000000"/><w:sz w:val="${rule.size}"/><w:szCs w:val="${rule.size}"/>`;}
-function pPr(rule){return `<w:jc w:val="${rule.alignment}"/><w:spacing w:before="${rule.before}" w:after="${rule.after}"${rule.beforeLines!==undefined?` w:beforeLines="${rule.beforeLines}"`:''}${rule.afterLines!==undefined?` w:afterLines="${rule.afterLines}"`:''} w:line="${rule.line}" w:lineRule="${rule.lineRule}"/>${rule.hanging>0?`<w:ind w:left="${rule.hanging}" w:hanging="${rule.hanging}" w:hangingChars="${Math.round(rule.hanging/(rule.size*10)*100)}" w:firstLineChars="0"/>`:`<w:ind w:firstLine="${rule.firstLine||0}" w:firstLineChars="${rule.firstLineChars||0}"/>`}${rule.pageBreakBefore?'<w:pageBreakBefore/>':''}`;}
+function pPr(rule){const firstLine=rule.firstLine||Math.round((rule.firstLineChars||0)*(rule.size||0)/10);return `<w:jc w:val="${rule.alignment}"/><w:spacing w:before="${rule.before}" w:after="${rule.after}"${rule.beforeLines!==undefined?` w:beforeLines="${rule.beforeLines}"`:''}${rule.afterLines!==undefined?` w:afterLines="${rule.afterLines}"`:''} w:line="${rule.line}" w:lineRule="${rule.lineRule}"/>${rule.hanging>0?`<w:ind w:left="${rule.hanging}" w:hanging="${rule.hanging}" w:hangingChars="${Math.round(rule.hanging/(rule.size*10)*100)}" w:firstLineChars="0"/>`:`<w:ind w:firstLine="${firstLine}" w:firstLineChars="${rule.firstLineChars||0}"/>`}${rule.pageBreakBefore?'<w:pageBreakBefore/>':''}`;}
 function styleEntries(rules){
  const styles=Object.entries(rules.styles).map(([role,rule])=>`<w:style w:type="paragraph" w:styleId="PK${role}"><w:name w:val="PaperKnow ${role}"/>${role==='Normal'?'':'<w:basedOn w:val="PKNormal"/>'}<w:next w:val="PKNormal"/><w:pPr>${pPr(rule)}${role.startsWith('Heading')?`<w:keepNext/><w:keepLines/><w:outlineLvl w:val="${Number(role.at(-1))-1}"/>`:''}</w:pPr><w:rPr>${rPr(rule)}</w:rPr></w:style>`).join('');
  return styles+`<w:style w:type="paragraph" w:styleId="PKCode"><w:name w:val="PaperKnow Code"/><w:pPr><w:ind w:firstLine="0" w:firstLineChars="0"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="atLeast"/></w:pPr><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:eastAsia="宋体"/><w:sz w:val="20"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="PKFrontHeading"><w:name w:val="PaperKnow Front Heading"/><w:basedOn w:val="PKHeading1"/><w:pPr><w:outlineLvl w:val="9"/></w:pPr></w:style>`+['1','2','3'].map(level=>`<w:style w:type="paragraph" w:styleId="PKTOC${level}"><w:name w:val="PaperKnow TOC ${level}"/><w:basedOn w:val="PKNormal"/><w:pPr><w:spacing w:before="0" w:after="80" w:line="300" w:lineRule="auto"/><w:ind w:left="${(Number(level)-1)*240}" w:firstLine="0" w:firstLineChars="0" w:hanging="0"/></w:pPr></w:style>`).join('');
@@ -32,11 +33,53 @@ function contents(headings,width){
  // Word/WPS calculates hyperlinks and page numbers from the native TOC field.
  return p('目录','FrontHeading')+`<w:p><w:pPr><w:spacing w:after="0"/></w:pPr><w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r><w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r></w:p>${entries}<w:p><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`;
 }
-function cover(title,metadata){
- const labels=[['author','作者'],['major','学科专业'],['supervisor','指导教师']];
- const known=labels.filter(([key])=>String(metadata[key]||'').trim()).map(([key,label])=>p(`${label}：${metadata[key]}`,'Normal','<w:jc w:val="center"/><w:ind w:firstLine="0" w:firstLineChars="0"/><w:spacing w:before="180" w:after="0"/>')).join('');
+function cover(title,metadata,blank){
+ const labels=[['college','学院'],['author','作者'],['studentId','学号'],['major','学科专业'],['supervisor','指导教师']];
+ const known=labels.filter(([key])=>String(metadata[key]||'').trim()).map(([key,label])=>p(`${label}：${metadata[key]}`,blank?'WritingCoverMetadata':'Normal','<w:jc w:val="center"/><w:ind w:firstLine="0" w:firstLineChars="0"/><w:spacing w:before="180" w:after="0"/>')).join('');
  const degree=String(metadata.level||'').trim(),kind=['专科','本科','硕士','博士'].includes(degree)?degree+'毕业论文':'研究论文';
  return p(metadata.institution||'','Normal','<w:jc w:val="center"/><w:ind w:firstLine="0" w:firstLineChars="0"/>')+p(kind,'FrontHeading','<w:jc w:val="center"/><w:pageBreakBefore w:val="0"/><w:spacing w:before="1600" w:after="800"/>')+p(title,'Title')+p('','Normal','<w:spacing w:after="800"/>')+known;
+}
+const proposalCoverCaption='PaperKnow Proposal Cover',writingCoverCaption='PaperKnow Writing Cover';
+const reportFields={
+ title:['题目','Research topic','标题'],
+ institution:['学校','University','学校'],
+ college:['学院','School','学院'],
+ major:['专业','Major','专业'],
+ author:['姓名','Student name','作者'],
+ studentId:['学号','Student ID','学号'],
+ supervisor:['指导教师','Supervisor','指导教师'],
+};
+function reportCover(title,metadata,page,blank,spec){
+ const english=/^(?:en|english|英语|英文)/i.test(String(metadata.language||'')),width=Math.min(7360,contentWidth(page)),labelWidth=Math.min(2127,Math.round(width/3)),valueWidth=width-labelWidth;
+ const proposal=spec.kind==='proposal',compact=spec.format.inlineForm;
+ const values=[['title',title],...spec.fields.map(key=>[key,String(metadata[key]||'').trim()])];
+ const rows=values.filter(([,value])=>value||spec.kind==='taskbook').map(([key,value])=>{
+  const organization=key==='institution'&&['analysis','idea'].includes(spec.kind);
+  return [organization?(english?'Organization':'单位'):reportFields[key][english?1:0],value,key];
+ });
+ if(blank&&proposal)rows.push(['日期','']);
+ const cell=(value,cellWidth,label,size)=>`<w:tc><w:tcPr><w:tcW w:w="${cellWidth}" w:type="dxa"/>${label?'':'<w:tcBorders><w:bottom w:val="single" w:sz="4" w:color="000000"/></w:tcBorders>'}<w:vAlign w:val="center"/></w:tcPr>${p(value,'TableText',`<w:jc w:val="${label?'left':'center'}"/><w:spacing w:before="80" w:after="80"/><w:ind w:firstLine="0" w:firstLineChars="0"/>`,size)}</w:tc>`;
+ const caption=compact?spec.format.inlineForm:proposal?(english?'Research Proposal':'开题报告'):english&&spec.format.coverEnglish?spec.format.coverEnglish:spec.format.cover;
+ const heading=p(caption,'Title',compact?'':'<w:keepNext/><w:spacing w:before="1860" w:after="1020"/>',spec.format.coverSize);
+ if(!rows.length)return heading;
+ return heading+`<w:tbl><w:tblPr><w:tblW w:w="${width}" w:type="dxa"/><w:jc w:val="center"/><w:tblLayout w:type="fixed"/><w:tblCaption w:val="${proposal?proposalCoverCaption:writingCoverCaption}"/></w:tblPr><w:tblGrid><w:gridCol w:w="${labelWidth}"/><w:gridCol w:w="${valueWidth}"/></w:tblGrid>${rows.map(([label,value,key])=>`<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="${compact?380:640}" w:hRule="atLeast"/></w:trPr>${cell(label,labelWidth,true)}${cell(value,valueWidth,false,key==='title'&&spec.format.coverSize?spec.format.titleSize:undefined)}</w:tr>`).join('')}</w:tbl>`;
+}
+const proposalGuideStyles='<w:style w:type="paragraph" w:styleId="PKProposalGuideHeading"><w:name w:val="PaperKnow Proposal Guide Heading"/><w:basedOn w:val="PKHeading1"/><w:next w:val="PKProposalGuidePrompt"/></w:style><w:style w:type="paragraph" w:styleId="PKProposalGuidePrompt"><w:name w:val="PaperKnow Proposal Guide Prompt"/><w:basedOn w:val="PKNormal"/></w:style>';
+const guideStyles=proposalGuideStyles.replaceAll('Proposal','Writing')+
+ '<w:style w:type="paragraph" w:styleId="PKWritingCoverMetadata"><w:name w:val="PaperKnow Writing Cover Metadata"/><w:basedOn w:val="PKNormal"/></w:style><w:style w:type="paragraph" w:styleId="PKWritingInlineMetadata"><w:name w:val="PaperKnow Writing Inline Metadata"/><w:basedOn w:val="PKAbstract"/></w:style>';
+const guideParagraphs=(spec,proposal)=>(spec?.guide||[]).map(([title,prompt])=>p(title,proposal?'ProposalGuideHeading':'WritingGuideHeading','<w:pageBreakBefore w:val="0"/>')+p(prompt,proposal?'ProposalGuidePrompt':'WritingGuidePrompt')).join('');
+function removeEmptyGeneratedCoverRows(root,values,{keepFields=false}={}){
+ const labels=new Map(Object.entries(reportFields).filter(([key])=>key!=='title').flatMap(([, [zh,en,field]])=>[[zh,field],[en,field]]));
+ labels.set('单位','单位');labels.set('Organization','单位');
+ for(const table of children(root,'tbl')){
+  if(![proposalCoverCaption,writingCoverCaption].includes(children(children(table,'tblPr')[0],'tblCaption')[0]?.getAttributeNS(W,'val')))continue;
+  for(const row of children(table,'tr')){
+   const cells=children(row,'tc');if(cells.length!==2||cells.some(cell=>children(cell).some(node=>node.localName!=='tcPr'&&!plainTemplateParagraph(node))))continue;
+   const label=texts(cells[0]).trim(),value=texts(cells[1]).trim(),field=labels.get(label);
+   if((label==='日期'&&!value)||(!keepFields&&field&&value==='{{'+field+'}}'&&!String(values[field]??'').trim()))table.removeChild(row);
+  }
+  if(!children(table,'tr').length)root.removeChild(table);
+ }
 }
 function addBookmark(node,{id,name}){
  const doc=node.ownerDocument,start=doc.createElementNS(W,'w:bookmarkStart'),end=doc.createElementNS(W,'w:bookmarkEnd');start.setAttributeNS(W,'w:id',String(id));start.setAttributeNS(W,'w:name',name);end.setAttributeNS(W,'w:id',String(id));node.insertBefore(start,node.childNodes[1]||null);node.appendChild(end);
@@ -141,12 +184,65 @@ async function headerFooterParts(source,target,document,rels,{chapterTitle=''}={
  return {references,relationships,contentTypes:types,copy};
 }
 async function updatedSettings(zip){const part=await relatedPart(zip,'settings','word/settings.xml');let settings=zip.file(part)?await readXml(zip.file(part)):`<w:settings xmlns:w="${W}"/>`;const doc=parse(settings),root=doc.documentElement;for(const n of [...doc.getElementsByTagNameNS(W,'updateFields')])n.parentNode.removeChild(n);const n=doc.createElementNS(W,'w:updateFields');n.setAttributeNS(W,'w:val','true');root.appendChild(n);zip.file(part,xml(doc));return part;}
-async function fillTemplateSlot(source,body,rules,metadata){
+function templateMetadataValues(metadata,proposal){
+ const values={'论文题目':metadata.title,'标题':metadata.title,'学校':metadata.institution,'单位':metadata.institution,'作者':metadata.author,'学位':metadata.level,'专业':metadata.major,'指导教师':metadata.supervisor,'学院':metadata.college,'学号':metadata.studentId};
+ if(proposal)Object.assign(values,{'开题题目':metadata.title,'课题名称':metadata.title,'题目':metadata.title,'姓名':metadata.author});
+ return values;
+}
+function fillTemplateMetadataParagraph(para,values){
+ const operations=[...texts(para).matchAll(/\{\{\s*([^{}\n]+?)\s*\}\}/g)].filter(match=>Object.hasOwn(values,match[1])).map(match=>({from:match.index,to:match.index+match[0].length,text:String(values[match[1]]??'')}));
+ replaceParagraphTextRanges(para,operations);return operations.length>0;
+}
+function plainTemplateParagraph(node,{preserveBookmarks=false}={}){
+ if(node?.namespaceURI!==W||node.localName!=='p')return false;
+ if(node.getElementsByTagNameNS(W,'sectPr').length||!children(node).every(child=>child.namespaceURI===W&&(child.localName==='pPr'||child.localName==='r'&&children(child).every(run=>run.namespaceURI===W&&['rPr','t'].includes(run.localName))||preserveBookmarks&&['bookmarkStart','bookmarkEnd'].includes(child.localName))))return false;
+ if(!preserveBookmarks)return true;
+ const start=children(node,'bookmarkStart').map(child=>child.getAttributeNS(W,'id')).sort(),end=children(node,'bookmarkEnd').map(child=>child.getAttributeNS(W,'id')).sort();
+ return start.length===end.length&&start.every((id,index)=>id===end[index]);
+}
+function proposalTemplateFiller(node,values){
+ if(!plainTemplateParagraph(node))return false;
+ const value=texts(node).trim();
+ const style=children(children(node,'pPr')[0],'pStyle')[0]?.getAttributeNS(W,'val');
+ if((style==='PKProposalGuideHeading'&&proposalTemplateSections.some(([title])=>title===value))||(style==='PKProposalGuidePrompt'&&proposalTemplateSections.some(([,prompt])=>prompt===value)))return true;
+ if(/^(?:[【〔\[]\s*)?(?:填写说明|填写示例|填写提示|模板说明|模板示例)\s*[:：]\s*\S/u.test(value))return true;
+ // Blank metadata from our generic template can disappear. School form labels
+ // and signature fields retain their original placement and styles.
+ const field=/^(学校|学院|作者|学号|专业|指导教师)[:：]\s*\{\{\1\}\}$/.exec(value);
+ return Boolean(field&&style==='PKAbstract'&&!String(values[field[1]]??'').trim());
+}
+function writingTemplateGuide(node){
+ if(!plainTemplateParagraph(node))return false;
+ const style=children(children(node,'pPr')[0],'pStyle')[0]?.getAttributeNS(W,'val');
+ if(!/^PK(?:Writing|Proposal)Guide(?:Heading|Prompt)$/.test(style||''))return false;
+ const value=texts(node).trim(),column=style.endsWith('Heading')?0:1;
+ return Object.values(writingDefaultTemplates).some(spec=>spec.guide?.some(row=>row[column]===value));
+}
+async function fillTemplateSlot(source,body,rules,metadata,proposal,{keepCoverFields=false}={}){
  const document=parse(await readXml(source.file('word/document.xml'))),root=document.getElementsByTagNameNS(W,'body')[0];
  const slot=children(root,'p').find(n=>/^\s*\{\{(?:正文|PAPERKNOW_CONTENT)\}\}\s*$/.test(texts(n)));if(!slot)return false;
  const area=slotContentArea(root,slot,rules.page),wrapped=parse(`<w:body xmlns:w="${W}" xmlns:r="${R}" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">${fitTables(body,area.width,area.height,rules.styles.Normal)}</w:body>`);
- const values={'论文题目':metadata.title||'','标题':metadata.title||'','学校':metadata.institution||'','单位':metadata.institution||'','作者':metadata.author||'','学位':metadata.level||'','专业':metadata.major||'','指导教师':metadata.supervisor||''};
- for(const para of document.getElementsByTagNameNS(W,'p')){const value=texts(para);if(!/\{\{(?:论文题目|标题|学校|单位|作者|学位|专业|指导教师)\}\}/.test(value))continue;const nodes=[...para.getElementsByTagNameNS(W,'t')];if(nodes.length){nodes[0].textContent=value.replace(/\{\{([^}]+)\}\}/g,(raw,key)=>Object.hasOwn(values,key)?String(values[key]):raw);for(const node of nodes.slice(1))node.textContent='';}}
+ const values=templateMetadataValues(metadata,proposal);
+ removeEmptyGeneratedCoverRows(root,values,{keepFields:keepCoverFields});
+ for(const node of children(root,'p')){
+  if(writingTemplateGuide(node)){root.removeChild(node);continue;}
+  if(!plainTemplateParagraph(node))continue;
+  const style=children(children(node,'pPr')[0],'pStyle')[0]?.getAttributeNS(W,'val');
+  const optional=/^(?:学校|学院|学科专业|专业|作者单位|单位|作者|学号|指导教师)：\{\{(学校|学院|专业|单位|作者|学号|指导教师)\}\}$/.exec(texts(node).trim());
+  if(optional&&['PKWritingInlineMetadata','PKWritingCoverMetadata'].includes(style)&&!String(values[optional[1]]??'').trim())root.removeChild(node);
+ }
+ if(proposal){
+  for(const node of children(root,'p'))if(proposalTemplateFiller(node,values))root.removeChild(node);
+  const ordered=children(root),before=ordered[ordered.indexOf(slot)-1],inserted=children(wrapped.documentElement)[0],firstTitle=metadata.chapterTitles?.[0];
+  if(plainTemplateParagraph(before,{preserveBookmarks:true})&&inserted?.localName==='p'&&texts(before).trim()===texts(inserted).trim()&&displayHeading(firstTitle?.title??firstTitle??'')===texts(inserted).trim()){
+   const properties=children(before,'pPr')[0],style=children(properties,'pStyle')[0]?.getAttributeNS(W,'val');
+   if(/^(?:PK)?Heading1$/i.test(style||'')||children(properties,'outlineLvl')[0]?.getAttributeNS(W,'val')==='0'){
+    for(const bookmark of children(inserted,'bookmarkStart'))addBookmark(before,{id:bookmark.getAttributeNS(W,'id'),name:bookmark.getAttributeNS(W,'name')});
+    inserted.parentNode.removeChild(inserted);
+   }
+  }
+ }
+ for(const para of document.getElementsByTagNameNS(W,'p'))fillTemplateMetadataParagraph(para,values);
  for(const n of children(wrapped.documentElement))root.insertBefore(document.importNode(n,true),slot);root.removeChild(slot);
  if(rules.bodyPageNumbers)await applyExplicitBodyPageNumbers(source,document,(metadata.chapterTitles||[]).find(title=>!abstract(title)&&!referenceHeading(title)),rules);
  return finishPreservedTemplate(source,document,rules,metadata);
@@ -306,14 +402,14 @@ async function refreshSampleChapterHeaders(source,document,placement,styles,chap
   const field=header.createElementNS(W,'w:fldSimple');field.setAttributeNS(W,'w:instr',` STYLEREF "${name}" `);field.setAttributeNS(W,'w:dirty','true');const run=header.createElementNS(W,'w:r'),value=header.createElementNS(W,'w:t');if(sample)run.appendChild(sample);value.textContent=chapterTitle;run.appendChild(value);field.appendChild(run);paragraph.appendChild(field);source.file(part,xml(header));
  }
 }
-async function fillRecognizedTemplate(source,rules,metadata,placement,{frontGroups,contentGroups,headings}){
+async function fillRecognizedTemplate(source,rules,metadata,placement,{frontGroups,contentGroups,headings,proposal}){
  const document=parse(await readXml(source.file('word/document.xml'))),root=document.getElementsByTagNameNS(W,'body')[0],sourceNodes=children(root),stylePart=await relatedPart(source,'styles','word/styles.xml'),styles=source.file(stylePart)?parse(await readXml(source.file(stylePart))):parse(`<w:styles xmlns:w="${W}"/>`),used=new Set();
- const values={'论文题目':metadata.title||'','标题':metadata.title||'','学校':metadata.institution||'','单位':metadata.institution||'','作者':metadata.author||'','学位':metadata.level||'','专业':metadata.major||'','指导教师':metadata.supervisor||''};
+ const values=templateMetadataValues(metadata,proposal);
  // Replace only explicit metadata tokens in retained source nodes. Generated
  // prose remains literal, including research discussing template syntax.
  const removed=new Set();for(const region of placement.regions)for(let i=region.startIndex;i<region.endIndex;i++)removed.add(sourceNodes[i]);
  const coverEnd=Math.min(...placement.regions.filter(row=>/^(?:abstract_|toc$|body$)/.test(row.kind)).map(row=>row.startIndex));
- for(const [index,node]of sourceNodes.entries()){if(removed.has(node))continue;for(const para of node.localName==='p'?[node,...node.getElementsByTagNameNS(W,'p')]:node.getElementsByTagNameNS(W,'p')){const value=texts(para);if(!/\{\{(?:论文题目|标题|学校|单位|作者|学位|专业|指导教师)\}\}/.test(value)){if(index<coverEnd)fillKnownCoverField(para,metadata);continue;}const nodes=[...para.getElementsByTagNameNS(W,'t')];if(nodes.length){nodes[0].textContent=value.replace(/\{\{([^}]+)\}\}/g,(raw,key)=>Object.hasOwn(values,key)?String(values[key]):raw);for(const child of nodes.slice(1))child.textContent='';}}}
+ for(const [index,node]of sourceNodes.entries()){if(removed.has(node))continue;if(proposal&&proposalTemplateFiller(node,values)){root.removeChild(node);continue;}for(const para of node.localName==='p'?[node,...node.getElementsByTagNameNS(W,'p')]:node.getElementsByTagNameNS(W,'p'))if(!fillTemplateMetadataParagraph(para,values)&&index<coverEnd)fillKnownCoverField(para,metadata);}
  const regions=[...placement.regions].sort((a,b)=>b.startIndex-a.startIndex);
  for(const region of regions){
   const original=sourceNodes.slice(region.startIndex,region.endIndex),anchor=sourceNodes[region.startIndex];if(!anchor)throw Error('模板正文定位已变化，请重新选择模板。');let body='';
@@ -377,12 +473,13 @@ async function mergeGeneratedFigureImages(original,target,document,reserved){
  return {count,relationships};
 }
 
-export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},template=null,submission=false,academicReport=false,writingKind,chapterTitles=metadata.chapterTitles||[]}={}){
+export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},template=null,submission=false,academicReport=false,writingKind,chapterTitles=metadata.chapterTitles||[],templateBlank=false}={}){
  const original=await JSZip.loadAsync(bytes),doc=parse(await readXml(original.file('word/document.xml'))),nodes=children(doc.getElementsByTagNameNS(W,'body')[0]).filter(n=>n.localName!=='sectPr');
  if(nodes.length!==blocks.length)throw Error('论文段落结构不一致，未导出不完整文件。');
+ const proposal=academicReport&&writingKind==='proposal';
  let profile=academicReport?defaultWritingTemplateProfile(writingKind):defaultThesisTemplateProfile(),source,placement;
  if(template){if(template.status==='unavailable'||!template.bytes)throw Error('所选论文模板不可用，请重新上传模板或明确切换为通用模板。');const prepared=await prepareThesisDocxTemplate(template.bytes);profile=prepared.profile;source=await JSZip.loadAsync(prepared.bytes);}
- if(source){const stylePart=await relatedPart(source,'styles','word/styles.xml');placement=analyzeThesisTemplatePlacement(parse(await readXml(source.file('word/document.xml'))),source.file(stylePart)?parse(await readXml(source.file(stylePart))):null);if(placement.mode==='ambiguous')throw Error(placement.warnings[0]||'无法可靠识别模板正文区域，请使用独立 {{正文}} 占位符。');}
+ if(source){const stylePart=await relatedPart(source,'styles','word/styles.xml');placement=analyzeThesisTemplatePlacement(parse(await readXml(source.file('word/document.xml'))),source.file(stylePart)?parse(await readXml(source.file(stylePart))):null,{preserveProposalReview:proposal});if(placement.mode==='ambiguous')throw Error(placement.warnings[0]||'无法可靠识别模板正文区域，请使用独立 {{正文}} 占位符。');}
  const output=source&&placement.mode!=='rules_only'?source:new JSZip(),generatedImages=await mergeGeneratedFigureImages(original,output,doc,source);
  const rules=profile.rules;rules.explicitRequirements=profile.requirements?.facts||[];const title=String(metadata.title||blocks[0]?.text||'研究论文').trim();metadata={...metadata,title,submission};
  if(rules.tableFormat==='threeLine'||!template)for(const node of nodes.filter(node=>node.localName==='tbl')){
@@ -415,20 +512,25 @@ export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},t
   const id=nextId(),rendered=rewriteBlock(nodes[index],block,{reference,frontMatter,id,headingLevel:level,referenceAnchor:citationTargets.get(referenceBlocks.get(index)),citationTargets:nonCitation?null:citationTargets,citationRanges,inputAnchor:inputAnchor(index)});
   if(frontMatter){front.push(rendered);frontGroups[frontKind].push(rendered);}else{entries.push(rendered);if(level===1){const label=displayHeading(value).replace(/\s/g,'');if(referenceHeading(value))contentKind='references';else if(/^(?:致谢|acknowledg(?:e)?ments?)$/i.test(label))contentKind='acknowledgements';else if(/^(?:附录|appendix|appendices)/i.test(label))contentKind='appendix';else if(!nonCitationHeading(value))contentKind='body';}contentGroups[contentKind].push(rendered);if(level)headings.push({text:displayHeading(block.text),level,id});}
  }
- // Explicit slots retain the uploaded package and cover layout byte-for-byte
- // outside the documented content/metadata slots and styles/settings updates.
- if(source){if(placement.mode==='recognized_body')return fillRecognizedTemplate(source,rules,metadata,placement,{frontGroups,contentGroups,headings});const filled=await fillTemplateSlot(source,front.join('')+entries.join(''),rules,metadata);if(filled)return filled;}
+ // Explicit slots retain the uploaded package and cover layout. Proposal
+ // templates also discard clearly labeled instructions and duplicate headings.
+ if(source){if(placement.mode==='recognized_body')return fillRecognizedTemplate(source,rules,metadata,placement,{frontGroups,contentGroups,headings,proposal});const filled=await fillTemplateSlot(source,front.join('')+entries.join(''),rules,metadata,proposal,{keepCoverFields:academicReport&&writingKind==='taskbook'});if(filled)return filled;}
  const zip=output,page=rules.page,width=contentWidth(page),body=fitTables(entries.join(''),width,contentHeight(page),rules.styles.Normal);
  const references=source?await headerFooterParts(source,zip,parse(await readXml(source.file('word/document.xml'))),[],{chapterTitle:headings.find(row=>row.level===1)?.text||title}):{references:'',relationships:'',contentTypes:[]};
  const footer=`<w:ftr xmlns:w="${W}"><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:eastAsia="宋体"/><w:sz w:val="18"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${run('1')}<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>`;
  zip.file('word/pk-footer.xml',footer);
  const header=references.references.match(/<w:headerReference[^>]+\/>/g)?.join('')||'',customFooter=references.references.match(/<w:footerReference[^>]+\/>/g)?.join('')||'';
- const fields=writingDefaultTemplateSpec(writingKind)?.fields||[],labels={institution:writingKind==='article'?'作者单位':'学校',author:'作者',major:'专业',supervisor:'指导教师'},info=fields.filter(key=>String(metadata[key]||'').trim()).map(key=>p(labels[key]+'：'+String(metadata[key]),'Abstract')).join('');
- const documentBody=academicReport?p(title,'Title')+(!source?info:'')+front.join('')+body+section(page,{header,refs:customFooter}):cover(title,metadata)+sectionBreak(section(page,{cover:true}))+front.join('')+contents(headings,width)+sectionBreak(section(page,{front:true}))+body+section(page,{header,refs:customFooter});
+ const spec=writingDefaultTemplateSpec(academicReport?writingKind:'writing'),fields=spec?.fields||[],labels={institution:writingKind==='article'?'作者单位':'学校',college:'学院',author:'作者',studentId:'学号',major:'专业',supervisor:'指导教师'},info=fields.filter(key=>String(metadata[key]||'').trim()).map(key=>p(labels[key]+'：'+String(metadata[key]),templateBlank&&spec?.guide.length?'WritingInlineMetadata':'Abstract')).join('');
+ const bodySection=section(page,{header,refs:customFooter});
+ const guide=templateBlank&&!source?guideParagraphs(spec,proposal):'';
+ let documentBody;
+ if(academicReport&&!source&&(proposal||spec?.format.cover))documentBody=reportCover(title,metadata,page,templateBlank,spec)+sectionBreak(section(page,{cover:true}))+guide+front.join('')+body+bodySection;
+ else if(academicReport)documentBody=(!source&&spec?.format.inlineForm?reportCover(title,metadata,page,templateBlank,spec):p(title,'Title')+(!source||proposal?info:''))+guide+front.join('')+body+bodySection;
+ else documentBody=cover(title,metadata,templateBlank)+sectionBreak(section(page,{cover:true}))+front.join('')+contents(headings,width)+sectionBreak(section(page,{front:true}))+guide+body+bodySection;
  zip.file('word/document.xml',`<w:document xmlns:w="${W}" xmlns:r="${R}" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>${documentBody}</w:body></w:document>`);
  const originalStylePart=source?await relatedPart(source,'styles','word/styles.xml'):null,styles=source?.file(originalStylePart)?parse(await readXml(source.file(originalStylePart))):parse(`<w:styles xmlns:w="${W}"><w:docDefaults><w:rPrDefault><w:rPr>${rPr(rules.styles.Normal)}</w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>${pPr(rules.styles.Normal)}</w:pPr></w:pPrDefault></w:docDefaults></w:styles>`);
  for(const n of [...styles.getElementsByTagNameNS(W,'style')])if(/^PK(?:Normal|Title|FrontHeading|Heading[123]|Abstract|References|TableText|Code|TOC[123]|TOC|TOCTitle|Header|FigureCaption|TableCaption|ReferenceHeading|AcknowledgementHeading|AppendixHeading)$/.test(n.getAttributeNS(W,'styleId')))n.parentNode.removeChild(n);
- const additions=parse(`<w:styles xmlns:w="${W}">${styleEntries(rules)}</w:styles>`);for(const n of children(additions.documentElement))styles.documentElement.appendChild(styles.importNode(n,true));zip.file('word/styles.xml',xml(styles));
+ const additions=parse(`<w:styles xmlns:w="${W}">${styleEntries(rules)}${guide?(proposal?proposalGuideStyles:guideStyles):''}</w:styles>`);for(const n of children(additions.documentElement))styles.documentElement.appendChild(styles.importNode(n,true));zip.file('word/styles.xml',xml(styles));
  let sharedRelationships='';if(source?.file('word/_rels/document.xml.rels'))for(const rel of parse(await readXml(source.file('word/_rels/document.xml.rels'))).getElementsByTagNameNS(P,'Relationship')){const type=rel.getAttribute('Type');if(![R+'/theme',R+'/fontTable',R+'/numbering'].includes(type))continue;const target=rel.getAttribute('Target'),part=resolvePart('word/document.xml',target);await references.copy(part);sharedRelationships+=`<Relationship Id="pkShared${sharedRelationships.length}" Type="${esc(type)}" Target="${esc(target)}"/>`;}
  zip.file('word/_rels/document.xml.rels',`<Relationships xmlns="${P}"><Relationship Id="pkStyles" Type="${R}/styles" Target="styles.xml"/><Relationship Id="pkSettings" Type="${R}/settings" Target="settings.xml"/><Relationship Id="pkFooter" Type="${R}/footer" Target="pk-footer.xml"/>${references.relationships}${sharedRelationships}${generatedImages.relationships}</Relationships>`);
  zip.file('_rels/.rels',`<Relationships xmlns="${P}"><Relationship Id="rId1" Type="${R}/officeDocument" Target="word/document.xml"/></Relationships>`);

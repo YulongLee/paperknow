@@ -54,3 +54,50 @@ test('short content lines remain independent editable text blocks without invent
  const zip=await JSZip.loadAsync(await createPresentation(deck).write({outputType:'nodebuffer'})),xml=await zip.file('ppt/slides/slide1.xml').async('string');
  for(const line of deck.slides[0].body.split('\n'))assert.match(xml,new RegExp(line));assert.ok((xml.match(/<p:txBody>/g)||[]).length>=5);assert.doesNotMatch(xml,/<p:pic>|<a:prstGeom prst="(?:rightArrow|leftArrow)"/);
 });
+
+test('browser edited export embeds approved interior artwork and preserves editable charts and dense text',async t=>{
+ const {exportPresentation}=await import('../src/presentation-export.js');
+ const {readFile}=await import('node:fs/promises');
+ const {JSDOM}=await import('jsdom');
+ const {default:JSZip}=await import('jszip');
+ const {window}=new JSDOM();
+ globalThis.window=window;
+ globalThis.FileReader=window.FileReader;
+ t.after(()=>{delete globalThis.window;delete globalThis.FileReader;window.close();});
+ const networkUrl='/workspace/assets/ppt-illustrations/network.png';
+ const strategyUrl='/workspace/assets/ppt-illustrations/strategy.png';
+ const coverUrl='/workspace/assets/ppt-templates/academic.png';
+ const urls=[];
+ t.mock.method(globalThis,'fetch',async url=>{
+  urls.push(url);
+  if(url===strategyUrl)return {ok:false};
+  assert.ok([networkUrl,coverUrl].includes(url));
+  const bytes=await readFile(new URL('../dist'+url,import.meta.url));
+  return {ok:true,blob:async()=>new window.Blob([bytes],{type:'image/png'})};
+ });
+ const rows=[
+  ['系统介绍','说明汇报范围','cover'],
+  ['图像识别应用','图像特征来自原始资料。\n仅说明有依据的场景。','content'],
+  ['软件应用场景','保留第二页配图和说明。','content'],
+  ['已测结果','甲组：80%\n乙组：90%','content'],
+  ['处理流程','导入资料\n核验字段','content'],
+  ['研究背景','同一段需要保留的文字。'.repeat(55),'content'],
+  ['研究目标','图片暂不可用时也应保留正文。','content']
+ ];
+ const deck={...base,theme:'academic',slides:rows.map(([title,body,layout])=>({title,body,layout,notes:'测试备注'}))};
+ const zip=await JSZip.loadAsync(await exportPresentation(deck));
+ assert.deepEqual(urls.sort(),[networkUrl,coverUrl,strategyUrl].sort());
+ const readSlide=page=>zip.file(`ppt/slides/slide${page}.xml`).async('string');
+ for(const page of [1,2,3])assert.match(await readSlide(page),/<p:pic>/);
+ for(const page of [4,5,6,7])assert.doesNotMatch(await readSlide(page),/<p:pic>/);
+ const image=await readFile(new URL('../dist'+networkUrl,import.meta.url));
+ const rels=await zip.file('ppt/slides/_rels/slide2.xml.rels').async('string');
+ const target=rels.match(/Target="\.\.\/(media\/[^"/]+\.png)"/)?.[1];
+ assert.ok(target);
+ assert.deepEqual(await zip.file('ppt/'+target).async('nodebuffer'),image);
+ assert.match(await readSlide(2),/仅说明有依据的场景。/);
+ assert.match(await readSlide(4),/乙组：90%/);
+ assert.match(await readSlide(5),/prst="downArrow"/);
+ assert.ok((await readSlide(6)).includes(rows[5][1]));
+ assert.match(await readSlide(7),/图片暂不可用时也应保留正文/);
+});

@@ -30,6 +30,33 @@ function glyph(text,x,y,size,p){
  return rect(8,8,19,19,p.secondary)+rect(37,8,19,19,p.background)+rect(8,37,19,19,p.background)+rect(37,37,19,19,p.accent);
 }
 function arrow(x1,y1,x2,y2,p){return `<line x1="${x1}" y1="${y1}" x2="${x2-8}" y2="${y2}" stroke="${p.accent}" stroke-width="3"/><polygon points="${x2-10},${y2-7} ${x2},${y2} ${x2-10},${y2+7}" fill="${p.accent}"/>`;}
+export function presentationIllustratedArrangement(slide,plan,asset,bodySize,titleSize,wrap){
+ const page=plan.slides.find(row=>row.id===slide.id),p=plan.palette;
+ if(!asset||page?.role!=='content')return null;
+ const titleLines=wrap(slide.title,titleSize,1112),titleHeight=titleLines.length*titleSize*1.5+16;
+ const top=44,bodyTop=top+titleHeight+36,bottom=608,rows=paragraphs(slide);
+ const blocks=[{id:'slide-title',text:slide.title,role:'title',x:72,y:top,w:1136,h:titleHeight,size:titleSize,lines:titleLines}];
+ for(const imageWidth of [432,348,276]){
+  const imageHeight=imageWidth*5/6,x=1208-imageWidth,textWidth=x-120,gap=rows.length>4?6:12;
+  if(imageHeight>bottom-bodyTop)continue;
+  const text=rows.map((row,i)=>{
+   const wrapped=wrap(row,bodySize,textWidth-24);
+   return{id:'content-'+(i+1),text:row,role:'body',x:96,w:textWidth-24,size:bodySize,lines:wrapped,h:Math.ceil(wrapped.length*bodySize*1.5+12)};
+  });
+  const used=text.reduce((height,row)=>height+row.h,0)+gap*(text.length-1);
+  if(used>bottom-bodyTop)continue;
+  let y=Math.round(bodyTop+(bottom-bodyTop-used)*0.28);
+  let art=`<rect x="${x-8}" y="${Math.round((bodyTop+bottom-imageHeight)/2)-8}" width="${imageWidth+16}" height="${imageHeight+16}" rx="12" fill="${p.secondary}"/>`;
+  for(const row of text){
+   row.y=y;art+=`<circle cx="84" cy="${y+bodySize+1}" r="3.5" fill="${p.accent}"/>`;y+=row.h+gap;
+  }
+  const number=page.page+' / '+plan.slides.length;
+  const footer={id:'page-number',role:'footer',text:number,x:1032,y:656,w:176,h:32,size:16,lines:[number]};
+  return{blocks:[...blocks,...text,footer],decoration:`<g id="visual-editorial-artwork">${art}</g>`,kind:'editorial-artwork',artwork:{asset,x,y:Math.round((bodyTop+bottom-imageHeight)/2),w:imageWidth,h:imageHeight}};
+ }
+ return null;
+}
+
 export function presentationVisualArrangement(slide,plan,bodySize,titleSize,wrap){
  const kind=presentationVisualKind(slide);if(!kind||kind==='closing')return null;
  const page=plan.slides.find(row=>row.id===slide.id),p=plan.palette,titleLines=wrap(slide.title,titleSize,kind==='cover'?712:1112),titleHeight=titleLines.length*titleSize*1.5+16,top=kind==='cover'?86:44,bodyTop=top+titleHeight+32,bottom=620;

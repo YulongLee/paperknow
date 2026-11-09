@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import {DOMParser} from '@xmldom/xmldom';
-import {createWritingDocx,inspectThesisDocxTemplate} from '../src/writing-document.js';
+import {createWritingDocx,createWritingTemplateDocx,inspectThesisDocxTemplate} from '../src/writing-document.js';
 const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const rangeFor=(text,needle,number)=>{const location=text.indexOf(needle);assert.ok(location>=0,needle);const offset=needle.indexOf('['+number+']');assert.ok(offset>=0);const start=location+offset;return {start,end:start+String(number).length+2,number};};
 const sample='合成论文题目\n摘要\n摘要全文保留标记。\n第一章 绪论\n1.1 研究背景\n1.1.1 具体问题\n正文中的中文、English 123 和 $E=mc^2$ 应当保留。\n|组别|数量|\n|---|---|\n|实验组|12|\n第二章 讨论\n全部结论原样保留。\n参考文献\n[1] 真实来源待核对。';
@@ -10,7 +10,7 @@ const docx=options=>createWritingDocx(sample,{documentKind:'thesis',metadata:{ti
 const read=async bytes=>{const zip=await JSZip.loadAsync(bytes),xml=await zip.file('word/document.xml').async('string');return {zip,xml,document:new DOMParser().parseFromString(xml,'application/xml')};};
 test('default thesis exports have real cover, editable three-level headings, TOC and separate Roman/Arabic page sections',async()=>{
  const {zip,xml,document}=await read(await docx());assert.equal(document.getElementsByTagNameNS(W,'sectPr').length,3);assert.match(xml,/w:fmt="upperRoman" w:start="1"/);assert.match(xml,/w:fmt="decimal" w:start="1"/);assert.match(xml,/TOC \\o &quot;1-3&quot;|TOC \\o "1-3"/);assert.match(xml,/PKHeading3/);assert.match(xml,/w:bookmarkStart/);assert.match(xml,/w:hyperlink w:anchor="PK_/);assert.ok(zip.file('word/pk-footer.xml'));assert.match(await zip.file('word/settings.xml').async('string'),/updateFields[^>]+true/);
- const styles=await zip.file('word/styles.xml').async('string');assert.match(styles,/w:firstLineChars="200"/);assert.match(styles,/w:eastAsia="宋体"/);assert.match(styles,/w:styleId="PKReferences"/);assert.doesNotMatch(styles.match(/<w:style[^>]+styleId="PKNormal"[^>]*>[\s\S]*?<\/w:style>/)[0],/<w:basedOn/);assert.match(xml,/w:top="1701"/);assert.match(xml,/w:bottom="1417"/);
+ const styles=await zip.file('word/styles.xml').async('string');assert.match(styles,/w:firstLineChars="200"/);assert.match(styles,/w:styleId="PKNormal"[^]*?w:eastAsia="仿宋"/);assert.match(styles,/w:styleId="PKReferences"/);assert.doesNotMatch(styles.match(/<w:style[^>]+styleId="PKNormal"[^>]*>[\s\S]*?<\/w:style>/)[0],/<w:basedOn/);assert.match(xml,/w:top="1440"/);assert.match(xml,/w:bottom="1440"/);assert.match(xml,/w:left="1800"/);
  const content=[...document.getElementsByTagNameNS(W,'t')].map(n=>n.textContent).join('');for(const marker of ['摘要全文保留标记。','全部结论原样保留。','[1] 真实来源待核对。','实验组'])assert.ok(content.includes(marker),marker);assert.equal(document.getElementsByTagNameNS(W,'tbl').length,1);assert.ok(document.getElementsByTagName('m:oMath').length>0);
 });
 test('a real uploaded DOCX controls body and heading formatting and margins; its sample text is not reused',async()=>{
@@ -31,7 +31,7 @@ test('a selected missing, corrupt or unsafe template never silently falls back t
  await assert.rejects(docx({template:{status:'unavailable'}}),/不可用/);await assert.rejects(docx({template:{status:'ready'}}),/不可用/);await assert.rejects(docx({template:{bytes:new Uint8Array([1,2]),status:'ready'}}));
 });
 test('downloadable default template can be reuploaded and roundtrips its editable role styles',async()=>{
- const bytes=await createWritingDocx('{{论文题目}}\n{{正文}}',{documentKind:'thesis',metadata:{title:'{{论文题目}}'}}),profile=await inspectThesisDocxTemplate(bytes);assert.ok(profile.recognized.includes('styles.Normal.eastAsia'));assert.equal(profile.rules.styles.Normal.size,24);assert.equal(profile.rules.styles.Title.size,44);const {xml}=await read(await docx({template:{bytes,status:'ready'}}));assert.match(xml,/合成论文题目/);assert.match(xml,/摘要全文保留标记/);assert.match(xml,/全部结论原样保留/);assert.doesNotMatch(xml,/\{\{正文\}\}/);
+ const bytes=await createWritingTemplateDocx('writing'),profile=await inspectThesisDocxTemplate(bytes);assert.ok(profile.recognized.includes('styles.Normal.eastAsia'));assert.equal(profile.rules.styles.Normal.size,24);assert.equal(profile.rules.styles.Title.size,32);const {xml}=await read(await docx({template:{bytes,status:'ready'}}));assert.match(xml,/合成论文题目/);assert.match(xml,/摘要全文保留标记/);assert.match(xml,/全部结论原样保留/);assert.doesNotMatch(xml,/\{\{正文\}\}/);
 });
 
 test('slot metadata replacement never rewrites literal tokens inside the generated paper',async()=>{

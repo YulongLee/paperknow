@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {mountWritingFlow,disposeWritingFlows} from '../dist/workspace/writing-flows.mjs';
 import {writingFlowSpecs,writingFlowSnapshot} from '../dist/workspace/writing-flow-model.mjs';
-import {assessWritingDelivery,writingDeliveryMarkup} from '../dist/workspace/writing-delivery.mjs';
+import {assessWritingDelivery,writingDeliveryMarkup,writingFinalBlockedMessage} from '../dist/workspace/writing-delivery.mjs';
 import {clearEditor,flushEditorDraft} from '../dist/workspace/edit-guard.mjs';
 import {list,keys,endDraftScope} from '../dist/workspace/state.mjs';
 import {createWritingDocx,inspectThesisExportContent,defaultWritingTemplateProfile,runThesisLayoutAgent} from '../src/writing-document.js';
@@ -17,7 +17,22 @@ for(const kind of Object.keys(writingFlowSpecs))test(kind+' keeps its original s
 
 test('final download opens material guidance and completion binds the original job before an explicit paid click',async()=>{const f=fixture();try{Object.assign(f.row.writingFlow,{body:'当前结果【待补充：实际观察记录】',canonicalBody:'当前结果【待补充：实际观察记录】',bodyJobId:'base-job',sourceSnapshot:{materials:[],references:[]}});localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();f.$('#wf-body-docx').click();await settle();assert.equal(f.$('[data-wf-completion]').open,true);assert.match(f.$('[data-wf-completion]').textContent,/实际观察记录/);assert.equal(f.calls.length,0,'an incomplete final cannot start a paid job');assert.match(f.$('#writing-status').textContent,/请先在补充窗口/);assert.doesNotMatch(f.$('#writing-status').textContent,/请先填写或生成/);f.input('[data-wf-supplement]','本人提供的实际观察和记录。');f.$('[data-wf-complete]').click();await settle();const q=f.calls.find(row=>row.path==='/writing/quote');assert.equal(q.data.completion.baseJobId,'base-job');assert.match(q.data.completion.text,/实际观察记录/);assert.ok(q.data.snapshot.materials.some(row=>row.text==='本人提供的实际观察和记录。'));assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);assert.equal(f.$('[data-wj-start]'),null);const posted=f.calls.find(row=>row.path==='/writing/jobs');assert.equal(posted.data.completion.baseJobId,'base-job');assert.equal(posted.data.consent,true);assert.equal(f.save().body,'系统自动完成的当前版本');assert.ok(f.save().versions.some(row=>row.text.includes('实际观察记录')));assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);assert.equal(f.calls.filter(row=>row.path==='/writing/quote').length,1,'completion cannot initiate another paid generation');}finally{f.close();}});
 
+test('a final without a current supplement check asks to run the check rather than asserting missing materials',async()=>{
+ const f=fixture('practice');try{f.mount();f.$('#wf-body-docx').click();await settle();
+  assert.equal(f.$('[data-wf-completion]').open,true);assert.equal(f.calls.length,0);
+  assert.match(f.$('#writing-status').textContent,/尚未完成内容检查.*保存材料并自动完善/);
+  assert.match(f.$('#writing-status').textContent,/是否需要补充资料/);
+  assert.doesNotMatch(f.$('#writing-status').textContent,/提供缺少的信息/);
+  assert.equal(f.$('[data-wf-complete]').disabled,false);
+ }finally{f.close();}
+});
+
 test('a known failed job exposes the missing-material window and does not discard existing body text',async()=>{const f=fixture('practice',async(path,data)=>path==='/writing/jobs'?{item:{id:'failed-job',status:'failed',operation:'draft',completedUnits:1,totalUnits:2,error:'尚缺生成本单元所需的真实资料：实际记录',output:null}}:undefined);try{f.mount();f.$('[data-wf-generate="draft"]').click();await settle();assert.equal(f.$('[data-wf-completion]').open,true);assert.match(f.$('[data-wf-delivery-status]').textContent,/实际记录/);assert.equal(f.save().body,'原有正文');assert.equal(f.$('[data-wf-complete]').disabled,false);assert.match(f.$('[data-wj-progress-status]').textContent,/未完成/);}finally{f.close();}});
+
+test('a failed completion does not mistake its own new task ID for a user edit',async()=>{
+ const f=fixture('course',async(path)=>path==='/writing/jobs'?{item:{id:'completion-child',status:'failed',operation:'draft',kind:'course',completedUnits:1,totalUnits:4,error:'模拟中断',output:null}}:undefined);
+ try{Object.assign(f.row.writingFlow,{body:'用户正文',canonicalBody:'用户正文',bodyJobId:'base-job',sourceSnapshot:{materials:[],references:[]}});localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();f.$('[data-wf-complete]').click();await settle();assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);assert.doesNotMatch(f.$('[data-wf-ai]').textContent,/前面的信息已有修改/);assert.ok(f.$('[data-wj-resume]'));assert.equal(f.$('[data-wj-resume]').disabled,false);assert.equal(f.save().body,'用户正文');}finally{f.close();}
+});
 
 test('automatic adoption cannot overwrite body text edited while the task was running',async()=>{let record={id:'running-job',status:'running',operation:'draft',completedUnits:0,totalUnits:1,output:null};const f=fixture('proposal',async path=>['/writing/jobs','/writing/jobs/running-job'].includes(path)?{item:record}:undefined);try{f.mount();f.$('[data-wf-generate="draft"]').click();await settle();f.input('[data-wf-field="body"]','生成期间作者新写的内容');record={...record,status:'completed',completedUnits:1,output:{text:'服务器保存的新生成版本',sourceIds:[]}};f.$('[data-wj-refresh]').click();await settle();assert.equal(f.save().body,'生成期间作者新写的内容');assert.equal(f.$('[data-wj-apply]').disabled,true);assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);}finally{f.close();}});
 
@@ -28,7 +43,7 @@ test('unchanged supplemental reports keep their DOM and scroll position during t
  try{f.mount();f.$('[data-wf-generate="draft"]').click();await settle();const list=f.$('.supplement-check-items');assert.ok(list);list.scrollTop=42;f.$('[data-wj-refresh]').click();await settle();assert.equal(f.$('.supplement-check-items'),list);assert.equal(list.scrollTop,42);record={...record,output:{quality:{supplementCheck:{...check,status:'needs_materials',items:[{...check.items[0],status:'missing',missing:['新增的实际观察记录']}]}}}};f.$('[data-wj-refresh]').click();await settle();assert.notEqual(f.$('.supplement-check-items'),list);assert.match(f.$('[data-wf-supplement-report]').textContent,/新增的实际观察记录/);assert.equal(f.save().body,'原有正文');}finally{f.close();}
 });
 
-test('automatic adoption saves the new body to the account instead of recapturing the old textarea',async()=>{const f=fixture(),beforeFetch=globalThis.fetch;let cloud={id:'draft',title:f.row.title,tool:'proposal',project_id:'',version:1,payload:f.row};try{globalThis.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):null;let value;if(path==='/api/auth/me')value={user:{id:'alice'}};else if(path==='/api/projects')value={items:[]};else if(path==='/api/workspace/drafts/draft'){if(body)cloud={...cloud,...body,version:cloud.version+1};value={item:cloud};}else throw Error(path);return{ok:true,status:200,json:async()=>value};};await mountAccountDraft('draft',{...f.ctx,notify(){},mount:row=>mountWritingFlow({kind:'proposal',container:f.$('.dashboard'),ctx:f.ctx,draftId:row.id}),saveNative:async()=>{assert.equal(flushEditorDraft(),true);return true;}});f.$('[data-wf-generate="draft"]').click();await settle();assert.equal(cloud.payload.writingFlow.body,'系统自动完成的当前版本');assert.equal(f.$('[data-wf-field="body"]').value,cloud.payload.writingFlow.body);assert.equal(cloud.payload.writingFlow.versions[0].text,'原有正文');assert.equal(cloud.payload.writingFlow.jobs.draft.appliedItemId,'new-job');assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);}finally{f.close();globalThis.fetch=beforeFetch;}});
+test('automatic adoption saves the new body to the account instead of recapturing the old textarea',async()=>{const f=fixture(),beforeFetch=globalThis.fetch;let cloud={id:'draft',title:f.row.title,tool:'proposal',project_id:'',version:1,payload:f.row};try{globalThis.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):null;let value;if(path==='/api/auth/me')value={user:{id:'alice'}};else if(path==='/api/projects')value={items:[]};else if(path==='/api/workspace/drafts/draft'){if(body)cloud={...cloud,...body,version:cloud.version+1};value={item:cloud};}else throw Error(path);return{ok:true,status:200,json:async()=>value};};await mountAccountDraft('draft',{...f.ctx,notify(){},mount:row=>mountWritingFlow({kind:'proposal',container:f.$('.dashboard'),ctx:f.ctx,draftId:row.id}),saveNative:async()=>{assert.equal(f.$('#writing-save').disabled,false,'native save must not be required while controls are disabled');assert.equal(flushEditorDraft(),true);return true;}});f.$('[data-wf-generate="draft"]').click();await settle();assert.equal(cloud.payload.writingFlow.body,'系统自动完成的当前版本');assert.equal(f.$('[data-wf-field="body"]').value,cloud.payload.writingFlow.body);assert.equal(cloud.payload.writingFlow.versions[0].text,'原有正文');assert.equal(cloud.payload.writingFlow.jobs.draft.appliedItemId,'new-job');assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);}finally{f.close();globalThis.fetch=beforeFetch;}});
 
 test('delivery checks distinguish future research from explicit missing facts and escape untrusted material text',()=>{const normal=assessWritingDelivery({kind:'proposal',text:'拟于下学期采集访谈资料，并按计划开展研究。'});assert.equal(normal.ready,true);const issue=assessWritingDelivery({kind:'practice',text:'观察结果【待补充：<img src=x onerror=alert(1)>】'});assert.equal(issue.ready,false);const dom=new JSDOM(writingDeliveryMarkup({assessment:issue,open:true,canComplete:true}));assert.equal(dom.window.document.querySelector('img'),null);assert.match(dom.window.document.body.textContent,/<img/);dom.window.close();});
 
@@ -44,7 +59,7 @@ for(const kind of ['summary','taskbook','article','course','practice'])test(kind
 
 for(const kind of ['taskbook','course'])test(kind+' can confirm the reference step without inventing unnecessary references',()=>{const f=fixture(kind);try{f.row.writingFlow.stage=writingFlowSpecs[kind].panels.indexOf('references');localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();assert.match(f.$('[data-wf-next]').textContent,/无需文献/);f.$('[data-wf-next]').click();assert.equal(f.save().stage,writingFlowSpecs[kind].panels.indexOf('outline'));assert.equal(f.save().references.length,0);}finally{f.close();}});
 
-for(const kind of ['proposal','summary','article'])test(kind+' still requires reference selection at the explicit reference step',()=>{const f=fixture(kind);try{f.row.writingFlow.references=[];f.row.writingFlow.stage=writingFlowSpecs[kind].panels.indexOf('references');localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();f.$('[data-wf-next]').click();assert.equal(f.save().stage,writingFlowSpecs[kind].panels.indexOf('references'));assert.match(f.$('[data-wf-error]').textContent,/至少一篇参考文献/);}finally{f.close();}});
+for(const kind of ['summary','article'])test(kind+' still requires reference selection at the explicit reference step',()=>{const f=fixture(kind);try{f.row.writingFlow.references=[];f.row.writingFlow.stage=writingFlowSpecs[kind].panels.indexOf('references');localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();f.$('[data-wf-next]').click();assert.equal(f.save().stage,writingFlowSpecs[kind].panels.indexOf('references'));assert.match(f.$('[data-wf-error]').textContent,/至少一篇参考文献/);}finally{f.close();}});
 
 for(const kind of Object.keys(writingFlowSpecs))test(kind+' manuscript export has just two DOCX modes and opens missing-information guidance without a paid request',async()=>{
  const f=fixture(kind);try{f.row.writingFlow.body='研究说明【待补充：具体研究范围】';localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();assert.deepEqual([...document.querySelectorAll('[data-wf-export] [data-document-export]')].map(node=>node.dataset.documentExport),['draft','docx']);assert.equal(f.$('[data-wf-export] input[type="file"]'),null);assert.equal(f.$('[data-wf-export] [data-wf-version]'),null);assert.equal(f.$('[data-wf-txt]'),null);assert.equal(f.$('#wf-body-pdf'),null);f.$('#wf-body-docx').click();await settle();assert.equal(f.$('[data-wf-completion]').open,true);assert.match(f.$('[data-wf-completion]').textContent,/具体研究范围/);assert.match(f.$('#writing-status').textContent,/补充窗口/);assert.equal(f.calls.length,0);assert.equal(f.save().body,'研究说明【待补充：具体研究范围】');}finally{f.close();}
@@ -97,5 +112,135 @@ for(const kind of Object.keys(writingFlowSpecs))test(kind+' keeps all template c
 
 test('expression-only hints remain visible in quality checks without becoming final-material requirements',()=>{
  const text='此外，本节解释研究对象与适用条件。';
- for(const severity of ['info','warning']){const finding={sectionId:'c1',category:'language_expression',severity,quote:'此外，本节解释研究对象',suggestion:'按实际关系调整衔接。'},quality={consistency:{findings:[finding]},reviews:[{findings:[finding]}]};assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,true);quality.reviews[0].findings.push({...finding,category:'source_support'});assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,false);}
+ for(const severity of ['info','warning']){const finding={sectionId:'c1',category:'language_expression',severity,quote:'此外，本节解释研究对象',suggestion:'按实际关系调整衔接。'},quality={consistency:{findings:[finding]},reviews:[{findings:[finding]}]};assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,severity==='info');quality.reviews[0].findings.push({...finding,category:'source_support'});assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,false);}
+});
+
+test('a passed material check with other body findings explains the remaining review without exposing internal markers',()=>{
+ const text='本段描述系统架构 [figure:fig-123] 并依据 [source:s1] 说明方案。';
+ const quality={consistency:{findings:[{category:'structure',quote:text}]},supplementCheck:{status:'final_ready',phase:'final'}};
+ const assessment=assessWritingDelivery({kind:'practice',text,quality,snapshot:{materials:[{id:'s1'}]},requireSupplementCheck:true});
+ const issue=assessment.issues.find(row=>row.code==='structure');assert.ok(issue);assert.match(issue.message,/图示/);assert.match(issue.message,/参考资料/);assert.doesNotMatch(issue.message,/\[figure:|\[source:/);
+ assert.match(writingFinalBlockedMessage('practice',assessment),/资料检查与正文审校分别进行.*正文仍有待处理/);
+ assert.match(writingFinalBlockedMessage('practice',{issues:[{code:'supplement_check',material:true}],displayCheckReady:true}),/资料检查已通过.*正文整体检查尚未完成/);
+ assert.equal(text,'本段描述系统架构 [figure:fig-123] 并依据 [source:s1] 说明方案。');
+});
+
+
+test('proposal can explicitly skip references and continue to a draft without inventing a citation',async()=>{
+ const f=fixture('proposal');
+ try{
+  const flow=f.row.writingFlow;
+  Object.assign(flow,{stage:2,unlocked:2,notes:'',body:'',outlineConfirmed:false});
+  localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();
+  assert.match(f.$('[data-wf-next]').textContent,/暂不添加文献/);
+  f.$('[data-wf-next]').click();assert.equal(f.save().stage,3);
+  f.$('[data-wf-next]').click();assert.equal(f.save().stage,4);
+  assert.equal(f.$('[data-wf-export]').hidden,true);
+  assert.equal(f.$('[data-wf-delivery]').hidden,true);
+  f.$('[data-wf-generate="draft"]').click();await settle();
+  assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);
+  assert.deepEqual(f.calls.find(row=>row.path==='/writing/jobs').data.snapshot.references,[]);
+  assert.equal(f.$('[data-wf-export]').hidden,false);
+  assert.equal(f.$('[data-wf-delivery]').hidden,false);
+  assert.equal(f.$('[data-template-file]'),null);
+ }finally{f.close();}
+});
+
+test('proposal materials step restores its research-plan task instead of a pending final-review task',async()=>{
+ const f=fixture('proposal',async path=>{
+  if(path==='/writing/jobs/proposal-method')return{item:{id:'proposal-method',kind:'proposal',operation:'method',status:'running',completedUnits:0,totalUnits:1,output:null}};
+ });
+ try{
+  const flow=f.row.writingFlow,snapshot=writingFlowSnapshot('proposal',flow);
+  const job=(itemId)=>({itemId,ownerId:'alice',snapshot,contextKey:JSON.stringify(snapshot),status:'running'});
+  Object.assign(flow,{stage:1,jobs:{method:job('proposal-method'),completion:job('proposal-final')}});
+  localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();await settle();
+  assert.ok(f.calls.some(row=>row.path==='/writing/jobs/proposal-method'));
+  assert.equal(f.calls.some(row=>row.path==='/writing/jobs/proposal-final'),false);
+  assert.equal(f.$('[data-wf-method-ai]').hidden,false);
+ }finally{f.close();}
+});
+
+test('failed proposal draft opens the existing recovery guidance before a body exists',async()=>{
+ const f=fixture('proposal',async path=>path==='/writing/jobs'?{item:{id:'failed-draft',kind:'proposal',operation:'draft',status:'failed',completedUnits:1,totalUnits:2,error:'需核对已提供的实验说明',output:null}}:undefined);
+ try{
+  f.row.writingFlow.body='';localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();
+  assert.equal(f.$('[data-wf-delivery]').hidden,true);
+  f.$('[data-wf-generate="draft"]').click();await settle();
+  assert.equal(f.$('[data-wf-delivery]').hidden,false);
+  assert.equal(f.$('[data-wf-completion]').open,true);
+  assert.equal(f.$('[data-wf-export]').hidden,true);
+  assert.match(f.$('[data-wf-delivery-status]').textContent,/核对已提供的实验说明/);
+ }finally{f.close();}
+});
+
+test('proposal step 2 separates writing instructions from one format panel after research materials and the plan',()=>{
+ const f=fixture('proposal');
+ try{
+  f.mount();f.settings();
+  const background=f.$('[data-wf-proposal-background]'),plan=f.$('[data-wf-proposal-plan]'),requirements=f.$('[data-wf-proposal-requirements]'),layout=f.$('[data-wf-proposal-standard]');
+  const before=(a,b)=>Boolean(a.compareDocumentPosition(b)&window.Node.DOCUMENT_POSITION_FOLLOWING);
+  assert.ok(before(background,plan)&&before(plan,requirements)&&before(requirements,layout));
+  assert.ok(requirements.querySelector('[data-wf-field="proposalRequirements"]'));
+  assert.equal(layout.querySelector('[data-wf-field="proposalRequirements"]'),null);
+  assert.equal(layout.querySelectorAll('input[type="file"]').length,1);
+ }finally{f.close();}
+});
+
+test('restoring historical versions cannot reuse the current manuscript check',async()=>{
+ const f=fixture('article');try{
+  const data=f.row.writingFlow;
+  const previous='旧研究的图书馆调查结果，受访对象为学生。';
+  const current='新研究的课程教学比较结果，参与者为教师。';
+  Object.assign(data,{title:'课程教师研究',body:current,canonicalBody:current,qualityText:current,
+   quality:{status:'completed',supplementCheck:{status:'complete',coverage:{complete:true},missing:[]}},
+   versions:[{id:'legacy',text:previous,qualityText:previous,quality:{status:'completed',supplementCheck:{status:'complete',coverage:{complete:true},missing:[]}},sourceSnapshot:{materials:[],references:[]},createdAt:new Date().toISOString()}]});
+  data.bodyInputKey=JSON.stringify(writingFlowSnapshot('article',data));
+  localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();
+  f.$('[data-wf-restore="legacy"]').click();
+  const saved=f.save();
+  assert.equal(saved.body,previous);
+  assert.notEqual(saved.bodyInputKey,JSON.stringify(writingFlowSnapshot('article',saved)));
+  assert.equal(saved.completionCheck,null);
+  f.$('#wf-body-docx').click();await settle();
+  assert.equal(f.$('[data-wf-completion]').open,true);
+  assert.match(f.$('#writing-status').textContent,/请先/);
+  assert.equal(f.calls.length,0,'an unverified restored version must not reach final export');
+  assert.ok(f.$('#wf-body-draft'),'draft export remains available');
+ }finally{f.close();}
+});
+
+test('a restored version retains its verified input and canonical text when its requirements match',()=>{
+ const f=fixture('article');try{
+  const data=f.row.writingFlow;
+  const text='基于真实来源的合成研究分析正文。';
+  const inputKey=JSON.stringify(writingFlowSnapshot('article',data));
+  data.body='当前文稿';data.bodyInputKey=inputKey;
+  data.versions=[{id:'verified',text,canonicalBody:text,bodyInputKey:inputKey,qualityText:text,
+   quality:{status:'completed',supplementCheck:{status:'complete',coverage:{complete:true},missing:[]}},
+   sourceSnapshot:{materials:[],references:[]},createdAt:new Date().toISOString()}];
+  localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();
+  f.$('[data-wf-restore="verified"]').click();
+  const saved=f.save();
+  assert.equal(saved.bodyInputKey,inputKey);assert.equal(saved.canonicalBody,text);assert.equal(saved.qualityText,text);
+  assert.equal(saved.completionCheck,null);
+  clearEditor();disposeWritingFlows();f.mount();
+  const reopened=f.save();assert.equal(reopened.bodyInputKey,inputKey);assert.equal(reopened.canonicalBody,text);
+ }finally{f.close();}
+});
+
+test('completion after a failed prior completion stays bound while running and applies without false drift',async()=>{
+ let record={id:'completion-child',status:'running',operation:'draft',kind:'course',completedUnits:0,totalUnits:4,output:null};
+ const f=fixture('course',async path=>['/writing/jobs','/writing/jobs/completion-child'].includes(path)?{item:record}:undefined);
+ try{Object.assign(f.row.writingFlow,{body:'用户正文',canonicalBody:'用户正文',bodyJobId:'base-job',lastDraftTask:{id:'old-failed',status:'failed',completedUnits:1},sourceSnapshot:{materials:[],references:[]}});localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();f.input('[data-wf-supplement]','补充后的材料');f.$('[data-wf-complete]').click();await settle();assert.doesNotMatch(f.$('[data-wf-ai]').textContent,/前面的信息已有修改/);record={...record,status:'completed',completedUnits:4,output:{text:'补充后的正文',sourceIds:[],figures:[]}};f.$('[data-wj-refresh]').click();await settle();assert.equal(f.save().body,'补充后的正文');assert.equal(f.save().lastDraftTask.id,'completion-child');}finally{f.close();}
+});
+
+test('source review requires correction without demanding real-world data for a simulated study',()=>{
+ const text='受试者按统一任务卡依次完成上述步骤，检索词由实验材料统一给出。',quality={supplementCheck:{status:'final_ready',coverage:{complete:true}},reviews:[{findings:[{category:'source_support',severity:'warning',quote:text}]}]};
+ const assessment=assessWritingDelivery({kind:'course',text,quality,requireSupplementCheck:true});assert.equal(assessment.ready,false);assert.match(assessment.issues[0].message,/核对表述与资料依据/);assert.doesNotMatch(assessment.issues[0].message,/真实资料/);assert.match(writingFinalBlockedMessage('course',assessment),/正文仍有待处理内容/);
+});
+
+test('informational terminology remains advisory while warning and substantive findings explain the real issue',()=>{
+ const text='任务共进行了三轮，每轮包含四个步骤。',quality={consistency:{findings:[]},reviews:[{findings:[{category:'terminology',severity:'info',quote:text,explanation:'术语可进一步统一。'}]}]};assert.equal(assessWritingDelivery({kind:'course',text,quality}).ready,true);
+ quality.reviews[0].findings.push({category:'method_result_consistency',severity:'warning',quote:text,explanation:'正文与图表的轮次口径不一致。'});const result=assessWritingDelivery({kind:'course',text,quality});assert.equal(result.ready,false);assert.match(result.issues[0].message,/轮次口径不一致/);assert.match(result.issues[0].message,/系统将核对并完善/);
 });

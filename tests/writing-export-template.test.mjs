@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {writingDefaultTemplateSpec} from '../dist/workspace/writing-template-catalog.mjs';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import JSZip from 'jszip';
@@ -76,7 +77,7 @@ for(const kind of Object.keys(writingStandards).filter(kind=>kind!=='quick'))tes
  assert.equal(saved[f.fields.template].source.fileId,'original');
  assert.equal(saved.body,before.body);assert.equal(saved.outlineConfirmed,true);assert.equal(saved.stage,writingFlowSpecs[kind].panels.includes('materials')?writingFlowSpecs[kind].panels.indexOf('materials'):0);assert.equal(saved.unlocked,before.unlocked);
  assert.deepEqual(saved.outline,before.outline);assert.deepEqual(writingFlowSnapshot(kind,saved),writingFlowSnapshot(kind,before));
- assert.match(f.q('[data-wf-standard] h3').textContent,/新开题排版/);f.result();
+ assert.match(f.q(kind==='proposal'?'[data-wf-standard] .wf-standard-heading p':'[data-wf-standard] h3').textContent,/新开题排版/);f.result();
  assert.doesNotMatch(f.q('[data-wf-export]').textContent,/当前正文来自此前版本/);
  assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
  await f.mount();assert.equal(f.local()[f.fields.exportTemplate].source.fileId,'new-template');
@@ -159,9 +160,31 @@ for(const kind of Object.keys(writingStandards).filter(kind=>kind!=='quick'))tes
  const f=await fixture(t,{kind});f.settings();f.q('[data-wf-template-reset]').click();await until(()=>f.q('[data-wf-template-reset]')===null);f.result();
  f.q('#wf-body-draft').click();await until(()=>!f.q('#wf-body-draft').disabled);assert.equal(f.artifacts.length,1,f.q('#writing-status').textContent);
  assert.equal(f.calls.some(row=>row.path.startsWith('/api/files/')),false);assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
- const zip=await JSZip.loadAsync(f.artifacts[0].bytes),styles=await zip.file('word/styles.xml').async('string'),normal=styles.match(/w:styleId="PKNormal"[^>]*>([\s\S]*?)<\/w:style>/)?.[1];assert.ok(normal);assert.ok(normal.includes('w:val="'+(kind==='article'?21:24)+'"'));assert.equal(f.q('[data-wf-standard-summary]'),null);assert.equal(writingExportTemplate(kind,f.local()),null);
+ const zip=await JSZip.loadAsync(f.artifacts[0].bytes),styles=await zip.file('word/styles.xml').async('string'),normal=styles.match(/w:styleId="PKNormal"[^>]*>([\s\S]*?)<\/w:style>/)?.[1];assert.ok(normal);assert.ok(normal.includes('w:val="'+writingDefaultTemplateSpec(kind).format.bodySize+'"'));assert.equal(f.q('[data-wf-standard-summary]'),null);assert.equal(writingExportTemplate(kind,f.local()),null);
 });
 
 test('practice can download a real generic DOCX from its template entry',async t=>{
  const f=await fixture(t,{kind:'practice'});f.settings();f.q('[data-wf-template-download]').click();await until(()=>f.downloads.length===1);assert.equal(f.artifacts.length,1);const zip=await JSZip.loadAsync(f.artifacts[0].bytes),xml=await zip.file('word/document.xml').async('string');assert.ok(xml.includes('{{标题}}'));assert.ok(xml.includes('{{正文}}'));assert.ok(xml.includes('{{作者}}'));assert.equal(f.calls.some(row=>/quote|\/writing\/jobs/.test(row.path)),false);
+});
+
+
+test('initial proposal template selection configures only Word layout and keeps existing writing inputs',async t=>{
+ const f=await fixture(t,{account:false}),file=await templateFile(),flow=f.cloud.payload.writingFlow;
+ delete flow.proposalTemplate;
+ delete flow.proposalTemplateText;
+ Object.assign(flow,{stage:1,unlocked:1,outline:[],outlineConfirmed:false,body:'',instructions:'按本人指定的研究问题撰写'});
+ await f.mount();
+ const before=writingFlowSnapshot('proposal',f.local());
+ let reads=0;
+ const originalRead=file.arrayBuffer;
+ file.arrayBuffer=async()=>{reads++;return originalRead();};
+ f.select(file);await until(()=>!f.q('[data-wf-template-choose]').disabled);
+ const saved=f.local();
+ assert.equal(saved.proposalExportTemplate.source.fileId,'new-template');
+ assert.equal(saved.proposalTemplate,undefined);
+ assert.equal(saved.proposalTemplateText||'', '');
+ assert.equal(reads,1,'template is read for format validation only');
+ assert.deepEqual(writingFlowSnapshot('proposal',saved),before);
+ assert.equal(f.q('[data-wf-field="proposalTemplateText"]'),null);
+ assert.match(f.q('[data-wf-standard] .wf-standard-heading p').textContent,/新开题排版/);
 });

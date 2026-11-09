@@ -26,7 +26,13 @@ const cleanTrace=value=>(Array.isArray(value)?value:[]).slice(-50).map(row=>({st
 
 // Denied tool names are operational diagnostics. Keep neither arguments nor
 // content, and omit the public tool field so account archives project them out.
-const failureDiagnostics=error=>(Array.isArray(error?.agentTrace)?error.agentTrace:[]).filter(row=>row?.status==='denied'&&typeof row.tool==='string'&&/^[A-Za-z_][A-Za-z0-9_-]{0,119}$/.test(row.tool)).slice(-2).map(row=>({stage:'tool_denied',status:'denied',requestedTool:row.tool,code:error.code==='permission_denied'?'permission_denied':'unauthorized_tool'}));
+export const failureDiagnostics=error=>{
+ const denied=(Array.isArray(error?.agentTrace)?error.agentTrace:[]).filter(row=>row?.status==='denied'&&typeof row.tool==='string'&&/^[A-Za-z_][A-Za-z0-9_-]{0,119}$/.test(row.tool)).slice(-2).map(row=>({stage:'tool_denied',status:'denied',requestedTool:row.tool,code:error.code==='permission_denied'?'permission_denied':'unauthorized_tool'}));
+ const fields=['providerRequests','requestBodyBytes','maxRequestBodyBytes','compactedBytes','toolCalls'];
+ const m=error?.requestMetrics,metrics=m&&fields.every(k=>Number.isSafeInteger(m[k])&&m[k]>=0&&m[k]<=1000000000)?Object.fromEntries(fields.map(k=>[k,m[k]])):null;
+ const category=['rate_limit','upstream_timeout','provider_auth','provider_unavailable','provider_rejected','network_error','response_incomplete','response_interrupted'].includes(error?.providerDiagnostic)?error.providerDiagnostic:null;
+ return [...denied,...(metrics||category?[{stage:'execution_metrics',...(metrics?{metrics}:{}),...(category?{providerDiagnostic:category}:{})}]:[])];
+};
 
 export function startThesisWorker(db,config={}){
  initializeThesisSchema(db);

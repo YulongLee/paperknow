@@ -62,3 +62,23 @@ test('selected template uses only a fixed local cover image and preserves later 
  const f=fixture(t,{body});await until(()=>!f.container.querySelector('iframe').hidden);const stage=f.container.querySelector('.presentation-viewer-stage'),frame=f.container.querySelector('iframe');assert.match(stage.style.backgroundImage,/ppt-templates\/teal\.png/);assert.match(frame.srcdoc,/id="background"[^>]*fill="none"/);f.container.querySelector('[data-pv-next]').click();assert.equal(stage.style.backgroundImage,'');
  const bad=fixture(t,{body:body.replace('teal','unknown')});await until(()=>!bad.container.querySelector('iframe').hidden);assert.equal(bad.container.querySelector('.presentation-viewer-stage').style.backgroundImage,'');assert.doesNotMatch(bad.container.querySelector('iframe').srcdoc,/fill="none"/);
 });
+test('interior art uses one allowlisted image at matching slide and thumbnail coordinates',async t=>{
+ const body=html.replace('<section class="page">'+svg('图文版第2页'),'<section class="page" data-slide-art="network,832,144,384,432">'+svg('图文版第2页'));
+ const f=fixture(t,{body});await until(()=>!f.container.querySelector('iframe').hidden);
+ const layer=f.container.querySelector('.presentation-viewer-art-layer'),thumb=f.container.querySelectorAll('.presentation-viewer-thumbnail')[1];
+ assert.equal(layer.hidden,true);assert.equal(f.container.querySelector('.presentation-viewer-thumbnail').querySelector('.presentation-viewer-artwork'),null);
+ thumb.click();assert.equal(layer.hidden,false);assert.match(f.container.querySelector('iframe').srcdoc,/图文版第2页/);assert.doesNotMatch(f.container.querySelector('iframe').srcdoc,/ppt-illustrations|<image/);
+ for(const image of [layer.querySelector('img'),thumb.querySelector('.presentation-viewer-artwork')]){
+  assert.equal(image.getAttribute('src'),'/workspace/assets/ppt-illustrations/network.png');
+  assert.deepEqual([image.style.left,image.style.top,image.style.width,image.style.height],['65%','20%','30%','60%']);
+ }
+ f.viewer.show(0);assert.equal(layer.hidden,true);assert.equal(layer.querySelector('img'),null);assert.equal(f.calls.filter(c=>c.url).length,1);
+});
+test('unknown or out of bounds interior metadata cannot add images to any page',async t=>{
+ for(const metadata of ['../network,832,144,384,432','other,832,144,384,432','network,900,144,384,432','network,832,144,0,432','network,832,144,384,9999']){
+  const opening=`<section class="page" data-slide-art="${metadata}">`,body=html.replaceAll('<section class="page">',opening),f=fixture(t,{body});
+  await until(()=>!f.container.querySelector('iframe').hidden);f.viewer.show(1);assert.equal(f.container.querySelector('.presentation-viewer-artwork'),null);
+ }
+ const f=fixture(t,{body:html.replace('<section class="page">','<section class="page" data-slide-art="network,832,144,384,432">')});
+ await until(()=>!f.container.querySelector('iframe').hidden);assert.equal(f.container.querySelector('.presentation-viewer-artwork'),null);
+});

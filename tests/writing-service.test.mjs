@@ -8,7 +8,7 @@ import {createSession} from '../backend/auth.mjs';
 import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
 import {startWritingWorker} from '../backend/writing-worker.mjs';
 import {startWorker} from '../backend/worker.mjs';
-import {normalizeWritingSnapshot,writingPlan,writingTask,parseWritingOutput,allocateWritingBudget} from '../backend/writing-model.mjs';
+import {normalizeWritingSnapshot,writingPlan,writingTask,parseWritingOutput,allocateWritingBudget,validateWritingCandidate} from '../backend/writing-model.mjs';
 import {thesisHash} from '../backend/thesis-model.mjs';
 import {projectTaskHash} from '../backend/task-project-context.mjs';
 const runtime={enabled:true,engine:'claude-agent-sdk',baseURL:'https://writing.example.test',model:'writing-test-model',apiKey:'test-only-writing-secret',version:'writing-version',maxTurns:6,maxOutputTokens:4096,maxCostUsd:.1,timeoutMs:30000};
@@ -71,6 +71,23 @@ test('legacy short plans and saved checkpoints survive explicit resume without a
 test('word-limit feedback corrects an unchecked overlong final once inside the original aggregate limits',async t=>{let calls=0;const f=await fixture(t,{getAgentSettings:()=>({...runtime,maxTurns:12}),agentTaskRunner:async({task,settings})=>{calls++;if(calls===1)return draft(319);assert.equal(settings.maxTurns,2);assert.equal(task.context.validationFeedback.code,'word_limit');assert.equal(task.context.validationFeedback.count,319);assert.deepEqual(task.context.validationFeedback.allowedAlreadyReadSourceIds,[]);assert.match(task.instructions,/不能冒用另外一段已合格的统计/);return draft(200);}});f.pay();const created=await f.submit();await f.writing.tick();const item=(await f.request('/writing/jobs/'+created.value.item.id)).value.item;assert.equal(item.status,'completed',JSON.stringify(item));assert.equal(calls,2);assert.equal(f.billing.balance('alice').balance,190);});
 test('a bad short-batch correction remains failed without truncation or a third model attempt',async t=>{let calls=0;const f=await fixture(t,{getAgentSettings:()=>({...runtime,maxTurns:12}),agentTaskRunner:async({task})=>{calls++;return batchResult(task.context.unit,[110,100,109]);}});f.pay();const created=await f.submit('course','draft',shortSnapshot());await f.writing.tick();const item=(await f.request('/writing/jobs/'+created.value.item.id)).value.item;assert.equal(item.status,'failed');assert.equal(calls,2);assert.equal(item.completedUnits,0);assert.equal(f.billing.balance('alice').balance,200);const diagnosis=f.db.prepare('SELECT code,metrics FROM writing_diagnostics WHERE run_id=?').get(item.id);assert.equal(diagnosis.code,'word_limit');assert.equal(JSON.parse(diagnosis.metrics).wordStats.count,319);});
 test('execution-budget errors remain actionable publicly while private diagnostics retain codes and counts',async t=>{const f=await fixture(t,{agentTaskRunner:async()=>{throw Object.assign(Error('AI 已达到本次 Token 预算，未继续调用模型'),{status:429,usage:{input:100,output:20}});}});f.pay();const created=await f.submit();await f.writing.tick();const item=(await f.request('/writing/jobs/'+created.value.item.id)).value.item;assert.equal(item.status,'failed');assert.match(item.error,/达到执行上限.*已完成内容仍保留/);assert.doesNotMatch(item.error,/Token|模型|SDK/);const diagnosis=f.db.prepare('SELECT code,metrics FROM writing_diagnostics WHERE run_id=?').get(item.id);assert.equal(diagnosis.code,'token_budget');assert.equal(JSON.parse(diagnosis.metrics).inputTokens,100);assert.equal(Object.hasOwn(item,'diagnostics'),false);assert.equal(f.billing.balance('alice').balance,200);});
+test('failed writing records only sanitized denied tool classifications and does not retry or expose them',async t=>{
+ let calls=0;const f=await fixture(t,{agentTaskRunner:async()=>{calls++;const e=Object.assign(Error('denied'),{code:'unauthorized_tool',status:502});Object.defineProperty(e,'agentTrace',{value:[{status:'denied',tool:'mcp__paperknow__check_text_length',args:{text:'private-sensitive'}}]});throw e;}});
+ f.pay();const created=await f.submit();await f.writing.tick();await f.writing.tick();
+ const item=(await f.request('/writing/jobs/'+created.value.item.id)).value.item,diag=f.db.prepare('SELECT code,metrics FROM writing_diagnostics WHERE run_id=?').get(item.id);
+ assert.equal(item.status,'failed');assert.equal(calls,1);assert.deepEqual(JSON.parse(diag.metrics).deniedTools,[{tool:'check_text_length',namespace:'paperknow'}]);
+ assert.doesNotMatch(JSON.stringify(item)+diag.metrics,/private-sensitive/);assert.equal(Object.hasOwn(item,'diagnostics'),false);assert.equal(f.billing.balance('alice').balance,200);
+});
+
+test('outline unknown-usage failure reports no output and releases the hold without auto retry',async t=>{
+ let calls=0;const f=await fixture(t,{writingContinuousEnabled:true,agentTaskRunner:async()=>{calls++;throw Object.assign(Error('unknown provider cost'),{status:429,code:'cost_budget'});}});f.pay();
+ const created=await f.submit('practice','outline');await f.writing.tick();
+ const item=(await f.request('/writing/jobs/'+created.value.item.id)).value.item;
+ assert.equal(item.status,'failed');assert.equal(item.completedUnits,0);assert.equal(item.output,null);
+ assert.match(item.error,/提纲暂未生成.*原有内容未改变.*未扣费/);assert.doesNotMatch(item.error,/已完成内容|积分不足/);
+ assert.equal(calls,1);assert.equal(f.billing.balance('alice').balance,200);assert.equal(f.billing.balance('alice').held,0);
+ const diag=f.db.prepare('SELECT code,metrics FROM writing_diagnostics WHERE run_id=?').get(item.id);assert.equal(diag.code,'cost_budget');assert.ok(JSON.parse(diag.metrics).costAccounting.reservedUnknownCostBudgetUsd>0);
+});
 
 test('worker exposes complete-candidate validation only to writing tasks and persists exactly schema-validated batches',async t=>{
  let calls=0;const f=await fixture(t,{agentTaskRunner:async({task,validateWritingOutput})=>{
@@ -140,3 +157,102 @@ test('a pre-removal quick record remains owned, readable and idempotently recove
  assert.equal((await f.request('/writing/jobs/'+id,undefined,f.users.bob)).status,404);
  const replay=await f.request('/writing/jobs',{kind:'quick',operation:'draft',snapshot:snapshot(),clientKey:row.client_key,billingToken:'historic-already-settled',consent:true});assert.equal(replay.status,200);assert.equal(replay.value.item.id,id);assert.equal(f.db.prepare('SELECT count(*) n FROM writing_runs').get().n,1);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);
 });
+
+test('proposal method suggestions plan a topic-specific route while preserving the typed contract',()=>{
+ const value=normalizeWritingSnapshot(snapshot()),unit=writingPlan(value,'method')[0];
+ const proposal=writingTask('proposal','method',value,unit),article=writingTask('article','method',value,unit);
+ assert.equal(proposal.skill,article.skill);
+ assert.equal(proposal.context.documentType,'开题报告');
+ assert.match(proposal.instructions,/主方法.*分析过程.*验证标准.*实际前置条件/);
+ assert.match(proposal.instructions,/"proposed":true/);
+ assert.doesNotMatch(article.instructions,/本次用于开题报告/);
+});
+
+test('proposal has an independent topic-focused outline contract and excludes blank school form sections',()=>{
+ const value=normalizeWritingSnapshot({...snapshot(),profile:{targetWords:5000},requirements:{instructions:'学校要求保留“信息行为研究进度”栏目，按计划编制。'}}),unit=writingPlan(value,'outline')[0];
+ const task=writingTask('proposal','outline',value,unit);
+ assert.equal(task.context.kind,'proposal');
+ assert.equal(task.context.structureGuidance.maxSectionsPerChapter,0);
+ assert.match(task.instructions,/学校或导师明确指定的正文章目及顺序优先/);
+ assert.match(task.instructions,/围绕题目中的研究对象/);
+ assert.doesNotMatch(task.instructions,/确需分节时最多|主题相关的二级小节/);
+ const good={complete:true,chapters:[{title:'校图书馆的数字阅读服务问题',wordWeight:3,sections:[]},{title:'信息行为研究进度',wordWeight:5,sections:[]}]};
+ const parsed=parseWritingOutput(wrapped(good),'proposal','outline',value,unit);
+ assert.deepEqual(parsed.chapters.map(chapter=>chapter.title),good.chapters.map(chapter=>chapter.title));
+ assert.equal(parsed.chapters.reduce((words,chapter)=>words+chapter.targetWords,0),5000);
+ const invalid=validateWritingCandidate(wrapped({...good,chapters:[...good.chapters,{title:'三、指导教师审核意见',sections:[]}]}),'proposal','outline',value,unit);
+ assert.equal(invalid.valid,false);
+ assert.equal(invalid.feedback.reason,'proposal_template_artifact');
+});
+
+test('proposal unit accepts real planning language and drops its repeated heading while rejecting leaked form placeholders',()=>{
+ const value=normalizeWritingSnapshot(snapshot()),unit=writingPlan(value,'draft')[0];
+ const actual='本研究拟在校园数字阅读服务范围内开展案例比较。'+prose(170);
+ const good={complete:true,text:'## '+unit.title+'\n\n'+actual,source_ids:[],missing_evidence:[]};
+ const parsed=parseWritingOutput(wrapped(good),'proposal','draft',value,unit);
+ assert.equal(parsed.text,actual);
+ assert.equal(validateWritingCandidate(wrapped(good),'proposal','draft',value,unit).length.count,parsed.wordCount);
+ for(const bad of ['本研究拟在{{学校名称}}开展。','导师签字：____','（此处填写研究对象）','Supervisor Signature: ____']){
+  const invalid=validateWritingCandidate(wrapped({...good,text:actual+'\n'+bad}),'proposal','draft',value,unit);
+  assert.equal(invalid.valid,false,bad);
+  assert.equal(invalid.feedback.code,'proposal_template_artifact');
+ }
+ assert.doesNotThrow(()=>parseWritingOutput(wrapped({...good,text:actual+'本节仅讨论导师意见的反馈方式。'}),'proposal','draft',value,unit));
+});
+
+test('a resumed 5000-word proposal joins split parts under each confirmed heading once and settles only once',async t=>{
+ const headings=['数字阅读服务中的资源发现问题','服务范围与研究目标','对照方法和验证设计','调研阶段及预期交付物'];
+ const data={...snapshot(),profile:{...snapshot().profile,targetWords:5000},outline:headings.map((title,index)=>({id:'p-'+index,title,targetWords:1250,sections:[]}))};
+ const calls=[],saved=new Map();
+ let interrupt=true;
+ const f=await fixture(t,{writingQualityEnabled:true,citationVerifier:{verify:async()=>({items:[],summary:{},limitations:[],requests:0})},agentTaskRunner:async({task,validateWritingOutput,validateReviewOutput})=>{
+  if(task.skill==='writing-review'){
+   const output=wrapped({complete:true,checkedFigureIds:[],findings:[],limitations:[]},{trace:[]});
+   assert.equal(validateReviewOutput(output).valid,true);
+   return output;
+  }
+  const unit=task.context.unit;
+  calls.push(unit.id);
+  assert.equal(unit.parts,2);
+  const body='报告写作单元'+(unit.position+1)+'围绕本节安排研究。'+prose(unit.targetWords-20);
+  if(unit.part===2){
+   assert.match(task.instructions,/同一栏目的续写/);
+   assert.equal(task.context.proposalContinuation,saved.get(unit.chapterId+'::'+unit.sectionId+'::1'));
+  }
+  if(interrupt&&calls.length===2)throw Object.assign(Error('temporary interruption'),{usage:{input:10,output:2},costUsd:.001});
+  const output=wrapped({complete:true,text:'## '+unit.title+'\n\n'+body,source_ids:[],missing_evidence:[]},{trace:[]});
+  assert.equal(validateWritingOutput(output).valid,true);
+  saved.set(unit.id,body);
+  return output;
+ }});
+ f.pay();
+ const first=await f.submit('proposal','draft',data);
+ assert.equal(first.status,202,JSON.stringify(first.value));
+ await f.writing.tick();
+ const failed=(await f.request('/writing/jobs/'+first.value.item.id)).value.item;
+ assert.equal(failed.status,'failed',JSON.stringify(failed));
+ assert.equal(failed.completedUnits,1);
+ assert.equal(failed.sections[0].text,saved.get(calls[0]));
+ assert.equal(f.billing.balance('alice').balance,200);
+ interrupt=false;
+ const resumed=await f.submit('proposal','draft',data,{resumeFromJobId:failed.id});
+ assert.equal(resumed.status,202,JSON.stringify(resumed.value));
+ await f.writing.tick();
+ const completed=(await f.request('/writing/jobs/'+resumed.value.item.id)).value.item;
+ assert.equal(completed.status,'completed',JSON.stringify(completed));
+ assert.equal(completed.completedUnits,8);
+ assert.equal(completed.output.sections.length,8);
+ assert.equal(completed.output.quality.consistency.checkedSections,8);
+ assert.ok(!completed.output.quality.consistency.findings.some(row=>row.category==='duplicate_title'));
+ assert.equal(calls.length,9);
+ assert.equal(calls.filter(id=>id==='p-0::p-0::1').length,1);
+ assert.deepEqual(completed.output.text.split('\n\n').filter(line=>headings.includes(line)),headings);
+ for(const text of saved.values())assert.equal(completed.output.text.split('\n\n').filter(line=>line===text).length,1);
+ assert.equal(f.billing.balance('alice').balance,190);
+ assert.equal(f.billing.balance('alice').held,0);
+});
+
+test('provider failure records only whitelisted diagnostic and never auto retries or settles unknown usage',async t=>{
+ let calls=0;const f=await fixture(t,{writingContinuousEnabled:true,agentTaskRunner:async()=>{calls++;const e=Object.assign(Error('private provider error'),{status:502});Object.defineProperty(e,'providerDiagnostic',{value:'rate_limit'});throw e;}});f.pay();const created=await f.submit();await f.writing.tick();await f.writing.tick();const item=(await f.request('/writing/jobs/'+created.value.item.id)).value.item;const diag=f.db.prepare('SELECT code,metrics FROM writing_diagnostics WHERE run_id=?').get(item.id);assert.equal(item.status,'failed');assert.equal(calls,1);assert.equal(JSON.parse(diag.metrics).providerDiagnostic,'rate_limit');assert.doesNotMatch(diag.metrics,/private provider error/);assert.equal(f.billing.balance('alice').balance,200);assert.equal(f.billing.balance('alice').held,0);
+});
+test('arbitrary provider diagnostic text is discarded',async t=>{const f=await fixture(t,{agentTaskRunner:async()=>{const e=Object.assign(Error('failure'),{status:502});Object.defineProperty(e,'providerDiagnostic',{value:'secret-and-content'});throw e;}});const created=await f.submit();await f.writing.tick();const diag=f.db.prepare('SELECT metrics FROM writing_diagnostics WHERE run_id=?').get(created.value.item.id);assert.equal(Object.hasOwn(JSON.parse(diag.metrics),'providerDiagnostic'),false);assert.doesNotMatch(diag.metrics,/secret-and-content/);});

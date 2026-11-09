@@ -112,7 +112,7 @@ for(const format of ['docx','pdf'])test(`real thesis ${format.toUpperCase()} pip
   assert.deepEqual(Buffer.from(template.bytes),original,'the uploaded template is unchanged');assert.equal(f.sourceText,text);
   const panel=f.q('[data-export-check]');assert.ok(panel);assert.equal(panel.hidden,false);panel.open=true;
   assert.match(panel.querySelector('summary').textContent,/本次导出检查/);assert.equal(panel.querySelector('summary').textContent.includes('有待核对事项'),f.checks[0].status==='review_required','template recognition caveats remain visible instead of being presented as a clean review');
-  assert.match(panel.textContent,/按模板正文占位位置填入/);assert.match(panel.textContent,/正文文字检查：\d+ 项已按段落及顺序核对/);assert.match(panel.textContent,/已生成 2 页/);assert.match(panel.textContent,/页面边界与缺字检查未完成/);assert.match(panel.textContent,/不代表事实核验或人工逐页审定/);
+  assert.match(panel.textContent,/按模板正文占位位置填入/);assert.match(panel.textContent,/正文文字检查：\d+ 项已按段落及顺序核对/);assert.ok(panel.textContent.includes('页面检查渲染 2 页（可能包含分节空白页，Word 最终分页可能不同）'));assert.match(panel.textContent,/页面边界与缺字检查未完成/);assert.match(panel.textContent,/不代表事实核验或人工逐页审定/);
   assert.match(f.status.textContent,/请核对 Word 中的最终版式/);assert.ok(f.checks[0].checks.some(row=>row.id==='existing_review'&&row.status==='passed'));
  }finally{f.close();}
 });
@@ -207,4 +207,15 @@ test('final pending-marker count includes input and template fields exactly once
 
 test('formal missing-material checks open the completion workflow instead of requiring an outside Word edit',async t=>{
  let details;const f=await fixture(t,{submission:true,docxOnly:true,onNeedsCompletion:async value=>{details=value;}});f.click('docx');await f.complete();assert.ok(details.report.submission.issues.length);assert.equal(f.q('[data-export-check]').open,false);assert.equal(f.downloads.length,0);assert.equal(f.rendered.length,0);assert.match(f.status.textContent,/补充窗口/);assert.doesNotMatch(f.status.textContent,/自行修改|可编辑初稿继续修改/);
+});
+
+test('busy document rendering waits and retries without submitting a new task',async()=>{
+ let calls=0,waits=0;
+ const response=await renderThesisDocument(new Uint8Array([80,75,3,4]),{expectedUserId:'alice',onWait:()=>waits++,fetchImpl:async()=>{calls++;return calls===1?Response.json({code:'DOCUMENT_RENDER_BUSY',error:'页面检查繁忙'},{status:429}):Response.json({data:Buffer.from(syntheticPdf).toString('base64'),pages:1});}});
+ assert.equal(calls,2);assert.equal(waits,1);assert.equal(response.pages,1);
+});
+test('document rendering does not retry unrelated rate limits',async()=>{
+ let calls=0;
+ await assert.rejects(renderThesisDocument(new Uint8Array([80,75,3,4]),{expectedUserId:'alice',fetchImpl:async()=>{calls++;return Response.json({error:'请求过于频繁'},{status:429});}}),/请求过于频繁/);
+ assert.equal(calls,1);
 });

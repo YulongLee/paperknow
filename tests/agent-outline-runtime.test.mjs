@@ -155,3 +155,9 @@ test('real SDK reads ten indexed sources together and finishes JSON within the t
  assert.equal(toolResults.length,10);for(const material of materials)assert.ok(JSON.stringify(toolResults).includes(material.text));
  assert.equal(parseThesisOutline(output,snapshot).chapters.length,2);
 });
+
+test('provider diagnostic survives SDK wrapping without leaking upstream messages or marking unknown usage known',async()=>{
+ const provider=providerFixture({status:429});let failure;
+ try{await runAgentTask({settings,task:fixture(false).task,dependencies:{lookup,httpsRequest:provider.requestImpl,query:({options})=>(async function*(){const response=await fetch(options.env.ANTHROPIC_BASE_URL+'/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':options.env.ANTHROPIC_API_KEY},body:JSON.stringify({model:options.model,max_tokens:32,messages:[{role:'user',content:'private synthetic material'}]})});assert.equal(response.status,429);throw Error('private provider secret');})()}});}catch(error){failure=error;}
+ assert.ok(failure);assert.equal(failure.providerDiagnostic,'rate_limit');assert.equal(failure.usage,null);assert.doesNotMatch(failure.message+JSON.stringify(failure),/private provider secret|private synthetic material/);
+});

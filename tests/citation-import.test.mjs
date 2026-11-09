@@ -28,3 +28,11 @@ test('fifty citations import in order and fifty one rejects all',()=>{
  const lines=Array.from({length:51},(_,i)=>`[${i+1}] 作者. 标题${i+1}[J]. 期刊,2026.`);
  assert.equal(parseCitationImport(lines.slice(0,50).join('\n')).items.length,50);assert.throws(()=>parseCitationImport(lines.join('\n')),/50/);
 });
+
+test('arXiv BibTeX preprints preserve a verifiable identifier without inventing a journal',()=>{
+ const bib='@article{x,title={Example research},author={Author, Alice},year={2025},eprint={2501.12345},archivePrefix={arXiv}}';
+ const item=parseCitationImport(bib).items[0];assert.equal(item.documentType,'preprint');assert.equal(item.url,'https://arxiv.org/abs/2501.12345');assert.equal(item.journal,undefined);
+ const published=parseCitationImport(bib.replace('archivePrefix={arXiv}','archivePrefix={arXiv},journal={Verified Journal}')).items[0];assert.equal(published.documentType,'journal');assert.equal(published.journal,'Verified Journal');
+ const malformed=parseCitationImport(bib.replace('2501.12345','../../fake')).items[0];assert.equal(malformed.documentType,'journal');assert.equal(malformed.url,'');
+ const unpublished=parseCitationImport('@unpublished{x,title={Example},year={2025}}').items[0];assert.equal(unpublished.documentType,'preprint');
+});
