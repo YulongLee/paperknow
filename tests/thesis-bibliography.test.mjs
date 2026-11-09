@@ -102,3 +102,12 @@ test('older arXiv-only article records render as preprints without changing publ
  assert.match(formatThesisReference({...row,journal:'Real Journal'}),/\[J\].*Real Journal/);
  assert.match(formatThesisReference({...row,url:'https://notarxiv.org/abs/2501.12345'}),/\[J\]/);
 });
+
+test('legacy arXiv preprint journal placeholders retain identifiers without inventing journal publication',()=>{
+ const row={title:'Attention Is All You Need',authors:'Ashish Vaswani',year:'2017',documentType:'journal',journal:'arXiv preprint arXiv:1706.03762'};
+ const result=formatThesisReference(row);
+ assert.match(result,/\[PP\/OL\]/);
+ assert.match(result,/https:\/\/arxiv\.org\/abs\/1706\.03762/);
+ assert.doesNotMatch(result,/arXiv preprint/);
+ assert.match(formatThesisReference({...row,journal:'Journal of Machine Learning Research'}),/\[J\]/);
+});

@@ -154,3 +154,17 @@ test('a previous month is a valid reference window without treating it as four w
 test('usage count questions with words between usage and count still require a time window',()=>{
  const q={...nonuser,title:'您使用数字阅读服务的次数是多少？',options:['0次','1至3次','4至7次','8次及以上']};assert.throws(()=>normalizeAIQuestionnaire(make([q,experience,general]),{outputCount:3}),e=>e.validationIssues.some(row=>row.code==='frequency_period'));
 });
+
+test('frequency scales use the same period and interval checks as single choice questions',()=>{
+ const scaleFrequency={id:'q1',type:'scale',title:'过去30天使用数字阅读服务的频率',options:['0次','1至3次','5至7次','8至15次','16次及以上'],required:true};
+ assert.throws(()=>normalizeAIQuestionnaire(make([scaleFrequency,experience,general]),{outputCount:3}),e=>e.validationIssues.some(row=>row.code==='frequency_gap'&&row.questionType==='scale'));
+ const overlap={...scaleFrequency,options:['0次','1至3次','3至7次','8至15次','16次及以上']};assert.throws(()=>normalizeAIQuestionnaire(make([overlap,experience,general]),{outputCount:3}),e=>e.validationIssues.some(row=>row.code==='frequency_overlap'));
+ const noPeriod={...scaleFrequency,title:'使用数字阅读服务的频率',options:['从不','很少','有时','经常','总是']};assert.throws(()=>normalizeAIQuestionnaire(make([noPeriod,experience,general]),{outputCount:3}),e=>e.validationIssues.some(row=>row.code==='frequency_period'));
+ const good={...scaleFrequency,options:['0次','1至3次','4至7次','8至15次','16次及以上']};assert.doesNotThrow(()=>normalizeAIQuestionnaire(make([good,experience,general]),{outputCount:3}));
+});
+
+test('questions phrased as how many times are checked for interval gaps',()=>{
+ const question={...nonuser,title:'过去30天你使用数字阅读服务几次？',options:['0次','1至3次','5至7次','8次及以上']};
+ assert.throws(()=>normalizeAIQuestionnaire(make([question,experience,general]),{outputCount:3}),e=>e.validationIssues.some(row=>row.code==='frequency_gap'));
+ const good={...question,options:['0次','1至3次','4至7次','8次及以上']};assert.doesNotThrow(()=>normalizeAIQuestionnaire(make([good,experience,general]),{outputCount:3}));
+});

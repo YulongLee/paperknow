@@ -50,11 +50,15 @@ function bibtex(text){
   const eprint=plain(fields.eprint).replace(/^arxiv:/i,'');
   const arxivId=/^(?:\d{4}\.\d{4,5}|[a-z][a-z.-]*\/\d{7})(?:v\d+)?$/i.test(eprint)?eprint:'';
   const arxivURL=safeURL(fields.url);let arxivHost=false;try{arxivHost=['arxiv.org','www.arxiv.org','export.arxiv.org'].includes(new URL(arxivURL).hostname);}catch{}
-  const isArxiv=(/^arxiv$/i.test(plain(fields.archiveprefix))&&!!arxivId)||arxivHost;
-  if(kind==='journal'&&isArxiv&&!plain(fields.journal||fields.journaltitle))kind='preprint';
-  const url=arxivURL||(arxivId&&/^arxiv$/i.test(plain(fields.archiveprefix))?'https://arxiv.org/abs/'+arxivId:'');
+  const journal=plain(fields.journal||fields.journaltitle);
+  // A common BibTeX export uses `journal = {arXiv preprint arXiv:...}`.
+  // This is not a published journal; preserve the identifier instead.
+  const preprintJournal=/^arxiv\s+preprint\s+(?:arxiv\s*:\s*)?((?:\d{4}\.\d{4,5}|[a-z][a-z.-]*\/\d{7})(?:v\d+)?)$/i.exec(journal);
+  const isArxiv=(/^arxiv$/i.test(plain(fields.archiveprefix))&&!!arxivId)||arxivHost||!!preprintJournal;
+  if(kind==='journal'&&isArxiv&&(!journal||preprintJournal))kind='preprint';
+  const url=arxivURL||(arxivId&&/^arxiv$/i.test(plain(fields.archiveprefix))?'https://arxiv.org/abs/'+arxivId:preprintJournal?'https://arxiv.org/abs/'+preprintJournal[1]:'');
   const authors=bibAuthors(fields.author);
-  results.push(finish(raw,{title:fields.title,authors:authors.map(plain).join('; '),authorNames:authors.map(value=>authorName(value,value.startsWith('{'))),year:fields.year||fields.date,doi:fields.doi,url,abstract:fields.abstract,documentType:kind,journal:fields.journal||fields.journaltitle,publicationSource:fields.booktitle,publisher:fields.publisher||fields.school||fields.institution,publicationPlace:fields.address||fields.location,volume:fields.volume,issue:fields.number||fields.issue,pages:fields.pages?.replace(/--+/g,'-')||fields.eid,edition:fields.edition,accessedAt:referenceDate(fields.urldate)}));
+  results.push(finish(raw,{title:fields.title,authors:authors.map(plain).join('; '),authorNames:authors.map(value=>authorName(value,value.startsWith('{'))),year:fields.year||fields.date,doi:fields.doi,url,abstract:fields.abstract,documentType:kind,journal:preprintJournal?'':fields.journal||fields.journaltitle,publicationSource:fields.booktitle,publisher:fields.publisher||fields.school||fields.institution,publicationPlace:fields.address||fields.location,volume:fields.volume,issue:fields.number||fields.issue,pages:fields.pages?.replace(/--+/g,'-')||fields.eid,edition:fields.edition,accessedAt:referenceDate(fields.urldate)}));
  }return results;
 }
 function citations(text){

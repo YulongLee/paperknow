@@ -36,3 +36,14 @@ test('arXiv BibTeX preprints preserve a verifiable identifier without inventing 
  const malformed=parseCitationImport(bib.replace('2501.12345','../../fake')).items[0];assert.equal(malformed.documentType,'journal');assert.equal(malformed.url,'');
  const unpublished=parseCitationImport('@unpublished{x,title={Example},year={2025}}').items[0];assert.equal(unpublished.documentType,'preprint');
 });
+
+test('BibTeX arXiv preprint journal placeholder is not a published journal',()=>{
+ const bib='@article{x,title={Attention Is All You Need},author={Vaswani, Ashish},year={2017},journal={arXiv preprint arXiv:1706.03762}}';
+ const item=parseCitationImport(bib).items[0];
+ assert.equal(item.documentType,'preprint');
+ assert.equal(item.url,'https://arxiv.org/abs/1706.03762');
+ assert.equal(item.journal,undefined);
+ const published=parseCitationImport(bib.replace('arXiv preprint arXiv:1706.03762','Journal of Machine Learning Research')).items[0];
+ assert.equal(published.documentType,'journal');
+ assert.equal(published.journal,'Journal of Machine Learning Research');
+});

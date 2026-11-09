@@ -30,6 +30,8 @@ export function formatThesisReference(input={}){
  const row=thesisReferenceMetadata(input);if(row.citationText)return row.citationText;
  const codes={journal:'J',article:'J','journal-article':'J','article-journal':'J',book:'M',thesis:'D',dissertation:'D',conference:'C','conference-paper':'C','paper-conference':'C',patent:'P',standard:'S',yearbook:'M',newspaper:'N',preprint:'PP',report:'R',chapter:'M',webpage:'EB',dataset:'DS',database:'DB',archive:'A',map:'CM',collection:'G',software:'CP'};
  let kind=row.documentType||input.type;
+ const legacyArxiv=/^arxiv\s+preprint\s+(?:arxiv\s*:\s*)?((?:\d{4}\.\d{4,5}|[a-z][a-z.-]*\/\d{7})(?:v\d+)?)$/i.exec(row.journal||'');
+ if(legacyArxiv&&['journal','article','journal-article','article-journal'].includes(kind)&&!row.venue&&!row.publicationSource){kind='preprint';row.journal='';if(!row.url)row.url='https://arxiv.org/abs/'+legacyArxiv[1];}
  // When only an arXiv preprint is identified, an old @article import must
  // not claim a journal publication that the source did not supply.
  let arxivURL=false;try{const u=new URL(row.url);arxivURL=['arxiv.org','www.arxiv.org','export.arxiv.org'].includes(u.hostname)&&/^\/(?:abs|pdf)\/(?:\d{4}\.\d{4,5}|[a-z][a-z.-]*\/\d{7})(?:v\d+)?(?:\.pdf)?$/i.test(u.pathname);}catch{}
