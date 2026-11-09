@@ -51,6 +51,8 @@ test('a plan or demonstration is not automatically accepted as proof of an asser
  for(const text of ['尚无证据证明存在检索引导不清的问题。','不能证明存在检索引导不清的问题。','不存在检索引导不清的问题。']){const safe={...input,context:{...input.context,chapters:[{...input.context.chapters[0],text}]}};assert.equal(parseSupplementCheck(response([{...noEvidence,manuscriptQuote:text}]),safe)[0].status,'not_required');}
  const mixed={...input,context:{...input.context,evidence:[{id:'m',name:'调查材料',text:'研究者拟定后续改进方案。十名读者反馈检索步骤不清晰。模拟检索作为补充演示。'}]}};
  const realQuote={...row,evidence:[{sourceId:'m',quote:'十名读者反馈检索步骤不清晰'}]};assert.equal(parseSupplementCheck(response([realQuote]),mixed)[0].status,'sufficient','explicit observed feedback is not rejected just because a plan occurs nearby');
+ const combined={...input,context:{...input.context,evidence:[{id:'m',name:'访谈记录',text:'访谈纪要：三名受访者表示检索指引不清；计划调整移动端界面。'}]}};
+ const combinedRow={...row,evidence:[{sourceId:'m',quote:combined.context.evidence[0].text}]};assert.equal(parseSupplementCheck(response([combinedRow]),combined)[0].status,'sufficient','observed interview statements remain available when the same quotation includes a future plan');
 });
 
 test('unsupported asserted problem stops the final readiness gate even if the model marks it not required',async()=>{

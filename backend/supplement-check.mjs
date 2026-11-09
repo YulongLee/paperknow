@@ -13,7 +13,7 @@ function onlyPlanOrDemonstration(proof){
  return /(?:拟|计划|拟议|设想|方案|尚未|未发放|未采集|演示|模拟|仿真)/u.test(proof)&&!/(?:实际调查(?:结果|发现|显示)|调查结果(?:显示|表明)|真实用户(?:反馈|报告|调查)|实测(?:结果|显示))/u.test(proof);
 }
 function planOnlyProof(proof,source){
- if(!/(?:未|没有|尚无|缺乏|不存在)/u.test(proof.quote)&&/(?:调查|问卷|访谈|反馈|实测|观察|统计|读者).{0,30}(?:显示|发现|反映|表明|报告|反馈)|(?:显示|发现|表明).{0,30}(?:调查|问卷|访谈|反馈|实测|观察|统计)/u.test(proof.quote))return false;
+ if(!/(?:未|没有|尚无|缺乏|不存在)/u.test(proof.quote)&&/(?:调查|问卷|访谈|反馈|实测|观察|统计|读者|受访者).{0,30}(?:显示|发现|反映|表明|报告|反馈|表示|提及|指出|认为)|(?:显示|发现|表明).{0,30}(?:调查|问卷|访谈|反馈|实测|观察|统计)/u.test(proof.quote))return false;
  if(onlyPlanOrDemonstration(proof.quote))return true;
  // A short generic quotation can omit that the surrounding source is merely
  // an unrealized plan. Only inspect a unique match, without treating absence

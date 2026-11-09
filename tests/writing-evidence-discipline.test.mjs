@@ -13,3 +13,11 @@ test('thesis and every writing scenario receive claim-level evidence instruction
   assert.match(task.instructions,/演示记录只支持记录中实际描述的步骤/);
  }
 });
+test('summary limits each cited detail to available text and taskbook separates plan sections',()=>{
+ const snapshot=normalizeWritingSnapshot(fixture),unit=writingPlan(snapshot,'draft')[0];
+ const summary=writingTask('summary','draft',snapshot,unit),taskbook=writingTask('taskbook','draft',snapshot,unit);
+ assert.match(summary.instructions,/不得凭模型常识补写片段未说明的细节/);
+ assert.match(summary.instructions,/摘要未提及不代表原文不存在/);
+ assert.match(taskbook.instructions,/各栏目各有用途/);
+ assert.match(taskbook.instructions,/仅在用户或模板明确要求具体数值且缺失时保留待补充标记/);
+});
