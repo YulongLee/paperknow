@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {mountWritingFlow,disposeWritingFlows} from '../dist/workspace/writing-flows.mjs';
 import {writingFlowSpecs,writingFlowSnapshot} from '../dist/workspace/writing-flow-model.mjs';
-import {assessWritingDelivery,writingDeliveryMarkup} from '../dist/workspace/writing-delivery.mjs';
+import {assessWritingDelivery,writingDeliveryMarkup,writingFinalBlockedMessage} from '../dist/workspace/writing-delivery.mjs';
 import {clearEditor,flushEditorDraft} from '../dist/workspace/edit-guard.mjs';
 import {list,keys,endDraftScope} from '../dist/workspace/state.mjs';
 import {createWritingDocx,inspectThesisExportContent,defaultWritingTemplateProfile,runThesisLayoutAgent} from '../src/writing-document.js';
@@ -28,6 +28,11 @@ test('a final without a current supplement check asks to run the check rather th
 });
 
 test('a known failed job exposes the missing-material window and does not discard existing body text',async()=>{const f=fixture('practice',async(path,data)=>path==='/writing/jobs'?{item:{id:'failed-job',status:'failed',operation:'draft',completedUnits:1,totalUnits:2,error:'尚缺生成本单元所需的真实资料：实际记录',output:null}}:undefined);try{f.mount();f.$('[data-wf-generate="draft"]').click();await settle();assert.equal(f.$('[data-wf-completion]').open,true);assert.match(f.$('[data-wf-delivery-status]').textContent,/实际记录/);assert.equal(f.save().body,'原有正文');assert.equal(f.$('[data-wf-complete]').disabled,false);assert.match(f.$('[data-wj-progress-status]').textContent,/未完成/);}finally{f.close();}});
+
+test('a failed completion does not mistake its own new task ID for a user edit',async()=>{
+ const f=fixture('course',async(path)=>path==='/writing/jobs'?{item:{id:'completion-child',status:'failed',operation:'draft',kind:'course',completedUnits:1,totalUnits:4,error:'模拟中断',output:null}}:undefined);
+ try{Object.assign(f.row.writingFlow,{body:'用户正文',canonicalBody:'用户正文',bodyJobId:'base-job',sourceSnapshot:{materials:[],references:[]}});localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();f.$('[data-wf-complete]').click();await settle();assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);assert.doesNotMatch(f.$('[data-wf-ai]').textContent,/前面的信息已有修改/);assert.ok(f.$('[data-wj-resume]'));assert.equal(f.$('[data-wj-resume]').disabled,false);assert.equal(f.save().body,'用户正文');}finally{f.close();}
+});
 
 test('automatic adoption cannot overwrite body text edited while the task was running',async()=>{let record={id:'running-job',status:'running',operation:'draft',completedUnits:0,totalUnits:1,output:null};const f=fixture('proposal',async path=>['/writing/jobs','/writing/jobs/running-job'].includes(path)?{item:record}:undefined);try{f.mount();f.$('[data-wf-generate="draft"]').click();await settle();f.input('[data-wf-field="body"]','生成期间作者新写的内容');record={...record,status:'completed',completedUnits:1,output:{text:'服务器保存的新生成版本',sourceIds:[]}};f.$('[data-wj-refresh]').click();await settle();assert.equal(f.save().body,'生成期间作者新写的内容');assert.equal(f.$('[data-wj-apply]').disabled,true);assert.equal(f.calls.filter(row=>row.path==='/writing/jobs').length,1);}finally{f.close();}});
 
@@ -107,7 +112,17 @@ for(const kind of Object.keys(writingFlowSpecs))test(kind+' keeps all template c
 
 test('expression-only hints remain visible in quality checks without becoming final-material requirements',()=>{
  const text='此外，本节解释研究对象与适用条件。';
- for(const severity of ['info','warning']){const finding={sectionId:'c1',category:'language_expression',severity,quote:'此外，本节解释研究对象',suggestion:'按实际关系调整衔接。'},quality={consistency:{findings:[finding]},reviews:[{findings:[finding]}]};assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,true);quality.reviews[0].findings.push({...finding,category:'source_support'});assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,false);}
+ for(const severity of ['info','warning']){const finding={sectionId:'c1',category:'language_expression',severity,quote:'此外，本节解释研究对象',suggestion:'按实际关系调整衔接。'},quality={consistency:{findings:[finding]},reviews:[{findings:[finding]}]};assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,severity==='info');quality.reviews[0].findings.push({...finding,category:'source_support'});assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,false);}
+});
+
+test('a passed material check with other body findings explains the remaining review without exposing internal markers',()=>{
+ const text='本段描述系统架构 [figure:fig-123] 并依据 [source:s1] 说明方案。';
+ const quality={consistency:{findings:[{category:'structure',quote:text}]},supplementCheck:{status:'final_ready',phase:'final'}};
+ const assessment=assessWritingDelivery({kind:'practice',text,quality,snapshot:{materials:[{id:'s1'}]},requireSupplementCheck:true});
+ const issue=assessment.issues.find(row=>row.code==='structure');assert.ok(issue);assert.match(issue.message,/图示/);assert.match(issue.message,/参考资料/);assert.doesNotMatch(issue.message,/\[figure:|\[source:/);
+ assert.match(writingFinalBlockedMessage('practice',assessment),/资料检查与正文审校分别进行.*正文仍有待处理/);
+ assert.match(writingFinalBlockedMessage('practice',{issues:[{code:'supplement_check',material:true}],displayCheckReady:true}),/资料检查已通过.*正文整体检查尚未完成/);
+ assert.equal(text,'本段描述系统架构 [figure:fig-123] 并依据 [source:s1] 说明方案。');
 });
 
 
@@ -212,4 +227,20 @@ test('a restored version retains its verified input and canonical text when its 
   clearEditor();disposeWritingFlows();f.mount();
   const reopened=f.save();assert.equal(reopened.bodyInputKey,inputKey);assert.equal(reopened.canonicalBody,text);
  }finally{f.close();}
+});
+
+test('completion after a failed prior completion stays bound while running and applies without false drift',async()=>{
+ let record={id:'completion-child',status:'running',operation:'draft',kind:'course',completedUnits:0,totalUnits:4,output:null};
+ const f=fixture('course',async path=>['/writing/jobs','/writing/jobs/completion-child'].includes(path)?{item:record}:undefined);
+ try{Object.assign(f.row.writingFlow,{body:'用户正文',canonicalBody:'用户正文',bodyJobId:'base-job',lastDraftTask:{id:'old-failed',status:'failed',completedUnits:1},sourceSnapshot:{materials:[],references:[]}});localStorage.setItem(keys.drafts,JSON.stringify([f.row]));f.mount();f.input('[data-wf-supplement]','补充后的材料');f.$('[data-wf-complete]').click();await settle();assert.doesNotMatch(f.$('[data-wf-ai]').textContent,/前面的信息已有修改/);record={...record,status:'completed',completedUnits:4,output:{text:'补充后的正文',sourceIds:[],figures:[]}};f.$('[data-wj-refresh]').click();await settle();assert.equal(f.save().body,'补充后的正文');assert.equal(f.save().lastDraftTask.id,'completion-child');}finally{f.close();}
+});
+
+test('source review requires correction without demanding real-world data for a simulated study',()=>{
+ const text='受试者按统一任务卡依次完成上述步骤，检索词由实验材料统一给出。',quality={supplementCheck:{status:'final_ready',coverage:{complete:true}},reviews:[{findings:[{category:'source_support',severity:'warning',quote:text}]}]};
+ const assessment=assessWritingDelivery({kind:'course',text,quality,requireSupplementCheck:true});assert.equal(assessment.ready,false);assert.match(assessment.issues[0].message,/核对表述与资料依据/);assert.doesNotMatch(assessment.issues[0].message,/真实资料/);assert.match(writingFinalBlockedMessage('course',assessment),/正文仍有待处理内容/);
+});
+
+test('informational terminology remains advisory while warning and substantive findings explain the real issue',()=>{
+ const text='任务共进行了三轮，每轮包含四个步骤。',quality={consistency:{findings:[]},reviews:[{findings:[{category:'terminology',severity:'info',quote:text,explanation:'术语可进一步统一。'}]}]};assert.equal(assessWritingDelivery({kind:'course',text,quality}).ready,true);
+ quality.reviews[0].findings.push({category:'method_result_consistency',severity:'warning',quote:text,explanation:'正文与图表的轮次口径不一致。'});const result=assessWritingDelivery({kind:'course',text,quality});assert.equal(result.ready,false);assert.match(result.issues[0].message,/轮次口径不一致/);assert.match(result.issues[0].message,/系统将核对并完善/);
 });

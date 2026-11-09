@@ -95,3 +95,10 @@ test('known journal and book publication facts follow publication-year-locator o
  assert.equal(formatThesisReference({authors:'作者',title:'图书',documentType:'book',publisher:'出版社',year:'2026',pages:'12-15'}),'作者. 图书[M]. 出版社, 2026: 12-15.');
  assert.equal(formatThesisReference({authors:'作者',title:'旧题录',year:'2026'}),'作者. 旧题录. 2026.');assert.equal(formatThesisReference({title:'缺少年份',documentType:'journal',journal:'原刊'}),'缺少年份[J]. 原刊.');
 });
+
+test('older arXiv-only article records render as preprints without changing published journal citations',()=>{
+ const row={title:'Example research',authors:'A Author',year:'2025',documentType:'journal',url:'https://arxiv.org/abs/2501.12345'};
+ assert.match(formatThesisReference(row),/\[PP\/OL\]/);assert.match(formatThesisReference(row),/https:\/\/arxiv\.org\/abs\/2501\.12345/);
+ assert.match(formatThesisReference({...row,journal:'Real Journal'}),/\[J\].*Real Journal/);
+ assert.match(formatThesisReference({...row,url:'https://notarxiv.org/abs/2501.12345'}),/\[J\]/);
+});

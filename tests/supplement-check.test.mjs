@@ -17,7 +17,7 @@ const runtime={enabled:true,engine:'claude-agent-sdk',baseURL:'https://synthetic
 const material={id:'record',name:'合成实践记录',text:'合成验收资料：按预设流程完成十次观察，记录原始数据，并明确本例不能用于真实研究。',confirmed:true};
 const snapshot=()=>({title:'合成材料核查测试',profile:{level:'本科',language:'中文',targetWords:200},requirements:{instructions:'按当前文档目的核对真实材料，不编造研究结果。'},materials:[{...material}],references:[],outline:[{id:'c',title:'研究计划',targetWords:200}]});
 const response=items=>({text:JSON.stringify({items}),usage:{input:100,output:100},costUsd:.001,trace:[],finishReason:'end_turn'});
-function checkResponse(task,{missing=false}={}){return response(task.context.chapters.map(row=>({id:row.id,status:missing?'missing':task.context.evidence.length?'sufficient':'not_required',requirement:'当前章节所需的事实依据',reason:missing?'尚缺本节实际观察记录。':'已按本节目的核对提供的资料。',manuscriptQuote:row.text.slice(0,Math.min(30,row.text.length)),evidence:missing||!task.context.evidence.length?[]:[{sourceId:task.context.evidence[0].id,quote:task.context.evidence[0].text.slice(0,30)}],missing:missing?['实际观察记录和记录范围']:[]})));}
+function checkResponse(task,{missing=false}={}){return response(task.context.chapters.map(row=>({id:row.id,checkedFigureIds:(row.figures||[]).map(figure=>figure.id),status:missing?'missing':task.context.evidence.length?'sufficient':'not_required',requirement:'当前章节所需的事实依据',reason:missing?'尚缺本节实际观察记录。':'已按本节目的核对提供的资料。',manuscriptQuote:row.text.slice(0,Math.min(30,row.text.length)),evidence:missing||!task.context.evidence.length?[]:[{sourceId:task.context.evidence[0].id,quote:task.context.evidence[0].text.slice(0,30)}],missing:missing?['实际观察记录和记录范围']:[]})));}
 const task=()=>supplementCheckTask({snapshot:snapshot(),chapters:[{id:'s',title:'研究结果',text:'实际观察已经完成，需要相应记录。'}],materials:[material]});
 test('supplement evidence is readable through the authorized material tool and short responses use smaller complete batches',async()=>{
  const chapters=Array.from({length:10},(_,i)=>({id:'chapter-'+i,title:'章节'+i,text:'本节核对已提供的合成记录。'})),calls=[];
@@ -60,6 +60,16 @@ test('unsupported asserted problem stops the final readiness gate even if the mo
  const chapters=[{id:'c1',title:'研究背景',text:'高校图书馆数字阅读服务存在检索引导不清与移动界面体验不佳的问题。'}];
  const result=await runSupplementCheck({snapshot,chapters,kind:'proposal',dispatch:async({task})=>response(task.context.chapters.map(chapter=>({id:chapter.id,status:'not_required',requirement:'研究背景',reason:'无需补充。',manuscriptQuote:chapter.text,evidence:[],missing:[]})))});
  assert.equal(result.coverage.complete,true);assert.equal(result.status,'needs_materials');assert.equal(result.items[0].status,'missing');assert.ok(chapters[0].text.includes(result.items[0].manuscriptQuote));
+});
+test('a demonstration path does not prove the interface lacks unrelated functionality',async()=>{
+ const record='测试人员在模拟界面演示三次检索，步骤为进入检索、输入词语、打开结果并返回首页。';
+ const snapshot={materials:[{id:'m',name:'演示记录',confirmed:true,text:record}],references:[]};
+ const dispatch=async({task})=>response(task.context.chapters.map(c=>({id:c.id,status:'sufficient',requirement:'实践过程',reason:'采用记录。',manuscriptQuote:c.text,evidence:[{sourceId:'m',quote:record}],missing:[]})));
+ const check=async text=>runSupplementCheck({snapshot,chapters:[{id:'c1',title:'实践观察',text}],kind:'practice',dispatch});
+ const bad=await check('界面未见跨库跳转、筛选等分支环节。');assert.equal(bad.status,'needs_materials');assert.equal(bad.items[0].status,'missing');
+ const scoped=await check('本次演示路径未涉及跨库跳转、筛选等分支环节。');assert.equal(scoped.status,'final_ready');
+ const direct='测试人员检查界面后记录：界面未见跨库跳转、筛选等分支环节。';
+ const supported=await runSupplementCheck({snapshot:{materials:[{id:'m',name:'检查记录',confirmed:true,text:direct}],references:[]},chapters:[{id:'c1',title:'实践观察',text:'界面未见跨库跳转、筛选等分支环节。'}],kind:'practice',dispatch:async({task})=>response(task.context.chapters.map(c=>({id:c.id,status:'sufficient',requirement:'实践过程',reason:'有检查记录。',manuscriptQuote:c.text,evidence:[{sourceId:'m',quote:direct}],missing:[]})))});assert.equal(supported.status,'final_ready');
 });
 test('full report is derived from all returned section items; incomplete, cancelled and stale checks never unlock a final',async()=>{
  const chapters=Array.from({length:9},(_,i)=>({id:'c'+i,title:'章节'+i,text:'研究文本。'.repeat(500)})),calls=[];
@@ -104,6 +114,14 @@ test('insufficient supplements stop before rewriting, release the fee, persist t
 });
 test('user-written drafts can enter the same check and improvement flow without a fabricated base job',async t=>{
  const f=fixture(t),text='用户实际写下的待核对正文。'.repeat(18),item=await f.submit(snapshot(),{text});await f.worker.tick();const done=f.get(item.id);assert.equal(done.status,'completed',done.error);assert.ok(f.calls.some(row=>row.task.context.revisionOriginal===text));assert.equal(done.output.quality.supplementCheck.status,'final_ready');assert.equal(f.billing.balance('owner').balance,190);
+});
+test('completion preflight checks the saved figure together with its original chapter',async t=>{
+ const f=fixture(t,{kind:'practice'}),base=await f.submit();await f.worker.tick();
+ const ck=f.db.prepare('SELECT unit_id,output FROM writing_checkpoints WHERE run_id=? ORDER BY position').get(base.id),value=JSON.parse(ck.output),figure={id:'flow',title:'演示流程',kind:'flowchart',nodes:[{id:'a',label:'进入页面'},{id:'b',label:'执行检索'}],edges:[{from:'a',to:'b'}],caption:'模拟演示路径。'};
+ value.text+='\n[figure:flow]';value.figures=[figure];f.db.prepare('UPDATE writing_checkpoints SET output=? WHERE run_id=? AND unit_id=?').run(JSON.stringify(value),base.id,ck.unit_id);
+ const before=f.calls.length,child=await f.submit(snapshot(),{baseJobId:base.id});await f.worker.tick();
+ const calls=f.calls.slice(before),preflight=calls.find(call=>call.task.context.operation==='supplement-check');assert.ok(preflight,'preflight actually ran');
+ const chapter=preflight.task.context.chapters.find(row=>row.text.includes('[figure:flow]'));assert.ok(chapter);assert.equal(chapter.figures[0].id,'flow');assert.equal(f.get(child.id).status,'completed',f.get(child.id).error);
 });
 test('already queued legacy jobs retain their execution contract and cannot be mistaken for checked finals',async t=>{
  const f=fixture(t),item=await f.submit();const saved=JSON.parse(f.db.prepare('SELECT input FROM jobs WHERE id=?').get(item.id).input);delete saved.supplementCheck;f.db.prepare('UPDATE jobs SET input=? WHERE id=?').run(JSON.stringify(saved),item.id);await f.worker.tick();const done=f.get(item.id);assert.equal(done.status,'completed',done.error);assert.equal(f.calls.some(row=>row.task.context.operation==='supplement-check'),false);assert.equal(supplementCheckReady(done.output.quality),false);
@@ -214,4 +232,51 @@ test('continuous completion recovers a transient materials preflight before rewr
  assert.ok(f.calls.filter(call=>call.task.context.operation==='supplement-check').length>=3);
  assert.equal(f.billing.balance('owner').balance,190);assert.equal(f.billing.balance('owner').held,0);
  assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,1);
+});
+
+test('simulation rewrite is permitted only as a pre-rewrite evidence assessment with explicit disclosure and a final recheck',()=>{
+ const materials=[{id:'m',name:'用户补充',text:'仅用于模拟案例：假设5名参与者，环境为台式机；模拟时间40、45、50、55、60秒。请明确说明这是模拟案例，并非真实调查或实测结论。'}];
+ const chapters=[{id:'s',title:'结果分析',text:'【待补充：样本规模与环境细节】'}];
+ const pre=supplementCheckTask({phase:'materials',materials,chapters});assert.match(pre.instructions,/明确要求.*模拟或仿真/);assert.match(pre.instructions,/只表示具备改写条件/);assert.match(pre.instructions,/再做终稿检查/);assert.match(pre.instructions,/缺少关键条件数据时仍判 missing/);assert.equal(pre.context.evidence[0].text,materials[0].text);
+ const post=supplementCheckTask({phase:'final',materials,chapters});assert.match(post.instructions,/不得因为材料允许模拟改写就跳过/);assert.doesNotMatch(post.instructions,/可以将该项判为 sufficient/);
+ const result={text:JSON.stringify({items:[{id:'s',status:'sufficient',requirement:'模拟条件',reason:'足以改写为明确披露的模拟分析',manuscriptQuote:chapters[0].text,evidence:[{sourceId:'m',quote:'模拟时间40、45、50、55、60秒'}],missing:[]}]})};assert.equal(parseSupplementCheck(result,pre)[0].status,'sufficient');
+});
+
+test('simulated rewrite permission is explicit and applies only before rewriting, never to final factual assertions',()=>{
+ const chapter={id:'s',title:'结果分析',text:'当前系统存在检索效率不足的问题。'},text='请明确说明这是模拟案例、并非真实调查或实测结论。假设5名参与者，模拟时间40、45、50、55、60秒。',materials=[{id:'m',name:'用户材料',text}];
+ const assessment={id:'s',status:'sufficient',requirement:'模拟结果分析',reason:'足以改写为明确披露的模拟分析',manuscriptQuote:chapter.text,evidence:[{sourceId:'m',quote:'假设5名参与者'}],missing:[]};
+ const before=supplementCheckTask({phase:'materials',chapters:[chapter],materials});const permitted=parseSupplementCheck(response([assessment]),before)[0];assert.equal(permitted.status,'sufficient');assert.equal(permitted.requiresSimulationRewrite,true);
+ const after=supplementCheckTask({phase:'final',chapters:[chapter],materials});assert.equal(parseSupplementCheck(response([assessment]),after)[0].status,'missing');
+ const ambiguous=supplementCheckTask({phase:'materials',chapters:[chapter],materials:[{...materials[0],text:'本方案可能采用模拟，假设5名参与者。'}]});assert.equal(parseSupplementCheck(response([assessment]),ambiguous)[0].status,'missing');
+});
+
+test('final review refuses to treat explicitly simulated user data as actual measurements',()=>{
+ const materials=[{id:'m',name:'模拟方案',text:'请明确说明这是模拟案例、并非真实调查或实测结论。假设5名参与者，模拟时间40秒。'}],chapter={id:'s',title:'结果',text:'实际参与者完成了测试。'},result=response([{id:'s',status:'sufficient',requirement:'测试结果',reason:'材料提供了相关数据',manuscriptQuote:chapter.text,evidence:[{sourceId:'m',quote:'假设5名参与者'}],missing:[]}]);
+ const report=parseSupplementCheck(result,supplementCheckTask({phase:'final',materials,chapters:[chapter]}));assert.equal(report[0].status,'missing');assert.match(report[0].reason,/模拟结果/);
+});
+
+test('simulation disclaimer elsewhere cannot substantiate a real measurement, while simulated and documented real cases remain distinct',()=>{
+ const sim={id:'m',name:'模拟资料',text:'请明确说明这是模拟案例、并非真实调查或实测结论。假设5名参与者，模拟时间40秒。'},real={id:'r',name:'真实记录',text:'实际测试中，50名受试者均完成了任务。'};
+ const assess=(text,materials,evidence)=>{const task=supplementCheckTask({phase:'final',materials,chapters:[{id:'s',title:'结果',text}]}),row={id:'s',status:'sufficient',requirement:'结果分析',reason:'依据资料分析',manuscriptQuote:text,evidence,missing:[]};return parseSupplementCheck(response([row]),task)[0];};
+ const bad='本章节介绍模拟案例。实际测试中，50名受试者均完成了任务。';assert.equal(assess(bad,[sim],[{sourceId:'m',quote:'假设5名参与者'}]).status,'missing');
+ const good='模拟案例中，假设5名参与者完成了模拟任务。并非真实调查或实测结论。';assert.equal(assess(good,[sim],[{sourceId:'m',quote:'假设5名参与者'}]).status,'sufficient');
+ const documented='实际测试中，50名受试者均完成了任务。';assert.equal(assess(documented,[real],[{sourceId:'r',quote:'50名受试者均完成了任务'}]).status,'sufficient');
+});
+
+test('final empirical results require matching evidence rather than simulated or unrelated numbers',()=>{
+ const sources=[{id:'s',name:'模拟数据',text:'模拟样本准确率为 80%。',dataKind:'simulation'},{id:'r',name:'文献摘要',text:'卷积网络可用于图像识别。'},{id:'real',name:'真实记录',text:'测试集共100条，实测识别准确率为80%。'}];
+ const run=(title,text,evidence,status='sufficient')=>{const task=supplementCheckTask({phase:'final',chapters:[{id:'c',title,text}],materials:sources});return parseSupplementCheck(response([{id:'c',status,requirement:'依据检查',reason:'资料支持结论',manuscriptQuote:text,evidence,missing:[]}]),task)[0];};
+ const sim=[{sourceId:'s',quote:'模拟样本准确率为 80%。'}],mixed=[...sim,{sourceId:'r',quote:'卷积网络可用于图像识别。'}];
+ assert.equal(run('模拟与实验结果','本研究实测识别准确率为99%。',sim).status,'missing');
+ assert.equal(run('结果分析','本研究实测识别准确率为99%。',mixed).status,'missing');
+ assert.equal(run('结果分析','模拟分析显示准确率为99%。',sim).status,'missing');
+ assert.equal(run('实证结果','本研究已招募100名读者，满意度达到98%。',[],'not_required').status,'missing');
+ assert.equal(run('结果','本研究实测识别准确率为80%。',[{sourceId:'real',quote:'测试集共100条，实测识别准确率为80%。'}]).status,'sufficient');
+ assert.equal(run('结果','本研究计划招募100名读者，尚未开展调查。',[],'not_required').status,'not_required');
+ assert.equal(run('结果','本文没有进行任何真实受试者实验。',[],'not_required').status,'not_required');
+ assert.equal(run('结果','模拟分析显示准确率为80%。',sim).status,'sufficient');
+});
+
+test('an unrelated future plan in the same sentence cannot waive evidence for a completed recruitment',()=>{
+ const text='本研究已招募100名读者，未来计划扩大样本。',task=supplementCheckTask({phase:'final',chapters:[{id:'c',title:'研究',text}]}),result=response([{id:'c',status:'not_required',requirement:'研究过程',reason:'不需要资料',manuscriptQuote:text,evidence:[],missing:[]}]);assert.equal(parseSupplementCheck(result,task)[0].status,'missing');
 });

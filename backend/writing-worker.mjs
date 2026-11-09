@@ -17,6 +17,15 @@ import {createWritingQualityRunner} from './writing-quality-runner.mjs';
 import {fitOptionalWritingQuality} from './writing-quality-storage.mjs';
 import {thesisReferenceMetadata} from '../dist/workspace/thesis-document.mjs';
 const usageOK=value=>Number.isSafeInteger(value)&&value>=0;
+// Persist only fixed, non-sensitive tool classifications; never retain model
+// arguments, arbitrary tool strings, user content, or transport credentials.
+export function classifyDeniedWritingTools(error){
+ const known=new Set(['Bash','Read','Write','Edit','Glob','Grep','WebSearch','WebFetch','Agent','Task','Skill','NotebookEdit','Computer','AskUserQuestion','read_material','read_materials','submit_writing_output','check_text_length']);
+ return (Array.isArray(error?.agentTrace)?error.agentTrace:[]).filter(row=>row?.status==='denied').slice(-2).map(row=>{
+  const raw=typeof row.tool==='string'?row.tool:'',local=raw.startsWith('mcp__paperknow__')?raw.slice('mcp__paperknow__'.length):raw;
+  return known.has(local)?{tool:local,namespace:raw.startsWith('mcp__paperknow__')?'paperknow':'unqualified'}:{tool:'other',namespace:raw.startsWith('mcp__')?'external_mcp':'other'};
+ });
+}
 export function startWritingWorker(db,config={}){initializeWritingSchema(db);const billing=config.billing||createBillingService(db,config),modelBudget=config.modelBudget||createModelBudget(db,config),clock=()=>new Date(config.writingNow?.()??Date.now()).toISOString(),transaction=fn=>thesisTransaction(db,fn);const concurrency=config.writingConcurrency??3;if(!Number.isSafeInteger(concurrency)||concurrency<1||concurrency>3)throw Error('写作并发数应为 1～3 的整数');let stopped=false;const pending=new Map(),controllers=new Map();
  const qualityRunner=createWritingQualityRunner(config),continuity=createWritingContinuity(db,config);
  const isContinuous=row=>config.writingContinuousEnabled!==false&&JSON.parse(db.prepare('SELECT input FROM jobs WHERE id=?').get(row.id)?.input||'{}').continuousWriting===true;
@@ -63,7 +72,7 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
  };
  const reportStage=value=>{if(!running()||controller.signal.aborted)return;db.prepare('UPDATE writing_runs SET stage=?,updated_at=? WHERE id=?').run(value,clock(),row.id);db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(value,clock(),row.id);};
  if(checkSupplements&&plan.some(unit=>unit.completion===true)&&!(continuous&&row.output&&JSON.parse(row.output).quality?.supplementCheck?.status==='materials_ready')){
-  const chapters=plan.map(unit=>({id:unit.id,title:unit.title,text:unit.revisionOriginal||completed.find(row=>row.id===unit.id)?.text||'本节尚未生成，按已确认的章节目的核对所需资料。'}));
+  const chapters=plan.map(unit=>{const saved=completed.find(value=>value.id===unit.id),original=unit.revisionOriginal||saved?.text||'本节尚未生成，按已确认的章节目的核对所需资料。',figures=unit.revisionOriginal?unit.revisionFigures:saved?.figures;return{id:unit.id,title:unit.title,text:original,...(figures?.length?{figures}:{})};});
   const supplementCheck=await runSupplementCheck({snapshot,chapters,kind:row.kind,phase:'materials',recover:continuous,runtime,dispatch:reviewDispatch,signal:controller.signal,isCurrent:()=>Boolean(running()),onStage:reportStage});
   if(!running()||controller.signal.aborted)return;
   transaction(()=>{const json=JSON.stringify({quality:{status:'partial',supplementCheck}});writingStorageCheck(db,row.user_id,Buffer.byteLength(json),config);db.prepare('UPDATE writing_runs SET output=? WHERE id=?').run(json,row.id);});
@@ -113,7 +122,9 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
   else if(['token_budget','turn_limit','cost_budget'].includes(internalCode))message='本次生成已达到执行上限，已完成内容仍保留，请核对后继续。';
   else if(internalCode==='timeout')message='本次生成未能在限定时间内完成，已完成内容仍保留，请核对后继续。';
   else if(/Token|SDK|模型/i.test(message))message='本次生成暂未完成，已保存内容仍保留，请稍后重试或联系支持。';
-  const metrics={status:Number.isSafeInteger(error.status)?error.status:500,inputTokens,outputTokens,usageKnown,configuredMaxTurns:runtime.maxTurns??null,tokenLimit:executionTokenLimit??(Number.isSafeInteger(config.writingMaxTokens)?config.writingMaxTokens:200000),costAccounting:costAccounting(),...(error.wordStats?{wordStats:Object.fromEntries(['count','target','min','max','withinRange','delta'].map(key=>[key,error.wordStats[key]]))}:{})};
+  const deniedTools=classifyDeniedWritingTools(error);
+  const providerDiagnostic=['rate_limit','upstream_timeout','provider_auth','provider_unavailable','provider_rejected','network_error','response_incomplete','response_interrupted'].includes(error.providerDiagnostic)?error.providerDiagnostic:null;
+  const metrics={...(providerDiagnostic?{providerDiagnostic}:{}),status:Number.isSafeInteger(error.status)?error.status:500,inputTokens,outputTokens,usageKnown,configuredMaxTurns:runtime.maxTurns??null,tokenLimit:executionTokenLimit??(Number.isSafeInteger(config.writingMaxTokens)?config.writingMaxTokens:200000),costAccounting:costAccounting(),...(deniedTools.length?{deniedTools}:{}),...(error.wordStats?{wordStats:Object.fromEntries(['count','target','min','max','withinRange','delta'].map(key=>[key,error.wordStats[key]]))}:{})};
   transaction(()=>{db.prepare('INSERT INTO writing_diagnostics(run_id,code,metrics,created_at) VALUES(?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET code=excluded.code,metrics=excluded.metrics,created_at=excluded.created_at').run(row.id,internalCode,JSON.stringify(metrics),clock());if(!(stopped&&continuous&&requeue(db.prepare('SELECT * FROM writing_runs WHERE id=?').get(row.id))))finish(row.id,stopped?'failed':controller.signal.aborted?'cancelled':'failed',stopped?'服务停止中断了写作，预占权益已释放，已完成草稿保留':message);});
  }finally{if(stopped)transaction(()=>{const latest=db.prepare('SELECT * FROM writing_runs WHERE id=?').get(row.id);if(!(latest?.status==='queued'&&latest.stage==='auto_recovering')&&(!latest||!requeue(latest)))finish(row.id,'failed','服务停止中断了写作，预占权益已释放，已完成草稿保留');});controllers.delete(row.id);}}
  function tick(){

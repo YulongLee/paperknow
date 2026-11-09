@@ -8,7 +8,7 @@ const doiOf=value=>clean(value).replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').r
 export const citationMetadataFields=Object.freeze(['documentType','journal','publisher','publicationPlace','publicationSource','volume','issue','pages','edition','medium','accessedAt','citationText']);
 const metadataLimits={documentType:100,journal:500,publisher:500,publicationPlace:200,publicationSource:500,volume:100,issue:100,pages:100,edition:100,medium:20,accessedAt:50,citationText:4000};
 const risTypes={JOUR:'journal',JFULL:'journal',EJOUR:'journal',BOOK:'book',CHAP:'chapter',CPAPER:'conference',CONF:'conference',THES:'thesis',RPRT:'report',REPORT:'report',STAND:'standard',STD:'standard',PAT:'patent',NEWS:'newspaper',UNPB:'preprint',ELEC:'webpage'};
-const bibTypes={article:'journal',book:'book',booklet:'book',inbook:'chapter',incollection:'chapter',inproceedings:'conference',conference:'conference',proceedings:'conference',mastersthesis:'thesis',phdthesis:'thesis',techreport:'report',manual:'report',patent:'patent',standard:'standard',online:'webpage'};
+const bibTypes={article:'journal',unpublished:'preprint',book:'book',booklet:'book',inbook:'chapter',incollection:'chapter',inproceedings:'conference',conference:'conference',proceedings:'conference',mastersthesis:'thesis',phdthesis:'thesis',techreport:'report',manual:'report',patent:'patent',standard:'standard',online:'webpage'};
 const typeCodes={J:'journal',M:'book',D:'thesis',C:'conference',N:'newspaper',R:'report',S:'standard',P:'patent',EB:'webpage',DB:'database',A:'archive',PP:'preprint',DS:'dataset',CM:'map',G:'collection',CP:'software',Z:'generic'};
 const referenceDate=value=>clean(value).match(/^(\d{4})[-/](\d{2})[-/](\d{2})/)?.slice(1).join('-')||'';
 const citationLiteral=value=>clean(value).replace(/^\[\d+\]\s*/,'').replace(/\s+/g,' ').trim();
@@ -44,9 +44,17 @@ function bibtex(text){
    else{const begin=p;while(p<body.length&&body[p]!==',')p++;value=body.slice(begin,p).trim();if(!/^\d+$/.test(value))throw Error('BibTeX 字段请使用引号或花括号，暂不支持字符串宏。');}
    if(body.slice(p).trimStart().startsWith('#'))throw Error('暂不支持 BibTeX 字符串拼接，请展开为完整字段。');fields[name[1].toLowerCase()]=value;
   }
-  const kind=(Object.hasOwn(bibTypes,head[1].toLowerCase())?bibTypes[head[1].toLowerCase()]:'generic');
+  let kind=(Object.hasOwn(bibTypes,head[1].toLowerCase())?bibTypes[head[1].toLowerCase()]:'generic');
+  // arXiv commonly exports preprints as @article. An arXiv identifier alone
+  // does not undo explicit publication metadata for a peer-reviewed article.
+  const eprint=plain(fields.eprint).replace(/^arxiv:/i,'');
+  const arxivId=/^(?:\d{4}\.\d{4,5}|[a-z][a-z.-]*\/\d{7})(?:v\d+)?$/i.test(eprint)?eprint:'';
+  const arxivURL=safeURL(fields.url);let arxivHost=false;try{arxivHost=['arxiv.org','www.arxiv.org','export.arxiv.org'].includes(new URL(arxivURL).hostname);}catch{}
+  const isArxiv=(/^arxiv$/i.test(plain(fields.archiveprefix))&&!!arxivId)||arxivHost;
+  if(kind==='journal'&&isArxiv&&!plain(fields.journal||fields.journaltitle))kind='preprint';
+  const url=arxivURL||(arxivId&&/^arxiv$/i.test(plain(fields.archiveprefix))?'https://arxiv.org/abs/'+arxivId:'');
   const authors=bibAuthors(fields.author);
-  results.push(finish(raw,{title:fields.title,authors:authors.map(plain).join('; '),authorNames:authors.map(value=>authorName(value,value.startsWith('{'))),year:fields.year||fields.date,doi:fields.doi,url:fields.url,abstract:fields.abstract,documentType:kind,journal:fields.journal||fields.journaltitle,publicationSource:fields.booktitle,publisher:fields.publisher||fields.school||fields.institution,publicationPlace:fields.address||fields.location,volume:fields.volume,issue:fields.number||fields.issue,pages:fields.pages?.replace(/--+/g,'-')||fields.eid,edition:fields.edition,accessedAt:referenceDate(fields.urldate)}));
+  results.push(finish(raw,{title:fields.title,authors:authors.map(plain).join('; '),authorNames:authors.map(value=>authorName(value,value.startsWith('{'))),year:fields.year||fields.date,doi:fields.doi,url,abstract:fields.abstract,documentType:kind,journal:fields.journal||fields.journaltitle,publicationSource:fields.booktitle,publisher:fields.publisher||fields.school||fields.institution,publicationPlace:fields.address||fields.location,volume:fields.volume,issue:fields.number||fields.issue,pages:fields.pages?.replace(/--+/g,'-')||fields.eid,edition:fields.edition,accessedAt:referenceDate(fields.urldate)}));
  }return results;
 }
 function citations(text){

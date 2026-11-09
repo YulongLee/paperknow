@@ -1,4 +1,5 @@
 import {proposalOutlineTask,proposalDraftGuidance,proposalTemplateHeading,proposalDraftProse,proposalScaffold,assembleProposalText} from './proposal-writing.mjs';
+import {recoverFlattenedMarkdownTables} from './flattened-markdown-table.mjs';
 import {proposalModelInstructions} from '../dist/workspace/proposal-standard.mjs';
 import {academicWritingInstructions as academicWritingStyle,academicFigureStyle} from './academic-writing-style.mjs';
 import {normalizeThesisSnapshot,selectThesisEvidence,thesisError,thesisPresentationTask,parseThesisPresentation} from './thesis-model.mjs';
@@ -88,7 +89,7 @@ export function writingTask(kind,operation,snapshot,unit,completed=[]){
  if(operation==='draft'&&snapshot.requirements.contentMode!==undefined){
   if(unit.batch){
    context.presentationBySection=unit.sections.map(section=>({id:section.id,selectedPresentation:thesisPresentationTask(snapshot,section).selectedPresentation,figureContract:thesisPresentationTask(snapshot,section).figureContract,thesisPresentationInstructions:thesisPresentationTask(snapshot,section).presentation}));
-   instructions+='当前是短文章分节输出，每节只能使用 context.presentationBySection 中相同 id 的 selectedPresentation 授权形式。表格采用 Markdown 管道表格，只整理已有资料、概念对比或计划，不编造实测值；公式使用 LaTeX 并说明变量；代码使用带语言标记的代码块，不自动执行或声称已测试。每节可独立包含 figures 数组，禁止在顶层放 figures；无图时各节 figures=[]。仅在该节 figureContract.allowed=true 时可提供最多一张论文插图，具体图种与统计数据依据严格遵循该节 figureContract 及 thesisPresentationInstructions；不能使用图片 URL、HTML 或 SVG。示意图使用 id、title、kind、nodes、edges、caption，2～8 个 {id,label} 节点、0～12 条 {from,to,label?} 连线，端点存在且不自连或重复。ID 以英文字母开头并仅含字母数字下划线连字符，最长40字符；图题200、图注500、节点与连线文字80字符以内。正文单独一行放 [figure:图片ID]，与该节 figures 一一对应。图形文本不得包含网页、网址或引用标记。来源引用放在相邻正文。'+academicFigureStyle;
+   instructions+='当前是短文章分节输出，每节只能使用 context.presentationBySection 中相同 id 的 selectedPresentation 授权形式。表格采用 Markdown 管道表格，每个表格上方必须单独写准确表号与表题，表头写清指标与单位；只整理已有资料、概念对比或计划，不编造实测值。公式只在实际已读取来源明确提供公式或可核对的推导依据时使用，引用对应来源并说明变量与适用条件；摘要或节选未提供的公式不得凭常识补造或归属于该文献；依据不足时省略公式或明确标为待核对，不将其视为已验证结果。公式使用 LaTeX；代码使用带语言标记的代码块，不自动执行或声称已测试。每节可独立包含 figures 数组，禁止在顶层放 figures；无图时各节 figures=[]。仅在该节 figureContract.allowed=true 时可提供最多一张论文插图，具体图种与统计数据依据严格遵循该节 figureContract 及 thesisPresentationInstructions；不能使用图片 URL、HTML 或 SVG。示意图使用 id、title、kind、nodes、edges、caption，2～8 个 {id,label} 节点、0～12 条 {from,to,label?} 连线，端点存在且不自连或重复。ID 以英文字母开头并仅含字母数字下划线连字符，最长40字符；图题200、图注500、节点与连线文字80字符以内。正文单独一行放 [figure:图片ID]，与该节 figures 一一对应。图形文本不得包含网页、网址或引用标记。来源引用放在相邻正文。'+academicFigureStyle;
   }else{const display=thesisPresentationTask(snapshot,unit);context.presentation=display.selectedPresentation;context.figureContract=display.figureContract;instructions+=display.presentation+display.academicFigureInstruction+'本次完整 JSON 另含 figures 数组：无图时 figures=[]，有图时按上述契约填写。';}
  }
  instructions+='来源与回合约束：context.confirmedSources 是本单元唯一可引用的正文来源清单，source_ids 必须逐字复制其中的 id 且仅列实际 read_material 读取并使用的来源；context.confirmedReferences 只是选中的题录线索，不可把所有已选题录 ID 自动放入 source_ids，未提供可读正文的题录永远不能成为本次已读证据。拟引用的多个来源应在同一回合并行读取，避免逐个另开回合。必须通过 submit_writing_output 提交本次契约的完整候选，accepted=true 后只结束执行，无须再次返回正文。提交的 candidate 必须遵守完整 JSON 格式：第一非空白字符必须是 {，最后非空白字符必须是 }，中间只含本次契约的一个完整 JSON 对象。禁止在 JSON 前后写任何开场白、完成说明、结语、提醒、使用指南、Markdown 围栏或第二个示例对象；需要的用途说明和局限只能放入契约允许的 JSON 字段中。不要输出“已为你生成”之类的对话文字。所有字符串须正确转义，不能把实际换行直接写在 JSON 字符串内部。';
@@ -109,7 +110,7 @@ function invalidQuestionnaire(error,unit={}){
 const invalidProposal=message=>{throw Object.assign(thesisError(502,message,'invalid_writing_output'),{validationCode:'proposal_template_artifact',validationField:'text'});};
 const clean=(value,max=12000)=>{if(typeof value!=='string'||!value.trim()||value.length>max||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value)||/<\/?(?:script|iframe|html|body|style|img|div|p|a|svg)\b/i.test(value))invalid('写作结果包含无效文字或页面标记');return value.trim();};
 function draftProse(value,kind,snapshot,unit){
- const original=clean(value,60000);
+ const original=recoverFlattenedMarkdownTables(clean(value,60000));
  if(kind!=='proposal')return original;
  const text=proposalDraftProse(original,snapshot,unit);
  if(!text||proposalScaffold(text))invalidProposal('开题正文含模板占位符、填写提示或审核字段；请提交可直接使用的当前栏目正文。');

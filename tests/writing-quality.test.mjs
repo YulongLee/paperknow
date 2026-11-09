@@ -124,6 +124,14 @@ test('deterministic findings are capped with an explicit omitted count and do no
  assert.equal(result.findings.length,2);assert.equal(result.totalFindings,4);assert.equal(result.truncated,true);assert.deepEqual(chapters,before);
 });
 
+test('duplicate substantive paragraphs in the same chapter report both locations',()=>{
+ const paragraph='该阶段完成需求梳理、材料核对与方案设计，后续依据确认后的资料开展工作。'.repeat(4);
+ const text=paragraph+'\n\n一条不同的简短说明。\n\n'+paragraph;
+ const result=auditWritingConsistency({chapters:[{id:'task',title:'工作内容',text}]});
+ const finding=result.findings.find(row=>row.category==='duplicate_paragraph');
+ assert.ok(finding);assert.equal(finding.relatedSectionId,'task');assert.equal(finding.relatedOffset,0);assert.equal(finding.offset,text.lastIndexOf(paragraph));assert.equal(text.slice(finding.offset,finding.offset+finding.quote.length),finding.quote);assert.match(finding.explanation,/本章节/);
+});
+
 const manuscript=()=>[{id:'methods',title:'研究方法',text:'本文采用问卷方法进行拟开展研究，实际调查尚未执行。'},{id:'results',title:'结果框架',text:'本节仅规划拟开展的指标分析，尚无实测数据。'}];
 const aiFinding=(extra={})=>({sectionId:'methods',quote:'本文采用问卷方法',category:'claim_scope',severity:'warning',explanation:'建议进一步澄清这是拟开展的方法。',suggestion:'保留拟开展的措辞并由作者核对。',...extra});
 const aiResult=(findings=[],extra={})=>({text:JSON.stringify({complete:true,findings,limitations:['仅检查已提供草稿片段。'],...extra})});
@@ -174,4 +182,60 @@ test('review task submits its complete findings contract through the authorized 
  assert.match(task.instructions,/accepted=true 后结果已冻结，立即结束/);
  assert.doesNotMatch(task.instructions,/check_text_length|只返回完整JSON/);
  assert.deepEqual(task.materials,[]);
+});
+
+test('graphical captions with placement claims are flagged for review and actual layout accompanies review',()=>{
+ const figure={id:'fig1',title:'示意图',kind:'flowchart',nodes:[{id:'a',label:'输入'},{id:'b',label:'输出'}],edges:[{from:'a',to:'b'}],caption:'左侧为输入，右侧为输出。'};
+ const chapters=[{id:'c',title:'方法',text:'图示如下：\n\n[figure:fig1]',figures:[figure]}];
+ const audit=auditWritingConsistency({chapters});const finding=audit.findings.find(row=>row.category==='figure_consistency');assert.ok(finding);assert.equal(finding.severity,'info');assert.match(finding.explanation,/核对位置/);
+ const task=writingReviewTask({chapters});assert.equal(task.context.manuscriptExcerpts[0].figures[0].renderedPositions.length,2);assert.match(task.instructions,/实际渲染位置/);
+ const neutral=structuredClone(chapters);neutral[0].figures[0].caption='输入与输出的关系。';assert.ok(!auditWritingConsistency({chapters:neutral}).findings.some(row=>row.category==='figure_consistency'));
+});
+
+test('explicit references to missing numbered figures and tables request review without inventing content',()=>{
+ const run=text=>auditWritingConsistency({chapters:[{id:'a',title:'分析',text}]});
+ assert.ok(run('表1给出了模型比较结果。').findings.some(row=>row.category==='table_consistency'));
+ assert.ok(run('如图2所示，研究包含三个阶段。').findings.some(row=>row.category==='figure_consistency'));
+ assert.ok(!run('原文的表1给出了比较结果[source:a]。').findings.some(row=>row.category==='table_consistency'));
+ const table='表1 结果对比\n\n| 类别 | 指标 |\n| --- | --- |\n| A | 1 |';assert.ok(!auditWritingConsistency({chapters:[{id:'a',title:'分析',text:'表1给出对比。'},{id:'b',title:'结果',text:table}]}).findings.some(row=>row.category==='table_consistency'));
+ assert.ok(!run('表1给出结果。\n\n[docx:table1]').findings.some(row=>row.category==='table_consistency'));
+});
+
+test('literature analysis cannot be checked against metadata alone',()=>{
+ const chapters=[{id:'a',title:'分析',text:'根据文献分析发现该方法具有优势。'}],references=[{id:'r',confirmed:true,title:'题录'}];
+ assert.ok(auditWritingConsistency({chapters,references}).findings.some(row=>row.category==='source_support'));
+ assert.ok(!auditWritingConsistency({chapters,references:[{...references[0],text:'已提供的摘要'}]}).findings.some(row=>row.category==='source_support'));
+});
+
+test('caption placement review covers row and edge directions',()=>{
+ const figure={id:'f',title:'结构',kind:'flowchart',nodes:[{id:'a',label:'A'},{id:'b',label:'B'}],edges:[{from:'a',to:'b'}],caption:'上行为输入，下行为输出。'};
+ const audit=auditWritingConsistency({chapters:[{id:'a',title:'方法',text:'[figure:f]',figures:[figure]}]});assert.ok(audit.findings.some(row=>row.category==='figure_consistency'));
+});
+
+test('figure reference numbers outside the actual sequential export labels are flagged',()=>{
+ const figure={id:'f',title:'结构',kind:'flowchart',nodes:[{id:'a',label:'A'},{id:'b',label:'B'}],edges:[{from:'a',to:'b'}],caption:''};
+ const check=text=>auditWritingConsistency({chapters:[{id:'a',title:'结构',text,figures:[figure]}]});
+ assert.ok(check('如图3-1所示。\n\n[figure:f]').findings.some(row=>row.category==='figure_consistency'&&/编号/.test(row.explanation)));
+ assert.ok(!check('如图1所示。\n\n[figure:f]').findings.some(row=>/编号/.test(row.explanation)));
+ assert.ok(!check('引自文献的图3-1所示[source:x]。\n\n[figure:f]').findings.some(row=>/编号/.test(row.explanation)));
+});
+
+test('each editable table needs its own nearby numbered caption while code fences are ignored',()=>{
+ const table='| 模型 | 特点 |\n| --- | --- |\n| A | 注意力 |',check=text=>auditWritingConsistency({chapters:[{id:'a',title:'综述',text}]});
+ assert.equal(check(table).findings.filter(row=>row.category==='table_consistency').length,1);
+ assert.equal(check('表 1 模型对比\n\n'+table).findings.filter(row=>row.category==='table_consistency').length,0);
+ assert.equal(check('表 1 模型对比\n'+table+'\n\n'+table).findings.filter(row=>row.category==='table_consistency').length,1);
+ assert.equal(check('```\n'+table+'\n```').findings.filter(row=>row.category==='table_consistency').length,0);
+ assert.equal(check('Table 1. Model comparison\n'+table).findings.filter(row=>row.category==='table_consistency').length,0);
+});
+
+test('a wrapped single-cell table caption is recognized when above the table',()=>{
+ const text='| 表1 模型对比 |\n\n| 模型 | 特点 |\n| --- | --- |\n| A | 注意力 |';assert.ok(!auditWritingConsistency({chapters:[{id:'a',title:'综述',text}]}).findings.some(row=>row.category==='table_consistency'));
+});
+
+test('a table example in a fenced code block does not satisfy an actual table reference',()=>{
+ const run=text=>auditWritingConsistency({chapters:[{id:'a',title:'结果',text}]}),sample='| A | B |\n| --- | --- |\n| 1 | 2 |';
+ assert.ok(run('表1给出实际对比结果。\n```\n'+sample+'\n```').findings.some(row=>row.category==='table_consistency'));
+ assert.ok(!run('表1给出实际对比结果。\n表1 对比\n'+sample).findings.some(row=>row.category==='table_consistency'));
+ const reversed='表1 对比\n| --- | --- |\n| A | B |\n| 1 | 2 |';assert.ok(!run('表1给出对比。\n'+reversed).findings.some(row=>row.category==='table_consistency'));
 });

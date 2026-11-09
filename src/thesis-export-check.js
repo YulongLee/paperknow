@@ -254,7 +254,7 @@ export function auditThesisSubmission(input={}) {
  const citedLines=lines.filter(line=>line.section==='references'&&/^\s*\[\d+\]/.test(line.text));
  if(Number.isSafeInteger(requirements.minimumForeignReferences)&&requirements.minimumForeignReferences>0){const count=citedLines.filter(line=>!/[\p{Script=Han}]/u.test(line.text.replace(/https?:\/\/\S+/g,''))).length;if(count<requirements.minimumForeignReferences)add('foreign_references',`模板要求至少 ${requirements.minimumForeignReferences} 篇外文文献，当前可识别 ${count} 篇，请补充并核对。`);}
  if(lines.some(line=>!line.literal&&/\\(?:frac|sum|sqrt|begin|tilde|exp|phi)\b/.test(plainLine(line.text))))add('raw_formula','正文仍有未排版的公式命令，请给公式补全数学定界符后再导出终稿。');
- const tables=lines.filter(line=>/^\s*\|?\s*:?-{3,}:?\s*\|/.test(line.text)).length,tableTitles=lines.filter(line=>/^\s*表\s*\d+(?:[.\-－]\d+)?\s+\S/.test(line.text));
+ const tables=lines.filter(line=>/^\s*\|?\s*:?-{3,}:?\s*\|/.test(line.text)).length,tableTitles=lines.map(line=>({...line,text:line.text.replace(/^\s*\|\s*(表\s*\d+(?:[.\-－]\d+)?\s+[^|]+?)\s*\|\s*$/,'$1')})).filter(line=>/^\s*表\s*\d+(?:[.\-－]\d+)?\s+\S/.test(line.text));
  if(tables>tableTitles.length)add('table_captions','部分表格没有独立的编号与表题，请在对应表格上方补齐。');
  if(new Set(tableTitles.map(line=>line.text.trim().match(/^表\s*(\d+(?:[.\-－]\d+)?)/)?.[1])).size<tableTitles.length)add('table_numbers','表格编号重复，请按全文或章节统一编号。');
  const expectedFigures=Array.isArray(input.metadata?.figures)?input.metadata.figures:[],figureReview=input.quality?.figureReview;
