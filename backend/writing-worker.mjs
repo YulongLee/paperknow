@@ -109,7 +109,8 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
   const raw=String(error?.message||''),code=error.validationCode||error.code||(/Token|token/i.test(raw)?'token_budget':/回合上限/.test(raw)?'turn_limit':/费用预算/.test(raw)?'cost_budget':/超时|时限|timeout/i.test(raw)?'timeout':'generation_error');
   const internalCode=typeof code==='string'&&/^[a-z][a-z0-9_]{0,60}$/.test(code)?code:'generation_error';
   let message=publicAIError(thesisPublicError(error,runtime),[runtime.model,runtime.engine,runtime.baseURL].filter(value=>typeof value==='string'));
-  if(['token_budget','turn_limit','cost_budget'].includes(internalCode))message='本次生成已达到执行上限，已完成内容仍保留，请核对后继续。';
+  if(row.operation==='outline'&&!usageKnown&&['token_budget','turn_limit','cost_budget','budget_exceeded'].includes(internalCode))message='本次提纲暂未生成，原有内容未改变；本次未扣费，请稍后重试。';
+  else if(['token_budget','turn_limit','cost_budget'].includes(internalCode))message='本次生成已达到执行上限，已完成内容仍保留，请核对后继续。';
   else if(internalCode==='timeout')message='本次生成未能在限定时间内完成，已完成内容仍保留，请核对后继续。';
   else if(/Token|SDK|模型/i.test(message))message='本次生成暂未完成，已保存内容仍保留，请稍后重试或联系支持。';
   const metrics={status:Number.isSafeInteger(error.status)?error.status:500,inputTokens,outputTokens,usageKnown,configuredMaxTurns:runtime.maxTurns??null,tokenLimit:executionTokenLimit??(Number.isSafeInteger(config.writingMaxTokens)?config.writingMaxTokens:200000),costAccounting:costAccounting(),...(error.wordStats?{wordStats:Object.fromEntries(['count','target','min','max','withinRange','delta'].map(key=>[key,error.wordStats[key]]))}:{})};

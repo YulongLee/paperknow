@@ -21,6 +21,18 @@ test('an interrupted draft continues with new materials and does not repeat acce
 
 test('the full current author edit is preserved as revision context instead of using stale generated prose',async t=>{const f=fixture(t),base=await f.submit();await f.worker.tick();const text='作者当前修改。'.repeat(250)+'最后一句需要保留。',value=prepareWritingCompletion(f.db,f.user,{kind:'proposal',operation:'draft',snapshot:normalizeWritingSnapshot(supplement()),projectId:null},{baseJobId:base.id,text});assert.equal(value.retained.length,0);assert.equal(value.plan.map(unit=>unit.revisionOriginal).join(''),text);assert.ok(value.plan.every(unit=>unit.completion));const task=writingCompletionTask({instructions:'原契约。',context:{unit:value.plan[0]}},value.plan[0]);assert.match(task.instructions,/不能当作证据/);assert.equal(task.context.unit.revisionOriginal,undefined);});
 
+test('both imported and edited drafts preserve complete Unicode characters in every independently processed fragment',async t=>{
+ const f=fixture(t),base=await f.submit();await f.worker.tick();
+ // The equal-weight midpoint falls between the high and low surrogates.
+ const text='甲'.repeat(499)+'🐑'+'乙'.repeat(499),normalized=normalizeWritingSnapshot(supplement());
+ for(const completion of [{text},{baseJobId:base.id,text}]){
+  const value=prepareWritingCompletion(f.db,f.user,{kind:'proposal',operation:'draft',snapshot:normalized,projectId:null},completion);
+  const fragments=value.plan.map(unit=>unit.revisionOriginal);
+  assert.equal(fragments.join(''),text);
+  assert.ok(fragments.every(fragment=>fragment.isWellFormed()),JSON.stringify(fragments));
+ }
+});
+
 test('a failed completion releases its fee and keeps the previous manuscript untouched',async t=>{const f=fixture(t),base=await f.submit();await f.worker.tick();const before=f.get(base.id);f.setRunner(async()=>{throw Object.assign(Error('模拟连接故障'),{usage:{input:20,output:10},costUsd:.001});});const next=await f.submit(supplement(),{baseJobId:base.id});await f.worker.tick();assert.equal(f.get(next.id).status,'failed');assert.deepEqual(f.get(base.id),before);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);});
 
 

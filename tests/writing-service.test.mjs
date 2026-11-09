@@ -72,6 +72,16 @@ test('word-limit feedback corrects an unchecked overlong final once inside the o
 test('a bad short-batch correction remains failed without truncation or a third model attempt',async t=>{let calls=0;const f=await fixture(t,{getAgentSettings:()=>({...runtime,maxTurns:12}),agentTaskRunner:async({task})=>{calls++;return batchResult(task.context.unit,[110,100,109]);}});f.pay();const created=await f.submit('course','draft',shortSnapshot());await f.writing.tick();const item=(await f.request('/writing/jobs/'+created.value.item.id)).value.item;assert.equal(item.status,'failed');assert.equal(calls,2);assert.equal(item.completedUnits,0);assert.equal(f.billing.balance('alice').balance,200);const diagnosis=f.db.prepare('SELECT code,metrics FROM writing_diagnostics WHERE run_id=?').get(item.id);assert.equal(diagnosis.code,'word_limit');assert.equal(JSON.parse(diagnosis.metrics).wordStats.count,319);});
 test('execution-budget errors remain actionable publicly while private diagnostics retain codes and counts',async t=>{const f=await fixture(t,{agentTaskRunner:async()=>{throw Object.assign(Error('AI 已达到本次 Token 预算，未继续调用模型'),{status:429,usage:{input:100,output:20}});}});f.pay();const created=await f.submit();await f.writing.tick();const item=(await f.request('/writing/jobs/'+created.value.item.id)).value.item;assert.equal(item.status,'failed');assert.match(item.error,/达到执行上限.*已完成内容仍保留/);assert.doesNotMatch(item.error,/Token|模型|SDK/);const diagnosis=f.db.prepare('SELECT code,metrics FROM writing_diagnostics WHERE run_id=?').get(item.id);assert.equal(diagnosis.code,'token_budget');assert.equal(JSON.parse(diagnosis.metrics).inputTokens,100);assert.equal(Object.hasOwn(item,'diagnostics'),false);assert.equal(f.billing.balance('alice').balance,200);});
 
+test('outline unknown-usage failure reports no output and releases the hold without auto retry',async t=>{
+ let calls=0;const f=await fixture(t,{writingContinuousEnabled:true,agentTaskRunner:async()=>{calls++;throw Object.assign(Error('unknown provider cost'),{status:429,code:'cost_budget'});}});f.pay();
+ const created=await f.submit('practice','outline');await f.writing.tick();
+ const item=(await f.request('/writing/jobs/'+created.value.item.id)).value.item;
+ assert.equal(item.status,'failed');assert.equal(item.completedUnits,0);assert.equal(item.output,null);
+ assert.match(item.error,/提纲暂未生成.*原有内容未改变.*未扣费/);assert.doesNotMatch(item.error,/已完成内容|积分不足/);
+ assert.equal(calls,1);assert.equal(f.billing.balance('alice').balance,200);assert.equal(f.billing.balance('alice').held,0);
+ const diag=f.db.prepare('SELECT code,metrics FROM writing_diagnostics WHERE run_id=?').get(item.id);assert.equal(diag.code,'cost_budget');assert.ok(JSON.parse(diag.metrics).costAccounting.reservedUnknownCostBudgetUsd>0);
+});
+
 test('worker exposes complete-candidate validation only to writing tasks and persists exactly schema-validated batches',async t=>{
  let calls=0;const f=await fixture(t,{agentTaskRunner:async({task,validateWritingOutput})=>{
   calls++;assert.equal(task.skill,'writing-task');assert.equal(typeof validateWritingOutput,'function');

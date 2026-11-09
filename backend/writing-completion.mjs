@@ -5,6 +5,9 @@ const fail=(status,message)=>{throw thesisError(status,message);};
 const pending=/(?:【[^】\n]{0,100}(?:待补充|待核对|待填写|待提供)[^】\n]*】|\[(?:待补充|待核对|待填写|待提供)[^\]\n]*\]|\{\{[^}\n]+\}\}|\bTODO\b|\bTBD\b)/i;
 const plain=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const textKey=snapshot=>JSON.stringify({title:snapshot.title,profile:snapshot.profile,outline:snapshot.outline});
+// Each fragment is sent independently to the model: never split a UTF-16
+// surrogate pair, even if joining the fragments would hide the broken boundary.
+const safeBoundary=(source,end,start)=>end<source.length&&end>start&&/[\uD800-\uDBFF]/.test(source[end-1])&&/[\uDC00-\uDFFF]/.test(source[end])?(end-1>start?end-1:end+1):end;
 
 // The saved job supplies the structure and original text. Neither is new evidence.
 // Only normalized materials passed through the existing reader may support facts.
@@ -14,7 +17,7 @@ export function prepareWritingCompletion(db,user,{kind,operation,snapshot,projec
  if(input.baseJobId===undefined){
   if(typeof input.text!=='string'||!input.text.trim()||input.text.length>100000||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(input.text))fail(400,'请先填写需要检查和完善的正文。');
   const source=input.text.trim(),base=writingPlan(snapshot,'draft'),total=base.reduce((n,row)=>n+row.targetWords,0);let at=0,weight=0;
-  const plan=base.map((unit,index)=>{weight+=unit.targetWords;let end=index===base.length-1?source.length:Math.round(source.length*weight/total);if(end<source.length&&/[\uD800-\uDBFF]/.test(source[end-1]))end--;const revisionOriginal=source.slice(at,end);at=end;return{...unit,completion:true,completionSourceIds:[],revisionOriginal};});
+  const plan=base.map((unit,index)=>{weight+=unit.targetWords;let end=index===base.length-1?source.length:Math.round(source.length*weight/total);end=safeBoundary(source,Math.max(at,end),at);const revisionOriginal=source.slice(at,end);at=end;return{...unit,completion:true,completionSourceIds:[],revisionOriginal};});
   if(plan.some(unit=>unit.revisionOriginal.length>18000))fail(413,'单个正文单元过长，请按提纲拆分后完善。');
   return{baseJobId:null,plan,retained:[],fingerprint:thesisHash({userDraft:source,plan}),summary:{baseJobId:null,chapterTitles:[...new Set(plan.map(unit=>unit.chapterTitle||unit.title))],retainedUnits:0,totalUnits:plan.length}};
  }
@@ -44,7 +47,7 @@ export function prepareWritingCompletion(db,user,{kind,operation,snapshot,projec
   // Keep every character of an author's edited draft, even when headings changed.
   // Whole-draft edits require a whole-draft revision, never a stale scoped overwrite.
   const source=input.text.trim(),weights=plan.map(unit=>Math.max(1,(previous.get(unit.id)?.text||'').length||unit.targetWords)),total=weights.reduce((a,b)=>a+b,0);let at=0,used=0;
-  fragments=plan.map((unit,index)=>{used+=weights[index];let end=index===plan.length-1?source.length:Math.round(source.length*used/total);const boundary=source.indexOf('\n',end);if(boundary>=end&&boundary-end<150)end=boundary+1;end=Math.max(at,end);const part=source.slice(at,end);at=end;return part;});
+  fragments=plan.map((unit,index)=>{used+=weights[index];let end=index===plan.length-1?source.length:Math.round(source.length*used/total);const boundary=source.indexOf('\n',end);if(boundary>=end&&boundary-end<150)end=boundary+1;end=safeBoundary(source,Math.max(at,end),at);const part=source.slice(at,end);at=end;return part;});
  }
  const originalIds=new Set([...original.materials,...original.references].map(source=>source.id)),completionSourceIds=[...snapshot.materials,...snapshot.references].filter(source=>!originalIds.has(source.id)).map(source=>source.id);
  const next=plan.map((unit,index)=>({...unit,completion:true,completionSourceIds,...(targets.has(unit.id)?{revisionOriginal:fragments?fragments[index]:previous.get(unit.id)?.text||'',...(previous.get(unit.id)?.figures?.length?{revisionFigures:previous.get(unit.id).figures}:{})}:{retained:true})}));
