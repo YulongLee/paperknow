@@ -1,9 +1,10 @@
 import {thesisDocxObjects} from './thesis-docx-objects.mjs';
+import {researchWordCount} from './text-length.mjs';
 import {docxObjectIds} from '../dist/workspace/docx-object-markers.mjs';
 import {generateSimulationData} from '../dist/workspace/simulation-data.mjs';
 import {manuscriptFigures} from '../dist/workspace/manuscript-figures.mjs';
 import {randomUUID} from 'node:crypto';
-import {normalizeThesisSnapshot,thesisHash,thesisError,isThesisReferenceChapter} from './thesis-model.mjs';
+import {normalizeThesisSnapshot,thesisHash,thesisError,isThesisReferenceChapter,thesisAgentTask} from './thesis-model.mjs';
 import {thesisCompletionNeeds,safeCompletionIssues} from '../dist/workspace/thesis-completion-model.mjs';
 import {thesisFrontMatterKind,thesisManualBackMatter,thesisCoverFields} from '../dist/workspace/thesis-delivery.mjs';
 const fail=(status,message)=>{throw thesisError(status,message);};
@@ -56,13 +57,52 @@ export function thesisCompletionPlan(db,row,basePlan,issueCodes=[],{scope='affec
  const bodyChanged=saved.some(chapter=>targets.has(chapter.id)&&!thesisFrontMatterKind(chapter)&&!thesisManualBackMatter(chapter));if(bodyChanged)for(const chapter of saved.filter(thesisFrontMatterKind))targets.add(chapter.id);
  const priorQuality=row.current_run_id?db.prepare('SELECT quality FROM thesis_runs WHERE id=? AND thesis_id=?').get(row.current_run_id,row.id)?.quality:null,reviewFindings=priorQuality?(JSON.parse(priorQuality).reviews||[]).flatMap(review=>review.findings||[]):[];
  const priority=[...(latestSimulation?[latestSimulation]:[]),...snapshot.materials.filter(row=>row.confirmed&&row.purpose==='研究证据补充').slice(-6),...snapshot.references.filter(row=>row.confirmed&&row.sourceLabel==='作者终稿补充文献').slice(-4)].map(row=>row.id);
- const plan=basePlan.filter(unit=>targets.has(unit.chapterId)).map(unit=>({...unit,sourceIds:[],completionSourceIds:priority,completion:{missingInformation:[...new Set([...needs.chapters.filter(chapter=>chapter.id===unit.chapterId).flatMap(chapter=>chapter.requests),...(priorQuality?JSON.parse(priorQuality).supplementCheck?.items||[]:[]).filter(row=>row.status==='missing'&&row.title===unit.chapterTitle).flatMap(row=>row.missing||[])])].slice(0,10).map(text=>String(text).slice(0,400)),findings:reviewFindings.filter(finding=>typeof finding.quote==='string'&&finding.quote.length>=6&&saved.find(c=>c.id===unit.chapterId)?.record?.text.includes(finding.quote)).slice(0,6).map(({quote,explanation,suggestion,category})=>({quote:quote.slice(0,500),explanation:String(explanation||'').slice(0,500),suggestion:String(suggestion||'').slice(0,300),category})),originalText:String(saved.find(c=>c.id===unit.chapterId)?.record?.text||'').slice(0,16000),originalFigures:manuscriptFigures({text:String(saved.find(c=>c.id===unit.chapterId)?.record?.text||'').slice(0,16000),figures:JSON.parse(saved.find(c=>c.id===unit.chapterId)?.record?.figures||'[]')}),excerpted:String(saved.find(c=>c.id===unit.chapterId)?.record?.text||'').length>16000}}));
+ const plan=basePlan.filter(unit=>targets.has(unit.chapterId)).map(unit=>({...unit,sourceIds:[],completionSourceIds:priority,completion:{missingInformation:[...new Set([...needs.chapters.filter(chapter=>chapter.id===unit.chapterId).flatMap(chapter=>chapter.requests),...(priorQuality?JSON.parse(priorQuality).supplementCheck?.items||[]:[]).filter(row=>row.status==='missing'&&row.title===unit.chapterTitle).flatMap(row=>row.missing||[])])].slice(0,10).map(text=>String(text).slice(0,400)),findings:reviewFindings.filter(finding=>typeof finding.quote==='string'&&finding.quote.length>=6&&saved.find(c=>c.id===unit.chapterId)?.record?.text.includes(finding.quote)).slice(0,6).map(({quote,explanation,suggestion,category})=>({quote:quote.slice(0,500),explanation:String(explanation||'').slice(0,500),suggestion:String(suggestion||'').slice(0,300),category})),originalText:String(saved.find(c=>c.id===unit.chapterId)?.record?.text||''),originalFigures:manuscriptFigures({text:String(saved.find(c=>c.id===unit.chapterId)?.record?.text||''),figures:JSON.parse(saved.find(c=>c.id===unit.chapterId)?.record?.figures||'[]')}),excerpted:false}}));
  const acknowledgementFacts=snapshot.materials.filter(row=>row.confirmed&&row.purpose==='致谢事实').map(row=>row.text).join('\n');
  for(const chapter of saved.filter(thesisManualBackMatter))if((targets.has(chapter.id)||scope==='full'&&!chapter.record?.text?.trim())&&(acknowledgementFacts.trim()||scope==='full'))plan.push({id:chapter.id+'::completion::1',chapterId:chapter.id,chapterTitle:chapter.title,sectionId:chapter.id,title:chapter.title,part:1,parts:1,targetWords:200,sourceIds:[],presentation:{},personalMatter:true,completion:{originalText:chapter.record?.text||'',acknowledgementFacts:acknowledgementFacts.slice(0,5000),generalAcknowledgement:!acknowledgementFacts.trim()}});
- for(const unit of plan)if(docxObjectIds(unit.completion.originalText).length){
-  const text=unit.completion.originalText,parts=unit.parts||1;let points=[0];for(let index=1;index<parts;index++){const target=Math.round(text.length*index/parts),after=text.indexOf('\n\n',target),before=text.lastIndexOf('\n\n',target);let end=after>=0&&after-target<1000?after+2:before>points.at(-1)?before+2:target;for(const match of text.matchAll(/\[(?:docx|figure):[^\]]+\]/g))if(match.index<end&&match.index+match[0].length>end)end=match.index;points.push(Math.max(points.at(-1),end));}points.push(text.length);unit.completion.originalText=text.slice(points[(unit.part||1)-1],points[unit.part||1]);unit.completion.originalObjects=thesisDocxObjects(db,row.id,row.user_id,[{text:unit.completion.originalText}]).map(({id,kind,label,plaintext})=>({id,kind,label:label.slice(0,80),...(plaintext?{plaintext:plaintext.slice(0,160)}:{})}));
+ const chapterUnits=new Map();for(const unit of plan){const rows=chapterUnits.get(unit.chapterId)||[];rows.push(unit);chapterUnits.set(unit.chapterId,rows);}
+ // Different named sections must be mapped to their actual headings, not
+ // roughly equal slices of the chapter. Ambiguous imports remain untouched.
+ const sectionGroups=new Map();
+ const headingKey=value=>String(value||'').trim().replace(/^#{1,6}\s*/, '').replace(/^\d+(?:\.\d+){0,5}[.、\s]+/u,'').replace(/\s+/gu,'').toLowerCase();
+ for(const units of chapterUnits.values()){
+  const groups=[];for(const unit of units){let group=groups.at(-1);if(!group||group.id!==unit.sectionId){if(groups.some(row=>row.id===unit.sectionId))fail(422,'无法安全对应原稿小节顺序，请核对提纲与原稿标题；原稿未更改，本次未扣费。');groups.push(group={id:unit.sectionId,title:unit.title,units:[]});}group.units.push(unit);}
+  const chapter=units[0].completion.originalText;
+  if(groups.length>1&&chapter){const lines=[...chapter.matchAll(/^([^\r\n]{1,160})$/gm)].map(match=>({offset:match.index,key:headingKey(match[1])})),positions=[];
+   for(const group of groups){const key=headingKey(group.title),hits=lines.filter(line=>key&&line.key===key);if(hits.length!==1||positions.length&&hits[0].offset<=positions.at(-1))fail(422,'无法准确对应原稿小节标题，请核对提纲与原稿；原稿未更改，本次未扣费。');positions.push(hits[0].offset);}
+   for(let index=0;index<groups.length;index++)groups[index].text=chapter.slice(index===0?0:positions[index],positions[index+1]??chapter.length);
+  }else if(groups.length>1){for(const group of groups)group.text='';}else groups[0].text=chapter;
+  for(const group of groups)for(const unit of group.units)sectionGroups.set(unit,group);
+ }
+ for(const unit of plan){
+  const grouped=sectionGroups.get(unit),group=grouped.units,partIndex=group.indexOf(unit),text=grouped.text,parts=group.length;let points=[0];
+  if(parts>1){
+   for(let index=1;index<parts;index++){
+    const target=Math.round(text.length*index/parts),after=text.indexOf('\n\n',target),before=text.lastIndexOf('\n\n',target);
+    let end=after>=0&&after-target<1000?after+2:before>points.at(-1)?before+2:target;
+    // Never split a source/object marker or a UTF-16 surrogate pair.
+    for(const match of text.matchAll(/\[(?:docx|figure|source):[^\]]+\]/g))if(match.index<end&&match.index+match[0].length>end)end=match.index;
+    if(end>0&&/[\uD800-\uDBFF]/.test(text[end-1])&&/[\uDC00-\uDFFF]/.test(text[end]||''))end--;
+    // Do not split inside a fenced code block; select its start or end.
+    let opened=-1;for(const marker of text.matchAll(/^\s*(?:`{3,}|~{3,})[^\n]*$/gm)){if(marker.index>=end)break;opened=opened<0?marker.index:-1;}
+    if(opened>=0){const close=/^\s*(?:`{3,}|~{3,})[^\n]*$/gm;close.lastIndex=end;const found=close.exec(text);end=opened>points.at(-1)?opened:found?found.index+found[0].length:text.length;}
+    points.push(Math.max(points.at(-1),end));
+   }
+  }
+  points.push(text.length);
+  unit.completion.originalText=parts>1?text.slice(points[partIndex],points[partIndex+1]):text;
+  unit.completion.originalFigures=manuscriptFigures({text:unit.completion.originalText,figures:unit.completion.originalFigures||[]});
+  if(docxObjectIds(unit.completion.originalText).length)unit.completion.originalObjects=thesisDocxObjects(db,row.id,row.user_id,[{text:unit.completion.originalText}]).map(({id,kind,label,plaintext})=>({id,kind,label:label.slice(0,80),...(plaintext?{plaintext:plaintext.slice(0,160)}:{})}));
+  // A revision must be able to preserve the author's existing text. The
+  // original per-unit target can be much smaller than an imported manuscript.
+  // Align its target with that segment instead of repeatedly forcing cuts.
+  if(scope==='full'&&!unit.personalMatter){const lang=unit.frontMatter==='abstract_en'?'English':unit.frontMatter==='abstract_zh'?'中文':snapshot.profile.language,existing=researchWordCount(unit.completion.originalText,lang);if(existing>unit.targetWords)unit.targetWords=existing;}
  }
  if(scope==='full')for(const unit of plan)unit.completion={...unit.completion,scope:'full'};
+ // Never send a model an excerpt and then overwrite the complete chapter.
+ // Admission happens before quote creation and billing; all saved text and
+ // original Word objects remain available when the input is too long.
+ for(const unit of plan){if(unit.personalMatter)continue;let task;try{task=thesisAgentTask(snapshot,unit,[]);}catch(error){if(/原稿对象位置超出当前可核对范围/.test(String(error?.message||'')))fail(422,'章节内容较长，当前无法完整处理。请将原稿拆分为较短且标题清晰的小节后重试；原稿已保留，本次未扣费。');throw error;}if(task.context?.revision?.excerpted)fail(422,'章节内容较长，当前无法完整处理。请将原稿拆分为较短且标题清晰的小节后重试；原稿已保留，本次未扣费。');}
  if(!plan.length)fail(422,'当前没有需要 AI 完善的章节；请重新检查终稿，封面和排版由系统直接处理。');
  for(const [index,unit]of plan.entries())unit.position=index;
  const baseline=saved.flatMap(chapter=>chapter.record?[{chapterId:chapter.id,versionId:chapter.record.id}]:[]);

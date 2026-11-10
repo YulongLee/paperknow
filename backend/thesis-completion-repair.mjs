@@ -16,14 +16,18 @@ export function completionRepairs(snapshot,plan,checkpoints,quality,pass,{expres
   }
   if(!expressionOnly&&supported)for(const match of checkpoint.text.matchAll(/【(?:待补充|待核对)[：:][^】]{1,500}】/g))if(located.length<6)located.push({quote:match[0],category:'structure',explanation:'资料检查已找到对应依据，需据此补齐本处正文。',suggestion:'读取对应资料并补写，不能只删除标记。'});
   if(!located.length)return [];
-  const task=thesisAgentTask(snapshot,{...unit,completion:{...unit.completion,originalText:checkpoint.text,originalFigures:JSON.parse(checkpoint.figures||'[]'),excerpted:false,findings:located}},[]);
+  const repairUnit={...unit,completion:{...unit.completion,originalText:checkpoint.text,originalFigures:JSON.parse(checkpoint.figures||'[]'),excerpted:false,findings:located}};
+  let task;try{task=thesisAgentTask(snapshot,repairUnit,[]);}catch(error){if(/原稿对象位置超出当前可核对范围/.test(String(error?.message||'')))return [];throw error;}
+  // Do not let an excerpt replace an entire saved checkpoint. Keeping the
+  // finding unresolved makes the final assessment block delivery safely.
+  if(task.context?.revision?.excerpted)return [];
   task.context.completionRepairPass=pass+1;
   const expression=located.every(finding=>finding.category==='language_expression');
   if(expression){
-   task.context.expressionOnly=true;task.context.revision.originalExcerpt=checkpoint.text;task.context.revision.originalFigures=JSON.parse(checkpoint.figures||'[]');task.context.revision.excerpted=false;
+   task.context.expressionOnly=true;task.context.revision.originalFigures=JSON.parse(checkpoint.figures||'[]');
    task.context.outline=(task.context.outline||[]).filter(chapter=>chapter.id===unit.chapterId).map(chapter=>({...chapter,sections:(chapter.sections||[]).filter(section=>section.id===unit.sectionId)}));task.context.completedSections=[];
    task.instructions+='本次只做已定位的表达修正，直接将修正写入完整正文，不返回建议清单。revision.originalExcerpt 是本单元完整原文。保留研究事实、数字、引用、公式、代码、表格、图表和全部待补充标记，不补造资料，不因资料检查尚未结束而跳过表达修正。不改变数值或其出现顺序，不改变来源标记及其顺序。输出与原文完全相同不会被视为完成。';
   }
-  return [{unit,checkpoint,task,expressionOnly:expression,unitId:'completion-repair-'+pass+'::'+unit.id}];
+  return [{unit:repairUnit,checkpoint,task,expressionOnly:expression,unitId:'completion-repair-'+pass+'::'+unit.id}];
  });
 }

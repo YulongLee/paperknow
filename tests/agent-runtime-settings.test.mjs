@@ -52,3 +52,18 @@ test('literature batch reading returns only authorized ranges with independently
   await tools.submit_writing_output.handler({candidate:{complete:true,text:'Evidence was read.'}});yield success;
  })()}}),/真实用量/);assert.equal(validations,1);assert.equal(readTrace.filter(r=>r.tool==='read_material').length,2);assert.doesNotMatch(JSON.stringify(readTrace),/other-account|First exact evidence/);
 });
+
+test('supplement checker reads only authorized ranges; ordinary review has no source tool',async t=>{
+ const {settings}=fixture(t);settings.save('admin',valid);
+ for(const isSupplement of [true,false]){
+  const reviewTask={skill:'writing-review',instructions:'Check evidence',context:{operation:isSupplement?'supplement-check':'writing-review'},materials:[{id:'allowed',name:'source',text:'abcdefghij'}]};let checkedTrace;
+  await assert.rejects(()=>runAgentTask({settings:settings.get(),task:reviewTask,validateReviewOutput:async result=>{checkedTrace=result.trace;return {valid:true};},dependencies:{lookup,query:({options})=>(async function*(){
+   const tools=options.mcpServers.paperknow.instance._registeredTools;
+   assert.deepEqual(Object.keys(tools).filter(x=>x==='read_material').length,isSupplement?1:0);
+   if(isSupplement){await assert.rejects(()=>tools.read_material.handler({id:'other'}),/未授权/);const value=await tools.read_material.handler({id:'allowed',offset:3,limit:4});assert.equal(JSON.parse(value.content[0].text).text,'defg');}
+   await tools.submit_writing_output.handler({candidate:{items:[]}});yield success;
+  })()}}),/真实用量/);
+  if(isSupplement)assert.ok(checkedTrace.some(row=>row.tool==='read_material'&&row.status==='completed'&&row.materialId==='allowed'&&row.offset===3&&row.limit===4));
+  else assert.equal(checkedTrace.some(row=>row.tool==='read_material'),false);
+ }
+});

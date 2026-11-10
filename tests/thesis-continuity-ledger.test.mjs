@@ -27,7 +27,7 @@ function fixture(t,config={}){
 }
 
 test('the original run and attempt freeze whole-paper token and cost ceilings durably',t=>{
- const f=fixture(t),first=f.init();assert.equal(first.created,true);assert.ok(first.tokenLimit>400000);assert.equal(first.costLimit,13.5);assert.equal(first.reviewBatchAllowance,2);assert.equal(first.remainingTokens,first.tokenLimit);
+ const f=fixture(t),first=f.init();assert.equal(first.created,true);assert.ok(first.tokenLimit>400000);assert.equal(first.costLimit,13.5);assert.equal(first.reviewBatchAllowance,8);assert.equal(first.remainingTokens,first.tokenLimit);
  const changed=createThesisContinuity(f.db,{thesisMaxRunTokens:2000000,thesisMaxRunCostUsd:50}).ensure(f.run(),snapshot,plan,{...settings,maxCostUsd:5});
  assert.equal(changed.created,false);assert.equal(changed.tokenLimit,first.tokenLimit);assert.equal(changed.costLimit,first.costLimit);
  assert.throws(()=>f.db.prepare("UPDATE thesis_execution_budgets SET token_limit=2000000 WHERE run_id='run-a'").run(),/不可扩展/);
@@ -77,31 +77,31 @@ test('a section has at most three dispatches and review batches also cover the t
  assert.equal(f.ledger.recover(f.run()).ready,false,'a crash between a final failed dispatch and worker termination cannot grant a fourth dispatch');
  const review=f.reserve('final-review',{kind:'review'});f.ledger.finish(review.id,{usage:{input:10,output:10},costUsd:.001});
  assert.throws(()=>f.reserve('final-review',{kind:'review'}),error=>error.code==='retry_limit');
- const another=f.reserve('another-review-name',{kind:'review'});f.ledger.finish(another.id,{usage:{input:10,output:10},costUsd:.001});
- assert.throws(()=>f.reserve('third-review-name',{kind:'review'}),error=>error.code==='retry_limit');
+ for(let i=1;i<8;i++){const another=f.reserve('review-extra-'+i,{kind:'review'});f.ledger.finish(another.id,{usage:{input:10,output:10},costUsd:.001});}
+ assert.throws(()=>f.reserve('ninth-review-name',{kind:'review'}),error=>error.code==='retry_limit');
 });
 
 test('long English manuscripts freeze enough review batches for complete coverage without widening per-call or total cost limits',t=>{
  const f=fixture(t),long={...snapshot,profile:{language:'English',targetWords:80000}},initial=f.ledger.ensure(f.run(),long,plan,settings);
- assert.equal(initial.reviewBatchAllowance,22);assert.equal(initial.costLimit,23.5);
- for(let index=0;index<22;index++){
-  const review=f.reserve('review-'+index,{kind:'review',remainingUnits:22-index});assert.equal(review.maxCostUsd,.5);assert.equal(review.unitAttempt,1);f.ledger.finish(review.id,{usage:{input:10,output:10},costUsd:.001});
+ assert.equal(initial.reviewBatchAllowance,66);assert.equal(initial.costLimit,23.5);
+ for(let index=0;index<66;index++){
+  const review=f.reserve('review-'+index,{kind:'review',remainingUnits:66-index});assert.equal(review.maxCostUsd,.5);assert.equal(review.unitAttempt,1);f.ledger.finish(review.id,{usage:{input:10,output:10},costUsd:.001});
   if(!index)assert.throws(()=>f.reserve('review-0',{kind:'review'}),error=>error.code==='retry_limit');
  }
- assert.throws(()=>f.reserve('review-22',{kind:'review'}),error=>error.code==='retry_limit');
+ assert.throws(()=>f.reserve('review-66',{kind:'review'}),error=>error.code==='retry_limit');
  assert.throws(()=>f.db.prepare("UPDATE thesis_execution_budgets SET review_allowance=24 WHERE run_id='run-a'").run(),/不可扩展/);
- const unchanged=f.ledger.ensure(f.run(),{...long,profile:{language:'English',targetWords:1000000}},plan,{...settings,maxCostUsd:5});assert.equal(unchanged.reviewBatchAllowance,22);assert.equal(unchanged.costLimit,23.5);
+ const unchanged=f.ledger.ensure(f.run(),{...long,profile:{language:'English',targetWords:1000000}},plan,{...settings,maxCostUsd:5});assert.equal(unchanged.reviewBatchAllowance,66);assert.equal(unchanged.costLimit,23.5);
 });
 
 test('an 8000-character thesis with seventeen or twenty writing units preallocates both review batches',t=>{
- for(const units of [17,20]){const f=fixture(t),state=f.ledger.ensure(f.run(),snapshot,plan.slice(0,units),settings);assert.equal(state.reviewBatchAllowance,2);assert.equal(state.costLimit,.5*(units*1.25+2));}
+ for(const units of [17,20]){const f=fixture(t),state=f.ledger.ensure(f.run(),snapshot,plan.slice(0,units),settings);assert.equal(state.reviewBatchAllowance,Math.ceil(units/4)+Math.ceil((12000+units*400)/8000));assert.equal(state.costLimit,.5*(units*1.25+2));}
 });
 
 test('review planning respects explicit lower cost ceilings and the global 50-dollar ceiling',t=>{
  const f=fixture(t,{thesisMaxRunCostUsd:.02}),long={...snapshot,profile:{language:'English',targetWords:80000}};
  assert.equal(f.ledger.ensure(f.run(),long,plan,settings).costLimit,.02);
- const other=fixture(t),largePlan=Array.from({length:120},(_,position)=>({id:'long-'+position,targetWords:700})),value=other.ledger.ensure(other.run(),long,largePlan,settings);assert.equal(value.reviewBatchAllowance,22);assert.equal(value.costLimit,50);
- const clamped=fixture(t),huge={...snapshot,profile:{language:'English',targetWords:1000000}};assert.equal(clamped.ledger.ensure(clamped.run(),huge,plan,settings).reviewBatchAllowance,24);
+ const other=fixture(t),largePlan=Array.from({length:120},(_,position)=>({id:'long-'+position,targetWords:700})),value=other.ledger.ensure(other.run(),long,largePlan,settings);assert.equal(value.reviewBatchAllowance,96);assert.equal(value.costLimit,50);
+ const clamped=fixture(t),huge={...snapshot,profile:{language:'English',targetWords:1000000}};assert.equal(clamped.ledger.ensure(clamped.run(),huge,plan,settings).reviewBatchAllowance,256);
 });
 
 test('an interrupted optional review preserves its reservation and allows the manuscript to resume with a partial review',t=>{
@@ -168,4 +168,18 @@ test('large whole-paper pools retain the relay call ceiling and stable late-chap
  assert.ok(windows.every(window=>window===480000));assert.equal(f.ledger.summary(f.run()).tokenLimit,initial.tokenLimit);
  const review=f.ledger.reserve(f.run(),'review-1',{remainingUnits:1,settings:{...settings,maxTurns:4},kind:'review'});
  assert.equal(review.maxTotalTokens,480000);assert.equal(review.maxCostUsd,.5);
+});
+
+test('review slots conservatively cover uneven four-item and 8000-character packing while preserving the frozen spend cap',t=>{
+ const f=fixture(t,{thesisMaxRunCostUsd:1}),uneven=Array.from({length:5},(_,i)=>({id:'uneven-'+i,targetWords:4001,position:i})),value={...snapshot,profile:{language:'中文',targetWords:20005}};
+ const budget=f.ledger.ensure(f.run(),value,uneven,settings);assert.ok(budget.reviewBatchAllowance>=5);assert.equal(budget.costLimit,1);
+ for(let i=0;i<5;i++){const call=f.ledger.reserve(f.run(),'review-uneven-'+i,{kind:'review',remainingUnits:5-i,settings});f.ledger.finish(call.id,{usage:{input:100,output:100},costUsd:.01});}
+ assert.equal(f.ledger.summary(f.run()).dispatches,5);assert.equal(f.ledger.summary(f.run()).costLimit,1);
+});
+
+test('imported drafts size their review plan from the latest saved content, not just the shorter requested target',t=>{
+ const f=fixture(t,{thesisMaxRunCostUsd:1});f.db.exec('CREATE TABLE thesis_chapter_versions(thesis_id TEXT,chapter_id TEXT,version INTEGER,text TEXT,figures TEXT)');
+ const insert=f.db.prepare('INSERT INTO thesis_chapter_versions VALUES(?,?,?,?,?)');for(let i=0;i<5;i++){insert.run('thesis-a','chapter-'+i,1,'甲'.repeat(4001),'[]');insert.run('thesis-a','chapter-'+i,2,'乙'.repeat(4001),'[]');}
+ const short={...snapshot,profile:{language:'中文',targetWords:500}},units=Array.from({length:5},(_,i)=>({id:'imported-'+i,targetWords:100})),budget=f.ledger.ensure(f.run(),short,units,settings);
+ assert.ok(budget.reviewBatchAllowance>=5);assert.equal(budget.costLimit,1);assert.equal(f.ledger.ensure(f.run(),short,units,settings).reviewBatchAllowance,budget.reviewBatchAllowance);
 });

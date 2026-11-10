@@ -33,6 +33,15 @@ test('semantic report rejects unknown sources, invented quotes, duplicate or omi
  for(const mutate of [v=>v.items=[],v=>v.items.push(v.items[0]),v=>v.items[0].id='foreign',v=>v.items[0].evidence[0].sourceId='other-account',v=>v.items[0].evidence[0].quote='并不存在的研究记录',v=>v.items[0].manuscriptQuote='不存在的原稿',v=>v.items[0].evidence=[]]){const value=JSON.parse(good.text);mutate(value);assert.throws(()=>parseSupplementCheck(response(value.items),input),error=>error.code==='invalid_supplement_check');}
  assert.throws(()=>parseSupplementCheck({...good,truncated:true},input));
 });
+test('a quoted missing claim cannot be attributed to another section or a generic anchor',()=>{
+ const input=supplementCheckTask({kind:'proposal',chapters:[{id:'first',title:'背景',text:'本研究拟做数学仿真。现有讲解多为定性描述。'},{id:'second',title:'方法',text:'本研究采用数学计算方法。'}]});
+ const first={id:'first',status:'not_required',requirement:'研究背景',reason:'本节属于计划。',manuscriptQuote:'本研究拟做数学仿真。',evidence:[],missing:[]};
+ const second={id:'second',status:'missing',requirement:'“现有讲解多为定性描述”需依据',reason:'该句声称现状但无文献依据。',manuscriptQuote:'本研究采用数学计算方法。',evidence:[],missing:['相关文献']};
+ assert.throws(()=>parseSupplementCheck(response([first,second]),input),error=>error.code==='invalid_supplement_check'&&/所在章节/.test(error.feedback?.rule||''));
+ const corrected={...first,status:'missing',requirement:second.requirement,reason:second.reason,manuscriptQuote:'现有讲解多为定性描述。',missing:['相关文献']};
+ const other={...second,status:'not_required',requirement:'拟采用方法',reason:'仅描述计划。',missing:[]};
+ assert.equal(parseSupplementCheck(response([corrected,other]),input)[0].id,'first');
+});
 test('an explicit missing item cannot be dismissed as not_required; proposal plans do not require completed experiments',()=>{
  const explicit=task();explicit.context.chapters[0].text='【待补充：实际观察记录】';const value=JSON.parse(checkResponse(explicit).text);value.items[0]={...value.items[0],status:'not_required',evidence:[]};assert.throws(()=>parseSupplementCheck(response(value.items),explicit));
  const plan=supplementCheckTask({kind:'proposal',chapters:[{id:'s',title:'拟研究方案',text:'拟在下一阶段开展观察，目前尚未实施。'}]});assert.equal(parseSupplementCheck(checkResponse(plan),plan)[0].status,'not_required');assert.match(plan.instructions,/开题报告.*不要求尚未实施/);assert.match(plan.instructions,/AI建议.*不能证明研究已经实施/);
@@ -290,4 +299,56 @@ test('demonstration details require specific documented observations, not merely
 
 test('a later future plan does not waive evidence for an earlier claimed demonstration observation',()=>{
  const text='第三轮对异常节点重复走查，未来计划完善记录。',task=supplementCheckTask({phase:'final',chapters:[{id:'c',title:'过程',text}]}),row={id:'c',status:'not_required',requirement:'演示过程',reason:'暂无资料',manuscriptQuote:text,evidence:[],missing:[]};assert.equal(parseSupplementCheck(response([row]),task)[0].status,'missing');
+});
+
+test('an unverified background generalization is not excused by an unrelated future qualification',()=>{
+ const chapters=[{id:'c',title:'研究背景',text:'研究关注教学仿真；现有讲解多以公式为主，其可感知性尚待检验。'}];
+ const source={id:'s',name:'模拟数据',text:'合成测试案例：定义C(n)=n²，长度加倍数量增加为四倍。'};
+ const task=supplementCheckTask({kind:'proposal',phase:'final',chapters,materials:[source]});
+ const item={id:'c',status:'sufficient',requirement:'仿真案例',reason:'来源提供数学定义',manuscriptQuote:'研究关注教学仿真',evidence:[{sourceId:'s',quote:source.text}],missing:[]};
+ const result=parseSupplementCheck(response([item]),task)[0];
+ assert.equal(result.status,'missing');assert.equal(result.manuscriptQuote,'现有讲解多以公式为主');
+ const second=supplementCheckTask({kind:'proposal',phase:'final',chapters:[{...chapters[0],text:'现有教学材料多口头给出二次增长结论。'}],materials:[source]});
+ assert.equal(parseSupplementCheck(response([{...item,manuscriptQuote:second.context.chapters[0].text}]),second)[0].status,'missing');
+ const qualified=supplementCheckTask({kind:'proposal',phase:'final',chapters:[{...chapters[0],text:'现有讲解是否多以公式为主尚待检验。'}],materials:[]});
+ assert.equal(parseSupplementCheck(response([{...item,status:'not_required',manuscriptQuote:qualified.context.chapters[0].text,evidence:[]}]),qualified)[0].status,'not_required');
+ for(const proofText of ['课堂观察记录显示教师经常依赖数学公式进行讲授。','Classroom observations found that instructors predominantly use formulas when explaining this topic.']){
+  const supported=supplementCheckTask({kind:'proposal',phase:'final',chapters,materials:[{id:'s',name:'课堂观察',text:proofText}]});
+  const claim={...item,evidence:[{sourceId:'s',quote:proofText}]};
+  assert.equal(parseSupplementCheck(response([claim]),supported)[0].status,'sufficient','a paraphrase or translation must not be rejected solely for lacking verbatim wording');
+ }
+
+});
+
+test('thesis supplement checks use at most four units and 8000 manuscript characters per batch',async()=>{
+ const chapters=Array.from({length:12},(_,i)=>({id:'unit-'+i,title:'章节'+i,text:'正文'.repeat(1600)})),batches=[];
+ const report=await runSupplementCheck({snapshot:snapshot(),chapters,kind:'thesis',runtime,dispatch:async({task})=>{batches.push(task.context.chapters);return checkResponse(task);}});
+ assert.equal(report.status,'final_ready');assert.equal(report.coverage.checked,12);
+ assert.ok(batches.every(batch=>batch.length<=4&&batch.reduce((n,row)=>n+row.text.length,0)<=8000));
+});
+
+test('only actually read authorized source ranges can supply evidence outside context excerpts',()=>{
+ const source={id:'s',name:'授权原文',text:'开头资料。'+'背景材料'.repeat(30)+'实际结果为 28.4 BLEU。'};
+ const task=supplementCheckTask({chapters:[{id:'c',title:'结果',text:'结果为 28.4 BLEU。'}],materials:[{...source,text:'开头资料。'}]});
+ task.materials=[source];task.evidenceOriginals=[source];
+ const item={id:'c',status:'sufficient',requirement:'结果依据',reason:'原文提供该结果',manuscriptQuote:'结果为 28.4 BLEU。',evidence:[{sourceId:'s',quote:'实际结果为 28.4 BLEU'}],missing:[]};
+ const value=response([item]);assert.throws(()=>parseSupplementCheck(value,task));
+ value.trace=[{tool:'read_material',status:'completed',materialId:'s',offset:0,limit:6}];assert.throws(()=>parseSupplementCheck(value,task));
+ value.trace=[{tool:'read_material',status:'completed',materialId:'s',offset:0,limit:source.text.length}];assert.equal(parseSupplementCheck(value,task)[0].status,'sufficient');
+ value.trace=[{tool:'read_material',status:'completed',materialId:'other',offset:0,limit:source.text.length}];assert.throws(()=>parseSupplementCheck(value,task));
+});
+
+test('bounded material reads expose truncation without suggesting the full source was examined',async()=>{
+ const snapshot={materials:[{id:'a',name:'长资料',confirmed:true,text:'甲'.repeat(100000)},{id:'b',name:'另一资料',confirmed:true,text:'乙'.repeat(100000)}],references:[]};let captured;
+ await runSupplementCheck({snapshot,chapters:[{id:'c',title:'计划',text:'计划分析问题。'}],runtime,dispatch:async({task})=>{captured=task;return response(task.context.chapters.map(c=>({id:c.id,status:'not_required',requirement:'研究计划',reason:'不陈述完成事实。',manuscriptQuote:c.text,evidence:[],missing:[]})));}});
+ assert.ok(captured.materials.reduce((n,item)=>n+item.text.length,0)<=80000);
+ for(const source of captured.context.evidence){if(captured.materials.find(m=>m.id===source.id)?.text.length<100000){assert.equal(source.readTruncated,true);assert.equal(source.totalCharacters,100000);}}
+ assert.match(captured.instructions,/不能因未找到而断定原文没有相关内容/);
+});
+
+test('short documents with long references use smaller evidence-check batches',async()=>{
+ const longText='公开文献片段。'.repeat(3000),snapshot={materials:[{id:'s',name:'授权资料',text:longText,confirmed:true}],references:[]};let batches=[];
+ const chapters=Array.from({length:4},(_,i)=>({id:'c'+i,title:'节'+i,text:'本节讨论可验证的研究方法。'}));
+ const report=await runSupplementCheck({snapshot,chapters,kind:'summary',runtime,dispatch:async({task})=>{batches.push(task.context.chapters);return checkResponse(task);}});
+ assert.equal(report.status,'final_ready');assert.equal(report.coverage.checked,4);assert.deepEqual(batches.map(rows=>rows.length),[2,2]);
 });

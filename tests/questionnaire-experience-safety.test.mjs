@@ -61,9 +61,9 @@ test('explicit overlapping lower-bound frequency choices require repair, disjoin
  assert.throws(()=>normalizeAIQuestionnaire(make([nonuser,experience,q]),{outputCount:3}),e=>e.validationIssues.some(i=>i.code==='frequency_overlap'));
  const safe={...q,title:'过去30天使用频率',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']};assert.doesNotThrow(()=>normalizeAIQuestionnaire(make([nonuser,experience,safe]),{outputCount:3}));
 });
-test('multiple choice rejects explicit none-of-the-above because the live form has no mutual exclusion',()=>{
+test('multiple choice retains explicit none-of-the-above for supported mutual exclusion',()=>{
  const q={...general,type:'multiple',title:'使用过哪些服务？',options:['电子书','数据库','以上均未使用过']};
- assert.throws(()=>normalizeAIQuestionnaire(make([nonuser,experience,q]),{outputCount:3}),e=>e.validationIssues.some(i=>i.code==='exclusive_multiple_option'));
+ assert.doesNotThrow(()=>normalizeAIQuestionnaire(make([nonuser,experience,q]),{outputCount:3}));
  assert.doesNotThrow(()=>normalizeAIQuestionnaire(make([nonuser,experience,{...q,options:['电子书','数据库','其他']}]),{outputCount:3}));
 });
 test('the specifically combined speed off-campus and multi-device satisfaction dimensions are flagged',()=>{
@@ -83,7 +83,7 @@ test('weekly frequency ranges must not leave an uncovered or ambiguous six-times
  const fixed={...q,title:'过去30天使用数字阅读服务的频率',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']};const out=normalizeAIQuestionnaire(make([fixed,experience,general]),{outputCount:3});assert.equal(out.questions[0].required,true);assert.equal(out.questions[1].required,false);assert.match(out.questions[1].title,/未使用者可跳过/);
 });
 test('standalone never-used and never-encountered choices cannot be mixed with other multiple selections',()=>{
- for(const option of ['未使用过','从未使用过','未遇到/未使用']){const q={...general,type:'multiple',title:'遇到过哪些问题？',options:['检索慢','页面复杂',option]};assert.throws(()=>normalizeAIQuestionnaire(make([nonuser,experience,q]),{outputCount:3}),error=>error.validationIssues.some(i=>i.code==='exclusive_multiple_option'),option);}
+ for(const option of ['未使用过','从未使用过','未遇到/未使用']){const q={...general,type:'multiple',title:'遇到过哪些问题？',options:['检索慢','页面复杂',option]};assert.doesNotThrow(()=>normalizeAIQuestionnaire(make([nonuser,experience,q]),{outputCount:3}),option);}
 });
 test('remove generated instructions telling nonusers to select an option missing from experience questions',()=>{
  const q={...nonuser,title:'过去30天使用数字阅读服务的频率',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']},input=make([q,experience,general]);input.introduction='本调查自愿参加。如果您未使用过相关服务，请在体验题中选择未使用。感谢您的参与。';const result=normalizeAIQuestionnaire(input,{outputCount:3});assert.equal(result.questions[1].required,false);assert.doesNotMatch(result.introduction,/选择未使用/);assert.match(result.introduction,/本调查自愿参加/);
@@ -91,7 +91,7 @@ test('remove generated instructions telling nonusers to select an option missing
 
 test('the real eight-question shape catches distinct missing ranges, incompatible choices and combined dimensions',()=>{
  const questions=[{...general,id:'q1'}, {id:'q2',type:'single',title:'您使用数字阅读服务（如电子书平台、学术数据库、移动阅读App等）的频率最接近以下哪一项？',options:['几乎每天使用','每周3至5次','每周1至2次','每月1至3次','每年偶尔使用或从未使用'],required:true},{id:'q3',type:'multiple',title:'您通常通过哪些渠道进入数字阅读服务？',options:['图书馆电子资源入口','搜索引擎链接','几乎没有固定渠道或未使用过'],required:true},{...experience,id:'q4',title:'您对数字阅读服务的检索便利性（如搜索响应速度、筛选功能、界面操作难易）满意程度如何？'},{...experience,id:'q5',title:'您对所需文献或图书资源的可获取性（如能否找到想读的内容、校外访问是否顺畅）满意程度如何？'},{...experience,id:'q6',title:'您对所使用服务的整体满意度如何？'},{id:'q7',type:'multiple',title:'您遇到过哪些问题？',options:['检索结果不相关','未遇到过问题','未使用过相关服务'],required:true},{id:'q8',type:'text',title:'还有哪些建议？',options:[],required:false}];
- assert.throws(()=>normalizeAIQuestionnaire(make(questions),{outputCount:8}),error=>{const found=new Set(error.validationIssues.map(i=>i.questionIndex+':'+i.code));for(const item of ['2:frequency_gap','3:exclusive_multiple_option','4:multiple_dimensions','5:multiple_dimensions','7:exclusive_multiple_option'])assert.ok(found.has(item),item);return true;});
+ assert.throws(()=>normalizeAIQuestionnaire(make(questions),{outputCount:8}),error=>{const found=new Set(error.validationIssues.map(i=>i.questionIndex+':'+i.code));for(const item of ['2:frequency_gap','4:multiple_dimensions','5:multiple_dimensions'])assert.ok(found.has(item),item);return true;});
  const corrected=questions.map(q=>q.id==='q2'?{...q,title:'过去30天使用数字阅读服务的频率',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']}:q.id==='q3'?{...q,options:['图书馆电子资源入口','搜索引擎链接','其他渠道']}:q.id==='q4'?{...q,title:'您对搜索响应速度的满意程度如何？'}:q.id==='q5'?{...q,title:'您对校外访问顺畅程度的满意程度如何？'}:q.id==='q7'?{...q,options:['检索结果不相关','资源无法下载']}:q);
  const input=make(corrected);input.introduction='参与自愿。从未使用过数字阅读服务的同学可在相关体验题处选择“未使用过”或直接跳过。';const output=normalizeAIQuestionnaire(input,{outputCount:8});assert.equal(output.questions[1].required,true);assert.equal(output.questions[3].required,false);assert.match(output.questions[3].title,/未使用者可跳过/);assert.doesNotMatch(output.introduction,/选择“未使用过”/);
 });
@@ -120,7 +120,7 @@ test('duplicated hint is removed even from a screening question that already has
 
 test('actual 53980 frequency, mutually exclusive multi-select, and screening branch are reviewable',()=>{
  const q1={id:'q1',type:'single',title:'您目前是否在高校在读？',options:['是，本科生','是，硕士研究生','是，博士研究生','否（结束作答）'],required:true},q2={id:'q2',type:'single',title:'您使用数字阅读服务的频率最接近以下哪一项？',options:['几乎每天','每周4-6次','每周1-3次','每月1-3次','每学期几次或更少','从未使用过'],required:true},q3={id:'q3',type:'multiple',title:'您主要使用哪些类型的数字阅读服务？',options:['电子书平台','学术文献数据库','基本不使用上述服务'],required:false};
- assert.throws(()=>normalizeAIQuestionnaire(make([q1,q2,q3]),{outputCount:3}),error=>{const issues=new Set(error.validationIssues.map(row=>row.questionIndex+':'+row.code));for(const code of ['1:unsupported_branching','1:education_coverage','2:frequency_ambiguous','3:exclusive_multiple_option'])assert.ok(issues.has(code),code);return true;});
+ assert.throws(()=>normalizeAIQuestionnaire(make([q1,q2,q3]),{outputCount:3}),error=>{const issues=new Set(error.validationIssues.map(row=>row.questionIndex+':'+row.code));for(const code of ['1:unsupported_branching','1:education_coverage','2:frequency_ambiguous'])assert.ok(issues.has(code),code);return true;});
  const corrected=[{...q1,options:['是，专科或高职生','是，本科生','是，硕士研究生','是，博士研究生','否（请自行停止作答）']},{...q2,title:'过去30天使用数字阅读服务的频率',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']},{...q3,options:['电子书平台','学术文献数据库','其他服务']}];assert.doesNotThrow(()=>normalizeAIQuestionnaire(make(corrected),{outputCount:3}));
  const constrained={...q1,options:['是，本科生','是，硕士研究生','是，博士研究生','否']};assert.doesNotThrow(()=>normalizeAIQuestionnaire(make([constrained,{...q2,title:'过去30天使用数字阅读服务的频率',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']},{...q3,options:['电子书平台','其他服务']}]),{outputCount:3,instructions:'本次调查仅限本科及以上学生'}));
 });
@@ -167,4 +167,50 @@ test('questions phrased as how many times are checked for interval gaps',()=>{
  const question={...nonuser,title:'过去30天你使用数字阅读服务几次？',options:['0次','1至3次','5至7次','8次及以上']};
  assert.throws(()=>normalizeAIQuestionnaire(make([question,experience,general]),{outputCount:3}),e=>e.validationIssues.some(row=>row.code==='frequency_gap'));
  const good={...question,options:['0次','1至3次','4至7次','8次及以上']};assert.doesNotThrow(()=>normalizeAIQuestionnaire(make([good,experience,general]),{outputCount:3}));
+});
+test('non-users are not instructed to turn missing experience into a neutral rating',()=>{
+ const q={...experience,title:'您对检索便利程度满意吗？（指能否方便地找到所需内容；未使用者请选择中间选项）'};
+ const q2={...experience,id:'q4',title:'资源满足程度如何？（未使用者可选择中间选项）'};
+ const result=normalizeAIQuestionnaire(make([nonuser,q,q2,general]),{outputCount:4});
+ assert.match(result.questions[1].title,/指能否方便地找到所需内容/);
+ for(const row of result.questions.slice(1,3)){assert.doesNotMatch(row.title,/选择中间|请选择中间/);assert.match(row.title,/未使用者可跳过/);assert.equal(row.required,false);}
+ assert.deepEqual(normalizeAIQuestionnaire(result,{outputCount:4}),result);
+});
+test('multi-select options that negate every experience cannot be combined with positive choices',()=>{
+ for(const label of ['过去30天未使用任何数字阅读服务','未遇到过明显困难','没有觉得便捷的方面','过去30天未使用,无法评价']){
+  const multi={id:'q2',type:'multiple',title:'使用情况',required:false,options:['使用电子图书',label]};
+  assert.deepEqual(normalizeAIQuestionnaire(make([nonuser,multi,general]),{outputCount:3}).questions[1].options,multi.options,label);
+ }
+});
+test('agreement statements cannot use satisfaction labels and indirect non-users may skip experience',()=>{
+ const indirect={...nonuser,options:['经常使用','偶尔使用','听说过但从未使用']};
+ const mismatch={...experience,title:'我认为高校数字阅读资源的种类和数量能够满足我的学习与阅读需求。',options:['非常不满意','比较不满意','一般','比较满意','非常满意']};
+ assert.throws(()=>normalizeAIQuestionnaire(make([indirect,mismatch,general]),{outputCount:3}),e=>e.validationIssues?.some(i=>i.code==='scale_dimension_mismatch'));
+ const corrected={...mismatch,options:['非常不同意','比较不同意','不确定','比较同意','非常同意']};
+ const result=normalizeAIQuestionnaire(make([indirect,corrected,general]),{outputCount:3});assert.equal(result.questions[1].required,false);assert.match(result.questions[1].title,/未使用者可跳过/);
+});
+test('a nonuser cannot be instructed to choose a mismatched option or jump to the survey end',()=>{
+ const row={id:'q1',type:'single',title:'在过去30天内，您使用数字阅读服务的频率？（若从未使用，请选择最后一项并可直接跳到问卷末尾）',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上'],required:true};
+ assert.throws(()=>normalizeAIQuestionnaire(make([row,experience,general]),{outputCount:3}),e=>e.validationIssues?.some(i=>i.code==='unsupported_branching'));
+ const correct={...row,title:'在过去30天内，您使用数字阅读服务的频率？'};assert.equal(normalizeAIQuestionnaire(make([correct,experience,general]),{outputCount:3}).questions.length,3);
+});
+test('yes-no screening treats no as non-user and rejects advertised jumps',()=>{
+ const screen={id:'q1',type:'single',title:'您是否在过去30天内使用过学校提供的数字阅读服务？',options:['是','否'],required:true};
+ const result=normalizeAIQuestionnaire(make([screen,experience,general]),{outputCount:3});assert.equal(result.questions[0].required,true);assert.equal(result.questions[1].required,false);
+ assert.throws(()=>normalizeAIQuestionnaire(make([{...screen,options:['是','否（选择此项后可直接跳至第7题结束部分）']},experience,general]),{outputCount:3}),e=>e.validationIssues?.some(i=>i.code==='unsupported_branching'));
+});
+test('resource richness and accessibility cannot be collapsed into one agreement scale',()=>{
+ const row={...experience,title:'请对高校数字阅读服务可提供资源的丰富程度与可获取性作出评价。',options:['非常不同意','比较不同意','一般','比较同意','非常同意']};
+ assert.throws(()=>normalizeAIQuestionnaire(make([nonuser,row,general]),{outputCount:3}),e=>{const codes=e.validationIssues.map(i=>i.code);return codes.includes('scale_dimension_mismatch')&&codes.includes('multiple_dimensions');});
+});
+test('activity-day intervals cannot be paired with incorrect per-week claims',()=>{
+ const q={...nonuser,title:'过去30天内，使用数字阅读服务的大致频率是？',options:['未使用过','1—7天（少于每周1次）','8—14天（约每周1—2次）','15—21天','22—29天','30天']};
+ assert.throws(()=>normalizeAIQuestionnaire(make([q,experience,general]),{outputCount:3}),e=>e.validationIssues?.some(i=>i.code==='frequency_mixed_units'));
+});
+test('all-required claims, zero-day duration labels and undergraduate-only screening cannot mislead mixed student survey',()=>{
+ const duration={id:'q2',type:'scale',title:'过去30天平均每天使用数字阅读服务的时长？',options:['几乎不使用(0天)','不足30分钟','30分钟至1小时','1小时至2小时','超过2小时'],required:true};
+ assert.throws(()=>normalizeAIQuestionnaire(make([nonuser,duration,general]),{outputCount:3}),e=>e.validationIssues?.some(i=>i.code==='scale_dimension_mismatch'));
+ const college={id:'q1',type:'single',title:'您目前就读于哪个本科年级?',options:['一年级','二年级','三年级','四年级','五年级及以上'],required:true};
+ assert.throws(()=>normalizeAIQuestionnaire(make([college,experience,general]),{outputCount:3,instructions:'对象为高校在校学生'}),e=>e.validationIssues?.some(i=>i.code==='education_coverage'));
+ const input=make([nonuser,experience,{...general,required:false}]);input.introduction='参与完全自愿。全部题目均为必答。请按真实情况作答。';const result=normalizeAIQuestionnaire(input,{outputCount:3});assert.doesNotMatch(result.introduction,/全部题目均为必答/);
 });

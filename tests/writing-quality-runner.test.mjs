@@ -55,7 +55,7 @@ for(const error of [Object.assign(new Error('budget exhausted'),{code:'budget_ex
 test('malformed or fabricated review output is rejected without changing the saved manuscript',async()=>{
  const input=chapters(),before=structuredClone(input);let feedback;
  const quality=await plainRunner()({chapters:input,runtime,dispatch:async request=>{const result=response([{...finding(request.task.context.manuscriptExcerpts[0]),quote:'这些原句在提供的稿件中根本不存在'}]);feedback=request.validateReviewOutput(result);return result;}});
- assert.equal(feedback.valid,false);assert.equal(feedback.feedback.code,'review_grounding');assert.equal(quality.status,'partial');assert.equal(quality.reviews[0].findings.length,0);assert.deepEqual(input,before);
+ assert.equal(feedback.valid,false);assert.equal(feedback.feedback.code,'review_grounding');assert.match(feedback.feedback.rule,/第 1 项 quote 不在指定章节/);assert.doesNotMatch(feedback.feedback.rule,/这些原句在提供的稿件中根本不存在/);assert.equal(quality.status,'partial');assert.equal(quality.reviews[0].findings.length,0);assert.deepEqual(input,before);
 });
 
 test('missing model dispatch produces explicit not-started review state while preserving deterministic findings',async()=>{
@@ -116,3 +116,12 @@ test('many tiny chapters keep the JSON context bounded and are all covered witho
 });
 
 test('long school requirements reduce each review batch without dropping manuscript text or exceeding context limits',async()=>{const source=chapters(4,16000),seen=[],run=plainRunner();const quality=await run({snapshot:{title:'开题报告',requirements:{instructions:'学校要求'.repeat(3000)}},chapters:source,runtime,runId:'school-review',dispatch:async({task})=>{seen.push(...task.context.manuscriptExcerpts.map(row=>row.text));assert.ok(JSON.stringify(task.context).length<35000);assert.equal(task.context.scope.excerpted,false);assert.equal(task.context.writingRequirements.length,12000);return response();}});assert.equal(seen.join(''),source.map(row=>row.text).join(''));assert.equal(quality.coverage.complete,true);});
+
+test('review repair feedback distinguishes a misquoted source equation',async()=>{
+ const input=[{id:'c',title:'公式',text:'数学定义 C(n)=n²，长度加倍时数值变为四倍。'}];let feedback;
+ await plainRunner()({chapters:input,runtime,dispatch:async({task,validateReviewOutput})=>{
+  const section=task.context.manuscriptExcerpts[0];const bad=response([{sectionId:section.id,quote:'长度加倍时数值变为四倍',category:'logic',severity:'warning',explanation:'按定义 C(n)=(n+1)²，结论有误。',suggestion:'请核查公式。'}]);
+  feedback=validateReviewOutput(bad).feedback;return response();
+ }});
+ assert.equal(feedback.code,'review_grounding');assert.match(feedback.rule,/公式.*原文不一致/);
+});

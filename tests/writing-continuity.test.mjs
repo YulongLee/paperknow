@@ -73,4 +73,14 @@ test('materials and final review have funded calls inside the same purchase, wit
   if(task.context.operation==='supplement-check')return{...output({context:{unit:{targetWords:10}}}),text:JSON.stringify({items:task.context.chapters.map(row=>({id:row.id,status:'not_required',requirement:'合成方案文字',reason:'本节没有陈述实测数据或研究事实。',manuscriptQuote:row.text.slice(0,20),evidence:[],missing:[]}))})};
   if(task.skill==='writing-review')return{...output({context:{unit:{targetWords:10}}}),text:JSON.stringify({complete:true,findings:[],limitations:[]})};return output(task);
  }}),item=await f.submit();await f.worker.tick();const done=f.get(item.id);assert.equal(done.status,'completed',done.error);assert.equal(supplementCheckReady(done.output.quality),true);assert.equal(f.db.prepare('SELECT count(*) n FROM writing_review_checkpoints WHERE run_id=?').get(item.id).n,3);assert.equal(f.billing.balance('alice').balance,190);assert.deepEqual(f.settlements,[item.id]);
+ const budget=f.db.prepare('SELECT cost_limit_micros,review_allowance FROM writing_execution_budgets WHERE run_id=?').get(item.id);assert.equal(budget.cost_limit_micros,9500000,'new token/retry slots must not increase original dollar ceiling');assert.equal(budget.review_allowance,11);
+});
+
+test('supplement checkpoints keep only bounded read-range metadata across recovery',async t=>{
+ const f=fixture(t,{config:{writingQualityEnabled:true,supplementCheckEnabled:true,citationVerifier:{verify:async()=>({items:[],summary:{},limitations:[]})}},runner:async({task})=>{
+  if(task.context.operation==='supplement-check')return {...output({context:{unit:{targetWords:10}}}),trace:[{tool:'read_material',status:'completed',materialId:'synthetic',offset:2,limit:8,text:'private-not-saved'}],text:JSON.stringify({items:task.context.chapters.map(row=>({id:row.id,status:'not_required',requirement:'合成方案文字',reason:'无需事实资料。',manuscriptQuote:row.text.slice(0,20),evidence:[],missing:[]}))})};
+  if(task.skill==='writing-review')return {...output({context:{unit:{targetWords:10}}}),text:JSON.stringify({complete:true,findings:[],limitations:[]})};return output(task);
+ }}),item=await f.submit();await f.worker.tick();assert.equal(f.get(item.id).status,'completed');
+ const saved=f.db.prepare("SELECT result FROM writing_review_checkpoints WHERE run_id=? AND unit_id LIKE 'supplement-%' LIMIT 1").get(item.id);const result=JSON.parse(saved.result);
+ assert.deepEqual(result.trace,[{tool:'read_material',status:'completed',materialId:'synthetic',offset:2,limit:8}]);assert.doesNotMatch(saved.result,/private-not-saved/);
 });

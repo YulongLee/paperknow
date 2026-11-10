@@ -32,10 +32,10 @@ export function mountDataAnalysis({container=document.querySelector('.dashboard'
  const showError=message=>{if(alive())$('#analysis-error').textContent=message||'';};
  const report=()=>analysisReportText(result,{...formValues(),fileName:dataset?.fileName||'',sheetName:dataset?.sheetName||'',importNotes:dataset?.importNotes||''});
  const wordReport=()=>{
-  const full=report();if(full.length<=50000)return full;
+  const full=analysisReportText(result,{...formValues(),fileName:dataset?.fileName||'',sheetName:dataset?.sheetName||'',importNotes:dataset?.importNotes||''},{wordLayout:true});if(full.length<=50000)return full;
   for(const limit of [20,5,0]){
    const reduced={...result,columns:result.columns.map(column=>column.type==='category'?{...column,frequencies:column.frequencies.slice(0,limit)}:column)};
-   const text=analysisReportText(reduced,{...formValues(),fileName:dataset?.fileName||'',sheetName:dataset?.sheetName||'',importNotes:dataset?.importNotes||''})+'\n分类频数仅列示前 '+limit+' 项，完整统计请导出 CSV。';
+   const text=analysisReportText(reduced,{...formValues(),fileName:dataset?.fileName||'',sheetName:dataset?.sheetName||'',importNotes:dataset?.importNotes||''},{wordLayout:true})+'\n分类频数仅列示前 '+limit+' 项，完整统计请导出 CSV。';
    if(text.length<=50000)return text;
   }
   throw Error('报告内容过长，请先精简研究说明后重试；完整统计可导出 CSV。');

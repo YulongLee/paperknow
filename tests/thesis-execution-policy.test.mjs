@@ -83,3 +83,10 @@ test('timeout recovery requires a closed fully funded reservation and cannot wid
  for(const patch of [{status:'reserved'},{inFlight:1},{budgetExceeded:true},{remainingTokens:0},{remainingCostUsd:0},{id:null}])assert.equal(classifyThesisRetry(error,{settledDispatch:{...settled,...patch}}).retryable,false);
  for(const patch of [{status:499},{status:403},{code:'cost_budget'},{agentTrace:[{status:'denied',tool:'Bash'}]}])assert.equal(classifyThesisRetry({...error,...patch},{settledDispatch:settled}).retryable,false);
 });
+
+test('external tool correction requires the settled original budget and never admits local or mixed denied tools',()=>{
+ const error={status:502,code:'unauthorized_tool',agentTrace:[{status:'denied',tool:'mcp__foreign__read_material'}]},settled={id:'dispatch-1',status:'failed',inFlight:0,budgetExceeded:false,remainingTokens:50000,remainingCostUsd:.2};
+ assert.equal(classifyThesisRetry(error,{settledDispatch:settled}).reason,'funded_denied_external_tool');
+ for(const patch of [{status:'reserved'},{inFlight:1},{budgetExceeded:true},{remainingTokens:0},{remainingCostUsd:0},{id:null}])assert.equal(classifyThesisRetry(error,{settledDispatch:{...settled,...patch}}).retryable,false);
+ for(const patch of [{status:403},{code:'permission_denied'},{agentTrace:[]},{agentTrace:[{status:'denied',tool:'Bash'}]},{agentTrace:[{status:'denied',tool:'mcp__paperknow__read_material'}]},{agentTrace:[...error.agentTrace,{status:'denied',tool:'Bash'}]}])assert.equal(classifyThesisRetry({...error,...patch},{settledDispatch:settled}).retryable,false);
+});

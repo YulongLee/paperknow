@@ -51,9 +51,31 @@ export async function parseThesisDraftDocx(bytes,{name='初稿.docx',snapshot}={
   }else if(['sdt','sdtContent','customXml'].includes(child.localName))collect(child);
  }}collect(body);
  if(blocks.length>3000)fail('初稿段落较多，请拆分后再上传。');
+ // Only discard pre-abstract material when a recognizable dissertation cover
+ // with an originality/authorization declaration is present; the original
+ // file remains stored and the UI is warned. Never heuristically strip a
+ // general document's introductory prose.
+ let contentBlocks=blocks;
+ const abstractAt=blocks.findIndex(row=>/^摘要\s*[:：]\s*\S/.test(row.text));
+ const hasCover=abstractAt>0&&blocks.slice(0,abstractAt).some(row=>/论文(?:（设计）|\(设计\))?(?:独创性|原创性|使用授权)声明/.test(row.text));
+ if(hasCover){contentBlocks=blocks.slice(abstractAt);warnings.push('已识别封面和声明，不作为正文导入；原文件仍保留，请核对封面信息。');}
  const groups=[];let current=null;
- for(const block of blocks){if(block.level===1){current={title:block.text,texts:[]};groups.push(current);}else{if(!current){current={title:'导入初稿正文',texts:[]};groups.push(current);}current.texts.push(block.level>1?'## '+block.text:block.text);}}
- const meaningful=groups.filter(row=>row.texts.some(text=>text.trim()));if(!meaningful.some(row=>!isOutlineReferenceChapter(row)&&!thesisFrontMatterKind(row)&&!thesisManualBackMatter(row)))fail('没有识别到可导入的正文，请检查初稿是否仅包含封面、目录或参考文献。');
+ for(let index=0;index<contentBlocks.length;index++){
+  const block=contentBlocks[index],next=contentBlocks[index+1];
+  // Titles directly preceding an inline English abstract belong to that
+  // abstract, not to the previous Chinese abstract or a spurious chapter.
+  if(next&&/^Abstract\s*[:：]\s*\S/i.test(next.text)&&/^[A-Za-z][^\n]{5,240}$/.test(block.text)&&!/^[A-Za-z]+\s*[:：]/.test(block.text)){
+   current={title:'Abstract',texts:[block.text,next.text]};groups.push(current);index++;continue;
+  }
+  const inline=/^摘要\s*[:：]\s*\S/.test(block.text)?'摘要':/^Abstract\s*[:：]\s*\S/i.test(block.text)?'Abstract':'';
+  if(inline){current={title:inline,texts:[block.text]};groups.push(current);}
+  else if(block.level===1){current={title:block.text,texts:[]};groups.push(current);}
+  else{if(!current){current={title:'导入初稿正文',texts:[]};groups.push(current);}current.texts.push(block.level>1?'## '+block.text:block.text);}
+ }
+ // Suppress only the exact system-generated materials index and empty
+ // appendix placeholders. Real author-written appendices are kept.
+ const meaningful=groups.filter(row=>row.texts.some(text=>text.trim())&&!(/^研究材料来源（用户提供，待人工核对）$/.test(row.title))&&!(/^附录\s*[A-ZＡ-Ｚ]$/i.test(row.title)&&row.texts.every(text=>/^【待补充[：:]附录】$/.test(text.trim()))));
+ if(meaningful.length<groups.filter(row=>row.texts.some(text=>text.trim())).length)warnings.push('已略过系统生成的材料清单及空白附录占位，原文件仍保留。');if(!meaningful.some(row=>!isOutlineReferenceChapter(row)&&!thesisFrontMatterKind(row)&&!thesisManualBackMatter(row)))fail('没有识别到可导入的正文，请检查初稿是否仅包含封面、目录或参考文献。');
  if(meaningful.length>30)fail('初稿章节超过 30 个，请合并章节后重试。');
  const characters=meaningful.reduce((sum,row)=>sum+row.texts.join('\n\n').length,0);if(characters<100||characters>200000)fail('初稿正文需为 100～200,000 个字符，请检查文件内容。');
  const sha=fileSha,referenceGroups=meaningful.filter(isOutlineReferenceChapter),imported=importDraftReferences(referenceGroups,{sha,references:snapshot.references||[]}),{references,citationIds}=imported;warnings.push(...imported.warnings);

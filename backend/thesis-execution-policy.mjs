@@ -66,6 +66,12 @@ export function computeThesisRunBudget({snapshot={},plan,settings={},config={},r
 export function classifyThesisRetry(error,{settledDispatch=null}={}){
  const code=typeof error?.code==='string'?error.code.toLowerCase():'';
  const status=Number(error?.status);
+ // A hallucinated external MCP name was rejected before execution. A single
+ // fresh attempt may correct the model, but never grant the requested tool.
+ // Charge the failed dispatch's full reservation when usage is unknown, and
+ // require the same frozen run ledger to fund the retry.
+ const denied=Array.isArray(error?.agentTrace)?error.agentTrace.filter(row=>row?.status==='denied'):[];
+ if(code==='unauthorized_tool'&&status===502&&denied.length>0&&denied.every(row=>typeof row.tool==='string'&&/^mcp__(?!paperknow__)[A-Za-z0-9_]{1,100}$/.test(row.tool))&&settledDispatch?.status==='failed'&&typeof settledDispatch.id==='string'&&settledDispatch.inFlight===0&&settledDispatch.budgetExceeded===false&&Number.isSafeInteger(settledDispatch.remainingTokens)&&settledDispatch.remainingTokens>=1000&&Number.isFinite(settledDispatch.remainingCostUsd)&&settledDispatch.remainingCostUsd>=.01)return {retryable:true,reason:'funded_denied_external_tool'};
  if(Array.isArray(error?.agentTrace)&&error.agentTrace.some(row=>row?.status==='denied'))return {retryable:false,reason:'non_recoverable'};
  const usage=error?.usage;
  const usageKnown=usage&&Number.isSafeInteger(usage.input)&&usage.input>=0&&Number.isSafeInteger(usage.output)&&usage.output>=0&&Number.isSafeInteger(usage.input+usage.output)&&usage.input+usage.output>0;

@@ -46,3 +46,58 @@ test('article rich content survives real worker checkpoints, settlement and edit
  assert.equal(edited.plan.map(unit=>unit.revisionOriginal).join(''),editedText);const figureUnit=edited.plan.find(unit=>unit.revisionOriginal.includes(figureMarker));assert.ok(figureUnit);assert.ok(figureUnit.revisionFigures,JSON.stringify({figureUnit,storedFigures:stored.figures}));assert.equal(figureUnit.revisionFigures[0].id,stored.figures[0].id);assert.ok(edited.plan.every(unit=>!unit.revisionOriginal.includes('[figure:')||unit.revisionOriginal.includes(figureMarker)));
  const options={documentKind:'writing',metadata:{title:snap.title,chapterTitles:snap.outline.map(row=>row.title),figures:stored.figures},figureRasterizer:async()=>new Uint8Array(pngFixture(800,500))},{presentThesisDocument}=await import('../dist/workspace/thesis-document.mjs'),text=presentThesisDocument({...stored.sourceSnapshot,title:snap.title,outline:[]},[{title:'',text:stored.text,figures:stored.figures,sourceIds:stored.sourceIds}]),bytes=await createWritingDocx(text,options),zip=await JSZip.loadAsync(bytes),xml=await zip.file('word/document.xml').async('string');assert.match(xml,/<w:drawing\b/);assert.match(xml,/<w:tbl\b/);assert.match(xml,/<m:oMath/);assert.match(xml,/x=1/);assert.match(xml,/拟开展的方法流程/);assert.doesNotMatch(xml,/\[figure:/);await inspectThesisExportContent(bytes,text,options);
 });
+
+test('unsupported background claims are revised without fabricating research evidence',()=>{
+ const value=normalizeWritingSnapshot(snapshot());
+ const unit={id:'a',title:'研究范围',targetWords:500,completion:true,revisionOriginal:'学生仅靠记公式难以体会。'};
+ const task=writingCompletionTask(writingTask('article','draft',value,unit),unit);
+ assert.match(task.instructions,/研究背景同样需要证据/);
+ assert.match(task.instructions,/研究动机或待验证问题/);
+ assert.match(task.instructions,/不得索取虚构证据/);
+ assert.match(task.instructions,/实际数据、身份和研究结果/);
+ assert.match(task.instructions,/仍须明确列出缺失资料/);
+});
+
+test('supplement gaps target their saved section even when a separate review also has findings',async t=>{
+ const f=fixture(t),base=await f.submit();await f.worker.tick();
+ const row=f.db.prepare('SELECT output,plan FROM writing_runs WHERE id=?').get(base.id),output=JSON.parse(row.output),plan=JSON.parse(row.plan);
+ const first=f.db.prepare('SELECT output FROM writing_checkpoints WHERE run_id=? AND unit_id=?').get(base.id,plan[0].id);
+ const second=f.db.prepare('SELECT output FROM writing_checkpoints WHERE run_id=? AND unit_id=?').get(base.id,plan[1].id);
+ const firstText=JSON.parse(first.output).text,secondText=JSON.parse(second.output).text;
+ output.quality={consistency:{findings:[{sectionId:plan[1].id,quote:secondText.slice(0,8)}]},supplementCheck:{items:[{id:'check-0-0',title:plan[0].title,status:'missing',manuscriptQuote:firstText.slice(0,8)}]}};
+ f.db.prepare('UPDATE writing_runs SET output=? WHERE id=?').run(JSON.stringify(output),base.id);
+ const prepared=prepareWritingCompletion(f.db,f.user,{kind:'proposal',operation:'draft',snapshot:normalizeWritingSnapshot(snapshot()),projectId:null},{baseJobId:base.id});
+ assert.equal(prepared.retained.length,0);assert.ok(prepared.plan.every(unit=>unit.revisionOriginal));
+});
+
+test('automatic improvement receives only exact, still-current section findings as untrusted review suggestions',async t=>{
+ const f=fixture(t),base=await f.submit();await f.worker.tick();
+ const row=f.db.prepare('SELECT output,plan FROM writing_runs WHERE id=?').get(base.id),output=JSON.parse(row.output),plan=JSON.parse(row.plan);
+ const first=JSON.parse(f.db.prepare('SELECT output FROM writing_checkpoints WHERE run_id=? AND unit_id=?').get(base.id,plan[0].id).output).text;
+ const second=JSON.parse(f.db.prepare('SELECT output FROM writing_checkpoints WHERE run_id=? AND unit_id=?').get(base.id,plan[1].id).output).text;
+ output.quality={consistency:{findings:[{sectionId:plan[1].id,quote:second.slice(0,12),category:'claim_scope',explanation:'可能超出资料范围',suggestion:'依据原文限定范围'},{sectionId:plan[0].id,quote:'不在原文中的句子',category:'logic',explanation:'不应传递'}]},supplementCheck:{items:[{id:'check-0-0',title:plan[0].title,status:'missing',manuscriptQuote:first.slice(0,12),reason:'依据不足',missing:['提供记录或改写为研究问题']} ]}};
+ f.db.prepare('UPDATE writing_runs SET output=? WHERE id=?').run(JSON.stringify(output),base.id);
+ const value=prepareWritingCompletion(f.db,f.user,{kind:'proposal',operation:'draft',snapshot:normalizeWritingSnapshot(snapshot()),projectId:null},{baseJobId:base.id});
+ assert.ok(value.plan[0].revisionFindings.some(item=>item.category==='missing_evidence'));assert.ok(value.plan[1].revisionFindings.some(item=>item.category==='claim_scope'));assert.ok(value.plan.every(unit=>!JSON.stringify(unit.revisionFindings).includes('不在原文中的句子')));
+ const task=writingCompletionTask(writingTask('proposal','draft',normalizeWritingSnapshot(snapshot()),value.plan[1]),value.plan[1]);
+ assert.match(task.instructions,/审校建议，不是事实依据，可能有误/);assert.equal(task.context.unit.revisionFindings,undefined);assert.equal(task.context.revisionFindings[0].suggestion,'依据原文限定范围');
+ const edited=prepareWritingCompletion(f.db,f.user,{kind:'proposal',operation:'draft',snapshot:normalizeWritingSnapshot(snapshot()),projectId:null},{baseJobId:base.id,text:'作者已重新撰写全部正文。'.repeat(20)});
+ assert.ok(edited.plan.every(unit=>!unit.revisionFindings),'findings from an obsolete passage must not be supplied after the author rewrites it');
+});
+
+test('interrupted completion retains only bounded, located suggestions for its original owner',async t=>{
+ const f=fixture(t),base=await f.submit();await f.worker.tick();const row=f.db.prepare('SELECT plan FROM writing_runs WHERE id=?').get(base.id),plan=JSON.parse(row.plan),first=JSON.parse(f.db.prepare('SELECT output FROM writing_checkpoints WHERE run_id=? AND unit_id=?').get(base.id,plan[0].id).output).text;
+ plan[0]={...plan[0],completion:true,revisionOriginal:first,revisionFindings:[{quote:first.slice(0,12),category:'claim_scope',reason:'校对范围',suggestion:'核对材料',privateExtra:'不应进入模型'}, {quote:'这句已不存在',category:'stale',reason:'不应恢复'}]};
+ f.db.prepare('UPDATE writing_runs SET plan=? WHERE id=?').run(JSON.stringify(plan),base.id);f.db.prepare('DELETE FROM writing_checkpoints WHERE run_id=? AND unit_id=?').run(base.id,plan[0].id);
+ const input={kind:'proposal',operation:'draft',snapshot:normalizeWritingSnapshot(snapshot()),projectId:null};
+ const resumed=prepareWritingCompletion(f.db,f.user,input,{baseJobId:base.id});const unit=resumed.plan[0];assert.equal(unit.revisionFindings.length,1);assert.equal(unit.revisionFindings[0].suggestion,'核对材料');assert.equal(unit.revisionFindings[0].privateExtra,undefined);
+ const task=writingCompletionTask({instructions:'原契约。',context:{unit}},unit);assert.doesNotMatch(JSON.stringify(task),/不应进入模型|这句已不存在/);assert.match(task.instructions,/审校建议，不是事实依据，可能有误/);
+ assert.throws(()=>prepareWritingCompletion(f.db,{id:'bob'},input,{baseJobId:base.id}),error=>error.status===404);
+});
+
+test('repeated text in different sections never moves a supplement finding to the wrong section',async t=>{
+ const f=fixture(t),base=await f.submit();await f.worker.tick();const saved=f.db.prepare('SELECT output,plan FROM writing_runs WHERE id=?').get(base.id),output=JSON.parse(saved.output),plan=JSON.parse(saved.plan),text=JSON.parse(f.db.prepare('SELECT output FROM writing_checkpoints WHERE run_id=? AND unit_id=?').get(base.id,plan[0].id).output).text,quote=text.slice(0,12);
+ output.quality={supplementCheck:{items:[{id:'check-0-0',title:plan[0].title,status:'missing',manuscriptQuote:quote,reason:'第一节缺少依据',missing:['补充相关资料']}]}};f.db.prepare('UPDATE writing_runs SET output=? WHERE id=?').run(JSON.stringify(output),base.id);
+ const input={kind:'proposal',operation:'draft',snapshot:normalizeWritingSnapshot(snapshot()),projectId:null},result=prepareWritingCompletion(f.db,f.user,input,{baseJobId:base.id});assert.equal(result.plan[0].revisionFindings[0].reason,'第一节缺少依据');assert.equal(result.plan[1].revisionFindings,undefined);assert.equal(result.plan[1].retained,true);
+ output.quality.supplementCheck.items[0].title='';f.db.prepare('UPDATE writing_runs SET output=? WHERE id=?').run(JSON.stringify(output),base.id);const ambiguous=prepareWritingCompletion(f.db,f.user,input,{baseJobId:base.id});assert.ok(ambiguous.plan.every(unit=>!unit.revisionFindings),'a legacy ambiguous quote must not be assigned to either section');
+});

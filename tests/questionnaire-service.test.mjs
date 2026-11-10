@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {database} from '../backend/database.mjs';
+import {normalizeAIQuestionnaire} from '../dist/workspace/questionnaire-model.mjs';
 import {createQuestionnaireService,normalizeQuestionnaireContent,normalizeQuestionnaireAnswers,questionnaireReport,questionnaireCsvCell} from '../backend/questionnaire-service.mjs';
 const content=(title='合成验收问卷')=>({title,audience:'合成测试者',purpose:'功能验收，不代表真实研究',introduction:'匿名自愿，请勿提交敏感信息',questions:[{id:'single-1',type:'single',title:'您偏好的入口？',options:['线上','线下'],required:true},{id:'multiple-1',type:'multiple',title:'需要哪些支持？',options:['检索','阅读','反馈'],required:false},{id:'scale-1',type:'scale',title:'满意程度（1～5）',options:[],required:true},{id:'text-1',type:'text',title:'建议（可选）',options:[],required:false}]});
 function fixture(t,config={}){const db=database(':memory:');for(const id of ['alice','bob'])db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run(id,id+'@example.test',id,null,'user',new Date().toISOString());const service=createQuestionnaireService(db,config);t.after(()=>db.close());const call=async(path,input,user={id:'alice'},clientKey='127.0.0.1')=>{const url=new URL('http://local'+path);try{return await service.handle({path:url.pathname,method:input===undefined?'GET':'POST',user,query:url.searchParams,readBody:async()=>input,clientKey});}catch(error){return{status:error.status||500,value:{error:error.message}};}};const create=async (c=content())=>(await call('/api/questionnaires',{content:c})).value.item;const publish=async item=>(await call('/api/questionnaires/'+item.id+'/publish',{version:item.version})).value.item;return{db,service,call,create,publish};}
@@ -53,4 +54,21 @@ test('captured expected owner protects report, CSV and publication operations be
 test('changing only AI count/scale preferences leaves the immutable current publication matched',async t=>{
  const f=fixture(t),first=await f.publish(await f.create()),pub=first.publications[0],saved=(await f.call('/api/questionnaires/'+first.id,{version:first.version,content:{...first.content,questionCount:10,scalePoints:7},expectedUserId:'alice'})).value.item;
  assert.equal(saved.publications[0].matchesDraft,true);assert.equal((await f.publish(saved)).publications[0].token,pub.token);
+});
+test('published multi-select rejects a none-of-the-above option combined with any other answer',async t=>{
+ const f=fixture(t),c=content();c.questions[1].options=['检索','反馈','以上均无'];const item=await f.publish(await f.create(c)),url='/api/questionnaires/public/'+item.publications[0].token+'/responses';
+ const incompatible=answer(undefined,{answers:{'single-1':'线上','multiple-1':['检索','以上均无'],'scale-1':'4'}});const rejected=await f.call(url,incompatible,null);assert.equal(rejected.status,400);assert.match(rejected.value.error,/不能与其他选项同时选择/);
+ assert.equal((await f.call(url,answer('synthetic-participant-00002',{answers:{'single-1':'线上','multiple-1':['以上均无'],'scale-1':'4'}}),null)).status,201);
+ assert.equal((await f.call(url,answer('synthetic-participant-00003',{answers:{'single-1':'线上','multiple-1':['检索','反馈'],'scale-1':'4'}}),null)).status,201);
+});
+
+
+test('AI generated none-of-the-above option remains usable from publication to validated response',async t=>{
+ const generated=normalizeAIQuestionnaire({title:'阅读服务调查',introduction:'本问卷匿名自愿参与，请按实际情况填写。',questions:[{id:'q1',type:'multiple',title:'您使用过哪些服务？',options:['检索','阅读','以上均无'],required:true},{id:'q2',type:'single',title:'你更常使用哪种方式？',options:['线上','线下'],required:false},{id:'q3',type:'text',title:'其他建议',options:[],required:false}]},{outputCount:3});
+ const f=fixture(t),item=await f.publish(await f.create(generated)),path='/api/questionnaires/public/'+item.publications[0].token;
+ assert.deepEqual((await f.call(path,undefined,null)).value.questionnaire.questions[0].options,['检索','阅读','以上均无']);
+ const submit=(id,answers)=>f.call(path+'/responses',{participantId:id,consent:true,answers:{q1:answers}},null);
+ assert.equal((await submit('generated-none-participant-001',['以上均无'])).status,201);
+ assert.equal((await submit('generated-none-participant-002',['检索','阅读'])).status,201);
+ assert.equal((await submit('generated-none-participant-003',['检索','以上均无'])).status,400);
 });

@@ -5,11 +5,11 @@ import {thesisRunTokenCeiling} from './thesis-execution-policy.mjs';
 // Existing frozen ceilings, dispatches, identities and audit triggers survive.
 export function migrateThesisTokenCeiling(db){
  const saved=db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='thesis_execution_budgets'").get();
- if(!saved||! /token_limit\s*<=\s*2000000\b/i.test(saved.sql))return false;
+ if(!saved||(!/token_limit\s*<=\s*2000000\b/i.test(saved.sql)&&!/review_allowance\s*<=\s*24\b/i.test(saved.sql)))return false;
  if(db.isTransaction)throw new Error('论文预算结构升级必须在事务外初始化');
  const extra=db.prepare("SELECT sql FROM sqlite_master WHERE tbl_name='thesis_execution_budgets' AND type IN ('index','trigger') AND sql IS NOT NULL").all();
  const foreignKeys=db.prepare('PRAGMA foreign_keys').get().foreign_keys;
- const definition=saved.sql.slice(saved.sql.indexOf('(')).replace(/token_limit\s*<=\s*2000000\b/i,`token_limit<=${thesisRunTokenCeiling}`);
+ const definition=saved.sql.slice(saved.sql.indexOf('(')).replace(/token_limit\s*<=\s*2000000\b/i,`token_limit<=${thesisRunTokenCeiling}`).replace(/review_allowance\s*<=\s*24\b/i,'review_allowance<=256');
  db.exec('PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE;');
  try{
   const before=db.prepare('SELECT count(*) n FROM thesis_execution_budgets').get().n;

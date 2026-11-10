@@ -82,3 +82,9 @@ test('completion context retains existing diagrams as manuscript data and stays 
  const input=chapter(),snapshot=normalizeThesisSnapshot({title:'识别系统设计研究',profile:{level:'本科',targetWords:500},requirements:{contentMode:'rich'},materials:[],references:[],outline:[{id:'c',title:'系统设计',targetWords:500,presentation:{image:true}}]}),unit={id:'u',chapterId:'c',chapterTitle:'系统设计',title:'系统设计',targetWords:500,part:1,parts:1,presentation:{image:true},completion:{originalText:input.text,originalFigures:input.figures,findings:[]}};
  const task=thesisAgentTask(snapshot,unit,[]);assert.deepEqual(task.context.revision.originalFigures,input.figures);assert.match(task.instructions,/不能只保留图片占位符/);assert.ok(JSON.stringify(task.context).length<35000);
 });
+
+test('formal export does not bypass a deterministic mathematical consistency warning',()=>{
+ const text='完全配对定义 C(n)=n²。连续变化率为 $$\\frac{dC}{dn}=2n$$，说明长度每增加一个单位，新增配对数量随当前长度线性增大。';
+ const finding={sectionId:'math',severity:'warning',category:'method_result_consistency',quote:'长度每增加一个单位，新增配对数量随当前长度线性增大'};
+ const report=auditThesisSubmission({text,quality:{consistency:{findings:[finding]},reviews:[]}});assert.ok(report.submission.issues.some(row=>row.code==='review_findings'));
+});

@@ -2,9 +2,11 @@ import {computeThesisRunBudget,classifyThesisRetry} from './thesis-execution-pol
 
 // Plan the whole document before dispatch. The saved per-call dollar ceiling
 // remains unchanged; a fresh provider call cannot expand the frozen run budget.
-export function computeWritingRunBudget({snapshot={},plan,settings={},config={}}={}){
+export function computeWritingRunBudget({snapshot={},plan,settings={},config={},reviewAllowance=1}={}){
  const explicit=config.writingMaxRunTokens??config.writingMaxTokens;
- return computeThesisRunBudget({snapshot,plan,settings,config:explicit!==undefined?{thesisMaxRunTokens:explicit}:{}});
+ // Writing's persisted ledger is capped at two million tokens. Honor a
+ // smaller operator limit and never create a budget outside its schema.
+ return Math.min(2000000,computeThesisRunBudget({snapshot,plan,settings,reviewAllowance,config:explicit!==undefined?{thesisMaxRunTokens:explicit}:{}}));
 }
 export function classifyWritingRetry(error){
  // A source-attribution repair has its own single bounded path. It must not

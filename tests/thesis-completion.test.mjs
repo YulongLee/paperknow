@@ -69,6 +69,11 @@ function fullFixture(t,{missing=false,persistentFinding=false,repair=false,expre
  return {...f,allCalls:calls};
 }
 async function submitFull(f,item){const quote=await f.request('/api/theses/'+item.id+'/quote',{version:item.version,completion:true,completionScope:'full',action:'generate'});await f.request('/api/theses/'+item.id+'/generate',{version:item.version,clientKey:randomUUID(),consent:true,completion:true,billingToken:quote.token});return quote;}
+test('a long original is refused before quoting or charging instead of overwriting its tail with an excerpt',async t=>{
+ const f=fixture(t,{thesisContinuousEnabled:true,writingQualityEnabled:true,supplementCheckEnabled:true});f.pay();let item=await completeSaved(f);const text='研'.repeat(13000)+'\n\n作者唯一尾部与结论。';item=await f.save(item,'c1',text);
+ await assert.rejects(f.request('/api/theses/'+item.id+'/quote',{version:item.version,completion:true,completionScope:'full',action:'generate'}),error=>error.status===422&&/无法完整处理/.test(error.message));
+ assert.equal(f.get(item.id).chapters.find(row=>row.id==='c1').text,text);assert.equal(f.db.prepare('SELECT count(*) n FROM jobs').get().n,0);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.calls.length,0);
+});
 const confirmation=item=>({version:item.version,runId:item.job.id,fingerprint:item.completionReview.fingerprint});
 test('full completion fills all writing sections and a neutral acknowledgement, then waits for an account-bound confirmation',async t=>{
  const f=fullFixture(t);f.pay();let item=await completeSaved(f);const ack=item.chapters.find(row=>/致谢/.test(row.title));item=await f.save(item,ack.id,'');const before=item.chapters.map(row=>[row.id,row.version]);
@@ -106,7 +111,7 @@ test('cancelling a comprehensive completion during repair preserves the publishe
 });
 test('automatic completion repair respects the original fixed dollar ceiling and does not widen a running budget',async t=>{
  const f=fullFixture(t,{repair:true,thesisMaxRunCostUsd:1});let item=await completeSaved(f);await submitFull(f,item);await f.worker.tick();item=f.get(item.id);assert.equal(item.job.status,'completed',item.job.error);
- const budget=f.db.prepare('SELECT cost_limit_micros,review_allowance FROM thesis_execution_budgets WHERE run_id=?').get(item.job.id);assert.equal(budget.cost_limit_micros,1000000);assert.ok(budget.review_allowance<=24);assert.ok(f.db.prepare('SELECT sum(charged_cost_micros) n FROM thesis_execution_dispatches WHERE run_id=?').get(item.job.id).n<=1000000);
+ const budget=f.db.prepare('SELECT cost_limit_micros,review_allowance FROM thesis_execution_budgets WHERE run_id=?').get(item.job.id);assert.equal(budget.cost_limit_micros,1000000);assert.ok(budget.review_allowance<=256);assert.ok(f.db.prepare('SELECT sum(charged_cost_micros) n FROM thesis_execution_dispatches WHERE run_id=?').get(item.job.id).n<=1000000);
 });
 test('only missing cover facts can be supplied after completion without another AI call or purchase',async t=>{
  const f=fullFixture(t);f.pay();let item=await completeSaved(f);item=(await f.request('/api/theses/'+item.id+'/export-metadata',{version:item.version,metadata:{}})).item;await submitFull(f,item);await f.worker.tick();item=f.get(item.id);assert.equal(item.completionReview.status,'needs_materials');assert.ok(item.completionReview.missing.some(text=>text.includes('作者姓名')));const calls=f.allCalls.length,runId=item.job.id;

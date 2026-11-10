@@ -75,7 +75,7 @@ test('strict section validation rejects unknown/unread sources, shortages, trunc
 });
 
 test('actual chapter prose must stay inside the unit budget in both Chinese characters and English words',()=>{
- const boundaries=[[20,20,40],[97,77,117],[171,136,206],[199,159,239],[200,160,240],[232,185,279],[1800,1440,2160]];
+ const boundaries=[[20,20,40],[97,77,117],[171,136,206],[199,159,239],[200,160,250],[232,185,291],[509,407,631],[999,799,1219],[1000,800,1220],[1800,1440,2180]];
  for(const language of ['中文','English'])for(const [target,min,max] of boundaries){
   const value=normalizeThesisSnapshot(snapshot({profile:{...snapshot().profile,language}})),unit={...thesisPlan(value)[0],targetWords:target},task=thesisAgentTask(value,unit,[]);
   assert.equal(task.context.lengthBudget.target,target);assert.equal(task.context.lengthBudget.min,min);assert.equal(task.context.lengthBudget.max,max);
@@ -307,7 +307,7 @@ test('a historical short-evidence command is idempotent and can resume only with
 test('production thesis task describes only its registered full-candidate tools and preserves the fixed unit range',()=>{
  for(const language of ['中文','English']){
   const value=normalizeThesisSnapshot(snapshot({profile:{...snapshot().profile,language,targetWords:1000},outline:[{id:'c1',title:'研究背景',targetWords:1000}]})),unit=thesisPlan(value)[0],task=thesisAgentTask(value,unit,[]);
-  assert.match(task.instructions,/本任务只开放 read_material 和 submit_writing_output/);assert.doesNotMatch(task.instructions,/check_text_length|list_materials|load_skill|必须立即将本次已检查的原文/);assert.match(task.instructions,/完整 JSON 对象.*candidate 提交/);assert.match(task.instructions,/accepted=false/);assert.match(task.instructions,/accepted=true.*完整结果已冻结/);assert.match(task.instructions,/不以最终自由文本代替提交/);assert.equal(task.context.lengthBudget.target,1000);assert.equal(task.context.lengthBudget.min,800);assert.equal(task.context.lengthBudget.max,1200);assert.match(task.context.lengthBudget.countMethod,language==='English'?/英文按词/:/中文按非空白/);assert.equal(task.context.profile.targetWords,1000);
+  assert.match(task.instructions,/本任务只开放 read_material 和 submit_writing_output/);assert.doesNotMatch(task.instructions,/check_text_length|list_materials|load_skill|必须立即将本次已检查的原文/);assert.match(task.instructions,/完整 JSON 对象.*candidate 提交/);assert.match(task.instructions,/accepted=false/);assert.match(task.instructions,/accepted=true.*完整结果已冻结/);assert.match(task.instructions,/不以最终自由文本代替提交/);assert.equal(task.context.lengthBudget.target,1000);assert.equal(task.context.lengthBudget.min,800);assert.equal(task.context.lengthBudget.max,1220);assert.match(task.context.lengthBudget.countMethod,language==='English'?/英文按词/:/中文按非空白/);assert.equal(task.context.profile.targetWords,1000);
  }
 });
 

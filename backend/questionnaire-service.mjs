@@ -1,5 +1,5 @@
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
-import {normalizeScaleOptions} from '../dist/workspace/questionnaire-model.mjs';
+import {normalizeScaleOptions,isExclusiveQuestionnaireOption} from '../dist/workspace/questionnaire-model.mjs';
 const fail=(status,message)=>{const error=new Error(message);error.status=status;throw error;};
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const object=(value,allowed)=>{if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!allowed.includes(key)))fail(400,'问卷包含不支持的字段');return value;};
@@ -30,7 +30,7 @@ export function normalizeQuestionnaireAnswers(content,input){
  const answers=object(input.answers,content.questions.map(q=>q.id)),result={};
  for(const q of content.questions){const answer=answers[q.id],empty=answer===undefined||answer===null||answer===''||Array.isArray(answer)&&!answer.length;if(empty){if(q.required)fail(400,`请完成必填问题：${q.title}`);continue;}
   if(q.type==='text')result[q.id]=text(answer,2000,true);
-  else if(q.type==='multiple'){if(!Array.isArray(answer)||answer.length>q.options.length||new Set(answer).size!==answer.length||answer.some(v=>typeof v!=='string'||!q.options.includes(v)))fail(400,'多选答案包含无效选项');result[q.id]=answer;}
+  else if(q.type==='multiple'){if(!Array.isArray(answer)||answer.length>q.options.length||new Set(answer).size!==answer.length||answer.some(v=>typeof v!=='string'||!q.options.includes(v)))fail(400,'多选答案包含无效选项');if(answer.length>1&&answer.some(isExclusiveQuestionnaireOption))fail(400,'“以上均无”等选项不能与其他选项同时选择');result[q.id]=answer;}
   else {if(typeof answer!=='string'||!q.options.includes(answer))fail(400,'单选或量表答案无效');result[q.id]=answer;}
  }
  if(Buffer.byteLength(JSON.stringify(result))>30000)fail(413,'答卷内容过长');return result;

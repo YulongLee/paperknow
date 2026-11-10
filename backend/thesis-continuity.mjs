@@ -6,7 +6,7 @@ const scale=1000000,maxCost=50;
 const fail=(status,message,code)=>{throw Object.assign(new Error(message),{status,code});};
 const micros=value=>Math.ceil(value*scale);
 const amount=value=>value/scale;
-const reasons=new Set(['completed','process_interrupted','truncated','turn_limit','invalid_json','invalid_output','incomplete','word_limit_exceeded','usage_unknown','budget_exceeded','cost_budget','needs_materials','unknown_source','unread_source','draft_disclosure_missing','presentation_not_selected','unsupported_image','moderation_rejected','content_rejected','cancelled','timeout','provider_error','execution_failed']);
+const reasons=new Set(['completed','process_interrupted','truncated','turn_limit','invalid_json','invalid_output','incomplete','word_limit_exceeded','usage_unknown','budget_exceeded','cost_budget','needs_materials','unknown_source','unread_source','draft_disclosure_missing','presentation_not_selected','unsupported_image','moderation_rejected','content_rejected','unauthorized_tool','cancelled','timeout','provider_error','execution_failed']);
 const reason=value=>reasons.has(value)?value:'execution_failed';
 const validUsage=value=>Boolean(value&&Number.isSafeInteger(value.input)&&value.input>=0&&Number.isSafeInteger(value.output)&&value.output>=0&&Number.isSafeInteger(value.input+value.output)&&value.input+value.output>0);
 const validCost=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0&&Number.isSafeInteger(micros(value));
@@ -16,7 +16,7 @@ export function createThesisContinuity(db,config={}){
  migrateThesisTokenCeiling(db);
  db.exec(`CREATE TABLE IF NOT EXISTS thesis_execution_budgets(
   run_id TEXT NOT NULL REFERENCES thesis_runs(id),attempt INTEGER NOT NULL CHECK(attempt>=1),
-  user_id TEXT NOT NULL REFERENCES users(id),settings_version TEXT NOT NULL,unit_ids TEXT NOT NULL,review_allowance INTEGER NOT NULL CHECK(review_allowance>=1 AND review_allowance<=24),
+  user_id TEXT NOT NULL REFERENCES users(id),settings_version TEXT NOT NULL,unit_ids TEXT NOT NULL,review_allowance INTEGER NOT NULL CHECK(review_allowance>=1 AND review_allowance<=256),
   token_limit INTEGER NOT NULL CHECK(token_limit>=1000 AND token_limit<=${thesisRunTokenCeiling}),
   cost_limit_micros INTEGER NOT NULL CHECK(cost_limit_micros>=10000 AND cost_limit_micros<=50000000),unit_cost_micros INTEGER NOT NULL CHECK(unit_cost_micros>=10000 AND unit_cost_micros<=5000000),
   recoveries INTEGER NOT NULL DEFAULT 0,last_recovery_dispatch_count INTEGER NOT NULL DEFAULT -1,
@@ -77,11 +77,23 @@ export function createThesisContinuity(db,config={}){
   const perUnit=settings.maxCostUsd;
   if(typeof perUnit!=='number'||!Number.isFinite(perUnit)||perUnit<.01||perUnit>5)fail(400,'论文单节成本预算无效','invalid_execution_budget');
   const words=Number.isSafeInteger(snapshot.profile?.targetWords)&&snapshot.profile.targetWords>0?snapshot.profile.targetWords:plan.reduce((sum,unit)=>sum+(Number.isSafeInteger(unit.targetWords)&&unit.targetWords>0?unit.targetWords:0),0)||500;
-  const baseReviews=Math.max(1,Math.ceil(words*(/english|英文|英语/i.test(snapshot.profile?.language||'中文')?6:1.2)/22000),Math.ceil(plan.length/12));
-  const supplementReviews=config.supplementCheckEnabled===true&&JSON.parse(row.settings_meta||'{}').supplementCheck===true?Math.ceil(words*(/english|英文|英语/i.test(snapshot.profile?.language||'中文')?6:1.5)/10000)+Math.ceil(plan.length/6):0;
-  const completion=JSON.parse(row.settings_meta||'{}').completion,reviewAllowance=Math.min(24,completion?.scope==='full'?supplementReviews+3*(baseReviews+supplementReviews)+Math.min(12,plan.length*2):baseReviews+supplementReviews*(completion?2:1));
-  const tokenLimit=computeThesisRunBudget({snapshot,plan,settings,config,reviewAllowance});
-  let costLimit=Math.min(maxCost,perUnit*(plan.length*1.25+reviewAllowance));
+  // Two simultaneous batch constraints (four pieces and 8000 characters)
+  // require a sum, not the maximum of their independent lower bounds. Use
+  // the latest saved chapter sizes as well as the target; uploaded drafts can
+  // be much longer than their requested target. Budget remains frozen below.
+  let saved=[];
+  if(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='thesis_chapter_versions'").get())saved=db.prepare("SELECT v.text,v.figures FROM thesis_chapter_versions v WHERE v.thesis_id=? AND NOT EXISTS (SELECT 1 FROM thesis_chapter_versions n WHERE n.thesis_id=v.thesis_id AND n.chapter_id=v.chapter_id AND n.version>v.version)").all(row.thesis_id);
+  const savedChars=saved.reduce((sum,v)=>sum+String(v.text||'').length+String(v.figures||'').length+400,0),characters=Math.max(savedChars,words*(/english|英文|英语/i.test(snapshot.profile?.language||'中文')?6:1.5)+plan.length*400),pieces=Math.max(plan.length,saved.length);
+  const baseReviews=Math.max(1,Math.ceil(pieces/4)+Math.ceil(characters/8000));
+  const supplementReviews=config.supplementCheckEnabled===true&&JSON.parse(row.settings_meta||'{}').supplementCheck===true?baseReviews+2:0;
+  const completion=JSON.parse(row.settings_meta||'{}').completion,reviewAllowance=Math.min(256,completion?.scope==='full'?supplementReviews+3*(baseReviews+supplementReviews)+Math.min(12,plan.length*2):baseReviews+supplementReviews*(completion?2:1));
+  // More narrowly scoped reviews do not widen a previously bounded purchase's
+  // token or dollar pool. Only the number of distinct review slots changes.
+  const oldBase=Math.max(1,Math.ceil(words*(/english|英文|英语/i.test(snapshot.profile?.language||'中文')?6:1.2)/22000),Math.ceil(plan.length/12));
+  const oldSupplement=config.supplementCheckEnabled===true&&JSON.parse(row.settings_meta||'{}').supplementCheck===true?Math.ceil(words*(/english|英文|英语/i.test(snapshot.profile?.language||'中文')?6:1.5)/10000)+Math.ceil(plan.length/6):0;
+  const budgetedReviews=Math.min(24,completion?.scope==='full'?oldSupplement+3*(oldBase+oldSupplement)+Math.min(12,plan.length*2):oldBase+oldSupplement*(completion?2:1));
+  const tokenLimit=computeThesisRunBudget({snapshot,plan,settings,config,reviewAllowance:budgetedReviews});
+  let costLimit=Math.min(maxCost,perUnit*(plan.length*1.25+budgetedReviews));
   if(config.thesisMaxRunCostUsd!==undefined&&config.thesisMaxRunCostUsd!==null){const cap=Number(config.thesisMaxRunCostUsd);if(!Number.isFinite(cap)||cap<.01||cap>maxCost)fail(400,'论文总成本上限应为 0.01～50 美元','invalid_execution_budget');costLimit=Math.min(costLimit,cap);}
   const at=clock();db.prepare('INSERT INTO thesis_execution_budgets(run_id,attempt,user_id,settings_version,unit_ids,review_allowance,token_limit,cost_limit_micros,unit_cost_micros,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(row.id,row.attempt,row.user_id,row.settings_version,JSON.stringify(plan.map(unit=>unit.id)),reviewAllowance,tokenLimit,micros(costLimit),micros(perUnit),at,at);
   return {...summary(row),created:true};

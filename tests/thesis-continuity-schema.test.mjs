@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {createThesisContinuity} from '../backend/thesis-continuity.mjs';
 import {migrateThesisTokenCeiling} from '../backend/thesis-continuity-schema.mjs';
+import {thesisRunTokenCeiling} from '../backend/thesis-execution-policy.mjs';
 
-function legacy(t){
+function legacy(t,tokenCeiling=2000000){
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());
  db.exec(`PRAGMA foreign_keys=ON;
  CREATE TABLE users(id TEXT PRIMARY KEY);
@@ -16,7 +17,7 @@ function legacy(t){
  CREATE TABLE thesis_execution_budgets(
   run_id TEXT NOT NULL REFERENCES thesis_runs(id),attempt INTEGER NOT NULL CHECK(attempt>=1),
   user_id TEXT NOT NULL REFERENCES users(id),settings_version TEXT NOT NULL,unit_ids TEXT NOT NULL,review_allowance INTEGER NOT NULL CHECK(review_allowance>=1 AND review_allowance<=24),
-  token_limit INTEGER NOT NULL CHECK(token_limit>=1000 AND token_limit<=2000000),
+  token_limit INTEGER NOT NULL CHECK(token_limit>=1000 AND token_limit<=${tokenCeiling}),
   cost_limit_micros INTEGER NOT NULL CHECK(cost_limit_micros>=10000 AND cost_limit_micros<=50000000),unit_cost_micros INTEGER NOT NULL CHECK(unit_cost_micros>=10000 AND unit_cost_micros<=5000000),
   recoveries INTEGER NOT NULL DEFAULT 0,last_recovery_dispatch_count INTEGER NOT NULL DEFAULT -1,last_reason TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(run_id,attempt));
  INSERT INTO thesis_execution_budgets VALUES('run-a',1,'alice','saved-v1','["u-1","u-2"]',1,2000000,3000000,1000000,0,-1,'turn_limit','2026-01-01','2026-01-01');
@@ -53,4 +54,12 @@ test('failed migration rolls back all table, row and trigger changes and restore
 
 test('migration refuses an existing transaction instead of weakening its foreign keys or committing caller work',t=>{
  const db=legacy(t);db.exec('BEGIN IMMEDIATE;');assert.throws(()=>migrateThesisTokenCeiling(db),/事务外/);assert.equal(db.isTransaction,true);db.exec('ROLLBACK;');assert.equal(db.prepare('PRAGMA foreign_keys').get().foreign_keys,1);
+});
+
+
+test('upgrades only the old review-slot constraint while preserving a newer token ceiling and existing frozen budgets',t=>{
+ const db=legacy(t,thesisRunTokenCeiling),before=db.prepare('SELECT * FROM thesis_execution_budgets').all();
+ assert.equal(migrateThesisTokenCeiling(db),true);assert.deepEqual(db.prepare('SELECT * FROM thesis_execution_budgets').all(),before);
+ const sql=db.prepare("SELECT sql FROM sqlite_master WHERE name='thesis_execution_budgets'").get().sql;assert.match(sql,/review_allowance\s*<=\s*256/);assert.match(sql,new RegExp('token_limit\\s*<=\\s*'+thesisRunTokenCeiling));
+ assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);assert.equal(migrateThesisTokenCeiling(db),false);
 });

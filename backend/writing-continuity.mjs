@@ -81,10 +81,14 @@ export function createWritingContinuity(db,config={}){
   if(!Array.isArray(plan)||!plan.length||plan.length>120||new Set(plan.map(unit=>unitName(unit?.id))).size!==plan.length)fail(400,'写作执行计划无效','invalid_execution_unit');
   const perUnit=settings.maxCostUsd;
   if(typeof perUnit!=='number'||!Number.isFinite(perUnit)||perUnit<.01||perUnit>5)fail(400,'写作单节成本预算无效','invalid_execution_budget');
-  const tokenLimit=computeWritingRunBudget({snapshot,plan,settings,config});
   const meta=JSON.parse(db.prepare('SELECT input FROM jobs WHERE id=?').get(row.id).input||'{}');
-  const reviewAllowance=Math.min(24,Math.max(1,Math.ceil(plan.length/6)+Math.ceil((snapshot.profile?.targetWords||1000)*(snapshot.profile?.language==='English'?6:1.5)/14000))*(meta.supplementCheck?3:1));
-  let costLimit=Math.min(maxCost,perUnit*(plan.length*1.25+reviewAllowance));
+  const baseReviews=Math.max(1,Math.ceil(plan.length/6)+Math.ceil((snapshot.profile?.targetWords||1000)*(snapshot.profile?.language==='English'?6:1.5)/14000));
+  const costReviews=Math.min(24,baseReviews*(meta.supplementCheck?3:1));
+  // Fund preflight, final evidence checks, manuscript review and bounded
+  // automatic split retries in the token plan; retain the prior dollar cap.
+  const reviewAllowance=Math.min(24,costReviews+(meta.supplementCheck?2:0));
+  const tokenLimit=computeWritingRunBudget({snapshot,plan,settings,config,reviewAllowance});
+  let costLimit=Math.min(maxCost,perUnit*(plan.length*1.25+costReviews));
   if(config.writingMaxRunCostUsd!==undefined&&config.writingMaxRunCostUsd!==null){const cap=Number(config.writingMaxRunCostUsd);if(!Number.isFinite(cap)||cap<.01||cap>maxCost)fail(400,'写作总成本上限应为 0.01～50 美元','invalid_execution_budget');costLimit=Math.min(costLimit,cap);}
   const at=clock();db.prepare('INSERT INTO writing_execution_budgets(run_id,attempt,user_id,settings_version,unit_ids,review_allowance,token_limit,cost_limit_micros,unit_cost_micros,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(row.id,row.attempt,row.user_id,row.settings_version,JSON.stringify(plan.map(unit=>unit.id)),reviewAllowance,tokenLimit,micros(costLimit),micros(perUnit),at,at);
   return {...summary(row),created:true};

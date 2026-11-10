@@ -26,6 +26,12 @@ test('identity matching requires the actual title, supplied DOI and publication 
  assert.equal(relevantAcademicReference(snapshot().title,paper({title:'Multispecies animal face recognition',abstract:'This study recognizes individual animals from their faces, using datasets of dogs, cattle and primates.'})),true);
  assert.equal(relevantAcademicReference(snapshot().title,paper({title:'Visual summarization of concepts in neural networks',abstract:'This generic tool visualizes animal concepts such as dog faces and supports image recognition interpretation.'})),false);
 });
+test('attention research excludes generic education papers even when teaching terms overlap',()=>{
+ const topic='序列长度对注意力配对数量影响的教学仿真研究';
+ assert.match(referenceTopicQuery(topic),/attention/);
+ assert.equal(relevantAcademicReference(topic,{title:'良好的师生关系对初中生数学教学的影响及对策',abstract:'数学教学及教学研究'}),false);
+ assert.equal(relevantAcademicReference(topic,{title:'Attention and Sequence Length in Transformer Models',abstract:'We investigate attention pair counts as sequence length varies.'}),true);
+});
 test('metadata gains a real matching abstract without replacing the imported record, explicit source text or user notes',async()=>{
  const f=prep(async()=>[paper()]),original=snapshot();original.references.push({...paper({id:'own',title:'Author notes'}),text:'Author supplied text.',confirmed:true});const before=structuredClone(original),result=await f.service.prepare(original,{userId:'isolated'});
  assert.deepEqual(original,before);assert.equal(result.references[0].id,'r1');assert.equal(result.references[0].text,abstract);assert.equal(result.references[0].sourceLabel,autoReferenceLabels[0]);assert.equal(result.references[1].text,'Author supplied text.');assert.equal(result.summary.retrievedCount,1);assert.equal(result.summary.addedCount,0);assert.equal(result.summary.fullTextRead,false);assert.equal(f.calls.length,1);assert.equal(f.calls[0].query.q,'10.1234/test');assert.equal(f.calls[0].options.allowAminer,false);assert.equal(f.calls[0].options.allowSemanticScholar,false);

@@ -137,12 +137,12 @@ const aiFinding=(extra={})=>({sectionId:'methods',quote:'本文采用问卷方�
 const aiResult=(findings=[],extra={})=>({text:JSON.stringify({complete:true,findings,limitations:['仅检查已提供草稿片段。'],...extra})});
 
 test('source review receives only cited confirmed text with an explicit limited scope',()=>{
- const snapshot={materials:[{id:'m',confirmed:true,text:'真实材料的确认内容'.repeat(200)},{id:'private',confirmed:true,text:'未引用的隐私内容'},{id:'unconfirmed',confirmed:false,text:'未确认内容'}],references:[{id:'a',confirmed:true,scope:'abstract',text:'已采纳摘要文字仅用于这一有限证据范围。'},{id:'metadata',confirmed:true,title:'没有正文的题录'}]};
+ const snapshot={materials:[{id:'m',confirmed:true,text:'真实材料的确认内容'.repeat(400)},{id:'private',confirmed:true,text:'未引用的隐私内容'},{id:'unconfirmed',confirmed:false,text:'未确认内容'}],references:[{id:'a',confirmed:true,scope:'abstract',text:'已采纳摘要文字仅用于这一有限证据范围。'},{id:'metadata',confirmed:true,title:'没有正文的题录'}]};
  const chapters=[{id:'one',text:'先讨论[source:m]，再引用摘要[source:a]，并包含[source:unconfirmed]和[source:metadata]。'}];
  const before=structuredClone(snapshot),task=writingReviewTask({snapshot,chapters});
  assert.deepEqual(task.context.sourceEvidence.items.map(row=>row.id),['m','a']);
  assert.equal(task.context.sourceEvidence.citedCount,4);assert.equal(task.context.sourceEvidence.providedCount,2);assert.equal(task.context.sourceEvidence.limited,true);
- assert.equal(task.context.sourceEvidence.items[0].text.length,1200);assert.equal(task.context.sourceEvidence.items[0].excerpted,true);assert.equal(task.context.sourceEvidence.items[1].scope,'abstract');
+ assert.equal(task.context.sourceEvidence.items[0].text.length,2000);assert.equal(task.context.sourceEvidence.items[0].excerpted,true);assert.equal(task.context.sourceEvidence.items[1].scope,'abstract');
  assert.doesNotMatch(JSON.stringify(task),/未引用的隐私内容|未确认内容/);assert.match(task.instructions,/不证明完整原文没有该事项/);assert.deepEqual(snapshot,before);
 });
 
@@ -248,4 +248,49 @@ test('figure numbering audit agrees with an exact adjacent original caption',()=
 test('a section saying this table exists needs an actual local table, even if another section contains a table',()=>{
  const chapters=[{id:'a',title:'工作要求',text:'表1 工作要求\n| 项目 | 内容 |\n| --- | --- |\n| 范围 | 检索 |'},{id:'b',title:'进度安排',text:'阶段计划参考资料[source:m]；各阶段起止日期待排定，本表仅固定三个阶段的工作内容。'}],result=auditWritingConsistency({chapters});assert.ok(result.findings.some(row=>row.sectionId==='b'&&row.category==='table_consistency'&&/本章节/.test(row.explanation)));
  const withTable=structuredClone(chapters);withTable[1].text+='\n\n表2 进度安排\n| 阶段 | 内容 |\n| --- | --- |\n| 第一阶段 | 研究设计 |';assert.ok(!auditWritingConsistency({chapters:withTable}).findings.some(row=>row.sectionId==='b'&&row.category==='table_consistency'));
+});
+
+test('audits discrete one-step change separately from the derivative without claiming general math verification',()=>{
+ const text='完全配对定义 C(n)=n²。连续变化率为 $$\\frac{dC}{dn}=2n$$，说明长度每增加一个单位，新增配对数量随当前长度线性增大。';
+ const run=value=>auditWritingConsistency({chapters:[{id:'math',title:'推导',text:value}]}),problem=run(text).findings.find(row=>row.category==='method_result_consistency');
+ assert.ok(problem);assert.ok(text.includes(problem.quote));assert.match(problem.suggestion,/2n\+1/);
+ assert.ok(!run(text+' 精确差分为 C(n+1)−C(n)=2n+1。').findings.some(row=>row.category==='method_result_consistency'));
+ assert.ok(!run('C(n)=n²，连续变量的导数为 2n，曲线随 n 增长。').findings.some(row=>row.category==='method_result_consistency'));
+ assert.match(run(text).limitations.join(''),/未核实/);
+});
+
+test('source review selects a verbatim window relevant to each cited claim without mixing sources',()=>{
+ const materialA='Unrelated background '.repeat(160)+'On WMT 2014 the model achieved 28.4 BLEU and 41.8 BLEU. '+'Closing details '.repeat(160);
+ const materialB='Different background '.repeat(180)+'The model scored 80.5 GLUE on its task. '+'Another section '.repeat(160);
+ const snapshot={materials:[],references:[{id:'a',confirmed:true,text:materialA},{id:'b',confirmed:true,text:materialB},{id:'private',confirmed:true,text:'Private unreferenced content 28.4 BLEU'}]};
+ const chapters=[{id:'one',text:'翻译结果为 28.4 和 41.8 BLEU [source:a]；另一模型达到 80.5 GLUE [source:b]。'}];
+ const evidence=writingReviewTask({snapshot,chapters}).context.sourceEvidence.items;
+ assert.deepEqual(evidence.map(row=>row.id),['a','b']);
+ assert.match(evidence[0].text,/28\.4 BLEU and 41\.8 BLEU/);assert.doesNotMatch(evidence[0].text,/80\.5 GLUE/);
+ assert.match(evidence[1].text,/80\.5 GLUE/);assert.doesNotMatch(evidence[1].text,/28\.4 BLEU/);
+ assert.equal(evidence[0].text,materialA.slice(evidence[0].offset,evidence[0].offset+evidence[0].text.length));
+ assert.equal(evidence[1].text,materialB.slice(evidence[1].offset,evidence[1].offset+evidence[1].text.length));
+ assert.ok(evidence.every(row=>row.text.length<=2000&&row.excerpted));
+});
+
+test('later numeric citation remains searchable after an earlier long Chinese claim',()=>{
+ const text='unrelated introduction '.repeat(150)+'WMT 2014 achieved 28.4 BLEU and 41.8 BLEU in 3.5 days. '+'additional background '.repeat(100);
+ const chapters=[{id:'first',text:'注意力机制的设计及架构背景讨论有大量中文论述与细节。'.repeat(8)+'[source:a]'},{id:'second',text:'其结果在 WMT 2014 达到 28.4 与 41.8 BLEU，训练 3.5 天[source:a]。'}];
+ const row=writingReviewTask({snapshot:{references:[{id:'a',confirmed:true,text}]},chapters}).context.sourceEvidence.items[0];
+ assert.ok(row.text.includes('28.4 BLEU')&&row.text.includes('41.8 BLEU')&&row.text.includes('3.5 days'));
+});
+
+test('citation windows share a fixed budget without starving later confirmed sources',()=>{
+ const references=Array.from({length:6},(_,i)=>({id:'r'+i,confirmed:true,text:('Source '+i+' evidence. ').repeat(400)}));
+ const chapters=[{id:'c',text:references.map(r=>'相关来源[source:'+r.id+']').join('；')}];
+ const items=writingReviewTask({snapshot:{references},chapters}).context.sourceEvidence.items;
+ assert.equal(items.length,6);assert.ok(items.every(x=>x.text.length>0));assert.ok(items.reduce((n,x)=>n+x.text.length,0)<=4000);
+});
+
+test('review cannot misquote an equation as the manuscript definition',()=>{
+ const task=writingReviewTask({snapshot:{},chapters:[{id:'c',title:'数学定义',text:'合成资料定义 C(n)=n²，长度加倍时配对数量变为四倍。'}]});
+ const row={sectionId:'c',quote:'长度加倍时配对数量变为四倍',category:'logic',severity:'warning',explanation:'有序位置对数按定义 C(n)=(n+1)²，故不是四倍。',suggestion:'请核对公式。'};
+ assert.throws(()=>parseWritingReview(aiResult([row]),task),/公式无法逐字核对/);
+ row.explanation='有序位置对数按定义 C(n)=n²，需明确对比范围。';assert.equal(parseWritingReview(aiResult([row]),task).findings.length,1);
+ row.explanation='对该式的离散差分可以进一步推导，并与连续导数区分。';assert.equal(parseWritingReview(aiResult([row]),task).findings.length,1);
 });

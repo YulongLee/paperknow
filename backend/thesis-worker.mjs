@@ -22,7 +22,8 @@ const active=status=>status==='running'||status==='queued';
 const validUsage=value=>Number.isSafeInteger(value)&&value>=0;
 const knownUsage=usage=>validUsage(usage?.input)&&validUsage(usage?.output)&&Number.isSafeInteger(usage.input+usage.output)&&usage.input+usage.output>0;
 const safeStage=value=>typeof value==='string'&&/^[a-z][a-z0-9_-]{0,60}$/i.test(value)?value:'agent_running';
-const cleanTrace=value=>(Array.isArray(value)?value:[]).slice(-50).map(row=>({stage:safeStage(typeof row==='string'?row:row?.stage||row?.tool||row?.type),...(safeThesisValidation(row?.validation)?{validation:safeThesisValidation(row.validation)}:{}),...(row?.tool==='read_material'&&row.status==='completed'&&typeof row.materialId==='string'?{tool:'read_material',status:'completed',materialId:row.materialId.slice(0,100)}:{})}));
+export const cleanThesisTrace=value=>(Array.isArray(value)?value:[]).slice(-50).map(row=>({stage:safeStage(typeof row==='string'?row:row?.stage||row?.tool||row?.type),...(safeThesisValidation(row?.validation)?{validation:safeThesisValidation(row.validation)}:{}),...(row?.tool==='read_material'&&row.status==='completed'&&typeof row.materialId==='string'?{tool:'read_material',status:'completed',materialId:row.materialId.slice(0,160),...(Number.isSafeInteger(row.offset)&&row.offset>=0&&Number.isSafeInteger(row.limit)&&row.limit>0?{offset:row.offset,limit:row.limit}:{})}:{})}));
+const cleanTrace=cleanThesisTrace;
 
 // Denied tool names are operational diagnostics. Keep neither arguments nor
 // content, and omit the public tool field so account archives project them out.
@@ -109,7 +110,7 @@ export function startThesisWorker(db,config={}){
       if(!knownUsage(output?.usage))throw thesisError(502,'审校未返回可核算用量','usage_unknown');
       if(!running()||stopped)throw thesisError(499,'任务已停止','cancelled');
       const validation=await (validateThesisOutput||validateReviewOutput)(output);if(validation?.valid!==true)throw thesisError(502,'审校内容未通过定位检查','invalid_review_output');
-      if(!writeRunning(()=>{const finished=continuity.finish(reservation.id,{usage:output.usage,costUsd:output.costUsd});if(finished.budgetExceeded)throw thesisError(429,'审校达到执行预算','budget_exceeded');const saved=JSON.stringify({text:output.text,trace:validateThesisOutput?cleanTrace(output.trace):[],usage:output.usage});assertThesisAccountQuota(db,run.user_id,Buffer.byteLength(saved),config);db.prepare('INSERT INTO thesis_review_checkpoints VALUES(?,?,?,?,?,?)').run(run.id,run.attempt,unitId,hash,saved,clock());}))throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
+      if(!writeRunning(()=>{const finished=continuity.finish(reservation.id,{usage:output.usage,costUsd:output.costUsd});if(finished.budgetExceeded)throw thesisError(429,'审校达到执行预算','budget_exceeded');const saved=JSON.stringify({text:output.text,trace:validateThesisOutput||task.context.operation==='supplement-check'?cleanTrace(output.trace):[],usage:output.usage});assertThesisAccountQuota(db,run.user_id,Buffer.byteLength(saved),config);db.prepare('INSERT INTO thesis_review_checkpoints VALUES(?,?,?,?,?,?)').run(run.id,run.attempt,unitId,hash,saved,clock());}))throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
       return output;
      }catch(error){if(!accounted)account(error.usage);transaction(()=>continuity.finish(reservation.id,{usage:output?.usage||error.usage,costUsd:output?.costUsd??error.costUsd,errorCode:error.code||'execution_failed'}));throw error;}
     };
@@ -127,7 +128,7 @@ export function startThesisWorker(db,config={}){
     // final delivery requires a completed, current final check.
    }
    for(const unit of plan){
-    let retries=0,minimumTokens=0,retryFeedback=null,retryCandidate=null;
+    let retries=0,minimumTokens=0,retryFeedback=null,retryCandidate=null,deniedToolRetries=0;
     while(true){
     if(stopped)throw thesisError(503,'服务停止中断了任务');
     if(!running())return;
@@ -135,8 +136,8 @@ export function startThesisWorker(db,config={}){
     assertThesisSettings(await config.getAgentSettings?.());
     if(!running())return;
     const complete=db.prepare("SELECT * FROM thesis_checkpoints WHERE run_id=? AND status='completed' ORDER BY position").all(run.id);
-    const contextSections=completionMode?[...savedBaseline.filter(row=>!targetChapters.has(row.chapter_id)).map(row=>({...row,unit_id:'saved::'+row.chapter_id})),...complete]:complete;let task=thesisAgentTask(snapshot,withCompletionDiagnosis(unit,diagnosis),contextSections);const maxTurns=Math.min(continuous?12:6,Math.max(1,Number(runtime.maxTurns)||3)),maxOutputTokens=Math.min(continuous?16384:8000,Math.max(32,Number(runtime.maxOutputTokens)||4096));
-    if(retries){task.instructions+='上一次执行未完成。本次只处理当前单元：根据 retryFeedback 中服务器给出的校验反馈修正完整候选；过短补足论证，过长精简完整句段，不追求精确等于目标，不编造依据。';if(retryFeedback)task.context.retryFeedback=retryFeedback;task=withThesisRetryCandidate(task,retryCandidate);}
+    const contextSections=completionMode?[...savedBaseline.filter(row=>!targetChapters.has(row.chapter_id)).map(row=>({...row,unit_id:'saved::'+row.chapter_id})),...complete]:complete;let task=thesisAgentTask(snapshot,withCompletionDiagnosis(unit,diagnosis),contextSections);if(completionMode&&task.context?.revision?.excerpted)throw thesisError(422,'章节内容较长，当前无法完整处理，请拆分小节后重试；原稿已保留，本次未扣费。','completion_excerpt');const maxTurns=Math.min(continuous?12:6,Math.max(1,Number(runtime.maxTurns)||3)),maxOutputTokens=Math.min(continuous?16384:8000,Math.max(32,Number(runtime.maxOutputTokens)||4096));
+    if(retries){task.instructions+='上一次执行未完成。本次只处理当前单元：根据 retryFeedback 中服务器给出的校验反馈修正完整候选；过短补足论证，过长精简完整句段，不追求精确等于目标，不编造依据。';if(deniedToolRetries)task.instructions+='上次尝试调用了未提供的工具，该调用未执行。只使用本次明确提供的工具，不调用其他工具；直接通过已提供的提交工具提交完整结果。';if(retryFeedback)task.context.retryFeedback=retryFeedback;task=withThesisRetryCandidate(task,retryCandidate);}
     // The runtime relay enforces maxTotalTokens against the complete actual SDK
     // request, including system instructions, tool schemas and growing history.
     const totals=db.prepare('SELECT input_tokens,output_tokens FROM thesis_runs WHERE id=?').get(run.id),spent=totals.input_tokens+totals.output_tokens-baseline;
@@ -176,7 +177,7 @@ export function startThesisWorker(db,config={}){
      if(reservation&&!finishedReservation){const finished=transaction(()=>continuity.finish(reservation.id,{usage:error.usage,costUsd:result?.costUsd??error.costUsd,errorCode:error.code}));settledDispatch=finished;if(finished.budgetExceeded)error=Object.assign(thesisError(429,'本次生成达到执行预算，已保留完成章节','budget_exceeded'),{usage:error.usage});}
      if(!accounted&&dispatched){const usage=error.usage;writeAttempt(()=>{if(knownUsage(usage)){db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+? WHERE id=? AND attempt=?').run(usage.input,usage.output,run.id,run.attempt);db.prepare('UPDATE thesis_checkpoints SET input_tokens=input_tokens+?,output_tokens=output_tokens+? WHERE run_id=? AND unit_id=?').run(usage.input,usage.output,run.id,unit.id);}else db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=? AND attempt=?').run(run.id,run.attempt);});}
      const retry=classifyThesisRetry(error,{settledDispatch});
-     if(continuous&&!stopped&&running()&&retries<2&&retry.retryable){retries++;retryCandidate=error.retryCandidate||retryCandidate;minimumTokens=Math.max(minimumTokens,retry.minimumTokens||0);stage('auto_recovering');continue;}
+     if(continuous&&!stopped&&running()&&retries<2&&retry.retryable&&(retry.reason!=='funded_denied_external_tool'||deniedToolRetries===0)){if(retry.reason==='funded_denied_external_tool')deniedToolRetries++;retries++;retryCandidate=error.retryCandidate||retryCandidate;minimumTokens=Math.max(minimumTokens,retry.minimumTokens||0);stage('auto_recovering');continue;}
      writeRunning(()=>{const validation=safeThesisValidation(error.lastValidation)||safeThesisValidation(retryFeedback),diagnostics=[...failureDiagnostics(error),...(validation?[{stage:'candidate_rejected',validation}]:[])];db.prepare("UPDATE thesis_checkpoints SET status='failed',error=?,missing_evidence=?,trace=CASE WHEN ?='[]' THEN trace ELSE ? END,updated_at=? WHERE run_id=? AND unit_id=? AND status!='completed'").run(thesisPublicError(error,runtime),JSON.stringify(error.missingEvidence||[]),JSON.stringify(diagnostics),JSON.stringify(diagnostics),clock(),run.id,unit.id);});
      throw error;
     }

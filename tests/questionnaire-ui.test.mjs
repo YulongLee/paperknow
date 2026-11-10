@@ -248,3 +248,11 @@ test('reopening an existing account questionnaire preserves its server-confirmed
 });
 
 test('questionnaire keeps one AI status window by its trigger and before question editing without changing the four steps',async t=>{const f=await fixture(t);const panel=f.$('#questionnaire-ai');assert.equal(panel.parentElement,f.$('[data-q-ai-anchor]'));await design(f);assert.equal(f.$('#questionnaire-ai'),panel);assert.ok(panel.compareDocumentPosition(f.$('.q-editor'))&f.dom.window.Node.DOCUMENT_POSITION_FOLLOWING);assert.equal(f.root.querySelectorAll('#questionnaire-ai').length,1);assert.equal(f.root.querySelectorAll('[data-q-ai]').length,1);assert.equal(f.root.querySelectorAll('[data-q-step]').length,4);});
+test('public multi-choice automatically switches mutually exclusive answers and explains the change',async()=>{
+ const dom=new JSDOM('<main id="public-root"></main>',{url:'https://paperknow.cn/questionnaire.html?token='+('a'.repeat(43))});
+ try{const root=dom.window.document.querySelector('main');await mountPublicQuestionnaire({container:root,win:dom.window,storage:dom.window.localStorage,fetchImpl:async()=>({ok:true,json:async()=>({questionnaire:{title:'测试问卷',introduction:'自愿填写',questions:[{id:'q1',type:'multiple',title:'遇到的问题',options:['检索不便','访问困难','以上均无'],required:false}]},privacy:'匿名'})})});
+ const boxes=[...root.querySelectorAll('fieldset input[type=checkbox]')],notice=root.querySelector('.qp-exclusive-notice');assert.match(root.querySelector('.qp-exclusive').textContent,/单独选择/);
+ const select=i=>{boxes[i].checked=true;boxes[i].dispatchEvent(new dom.window.Event('change',{bubbles:true}));};
+ select(0);select(1);assert.deepEqual(boxes.map(b=>b.checked),[true,true,false]);select(2);assert.deepEqual(boxes.map(b=>b.checked),[false,false,true]);assert.match(notice.textContent,/取消其他选项/);select(0);assert.deepEqual(boxes.map(b=>b.checked),[true,false,false]);assert.match(notice.textContent,/取消需要单独选择/);
+ }finally{dom.window.close();}
+});

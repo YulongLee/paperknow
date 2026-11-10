@@ -38,6 +38,19 @@ test('one submission repairs a failed section and settles one original purchase 
  assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_chapter_versions').get().n,2);
 });
 
+test('a rejected external tool is never executed and a funded correction stays in the original purchase',async t=>{
+ let calls=0;const tasks=[],f=fixture(t,{agentTaskRunner:async({task})=>{tasks.push(task);if(++calls===1){const error=Object.assign(Error('synthetic blocked tool'),{status:502,code:'unauthorized_tool'});Object.defineProperty(error,'agentTrace',{value:[{status:'denied',tool:'mcp__foreign__read_material'}]});throw error;}return result(task);}});
+ const item=await f.generate(await f.create());await f.start().tick();const done=f.get(item.id);
+ assert.equal(done.status,'completed');assert.equal(done.job.attempt,1);assert.equal(calls,3);assert.match(tasks[1].instructions,/上次尝试调用了未提供的工具/);
+ const failed=f.db.prepare("SELECT * FROM thesis_execution_dispatches WHERE error_code='unauthorized_tool'").get();assert.ok(failed);assert.equal(failed.charged_tokens,failed.reserved_tokens);assert.equal(failed.input_tokens,null);assert.equal(failed.cost_micros,null);assert.equal(done.job.usageIncomplete,true);
+ assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='reserve'").get().n,1);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,1);assert.equal(f.billing.balance(f.user.id).balance,190);
+});
+
+test('repeated rejected external calls stop after one correction and release the original purchase',async t=>{
+ let calls=0;const f=fixture(t,{agentTaskRunner:async()=>{calls++;const error=Object.assign(Error('synthetic blocked tool'),{status:502,code:'unauthorized_tool'});Object.defineProperty(error,'agentTrace',{value:[{status:'denied',tool:'mcp__foreign__read_material'}]});throw error;}});
+ const item=await f.generate(await f.create());await f.start().tick();assert.equal(f.get(item.id).status,'failed');assert.equal(calls,2);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,0);
+});
+
 test('a one-dollar thesis execution accepts a 75-cent section and freezes that ceiling without changing the shared Agent',async t=>{
  const seen=[],f=fixture(t,{thesisMaxCallCostUsd:1,agentTaskRunner:async args=>{seen.push(args.settings.maxCostUsd);return result(args.task,{costUsd:.75});}});
  const item=await f.generate(await f.create());f.config.thesisMaxCallCostUsd=.2;
@@ -245,5 +258,10 @@ test('a legal chapter and section identifier exceeding 160 characters still comp
 
 test('a twenty-unit 8000-character thesis completes both bounded review batches in its original purchase',async t=>{
  let reviews=0;const f=fixture(t,{writingQualityEnabled:true,citationVerifier:{verify:async()=>({items:[],summary:{},limitations:[],requests:0})},agentTaskRunner:async({task})=>{if(task.skill==='writing-review'){reviews++;return {text:JSON.stringify({complete:true,findings:[],limitations:['合成分批检查']}),usage:{input:100,output:100},costUsd:.01,trace:[]};}return result(task);}});
- const item=await f.generate(await f.create(snapshot(8000,20)));await f.start().tick();const done=f.get(item.id);assert.equal(done.status,'completed');assert.equal(reviews,2);assert.equal(done.quality.status,'completed');assert.equal(done.quality.coverage.complete,true);assert.equal(done.quality.coverage.reviewedBatches,2);assert.equal(done.quality.coverage.totalBatches,2);assert.equal(done.job.attempt,1);assert.equal(f.billing.balance(f.user.id).balance,190);
+ const item=await f.generate(await f.create(snapshot(8000,20)));await f.start().tick();const done=f.get(item.id);assert.equal(done.status,'completed');assert.equal(reviews,5);assert.equal(done.quality.status,'completed');assert.equal(done.quality.coverage.complete,true);assert.equal(done.quality.coverage.reviewedBatches,5);assert.equal(done.quality.coverage.totalBatches,5);assert.equal(done.job.attempt,1);assert.equal(f.billing.balance(f.user.id).balance,190);
+});
+
+test('cached thesis review trace retains only bounded source-read coordinates, not material text',async()=>{
+ const {cleanThesisTrace}=await import('../backend/thesis-worker.mjs');const result=cleanThesisTrace([{tool:'read_material',status:'completed',materialId:'source-1',offset:42,limit:128,text:'PRIVATE MANUSCRIPT',token:'PRIVATE SECRET'},{tool:'read_material',status:'completed',materialId:'source-2',offset:-1,limit:0}]);
+ assert.deepEqual(result[0],{stage:'read_material',tool:'read_material',status:'completed',materialId:'source-1',offset:42,limit:128});assert.equal(result[1].offset,undefined);assert.doesNotMatch(JSON.stringify(result),/PRIVATE/);
 });

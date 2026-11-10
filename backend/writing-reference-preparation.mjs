@@ -17,7 +17,7 @@ export function sameAcademicReference(reference,candidate){
  const year=String(reference.year||'');if(/^\d{4}$/.test(year)&&candidate.year&&Number(year)!==Number(candidate.year))return false;
  return true;
 }
-const topicTranslations=[['深度学习','deep learning'],['机器学习','machine learning'],['卷积神经网络','convolutional neural network'],['狗脸','dog face'],['犬脸','dog face'],['猫脸','cat face'],['羊脸','sheep face'],['牛脸','cattle face'],['动物个体','animal individual'],['人脸','human face'],['识别','recognition'],['图像分割','image segmentation'],['图像','image'],['目标检测','object detection'],['数字阅读','digital reading'],['图书馆','library'],['课堂反馈','classroom feedback']];
+const topicTranslations=[['注意力','attention'],['序列长度','sequence length'],['深度学习','deep learning'],['机器学习','machine learning'],['卷积神经网络','convolutional neural network'],['狗脸','dog face'],['犬脸','dog face'],['猫脸','cat face'],['羊脸','sheep face'],['牛脸','cattle face'],['动物个体','animal individual'],['人脸','human face'],['识别','recognition'],['图像分割','image segmentation'],['图像','image'],['目标检测','object detection'],['数字阅读','digital reading'],['图书馆','library'],['课堂反馈','classroom feedback']];
 export function referenceTopicQuery(title){
  const original=plain(title,200),parts=topicTranslations.filter(([word])=>original.includes(word)).map(([,word])=>word);
  const focused=parts.some(word=>/^(?:dog|cat|sheep|cattle) face$/.test(word))?parts.filter(word=>!['deep learning','machine learning','convolutional neural network'].includes(word)):parts;
@@ -25,6 +25,9 @@ export function referenceTopicQuery(title){
 }
 export function relevantAcademicReference(title,candidate){
  const query=referenceTopicQuery(title),content=normalized(candidate.title+' '+(candidate.abstract||''));
+ // Keep the research's core technical subject in the paper title; generic
+ // overlaps such as 教学 or 研究 do not establish topical relevance.
+ if(/注意力/.test(String(title))&&!/(?:注意力|attention|transformer)/i.test(String(candidate.title||'')))return false;
  const species=[['狗脸','犬脸'],['猫脸'],['羊脸'],['牛脸']].find(words=>words.some(word=>String(title).includes(word)));
  if(species){
   const word=species[0],english={'狗脸':['dog','canine'],'猫脸':['cat','feline'],'羊脸':['sheep','ovine'],'牛脸':['cattle','bovine']}[word],visible=candidate.title+' '+candidate.abstract,title=String(candidate.title||'').replace(/[-']/g,' ');

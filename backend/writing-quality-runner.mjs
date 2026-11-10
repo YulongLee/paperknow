@@ -10,6 +10,24 @@ const budgetFailure=error=>error?.status===429||/budget|usage_unknown|unknown_us
 
 // Only the worker-owned dispatch can spend model budget or touch task records.
 // This coordinator never creates jobs, acquires extra credit or invokes an LLM.
+// Return actionable, bounded feedback without weakening exact-quote checks or
+// persisting manuscript contents. The model already sees the same excerpts.
+function reviewValidationRule(candidate,task,error){
+ const msg=typeof error?.message==='string'?error.message:'';
+ if(msg.includes('图片'))return '检查 checkedFigureIds，逐字列出本批全部图片ID，不得添加或遗漏。';
+ let body;try{body=JSON.parse(candidate.text.trim().replace(/^```(?:json)?\s*\n?/i,'').replace(/\n?```\s*$/,''));}catch{return '候选须为完整 JSON 对象，包含 complete、findings 和 limitations。';}
+ if(!Array.isArray(body?.findings))return 'findings 必须是数组；无可定位问题时提交空数组。';
+ const sections=new Map((task.context.manuscriptExcerpts||[]).map(v=>[v.id,v.text]));
+ for(let i=0;i<body.findings.length;i++){
+  const f=body.findings[i];if(!f||!sections.has(f.sectionId))return `第 ${i+1} 项 sectionId 不属于本批，请从 manuscriptExcerpts 复制实际 ID；不要使用 manuscriptOverview 的标题。`;
+  if(typeof f.quote!=='string'||f.quote.trim().length<6||f.quote.length>500)return `第 ${i+1} 项 quote 须为对应章节中连续、逐字摘录的 6 至 500 个字符。`;
+  if(!sections.get(f.sectionId).includes(f.quote))return `第 ${i+1} 项 quote 不在指定章节中：从同一 manuscriptExcerpts 的 text 原样复制连续原句，不改空格和标点；无法定位则删除该项。`;
+ }
+ if(msg.includes('重复'))return '存在同一章节、相同原句与类别的重复检查项，请去重。';
+ if(msg.includes('公式无法逐字核对'))return '某项 explanation 将公式归属于正文或其引用资料，但该公式与已提供原文不一致。逐字复制原文公式；无法核对时删除该项，不得把自行推导写成原文定义。';
+ return '检查每项 sectionId、原句、category、severity、explanation 和 suggestion，以及 complete、findings、limitations。';
+}
+
 export function createWritingQualityRunner(config={}){
  const clock=config.writingQualityNow||Date.now;
  const verifier=config.citationVerifier||createCitationVerifier({fetchImpl:config.fetchImpl||globalThis.fetch,openAlexApiKey:config.openAlexApiKey||'',timeoutMs:bounded(config.writingQualityTimeoutMs,7000,50,7000),maxRequests:bounded(config.writingQualityMaxRequests,30,1,30),dailyLimit:bounded(config.writingQualityDailyLimit,200,0,10000),clock});
@@ -18,7 +36,7 @@ export function createWritingQualityRunner(config={}){
   if(signal?.aborted)throw aborted();let listener;
   try{return await Promise.race([operation,new Promise((_,reject)=>{listener=()=>reject(aborted());signal?.addEventListener('abort',listener,{once:true});if(signal?.aborted)listener();})]);}finally{signal?.removeEventListener('abort',listener);}
  }
- function batchesFor(chapters,maxCharacters=22000){
+ function batchesFor(chapters,maxCharacters=22000,maxSections=12){
   if(!Array.isArray(chapters)||chapters.length>200)throw Object.assign(new Error('审校章节数量无效'),{status:400});
   const batches=[];let batch=[],characters=0;
   const flush=()=>{if(batch.length)batches.push(batch);batch=[];characters=0;};
@@ -28,7 +46,7 @@ export function createWritingQualityRunner(config={}){
    let start=0,part=0;
    while(start<chapter.text.length){
     const {text,figures,end,cost}=manuscriptPart(chapter,start,maxCharacters),piece={id:'quality-section-'+(index+1)+'-part-'+(++part),title:typeof chapter.title==='string'?chapter.title.slice(0,300):'章节 '+(index+1),text,...(figures.length?{figures}:{}),originalSectionId:chapter.id,originalOffset:start,totalCharacters:chapter.text.length,partialChapter:start>0||end<chapter.text.length};
-    if(batch.length>=12||characters+cost>maxCharacters)flush();batch.push(piece);characters+=cost;start=end;
+    if(batch.length>=maxSections||characters+cost>maxCharacters)flush();batch.push(piece);characters+=cost;start=end;
    }
   }
   flush();return batches;
@@ -37,7 +55,7 @@ export function createWritingQualityRunner(config={}){
   if(kind==='proposal'&&snapshot.requirements?.instructions)snapshot={...snapshot,requirements:{...snapshot.requirements,instructions:proposalModelInstructions(snapshot.requirements.instructions)}};
   const active=async()=>{if(signal?.aborted)throw aborted();if(await isCurrent()!==true||signal?.aborted)throw aborted();};
   const stage=async value=>{await active();await onStage?.(value);await active();};
-  await active();const requirementCharacters=Math.min(12000,typeof snapshot.requirements?.instructions==='string'?snapshot.requirements.instructions.length:0),batches=batchesFor(chapters,Math.min(22000,26000-requirementCharacters)),quality={status:'completed',checkedAt:timestamp(),citations:null,consistency:null,reviews:[],limitations:[]};let partial=false;
+  await active();const requirementCharacters=Math.min(12000,typeof snapshot.requirements?.instructions==='string'?snapshot.requirements.instructions.length:0),batches=batchesFor(chapters,Math.min(kind==='thesis'?8000:22000,26000-requirementCharacters),kind==='thesis'?4:12),quality={status:'completed',checkedAt:timestamp(),citations:null,consistency:null,reviews:[],limitations:[]};let partial=false;
   if(checkSupplements===true){quality.supplementCheck=await runSupplementCheck({snapshot,chapters,kind,phase:'final',recover:recoverSupplements,runtime,dispatch,signal,isCurrent,onStage:stage});await active();}
   await stage('verifying_citations');
   try{
@@ -59,7 +77,7 @@ export function createWritingQualityRunner(config={}){
    task.context.manuscriptExcerpts=task.context.manuscriptExcerpts.map(piece=>{const origin=batch.find(row=>row.id===piece.id);return {...piece,partialChapter:origin.partialChapter,originalOffset:origin.originalOffset,totalCharacters:origin.totalCharacters};});
    task.context.scope={...task.context.scope,batch:index+1,totalBatches:batches.length,batchOnly:true};
    if(JSON.stringify(task.context).length>39000){partial=true;quality.reviews.push({unitId,status:'unavailable',sectionIds,reasonCode:'context_limit',reason:publicReason.unavailable,findings:[],checkedSections:0});continue;}
-   const validateReviewOutput=candidate=>{try{parseWritingReview(candidate,task);return {valid:true};}catch{return {valid:false,feedback:{code:'review_grounding',rule:'只提交实际提供的章节ID、逐字原句和完整JSON检查项；checkedFigureIds 必须完整列出本批提供的图片ID，不得遗漏或添加其他图片；没有可定位问题时findings=[]，不得伪造原文或检查结论。'}};}};
+   const validateReviewOutput=candidate=>{try{parseWritingReview(candidate,task);return {valid:true};}catch(error){return {valid:false,feedback:{code:'review_grounding',rule:reviewValidationRule(candidate,task,error)}};}};
    try{
     const settings={...runtime,maxTurns:Math.min(4,bounded(runtime.maxTurns,3,1,12)),maxOutputTokens:Math.min(4096,bounded(runtime.maxOutputTokens,2048,32,16384)),timeoutMs:Math.min(90000,bounded(runtime.timeoutMs,60000,5000,300000))};
     // Dispatch owns model-budget accounting and may write task state in its
