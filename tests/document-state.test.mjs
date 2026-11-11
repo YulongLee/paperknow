@@ -5,7 +5,7 @@ import {createSession} from '../backend/auth.mjs';
 import {thesisDocumentState,workspaceDocumentStates} from '../backend/workspace-document-state.mjs';
 import {documentStateLabel,documentStateGroup} from '../dist/workspace/document-state.mjs';
 import {workspaceJobStatusLabel} from '../dist/workspace/workspace-job-model.mjs';
-import {accountOverviewItems} from '../dist/workspace/home-account-model.mjs';
+import {accountOverviewItems,accountOverviewTasks} from '../dist/workspace/home-account-model.mjs';
 
 async function fixture(t){
  const app=createServer({dbPath:':memory:',config:{agentEnabled:false,aiKey:'',aiURL:'',aiModel:'',mineruEnabled:false}});
@@ -19,9 +19,9 @@ async function fixture(t){
  assert.equal(response.status,201);const paper=(await response.json()).item;
  const getRow=()=>db.prepare('SELECT * FROM theses WHERE id=?').get(paper.id);
  function version(id='body',text='合成正文，仅用于软件状态测试。',n=1){db.prepare('INSERT INTO thesis_chapter_versions(id,thesis_id,chapter_id,version,source,text,source_ids,created_at) VALUES(?,?,?,?,?,?,?,?)').run(id+'-'+n,paper.id,id,n,'manual',text,'[]',at);}
- function run(id,{status='completed',full=false,current=true}={}){
+ function run(id,{status='completed',full=false,current=true,purpose}={}){
   db.prepare('INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,'owner','project','thesis',status,status,'{}',id,'hash',at,at);
-  const row=getRow();db.prepare('INSERT INTO thesis_runs(id,thesis_id,user_id,snapshot,snapshot_hash,plan,settings_version,settings_meta,status,stage,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(id,paper.id,'owner',row.snapshot,row.snapshot_hash,'[]','synthetic',JSON.stringify(full?{completion:{scope:'full',baseline:[]}}:{}),status,status,at,at);
+  const row=getRow();db.prepare('INSERT INTO thesis_runs(id,thesis_id,user_id,snapshot,snapshot_hash,plan,settings_version,settings_meta,status,stage,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(id,paper.id,'owner',row.snapshot,row.snapshot_hash,'[]','synthetic',JSON.stringify(full?{completion:{scope:'full',baseline:[],...(purpose?{purpose}:{})}}:{}),status,status,at,at);
   if(current)db.prepare('UPDATE theses SET current_run_id=?,status=? WHERE id=?').run(id,status,paper.id);
   return db.prepare('SELECT * FROM thesis_runs WHERE id=?').get(id);
  }
@@ -41,6 +41,17 @@ test('a finished thesis execution is not presented as an approved final manuscri
  assert.equal(documentStateGroup(job),'attention');
  const home=accountOverviewItems({theses:[list]})[0];assert.ok(home.kind.endsWith(documentStateLabel(details)));
  assert.equal(workspaceJobStatusLabel(job),documentStateLabel(details));
+ const homeJob=accountOverviewTasks([job])[0];assert.equal(workspaceJobStatusLabel(homeJob),'待检查完善');assert.equal(documentStateGroup(homeJob),'attention');
+});
+
+test('full draft generation stays a saved draft while incomplete final checks need attention',async t=>{
+ const f=await fixture(t);f.version();f.run('draft-run',{full:true,purpose:'draft'});
+ let job=(await f.api('/jobs')).items.find(row=>row.id==='draft-run');
+ assert.equal(job.status,'completed');assert.equal(job.documentState.status,'draft_ready');assert.equal(workspaceJobStatusLabel(job),'初稿已保存');assert.equal(workspaceJobStatusLabel(accountOverviewTasks([job])[0]),'初稿已保存');
+ f.run('final-run',{full:true,purpose:'completion'});
+ f.db.prepare('UPDATE thesis_runs SET quality=? WHERE id=?').run(JSON.stringify({status:'partial',coverage:{complete:false},supplementCheck:{status:'unavailable'}}),'final-run');
+ job=(await f.api('/jobs')).items.find(row=>row.id==='final-run');
+ assert.equal(job.status,'completed');assert.equal(job.documentState.status,'check_required');assert.equal(documentStateGroup(job),'attention');assert.equal(workspaceJobStatusLabel(job),'待检查完善');assert.equal(workspaceJobStatusLabel(accountOverviewTasks([job])[0]),'待检查完善');
 });
 
 test('previous failed jobs are historical and cannot borrow the current successful job state',async t=>{

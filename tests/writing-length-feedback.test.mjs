@@ -1,9 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeWritingSnapshot,writingPlan,writingLengthFeedback,validateWritingCandidate} from '../backend/writing-model.mjs';
+import {normalizeWritingSnapshot,writingPlan,writingTask,writingUnitOutputCap,writingLengthFeedback,validateWritingCandidate} from '../backend/writing-model.mjs';
 
 const snapshot=language=>normalizeWritingSnapshot({title:'阅读服务证据综述',profile:{level:'本科',language,targetWords:600},materials:[{id:'source',name:'已确认资料',text:'此为用户确认的可读研究材料，包含明确研究范围与研究局限。',confirmed:true}],references:[],outline:[{id:'section',title:'研究证据与边界',targetWords:600}]});
 const candidate=text=>({text:JSON.stringify({complete:true,text,source_ids:['source'],missing_evidence:[]}),trace:[{tool:'read_material',status:'completed',materialId:'source'}]});
+
+test('short drafts use a bounded response budget without changing validated word counts or evidence',()=>{
+ const value=normalizeWritingSnapshot({...snapshot('中文'),outline:[{id:'a',title:'第一节',targetWords:200},{id:'b',title:'第二节',targetWords:200},{id:'c',title:'第三节',targetWords:200}]}),unit=writingPlan(value,'draft')[0],task=writingTask('summary','draft',value,unit);
+ assert.deepEqual(task.context.lengthBudget,{target:200,min:160,max:240,language:'中文'});assert.match(task.instructions,/约用 4 个完整句子/);assert.match(task.instructions,/正文非空白字符上限是 240/);assert.match(task.instructions,/不得为省篇幅删除必要证据/);
+ assert.equal(writingUnitOutputCap(unit,'draft',4096,task),2048);
+ assert.equal(validateWritingCandidate(candidate('研'.repeat(240)+'[source:source]'),'summary','draft',value,unit).valid,true);
+ assert.equal(validateWritingCandidate(candidate('研'.repeat(241)+'[source:source]'),'summary','draft',value,unit).feedback.code,'word_limit');
+ assert.equal(validateWritingCandidate({text:JSON.stringify({complete:true,text:'研'.repeat(200)+'[source:source]',source_ids:['source'],missing_evidence:[]}),trace:[]},'summary','draft',value,unit).feedback.code,'source_attribution');
+ const english=normalizeWritingSnapshot({...value,profile:{...value.profile,language:'English'}}),englishTask=writingTask('summary','draft',english,writingPlan(english,'draft')[0]);assert.match(englishTask.instructions,/正文英文词数上限是 240/);
+});
+
+test('rich structures, corrections, batch output and configured limits retain their original allowance',()=>{
+ const base={parts:1,targetWords:300},plain={context:{presentation:{image:false,table:false,formula:false,code:false}},materials:[]};
+ assert.equal(writingUnitOutputCap(base,'draft',4096,plain),2048);
+ for(const key of ['table','image','formula','code'])assert.equal(writingUnitOutputCap({...base,presentation:{[key]:true}},'draft',4096,plain),4096,key);
+ assert.equal(writingUnitOutputCap(base,'draft',4096,{...plain,context:{figureContract:{allowed:true}}}),4096);
+ assert.equal(writingUnitOutputCap({...base,completion:true},'draft',4096,plain),4096);assert.equal(writingUnitOutputCap({...base,batch:true},'draft',4096,plain),4096);assert.equal(writingUnitOutputCap(base,'outline',4096,plain),4096);assert.equal(writingUnitOutputCap({...base,targetWords:401},'draft',4096,plain),4096);assert.equal(writingUnitOutputCap(base,'draft',1024,plain),1024);
+ assert.equal(writingUnitOutputCap(base,'draft',4096,{materials:[{id:'x'.repeat(160)}]}),2072);
+});
 
 test('overlong feedback computes a concrete one-revision target and reduction ratio from the same submitted prose',()=>{
  const value=snapshot('中文'),unit=writingPlan(value,'draft')[0],output=candidate('研'.repeat(1382)+'[source:source]'),feedback=writingLengthFeedback(output,value,unit);

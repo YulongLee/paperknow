@@ -44,6 +44,16 @@ test('a failed review batch does not discard completed checks and later batches 
  assert.equal(quality.status,'partial');assert.deepEqual(quality.reviews.map(row=>row.status),['completed','unavailable','completed']);assert.equal(quality.coverage.complete,false);assert.equal(count,3);assert.doesNotMatch(JSON.stringify(quality),/PRIVATE|diagnostics/);assert.match(quality.limitations.join(''),/未覆盖全部正文/);
 });
 
+test('unresolved batch scope error keeps coverage incomplete and does not discard a mixed substantive warning',async()=>{
+ const input=chapters(1,100),quality=await plainRunner()({chapters:input,runtime,dispatch:async({task,validateReviewOutput})=>{
+  const row={...finding(task.context.manuscriptExcerpts[0]),category:'structure',explanation:'本批未提供参考文献，无法判断其是否存在。这不是已发现的缺失错误。本段还将未实施的实验写成已完成。'};
+  const candidate=response([row]),validation=validateReviewOutput(candidate);
+  assert.equal(validation.valid,false);assert.match(validation.feedback.rule,/单独返回/);
+  throw Object.assign(new Error('审校结果未通过范围核对'),{code:'invalid_review_output'});
+ }});
+ assert.equal(quality.coverage.complete,false);assert.equal(quality.status,'partial');assert.equal(quality.reviews[0].status,'unavailable');
+});
+
 test('an internal model timeout named AbortError becomes a partial review without cancelling the owner task',async()=>{
  const quality=await plainRunner()({chapters:chapters(),runtime,dispatch:async()=>{throw Object.assign(new Error('SDK timed out'),{name:'AbortError'});}});assert.equal(quality.status,'partial');assert.equal(quality.reviews[0].status,'unavailable');
 });

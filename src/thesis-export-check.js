@@ -1,3 +1,4 @@
+import {numberedMarkdownTables} from '../dist/workspace/numbered-markdown-tables.mjs';
 // This deterministic preflight reads the exact export text. It neither edits a
 // manuscript nor substitutes for research verification or rendered-page review.
 const MAX_TEXT = 2_000_000;
@@ -254,9 +255,10 @@ export function auditThesisSubmission(input={}) {
  const citedLines=lines.filter(line=>line.section==='references'&&/^\s*\[\d+\]/.test(line.text));
  if(Number.isSafeInteger(requirements.minimumForeignReferences)&&requirements.minimumForeignReferences>0){const count=citedLines.filter(line=>!/[\p{Script=Han}]/u.test(line.text.replace(/https?:\/\/\S+/g,''))).length;if(count<requirements.minimumForeignReferences)add('foreign_references',`模板要求至少 ${requirements.minimumForeignReferences} 篇外文文献，当前可识别 ${count} 篇，请补充并核对。`);}
  if(lines.some(line=>!line.literal&&/\\(?:frac|sum|sqrt|begin|tilde|exp|phi)\b/.test(plainLine(line.text))))add('raw_formula','正文仍有未排版的公式命令，请给公式补全数学定界符后再导出终稿。');
- const tables=lines.filter(line=>/^\s*\|?\s*:?-{3,}:?\s*\|/.test(line.text)).length,tableTitles=lines.map(line=>({...line,text:line.text.replace(/^\s*\|\s*(表\s*\d+(?:[.\-－]\d+)?\s+[^|]+?)\s*\|\s*$/,'$1')})).filter(line=>/^\s*表\s*\d+(?:[.\-－]\d+)?\s+\S/.test(line.text));
- if(tables>tableTitles.length)add('table_captions','部分表格没有独立的编号与表题，请在对应表格上方补齐。');
- if(new Set(tableTitles.map(line=>line.text.trim().match(/^表\s*(\d+(?:[.\-－]\d+)?)/)?.[1])).size<tableTitles.length)add('table_numbers','表格编号重复，请按全文或章节统一编号。');
+ const tables=lines.filter(line=>/^\s*\|?\s*:?-{3,}:?\s*\|/.test(line.text)).length,tableTitles=lines.map(line=>({...line,text:line.text.replace(/^\s*\|\s*(表\s*\d+(?:[.\-－]\d+)*\s+[^|]+?)\s*\|\s*$/,'$1')})).filter(line=>/^\s*表\s*\d+(?:[.\-－]\d+)*\s+\S/.test(line.text));
+ const shortContinued=numberedMarkdownTables(text).filter(table=>table.continued&&/^(?:表\s*\d+(?:[.\-－]\d+)*\s*[（(]\s*续(?:表)?\s*[）)]|续表\s*\d+(?:[.\-－]\d+)*)\s*$/u.test(table.quote)).length;
+ if(tables>tableTitles.length+shortContinued)add('table_captions','部分表格没有独立的编号与表题，请在对应表格上方补齐。');
+ const tableNumbers=new Set();if(numberedMarkdownTables(text).some(table=>{const duplicate=tableNumbers.has(table.number)&&!table.continued;tableNumbers.add(table.number);return duplicate;}))add('table_numbers','表格编号重复，请按全文或章节统一编号，并核对正文引用。');
  const expectedFigures=Array.isArray(input.metadata?.figures)?input.metadata.figures:[],figureReview=input.quality?.figureReview;
  if(expectedFigures.length){const expectedIds=expectedFigures.map(row=>row.id),checked=figureReview?.checkedFigureIds,provided=figureReview?.figureIds;const valid=figureReview?.version===1&&figureReview.status==='completed'&&input.quality?.stale!==true&&input.quality?.coverage?.complete===true&&Array.isArray(checked)&&Array.isArray(provided)&&new Set(checked).size===checked.length&&new Set(provided).size===provided.length&&expectedIds.length===checked.length&&expectedIds.length===provided.length&&expectedIds.every(id=>checked.includes(id)&&provided.includes(id));if(!valid)add('figure_review','论文图片尚未随当前正文完整检查，请使用补充窗口自动完善并重新核对图文。');}
  const significant=(input.quality?.stale?[]:[...(input.quality?.consistency?.findings||[]),...(input.quality?.reviews||[]).flatMap(row=>row.findings||[])]).filter(row=>row.severity==='warning'&&['method_result_consistency','source_support','claim_scope','figure_consistency','table_consistency','data_support'].includes(row.category));

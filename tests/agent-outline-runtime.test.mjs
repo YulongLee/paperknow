@@ -94,7 +94,7 @@ for(const [label,usage] of [
 
 test('a truncated provider response cannot be published by an SDK end_turn success',async()=>{
  const provider=providerFixture({usage:{input_tokens:20,output_tokens:32},stopReason:'max_tokens'});
- await assert.rejects(()=>providerRun({provider}),error=>{assert.match(error.message,/截断/);assert.deepEqual(error.usage,{input:20,output:32});return true;});
+ await assert.rejects(()=>providerRun({provider}),error=>{assert.match(error.message,/截断/);assert.equal(error.code,'truncated');assert.deepEqual(error.usage,{input:20,output:32});return true;});
  assert.equal(provider.calls.length,1);
 });
 

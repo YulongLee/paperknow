@@ -5,7 +5,7 @@ import {createCitationVerifier,auditWritingConsistency,writingReviewTask,parseWr
 
 const aborted=()=>Object.assign(new Error('写作质量检查已取消或任务已变化'),{name:'AbortError',code:'quality_cancelled',status:499});
 const bounded=(value,fallback,min,max)=>Number.isSafeInteger(value)&&value>=min&&value<=max?value:fallback;
-const publicReason=Object.freeze({unavailable:'本批辅助审校尚未完成，已生成的正文已保留。',budget_exhausted:'辅助审校已达到本次执行预算，剩余检查尚未完成；已生成的正文已保留。',not_configured:'辅助审校执行器尚未启用，已生成的正文已保留。'});
+const publicReason=Object.freeze({unavailable:'本批辅助审校尚未完成，已生成的正文已保留。',budget_exhausted:'辅助审校已达到本次执行预算，剩余检查尚未完成；已生成的正文已保留。',not_configured:'辅助审校执行器尚未启用，已生成的正文已保留。',cost_unconfirmed:'本批审校用量或费用暂未核实，已保存内容保留；请联系支持核对，避免重复处理。'});
 const budgetFailure=error=>error?.status===429||/budget|usage_unknown|unknown_usage|unknown_cost|cost_unknown/i.test(String(error?.code||''))||/预算|额度|用量.*(?:未知|核算|未返回)/.test(String(error?.message||''));
 
 // Only the worker-owned dispatch can spend model budget or touch task records.
@@ -14,6 +14,8 @@ const budgetFailure=error=>error?.status===429||/budget|usage_unknown|unknown_us
 // persisting manuscript contents. The model already sees the same excerpts.
 function reviewValidationRule(candidate,task,error){
  const msg=typeof error?.message==='string'?error.message:'';
+ if(msg.includes('范围限制误列'))return '本批未提供的章节无法判断，不能当作已定位缺项；将检查范围写入 limitations。如果同一条还有实际原文支持的问题，请单独返回该问题，不能删除或标为已通过。';
+ if(msg.includes('逐字片段描述与原文不一致'))return '该来源已提供的原文含被质疑的逐字片段，请重新核对该来源。逐字出现不等于支持整个论断；对仍缺依据或其他实质问题须保留并单独说明。';
  if(msg.includes('图片'))return '检查 checkedFigureIds，逐字列出本批全部图片ID，不得添加或遗漏。';
  let body;try{body=JSON.parse(candidate.text.trim().replace(/^```(?:json)?\s*\n?/i,'').replace(/\n?```\s*$/,''));}catch{return '候选须为完整 JSON 对象，包含 complete、findings 和 limitations。';}
  if(!Array.isArray(body?.findings))return 'findings 必须是数组；无可定位问题时提交空数组。';
@@ -51,7 +53,7 @@ export function createWritingQualityRunner(config={}){
   }
   flush();return batches;
  }
- return async function runWritingQuality({snapshot={},kind='writing',checkSupplements=config.supplementCheckEnabled===true,recoverSupplements=false,chapters=[],runtime={},runId='',signal,onStage,isCurrent=()=>true,dispatch}={}){
+ return async function runWritingQuality({snapshot={},kind='writing',checkSupplements=config.supplementCheckEnabled===true,recoverSupplements=false,chapters=[],docxObjects=[],runtime={},runId='',signal,onStage,isCurrent=()=>true,dispatch}={}){
   if(kind==='proposal'&&snapshot.requirements?.instructions)snapshot={...snapshot,requirements:{...snapshot.requirements,instructions:proposalModelInstructions(snapshot.requirements.instructions)}};
   const active=async()=>{if(signal?.aborted)throw aborted();if(await isCurrent()!==true||signal?.aborted)throw aborted();};
   const stage=async value=>{await active();await onStage?.(value);await active();};
@@ -63,7 +65,7 @@ export function createWritingQualityRunner(config={}){
    if(quality.citations.items?.some(item=>item.metadataStatus==='unavailable'||item.reasonCode==='budget_exhausted'))partial=true;
   }catch(error){await active();partial=true;quality.citations={version:1,status:'unavailable',checkedAt:timestamp(),scope:'public_identifier_metadata_only',claimSupport:'not_checked',items:[],summary:{matched:0,conflict:0,not_found:0,unverified:0,unavailable:0},limitations:['题录来源核验未完成，不能据此认定引用真实或虚假。']};}
   await stage('checking_consistency');
-  try{quality.consistency=auditWritingConsistency({chapters,references:snapshot.references||[],materials:snapshot.materials||[]});}catch(error){await active();partial=true;quality.consistency={version:1,status:'unavailable',checkedSections:0,findings:[],totalFindings:0,truncated:false,limitations:['正文一致性检查未完成。']};}
+  try{quality.consistency=auditWritingConsistency({chapters,references:snapshot.references||[],materials:snapshot.materials||[],docxObjects});}catch(error){await active();partial=true;quality.consistency={version:1,status:'unavailable',checkedSections:0,findings:[],totalFindings:0,truncated:false,limitations:['正文一致性检查未完成。']};}
   let stoppedReason=typeof dispatch==='function'?'':'not_configured';
   for(const [index,batch]of batches.entries()){
    await active();const unitId='quality-review::'+(index+1),sectionIds=[...new Set(batch.map(piece=>piece.originalSectionId))];
@@ -87,7 +89,7 @@ export function createWritingQualityRunner(config={}){
     const parsed=parseWritingReview(result,task),mapped=parsed.findings.map(finding=>{const piece=batch.find(row=>row.id===finding.sectionId);return {...finding,sectionId:piece.originalSectionId,offset:piece.originalOffset+finding.offset};});
     quality.reviews.push({...parsed,outcome:parsed.status,status:'completed',unitId,sectionIds,findings:mapped,checkedAt:timestamp(),batchOnly:true,checkedCharacters:batch.reduce((sum,piece)=>sum+piece.text.length,0),segments:batch.map(({originalSectionId,originalOffset,text,totalCharacters})=>({sectionId:originalSectionId,offset:originalOffset,characters:text.length,totalCharacters}))});
    }catch(error){
-    await active();partial=true;const reasonCode=budgetFailure(error)?'budget_exhausted':'unavailable';if(reasonCode==='budget_exhausted')stoppedReason=reasonCode;
+    await active();partial=true;const reasonCode=error?.code==='cost_unknown'?'cost_unconfirmed':budgetFailure(error)?'budget_exhausted':'unavailable';if(reasonCode==='budget_exhausted'||reasonCode==='cost_unconfirmed')stoppedReason=reasonCode;
     quality.reviews.push({unitId,status:'unavailable',sectionIds,reasonCode,reason:publicReason[reasonCode],findings:[],checkedSections:0});
    }
   }

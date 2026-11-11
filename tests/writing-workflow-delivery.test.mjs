@@ -110,9 +110,9 @@ for(const kind of Object.keys(writingFlowSpecs))test(kind+' keeps all template c
 });
 
 
-test('expression-only hints remain visible in quality checks without becoming final-material requirements',()=>{
+test('AI expression hints remain visible and require review without becoming material requirements',()=>{
  const text='此外，本节解释研究对象与适用条件。';
- for(const severity of ['info','warning']){const finding={sectionId:'c1',category:'language_expression',severity,quote:'此外，本节解释研究对象',suggestion:'按实际关系调整衔接。'},quality={consistency:{findings:[finding]},reviews:[{findings:[finding]}]};assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,severity==='info');quality.reviews[0].findings.push({...finding,category:'source_support'});assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,false);}
+ for(const severity of ['info','warning']){const finding={sectionId:'c1',category:'language_expression',severity,quote:'此外，本节解释研究对象',suggestion:'按实际关系调整衔接。'},quality={consistency:{findings:[finding]},reviews:[{findings:[finding]}]};assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,false);quality.reviews[0].findings.push({...finding,category:'source_support'});assert.equal(assessWritingDelivery({kind:'article',text,quality}).ready,false);}
 });
 
 test('a passed material check with other body findings explains the remaining review without exposing internal markers',()=>{
@@ -240,7 +240,24 @@ test('source review requires correction without demanding real-world data for a 
  const assessment=assessWritingDelivery({kind:'course',text,quality,requireSupplementCheck:true});assert.equal(assessment.ready,false);assert.match(assessment.issues[0].message,/核对表述与资料依据/);assert.doesNotMatch(assessment.issues[0].message,/真实资料/);assert.match(writingFinalBlockedMessage('course',assessment),/正文仍有待处理内容/);
 });
 
-test('informational terminology remains advisory while warning and substantive findings explain the real issue',()=>{
- const text='任务共进行了三轮，每轮包含四个步骤。',quality={consistency:{findings:[]},reviews:[{findings:[{category:'terminology',severity:'info',quote:text,explanation:'术语可进一步统一。'}]}]};assert.equal(assessWritingDelivery({kind:'course',text,quality}).ready,true);
- quality.reviews[0].findings.push({category:'method_result_consistency',severity:'warning',quote:text,explanation:'正文与图表的轮次口径不一致。'});const result=assessWritingDelivery({kind:'course',text,quality});assert.equal(result.ready,false);assert.match(result.issues[0].message,/轮次口径不一致/);assert.match(result.issues[0].message,/系统将核对并完善/);
+test('informational terminology remains reviewable while warning findings explain the real issue',()=>{
+ const text='任务共进行了三轮，每轮包含四个步骤。',quality={consistency:{findings:[]},reviews:[{findings:[{category:'terminology',severity:'info',quote:text,explanation:'术语可进一步统一。'}]}]};assert.equal(assessWritingDelivery({kind:'course',text,quality}).ready,false);
+ quality.reviews[0].findings.push({category:'method_result_consistency',severity:'warning',quote:text,explanation:'正文与图表的轮次口径不一致。'});const result=assessWritingDelivery({kind:'course',text,quality});assert.equal(result.ready,false);assert.ok(result.issues.some(item=>/轮次口径不一致/.test(item.message)));assert.match(result.issues[0].message,/系统将核对并完善/);
+});
+
+test('AI editorial suggestions and substantive findings remain reviewable across writing types',()=>{
+ const quote='长度加倍则配对数增加为四倍。';
+ const text='研究背景：'+quote+'\n研究方法：'+quote+'\n工作计划：'+quote;
+ const check={version:1,phase:'final',status:'final_ready',coverage:{total:1,checked:1,complete:true},items:[{status:'sufficient'}]};
+ const info={category:'language_expression',severity:'info',quote,explanation:'跨章节重复同一已核对事实，可精简。'};
+ for(const kind of ['proposal','summary','taskbook','article','course','practice']){
+  const snapshot={materials:[{id:'m1',text:'合成模型 C(n)=n²'}],references:[]};
+  const quality={coverage:{complete:true},supplementCheck:check,reviews:[{findings:[info]}]};
+  assert.equal(assessWritingDelivery({kind,text,snapshot,quality,requireSupplementCheck:true}).ready,false,kind+' advisory');
+  for(const category of ['logic','source_support','data_support']){
+   const withWarning={...quality,reviews:[{findings:[info,{category,severity:'warning',quote,explanation:'有实际证据或逻辑问题需要核对。'}]}]};
+   assert.equal(assessWritingDelivery({kind,text,snapshot,quality:withWarning,requireSupplementCheck:true}).ready,false,kind+' '+category);
+  }
+  assert.equal(assessWritingDelivery({kind,text:text+'【待核对：数据来源】',snapshot,quality,requireSupplementCheck:true}).ready,false,kind+' marker');
+ }
 });

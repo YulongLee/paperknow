@@ -26,7 +26,12 @@ test('default proposal uses only provided cover values and one copy of the appro
  assert.deepEqual(details.paragraphs.filter(Boolean),['开题报告','题目',title,'学院','城市设计学院','姓名','测试作者','学号','20260108',heading,body]);
  assert.equal((details.xml.match(/<w:sectPr>/g)||[]).length,2);
  assert.match(details.xml,/<w:pgMar w:top="1440" w:bottom="1440" w:left="1800" w:right="1800"/);
- assert.equal((details.xml.match(/<w:pgNumType w:fmt="decimal" w:start="1"\/>/g)||[]).length,1);
+ // The cover is physical page 1 and the body continues at page 2; restarting
+ // at an odd page caused Writer to insert an empty page. Uploaded templates
+ // retain their own explicit numbering (covered in writing-continuous-pages).
+ assert.equal((details.xml.match(/<w:pgNumType w:fmt="decimal"\/>/g)||[]).length,1);
+ assert.doesNotMatch(details.xml,/<w:pgNumType[^>]*w:start=/);
+ assert.match(await details.zip.file('word/pk-footer.xml').async('string'),/ PAGE /);
  const english=await inspect(await createWritingDocx(text,options({...fields,language:'English'})));
  assert.deepEqual(english.paragraphs.filter(Boolean).slice(0,4),['Research Proposal','Research topic',title,'School']);
  assert.doesNotMatch(details.xml,/TOC|毕业论文|独创性声明|\{\{/);

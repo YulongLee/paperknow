@@ -19,10 +19,22 @@ function legacyThesisReference(row={}){
  return [row.authors,title,publication,row.doi?'DOI: '+row.doi:'',row.url].filter(Boolean).join('. ');
 }
 function referenceAuthors(row){
- const raw=Array.isArray(row.authorNames)&&row.authorNames.length?row.authorNames:String(row.authors||'').split(/[;；、]|(?<=[\p{Script=Han}]),\s*(?=[\p{Script=Han}])/u).filter(Boolean);
- const names=raw.map(value=>{const name=typeof value==='string'?{literal:value.trim()}:value;if(name.literal){const parts=name.literal.match(/^([^,]+),\s*(.+)$/);if(!parts||/[\p{Script=Han}]/u.test(name.literal))return name.literal;return western(parts[1],parts[2]);}if(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test((name.family||'')+(name.given||'')))return(name.family||'')+(name.given||'');return western(name.family,name.given);});
+ const input=String(row.authors||''),structured=Array.isArray(row.authorNames)&&row.authorNames.length>0;let raw;
+ if(structured)raw=row.authorNames;
+ else if(!/[;；、\p{Script=Han}]/u.test(input)&&input.includes(',')){
+  const pieces=input.split(',').map(value=>value.trim()).filter(Boolean);
+  // A manually entered list of three or more unambiguous Western full names
+  // must not be interpreted as one "family, given" name. Keep ambiguous
+  // comma-separated forms intact rather than inventing author boundaries.
+  const fullName=/^(\p{Script=Latin}+(?:[-’']\p{Script=Latin}+)*)(?:\s+((?:\p{Script=Latin}\.?\s+)*))?\s+(\p{Script=Latin}+(?:[-’']\p{Script=Latin}+)*)$/u;
+  const parsed=pieces.map(value=>value.match(fullName));
+  if(pieces.length>=3&&parsed.every(Boolean))raw=pieces.map(literal=>({literal,preserve:true}));
+  else if(pieces.length>2||pieces.length===2&&pieces.every(value=>/\s/u.test(value)))raw=[{literal:input.trim(),preserve:true}];
+  else raw=[input];
+ }else raw=input.split(/[;；、]|(?<=[\p{Script=Han}]),\s*(?=[\p{Script=Han}])/u).filter(Boolean);
+ const names=raw.map(value=>{const name=typeof value==='string'?{literal:value.trim()}:value;if(name.literal){if(name.preserve||structured)return name.literal;const parts=name.literal.match(/^([^,]+),\s*([^,]+)$/);if(!parts||/[\p{Script=Han}]/u.test(name.literal))return name.literal;return western(parts[1],parts[2]);}if(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test((name.family||'')+(name.given||'')))return(name.family||'')+(name.given||'');return western(name.family,name.given);});
  function western(family='',given=''){return [family,given.split(/[\s-]+/u).map(part=>part.match(/\p{L}/u)?.[0]?.toUpperCase()||'').filter(Boolean).join(' ')].filter(Boolean).join(' ');}
- return names.slice(0,3).join(', ')+(names.length>3?(/[\p{Script=Han}]/u.test(names.join(''))?', 等':', et al.'):'');
+ return structured?names.slice(0,3).join(', ')+(names.length>3?(/[\p{Script=Han}]/u.test(names.join(''))?', 等':', et al.'):''):names.join(', ');
 }
 // One numeric bibliography formatter serves the thesis and every manuscript
 // workflow. Valid imported GB/T entries retain their complete supplied record.

@@ -1,5 +1,9 @@
 import {documentStateLabel} from './document-state.mjs';
-import {workspaceJobLabel,workspaceResultTitle} from './workspace-job-model.mjs';
+import {workspaceJobLabel,workspaceJobHref,workspaceResultTitle} from './workspace-job-model.mjs';
+
+export function accountOverviewTasks(jobs=[]){
+ return jobs.slice(0,3).map(row=>({...row,title:workspaceJobLabel(row),createdAt:row.created_at,url:workspaceJobHref(row)}));
+}
 
 // Include in-progress account theses, not only exported final results.
 export function accountOverviewItems(data={},toolConfigs={}){

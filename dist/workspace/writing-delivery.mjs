@@ -1,4 +1,5 @@
 import {supplementCheckReady,supplementCheckPanel} from './supplement-check-panel.mjs';
+import {numberedMarkdownTables} from './numbered-markdown-tables.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const readableReviewQuote=value=>String(value||'').replace(/\[figure:[^\]\n]+\]/gi,'图示').replace(/\[source:[^\]\n]+\]/gi,'参考资料').slice(0,160);
 export function writingFinalBlockedMessage(kind,assessment){
@@ -9,15 +10,23 @@ export function writingFinalBlockedMessage(kind,assessment){
  if(assessment.displayCheckReady)return '资料检查已通过；正文整体检查尚未完成，请在下方点击“保存材料并自动完善”后重新检查。';
  return '当前正文尚未完成内容检查，请先在下方点击“保存材料并自动完善”；检查后系统会说明是否需要补充资料。';
 }
+// AI free-text findings cannot prove they are purely stylistic or safe to
+// ignore. Treat them as reviewable until an independently verified system
+// format check can distinguish a harmless layout suggestion.
+export function writingAdvisoryFinding(row){return row?.severity==='info'&&row?.reasonCode==='formula_citation_manual_review'&&row?.category==='source_support';}
 export function assessWritingDelivery({kind,text='',snapshot={},quality,qualityCurrent=true,requireSupplementCheck=false}={}){
  const issues=[],seen=new Set(),add=(code,message,material=false)=>{if(!seen.has(code+message)){seen.add(code+message);issues.push({code,message,material});}};
  if(!text.trim())add('empty','尚无正文，请先生成；缺少资料时可在下方补充。',true);
  const markers=[...text.matchAll(/(?:【[^】\n]{0,100}(?:待补充|待核对|待填写|待提供)[^】\n]*】|\[(?:待补充|待核对|待填写|待提供)[^\]\n]*\]|\{\{[^}\n]+\}\}|\bTODO\b|\bTBD\b)/gi)];
  for(const row of markers.slice(0,30))add('materials','请补充：'+row[0].replace(/^[【\[]|[】\]]$/g,'').replace(/^待(?:补充|核对|填写|提供)[：:]?\s*/,'').slice(0,200),true);
+ // Setup and fixture identity annotations are not research findings. Keep the
+ // genuine simulation-method and data disclosures; only flag the narrow leak.
+ if(String(text).split(/[。！？\n]/u).some(sentence=>((/(?:测试|验收)(?:大学|学院|学校|教师|作者)/u.test(sentence))||!/(?:匿名|化名|隐私|脱敏|保密)/u.test(sentence))&&/(?:材料|资料|文档|来源).{0,25}(?:(?:大学|学院|学校|学生|教师).{0,30}(?:身份|姓名).{0,20}(?:虚构占位|测试占位|验收占位)|(?:测试|验收)(?:大学|学院|学校|教师|作者).{0,100}(?:虚构|测试|验收).{0,8}(?:身份|姓名))/u.test(sentence)))add('identity_placeholder_leak','正文包含与研究无关的测试身份占位说明，请自动完善正文并重新检查。');
  const known=new Set([...(snapshot.materials||[]),...(snapshot.references||[])].map(row=>row.id));
  if([...text.matchAll(/\[source:([^\]]+)\]/g)].some(match=>!known.has(match[1])))add('references','存在无法对应的引用来源，请补充原文与真实题录，由系统重新整理引用。',true);
  if(kind==='summary'&&text.trim()&&!(snapshot.references||[]).some(row=>row.text?.trim())&&!(snapshot.materials||[]).some(row=>row.text?.trim()))add('references','文献综述需要可引用的摘要或正文，请补充实际文献内容。',true);
- if(qualityCurrent){for(const row of [...(quality?.consistency?.findings||[]),...(quality?.reviews||[]).flatMap(review=>review.findings||[])])if(!(row.severity==='info'&&['language_expression','terminology'].includes(row.category))&&typeof row.quote==='string'&&row.quote.trim()&&text.includes(row.quote)){const material=['unresolved_placeholder','unknown_citation'].includes(row.category),prefix=row.category==='source_support'?'系统将核对表述与资料依据':material?'请补充资料':'系统将核对并完善',detail=readableReviewQuote(row.explanation||row.suggestion||'');add(row.category||'review',prefix+(detail?'：'+detail:'')+'（相关内容：'+readableReviewQuote(row.quote)+'）',material);}}
+ const tableNumbers=new Set(),duplicateTables=new Set();for(const table of numberedMarkdownTables(text)){if(tableNumbers.has(table.number)&&!table.continued){duplicateTables.add(table.number);add('table_consistency','表号 '+table.number+' 存在重复，请核对每张表的编号和正文引用。');}else tableNumbers.add(table.number);}
+ if(qualityCurrent){for(const row of [...(quality?.consistency?.findings||[]),...(quality?.reviews||[]).flatMap(review=>review.findings||[])])if(!(duplicateTables.size&&row.reasonCode==='duplicate_table_number')&&!writingAdvisoryFinding(row,snapshot)&&typeof row.quote==='string'&&row.quote.trim()&&text.includes(row.quote)){const material=['unresolved_placeholder','unknown_citation'].includes(row.category),prefix=row.category==='source_support'?'系统将核对表述与资料依据':material?'请补充资料':'系统将核对并完善',detail=readableReviewQuote(row.explanation||row.suggestion||'');add(row.category||'review',prefix+(detail?'：'+detail:'')+'（相关内容：'+readableReviewQuote(row.quote)+'）',material);}}
  if(requireSupplementCheck&&!supplementCheckReady(quality,{current:qualityCurrent}))add('supplement_check','补充内容尚未通过本次完整检查，请保存材料并自动完善后复查。',true);
  return {ready:!issues.length,issues:issues.slice(0,40),hasText:!!text.trim(),supplementCheck:quality?.supplementCheck,stale:!qualityCurrent};
 }

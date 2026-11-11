@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {assertExpressionRepairUnchanged} from '../backend/thesis-expression-repair.mjs';
+import {assertExpressionRepairUnchanged,normalizeExpressionPatch} from '../backend/thesis-expression-repair.mjs';
 import {completionRepairs} from '../backend/thesis-completion-repair.mjs';
 import {normalizeThesisSnapshot,thesisAgentTask,validateThesisCandidate} from '../backend/thesis-model.mjs';
 import {aliasThesisRevision,restoreThesisObjects} from '../backend/thesis-object-alias.mjs';
@@ -28,15 +28,15 @@ test('completion UI makes gap filling primary and keeps numeric simulation as a 
  const snapshot=value(),item={snapshot,profile:snapshot.profile,chapters:[{id:'c',title:'方法与分析',text:'已有论述。【待补充：文献依据】'}]},markup=completionPanelHTML(item,createCompletionDraft());assert.match(markup,/AI自动补充缺失内容/);assert.match(markup,/AI自动补充并检查/);assert.match(markup,/仿真研究数据/);assert.match(markup,/生成仿真数据/);assert.doesNotMatch(markup,/AI模拟数据补充/);assert.equal((markup.match(/data-completion-prepare/g)||[]).length,1);
 });
 test('legacy expression advice cannot be displayed as a completed correction or approved final result',()=>{
- const markup=completionReviewPanel({status:'ready',changes:[],suggestions:[{title:'方法与分析',text:'需要直接修正的原句'}],checks:{materials:true,manuscript:true,content:true}});assert.doesNotMatch(markup,/表达建议（供确认时参考）|data-completion-confirm(?:\s|>)/);assert.match(markup,/待自动修正的表达问题/);
+ const markup=completionReviewPanel({status:'ready',changes:[],suggestions:[{title:'方法与分析',text:'需要直接修正的原句'}],checks:{materials:true,manuscript:true,content:true}});assert.doesNotMatch(markup,/表达建议（供确认时参考）|data-completion-confirm(?:\s|>)/);assert.match(markup,/待确认的表达问题/);
 });
 
 test('full completion allows bounded expansion around an existing segment without weakening its upper limit',()=>{
  const snapshot=value(),unit={id:'unit',chapterId:'c',sectionId:'s',chapterTitle:'方法与分析',title:'方法与分析',targetWords:809,part:1,parts:1,presentation:{},completion:{scope:'full',originalText:'已核对的方法说明。',originalObjects:[],missingInformation:[]}},task=thesisAgentTask(snapshot,unit,[]);
- assert.equal(task.context.lengthBudget.target,809);assert.equal(task.context.lengthBudget.max,1445);
+ assert.equal(task.context.lengthBudget.target,809);assert.equal(task.context.lengthBudget.max,1651);assert.match(task.instructions,/允许范围 647～1651/);assert.match(task.instructions,/终稿实际篇幅可能超过最初目标/);
  const candidate=count=>({text:JSON.stringify({text:'研'.repeat(count)+'[source:m]',source_ids:['m'],missing_evidence:[],complete:true,draft:false}),trace:[{tool:'read_material',status:'completed',materialId:'m'}]});
  assert.equal(validateThesisCandidate(candidate(1417),snapshot,unit).valid,true);
- const rejected=validateThesisCandidate(candidate(1446),snapshot,unit);assert.equal(rejected.valid,false);assert.equal(rejected.feedback.code,'word_limit_exceeded');assert.match(rejected.feedback.rule,/不要逐字微调/);
+ const rejected=validateThesisCandidate(candidate(1652),snapshot,unit);assert.equal(rejected.valid,false);assert.equal(rejected.feedback.code,'word_limit_exceeded');assert.match(rejected.feedback.rule,/不要逐字微调/);
 });
 
 test('scoped simulation limitations do not become invented mandatory measurement markers',()=>{
@@ -59,4 +59,46 @@ test('completion rejects new numbered subsection headings that duplicate an adja
 test('overlength feedback measures restored locked text, not the short placeholder',()=>{
  const snapshot=value(),id='obj-0123456789abcdef12345678',original='原稿公式如下 [docx:'+id+']，后文保持完整。',unit={id:'u',chapterId:'c',chapterTitle:'方法与分析',title:'方法与分析',targetWords:40,part:1,parts:1,presentation:{},completion:{scope:'full',originalText:original,originalObjects:[{id}]}},revision=aliasThesisRevision({originalExcerpt:original},unit),text=revision.originalExcerpt+'\n\n'+'研究'.repeat(100)+'[source:m]',result=validateThesisCandidate({text:JSON.stringify({text,source_ids:['m'],missing_evidence:[],complete:true}),trace:[{tool:'read_material',status:'completed',materialId:'m'}]},snapshot,unit);
  assert.equal(result.valid,false);assert.equal(result.feedback.code,'word_limit_exceeded');assert.equal(result.feedback.count,researchWordCount(restoreThesisObjects(text,unit),'中文'));assert.ok(result.feedback.count>researchWordCount(text,'中文'));
+});
+
+test('completion does not invent classroom observations as mandatory for an explicitly non-human simulation',()=>{
+ const snapshot=value();snapshot.materials[0].text='仿真研究：无用户或受试者，不是实测研究。';const marker='【待补充：课堂观察或学习效果记录】';const unit={id:'u',chapterId:'c',chapterTitle:'方法与分析',title:'方法与分析',targetWords:100,part:1,parts:1,presentation:{},completion:{scope:'full',originalText:'教学案例只讨论理论模型。',originalObjects:[]}},build=text=>({text:JSON.stringify({text:text+'研究'.repeat(60)+'[source:m]',source_ids:['m'],missing_evidence:['记录'],complete:true,draft:true}),trace:[{tool:'read_material',status:'completed',materialId:'m'}]});
+ const candidate='本案例可用于演示，但课堂实施效果尚未观察'+marker;assert.equal(validateThesisCandidate(build(candidate),snapshot,unit).feedback.code,'scope_expansion');
+ assert.notEqual(validateThesisCandidate(build(candidate),snapshot,{...unit,completion:{...unit.completion,originalText:marker}}).feedback?.code,'scope_expansion');
+ assert.notEqual(validateThesisCandidate(build('本研究开展了课堂实施。'+marker),snapshot,unit).feedback?.code,'scope_expansion');
+ assert.notEqual(validateThesisCandidate(build(candidate),value(),unit).feedback?.code,'scope_expansion');
+});
+
+test('nonperiodic local-window count cannot assert full width at sequence boundaries',()=>{
+ const snapshot=value(),unit={id:'u',chapterId:'c',chapterTitle:'方法与分析',title:'方法与分析',targetWords:100,part:1,parts:1,presentation:{},completion:{scope:'full',originalText:'原稿使用完全配对计数。',originalObjects:[]}},formula='C_local(n,r)=n·min(n,2r+1)',build=text=>({text:JSON.stringify({text:text+'研究'.repeat(60)+'[source:m]',source_ids:['m'],missing_evidence:[],complete:true,draft:false}),trace:[{tool:'read_material',status:'completed',materialId:'m'}]});
+ const check=validateThesisCandidate(build('每个位置仅与相对偏移不超过r的位置配对。'+formula),snapshot,unit);assert.equal(check.feedback.code,'unsupported_window_formula');assert.match(check.feedback.rule,/n=8、r=3.*44.*56/);
+ assert.notEqual(validateThesisCandidate(build('周期边界情况下：'+formula),snapshot,unit).feedback?.code,'unsupported_window_formula');
+ assert.notEqual(validateThesisCandidate(build(formula),snapshot,{...unit,completion:{...unit.completion,originalText:formula}}).feedback?.code,'unsupported_window_formula');
+ assert.notEqual(validateThesisCandidate(build('普通窗口的配对数为 n(2r+1)-r(r+1)，其中 0≤r<n。'),snapshot,unit).feedback?.code,'unsupported_window_formula');
+});
+
+
+test('localized expression edits are unique, within the finding and preserve protected facts',()=>{
+ const old='显而易见，本节讨论理论方法。',checkpoint={text:old+'\n样本60例。 [source:m] $$x=1+2$$ 【待补充：资料】',source_ids:JSON.stringify(['m']),missing_evidence:JSON.stringify(['资料']),figures:'[]',trace:JSON.stringify([{tool:'read_material',status:'completed',materialId:'m'}])},findings=[{quote:old}],patch=(a,b)=>({text:JSON.stringify({complete:true,edits:[{old:a,new:b}]}),trace:[]});
+ const result=normalizeExpressionPatch(patch(old,'本节讨论理论方法。'),checkpoint,findings),body=JSON.parse(result.text);assert.match(body.text,/本节讨论理论方法。\n样本60例/);assert.equal(result.trace[0].materialId,'m');assert.doesNotThrow(()=>assertExpressionRepairUnchanged(checkpoint,{text:body.text,figures:[]}));
+ assert.throws(()=>normalizeExpressionPatch(patch(old,'本节讨论理论方法，样本为70例。'),checkpoint,findings));assert.throws(()=>normalizeExpressionPatch(patch('样本60例。','样本70例。'),checkpoint,findings));assert.throws(()=>normalizeExpressionPatch(patch(old,'本节讨论理论方法。'),{...checkpoint,text:checkpoint.text+' '+old},findings));assert.throws(()=>normalizeExpressionPatch(patch('[docx:obj-123456]','公式'),{...checkpoint,text:'[docx:obj-123456]'},[{quote:'[docx:obj-123456]'}]));
+});
+
+
+test('localized expression repair cannot reverse claims or accept a full-document rewrite',()=>{
+ const old='模型并未改善识别效果。',checkpoint={text:old+'其他内容需要保持原样。',source_ids:'[]',missing_evidence:'[]',figures:'[]',trace:'[]'},findings=[{quote:old}];assert.throws(()=>normalizeExpressionPatch({text:JSON.stringify({complete:true,edits:[{old:'模型并未改善识别效果',new:'模型显著改善识别效果'}]})},checkpoint,findings));assert.throws(()=>normalizeExpressionPatch({text:JSON.stringify({complete:true,text:'模型显著改善识别效果。其他内容被完全改写。'})},checkpoint,findings));
+});
+
+test('localized expression repairs reject quotations, overlapping anchors and fenced rewrites',()=>{
+ const patch=edits=>({text:JSON.stringify({complete:true,edits}),trace:[]}),base={source_ids:'[]',missing_evidence:'[]',figures:'[]',trace:'[]'},q='显而易见，方法有效';
+ assert.throws(()=>normalizeExpressionPatch(patch([{old:q,new:'方法有效'}]),{...base,text:'作者指出：“'+q+'。”[source:paper1]'},[{quote:q}]));
+ const old='显而易见，显而易见，',t='显而易见，显而易见，显而易见，研究表明无差异。';
+ assert.throws(()=>normalizeExpressionPatch(patch([{old,new:'显而易见，'}]),{...base,text:t},[{quote:old}]));
+ const a='显而易见，众所周知，研究结果可信。',b='众所周知，研究结果可信。';
+ assert.throws(()=>normalizeExpressionPatch(patch([{old:a,new:b},{old:b,new:'研究结果可信。'}]),{...base,text:a},[{quote:a}]));
+ assert.throws(()=>normalizeExpressionPatch({text:'```json\n{"text":"不安全全文"}\n```'},base,[{quote:q}]));
+});
+
+test('completion status does not claim unsaved updates and displays released entitlement',()=>{
+ const html=completionReviewPanel({status:'check_required',reasonCode:'check_unavailable',billingStatus:'released',changes:[],missing:[],issues:[],checks:{materials:false,manuscript:false,content:false}});assert.match(html,/当前正文和资料已保留/);assert.doesNotMatch(html,/补充后的内容已写入正文/);assert.match(html,/未扣积分或套餐次数/);
 });

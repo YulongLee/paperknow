@@ -8,12 +8,8 @@ const make=questions=>({title:'阅读调查',introduction:'匿名自愿参与',q
 const nonuser={id:'q1',type:'single',title:'是否使用过数字阅读服务？',options:['从未使用过','使用过'],required:true};
 const experience={id:'q2',type:'scale',title:'您对服务的使用体验满意吗？',options:scale,required:true};
 const general={id:'q3',type:'single',title:'您的年级是？',options:['一年级','二年级'],required:true};
-test('AI questionnaire introduction removes only isolated generation notes while preserving informed consent',()=>{
- const input=make([nonuser,experience,general]);input.introduction='本调查仅用于学术研究。\n参与完全自愿，可以随时退出。我们不收集姓名或联系方式。当前问卷不支持自动跳题逻辑，请自行判断作答。所有结果为待人工核对的草稿数据。感谢您的参与。';
- const before=structuredClone(input),output=normalizeAIQuestionnaire(input,{outputCount:3,scalePoints:5});
- assert.equal(output.introduction,'本调查仅用于学术研究。\n参与完全自愿，可以随时退出。我们不收集姓名或联系方式。感谢您的参与。');
- assert.deepEqual(input,before);assert.deepEqual(normalizeAIQuestionnaire(output,{outputCount:3,scalePoints:5}),output);
- const only=make([nonuser,experience,general]);only.introduction='当前问卷不支持自动跳题逻辑，请自行判断作答。所有结果为待人工核对的草稿数据。';assert.throws(()=>normalizeAIQuestionnaire(only,{outputCount:3}),/缺少受访者说明/);
+test('AI process notes are rejected without deleting consent or candidate text',()=>{
+ const input=make([nonuser,experience,general]);input.introduction='本调查仅用于学术研究。\n参与完全自愿，可以随时退出。我们不收集姓名或联系方式。当前问卷不支持自动跳题逻辑，请自行判断作答。所有结果为待人工核对的草稿数据。感谢您的参与。';const before=structuredClone(input);assert.throws(()=>normalizeAIQuestionnaire(input,{outputCount:3,scalePoints:5}),e=>e.validationCode==='questionnaire_statement_conflict');assert.deepEqual(input,before);
 });
 test('non-users can skip required experience items while their scale and unrelated required questions are preserved',()=>{
  const input=make([nonuser,experience,general]),before=structuredClone(input);
@@ -85,37 +81,36 @@ test('weekly frequency ranges must not leave an uncovered or ambiguous six-times
 test('standalone never-used and never-encountered choices cannot be mixed with other multiple selections',()=>{
  for(const option of ['未使用过','从未使用过','未遇到/未使用']){const q={...general,type:'multiple',title:'遇到过哪些问题？',options:['检索慢','页面复杂',option]};assert.doesNotThrow(()=>normalizeAIQuestionnaire(make([nonuser,experience,q]),{outputCount:3}),option);}
 });
-test('remove generated instructions telling nonusers to select an option missing from experience questions',()=>{
- const q={...nonuser,title:'过去30天使用数字阅读服务的频率',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']},input=make([q,experience,general]);input.introduction='本调查自愿参加。如果您未使用过相关服务，请在体验题中选择未使用。感谢您的参与。';const result=normalizeAIQuestionnaire(input,{outputCount:3});assert.equal(result.questions[1].required,false);assert.doesNotMatch(result.introduction,/选择未使用/);assert.match(result.introduction,/本调查自愿参加/);
+test('an instruction to select a missing nonuser option requires candidate repair',()=>{
+ const q={...nonuser,title:'过去30天使用数字阅读服务的频率',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']},input=make([q,experience,general]);input.introduction='本调查自愿参加。如果您未使用过相关服务，请在体验题中选择未使用。感谢您的参与。';const before=structuredClone(input);assert.throws(()=>normalizeAIQuestionnaire(input,{outputCount:3}),e=>e.validationCode==='questionnaire_statement_conflict');assert.deepEqual(input,before);
 });
 
 test('the real eight-question shape catches distinct missing ranges, incompatible choices and combined dimensions',()=>{
  const questions=[{...general,id:'q1'}, {id:'q2',type:'single',title:'您使用数字阅读服务（如电子书平台、学术数据库、移动阅读App等）的频率最接近以下哪一项？',options:['几乎每天使用','每周3至5次','每周1至2次','每月1至3次','每年偶尔使用或从未使用'],required:true},{id:'q3',type:'multiple',title:'您通常通过哪些渠道进入数字阅读服务？',options:['图书馆电子资源入口','搜索引擎链接','几乎没有固定渠道或未使用过'],required:true},{...experience,id:'q4',title:'您对数字阅读服务的检索便利性（如搜索响应速度、筛选功能、界面操作难易）满意程度如何？'},{...experience,id:'q5',title:'您对所需文献或图书资源的可获取性（如能否找到想读的内容、校外访问是否顺畅）满意程度如何？'},{...experience,id:'q6',title:'您对所使用服务的整体满意度如何？'},{id:'q7',type:'multiple',title:'您遇到过哪些问题？',options:['检索结果不相关','未遇到过问题','未使用过相关服务'],required:true},{id:'q8',type:'text',title:'还有哪些建议？',options:[],required:false}];
  assert.throws(()=>normalizeAIQuestionnaire(make(questions),{outputCount:8}),error=>{const found=new Set(error.validationIssues.map(i=>i.questionIndex+':'+i.code));for(const item of ['2:frequency_gap','4:multiple_dimensions','5:multiple_dimensions'])assert.ok(found.has(item),item);return true;});
  const corrected=questions.map(q=>q.id==='q2'?{...q,title:'过去30天使用数字阅读服务的频率',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']}:q.id==='q3'?{...q,options:['图书馆电子资源入口','搜索引擎链接','其他渠道']}:q.id==='q4'?{...q,title:'您对搜索响应速度的满意程度如何？'}:q.id==='q5'?{...q,title:'您对校外访问顺畅程度的满意程度如何？'}:q.id==='q7'?{...q,options:['检索结果不相关','资源无法下载']}:q);
- const input=make(corrected);input.introduction='参与自愿。从未使用过数字阅读服务的同学可在相关体验题处选择“未使用过”或直接跳过。';const output=normalizeAIQuestionnaire(input,{outputCount:8});assert.equal(output.questions[1].required,true);assert.equal(output.questions[3].required,false);assert.match(output.questions[3].title,/未使用者可跳过/);assert.doesNotMatch(output.introduction,/选择“未使用过”/);
+ const input=make(corrected);input.introduction='参与自愿。从未使用过数字阅读服务的同学可在相关体验题处选择“未使用过”或直接跳过。';assert.throws(()=>normalizeAIQuestionnaire(input,{outputCount:8}),e=>e.validationCode==='questionnaire_statement_conflict');input.introduction='参与自愿。未使用者可跳过体验题。';const output=normalizeAIQuestionnaire(input,{outputCount:8});assert.equal(output.questions[1].required,true);assert.equal(output.questions[3].required,false);assert.match(output.questions[3].title,/未使用者可跳过/);assert.doesNotMatch(output.introduction,/选择“未使用过”/);
 });
 
-test('remove unsupported-branching implementation note without dropping the response time',()=>{
- const input=make([nonuser,experience,general]);input.introduction='参与完全自愿。本问卷不支持自动跳题，约需3分钟完成。';const out=normalizeAIQuestionnaire(input,{outputCount:3});assert.doesNotMatch(out.introduction,/不支持自动跳题/);assert.match(out.introduction,/约需3分钟完成/);
+test('implementation notes are rejected without deleting response time and consent',()=>{
+ const input=make([nonuser,experience,general]);input.introduction='参与完全自愿。本问卷不支持自动跳题，约需3分钟完成。';const before=structuredClone(input);assert.throws(()=>normalizeAIQuestionnaire(input,{outputCount:3}),e=>e.validationCode==='questionnaire_statement_conflict');assert.deepEqual(input,before);
 });
 
-test('already optional experience questions also explain nonuser skip and do not promise a missing option',()=>{
- const input=make([nonuser,{...experience,required:false},general]);input.introduction='参与自愿。未使用者可选择未使用选项。';const result=normalizeAIQuestionnaire(input,{outputCount:3});assert.equal(result.questions[1].required,false);assert.match(result.questions[1].title,/未使用者可跳过/);assert.doesNotMatch(result.introduction,/选择未使用/);assert.deepEqual(normalizeAIQuestionnaire(result,{outputCount:3}),result);
+test('missing option promise requires repair while correct skip hint remains',()=>{
+ const input=make([nonuser,{...experience,required:false},general]);input.introduction='参与自愿。未使用者可选择未使用选项。';assert.throws(()=>normalizeAIQuestionnaire(input,{outputCount:3}),e=>e.validationCode==='questionnaire_statement_conflict');input.introduction='参与自愿。';const result=normalizeAIQuestionnaire(input,{outputCount:3});assert.equal(result.questions[1].required,false);assert.match(result.questions[1].title,/未使用者可跳过/);
 });
-
-test('existing nonuser skip variants are not duplicated and already doubled hints are cleaned',()=>{
- for(const suffix of ['（若从未使用可跳过本题）','（未使用过可跳过）','（若从未使用可跳过本题）（未使用者可跳过）']){const q={...experience,title:'使用体验满意度如何？'+suffix};const result=normalizeAIQuestionnaire(make([nonuser,q,general]),{outputCount:3});assert.equal(result.questions[1].required,false);assert.equal((result.questions[1].title.match(/跳过/g)||[]).length,1,suffix);assert.deepEqual(normalizeAIQuestionnaire(result,{outputCount:3}),result);}
+test('existing nonuser skip variants are preserved, including duplicated wording for review',()=>{
+ for(const suffix of ['（若从未使用可跳过本题）','（未使用过可跳过）','（若从未使用可跳过本题）（未使用者可跳过）']){const q={...experience,title:'使用体验满意度如何？'+suffix};const result=normalizeAIQuestionnaire(make([nonuser,q,general]),{outputCount:3});assert.equal(result.questions[1].required,false);assert.equal(result.questions[1].title,q.title,suffix);}
 });
 
 test('new real questionnaire frequency gap, zero overlap, combined dimensions and consent mismatch are caught',()=>{
  const q={...nonuser,title:'总体而言，你在过去一学期中使用数字阅读服务的频率如何？',options:['从不使用','每月少于1次','每月1至3次','每周1至2次','几乎每天使用']},dim={...experience,title:'你对数字阅读服务中学习或研究所需资源的可获取性（如馆藏覆盖范围、访问权限、是否需要付费）满意吗？'};
  assert.throws(()=>normalizeAIQuestionnaire(make([q,dim,general]),{outputCount:3}),e=>{assert.ok(e.validationIssues.some(i=>i.code==='frequency_gap'));assert.ok(e.validationIssues.some(i=>i.code==='frequency_overlap'));assert.ok(e.validationIssues.some(i=>i.code==='multiple_dimensions'));return true;});
- const fixed={...q,title:'过去30天使用数字阅读服务的频率',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']},input=make([fixed,{...experience,title:'资源访问是否方便？（未使用过可跳过）'},general]);input.introduction='你可以随时中止填写或跳过任何不想回答的题目。';const result=normalizeAIQuestionnaire(input,{outputCount:3});assert.equal(result.questions[0].required,true);assert.equal(result.questions[1].required,false);assert.match(result.introduction,/随时中止填写/);assert.doesNotMatch(result.introduction,/跳过任何/);
+ const fixed={...q,title:'过去30天使用数字阅读服务的频率',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']},input=make([fixed,{...experience,title:'资源访问是否方便？（未使用过可跳过）'},general]);input.introduction='你可以随时中止填写或跳过任何不想回答的题目。';assert.throws(()=>normalizeAIQuestionnaire(input,{outputCount:3}),e=>e.validationCode==='questionnaire_statement_conflict');input.introduction='你可以随时中止填写。';const result=normalizeAIQuestionnaire(input,{outputCount:3});assert.equal(result.questions[0].required,true);assert.equal(result.questions[1].required,false);assert.match(result.introduction,/随时中止填写/);assert.doesNotMatch(result.introduction,/跳过任何/);
 });
 
-test('duplicated hint is removed even from a screening question that already has a never-used option',()=>{
- const q={...nonuser,title:'过去30天使用数字服务的频率如何？（若从未使用可跳过本题）（未使用者可跳过）',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']};const result=normalizeAIQuestionnaire(make([q,experience,general]),{outputCount:3});assert.equal(result.questions[0].required,true);assert.doesNotMatch(result.questions[0].title,/跳过/);assert.equal(result.questions[1].required,false);assert.match(result.questions[1].title,/未使用者可跳过/);
+test('a contradictory screening skip hint requires repair without deleting the text',()=>{
+ const q={...nonuser,title:'过去30天使用数字服务的频率如何？（若从未使用可跳过本题）（未使用者可跳过）',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']};const input=make([q,experience,general]),before=structuredClone(input);assert.throws(()=>normalizeAIQuestionnaire(input,{outputCount:3}),e=>e.validationCode==='questionnaire_statement_conflict');assert.deepEqual(input,before);
 });
 
 test('actual 53980 frequency, mutually exclusive multi-select, and screening branch are reviewable',()=>{
@@ -128,7 +123,7 @@ test('actual 53980 frequency, mutually exclusive multi-select, and screening bra
 test('actual 53981 frequency uses a single reference window and truthful skip guidance',()=>{
  const q={...nonuser,title:'您平均使用数字阅读服务（如电子书平台、学术数据库、在线阅读App等）的频率是？',options:['每天一次及以上','每周3至5次','每周1至2次','每月1至3次','每学期几次','从未使用过']};
  assert.throws(()=>normalizeAIQuestionnaire(make([q,experience,general]),{outputCount:3}),error=>{const codes=new Set(error.validationIssues.map(row=>row.code));for(const code of ['frequency_gap','frequency_period','frequency_mixed_units'])assert.ok(codes.has(code),code);return true;});
- const fixed={...q,title:'过去30天使用数字阅读服务的次数是多少？',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']},input=make([fixed,experience,general]);input.introduction='参与完全自愿，您可以随时中止作答或跳过任何不愿回答的问题。';const result=normalizeAIQuestionnaire(input,{outputCount:3});assert.equal(result.questions[0].required,true);assert.match(result.introduction,/随时中止作答/);assert.doesNotMatch(result.introduction,/跳过任何/);assert.equal(result.questions[1].required,false);
+ const fixed={...q,title:'过去30天使用数字阅读服务的次数是多少？',options:['0次（过去30天未使用）','1至3次','4至7次','8至15次','16次及以上']},input=make([fixed,experience,general]);input.introduction='参与完全自愿，您可以随时中止作答或跳过任何不愿回答的问题。';assert.throws(()=>normalizeAIQuestionnaire(input,{outputCount:3}),e=>e.validationCode==='questionnaire_statement_conflict');input.introduction='参与完全自愿，您可以随时中止作答。';const result=normalizeAIQuestionnaire(input,{outputCount:3});assert.equal(result.questions[0].required,true);assert.match(result.introduction,/随时中止作答/);assert.doesNotMatch(result.introduction,/跳过任何/);assert.equal(result.questions[1].required,false);
 });
 
 test('one-window counts must have no overlaps or gaps, without equating calendar months and weeks',()=>{
@@ -143,8 +138,8 @@ test('zero activity in an explicitly bounded window permits the related experien
  const q={...nonuser,title:'过去30天使用数字阅读服务的频率',options:['0次','1至3次','4至7次','8次及以上']};const result=normalizeAIQuestionnaire(make([q,experience,general]),{outputCount:3});assert.equal(result.questions[0].required,true);assert.equal(result.questions[1].required,false);assert.match(result.questions[1].title,/未使用者可跳过/);
 });
 
-test('required questions do not retain a standalone promise that any unwilling response may be skipped',()=>{
- const input=make([nonuser,experience,general]);input.introduction='参与完全自愿。您可以跳过任何不愿回答的问题。可随时停止作答。';const result=normalizeAIQuestionnaire(input,{outputCount:3});assert.doesNotMatch(result.introduction,/跳过任何/);assert.match(result.introduction,/参与完全自愿/);assert.match(result.introduction,/随时停止作答/);
+test('required questions reject a standalone promise that every unwilling response may be skipped',()=>{
+ const input=make([nonuser,experience,general]);input.introduction='参与完全自愿。您可以跳过任何不愿回答的问题。可随时停止作答。';const before=structuredClone(input);assert.throws(()=>normalizeAIQuestionnaire(input,{outputCount:3}),e=>e.validationCode==='questionnaire_statement_conflict');assert.deepEqual(input,before);
 });
 
 test('a previous month is a valid reference window without treating it as four weeks',()=>{
@@ -168,13 +163,8 @@ test('questions phrased as how many times are checked for interval gaps',()=>{
  assert.throws(()=>normalizeAIQuestionnaire(make([question,experience,general]),{outputCount:3}),e=>e.validationIssues.some(row=>row.code==='frequency_gap'));
  const good={...question,options:['0次','1至3次','4至7次','8次及以上']};assert.doesNotThrow(()=>normalizeAIQuestionnaire(make([good,experience,general]),{outputCount:3}));
 });
-test('non-users are not instructed to turn missing experience into a neutral rating',()=>{
- const q={...experience,title:'您对检索便利程度满意吗？（指能否方便地找到所需内容；未使用者请选择中间选项）'};
- const q2={...experience,id:'q4',title:'资源满足程度如何？（未使用者可选择中间选项）'};
- const result=normalizeAIQuestionnaire(make([nonuser,q,q2,general]),{outputCount:4});
- assert.match(result.questions[1].title,/指能否方便地找到所需内容/);
- for(const row of result.questions.slice(1,3)){assert.doesNotMatch(row.title,/选择中间|请选择中间/);assert.match(row.title,/未使用者可跳过/);assert.equal(row.required,false);}
- assert.deepEqual(normalizeAIQuestionnaire(result,{outputCount:4}),result);
+test('non-user neutral rating instructions require repair without changing original questions',()=>{
+ const q={...experience,title:'您对检索便利程度满意吗？（指能否方便地找到所需内容；未使用者请选择中间选项）'},q2={...experience,id:'q4',title:'资源满足程度如何？（未使用者可选择中间选项）'},input=make([nonuser,q,q2,general]),before=structuredClone(input);assert.throws(()=>normalizeAIQuestionnaire(input,{outputCount:4}),e=>e.validationCode==='questionnaire_statement_conflict');assert.deepEqual(input,before);
 });
 test('multi-select options that negate every experience cannot be combined with positive choices',()=>{
  for(const label of ['过去30天未使用任何数字阅读服务','未遇到过明显困难','没有觉得便捷的方面','过去30天未使用,无法评价']){
@@ -212,5 +202,5 @@ test('all-required claims, zero-day duration labels and undergraduate-only scree
  assert.throws(()=>normalizeAIQuestionnaire(make([nonuser,duration,general]),{outputCount:3}),e=>e.validationIssues?.some(i=>i.code==='scale_dimension_mismatch'));
  const college={id:'q1',type:'single',title:'您目前就读于哪个本科年级?',options:['一年级','二年级','三年级','四年级','五年级及以上'],required:true};
  assert.throws(()=>normalizeAIQuestionnaire(make([college,experience,general]),{outputCount:3,instructions:'对象为高校在校学生'}),e=>e.validationIssues?.some(i=>i.code==='education_coverage'));
- const input=make([nonuser,experience,{...general,required:false}]);input.introduction='参与完全自愿。全部题目均为必答。请按真实情况作答。';const result=normalizeAIQuestionnaire(input,{outputCount:3});assert.doesNotMatch(result.introduction,/全部题目均为必答/);
+ const input=make([nonuser,experience,{...general,required:false}]);input.introduction='参与完全自愿。全部题目均为必答。请按真实情况作答。';const before=structuredClone(input);assert.throws(()=>normalizeAIQuestionnaire(input,{outputCount:3}),e=>e.validationCode==='questionnaire_statement_conflict');assert.deepEqual(input,before);
 });

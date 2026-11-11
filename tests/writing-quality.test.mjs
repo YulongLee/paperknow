@@ -162,8 +162,44 @@ test('review parsing binds every finding to a real section and an exact manuscri
  assert.equal(result.status,'review_required');assert.equal(result.scope,'provided_manuscript_excerpts_only');assert.equal(result.checkedSections,2);assert.equal(finding.offset,0);assert.equal(finding.grounding,'exact_manuscript_quote');assert.equal(finding.requiresReview,true);assert.match(result.limitations.join(''),/不构成事实核验/);
 });
 
+test('a batch scope limitation cannot be reported as a located structural defect',()=>{
+ const task=writingReviewTask({chapters:manuscript()});
+ const scope=aiFinding({category:'structure',explanation:'本批未提供参考文献栏目的原句，无法判断其是否存在。这属于检查范围限制，不是已发现的缺失错误。',suggestion:'在阅读全文后核查参考文献。'});
+ assert.throws(()=>parseWritingReview(aiResult([scope]),task),/范围限制误列/);
+ // Do not silently discard a substantive issue mixed with a scope note.
+ const mixed={...scope,explanation:scope.explanation+' 本段明确将未开展的调查写成已完成。'};
+ assert.throws(()=>parseWritingReview(aiResult([mixed]),task),/范围限制误列/);
+ const actual=aiFinding({category:'structure',explanation:'本段明确将未开展的调查写成已完成，须与资料核对。'});
+ assert.equal(parseWritingReview(aiResult([actual]),task).findings.length,1);
+ const valid=parseWritingReview(aiResult([actual],{limitations:['本批未提供参考文献，无法判断该栏目是否完整。']}),task);
+ assert.equal(valid.findings.length,1);assert.match(valid.limitations.join(''),/无法判断/);
+});
+
+test('a reviewer cannot claim an exact phrase is absent from a named source that supplies it',()=>{
+ const text='不涉及注意力权重，也不代表模型实测或教学成效[source:followup]。';
+ const source={id:'followup',confirmed:true,text:'不是对完整算法、运行时间或教学成效的测量。研究不计算任何注意力权重。'};
+ const task=writingReviewTask({snapshot:{materials:[source]},chapters:[{id:'one',title:'范围',text}]});
+ const finding={sectionId:'one',quote:'不涉及注意力权重，也不代表模型实测或教学成效',category:'source_support',severity:'warning',explanation:'followup 片段是否单独承载“教学成效”措辞未能仅凭本次提供的文字完全核对。',suggestion:'请核对来源。'};
+ assert.throws(()=>parseWritingReview(aiResult([finding]),task),/逐字片段描述与原文不一致/);
+ assert.throws(()=>parseWritingReview(aiResult([{...finding,explanation:finding.explanation+' 正文另外声称实验已经完成。'}]),task),/逐字片段描述与原文不一致/);
+ // Literal presence alone does not prove semantic entailment; an explicit
+ // question about the scope of the claim remains reviewable.
+ const semantic={...finding,explanation:'followup 片段虽包含“教学成效”，但无法支持已经完成真实教学的结论。'};
+ assert.equal(parseWritingReview(aiResult([semantic]),task).findings.length,1);
+ const absentTask=writingReviewTask({snapshot:{materials:[{...source,text:'本研究不计算任何注意力权重。'}]},chapters:[{id:'one',title:'范围',text}]});
+ assert.equal(parseWritingReview(aiResult([finding]),absentTask).findings.length,1);
+ const ambiguous=writingReviewTask({snapshot:{materials:[{id:'a',confirmed:true,text:'这里提到教学成效。'},{id:'ba',confirmed:true,text:'这里未介绍相关内容。'}]},chapters:[{id:'one',title:'范围',text:'教学成效尚需核对[source:a][source:ba]。'}]});
+ const distinct={sectionId:'one',quote:'教学成效尚需核对',category:'source_support',severity:'warning',explanation:'ba来源没有提及“教学成效”，请核实对应论断。',suggestion:'核对 ba 来源。'};
+ assert.equal(parseWritingReview(aiResult([distinct]),ambiguous).findings.length,1);
+});
+
 test('a completed review with no located findings is limited to supplied excerpts rather than a quality certification',()=>{
  const task=writingReviewTask({chapters:manuscript()}),result=parseWritingReview(aiResult(),task);assert.equal(result.status,'no_ai_findings');assert.equal(result.requiresReview,true);assert.equal(result.findings.length,0);assert.equal(result.excerpted,false);
+});
+
+test('optional expression improvements remain informational while substantive unsupported claims remain warnings',()=>{
+ const task=writingReviewTask({chapters:manuscript()}),informational=aiFinding({category:'language_expression',severity:'info',explanation:'不同章节重复说明同一方法，可精简表达。'}),substantive=aiFinding({category:'data_support',severity:'warning',quote:'实际调查尚未执行',explanation:'此处需要核对实际调查是否开展。'}),result=parseWritingReview(aiResult([informational,substantive]),task);
+ assert.equal(result.findings[0].severity,'info');assert.equal(result.findings[1].severity,'warning');assert.equal(result.findings[1].category,'data_support');
 });
 
 test('review rejects invented locations, altered quotations, unsupported verdicts and duplicate findings',()=>{
@@ -177,6 +213,10 @@ test('review refuses truncated, malformed and incomplete responses while preserv
 
 test('review task submits its complete findings contract through the authorized tool and freezes after acceptance',()=>{
  const task=writingReviewTask({chapters:manuscript()});
+ assert.match(task.instructions,/模板未指定的表格字段、可选栏目与版式建议不得臆造为强制要求，应标 info/);
+ assert.match(task.instructions,/有序对 \(i,j\) 表示顺序有区别，并不意味着 i<j/);assert.match(task.instructions,/仅当正文明确将配对数量等同运行时间、资源或计算代价/);
+ assert.match(task.instructions,/没有逻辑或数值矛盾时，若确有表达冗余，归 language_expression 且标 info/);assert.match(task.instructions,/实际矛盾、缺证或错引仍须标 warning/);
+ assert.match(task.instructions,/未来才制作的对照表或成果不要求当下提供实际字段/);assert.match(task.instructions,/实际数值矛盾仍为 warning/);
  assert.match(task.instructions,/作为 candidate 提交 submit_writing_output/);
  assert.match(task.instructions,/accepted=false.*按反馈修正完整候选/);
  assert.match(task.instructions,/accepted=true 后结果已冻结，立即结束/);
@@ -199,6 +239,18 @@ test('explicit references to missing numbered figures and tables request review 
  assert.ok(!run('原文的表1给出了比较结果[source:a]。').findings.some(row=>row.category==='table_consistency'));
  const table='表1 结果对比\n\n| 类别 | 指标 |\n| --- | --- |\n| A | 1 |';assert.ok(!auditWritingConsistency({chapters:[{id:'a',title:'分析',text:'表1给出对比。'},{id:'b',title:'结果',text:table}]}).findings.some(row=>row.category==='table_consistency'));
  assert.ok(!run('表1给出结果。\n\n[docx:table1]').findings.some(row=>row.category==='table_consistency'));
+});
+
+test('numbered table references are checked against real captions rather than any unrelated table',()=>{
+ const table='表1 模拟结果\n| n | C |\n| --- | --- |\n| 8 | 64 |';
+ const run=text=>auditWritingConsistency({chapters:[{id:'a',title:'结果',text}]}).findings.filter(row=>row.category==='table_consistency');
+ assert.ok(run('如表2所示，配对数为64。\n\n'+table).some(row=>/表号/.test(row.explanation)));
+ assert.equal(run('如表1所示，配对数为64。\n\n'+table).length,0);
+ assert.equal(run('原文表2所示的结果[source:r]。\n\n'+table).length,0);
+ assert.equal(run('如表2所示。\n\n'+table+'\n\n[docx:object]').length,0);
+ assert.ok(run('如表2所示。\n\n'+table+'\n```\n表2 假表\n| n | C |\n| --- | --- |\n| 8 | 64 |\n```').some(row=>/表号/.test(row.explanation)));
+ assert.ok(run('如表2所示。\n表1 结果\n| --- | --- |\n| n | C |\n| 8 | 64 |').some(row=>/表号/.test(row.explanation)));
+ assert.equal(run(table+'\n```\n如表2所示。\n```').length,0);
 });
 
 test('literature analysis cannot be checked against metadata alone',()=>{
@@ -293,4 +345,15 @@ test('review cannot misquote an equation as the manuscript definition',()=>{
  assert.throws(()=>parseWritingReview(aiResult([row]),task),/公式无法逐字核对/);
  row.explanation='有序位置对数按定义 C(n)=n²，需明确对比范围。';assert.equal(parseWritingReview(aiResult([row]),task).findings.length,1);
  row.explanation='对该式的离散差分可以进一步推导，并与连续导数区分。';assert.equal(parseWritingReview(aiResult([row]),task).findings.length,1);
+});
+
+test('flags nonperiodic local-window formula while preserving circular models and code samples',()=>{
+ const text='每个位置仅与相对偏移不超过r的位置配对，C_local(n,r)=n·min(n,2r+1)。',check=t=>auditWritingConsistency({chapters:[{id:'c',title:'方法',text:t}]});const findings=check(text).findings;assert.ok(findings.some(f=>f.category==='method_result_consistency'&&/44.*56/.test(f.explanation)));assert.equal(check('周期边界：'+text).findings.filter(f=>/非周期局部窗口/.test(f.explanation)).length,0);assert.equal(check('```text\n'+text+'\n```').findings.filter(f=>/非周期局部窗口/.test(f.explanation)).length,0);
+});
+
+test('numbered Markdown tables remain auditable with known Word formula or image objects',()=>{
+ const id='obj-0123456789abcdef12345678',text='见表2所示。\n\n[docx:'+id+']\n\n表1 结果\n\n| 类别 | 数量 |\n| --- | --- |\n| A | 1 |',chapters=[{id:'c',title:'结果',text}],run=objects=>auditWritingConsistency({chapters,docxObjects:objects}).findings.filter(f=>f.category==='table_consistency'&&/表号/.test(f.explanation));
+ for(const kind of ['formula','image'])assert.equal(run([{id,kind}]).length,1,kind);
+ assert.equal(run([]).length,0,'unknown preserved objects may contain opaque tables');
+ assert.equal(run([{id,kind:'table'}]).length,0,'opaque Word table may account for reference');
 });

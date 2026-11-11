@@ -67,3 +67,5 @@ test('supplement checker reads only authorized ranges; ordinary review has no so
   else assert.equal(checkedTrace.some(row=>row.tool==='read_material'),false);
  }
 });
+
+test('SDK unsuccessful result reports fixed sanitized diagnostic without leaking result',async t=>{const {settings}=fixture(t);settings.save('admin',valid);await assert.rejects(()=>runAgentTask({settings:settings.get(),task,dependencies:{lookup,query:()=> (async function*(){yield {...success,subtype:'error_during_execution',is_error:true,result:secret};})()}}),error=>error.code==='runtime_error'&&error.providerDiagnostic==='sdk_result_failure'&&!error.message.includes(secret)&&!JSON.stringify(error).includes(secret));});

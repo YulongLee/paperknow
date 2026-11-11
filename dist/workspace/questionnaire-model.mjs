@@ -32,25 +32,24 @@ export function normalizeScaleOptions(value,{legacyDefault=false,points}={}){
 }
 // Strip only isolated model process messages from an AI-authored introduction.
 // Never replace or synthesize the participant-facing consent and privacy text.
-function cleanAIIntroduction(value,{removeMissingSkipOption=false,hasRequired=false,hasOptional=false}={}){
- const intro=text(value,2000,'问卷说明').replace(hasRequired?/(?:或|、|和)\s*跳过(?:任何|所有)不(?:想|愿)回答的(?:题目|问题)/gu:/(?!)/g,'').replace(/(?:当前|本次|本)?问卷(?:暂时|暂|目前)?不支持自动跳题(?:逻辑|功能)?[，,]\s*(?=约需|预计|作答约需)/gu,'');
- const stripped=intro.split(/(?<=[。！？!?\n])/u).filter(sentence=>{
-  const s=sentence.trim();
-  if(hasOptional&&/^(?:本问卷|全部|所有|本次)?(?:题目|问题)(?:均|都|全部)?(?:为|是)?必答[。！？!?]?$/u.test(s))return false;
-  if(hasRequired&&/^(?:(?:任何|所有)(?:不(?:想|愿)回答的)?(?:题目|问题)(?:均|都)?(?:可|可以)跳过|(?:你|您)?(?:可|可以)跳过(?:任何|所有)不(?:想|愿)回答的(?:题目|问题))[。！？!?]?$/u.test(s))return false;
-  if(removeMissingSkipOption&&/(?:未使用|从未使用|没有使用).{0,35}(?:选择|勾选|请选择).{0,25}(?:未使用|未体验|不适用)|(?:选择|勾选|请选择).{0,20}(?:未使用|未体验|不适用).{0,25}(?:未使用|从未使用|没有使用)/u.test(s))return false;
-  return !/^(?:当前|本次|本)?问卷(?:暂时|暂|目前)?不支持自动跳题(?:逻辑|功能)?(?:[，,]请自行判断作答)?[。！？!?]?$/u.test(s)&&
-   !/^(?:所有|本次|本问卷的?)?(?:结果|数据)(?:均|都)?为待人工核对的草稿数据[。！？!?]?$/u.test(s);
- }).join('').trim();
- if(!stripped)throw Error('AI 问卷缺少受访者说明，请重新生成。');
- return stripped;
+function questionnaireStatementConflict(field){throw Object.assign(Error('问卷说明包含需要核对的作答或用途表述，请重新生成并保留参与自愿及撤回说明。'),{validationCode:'questionnaire_statement_conflict',validationField:field});}
+function cleanAIIntroduction(value,{removeMissingSkipOption=false,hasRequired=false,hasOptional=false,coursePurposeConfirmed=false}={}){
+ const intro=text(value,2000,'问卷说明');
+ if(/(?:问卷不支持自动跳题|结果为待人工核对的草稿数据)/u.test(intro))questionnaireStatementConflict('introduction');
+ if(!coursePurposeConfirmed&&/(?:仅|只)用于(?:课程研究|课程作业|课程调研)/u.test(intro))questionnaireStatementConflict('introduction');
+ if(hasOptional&&/(?:全部|所有|本问卷(?:的)?)(?:题目|问题)(?:均|都|全部)?(?:为|是)?必答/u.test(intro))questionnaireStatementConflict('introduction');
+ if(hasRequired&&/(?:跳过(?:任何|所有)(?:不(?:想|愿)(?:回答|作答)的)?(?:题目|问题)|(?:任何|所有)(?:不(?:想|愿)(?:回答|作答)的)?(?:题目|问题)(?:均|都)?(?:可|可以)跳过)/u.test(intro))questionnaireStatementConflict('introduction');
+ if(removeMissingSkipOption&&/(?:未使用|从未使用|没有使用).{0,35}(?:选择|勾选|请选择).{0,25}(?:未使用|未体验|不适用)|(?:选择|勾选|请选择).{0,20}(?:未使用|未体验|不适用).{0,25}(?:未使用|从未使用|没有使用)/u.test(intro))questionnaireStatementConflict('introduction');
+ return intro;
 }
 // Clear none-of-the-above choices cannot coexist with affirmative answers.
 // Restrict this to explicit whole-option wording; ordinary choices such as
 // “其他” are not inherently exclusive.
 export function isExclusiveQuestionnaireOption(value){
  const option=String(value??'').trim().normalize('NFKC');
- return /^(?:无|没有|都没有|以上均无|以上都没有|均不适用|不适用|none(?: of the above)?|not applicable)$/iu.test(option)
+ return /^(?:以上均无|以上都没有|以上都不符合|上述均无|上述都没有|none of the above)\s*[（(][^（）()]{1,100}[）)]$/iu.test(option)
+  || /^(?:无|没有|都没有|以上均无|以上都没有|均不适用|不适用|none(?: of the above)?|not applicable)$/iu.test(option)
+  ||/^(?:(?:以上|上述)(?:都|均)?(?:不符合|不使用|不选择|不属于|不存在)|(?:无|没有)(?:以上|上述)(?:问题|情况|选项|经历)|(?:以上|上述)(?:问题|情况|选项|经历)(?:都|均)?(?:没有|不存在))$/u.test(option)
   ||/^(?:(?:以上|上述)(?:均|都)?(?:未|不|没有)(?:使用|选择|接触|适用)(?:过)?(?:任何一项)?|(?:从未|未|没有)(?:使用|遇到|接触)(?:过)?(?:相关服务|问题|相关问题)?|(?:几乎)?没有固定渠道或(?:从未|未|没有)使用(?:过)?|(?:基本|几乎)?不使用上述服务|未遇到\s*[\/／或]\s*未使用)$/u.test(option)
   ||/^(?:(?:过去|最近|近)\s*\d+\s*(?:天|日|周|个月|月|年))?(?:(?:从未|未|没有)(?:使用|遇到|接触)(?:过)?(?:任何|明显|相关|该|此|本|数字阅读|的|服务|困难|问题|资源|方面|体验|评价|一项|一种|过|，|,|无法|\s)*|没有觉得.{0,20}(?:便捷|方便|好处|优势|满意).{0,15})$/u.test(option);
 }
@@ -114,20 +113,36 @@ export function normalizeAIQuestionnaire(output,requirements={}){
  // turn missing experience into a genuine response and bias the statistics.
  // Remove only the explicit instruction, preserving any other explanation in
  // the same parenthesis; the skip hint below remains the supported path.
- const removeNeutralNonuserHint=title=>title.replace(/[（(]([^（）()]{1,180})[）)]/gu,(whole,inside)=>{
-  const clauses=inside.split(/[；;]/u),kept=clauses.filter(clause=>!/^\s*(?:若|如果|如)?(?:从未|未|没有)(?:使用|体验)(?:者|过|过者)?(?:请|可|可以|应|需)*(?:选择|选|填写|填).*(?:中间|中立|一般|居中)/u.test(clause));
-  return kept.length===clauses.length?whole:kept.length?'（'+kept.join('；')+'）':'';
- }).trim();
- const suffix='（未使用者可跳过）',normalizedQuestions=questions.map(q=>{let title=removeNeutralNonuserHint(q.title);if(title.endsWith(suffix)){const prior=title.slice(0,-suffix.length);if(hasSkipHint(prior))title=prior;}if(q.required&&q.options.some(option=>neverUsedOption(q,option)))title=title.replace(/[（(]([^（）()]{1,60})[）)]/gu,(whole,inside)=>hasSkipHint(inside)?'':whole).trim();return title===q.title?q:{...q,title};});
+ const removeNeutralNonuserHint=title=>{if(/[（(][^（）()]{0,180}(?:未使用|没有使用|从未使用)[^（）()]{0,45}(?:选择|选|填写|填)[^（）()]{0,45}(?:中立|一般|居中|中间)[^（）()]{0,80}[）)]/u.test(title))questionnaireStatementConflict('questions');return title;};
+ // Translate internal generated IDs used as question references to the actual
+ // displayed order, but only when the ID is clearly used as a question reference.
+ const questionStart=Number.isSafeInteger(requirements.questionStart)&&requirements.questionStart>=1?requirements.questionStart:1;
+ const questionOrder=new Map(questions.map((q,index)=>[q.id.toLowerCase(),questionStart+index]));
+ const readableRefs=title=>title.replace(/(?:第\s*(q\d+)\s*题|(?<![A-Za-z0-9_])(q\d+)\s*题|(?:题目|问题|题号)\s*(q\d+)(?![A-Za-z0-9_]))/giu,(whole,...args)=>{const id=args.slice(0,3).find(Boolean);return id&&questionOrder.has(id.toLowerCase())?'第'+questionOrder.get(id.toLowerCase())+'题':whole;}).replace(/((?:如果|若|当)\s*)(q\d+)(?=\s*(?:选择|选了|回答))/giu,(whole,prefix,id)=>questionOrder.has(id.toLowerCase())?prefix+'第'+questionOrder.get(id.toLowerCase())+'题':whole);
+ const broadStudentAudience=/(?:目标人群|调查对象|受访者|面向)\s*[:：]?\s*(?:高校|大学|高等院校)(?:在校)?学生/u.test(String(requirements.instructions||''))&&!/(?:仅|只|限定|排除|不包括)/u.test(String(requirements.instructions||''));
+ const removeExpectedNonuserHint=title=>/(?:未来|将来|预期).{0,25}(?:预期|期待|希望|使用体验)|(?:预期|期待).{0,25}(?:未来|将来)/u.test(title.split(/[（(]/u)[0])?title:!/(?:实际(?:使用|体验|经历)|使用(?:体验|经历|感受)|最近\s*\d+\s*(?:天|日|周|个月|月|年).{0,35}(?:经历|使用|体验))/u.test(title.split(/[（(]/u)[0])?title:title.replace(/[（(]\s*(?:若|如果|如)?(?:从未|未|没有)(?:使用|体验)(?:者|过者)?(?:可|可以|请|应|需)[^（）()]{0,60}(?:选择|选|填写|填)[^（）()]{0,40}(?:预期|想象|猜测)[^（）()]{0,100}[）)]/gu,()=>questionnaireStatementConflict('questions'));
+ const suffix='（未使用者可跳过）',normalizedQuestions=questions.map(q=>{let title=readableRefs(removeExpectedNonuserHint(removeNeutralNonuserHint(q.title)));if(q.required&&q.options.some(option=>neverUsedOption(q,option))&&hasSkipHint(title))questionnaireStatementConflict('questions');const grade=q.type==='single'&&/(?:所在|目前|当前).{0,5}年级|年级.{0,8}(?:是|为)/u.test(title)&&['大一','大二','大三','大四'].every(label=>q.options.includes(label));const options=broadStudentAudience&&grade&&q.options.length<10&&!q.options.some(option=>/其他|以上均不|不适用/u.test(option))?[...q.options,'其他']:q.options;return title===q.title&&options===q.options?q:{...q,title,options};});
  const hasNonUsers=normalizedQuestions.some(q=>q.options.some(o=>neverUsedOption(q,o)));
- const safeQuestions=hasNonUsers?normalizedQuestions.map(q=>{
+ // If a screening question includes both non-users and users, a reason question
+ // explicitly addressed to non-users / infrequent users must not force everyone
+ // else to select an inaccurate reason. Keep the author's original options.
+ const usageSubject=q=>{const matches=[...String(q.title||'').matchAll(/(?:使用|骑行|访问|阅读)((?:(?!使用|骑行|访问|阅读)[^的，。！？?；;（）()]){2,18})(?=的|次数|频率|[，。！？?；;（）()]|$)/gu)];return matches.at(-1)?.[1]?.trim()||'';};
+ const explicitlyNonusersOnly=/(?:仅限|仅面向|仅调查|只面向|只调查|调查对象(?:仅|只)(?:为|是)?).{0,18}(?:未使用|没有使用|从未使用|不使用)/u.test(String(requirements.instructions||''));
+ const usagePeriod=q=>String(q.title||'').match(/(?:最近|过去|近)\s*(\d+)\s*(天|日|周|个月|月|年)/u)?.slice(1).join('')||'';
+ const mixedUsageScreens=normalizedQuestions.map((q,index)=>({q,index,subject:usageSubject(q),period:usagePeriod(q)})).filter(({q,subject})=>subject&&q.options.some(o=>neverUsedOption(q,o))&&q.options.some(o=>/(?:经常|频繁|每天|每周|每月|\d+\s*次(?:及|或)?以上|[1-9]\d*\s*(?:次|天))/u.test(o)));
+ const restrictedNonuseReason=q=>/(?:未|没有|从未|较少|很少|不常).{0,10}(?:使用|骑行|访问|阅读).{0,30}(?:原因|理由)|(?:未|没有|从未).{0,10}(?:使用|骑行|访问|阅读).{0,12}(?:或|、|及).{0,10}(?:较少|很少|不常).{0,10}(?:使用|骑行|访问|阅读).{0,30}(?:原因|理由)/u.test(q.title);
+ const unrestrictedAlternative=q=>q.options.some(o=>/(?:经常|频繁|正常|较多).{0,12}(?:使用|骑行|访问|阅读)|^(?:不适用|不符合本题|不属于以上人群)$/u.test(o));
+ const safeQuestions=hasNonUsers?normalizedQuestions.map((q,index)=>{
+  if(!explicitlyNonusersOnly&&mixedUsageScreens.some(screen=>screen.index<index&&screen.subject===usageSubject(q)&&(!screen.period||!usagePeriod(q)||screen.period===usagePeriod(q)))&&restrictedNonuseReason(q)&&!unrestrictedAlternative(q)){const hint='（不符合本题条件可跳过）';return {...q,required:false,title:q.title.includes(hint)||q.title.length+hint.length>500?q.title:q.title+hint};}
+  if(/(?:未来|将来).{0,25}(?:预期|期待|希望)|(?:预期|期待).{0,25}(?:未来|将来)/u.test(q.title.split(/[（(]/u)[0]))return q;
+  if(restrictedNonuseReason(q))return q; // Do not let the broad experience fallback override the specific population guard.
   if(!['single','multiple','scale','text'].includes(q.type)||q.options.some(o=>neverUsedOption(q,o)||/不适用|未使用|从未使用|无法评价|not applicable|never used/i.test(o)))return q;
   if(!/(?:使用|体验|满意|满足程度|满足.{0,20}(?:需求|要求)|便利|便捷|评价|服务质量|accessibility|satisfaction|experience)/i.test(q.title))return q;
   const hint=/[\u4e00-\u9fff]/.test(q.title)?'（未使用者可跳过）':' (Skip if you have not used this service)';
   const title=q.title;return {...q,required:false,title:hasSkipHint(title)||title.includes(hint)||title.length+hint.length>500?title:title+hint};
  }):normalizedQuestions;
  const missingSkipOption=hasNonUsers&&safeQuestions.some(q=>['single','multiple','scale'].includes(q.type)&&/(?:使用|体验|满意|满足程度|满足.{0,20}(?:需求|要求)|便利|便捷|评价|服务质量|accessibility|satisfaction|experience)/i.test(q.title)&&!q.options.some(o=>neverUsedOption(q,o)||/未使用|未体验|不适用|无法评价|never used|not applicable/i.test(o)));
- return{title:text(output.title,200,'问卷标题'),introduction:cleanAIIntroduction(output.introduction,{removeMissingSkipOption:missingSkipOption,hasRequired:safeQuestions.some(row=>row.required),hasOptional:safeQuestions.some(row=>!row.required)}),questions:safeQuestions};
+ return{title:text(output.title,200,'问卷标题'),introduction:cleanAIIntroduction(output.introduction,{removeMissingSkipOption:missingSkipOption,hasRequired:safeQuestions.some(row=>row.required),hasOptional:safeQuestions.some(row=>!row.required),coursePurposeConfirmed:/(?:仅|只)(?:用于|供|作)(?:课程研究|课程作业|课程调研)(?!和|与|及|、)/u.test(String(requirements.instructions||''))&&!/(?:不是|并非|不属于|不用于|无关).{0,8}(?:课程研究|课程作业|课程调研)/u.test(String(requirements.instructions||''))}),questions:safeQuestions};
 }
 
 // A compact editor change detector only; it never authorizes access or verifies evidence.

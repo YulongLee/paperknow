@@ -6,7 +6,8 @@ import {assessWritingDelivery} from '../dist/workspace/writing-delivery.mjs';
 export function thesisDocumentState(db,row,run=undefined,review=undefined){
  if(run===undefined)run=row.current_run_id?db.prepare('SELECT * FROM thesis_runs WHERE id=? AND user_id=?').get(row.current_run_id,row.user_id):null;
  const hasDraft=Boolean(db.prepare("SELECT 1 FROM thesis_chapter_versions v WHERE v.thesis_id=? AND v.chapter_id IN (SELECT json_extract(value,'$.id') FROM json_each(?,'$.outline')) AND trim(v.text)!='' AND NOT EXISTS (SELECT 1 FROM thesis_chapter_versions n WHERE n.thesis_id=v.thesis_id AND n.chapter_id=v.chapter_id AND n.version>v.version) LIMIT 1").get(row.id,row.snapshot));
- const full=run&&JSON.parse(run.settings_meta||'{}').completion?.scope==='full';
+ const completion=run&&JSON.parse(run.settings_meta||'{}').completion;
+ const full=completion?.scope==='full'&&completion?.purpose!=='draft';
  let status=hasDraft?'draft_ready':'draft';
  if(['queued','running','cancelling'].includes(row.status)||['queued','running','cancelling'].includes(run?.status))status='generating';
  else if(full&&row.status==='draft'&&hasDraft)status='check_required';
