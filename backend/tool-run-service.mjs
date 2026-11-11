@@ -10,6 +10,8 @@ import {normalizeToolRequest,toolRunPlan,toolOperations,toolOperationNames,toolB
 import {assertResearchImageSettings} from './research-image-client.mjs';
 import {researchImageGenerationStatus,initializeResearchImageUsage} from './research-image-generation.mjs';
 import {presentationGenerationStatus} from './presentation-generation.mjs';
+import {loadTemplateArtwork} from './presentation-template-art.mjs';
+import {themes as presentationThemes} from '../dist/workspace/presentation-model.mjs';
 const fail=(status,message)=>{throw thesisError(status,message);};
 const fields=(v,keys)=>{if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).some(k=>!keys.includes(k)))fail(400,'请求包含不支持的字段');};
 const commandKey=k=>{if(typeof k!=='string'||!/^[A-Za-z0-9_:.-]{8,100}$/.test(k))fail(400,'请提供有效的唯一提交标识');return k;};
@@ -39,7 +41,12 @@ export function createToolRunService(db,config={}){
  const reusable=(value,user,version,completed=true)=>value.kind==='literature'&&['read','answer'].includes(value.operation)?db.prepare("SELECT * FROM tool_runs WHERE user_id=? AND input_hash=? AND settings_version=? AND status IN ('queued','running'"+(completed?",'completed'":"")+") ORDER BY CASE status WHEN 'completed' THEN 1 ELSE 0 END,created_at DESC LIMIT 1").get(user.id,value.inputHash,version):null;
  const admission=(user,billingToken,charge)=>{budget.check(user.id,{billingToken,billingType:charge.type,serviceKey:charge.serviceKey});if(db.prepare("SELECT count(*) n FROM jobs WHERE user_id=? AND status IN ('queued','running')").get(user.id).n>=3)fail(429,'账户已有3个待处理任务，请等待完成');if(db.prepare("SELECT count(*) n FROM tool_runs WHERE status IN ('queued','running')").get().n>=50)fail(429,'当前任务较多，请稍后重试');if(db.prepare('SELECT count(*) n FROM tool_runs WHERE user_id=?').get(user.id).n>=1000)fail(409,'任务保存数量达到上限，请导出备份并联系支持整理');};
  async function checkImage(value,runtime){if(value.operation!=='image')return;const status=researchImageGenerationStatus(config,runtime);if(!status.ready)fail(503,status.reason);}
- function checkPresentation(value){if(value.operation!=='ppt')return;const status=presentationGenerationStatus(config);if(!status.ready)fail(503,status.reason);}
+ async function checkPresentation(value){if(value.operation!=='ppt')return;const status=presentationGenerationStatus(config);if(!status.ready)fail(503,status.reason);
+  // Check the exact selected cover before quoting or reserving funds. Otherwise
+  // a missing deployment asset is discovered only after paid AI work finishes.
+  const chosen=value.snapshot.context?.theme,theme=Object.hasOwn(presentationThemes,chosen)?chosen:'academic';
+  await (config.presentationArtworkLoader||loadTemplateArtwork)(theme);
+ }
  async function capabilities(){
   let textReady=false,imageRuntime;try{await settings();textReady=true;}catch{}try{imageRuntime=await config.getResearchImageSettings?.();}catch{}
   const researchImages=researchImageGenerationStatus(config,imageRuntime);
@@ -54,7 +61,7 @@ export function createToolRunService(db,config={}){
    return response({item:row?serializeToolRun(db,row):null});
   }
   if(path==='/api/tool-runs/quote'&&method==='POST'){
-   const input=await readBody();fields(input,['kind','operation','snapshot','projectId']);const value=normalize(input,user),runtime=await settings(undefined,value);await checkImage(value,runtime);checkPresentation(value);
+   const input=await readBody();fields(input,['kind','operation','snapshot','projectId']);const value=normalize(input,user),runtime=await settings(undefined,value);await checkImage(value,runtime);await checkPresentation(value);
    return response(thesisTransaction(db,()=>{resolveTaskProject(db,value.projectId,user);const charge=commercialToolIdentity(db,value),quote=billing.quote(user,{...charge,context:commercialWorkContext(value)});admission(user,quote.token,charge);db.prepare('INSERT INTO tool_quotes VALUES(?,?,?,?)').run(quote.token,user.id,value.inputHash,clock());return{...quote,inputHash:value.inputHash,projectId:value.projectId,kind:value.kind,operation:value.operation};}));
   }
   const byKey=path.match(/^\/api\/tool-runs\/jobs\/by-key\/([^/]+)$/);if(byKey&&method==='GET'){const key=commandKey(decodeURIComponent(byKey[1])),row=db.prepare('SELECT * FROM tool_runs WHERE user_id=? AND client_key=?').get(user.id,key);if(!row)fail(404,'科研工具任务不存在');return response({item:serializeToolRun(db,row)});}
@@ -62,7 +69,7 @@ export function createToolRunService(db,config={}){
    const input=await readBody();fields(input,['kind','operation','snapshot','projectId','clientKey','billingToken','consent','resumeFromJobId']);if(input.consent!==true)fail(400,'请确认本次资料处理与费用');commandKey(input.clientKey);const value=normalize(input,user),previous=db.prepare('SELECT * FROM tool_runs WHERE user_id=? AND client_key=?').get(user.id,input.clientKey);
    if(previous){if(previous.input_hash!==value.inputHash)fail(409,'提交标识已用于其他内容');return response({item:serializeToolRun(db,previous)});}
    let resume;if(input.resumeFromJobId!==undefined){resume=own(input.resumeFromJobId,user);if(resume.input_hash!==value.inputHash||!['failed','cancelled'].includes(resume.status))fail(409,'只能从相同输入的失败或取消任务继续');}
-   const runtime=await settings(undefined,value);await checkImage(value,runtime);checkPresentation(value);return response(thesisTransaction(db,()=>{
+   const runtime=await settings(undefined,value);await checkImage(value,runtime);await checkPresentation(value);return response(thesisTransaction(db,()=>{
     resolveTaskProject(db,value.projectId,user);const again=db.prepare('SELECT * FROM tool_runs WHERE user_id=? AND client_key=?').get(user.id,input.clientKey);if(again){if(again.input_hash!==value.inputHash)fail(409,'提交标识已用于其他内容');return{item:serializeToolRun(db,again)};}
     const inflight=reusable(value,user,runtime.version,false);if(inflight)return{item:serializeToolRun(db,inflight),reused:true};
     const charge=commercialToolIdentity(db,value);admission(user,input.billingToken,charge);const quote=db.prepare('SELECT * FROM tool_quotes WHERE token=? AND user_id=?').get(typeof input.billingToken==='string'?input.billingToken:'',user.id);if(!quote||quote.input_hash!==value.inputHash)fail(409,'资料与费用确认不一致，请重新确认');

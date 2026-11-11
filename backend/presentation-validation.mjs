@@ -1,4 +1,4 @@
-const codes=new Set(['ppt_completion','ppt_page_count','ppt_page_identity','ppt_field','ppt_outline_title','ppt_source_read']);
+const codes=new Set(['ppt_completion','ppt_page_count','ppt_page_identity','ppt_field','ppt_outline_title','ppt_source_read','ppt_unsupported_stage']);
 // Persist only controlled rule IDs and bounded counts/positions. Never retain
 // rejected candidate text, material names, provider errors or credentials.
 export function presentationValidationRecord(result,{phase='planning',unitId=''}={}){

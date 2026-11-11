@@ -22,7 +22,7 @@ function record(id,projectId='',mode='ai'){return{id,title:id,tool:'ppt',project
 function fixture(t,{hash='#tool/ppt?mode=ai',rows=[],realPanel=false,extract=async()=>({text:'Synthetic imported full text.',warnings:[]})}={}){
  const dom=new JSDOM('<main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'https://paperknow.test/workspace.html'+hash,runScripts:'outside-only'}),w=dom.window,notices=[],downloads=[],confirms=[],calls=[];let fail=false;
  w.HTMLElement.prototype.scrollIntoView=()=>{};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
- Object.assign(w,{serviceMessage},{projectPickerOptions},{...model,...parity,withStableView,toolBanner,esc,icon,captureDraftScope,hasDraftScope:()=>false,keys:{drafts:'drafts'},list:()=>JSON.parse(w.localStorage.getItem('drafts')||'[]'),write:(_key,value)=>{if(fail)throw Error('Synthetic quota');w.localStorage.setItem('drafts',JSON.stringify(value));},projects:()=>[{id:'a',name:'A'},{id:'b',name:'B'}],preferences:()=>({degree:'本科'}),recordTask:()=>{},download:async(...args)=>{downloads.push(args);return{message:'Saved'};},loadPresentationExport:async()=>({exportPresentation}),importWorkspaceDocument:extract,documentImportContinuesInBackground:()=>false,formatDate:()=>'',structuredClone,confirm:message=>{confirms.push(message);return true;},mountToolJobPanel:realPanel?mountToolJobPanel:options=>{w.lastPanel=options;return{dispose(){},open:async()=>{calls.push({action:'panel-open',snapshot:options.getSnapshot()});},inputChanged(){}};}});
+ Object.assign(w,{serviceMessage},{projectPickerOptions},{...model,...parity,withStableView,toolBanner,esc,icon,captureDraftScope,mountPresentationViewer:()=>({dispose(){}}),hasDraftScope:()=>false,keys:{drafts:'drafts'},list:()=>JSON.parse(w.localStorage.getItem('drafts')||'[]'),write:(_key,value)=>{if(fail)throw Error('Synthetic quota');w.localStorage.setItem('drafts',JSON.stringify(value));},projects:()=>[{id:'a',name:'A'},{id:'b',name:'B'}],preferences:()=>({degree:'本科'}),recordTask:()=>{},download:async(...args)=>{downloads.push(args);return{message:'Saved'};},loadPresentationExport:async()=>({exportPresentation}),importWorkspaceDocument:extract,documentImportContinuesInBackground:()=>false,formatDate:()=>'',structuredClone,confirm:message=>{confirms.push(message);return true;},mountToolJobPanel:realPanel?mountToolJobPanel:options=>{w.lastPanel=options;return{dispose(){},open:async()=>{calls.push({action:'panel-open',snapshot:options.getSnapshot()});},inputChanged(){}};}});
  w.localStorage.setItem('drafts',JSON.stringify(rows));const ctx={notify:message=>notices.push(message),modal:(_title,html)=>{w.document.querySelector('#workspace-dialog-body').innerHTML=html;w.document.querySelector('dialog').open=true;}};
  w.eval(source+'\nwindow.pptParity={mountPresentation,disposePresentation,presentationHasWork,presentationRouteGuard};');
  const q=selector=>w.document.querySelector(selector),edit=(selector,value,type='input')=>{const node=q(selector);assert.ok(node,selector);node.value=value;node.dispatchEvent(new w.Event(type,{bubbles:true}));},click=selector=>{assert.ok(q(selector),selector);q(selector).click();};
@@ -187,4 +187,24 @@ test('scene recommendations reorder without changing a saved template or hiding 
   assert.deepEqual(first,expected);
  }
  assert.equal(f.snapshot().context.theme,'teal');
+});
+
+
+test('generated download and browser editing disclose different appearance and preserve the original',t=>{
+ const saved=record('generated-boundary');saved.presentation.slides=model.buildSlides(initial);saved.presentation.generatedPresentation={artifactId:'owned-file',ownerId:'owner',fileName:'research.pptx',pageCount:6};
+ const f=fixture(t,{rows:[saved]});f.mount(saved.id);
+ assert.match(f.q('.ppt-generated-boundary').textContent,/PowerPoint 或 WPS/);assert.match(f.q('.ppt-generated-boundary').textContent,/图片和排版可能不会保留/);
+ f.click('[data-ppt-result-view="content"]');assert.match(f.q('.ppt-content-boundary').textContent,/图片和排版可能不会保留/);
+ f.edit('[data-slide="title"]','User revised title');assert.equal(f.q('[data-action="download-generated"]').dataset.fileRole,'deck');assert.match(f.q('[data-action="export"]').textContent,/基础版式/);
+});
+
+test('all scenes display accurate material origin and warn about generation limit before submission',t=>{
+ const f=fixture(t);for(const mode of ['ai','proposal','thesis']){
+  if(f.q(`[data-ppt-mode="${mode}"]`).getAttribute('aria-pressed')!=='true')f.click(`[data-ppt-mode="${mode}"]`);
+  f.edit('[data-field="title"]','Synthetic');f.edit('[data-field="material"]','合'.repeat(40001));assert.match(f.q('#ppt-material-state').textContent,/已填写正文/);assert.match(f.q('#ppt-material-state').textContent,/40,000.*原文不会自动截断/);assert.equal(f.q('[data-field="material"]').value.length,40001);assert.equal(f.q('[data-action="ai-generate"]').disabled,true);assert.throws(()=>f.snapshot(),/40,000/);
+  f.edit('[data-field="material"]','合'.repeat(40000));assert.equal(f.q('[data-action="ai-generate"]').disabled,false);assert.doesNotMatch(f.q('#ppt-material-state').textContent,/原文不会自动截断/);
+  f.edit('[data-field="material"]',' '+'合'.repeat(40000)+' ');assert.equal(f.q('[data-action="ai-generate"]').disabled,true);assert.match(f.q('#ppt-material-state').textContent,/40,002 字符/);assert.throws(()=>f.snapshot(),/40,000/);
+  f.edit('[data-field="material"]','😀'.repeat(20000));assert.equal(f.q('[data-action="ai-generate"]').disabled,false);assert.equal(f.snapshot().text.length,40000);
+  if(mode!=='ai')assert.doesNotMatch(f.q('#ppt-drop').textContent,/本地提取|云解析/);
+ }
 });

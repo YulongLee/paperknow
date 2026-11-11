@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {unsupportedPresentationStage} from '../backend/presentation-stage-guard.mjs';
+const source='本项目研究校园图书馆座位预约系统。研究目的为改进预约流程；方法是需求分析、系统设计和软件功能测试。系统提供座位查询、预约、取消和管理员维护功能。测试为虚构场景，不代表真实调查或实验结果。系统架构包含用户界面、服务端与数据库。';
+const slide=body=>[{title:'总结',body,notes:''}];
+test('observed fabricated completed design and unsourced future plan are rejected',()=>{
+ assert.equal(unsupportedPresentationStage(slide('完成预约流程的改进设计与功能梳理'),[{text:source}])?.stage,'completion');
+ assert.equal(unsupportedPresentationStage(slide('后续：开展功能测试验证'),[{text:source}])?.stage,'plan');
+ assert.equal(unsupportedPresentationStage(slide('经需求分析、设计与功能测试形成方案'),[{text:source}])?.stage,'completion');
+ assert.equal(unsupportedPresentationStage(slide('围绕预约流程开展需求分析、设计与功能测试'),[{text:source}])?.stage,'completion');
+ assert.equal(unsupportedPresentationStage(slide('围绕预约流程开展需求分析与系统设计'),[{text:source}])?.stage,'completion');
+ assert.equal(unsupportedPresentationStage(slide('围绕预约流程开展需求分析与设计'),[{text:source}])?.stage,'completion');
+ assert.equal(unsupportedPresentationStage(slide('方案：座位查询与预约\n测试为虚构场景'),[{text:source}]),null);
+});
+test('explicit completed or planned work is not treated as missing; negation remains negation',()=>{
+ assert.equal(unsupportedPresentationStage(slide('已完成系统设计'),[{text:'本项目已完成系统设计。'}]),null);
+ assert.equal(unsupportedPresentationStage(slide('后续将开展功能测试'),[{text:'后续计划开展功能测试。'}]),null);
+ assert.equal(unsupportedPresentationStage(slide('尚未完成系统设计'),[{text:source}]),null);
+ assert.equal(unsupportedPresentationStage(slide('目前未能完成系统设计'),[{text:source}]),null);
+ assert.equal(unsupportedPresentationStage(slide('未开展功能测试'),[{text:source}]),null);
+ assert.equal(unsupportedPresentationStage(slide('未开展需求分析与系统设计'),[{text:source}]),null);
+ assert.equal(unsupportedPresentationStage(slide('拟开展需求分析与系统设计'),[{text:'拟开展需求分析与系统设计。'}]),null);
+ assert.equal(unsupportedPresentationStage(slide('开展需求分析与系统设计'),[{text:'项目已开展需求分析与系统设计。'}]),null);
+ assert.equal(unsupportedPresentationStage(slide('可开展功能测试'),[{text:source}]),null);
+ assert.equal(unsupportedPresentationStage(slide('开展功能测试'),[{text:'本项目开展功能测试，形成测试记录。'}]),null);
+ assert.equal(unsupportedPresentationStage(slide('计划开展功能测试'),[{text:'本项目计划开展功能测试。'}]),null);
+ assert.equal(unsupportedPresentationStage(slide('后续：开展功能测试'),[]),null);
+ assert.equal(unsupportedPresentationStage(slide('仅陈述合成资料和拟开展计划'),[{text:source}]),null);
+ assert.equal(unsupportedPresentationStage(slide('已完成系统测试'),[{text:'项目已完成系统设计，尚未完成系统测试。'}])?.stage,'completion');
+ assert.equal(unsupportedPresentationStage(slide('后续：开展功能测试'),[{text:'后续计划开展需求调查，尚未制定测试计划。'}])?.stage,'plan');
+});

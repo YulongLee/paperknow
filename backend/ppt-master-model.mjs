@@ -55,15 +55,15 @@ export function pptMasterVisibleContent(slide,plan){
 }
 function slideMaterial(slide,plan){const accepted=semanticSlide(slide);return{id:'ppt-master-'+accepted.id,name:'已校验的不可变页面 '+accepted.id,text:JSON.stringify({slide:accepted,evidenceSourceIds:plan.sourceIds})};}
 
-/** Only one derived, immutable page is an authorized material. Its wording was
- * already checked against the original sources by the semantic content stage. */
+/** The content stage checks source reads and structure, not factual accuracy.
+ * Layout receives only the immutable page and must not add claims. */
 export function pptMasterSlideTask(value,slide,plan,previous=[]){
  const accepted=semanticSlide(slide),row=plan?.slides?.find(item=>item.id===accepted.id);if(!row||plan.version!==1||plan.engine!=='ppt-master')fail('PPT Master 设计计划无效');
  const material=slideMaterial(accepted,plan),sourceIds=originalSourceIds(value,plan.sourceIds);
  const prior=(Array.isArray(previous)?previous:[]).slice(-2).map(item=>({id:item.id,composition:item.composition||plan.slides.find(row=>row.id===item.id)?.composition||''}));
  return {skill:'tool-task',materials:[material],instructions,context:{operation:'ppt-master-slide',title:value.snapshot.title,language:value.snapshot.language,mode:value.snapshot.mode,
   design:{version:plan.version,canvas:plan.canvas,theme:plan.theme,coverVariant:plan.coverVariant,designStyle:plan.designStyle,palette:plan.palette,typography:plan.typography,metadata:plan.metadata,motif:plan.motif,current:row,previous:prior,roster:plan.slides.map(({id,title,composition})=>({id,title,composition}))},
-  visibleContent:pptMasterVisibleContent(accepted,plan),source:{id:material.id,characters:material.text.length,provenance:'已通过原始授权材料阅读及内容校验；只可排版，不可添加新事实。',evidenceSourceIds:sourceIds},
+  visibleContent:pptMasterVisibleContent(accepted,plan),source:{id:material.id,characters:material.text.length,provenance:'已核对材料读取范围和页面结构，尚未自动核实事实；只可排版，不可添加新事实。',evidenceSourceIds:sourceIds},
   outputSchema:{complete:true,slide:accepted,svg:'当前一页的完整可编辑 SVG 字符串',sourceIds:[material.id]}}};
 }
 

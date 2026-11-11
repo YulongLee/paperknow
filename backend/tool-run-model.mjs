@@ -1,6 +1,7 @@
 import {normalizeRevisionProduct} from '../dist/workspace/revision-product-model.mjs';
 import {normalizeRevisionReportContext,revisionReportChangeAllowed} from '../dist/workspace/revision-report-context.mjs';
 import {presentationContentTask} from './presentation-content-task.mjs';
+import {unsupportedPresentationStage} from './presentation-stage-guard.mjs';
 import {formulaSvgMarkup} from '../src/research-formula-core.js';
 import {thesisError,thesisHash} from './thesis-model.mjs';
 import {researchFigureSelection} from './research-figure-selection.mjs';
@@ -41,6 +42,7 @@ export function normalizeToolRequest(input){
  if(input.operation==='read')readingMode(raw.mode);
  if(input.kind==='revision')try{revisionStrategy(raw.mode,raw.context?.plan);}catch(error){fail(error.message);}
  let revisionProduct=null;if(raw.context?.revisionProduct!==undefined){if(input.kind!=='revision'||input.operation!=='rewrite')fail('论文修改功能不能用于其他操作');try{revisionProduct=normalizeRevisionProduct(raw.context.revisionProduct,{mode:raw.mode,plan:raw.context.plan});}catch(error){fail(error.message);}}const textLimit=revisionProduct?100000:40000;
+ if(input.operation==='ppt'&&(typeof raw.text==='string'&&raw.text.length>textLimit||Array.isArray(raw.materials)&&raw.materials.some(row=>typeof row?.text==='string'&&row.text.length>textLimit)))fail('参考材料最多 40,000 字符，请选择与本次汇报相关的章节；原文不会被截断。');
  // Validate before JSON cloning: unsupported own keys with undefined values
  // must not disappear into an apparently valid history object.
  validateChatHistory(raw.context,input.operation);
@@ -258,6 +260,7 @@ export function parseToolOutput(result,value,unit){
   if(!Array.isArray(body.slides)||body.slides.length>30)presentationOutputError('生成结果列表不正确',{code:'ppt_page_count',expectedCount:unit.count,requiredSlideIds});
   const slides=body.slides;if(slides.length!==unit.count)presentationOutputError('演示页数与确认的数量不一致',{code:'ppt_page_count',expectedCount:unit.count,actualCount:slides.length,requiredSlideIds,firstPage:unit.start+1,lastPage:unit.start+unit.count});
   out={...out,slides:slides.map((row,i)=>{const page=unit.start+i+1,allowedLayouts=page===1?['cover']:page===s.context.pages?['closing']:['content','twoColumn'];if(!plain(row)||row.id!=='slide-'+page||!allowedLayouts.includes(row.layout))presentationOutputError('演示页码或版式不正确',{code:'ppt_page_identity',page,expectedId:'slide-'+page,allowedLayouts});if(s.context.notesMode!==undefined&&typeof row.notes!=='string')presentationOutputError('演讲备注必须为文本，未生成备注时也应返回空字符串',{code:'ppt_field',page,field:'notes',invalidType:true});const title=presentationField(row.title,120,1,page,'title'),notes=presentationField(row.notes||'',s.context.notesMode==='none'?0:s.context.notesMode==='detailed'?500:s.context.notesMode==='concise'?120:1600,0,page,'notes');if(s.context.outlineTitles&&row.title!==s.context.outlineTitles[page-1])presentationOutputError('演示标题与已确认的自定义提纲不一致，结果未采用',{code:'ppt_outline_title',page,field:'title'});return{id:row.id,title,body:presentationField(row.body,1400,1,page,'body'),layout:row.layout,notes};})};out.text=out.slides.map(r=>r.title+'\n'+r.body).join('\n\n');
+  const unsupported=unsupportedPresentationStage(out.slides,s.materials);if(unsupported)presentationOutputError('资料未明确支持该页的研究完成状态或后续计划，请按原文调整，不补造进度',{...unsupported,page:unit.start+unsupported.page});
  }else if(operation==='diagram'){
   if(!plain(body.diagram))fail('结构图结果不完整',502);const nodes=array(body.diagram.nodes,30).map(r=>({id:string(r?.id,60),label:string(r?.label,100)})),ids=new Set(nodes.map(r=>r.id));if(nodes.length<2||ids.size!==nodes.length||nodes.some(r=>!/^[A-Za-z0-9_-]+$/.test(r.id)))fail('结构图节点无效',502);
   const edges=array(body.diagram.edges,60).map(r=>{if(!ids.has(r?.from)||!ids.has(r?.to)||r.from===r.to)fail('结构图关系引用了不存在的节点',502);return{from:r.from,to:r.to,label:string(r.label||'',60,0)};});if(!edges.length)fail('结构图缺少节点关系',502);out={...out,diagram:{title:string(body.diagram.title,120),nodes,edges},text:nodes.map(n=>n.label).join(' → ')};

@@ -16,6 +16,7 @@ function parsed(f){return parsePptMasterSlideOutput({...f.result,text:JSON.strin
 test('bounded PPT Master page tasks reuse accepted content, evidence and chosen theme',()=>{
  const f=fixture();assert.equal(f.plan.theme,'focus');assert.equal(f.plan.palette.accent,'#168B89');assert.equal(f.plan.canvas.viewBox,'0 0 1280 720');assert.ok(new Set(f.plan.slides.map(row=>row.composition)).size>=4);
  assert.equal(f.task.skill,'tool-task');assert.equal(f.task.materials.length,1);assert.deepEqual(JSON.parse(f.task.materials[0].text).slide,f.slide);assert.deepEqual(f.task.context.source.evidenceSourceIds,['paper-1']);assert.equal(f.task.context.outputSchema.slide.notes,f.slide.notes);
+ assert.match(f.task.context.source.provenance,/尚未自动核实事实/);
  assert.ok(f.task.instructions.length<12000);assert.ok(JSON.stringify(f.task.context).length<40000);assert.doesNotMatch(f.task.materials[0].text,/给定原文/);assert.match(f.task.instructions,/Copyright \(c\) 2025-2026 Hugo He/);
  const out=parsed(f);assert.equal(out.title,f.slide.title);assert.equal(out.notes,f.slide.notes);assert.deepEqual(out.sourceIds,['paper-1']);assert.deepEqual(out.authorSourceIds,[f.task.materials[0].id]);assert.match(out.svg,/&amp;/);
 });

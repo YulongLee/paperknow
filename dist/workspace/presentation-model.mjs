@@ -9,6 +9,7 @@ export function validateDeck(deck){if(!deck.title.trim())throw new Error('请填
 
 export function presentationSnapshot(deck,mode='ai',tier='basic'){
  const title=String(deck.title||'').trim(),text=String(deck.material||'').trim(),requirements=String(deck.prompt||'').trim(),notes=presentationNotes(deck,tier),author=String(deck.author||'').replace(/[\r\n\u2028\u2029]+/g,' ').trim();
+ if(String(deck.material||'').length>40000)throw new Error('AI 创作最多读取 40,000 字符，请保留与本次汇报相关的关键材料。原文不会被截断。');
  if(author.length>100)throw Error('作者署名最多 100 字符，请精简后再生成。');
  const outlineTitles=deck.outlineTitles===undefined?undefined:normalizePresentationOutline(deck.outlineTitles,deck.pages);
  if(deck.outlineDraft!==undefined&&String(deck.outlineDraft).trim()!==(outlineTitles||[]).join('\n'))throw Error('自定义提纲尚未采用，请先确认提纲或清除未采用的编辑。');

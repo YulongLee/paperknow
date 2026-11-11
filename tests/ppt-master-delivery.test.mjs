@@ -64,6 +64,28 @@ async function fixture(t,extra={}){
 }
 function uncharged(f,id){assert.equal(f.billing.balance('alice').balance,200);assert.equal(f.billing.balance('alice').held,0);assert.equal(f.eventCount('settle',id),0);assert.equal(f.eventCount('release',id),1);assert.equal(f.db.prepare('SELECT count(*) n FROM results WHERE job_id=?').get(id).n,0);}
 
+test('unavailable selected template is rejected before quote or reservation and before any model call',async t=>{
+ let unavailable=false;const seen=[];
+ const f=await fixture(t,{presentationArtworkLoader:async theme=>{seen.push(theme);if(unavailable)throw Object.assign(Error('模板图片暂不可用，请稍后重试'),{status:503});return Buffer.from('fixture');}});
+ f.pay();const value=input();unavailable=true;
+ const rejectedQuote=await f.request('/tool-runs/quote',value);
+ assert.equal(rejectedQuote.status,503);assert.equal(f.authorCalls(),0);assert.equal(f.billing.balance('alice').held,0);
+ unavailable=false;const quoted=await f.request('/tool-runs/quote',value);assert.equal(quoted.status,200);
+ unavailable=true;const rejectedJob=await f.request('/tool-runs/jobs',{...value,clientKey:randomUUID(),billingToken:quoted.value.token,consent:true});
+ assert.equal(rejectedJob.status,503);assert.equal(f.authorCalls(),0);assert.equal(f.billing.balance('alice').held,0);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM tool_runs').get().n,0);assert.deepEqual(seen,['focus','focus','focus']);
+});
+
+test('resume rechecks stored PPT pages for unsupported completion claims before making another model call',async t=>{
+ let calls=0;const f=await fixture(t,{agentTaskRunner:async args=>{calls++;if(args.task.context.operation==='ppt'&&args.task.context.unit.start===6)throw Object.assign(Error('synthetic failure'),{code:'turn_limit',status:502,usage:{input:20,output:10},costUsd:.001});return author(args);}});
+ f.pay();const value=input();value.snapshot.context.pages=12;const original=await f.submit(value);await f.worker.tick();
+ assert.equal((await f.request('/tool-runs/jobs/'+original.id)).value.item.status,'failed');
+ const row=f.db.prepare("SELECT output FROM tool_checkpoints WHERE run_id=? AND unit_id='unit-0'").get(original.id),saved=JSON.parse(row.output);saved.slides[0].body='完成预约流程的改进设计与功能梳理';
+ f.db.prepare("UPDATE tool_checkpoints SET output=? WHERE run_id=? AND unit_id='unit-0'").run(JSON.stringify(saved),original.id);
+ const resumed=await f.submit(value,{resumeFromJobId:original.id}),before=calls;await f.worker.tick();const item=(await f.request('/tool-runs/jobs/'+resumed.id)).value.item;
+ assert.equal(item.status,'failed');assert.match(item.error,/研究进度/);assert.equal(calls,before);assert.equal(f.eventCount('settle',resumed.id),0);assert.equal(f.eventCount('release',resumed.id),1);assert.equal(f.billing.balance('alice').held,0);
+});
+
 test('text-only page redesigns retain the content diagram and settle once without further model repair',async t=>{
  let visualPages=0,calls=0;const f=await fixture(t,{agentTaskRunner:async args=>{calls++;const output=author(args);if(args.task.context.operation==='ppt-master-slide'){const candidate=JSON.parse(output.text);candidate.svg=candidate.svg.replace(/<g id="visual-[^"]+">[\s\S]*?<\/g>/g,'');output.text=JSON.stringify(candidate);assert.equal(args.validateToolOutput(output).valid,true);}return output;},pptMasterRenderer:async({slides})=>{visualPages=slides.filter(s=>s.visualKind&&s.svg.includes('id="visual-'+s.visualKind+'"')).length;return{pptx:await mockNativePresentation(slides)};}});
  f.pay();const job=await f.submit();await f.worker.tick();const item=(await f.request('/tool-runs/jobs/'+job.id)).value.item;assert.equal(item.status,'completed');assert.equal(visualPages,4);assert.equal(calls,1);assert.equal(f.eventCount('settle',job.id),1);assert.equal(f.eventCount('release',job.id),0);const metrics=JSON.parse(f.db.prepare('SELECT metrics FROM tool_diagnostics WHERE run_id=?').get(job.id).metrics);assert.equal(metrics.presentationLayout.validatedPages,6);assert.equal(metrics.presentationLayout.aiPages,0);

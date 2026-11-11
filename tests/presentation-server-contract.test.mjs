@@ -5,8 +5,23 @@ import {presentationSnapshot,restorePresentationSnapshot} from '../dist/workspac
 
 const titles=count=>Array.from({length:count},(_,index)=>`第${index+1}页 已确认标题`);
 const request=(context={},mode='ai')=>({kind:'presentation',operation:'ppt',snapshot:{title:'【合成合同验收】研究汇报',text:'本资料仅用于离线合同测试，研究步骤和引用均来自本次合成输入。',mode,language:'中文',context:{pages:12,...context}}});
+test('PPT reference text over 40000 characters is rejected explicitly without mutating the source',()=>{
+ const value=request();value.snapshot.text='文'.repeat(40001);assert.throws(()=>normalizeToolRequest(value),/最多 40,000 字符/);assert.equal(value.snapshot.text.length,40001);
+ const attached=request();attached.snapshot.materials=[{id:'long',name:'synthetic',text:'资'.repeat(40001)}];assert.throws(()=>normalizeToolRequest(attached),/最多 40,000 字符/);assert.equal(attached.snapshot.materials[0].text.length,40001);
+});
 function response(value,unit,{notes='',slideTitles=value.snapshot.context.outlineTitles}={}){return {text:JSON.stringify({complete:true,sourceIds:value.snapshot.materials.map(source=>source.id),slides:Array.from({length:unit.count},(_,index)=>{const page=unit.start+index+1;return {id:'slide-'+page,title:slideTitles?.[page-1]||`第${page}页`,body:'仅依据本次合成资料整理页面内容，保留所提供的研究计划，不编造已经完成的结果。',layout:page===1?'cover':page===value.snapshot.context.pages?'closing':'content',notes};})}),trace:value.snapshot.materials.map(source=>({tool:'read_material',status:'completed',materialId:source.id,offset:0,limit:source.text.length}))};}
 const change=(result,mutate)=>{const body=JSON.parse(result.text);mutate(body);return {...result,text:JSON.stringify(body)};};
+test('PPT rejects observed unsupported stage assertions in body and speaker notes',()=>{
+ const raw=request({pages:6},'proposal');raw.snapshot.text='本项目研究校园图书馆座位预约系统。研究目的为改进预约流程；方法是需求分析、系统设计和软件功能测试。测试为虚构场景，不代表真实调查或实验结果。';
+ const value=normalizeToolRequest(raw),unit=toolRunPlan(value)[0],base=response(value,unit);
+ for(const candidate of [change(base,b=>{b.slides[2].body='完成预约流程的改进设计与功能梳理';}),change(base,b=>{b.slides[5].notes='后续：开展功能测试验证';})]){
+  const checked=validateToolCandidate(candidate,value,unit);assert.equal(checked.valid,false);assert.equal(checked.feedback.presentation.code,'ppt_unsupported_stage');
+ }
+ const safe=change(base,b=>{b.slides[2].body='研究目的：改进预约流程\n测试为虚构场景';});assert.equal(validateToolCandidate(safe,value,unit).valid,true);
+ assert.match(toolRunTask(value,unit).instructions,/材料没有写明完成进度和计划/);
+ assert.match(toolRunTask(value,unit).instructions,/只列出模块名称，就只列名称/);
+ assert.match(toolRunTask(value,unit).instructions,/不根据技术常识推测具体职责/);
+});
 
 for(const [mode,limit]of [['none',0],['concise',120],['detailed',500]]){
  test(`presentation ${mode} propagates the exact ${limit}-character note contract into each server task`,()=>{const value=normalizeToolRequest(request({notesMode:mode})),plan=toolRunPlan(value);for(const unit of plan){const task=toolRunTask(value,unit);assert.equal(task.context.presentationRequirements.notesMode,mode);assert.equal(task.context.presentationRequirements.maxNotesCharacters,limit);assert.equal(task.context.options.notesMode,mode);assert.match(task.instructions,mode==='none'?/notes必须为空字符串/:new RegExp('不超过'+limit+'字符'));}assert.equal(value.snapshot.context.notesMode,mode);});
