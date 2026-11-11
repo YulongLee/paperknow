@@ -12,5 +12,8 @@ export function withThesisRetryCandidate(task,candidate){
 }
 export function safeThesisValidation(value){
  if(!value||typeof value.code!=='string'||!/^[a-z][a-z0-9_]{0,59}$/.test(value.code))return null;
- return {code:value.code,...Object.fromEntries(['count','target','min','max'].filter(key=>Number.isSafeInteger(value[key])&&value[key]>=0).map(key=>[key,value[key]]))};
+ const safeRevisionCodes=new Set(['revision_action','revision_retain_changed','revision_unchanged','revision_report_scope','revision_protection']);
+ const safeIssueCodes=new Set(['protected_spans_changed','too_short','malformed_original_math','malformed_revised_math','original_blank','revised_blank','invalid_original_input','invalid_revised_input','explicit_polarity_reversal']);
+ const revision=value.revision,revisionCode=revision&&safeRevisionCodes.has(revision.code)?revision.code:null;
+ return {code:value.code,...Object.fromEntries(['count','target','min','max'].filter(key=>Number.isSafeInteger(value[key])&&value[key]>=0).map(key=>[key,value[key]])),...(revisionCode?{revision:{code:revisionCode,...(Number.isSafeInteger(revision.paragraphIndex)&&revision.paragraphIndex>0&&revision.paragraphIndex<=500?{paragraphIndex:revision.paragraphIndex}:{}),...(Array.isArray(revision.issues)?{issues:revision.issues.filter(issue=>safeIssueCodes.has(issue?.code)).map(issue=>({code:issue.code})).slice(0,10)}:{})}}:{})};
 }

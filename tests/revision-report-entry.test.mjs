@@ -71,3 +71,8 @@ test('all five visible source choices preserve exact report selection in AI and 
 test('reading an owned report synchronizes its PaperKnow source with the visible provider selection',async t=>{
  const response=aiResponse(marked+'\n\n'+plain),f=fixture(t,{kind:'aigc',productModes:true,hash:'#category/aigc?aigcReport=ai-1',api:async path=>path==='/auth/me'?{user:{id:'owner'}}:response});f.click('[data-rrp-provider="cnki"]');f.click('.revision-report-handoff');await until(()=>!!f.$('[data-rrp-pick]'));assert.equal(f.$('[data-rrp-provider="paperknow"]').getAttribute('aria-pressed'),'true');assert.equal(f.$('[data-rrp-provider="cnki"]').getAttribute('aria-pressed'),'false');assert.equal((await f.entry.prepare(f.getDocument())).source,'paperknow');
 });
+
+test('report import displays parser warnings even when another marked excerpt was found',async t=>{
+ const f=fixture(t,{reader:async()=>({text:marked,format:'html',kind:'similarity',explicitExcerpts:[{start:0,end:marked.length}],markedOnly:true,markState:'marked',warnings:['报告颜色规则过多，仅检查前 512 条；请核对其余标记。']})});
+ f.file();await until(()=>!f.entry.busy&&!!f.$('[data-rrp-pick]'));assert.match(f.$('[data-rrp-status]').textContent,/前 512 条/);assert.equal(f.$('[data-rrp-pick]').checked,true);
+});

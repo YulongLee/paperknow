@@ -81,3 +81,45 @@ test('owned AI report reads preserve original positions and account changes cann
  const text=first+'\n\n'+second,item=makeAi(text),input=revisionInputFromAigcReport({item,text});assert.equal(input.originalText,text);assert.equal(input.explicitExcerpts.length,1);let checks=0;
  const api=async path=>path==='/auth/me'?{user:{id:++checks===1?'alice':'bob'}}:{item,text};await assert.rejects(loadOwnedRevisionReport(api,'aigc',item.id,'alice'),/账户已变化/);
 });
+
+test('HTML report color rules respect their ancestor scope rather than marking unrelated text',()=>{
+ const targeted='这是实际报告范围内标红的论文片段，需要正确匹配并由用户核对。',unrelated='这是报告外没有颜色的论文片段，不能被错误选入修改范围。';
+ const html=`<style>.paper .highlight {color:red}</style><div class="paper"><span class="highlight">${targeted}</span></div><div><span class="highlight">${unrelated}</span></div>`;
+ const result=extractMarkedRevisionHtml(html,{DOMParserClass});assert.deepEqual(result.explicitExcerpts.map(r=>result.text.slice(r.start,r.end)),[targeted]);
+});
+
+test('HTML conflicting color rules and inline overrides do not silently select unmarked text',()=>{
+ const value='这里是应由用户确认的报告正文示例，不应因错误识别而默认选中。';
+ for(const html of [`<style>.hit{color:red}.hit{color:black}</style><p class="hit">${value}</p>`,`<style>.hit{color:red}</style><p class="hit" style="color:black">${value}</p>`,`<div style="color:red"><span style="color:black">${value}</span></div>`]){
+  const result=extractMarkedRevisionHtml(html,{DOMParserClass});assert.deepEqual(result.explicitExcerpts,[]);
+ }
+});
+
+test('excessive report CSS rules are bounded and visibly require review',()=>{
+ const css=Array.from({length:513},(_,i)=>`.class${i}{color:red}`).join('');
+ const result=extractMarkedRevisionHtml(`<style>${css}</style><p class="class512">不应因超出规则检查范围而被当作已确认的报告标记内容。</p>`,{DOMParserClass});
+ assert.equal(result.explicitExcerpts.length,0);assert.match(result.warnings.join(' '),/512/);
+});
+
+test('truncated external report stylesheet warns that markers need review',()=>{
+ const css=' '.repeat(1024*1024)+'.highlight{color:red}',html='<p class="highlight">这段报告内容需要在样式不完整时由用户重新核查标记位置。</p>';
+ const result=extractMarkedRevisionHtml(html,{DOMParserClass,css});assert.equal(result.explicitExcerpts.length,0);assert.match(result.warnings.join(' '),/1MB/);
+});
+
+test('unsupported red CSS selectors are disclosed instead of claiming complete marker coverage',()=>{
+ const html='<style>.section [data-marked]{color:red}</style><div class="section"><span data-marked="true">这一段标记样式不能可靠解析，应请用户核对原始报告。</span></div>';
+ const result=extractMarkedRevisionHtml(html,{DOMParserClass});assert.equal(result.explicitExcerpts.length,0);assert.match(result.warnings.join(' '),/无法识别/);
+});
+
+test('a scoped red class is not treated as colored outside its matching ancestor',()=>{
+ const yes='报告有效范围里的标红内容在核对后可以针对性修改。',no='报告其他位置的普通内容不能因为类名相同被误选。';
+ const result=extractMarkedRevisionHtml(`<style>.paper .red{color:red}</style><div class="paper"><p class="red">${yes}</p></div><div><p class="red">${no}</p></div>`,{DOMParserClass});
+ assert.deepEqual(result.explicitExcerpts.map(r=>result.text.slice(r.start,r.end)),[yes]);
+});
+
+test('scoped and unsupported CSS do not let hint classes mark unrelated report content',()=>{
+ const t='这段没有可靠标红依据的内容不可仅因为同名样式类而默认选择。';
+ for(const [style,cls] of [['.paper .matched{color:red}','matched'],['.paper :is(.red){color:red}','red']]){
+  const result=extractMarkedRevisionHtml(`<style>${style}</style><p class="${cls}">${t}</p>`,{DOMParserClass});assert.equal(result.explicitExcerpts.length,0);
+ }
+});

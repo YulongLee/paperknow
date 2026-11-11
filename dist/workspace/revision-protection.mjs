@@ -73,6 +73,22 @@ function scan(text){
  return{spans,malformed:math.malformed};
 }
 function inputIssue(text,kind){return typeof text!=='string'||text.length>maximumLength?{code:'invalid_'+kind+'_input'}:!characters(text)?{code:kind+'_blank'}:null;}
+// Only reject an unambiguous literal polarity reversal with the same subject,
+// predicate and object. This is a narrow guard, not semantic verification.
+function hasExplicitPolarityReversal(original,revised){
+ const pattern=/(该方法|该模型|该算法|该系统|该方案|本方法|本模型|本算法|本系统|本方案)(并未|没有|未能|不能|无法|未|不)(显著提高|显著降低|显著改善|显著增加|显著减少|提高|降低|改善|增加|减少)([\p{Script=Han}\p{L}\p{N}]{2,32})(?=[，。；！？,.!?;]|$)/gu;
+ for(const match of original.matchAll(pattern)){
+  const positive=new RegExp(escape(match[1]+match[3]+match[4])+'(?=[，。；！？,.!?;]|$)','u'),hit=positive.exec(revised);
+  if(!hit||positive.test(original))continue;
+  // Do not reject a candidate when its surrounding sentence questions or
+  // negates the apparent assertion; these require human review instead.
+  const start=Math.max(revised.lastIndexOf('。',hit.index-1),revised.lastIndexOf('！',hit.index-1),revised.lastIndexOf('？',hit.index-1),revised.lastIndexOf('\n',hit.index-1))+1;
+  const tail=revised.slice(hit.index+hit[0].length),end=tail.search(/[。！？\n]/u),context=revised.slice(start,hit.index)+(end<0?tail:tail.slice(0,end));
+  if(/不|未|无|否|错误|待核|待验证|存疑|不足以|难以|缺乏/u.test(context))continue;
+  return true;
+ }
+ return false;
+}
 export function protectedRevisionSpans(text){return typeof text==='string'&&text.length<=maximumLength?scan(text).spans:[];}
 export function validateRevisionOriginal(text){
  const issues=[],invalid=inputIssue(text,'original'),originalCharacters=typeof text==='string'&&text.length<=maximumLength?characters(text):0;if(invalid)issues.push(invalid);else{const result=scan(text);if(result.malformed)issues.push({code:'malformed_original_math',count:result.malformed});}
@@ -82,6 +98,7 @@ export function validateRevisionProtection(original,revised){
  const issues=[],originalInvalid=inputIssue(original,'original'),revisedInvalid=inputIssue(revised,'revised'),originalCharacters=typeof original==='string'&&original.length<=maximumLength?characters(original):0,revisedCharacters=typeof revised==='string'&&revised.length<=maximumLength?characters(revised):0,minimumCharacters=Math.ceil(originalCharacters*(originalCharacters>=40?.6:.5));
  if(originalInvalid)issues.push(originalInvalid);if(revisedInvalid)issues.push(revisedInvalid);
  if(!originalInvalid&&!revisedInvalid){const before=scan(original),after=scan(revised);if(before.malformed)issues.push({code:'malformed_original_math',count:before.malformed});if(after.malformed)issues.push({code:'malformed_revised_math',count:after.malformed});let changed=before.spans.length!==after.spans.length;for(let i=0;i<Math.min(before.spans.length,after.spans.length);i++)if(before.spans[i].type!==after.spans[i].type||before.spans[i].value!==after.spans[i].value){changed=true;break;}if(changed)issues.push({code:'protected_spans_changed',originalCount:before.spans.length,revisedCount:after.spans.length});}
+ if(!originalInvalid&&!revisedInvalid&&hasExplicitPolarityReversal(original,revised))issues.push({code:'explicit_polarity_reversal'});
  if(!originalInvalid&&revisedCharacters<minimumCharacters)issues.push({code:'too_short',minimumCharacters,revisedCharacters});
  return{valid:issues.length===0,issues,originalCharacters,revisedCharacters,minimumCharacters,requiresReview:true,factsVerified:false};
 }

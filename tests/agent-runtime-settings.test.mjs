@@ -68,4 +68,18 @@ test('supplement checker reads only authorized ranges; ordinary review has no so
  }
 });
 
+test('rejected revision exposes only bounded diagnostics in the runtime trace',async t=>{
+ const {settings}=fixture(t);settings.save('admin',valid);
+ const privateText='private-manuscript-do-not-log';
+ await assert.rejects(()=>runAgentTask({settings:settings.get(),task:{skill:'tool-task',instructions:'Revise the authorized text.',context:{operation:'revision'},materials:[]},validateToolOutput:()=>({valid:false,feedback:{code:'invalid_tool_output',revision:{code:'revision_protection',paragraphIndex:2,issues:[{code:'explicit_polarity_reversal',text:privateText}],text:privateText},rule:privateText}}),dependencies:{lookup,query:({options})=>(async function*(){
+  const tools=options.mcpServers.paperknow.instance._registeredTools;
+  await tools.submit_writing_output.handler({candidate:{text:privateText}});yield success;
+ })()}}),error=>{
+  const row=error.agentTrace.find(item=>item.tool==='submit_writing_output');
+  assert.deepEqual(row.validation,{code:'invalid_tool_output',revision:{code:'revision_protection',paragraphIndex:2,issues:[{code:'explicit_polarity_reversal'}]}});
+  assert.doesNotMatch(JSON.stringify(error.agentTrace),/private-manuscript-do-not-log/);
+  return true;
+ });
+});
+
 test('SDK unsuccessful result reports fixed sanitized diagnostic without leaking result',async t=>{const {settings}=fixture(t);settings.save('admin',valid);await assert.rejects(()=>runAgentTask({settings:settings.get(),task,dependencies:{lookup,query:()=> (async function*(){yield {...success,subtype:'error_during_execution',is_error:true,result:secret};})()}}),error=>error.code==='runtime_error'&&error.providerDiagnostic==='sdk_result_failure'&&!error.message.includes(secret)&&!JSON.stringify(error).includes(secret));});

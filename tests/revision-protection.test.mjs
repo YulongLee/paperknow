@@ -4,6 +4,17 @@ import {revisionProtectionVersion,revisionProtectionRequirements,protectedRevisi
 
 const check=(original,revised)=>validateRevisionProtection(original,revised);
 const values=text=>protectedRevisionSpans(text).map(span=>span.value);
+test('rejects clear literal negation reversals without claiming semantic verification',()=>{
+ const original='实验结果表明，该方法没有显著提高识别准确率，数据分析仍需要进一步核对。';
+ const flipped='实验结果表明，该方法显著提高识别准确率，数据分析仍需要进一步核对。';
+ const result=check(original,flipped);assert.equal(result.valid,false);assert.ok(result.issues.some(issue=>issue.code==='explicit_polarity_reversal'));assert.equal(result.factsVerified,false);
+ assert.equal(check(original,'实验结果显示，该方法没有显著提高识别准确率，数据分析仍需要进一步核对。').valid,true);
+ assert.equal(check('该方法没有提高识别准确率。','该模型提高识别准确率的风险尚待核验。').valid,true);
+ assert.equal(check('该方法没有提高识别准确率。','该方法提高识别准确率的风险尚待核验。').valid,true);
+ assert.equal(check('该方法没有提高识别准确率。','该方法提高识别准确率，但这一说法不正确。').valid,true);
+ assert.equal(check('该方法没有提高识别准确率。','不能认为该方法提高识别准确率。').valid,true);
+ assert.equal(check('该方法没有提高识别准确率，该方法提高识别准确率。','该方法提高识别准确率，该方法没有提高识别准确率。').valid,true);
+});
 test('exports a fixed version and honest instructions with safe validation metadata',()=>{
  assert.equal(revisionProtectionVersion,'revision-protection-v1');assert.match(revisionProtectionRequirements,/不得新增/);assert.match(revisionProtectionRequirements,/不能验证事实/);
  const result=check('Private original dose 5 mg.','Private original dose 6 mg.');assert.equal(result.valid,false);assert.equal(result.requiresReview,true);assert.equal(result.factsVerified,false);assert.equal(typeof result.minimumCharacters,'number');assert.doesNotMatch(JSON.stringify(result),/Private|dose|5 mg|6 mg/);assert.ok(result.issues.every(issue=>typeof issue.code==='string'&&Object.entries(issue).every(([key,value])=>key==='code'||typeof value==='number')));

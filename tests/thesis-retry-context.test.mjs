@@ -7,4 +7,6 @@ test('private recovery context preserves original permissions and sources, remai
  const longRules={...task,instructions:'x'.repeat(11999)};assert.equal(withThesisRetryCandidate(longRules,candidate),longRules);
  assert.equal(withThesisRetryCandidate(task,{text:'x'.repeat(24001)}),task);const large={...task,context:{...task.context,padding:'x'.repeat(38980)}};assert.equal(withThesisRetryCandidate(large,candidate),large);
  assert.deepEqual(safeThesisValidation({code:'incomplete',count:5,secret:'private',text:'body'}),{code:'incomplete',count:5});assert.equal(safeThesisValidation({code:'invalid code\nprivate'}),null);
+ assert.deepEqual(safeThesisValidation({code:'invalid_tool_output',rule:'private paragraph',revision:{code:'revision_protection',paragraphIndex:2,original:'secret',issues:[{code:'protected_spans_changed',text:'private'},{code:'secret-content'}]}}),{code:'invalid_tool_output',revision:{code:'revision_protection',paragraphIndex:2,issues:[{code:'protected_spans_changed'}]}});
+ assert.deepEqual(safeThesisValidation({code:'invalid_tool_output',revision:{code:'arbitrary_secret',paragraphIndex:1}}),{code:'invalid_tool_output'});
 });

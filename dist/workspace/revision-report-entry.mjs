@@ -39,7 +39,7 @@ export function mountRevisionReportEntry({root,kind,ctx,getDocument,getOriginalT
   if(!parsed)throw Error('请先上传全文报告、选择本站报告，或粘贴明确标注的摘录。');
   const input=normalizeRevisionReport({...parsed,source:$('[data-rrp-source]').value,kind,markedOnly:true}),result=matchRevisionReport(doc,input);candidates=result.candidates;matchedFingerprint=fingerprint(doc);lastReport=input;selected=new Set(candidates.filter(c=>!c.ambiguous).map(c=>c.id));
   $('[data-rrp-targets]').innerHTML=candidates.map(c=>`<label class="revision-report-target"><input type="checkbox" data-rrp-pick="${c.id}" ${selected.has(c.id)?'checked':''}><span><b>原文第 ${c.paragraphIndex+1} 段${c.ambiguous?' · 有多个相同位置，请选择':''}</b><p>${esc(c.excerpt)}</p></span></label>`).join('');$('[data-rrp-matches]').hidden=!candidates.length;updateCount();
-  if(!candidates.length)status(parsed.markState==='none'?'这份报告没有标记需要针对性修改的内容；可保留原文，或选择仅优化表达。':'尚未找到可核对的标记位置。请检查原文是否一致，使用全文报告或粘贴明确标注的原文摘录。');else status(`已定位 ${new Set(candidates.map(c=>c.paragraphId)).size} 段、${candidates.length} 处报告标记。${result.truncated?'定位范围较多，请按章节分批核对，未展示位置不会处理。':''}`);return result;
+  const warning=Array.isArray(parsed.warnings)?parsed.warnings.filter(v=>typeof v==='string').slice(0,3).join(' '):'';if(!candidates.length)status((parsed.markState==='none'?'这份报告没有标记需要针对性修改的内容；可保留原文，或选择仅优化表达。':'尚未找到可核对的标记位置。请检查原文是否一致，使用全文报告或粘贴明确标注的原文摘录。')+(warning?' '+warning:''));else status(`已定位 ${new Set(candidates.map(c=>c.paragraphId)).size} 段、${candidates.length} 处报告标记。${result.truncated?'定位范围较多，请按章节分批核对，未展示位置不会处理。':''}${warning?' '+warning:''}`);return result;
  }
  function adopt(result){
   parsed=result;sourceOwner=result.ownerId||null;invalidate();if(result.source)$('[data-rrp-source]').value=result.source;syncProviders();

@@ -49,6 +49,11 @@ test('protection violation and missing output cannot create checkpoint, settle, 
   await f.worker.tick();await f.worker.tick();assert.equal(f.get(id).status,'failed',type);assert.equal(f.get(id).completedUnits,0,type);assert.equal(f.calls.length,1,type);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0,type);assert.equal(f.billing.balance(f.user.id).balance,200,type);
  }
 });
+test('literal reversed finding preserves original and releases the reservation',async t=>{
+ const text='实验结果表明，该方法没有显著提高识别准确率，数据分析仍需要进一步核对。';
+ const f=fixture(t,{runner:async({task})=>{const r=output(task),body=JSON.parse(r.text);body.paragraphs[0].revised='实验结果表明，该方法显著提高识别准确率，数据分析仍需要进一步核对。';return{...r,text:JSON.stringify(body)};}});
+ const created=await f.submit(request(text)),id=created.value.item.id;await f.worker.tick();const job=f.get(id);assert.equal(job.status,'failed');assert.equal(job.completedUnits,0);assert.equal(job.output,null);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);
+});
 test('explicit resume reuses a retained unit and processes only remaining changed units',async t=>{
  let fail=true;const f=fixture(t,{runner:async({task})=>{if(fail&&task.context.unit.id==='unit-1')throw Object.assign(Error('Synthetic interruption'),{usage:{input:2,output:1},costUsd:.001});return output(task,{retain:task.context.unit.id==='unit-0'});}}),value=request(['A'.repeat(1200),'B'.repeat(1200),'C'.repeat(1200)].join('\n\n')),first=await f.submit(value),old=first.value.item.id;await f.worker.tick();assert.equal(f.get(old).completedUnits,1);fail=false;const next=await f.submit(value,{resumeFromJobId:old});await f.worker.tick();const job=f.get(next.value.item.id);assert.equal(job.status,'completed',JSON.stringify(job));assert.deepEqual(f.calls.map(c=>c.unit),['unit-0','unit-1','unit-1','unit-2']);assert.equal(job.output.changedParagraphs,2);assert.equal(job.output.retainedParagraphs,1);assert.equal(f.billing.balance(f.user.id).balance,190);
 });
