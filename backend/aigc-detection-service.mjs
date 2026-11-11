@@ -83,7 +83,10 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    // its unknown label so the report cannot claim full coverage or a rate.
    // With no usable verdict anywhere, do not settle for an empty report.
    if(!parts.some(part=>part.effectiveCharacters>0&&['aigc','ugc'].includes(part.label)))throw aigcDetectionError('aigc_detection_inconclusive',502,'正文未取得有效鉴别结论，已保留分段记录，本次未结算。');
-   const partial=parts.some(part=>part.label==='undetermined'&&!part.skipped&&part.effectiveCharacters>=40);
+   // Any nonempty inconclusive part prevents a whole-document metric. Keep
+   // its partial report available but release the hold; only explicitly
+   // skipped whitespace/non-text is excluded from this check.
+   const partial=parts.some(p=>p.label==='undetermined'&&!p.skipped&&p.effectiveCharacters>0);
    if(db.isOpen!==false&&finish(id,'completed',{partial,message:partial?partialMessage:undefined})&&aigcReportStorageReady(config)){try{await archive.report(id);}catch{/* The original remains in OSS. Report reads repair publication without another detector call. */}}
   }catch(error){
    const safe=error?.aigcDetectionSafe?error:aigcDetectionError('aigc_detection_unavailable',503,'文本鉴别暂未完成，已保留处理记录，不会自动重复提交。');
@@ -114,7 +117,9 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    const alias=db.prepare('SELECT * FROM aigc_detection_requests WHERE user_id=? AND idempotency_key=?').get(user.id,input.idempotencyKey);
    if(alias){if(alias.input_hash!==hash&&alias.input_hash!==aigcInputHash(input.text,'length-v1'))fail(409,'此请求编号已用于其他文本，请重新确认提交');return{row:own(alias.detection_id,user),cached:true};}
    const prior=db.prepare('SELECT * FROM aigc_detections WHERE user_id=? AND input_hash=?').get(user.id,hash);
-   if(prior&&prior.status!=='failed'&&prior.error!==partialMessage){db.prepare('INSERT INTO aigc_detection_requests VALUES(?,?,?,?)').run(user.id,input.idempotencyKey,prior.id,hash);return{row:prior,cached:true};}
+   // A paid combined run owns fresh children. Reusing an independently paid
+   // detection here would charge the combined tariff without doing new work.
+   if(!fundingParent&&prior&&prior.status!=='failed'&&prior.error!==partialMessage){db.prepare('INSERT INTO aigc_detection_requests VALUES(?,?,?,?)').run(user.id,input.idempotencyKey,prior.id,hash);return{row:prior,cached:true};}
    if(v1CommercialEnabled(db)&&Array.from(input.text||'').length>20000)fail(400,'单次检测最多 20,000 字符，请分章节提交；尚未扣费。');
    assertDetectionPrice(input,billing,'detection-aigc');
    if(!aigcDetectionConfigured(config)||cloud.ready===false||typeof cloud.detect!=='function')fail(503,'文本鉴别暂未开放，请稍后再试。');
@@ -122,7 +127,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    if(db.prepare("SELECT count(*) n FROM aigc_detections WHERE status='running'").get().n>=limits.maxConcurrent)fail(429,'文本鉴别当前繁忙，请稍后再试');
    // An explicit new submission may retry a failed task. The original request
    // key still resolves to its original record; no timeout causes an auto-retry.
-   if(prior&&(prior.status==='failed'||prior.error===partialMessage))db.prepare('UPDATE aigc_detections SET input_hash=? WHERE id=?').run(hash+':previous:'+prior.id,prior.id);
+   if(prior&&(fundingParent||prior.status==='failed'||prior.error===partialMessage))db.prepare('UPDATE aigc_detections SET input_hash=? WHERE id=?').run(hash+':previous:'+prior.id,prior.id);
    const id=randomUUID(),created=new Date().toISOString(),parts=prepared.parts.map(({content,...part})=>({...part,...(part.effectiveCharacters===0?{skipped:true,skipReason:content.trim()?'non_text':'whitespace'}:{}),label:'undetermined',confidence:null}));
    db.prepare("INSERT INTO aigc_detections(id,user_id,input_hash,status,characters,part_count,reserved_calls,reserved_billing_units,parts,created_at,updated_at) VALUES(?,?,?,'running',?,?,?,?,?,?,?)").run(id,user.id,hash,prepared.characters,parts.length,prepared.calls,prepared.billingUnits,JSON.stringify(parts),created,created);
    db.prepare('UPDATE aigc_detections SET title=?,partition_version=? WHERE id=?').run(input.title?.trim()||'送检论文',AIGC_PARAGRAPH_VERSION,id);

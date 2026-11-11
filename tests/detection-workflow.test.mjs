@@ -10,7 +10,7 @@ const flush=async()=>{for(let i=0;i<24;i++)await new Promise(resolve=>setImmedia
 const response=(value,status=200)=>({ok:status>=200&&status<300,status,json:async()=>({ownerId:'owner-1',...value})});
 async function fixture(t,kind,{importDocument}={}){
  const ai=kind==='aigc',prefix=ai?'aigc':'web',base=ai?'/api/aigc-detections':'/api/web-similarity',dom=new JSDOM('<main class="dashboard"><div id="host"></div></main>',{url:'https://paperknow.test/workspace.html#category/detection'}),doc=dom.window.document,calls=[];
- let state=ai?'running':'queued',reportFails=false,owner='owner-1';
+ let state=ai?'running':'queued',reportFails=false,owner='owner-1',importText='',imported=false;
  const cap={ready:true,pointsCharged:true,creditCost:500,pricingVersion:11,bundleUsageSupported:true,maxCharacters:20000,maxPartCharacters:5000,userDailyLimit:10};
  const item=()=>ai?{id:'task-1',status:state==='queued'?'running':state,characters:Array.from(text).length,partCount:1,completedParts:state==='completed'?1:0,reportAvailable:state==='completed',parts:state==='completed'?[{index:0,start:0,end:Array.from(text).length,characters:Array.from(text).length,label:'ugc',confidence:90}]:[],verdict:'ugc'}:{id:'task-1',status:state,stage:state,title:'检测合成论文',characters:Array.from(text).length};
  const report={id:'report-1',mode:'web',title:'检测合成论文',ratio:0,totalChars:Array.from(text).length,similarChars:0,sourceCount:0,sections:[{id:'s1',title:'正文',included:true,paragraphs:[{id:'p1',text,matches:[]}]}],sources:[],web:{fetchedSources:1,totalParagraphs:1,sampledParagraphs:1,searchComplete:true}};
@@ -24,9 +24,9 @@ async function fixture(t,kind,{importDocument}={}){
   if(url===base+'/task-1/report')return reportFails?response({error:'not ready'},503):response(ai?{item:item(),text}:{report});
   throw Error('Unexpected route: '+url);
  };
- const panel=(ai?mountAigcDetection:mountWebSimilarity)({container:doc.querySelector('#host'),fetchImpl,importDocument,uuid:()=> 'stable-key',pollInterval:600000}),$=selector=>doc.querySelector(selector);
+ const panel=(ai?mountAigcDetection:mountWebSimilarity)({container:doc.querySelector('#host'),fetchImpl,importDocument:importDocument|| (async()=>({text:importText})),uuid:()=> 'stable-key',pollInterval:600000}),$=selector=>doc.querySelector(selector);
  t.after(()=>{panel.dispose();dom.window.close();});await panel.ready;
- return {dom,doc,panel,$,calls,prefix,base,setState:value=>state=value,setReportFails:value=>reportFails=value,setOwner:value=>owner=value,input(value){const node=$(`[data-${prefix}-text]`);node.value=value;node.dispatchEvent(new dom.window.Event('input',{bubbles:true}));},phase:()=>$('[data-detection-workflow]').dataset.phase,posts:()=>calls.filter(row=>row.body)};
+ return {dom,doc,panel,$,calls,prefix,base,setState:value=>state=value,setReportFails:value=>reportFails=value,setOwner:value=>owner=value,async input(value){const node=$(`[data-${prefix}-text]`);if(!ai&&!imported){importText=value;const file=$('[data-web-file]');Object.defineProperty(file,'files',{configurable:true,value:[{name:'测试.docx',size:100}]});file.dispatchEvent(new dom.window.Event('change'));await flush();imported=true;}else{node.value=value;node.dispatchEvent(new dom.window.Event('input',{bubbles:true}));}},phase:()=>$('[data-detection-workflow]').dataset.phase,posts:()=>calls.filter(row=>row.body)};
 }
 
 for(const kind of ['similarity','aigc']){
@@ -39,16 +39,16 @@ for(const kind of ['similarity','aigc']){
   assert.match(f.$('[data-workflow-hint]').textContent,/核对/);assert.equal(f.$('[data-workflow-step="processing"]').disabled,true);
  });
  test(kind+' follows one paid submission through stable progress, report completion and a new manuscript',async t=>{
-  const f=await fixture(t,kind);f.input(text);const root=f.$('[data-detection-workflow]'),buttons=[...root.querySelectorAll('button')],input=f.$(`[data-${f.prefix}-text]`);
+  const f=await fixture(t,kind);await f.input(text);const root=f.$('[data-detection-workflow]'),buttons=[...root.querySelectorAll('button')],input=f.$(`[data-${f.prefix}-text]`);
   f.$(`[data-${f.prefix}-start]`).click();f.$(`[data-${f.prefix}-start]`).click();await flush();
   assert.ok(['queued','running'].includes(f.phase()));assert.equal(root.dataset.currentStep,'3');assert.equal(f.$('[data-workflow-step="report"]').disabled,true);assert.equal(f.posts().length,1);assert.equal(f.posts()[0].body.expectedCreditCost,500);assert.equal(f.posts()[0].body.pricingVersion,11);
   f.setState('running');f.$(`[data-${f.prefix}-refresh]`).click();await flush();assert.equal(f.phase(),'running');assert.deepEqual([...root.querySelectorAll('button')],buttons);assert.equal(f.$(`[data-${f.prefix}-text]`),input);
   f.setState('completed');f.$(`[data-${f.prefix}-refresh]`).click();await flush();assert.equal(f.phase(),'complete');assert.equal(root.dataset.currentStep,'4');assert.equal(f.$('[data-workflow-step="report"]').disabled,false);
   let reportScrolls=0;f.$(`[data-${f.prefix}-result]`).scrollIntoView=()=>reportScrolls++;f.$('[data-workflow-step="report"]').click();assert.equal(reportScrolls,1);assert.equal(f.posts().length,1);
-  f.input(text+'新加入的研究说明。');assert.equal(f.phase(),'review');assert.match(f.$('[data-workflow-hint]').textContent,/正文已更新.*尚未/);assert.equal(f.$('[data-workflow-step="report"]').disabled,false);assert.equal(f.posts().length,1);
+  await f.input(text+'新加入的研究说明。');assert.equal(f.phase(),'review');assert.match(f.$('[data-workflow-hint]').textContent,/正文已更新.*尚未/);assert.equal(f.$('[data-workflow-step="report"]').disabled,false);assert.equal(f.posts().length,1);
  });
  test(kind+' never marks a missing report or failed task complete, and report retry does not create another charge',async t=>{
-  const f=await fixture(t,kind);f.input(text);f.$(`[data-${f.prefix}-start]`).click();await flush();f.setState('completed');f.setReportFails(true);f.$(`[data-${f.prefix}-refresh]`).click();await flush();
+  const f=await fixture(t,kind);await f.input(text);f.$(`[data-${f.prefix}-start]`).click();await flush();f.setState('completed');f.setReportFails(true);f.$(`[data-${f.prefix}-refresh]`).click();await flush();
   assert.equal(f.phase(),'report_pending');assert.equal(f.$('[data-workflow-step="report"]').disabled,true);assert.equal(f.$('[data-detection-workflow]').dataset.currentStep,'3');
   f.setReportFails(false);f.$(`[data-${f.prefix}-refresh]`).click();await flush();assert.equal(f.phase(),'complete');assert.equal(f.posts().length,1);
   f.setState('failed');f.$(`[data-${f.prefix}-refresh]`).click();await flush();assert.equal(f.phase(),'failed');assert.equal(f.$('[data-workflow-step="report"]').disabled,true);assert.match(f.$('[data-workflow-hint]').textContent,/未完成/);assert.equal(f.posts().length,1);

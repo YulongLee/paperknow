@@ -11,7 +11,10 @@ export function similarityReview(report,sourceMap){
  const advice=new Map((Array.isArray(report.advice)?report.advice:[]).filter(item=>typeof item?.paragraphId==='string'&&typeof item.advice==='string'&&item.advice.trim()).map(item=>[item.paragraphId,item.advice]));
  let excerpts=120,remaining=5000;const used=new Map(),sourceChars=new Map();
  const sourceCard=(source,matches,paragraph)=>{
-  const href=publicSourceHref(source.url),first=evidencePreview(matches,1)[0];
+  // Multiple overlapping matches from one source are common. Show the most
+  // substantial actual match, while keeping the stored ranges untouched.
+  const extent=match=>Array.isArray(match.range)&&match.range.length===2&&match.range.every(Number.isSafeInteger)?Math.max(0,match.range[1]-match.range[0]):0;
+  const href=publicSourceHref(source.url),first=evidencePreview([...matches].sort((a,b)=>extent(b)-extent(a)),1)[0];
   if(!sourceChars.has(source.id))sourceChars.set(source.id,Array.from(source.text||''));
   const chars=sourceChars.get(source.id);
   let snippet='',omitted=false;

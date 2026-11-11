@@ -102,7 +102,9 @@ export function createWebSimilarityService(db,config={}){
    // The same request key above remains idempotent. A new, explicit submission
    // may retry failed or cancelled work, even when a search was attempted.
    const duplicate=db.prepare("SELECT j.id FROM jobs j JOIN web_similarity_runs r ON r.id=j.id WHERE j.user_id=? AND j.type='web_similarity' AND j.input_hash=? AND (j.status IN ('preparing','queued','running') OR (j.status='completed' AND j.created_at>=?)) ORDER BY j.created_at DESC LIMIT 1").get(user.id,hash,new Date(Date.now()-86400000).toISOString());
-   if(duplicate)return{id:duplicate.id,existing:true};
+   // A separately charged combined run must perform its own detection rather
+   // than silently billing for an earlier standalone report.
+   if(duplicate&&!fundingParent)return{id:duplicate.id,existing:true};
    if(v1CommercialEnabled(db)&&Array.from(input.text||'').length>20000)fail(400,'单次检测最多 20,000 字符，请分章节提交；尚未扣费。');
    assertDetectionPrice(input,config.billing,'detection-similarity');
    if(!webSimilarityReady(config))fail(503,webSimilarityCapabilities(config).reason);

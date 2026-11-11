@@ -37,9 +37,9 @@ test('the right column gives sentence advice only for flagged paragraphs and kee
  for(const a of doc.querySelectorAll('.report-sentence-card a[href^="#"]')){const target=doc.getElementById(a.hash.slice(1));assert.ok(target);assert.ok(target.closest('.report-review-original'));assert.equal(target.closest('tr'),a.closest('tr'));}
  assert.equal(doc.querySelectorAll('.report-sentence-rewrite').length,1);assert.match(doc.body.textContent,/逐句修改建议/);assert.match(doc.body.textContent,/不代表逐句 AI 作者判定/);assert.equal(JSON.stringify(item),before);assert.equal(doc.querySelectorAll('script,button,details').length,0);dom.window.close();
 });
-test('one sentence crossing detector boundaries has one advice and one original anchor without changing labels',()=>{
+test('one sentence crossing different detector labels retains original anchor without a misleading advice',()=>{
  const text='🙂这是跨越两个原检测范围的同一句研究说明。',count=Array.from(text).length,item={id:'legacy-advice',status:'completed',characters:count,partCount:2,completedParts:2,verdict:'mixed',parts:[{index:0,start:0,end:12,characters:12,label:'aigc',confidence:95},{index:1,start:12,end:count,characters:count-12,label:'ugc',confidence:99}]},dom=new JSDOM(aigcReportHtml(item,{text})),doc=dom.window.document;
- assert.equal(doc.querySelectorAll('.report-sentence-card').length,1);assert.equal(doc.querySelectorAll('#ai-sentence-1-1').length,1);assert.equal(doc.querySelector('.aigc-report-text-risk').textContent,Array.from(text).slice(0,12).join(''));assert.match(doc.querySelector('#ai-analysis-1').textContent,/本段没有独立判断结果/);dom.window.close();
+ assert.equal(doc.querySelectorAll('.report-sentence-card').length,0);assert.equal(doc.querySelectorAll('#ai-sentence-1-1').length,1);assert.equal(doc.querySelector('.aigc-report-text-risk').textContent,Array.from(text).slice(0,12).join(''));assert.match(doc.querySelector('#ai-analysis-1').textContent,/本段没有独立判断结果/);dom.window.close();
 });
 test('code fences, displayed equations and reference entries receive preservation guidance without rewrites',()=>{
  const text='```python\nx = a.b()\nprint("值得注意的是，")\n```\n\n[1] Li. A study. 2025. DOI: 10.1000/test.\n\n$$\nL = 0.5 + 1.2\n$$',dom=new JSDOM(aigcReportHtml(itemFor(text),{text})),doc=dom.window.document;
@@ -50,5 +50,5 @@ test('manuscript markup cannot become executable in a sentence quote or referenc
  assert.equal(doc.querySelectorAll('script,img,[onerror],[onclick]').length,0);assert.ok(doc.querySelector('.report-review-original .report-text').textContent.includes('<script>'));assert.ok(doc.querySelector('.report-sentence-rewrite').textContent.includes('<script>'));dom.window.close();
 });
 test('maximal input with many tiny sentences remains complete and within the cloud file size bound',()=>{
- const text='字。'.repeat(25000),html=aigcReportHtml(itemFor(text),{text});assert.equal((html.match(/class="report-sentence-card"/g)||[]).length,25000);assert.ok(Buffer.byteLength(html)<20*1024*1024);
+ const text='字。'.repeat(25000),html=aigcReportHtml(itemFor(text),{text});assert.equal((html.match(/class="report-sentence-card"/g)||[]).length,12500);assert.equal((html.match(/data-ai-sentence-row=/g)||[]).length,25000);assert.ok(Buffer.byteLength(html)<20*1024*1024);
 });
