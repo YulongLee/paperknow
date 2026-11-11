@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {formatFixture,until,exampleDocx,parseDocx} from './fixtures/format-ui.mjs';
+import {formatFixture,until,exampleDocx,parseDocx,applyDocx} from './fixtures/format-ui.mjs';
 import {checkFormatting} from '../dist/workspace/format-model.mjs';
 
 test('format has exactly two upload inputs, three steps and one processing action without manual rule or service choices',async t=>{
@@ -16,12 +16,33 @@ test('one click verifies the DOCX, submits one AI review and delivers a faithful
  const f=await formatFixture(t),{original,target}=await f.ready(),nav=f.$('[data-format-workflow]'),input=f.$('#format-file');f.click('[data-action="apply"]');f.click('[data-action="apply"]');await until(()=>f.$('[data-format-workflow]').dataset.phase==='complete');assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);assert.equal(f.$('[data-format-workflow]'),nav);assert.equal(f.$('#format-file'),input);assert.equal(f.$('[data-tj-consent]'),null);assert.equal(f.$('[data-tj-apply]'),null);assert.equal(f.$('[data-format-result]').hidden,false);f.click('[data-action="export"]');await until(()=>f.downloads.length===1);assert.match(f.downloads[0].name,/\.docx$/);const output=await parseDocx(f.downloads[0].content);assert.equal(checkFormatting(output,target).length,0);assert.deepEqual(output.paragraphs.map(p=>p.text),(await parseDocx(original)).paragraphs.map(p=>p.text));assert.deepEqual(Buffer.from(f.getRows()[0].formatting.original,'base64'),Buffer.from(original));assert.equal(f.getRows()[0].layoutComplete,true);assert.ok(f.snapshot().context.inputFingerprint);assert.equal(f.snapshot().context.templateName,'学校格式模板.docx');
 });
 
+test('AI reviews the formatted copy rather than listing issues already fixed in the original',async t=>{
+ const f=await formatFixture(t),{original,target}=await f.ready();assert.ok(checkFormatting(await parseDocx(original),target).some(issue=>issue.status==='fix'));await f.generate();await until(()=>f.$('[data-format-workflow]').dataset.phase==='complete');const input=f.snapshot(),review=JSON.parse(input.text);assert.equal(review.totalIssues,input.context.remainingIssues);assert.equal(review.issues.some(issue=>issue.status==='fix'),false);assert.equal(review.issueSummary.total,input.context.remainingIssues);
+});
+
+test('results show AI suggestions as advice, state the actual review scope, and identify template settings retained from the original',async t=>{
+ const f=await formatFixture(t,{jobOutput:{text:'请核对版面。',suggestions:[{id:'s1',location:'段落 1',issue:'需核对标题',action:'与模板对照'}],sourceIds:['format-review']}});await f.ready();assert.match(f.$('[data-format-template-unresolved]').textContent,/模板未识别项目/);assert.match(f.$('[data-format-template-unresolved]').textContent,/保留原文设置/);await f.generate();await until(()=>f.$('[data-format-workflow]').dataset.phase==='complete');const result=f.$('[data-format-result]');assert.match(result.textContent,/段落 1/);assert.match(result.textContent,/需核对标题/);assert.match(result.textContent,/不会自动修改 Word/);assert.match(result.textContent,/仅基于格式检查清单和前 12 段节选/);assert.match(result.textContent,/模板未识别项目/);assert.match(result.textContent,/实际版式以下载的 Word 为准/);
+});
+
+test('original remains downloadable before completion and an oversized document cannot start a paid task',async t=>{
+ const base=await exampleDocx(),parsed=await parseDocx(base),long={...parsed,paragraphs:parsed.paragraphs.map((p,i)=>({...p,text:i===0?'长'.repeat(20001):p.text}))};let count=0;
+ const f=await formatFixture(t,{documentModule:{parseDocx:async()=>++count===1?parsed:long,applyDocx}});await f.upload('template',base);await f.upload('paper',base);assert.equal(f.$('[data-format-original]').hidden,false);assert.equal(f.$('[data-action="apply"]').disabled,true);assert.match(f.$('#format-status').textContent,/超过 20,000 字符/);assert.equal(f.calls.length,0);f.click('[data-format-original]');await until(()=>f.downloads.length===1);
+});
+
 test('queued and running review update in place and only saved completion unlocks the Word result',async t=>{
  const f=await formatFixture(t,{jobStatus:'queued'});await f.ready();const input=f.$('#format-sample-file'),steps=[...f.root.querySelectorAll('[data-format-step-item]')];await f.generate();await until(()=>f.$('[data-format-workflow]').dataset.phase==='queued');assert.equal(f.$('[data-format-result]').hidden,true);assert.equal(input.disabled,true);assert.equal(f.$('[data-action="apply"]').disabled,true);f.setStatus('running');await until(()=>f.$('[data-format-workflow]').dataset.phase==='running');assert.deepEqual([...f.root.querySelectorAll('[data-format-step-item]')],steps);assert.equal(f.$('#format-sample-file'),input);f.setStatus('completed');await until(()=>f.$('[data-format-workflow]').dataset.phase==='complete');assert.equal(f.$('[data-format-result]').hidden,false);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);
 });
 
 for(const status of ['failed','cancelled'])test(status+' review retains both files without presenting an unfinished result as complete',async t=>{
  const f=await formatFixture(t,{jobStatus:status});await f.ready();await f.generate();await until(()=>f.$('[data-format-workflow]').dataset.phase==='failed');assert.equal(f.$('[data-format-result]').hidden,true);assert.ok(f.getRows()[0].formatting.original);assert.ok(f.getRows()[0].formatSample);assert.equal(f.getRows()[0].layoutComplete,false);
+});
+
+test('failed AI review shows its specific reason and a retry action without creating another job automatically',async t=>{
+ const f=await formatFixture(t,{jobStatus:'failed',jobError:'排版复核暂时不可用，请稍后重试。'});await f.ready();await f.generate();await until(()=>f.$('[data-format-workflow]').dataset.phase==='failed');assert.equal(f.$('#format-ai-task').hidden,false);assert.match(f.$('#format-ai-task').textContent,/排版复核暂时不可用/);assert.ok(f.$('[data-tj-new]'));assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);assert.equal(f.$('[data-format-result]').hidden,true);
+});
+
+for(const reason of ['积分不足，请充值后重试。','当前账户无权使用该功能，请联系管理员。'])test('quote failure shows actionable reason without submitting a job: '+reason,async t=>{
+ const f=await formatFixture(t,{quoteError:reason});await f.ready();await f.generate();await until(()=>f.$('[data-tj-new]')||f.$('[data-tj-auth]'));assert.equal(f.$('#format-ai-task').hidden,false);assert.match(f.$('#format-ai-task').textContent,new RegExp(reason.slice(0,4)));assert.ok(f.$('[data-tj-new]')||f.$('[data-tj-auth]'));assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);assert.equal(f.$('[data-format-result]').hidden,true);
 });
 
 test('replacing the template invalidates the prior result, keeps the manuscript and never automatically starts another charged task',async t=>{

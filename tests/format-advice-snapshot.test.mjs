@@ -17,3 +17,10 @@ test('format advice separates the full authoritative issue count from a capped e
  const rules=defaultRules(),doc={paragraphs:Array.from({length:30},()=>paragraph(0,{font:['黑体'],size:[10.5],line:[1],indent:[0]})),sections:[{top:2.5,bottom:2.5,left:2.5,right:2.5}],warnings:[]},review=JSON.parse(formatAdviceSnapshot({title:'长文格式验收'},doc,rules).text);
  assert.equal(review.totalIssues,120);assert.equal(review.issueSummary.total,120);assert.equal(review.issueSummary.selected,80);assert.equal(review.issueSummary.groups.find(g=>g.name==='正文').count,120);assert.equal(review.issues.length,80);assert.equal(review.paragraphs.length,12);assert.deepEqual(review.paragraphs.map(p=>p.paragraph),Array.from({length:12},(_,i)=>i+1));assert.equal(review.totalParagraphs,30);
 });
+
+test('review identifies the prepared copy and distinguishes deterministic formatting from AI review',async()=>{
+ const rules=defaultRules(),doc={paragraphs:[paragraph(0,{font:['宋体'],size:[12],line:[1.5],indent:[2]})],sections:[{top:2.5,bottom:2.5,left:2.5,right:2.5}],warnings:[]},snapshot=formatAdviceSnapshot({title:'复查'},doc,rules),review=JSON.parse(snapshot.text);
+ assert.match(review.processing,/排版副本/);assert.match(review.processing,/AI 本次只解释/);assert.match(snapshot.requirements,/不得说整个文件没有经过排版/);assert.match(snapshot.requirements,/不同分节页边距可能各不相同/);assert.match(snapshot.requirements,/不要建议全部分节页边距统一或一致/);assert.match(snapshot.requirements,/不能声称检查了全文或实际分页/);
+ const {normalizeToolRequest,toolRunPlan,toolRunTask}=await import('../backend/tool-run-model.mjs');const value=normalizeToolRequest({kind:'format',operation:'format',snapshot});const task=toolRunTask(value,toolRunPlan(value)[0]);
+ assert.match(task.instructions,/检查清单来自已按可识别规则处理过的排版副本/);assert.match(task.instructions,/不要说整个文件没有排版/);assert.match(task.instructions,/不同分节页边距可能不同/);assert.match(task.instructions,/不建议所有分节页边距统一或一致/);assert.match(task.instructions,/不得声称AI已修改DOCX或检查了全文/);assert.doesNotMatch(task.instructions,/所有输出是用户待审核草稿/);
+});
