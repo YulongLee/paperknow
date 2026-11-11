@@ -15,7 +15,7 @@ function setup(t){
  const dom=new JSDOM('<main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog>',{url:'https://audit.test/workspace.html#category/literature'}),w=dom.window;
  const names=['window','document','localStorage','FormData','location','AbortController','DOMParser','XMLSerializer','MutationObserver','fetch'],before=Object.fromEntries(names.map(key=>[key,globalThis[key]]));
  for(const key of names.filter(key=>key!=='fetch'))globalThis[key]=key==='window'?w:w[key];
- const calls=[],notices=[];globalThis.fetch=async(...args)=>{calls.push(args);throw Error('Unexpected external request');};
+ const calls=[],notices=[];globalThis.fetch=async(...args)=>{calls.push(args);if(args[0]==='/api/payments/options'){assert.equal(args[1]?.method||'GET','GET');assert.equal(args[1]?.body,undefined);return Response.json({toolBilling:{services:[]}});}throw Error('Unexpected external request');};
  w.HTMLElement.prototype.scrollIntoView=()=>{};w.document.querySelector('dialog').close=()=>{};
  const $=s=>w.document.querySelector(s),ctx={notify:message=>notices.push(message),modal:(_,html)=>{$('#workspace-dialog-body').innerHTML=html;}};
  const input=(selector,value)=>{const el=$(selector);el.value=value;el.dispatchEvent(new w.Event('input',{bubbles:true}));};
@@ -56,7 +56,7 @@ test('failed reading edits survive redraw, block stale exports and guard navigat
  f.$('[data-lit-ai-operation="answer"]').click();f.$('[data-lit-ai-operation="read"]').click();assert.equal(f.$('[data-lit-ai-text]').value,'Unsaved revised reading result');
  assert.equal(editorRouteGuard('#home'),false);assert.ok(f.$('#editor-save-leave'));
  f.$('#lit-ai-r1-docx').click();assert.match(f.$('#lit-ai-r1-status').textContent,/停止导出旧内容/);
- f.$('[data-lit-ai-export]').click();await new Promise(resolve=>setImmediate(resolve));assert.ok(f.notices.some(message=>/停止导出旧内容/.test(message)));assert.equal(f.calls.length,0);
+ f.$('[data-lit-ai-export]').click();await new Promise(resolve=>setImmediate(resolve));assert.ok(f.notices.some(message=>/停止导出旧内容/.test(message)));assert.equal(f.calls.filter(([url])=>url!=='/api/payments/options').length,0);
  f.w.Storage.prototype.setItem=f.originalSet;f.$('[data-lit-ai-save]').click();assert.equal(f.$('[data-lit-ai-save]').hidden,true);assert.equal(flushEditorDraft(),true);assert.equal(f.saved().aiResults[0].output.text,'Unsaved revised reading result');assert.equal(f.saved().aiResults[0].materials[0].text,source);assert.equal(editorHasWork(),false);assert.equal(editorRouteGuard('#home'),true);
 });
 
@@ -91,7 +91,7 @@ test('short reading ranges are disabled before a quote while short translation r
  const ui=mountLiteratureAi({container:f.$('#ai'),ctx:f.ctx,getPaper:()=>p,updatePaper:updater=>{p=updater(p);}});t.after(()=>ui.dispose());
  f.input('[data-lit-ai-end]','1');assert.equal(f.$('[data-lit-ai-open]').disabled,true);assert.match(f.$('[data-lit-ai-range-status]').textContent,/至少 5 字符/);
  f.$('[data-lit-ai-operation="translate"]').click();assert.equal(f.$('[data-lit-ai-open]').disabled,false);
- f.$('[data-lit-ai-operation="read"]').click();assert.equal(f.$('[data-lit-ai-open]').disabled,true);f.input('[data-lit-ai-end]','2');assert.equal(f.$('[data-lit-ai-open]').disabled,false);assert.equal(f.calls.length,0);
+ f.$('[data-lit-ai-operation="read"]').click();assert.equal(f.$('[data-lit-ai-open]').disabled,true);f.input('[data-lit-ai-end]','2');assert.equal(f.$('[data-lit-ai-open]').disabled,false);assert.equal(f.calls.filter(([url])=>url!=='/api/payments/options').length,0);
 });
 
 test('a citation clicked while viewing notes restores the original PDF pane before locating evidence',async t=>{

@@ -187,3 +187,51 @@ test('reopening an already adopted completed answer does not fetch its task or f
  const material={id:'p1',name:'Existing research <img src=x> · 第 1 段',text:source.split('\n\n')[0]},answer={id:'saved-answer',jobId:'saved-job',operation:'answer',question:'What method?',includeHistory:true,sourceScope:'full',language:'',createdAt:new Date().toISOString(),materials:[material],output:{text:'A saved answer grounded in the actual source.',sourceIds:['p1'],citations:[{sourceId:'p1',quote:material.text.slice(0,25)}]}};
  const f=fixture(t,{papers:[paper({aiDraft:{start:1,end:1,question:'What method?',includeHistory:true},aiResults:[answer],aiJobStates:{answer:{itemId:'saved-job'}}})]});mountLiteratureReader('saved-paper',f.ctx,'answer');for(let i=0;i<5;i++)await new Promise(resolve=>setImmediate(resolve));assert.equal(f.calls.length,0);assert.equal(f.$('.lit-reader-assistant [data-lit-ai-panel]').hidden,true);assert.equal(f.$('.lit-assistant-response').textContent,answer.output.text);
 });
+
+test('the 200th uploaded paper can complete an existing saved metadata record',async t=>{
+ const papers=Array.from({length:199},(_,i)=>paper({id:'paper-'+i,title:'Paper '+i})),f=fixture(t,{papers});
+ const ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher,importDocument:async(_file,_status,options)=>{options.onProgress({fileId:'final-file',ownerId:'owner',jobId:'parse-final'});return {text:source,originalFileId:'final-file'};},saveOriginal:async()=>({originalFileId:'final-file',originalOwnerId:'owner'})});await ui.ready;
+ await ui.upload({name:'Final.txt',size:source.length});
+ assert.equal(f.papers().length,200);const final=f.papers().find(p=>p.originalFileId==='final-file');assert.equal(final.scope,'full');assert.equal(final.text,source);assert.ok(f.$('.lit-queue-row.is-completed'));
+});
+
+test('an uploaded file cannot create an extra metadata record beyond the literature limit',async t=>{
+ const papers=Array.from({length:200},(_,i)=>paper({id:'paper-'+i,title:'Paper '+i})),f=fixture(t,{papers});let stored=0;
+ const ui=mountLiteratureLanding(f.ctx,{fetcher:f.fetcher,importDocument:async(_file,_status,options)=>{options.onProgress({fileId:'extra-file',ownerId:'owner',jobId:'parse-extra'});return {text:source,originalFileId:'extra-file'};},saveOriginal:async()=>{stored++;return {originalFileId:'extra-file',originalOwnerId:'owner'};}});await ui.ready;
+ await ui.upload({name:'Extra.txt',size:source.length});
+ assert.equal(f.papers().length,200);assert.equal(f.papers().some(p=>p.originalFileId==='extra-file'),false);assert.equal(stored,0);assert.match(f.$('.lit-queue-row.is-failed').textContent,/200/);
+});
+
+test('separated numbered knowledge points retain their displayed list numbers',()=>{
+ const html=readingResultMarkup('1. First point\n\n2. Second point\n\n3. Third point');
+ const dom=new JSDOM(html),lists=[...dom.window.document.querySelectorAll('ol')];assert.deepEqual(lists.map(list=>list.start),[1,2,3]);dom.window.close();
+});
+
+test('AI results hide internal evidence IDs in prose without claiming a page number or changing code',()=>{
+ const html=readingResultMarkup('依据（p16-e49、e50）说明。\n\n`p1-e3`\n\n**p7-e20~e22** <script>alert(1)</script>');
+ const dom=new JSDOM(html),doc=dom.window.document;assert.match(doc.body.textContent,/依据（原文片段）/);assert.match(doc.body.textContent,/原文片段/);assert.equal(doc.querySelector('code').textContent,'p1-e3');assert.equal(doc.querySelector('script'),null);assert.doesNotMatch(doc.body.textContent,/第\s*16\s*页/);dom.window.close();
+});
+
+test('ordered list numbers, unordered lists and escaped markup remain safe',()=>{
+ const html=readingResultMarkup('3. Third\n\n5. <img src=x onerror=alert(1)>\n\n- bullet'),dom=new JSDOM(html),doc=dom.window.document;
+ assert.deepEqual([...doc.querySelectorAll('ol')].map(n=>n.start),[3,5]);assert.equal(doc.querySelector('ul li').textContent,'bullet');assert.equal(doc.querySelector('img'),null);dom.window.close();
+});
+
+test('consecutive reordered numbers retain their values while markdown repeated one auto-numbers',()=>{
+ let dom=new JSDOM(readingResultMarkup('3. third\n5. fifth'));assert.deepEqual([...dom.window.document.querySelectorAll('ol')].map(n=>n.start),[3,5]);dom.window.close();
+ dom=new JSDOM(readingResultMarkup('1. first\n1. second'));assert.equal(dom.window.document.querySelectorAll('ol').length,1);assert.equal(dom.window.document.querySelectorAll('li').length,2);dom.window.close();
+});
+
+test('reading assistant price uses current service settings without inventing costs',async()=>{
+ const {readingPriceLabel}=await import('../dist/workspace/literature-ai.mjs');const row={key:'literature-read',effectiveMode:'paid',effectiveCreditCost:42,available:true};
+ assert.match(readingPriceLabel({toolBilling:{services:[row]}}),/42 积分\/次/);assert.match(readingPriceLabel({toolBilling:{services:[row]}}),/会员或套餐优先/);
+ assert.equal(readingPriceLabel({toolBilling:{services:[{...row,effectiveMode:'free'}]}}),'本次免费');assert.equal(readingPriceLabel({toolBilling:{services:[{...row,available:false}]}}),'文献研读暂未开放');assert.match(readingPriceLabel({}),/暂无法读取/);assert.match(readingPriceLabel({toolBilling:{services:[{...row,effectiveCreditCost:0}]}}),/暂无法读取/);
+});
+
+test('assistant displays dynamic pricing without a second confirmation or blocking on pricing failure',async t=>{
+ const f=fixture(t);f.w.history.replaceState(null,'','#literature/saved-paper?tab=answer');let fail=false;
+ globalThis.fetch=async url=>{assert.equal(url,'/api/payments/options');if(fail)throw Error('network');return reply({toolBilling:{services:[{key:'literature-read',effectiveMode:'paid',effectiveCreditCost:37,available:true}]}});};
+ mountLiteratureReader('saved-paper',f.ctx,'answer');await until(()=>f.$('[data-lit-price]')?.textContent.includes('37 积分/次'));
+ assert.match(f.$('[data-lit-price]').textContent,/适用会员或套餐优先/);f.input('[data-lit-ai-question]','What does the paper report?');assert.equal(f.$('[data-lit-ai-open]').disabled,false);
+ fail=true;f.w.dispatchEvent(new f.w.Event('focus'));await until(()=>f.$('[data-lit-price]')?.textContent.includes('暂无法读取'));assert.doesNotMatch(f.$('[data-lit-price]').textContent,/37/);assert.equal(f.$('[data-lit-ai-open]').disabled,false);assert.equal(f.calls.filter(x=>x.path==='/tool-runs/jobs').length,0);
+});

@@ -43,7 +43,7 @@ export function mountLiteratureAssistantLayout(container) {
  const quick=inputs.querySelector('.lit-ai-quick-questions'),empty=card.querySelector('.lit-ai-results>.lit-ai-empty');
  if(quick){if(empty)empty.append(quick);else quick.hidden=true;}
  const send=actions.querySelector('[data-lit-ai-open]');if(send&&question){send.innerHTML=icon('send',17)+'<span>发送</span>';send.setAttribute('aria-label','发送问题');}
- actions.querySelector(':scope>span')?.remove();footer.append(actions);composer.append(inputs,footer);card.append(composer);
+ actions.querySelector(':scope>span')?.remove();footer.append(actions);const price=card.querySelector('[data-lit-price]');composer.append(inputs);if(price)composer.append(price);composer.append(footer);card.append(composer);
  for(const result of card.querySelectorAll('.lit-ai-result')){
   const toolbar=doc.createElement('div');toolbar.className='lit-assistant-result-toolbar';
   const copy=result.querySelector('.lit-assistant-result-tools'),evidence=result.querySelector('.lit-assistant-evidence'),more=result.querySelector('.lit-assistant-more'),edit=result.querySelector('.lit-assistant-edit'),exports=result.querySelector('.lit-assistant-export');

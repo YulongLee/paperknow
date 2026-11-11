@@ -66,3 +66,15 @@ test('HTTP public metadata endpoint works without login while private routes and
  for(let i=0;i<19;i++)assert.equal((await fetch(base+'/api/literature/search?'+params({source:'crossref'}))).status,200);
  const limited=await fetch(base+'/api/literature/search?'+params({source:'crossref'}));assert.equal(limited.status,429);assert.ok(Number(limited.headers.get('retry-after'))>0);assert.equal(calls,1);const cap=await(await fetch(base+'/api/capabilities')).json();assert.equal(cap.academicSearch,true);assert.deepEqual(cap.academicSearchSources,['crossref','europepmc','arxiv','pubmed']);
 });
+
+test('aggregate relevance promotes only exact titles present in returned source candidates',async()=>{
+ const request=new URLSearchParams({q:'Attention Is All You Need',limit:'3'});
+ const papers=[cr({DOI:'10.1234/noise',title:['Transformer attention for learning']}),cr({DOI:'10.1234/exact',title:['Attention is all you need']}),cr({DOI:'10.1234/near',title:['Attention is all you need for machine learning']})];
+ const service=createLiteratureSearch({fetchImpl:async url=>{const host=new URL(url).hostname;if(host==='api.crossref.org')return crResponse(papers,3);if(host==='export.arxiv.org')return emptyArxiv();if(host==='eutils.ncbi.nlm.nih.gov')return json({esearchresult:{count:'0',idlist:[]}});return epResponse([],0);}});
+ const result=await service.search(request);assert.equal(result.items[0].doi,'10.1234/exact');assert.deepEqual(result.items.map(x=>x.doi),['10.1234/exact','10.1234/noise','10.1234/near']);
+});
+
+test('exact title promotion never overrides explicit date ordering',async()=>{
+ const service=createLiteratureSearch({fetchImpl:async()=>crResponse([cr({DOI:'10.1234/exact',title:['Attention Is All You Need'],published:{'date-parts':[[2017]]}}),cr({DOI:'10.1234/new',title:['Recent transformer'],published:{'date-parts':[[2025]]}})],2)});
+ const result=await service.search(new URLSearchParams({q:'Attention Is All You Need',source:'crossref',sort:'year',limit:'3'}));assert.deepEqual(result.items.map(x=>x.doi),['10.1234/new','10.1234/exact']);
+});

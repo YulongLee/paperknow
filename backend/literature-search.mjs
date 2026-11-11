@@ -281,6 +281,14 @@ export function createLiteratureSearch({fetchImpl=globalThis.fetch,clock=Date.no
     // Round-robin preserves each provider's relevance ordering without inventing a cross-provider score.
     for(let index=0;index<query.limit;index++)for(const result of results){const item=result.items[index];if(!item)continue;const key=item.doi||item.source+':'+item.sourceId;if(seen.has(key)){mergeMetadata(seen.get(key),item);continue;}const merged={...item,sourceProvenance:[provenance(item)],...(item.citationCount!==undefined?{citationCountSource:item.source}:{})};seen.set(key,merged);items.push(merged);}
     const matching=items.filter(item=>matchesQuery(item,query));
+    // An exact title match within the returned candidate window is more useful
+    // than a loosely related title from a different source. Keep original
+    // provider interleaving among ties and never infer a missing record.
+    if(!query.sort||query.sort==='relevance'){
+      const titleKey=value=>String(value||'').normalize('NFKC').toLocaleLowerCase('en-US').replace(/[^\p{L}\p{N}]+/gu,' ').trim().replace(/\s+/g,' ');
+      const requested=titleKey(query.q);
+      if(requested.length>=8&&requested.split(' ').length>=3)matching.sort((a,b)=>{const ae=titleKey(a.title)===requested,be=titleKey(b.title)===requested;if(ae!==be)return Number(be)-Number(ae);if(ae&&be){const ac=Number.isSafeInteger(a.citationCount)?a.citationCount:-1,bc=Number.isSafeInteger(b.citationCount)?b.citationCount:-1;return bc-ac;}return 0;});
+    }
     if(['year','citations'].includes(query.sort)){const key=query.sort==='year'?'year':'citationCount';matching.sort((a,b)=>{const av=a[key],bv=b[key],ak=Number.isSafeInteger(av),bk=Number.isSafeInteger(bv);return ak&&bk?bv-av:ak?-1:bk?1:0;});}
     const selected=matching.slice(0,query.limit),page=query.page||1;
     const value={items:selected,sources,query,partial:sources.some(source=>source.status!=='ok'),page,returnedCount:selected.length,hasMore:page<5&&sources.some(source=>source.status==='ok'&&source.hasMore),window:{scope:'per_source',maxPages:5,limit:query.limit,candidateCount:matching.length,truncated:matching.length>query.limit},...(sources.length===1&&sources[0].total!==undefined?{total:sources[0].total}:{})};

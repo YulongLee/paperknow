@@ -67,7 +67,7 @@ export function startDocumentTranslationWorker(db,config={}){
    if(!active(job.id))return;const id=randomUUID(),at=clock();billing.settle(job.id);
    db.prepare("UPDATE document_translation_runs SET page_count=?,provider_state='done',updated_at=? WHERE id=?").run(pageCount,at,job.id);
    db.prepare('INSERT OR REPLACE INTO literature_translation_quality VALUES(?,?,?,?,?)').run(job.id,job.user_id,job.source_sha256,item.sha256,JSON.stringify(quality));
-   db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(id,job.user_id,job.project_id,job.id,'document_translation',job.file_name+' · 文档翻译',JSON.stringify({documentTranslationId:job.id,fileName:job.file_name,sourceLanguage:job.source_language,targetLanguage:job.target_language,pageCount,artifacts:[item.id],quality,scope:'译文已进行术语、数字与引文检查，文件保存在账户云端。'}),at);
+   db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(id,job.user_id,job.project_id,job.id,'document_translation',job.file_name+' · 文档翻译',JSON.stringify({documentTranslationId:job.id,fileName:job.file_name,sourceLanguage:job.source_language,targetLanguage:job.target_language,pageCount,artifacts:[item.id],quality,scope:'译文已保存至云端；译文内容、数字与引用请结合原文核对。'}),at);
    db.prepare("UPDATE jobs SET status='completed',stage='completed',result_id=?,error=NULL,updated_at=? WHERE id=? AND status='running'").run(id,at,job.id);
   });
  }

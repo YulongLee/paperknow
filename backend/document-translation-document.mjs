@@ -41,7 +41,21 @@ export async function validateTranslationDocument(buffer,{source=true}={}){
 export async function prepareTranslationPreview(bytes){
  await validateTranslationDocument(Buffer.from(bytes),{source:false});
  const {DOMParser,XMLSerializer}=await import('@xmldom/xmldom');
- const zip=await JSZip.loadAsync(bytes),W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+ const zip=await JSZip.loadAsync(bytes),W='http://schemas.openxmlformats.org/wordprocessingml/2006/main',R='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+ // A relationship belongs to one Word part only. Build an allowlist of its
+ // internal hyperlinks before removing external relationships below. Broken or
+ // unknown rIds are unwrapped just like external hyperlinks, retaining runs.
+ const internalHyperlinks=new Map();
+ for(const entry of Object.values(zip.files)){
+  if(entry.dir||!entry.name.endsWith('.rels'))continue;
+  const match=entry.name.match(/^(.*\/)?_rels\/([^/]+)\.rels$/);if(!match||match[2]==='.rels')continue;
+  const raw=await entry.async('uint8array');if(raw.length>8*1024*1024)throw safe('译文结构过大');
+  const enc=raw[0]===255&&raw[1]===254?'utf-16le':raw[0]===254&&raw[1]===255?'utf-16be':'utf-8';
+  const xml=new TextDecoder(enc,{fatal:true}).decode(raw);if(/<!DOCTYPE|<!ENTITY/i.test(xml))throw safe('译文结构不受支持');
+  const rels=new DOMParser({onError:()=>{throw safe('译文 XML 无效');}}).parseFromString(xml,'application/xml'),ids=new Set(),seen=new Set();
+  for(const node of rels.getElementsByTagName('*'))if(node.localName==='Relationship'){const id=node.getAttribute('Id');if(id&&seen.has(id))throw safe('译文资源关系重复，无法制作 PDF');if(id)seen.add(id);if(/\/hyperlink$/.test(node.getAttribute('Type'))&&!node.getAttribute('TargetMode')&&id)ids.add(id);}
+  internalHyperlinks.set((match[1]||'')+match[2],ids);
+ }
  for(const entry of Object.values(zip.files)){
   if(entry.dir)continue;
   if(/(?:^|\/)(?:vbaProject|activeX|embeddings|customUI)|\.(?:bin|html?|xhtml|svg)$/i.test(entry.name))throw safe('译文包含不支持的活动内容，无法制作 PDF');
@@ -61,7 +75,16 @@ export async function prepareTranslationPreview(bytes){
     if(resolved==='..'||resolved.startsWith('../')||!zip.file(resolved))throw safe('译文资源不存在或路径越界');
    }
    if(['Default','Override'].includes(node.localName)&&/macroEnabled|vbaProject|oleObject|activeX|encrypted/i.test(node.getAttribute('ContentType')||''))throw safe('译文含不支持的活动内容');
+   // Drawing links can also refer to removed relationship IDs; the drawing
+   // remains intact when just its hyperlink action is removed.
+   if(node.namespaceURI==='http://schemas.openxmlformats.org/drawingml/2006/main'&&['hlinkClick','hlinkHover'].includes(node.localName)){
+    const id=node.getAttributeNS(R,'id');if(id&&!internalHyperlinks.get(entry.name)?.has(id))node.parentNode?.removeChild(node);continue;
+   }
    if(node.namespaceURI===W){
+    if(node.localName==='hyperlink'){
+     const id=node.getAttributeNS(R,'id');
+     if(id&&!internalHyperlinks.get(entry.name)?.has(id)){const parent=node.parentNode;if(parent){while(node.firstChild)parent.insertBefore(node.firstChild,node);parent.removeChild(node);}continue;}
+    }
     if(['altChunk','object','control','subDoc'].includes(node.localName))throw safe('译文含不支持的嵌入内容');
     if(['instrText','fldChar'].includes(node.localName)){node.parentNode?.removeChild(node);continue;}
     if(node.localName==='fldSimple'){const parent=node.parentNode;while(node.firstChild)parent.insertBefore(node.firstChild,node);parent.removeChild(node);}
