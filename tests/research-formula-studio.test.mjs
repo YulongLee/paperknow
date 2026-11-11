@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {mountResearchFormulaStudio,formulaStudioDraftKey} from '../dist/workspace/research-formula-studio.mjs';
 import {formulaTemplates,formulaSymbolGroups,filterFormulaTemplates,insertFormulaToken} from '../dist/workspace/research-formula-catalog.mjs';
-import {beginDraftScope,endDraftScope,keys,list} from '../dist/workspace/state.mjs';
+import {beginDraftScope,endDraftScope,keys,list,setEditingIdentity} from '../dist/workspace/state.mjs';
 import {formulaSvgMarkup} from '../src/research-formula-core.js';
 const settle=async()=>{for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));};
 const renderer={renderFormulaSvg:formula=>{if(formula.includes('\\broken'))throw Error('未知命令');return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20" width="1200" height="240"><path d="M0 0L1 1"/></svg>';}};
@@ -53,4 +53,15 @@ test('one verified repair can separate multiple invalid commands without changin
  assert.ok(f.q('[data-fs-action="repair-spacing"]'));f.q('[data-fs-action="repair-spacing"]').click();await settle();
  assert.equal(f.studio.getState().formula,String.raw`A\cap S+B\cup T+\bigl(x\bigr)`);assert.ok(f.q('[data-fs-preview] svg'));
  f.q('[data-fs-action="undo"]').click();await settle();assert.equal(f.studio.getState().formula,source);
+});
+
+test('formula save uses the signed-in owner to create and update one cloud draft',async t=>{
+ const f=fixture(t,{initialFormula:'x=1',setup(){setEditingIdentity({id:'alice'});}});t.after(()=>setEditingIdentity(null,{status:'guest'}));let item,version=0,posts=0;const calls=[];f.dom.window.fetch=async(url,options)=>{calls.push({url,options});assert.equal(options.headers['X-PaperKnow-User'],'alice');if(url==='/api/auth/me')return {ok:true,json:async()=>({user:{id:'alice'}})};const body=JSON.parse(options.body);posts++;if(url==='/api/workspace/drafts'){item={id:'cloud-1',version:++version,title:body.title,payload:body.payload};}else{assert.equal(body.version,version);item={id:'cloud-1',version:++version,title:body.title,payload:body.payload};}return {ok:true,json:async()=>({item})};};
+ await settle();f.q('[data-fs-action="save"]').click();await settle();assert.equal(posts,1);assert.match(f.q('[data-fs-status]').textContent,/云端/);f.enter('[data-fs-editor]','x=2');await settle();f.q('[data-fs-action="save"]').click();await settle();assert.equal(posts,2);assert.equal(item.payload.formula,'x=2');assert.equal(calls.filter(c=>c.url==='/api/workspace/drafts').length,1);
+});
+test('editing while cloud save is in progress keeps new input and reports it is unsaved',async t=>{
+ const f=fixture(t,{initialFormula:'x=1',setup(){setEditingIdentity({id:'alice'});}});t.after(()=>setEditingIdentity(null,{status:'guest'}));let finish;const wait=new Promise(resolve=>finish=resolve);f.dom.window.fetch=async(url,options)=>{if(url==='/api/auth/me')return {ok:true,json:async()=>({user:{id:'alice'}})};const body=JSON.parse(options.body);await wait;return {ok:true,json:async()=>({item:{id:'cloud',version:1,title:body.title,payload:body.payload}})};};await settle();f.q('[data-fs-action="save"]').click();await settle();f.enter('[data-fs-editor]','x=2');finish();await settle();assert.equal(f.studio.getState().formula,'x=2');assert.match(f.q('[data-fs-status]').textContent,/尚未保存/);assert.equal(f.studio.hasWork(),true);
+});
+test('formula recovery isolates account, guest and pending from legacy shared input',async t=>{
+ const f=fixture(t,{initialFormula:'',setup(){localStorage.setItem(formulaStudioDraftKey,JSON.stringify({formula:'legacy-secret'}));setEditingIdentity(null,{status:'guest'});}});t.after(()=>setEditingIdentity(null,{status:'guest'}));f.studio.dispose();const guest=mountResearchFormulaStudio({container:f.q('#studio'),loadRenderer:async()=>renderer});assert.equal(guest.getState().formula,'');guest.dispose();setEditingIdentity({id:'alice'});const alice=mountResearchFormulaStudio({container:f.q('#studio'),loadRenderer:async()=>renderer});assert.equal(alice.getState().formula,'');alice.dispose();setEditingIdentity(null,{status:'pending'});const pending=mountResearchFormulaStudio({container:f.q('#studio'),loadRenderer:async()=>renderer});assert.equal(pending.getState().formula,'');pending.dispose();assert.match(localStorage.getItem(formulaStudioDraftKey),/legacy-secret/);
 });

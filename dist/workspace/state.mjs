@@ -3,6 +3,7 @@ let draftScope=null;
 // The old shared keys remain untouched until their owner can be established.
 // Ordinary editing sessions use a separate cache for each verified account.
 let editingIdentity={mode:'legacy',ownerId:undefined};
+export const editingIdentityContext=()=>({...editingIdentity});
 export function setEditingIdentity(user,{status='ready'}={}){
  const next=status==='ready'&&user?.id?{mode:'account',ownerId:String(user.id)}:status==='guest'?{mode:'guest',ownerId:undefined}:{mode:'pending',ownerId:undefined};
  if(editingIdentity.mode===next.mode&&editingIdentity.ownerId===next.ownerId)return false;

@@ -15,6 +15,53 @@ const illustration={complete:true,figure:{kind:'illustration',artworkDescription
 const labelLayout=()=>({hasText:false,annotations:[{index:0,x:250,y:300},{index:1,x:750,y:700}]});
 const illustrationSnapshot=()=>({...snapshot(),mode:'professional',context:{...snapshot().context,categoryId:'rendering',figureType:'3d-structure'}});
 const chart=(chartType,data,extra={})=>({complete:true,figure:{kind:'chart',chartType,data,...extra}});
+test('explicit basic data chart selections cannot silently switch the requested chart type',()=>{
+ const data={categories:['A','B'],series:[{name:'Counts',values:[9,10]}]},pie=snapshot('pie');
+ assert.equal(normalizePublicationFigurePlan(chart('pie',data),pie).chartType,'pie');
+ assert.throws(()=>normalizePublicationFigurePlan(chart('bar',data),pie),/所选图表类型/);
+ assert.equal(normalizePublicationFigurePlan(chart('bar',data),snapshot('auto')).chartType,'bar');
+});
+test('pie labels show only requested unit and correctly computed shares',async()=>{
+ const s={...snapshot('pie'),language:'中文',text:'绘制样本学科分布饼图：医学40、工程30、理学20、其他10，单位为人，各部分加名称和占比。'};
+ const data={categories:['医学','工程','理学','其他'],series:[{name:'样本数量',values:[40,30,20,10]}]};
+ const plan=normalizePublicationFigurePlan(chart('pie',data),s),option=publicationChartOption(plan,s);
+ assert.equal(plan.unit,'人');assert.equal(plan.showPercentage,true);assert.equal(option.series[0].label.formatter,'{b}: {c}人 ({d}%)');
+ const rendered=await renderPublicationVector(plan,s);assert.match(rendered.svg,/40人 \(40%\)/);assert.match(rendered.svg,/10人 \(10%\)/);
+ const noShare={...s,text:'医学40、工程30、理学20、其他10，单位为人，不显示百分比。'};
+ assert.equal(normalizePublicationFigurePlan(chart('pie',data),noShare).showPercentage,false);
+ const noUnit={...s,text:'医学40、工程30、理学20、其他10。'};
+ assert.equal(normalizePublicationFigurePlan(chart('pie',data,{unit:'千人'}),noUnit).unit,'');
+ const coincidental={...s,text:'人工智能研究：医学40、工程30、理学20、其他10。'};
+ assert.equal(normalizePublicationFigurePlan(chart('pie',data,{unit:'人'}),coincidental).unit,'');
+ const suffixes={...s,text:'医学40人、工程30人、理学20人、其他10人。'};
+ assert.equal(normalizePublicationFigurePlan(chart('pie',data,{unit:'人'}),suffixes).unit,'人');
+ const partialSuffix={...s,text:'医学40人、工程30、理学20、其他10。'};
+ assert.equal(normalizePublicationFigurePlan(chart('pie',data,{unit:'人'}),partialSuffix).unit,'');
+ const percent={...s,text:'医学40%、工程30%、理学20%、其他10%，单位为%，请显示占比。'};
+ const percentPlan=normalizePublicationFigurePlan(chart('pie',data,{unit:'%'}),percent);
+ assert.equal(publicationChartOption(percentPlan,percent).series[0].label.formatter,'{b}: {c}%');
+ const inlinePercent={...s,text:'医学40%、工程30%、理学20%、其他10%。'};
+ const inlinePlan=normalizePublicationFigurePlan(chart('pie',data),inlinePercent);assert.equal(inlinePlan.unit,'%');
+ assert.equal(publicationChartOption(inlinePlan,inlinePercent).series[0].label.formatter,'{b}: {c}%');
+ const mixed={...s,text:'医学40%、工程30、理学20、其他10。'};
+ assert.equal(normalizePublicationFigurePlan(chart('pie',data),mixed).unit,'');
+ assert.equal(normalizePublicationFigurePlan(chart('pie',data,{unit:'%'}),mixed).unit,'');
+ const english={...s,language:'English',text:'A 9, B 10; unit is people, show percentage.'};
+ const en=normalizePublicationFigurePlan(chart('pie',{categories:['A','B'],series:[{name:'Count',values:[9,10]}]}),english);
+ assert.equal(en.unit,'people');assert.equal(en.showPercentage,true);
+ const compound={...english,text:'A 9, B 10; unit: mg/mL, show percentage.'};
+ assert.equal(normalizePublicationFigurePlan(chart('pie',{categories:['A','B'],series:[{name:'Count',values:[9,10]}]}),compound).unit,'mg/mL');
+ const unknown={...english,text:'A 9, B 10; unit is not specified.'};
+ assert.equal(normalizePublicationFigurePlan(chart('pie',{categories:['A','B'],series:[{name:'Count',values:[9,10]}]},{unit:'not'}),unknown).unit,'');
+});
+test('a wrong chart type receives correction feedback before the requested chart is rendered',async()=>{
+ const data={categories:['A','B'],series:[{name:'Counts',values:[9,10]}]}, messagesSeen=[];let attempts=0;
+ const result=await createScientificFigure(snapshot('pie'),{settings,jsonRunner:async(messages,{phase})=>{
+  if(phase==='planning'){messagesSeen.push(messages);return {value:chart(++attempts===1?'bar':'pie',data)};}
+  return {value:phase==='review_plan'?{passed:true,checks:review(true).checks.slice(0,3)}:review(true)};
+ }});
+ assert.equal(attempts,2);assert.equal(result.plan.chartType,'pie');assert.match(JSON.stringify(messagesSeen[1]),/所选图表类型/);
+});
 test('illustration prompts contain the normalized composition and labels, never internal source headings or review text',()=>{
  const s={...illustrationSnapshot(),text:'AUTHOR BRIEF source-only instructions and private file title',title:'private file title'},plan={kind:'illustration',artworkDescription:'An unlabeled visual arrangement of the specified parts.',description:'A gray base below a blue lens housing.',requiredObjects:['gray base','blue lens housing'],labels:['Base','Lens']},prompt=researchIllustrationPrompt(s,plan,{repairKeys:['labels_legible']});
  assert.match(prompt,/gray base/);assert.doesNotMatch(prompt,/"Base"/);assert.doesNotMatch(prompt,/AUTHOR BRIEF|source-only|private file title|STRICT VISIBLE|COMPOSITION:|REQUIRED OBJECTS:/);

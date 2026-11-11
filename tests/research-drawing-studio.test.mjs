@@ -150,6 +150,19 @@ test('owned image previews reserve validated intrinsic dimensions before image d
  const image=f.container.querySelector('img[data-rd-generated-image]');assert.equal(image.getAttribute('width'),'1600');assert.equal(image.getAttribute('height'),'900');assert.match(image.src,/^blob:/);
 });
 
+test('the preview identifies the generated image even when the next drawing type changes',async t=>{
+ const f=fixture(t,{jobs:[completedJob()]});await f.mount.ready;f.click('[data-rd-history-item]');await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));
+ assert.match(f.container.querySelector('[data-rd-preview-type]').textContent,/流程图/);
+ f.click('[data-rd-figure="pie"]');assert.equal(f.container.querySelector('[data-rd-figure-label]').textContent,'饼图');
+ assert.match(f.container.querySelector('[data-rd-preview-type]').textContent,/流程图/);
+ assert.equal(f.requests.filter(r=>r.path==='/tool-runs/quote'||r.path==='/tool-runs/jobs'&&r.data).length,0);
+});
+
+test('an image without original type metadata is not mislabeled as the current selection',async t=>{
+ const job=completedJob();delete job.snapshot;const f=fixture(t,{jobs:[job]});f.setJob(job);await f.mount.ready;f.click('[data-rd-history-item]');await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));
+ assert.equal(f.container.querySelector('[data-rd-preview-type]').textContent,'已生成作品');f.click('[data-rd-figure="pie"]');assert.equal(f.container.querySelector('[data-rd-preview-type]').textContent,'已生成作品');
+});
+
 test('a failed historical task preserves the current prompt and can deliberately restore its original input for retry',async t=>{
  const failed={...completedJob(),status:'failed',error:'生成未完成，请重试',output:null},f=fixture(t,{jobs:[failed]});f.setJob(failed);await f.mount.ready;f.enter('[data-rd-prompt]','尚未提交的另一份描述，不应被历史任务自动覆盖');f.click('[data-rd-history-item]');await until(()=>!!f.container.querySelector('[data-tj-resume]'));assert.equal(f.container.querySelector('[data-rd-prompt]').value,'尚未提交的另一份描述，不应被历史任务自动覆盖');assert.equal(f.container.querySelector('[data-tj-resume]').disabled,true);assert.equal(f.container.querySelector('[data-rd-recover-input]').hidden,false);f.click('[data-rd-recover-input]');await until(()=>f.container.querySelector('[data-rd-prompt]').value===baseForm().prompt);assert.equal(f.container.querySelector('[data-tj-resume]').disabled,false);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote'||row.path==='/tool-runs/jobs'&&row.data).length,0);
 });

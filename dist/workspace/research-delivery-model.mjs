@@ -1,6 +1,12 @@
 import {numberCell,validateData,renderChart} from './research-model.mjs';
 const xml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 export const researchSessionKey='paperknow-research-session-v2';
+export function researchSessionStorageKey(identity={mode:'legacy'}){
+ if(identity.mode==='legacy')return researchSessionKey;
+ if(identity.mode==='pending')return null;
+ if(identity.mode==='guest')return researchSessionKey+':guest';
+ return identity.mode==='account'&&typeof identity.ownerId==='string'&&identity.ownerId?researchSessionKey+':account:'+encodeURIComponent(identity.ownerId):null;
+}
 export function validateDiagram(value){
  if(!value||typeof value!=='object'||!Array.isArray(value.nodes)||!Array.isArray(value.edges))throw Error('结构图需要实际节点与连接关系。');
  const title=String(value.title||'').trim();if(!title||title.length>120)throw Error('结构图标题需为 1–120 字。');

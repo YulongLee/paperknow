@@ -80,6 +80,7 @@ export function normalizePublicationFigurePlan(raw,snapshot,{verifyEvidence=true
   if(!Number.isInteger(start)||!Number.isInteger(end)||start<0||end<start||end>=out.edges.length||out.edges.length>80)fail('时序分支范围无效');return{label:text(b.label,80,'分支条件'),start,end};})}));
  if(kind==='chart'){
   if(!publicationChartTypes.includes(f.chartType))fail('请选择可复现的图表类型');if(!object(f.data))fail('数据图需要实际提供的数据');out.chartType=f.chartType;const d=f.data,data={};
+  if(choice.categoryId==='basic'&&publicationFigureKind(choice)==='data'&&out.chartType!==choice.id)fail('所选图表类型为'+choice.label+'，请按该类型重新生成，不要替换为其他图种');
   const topologyOnly=['chord','sunburst','treemap'].includes(out.chartType)&&/无权重|不添加权重|仅.{0,5}分类|不表达强弱|no weights|classification only|equal.width/i.test(snapshot.text);if(topologyOnly)out.qualitative=true;
   for(const key of ['categories','rows','columns','dimensions'])if(d[key]!==undefined)data[key]=arrays(d[key],200,'分类标签').map(v=>text(v,80,'分类标签'));
   if(d.series!==undefined)data.series=arrays(d.series,8,'数据系列').map(s=>({name:text(s.name,100,'系列名称'),...(color(s.color||s.lineColor)?{color:color(s.color||s.lineColor)}:{}),values:arrays(s.values,1000,'系列数据').map(v=>Array.isArray(v)?arrays(v,20,'数值行').map(n=>number(n,'数值')):number(v,'数值'))}));
@@ -101,6 +102,22 @@ export function normalizePublicationFigurePlan(raw,snapshot,{verifyEvidence=true
   if(out.yRange&&(out.yRange.max<=out.yRange.min||out.yRange.interval<=0||(out.yRange.max-out.yRange.min)/out.yRange.interval>30))fail('坐标范围或间隔无效');
   if(out.referenceLines.length&&!['line','bar','scatter'].includes(out.chartType))fail('此图种不支持参考线');
   out.data=data;if(!topologyOnly&&['chord','sunburst','treemap'].includes(out.chartType)&&numericValues(data).length)out.qualitative=false;out.xLabel=optional(f.xLabel,100,'横轴名称');out.yLabel=optional(f.yLabel,100,'纵轴名称');out.unit=optional(f.unit,40,'计量单位');
+  if(out.chartType==='pie'){
+   const source=[snapshot.text,snapshot.requirements].filter(Boolean).join('\n');
+   // Retain only an explicitly requested unit; an AI-written caption is not evidence.
+   const explicit=source.match(/单位\s*(?:是|为|[:：])\s*([\p{L}µμΩ°%]{1,12})(?=[\s,，。;；、）)]|$)/u)?.[1]||source.match(/\bunit\s*(?:is|:|=)\s*([A-Za-zµμΩ°%][A-Za-z0-9µμΩ°%/·^²³-]{0,11})(?=\s|[,.;:!?]|$)/i)?.[1]||'';
+   const validUnit=value=>value&&!/^(?:not|none|no|unspecified|unknown)$/i.test(value)&&/^[\p{L}µμΩ°%][\p{L}0-9µμΩ°%/·^²³-]{0,11}$/u.test(value);
+   let evidencedUnit='';
+   if(validUnit(out.unit)&&data.series?.length===1&&data.series[0].values.length){
+    const escaped=out.unit.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const suffix=new RegExp('([-+]?(?:\\d*\\.\\d+|\\d+\\.?\\d*))\\s*'+escaped+'(?=[\\s,，。;；、）)]|$)','gu');
+    const values=[...source.matchAll(suffix)].map(m=>Number(m[1]));
+    if(data.series[0].values.every(v=>typeof v==='number'&&values.includes(v)))evidencedUnit=out.unit;
+   }
+   out.unit=validUnit(explicit)?explicit:evidencedUnit;
+   if(!out.unit&&data.series?.length===1&&data.series[0].values.length){const percentages=[...source.matchAll(/([-+]?(?:\d*\.\d+|\d+\.?\d*))\s*%/g)].map(m=>Number(m[1]));if(data.series[0].values.every(v=>typeof v==='number'&&percentages.includes(v)))out.unit='%';}
+   out.showPercentage=/(?:占比|百分比|比例|percentage|percent|proportion)/i.test(source)&&!/(?:不显示|不展示|无需|不要|omit|without|no)\s*(?:占比|百分比|比例|percentage|percent|proportion)/i.test(source);
+  }
   if(!out.qualitative&&!numericValues(data).length)fail('数据图没有可绘制的数值；概念图请使用结构示意方式');
   if(verifyEvidence)for(const value of [...numericValues(data),...(['line','area'].includes(out.chartType)?numericLineCoordinates(data.categories)||[]:[]),...out.referenceLines.map(r=>r.value),...(out.yRange?[out.yRange.min,out.yRange.max]:[])])if(!(out.chartType==='gauge'&&/%|百分/.test(snapshot.text)&&[0,100].includes(value))&&!sourceHasNumber(snapshot.text,value))fail('发现原始描述中没有的数据 '+value+'，请仅按用户提供的数据绘制');
   if(out.qualitative&&!['sunburst','treemap','chord'].includes(out.chartType))fail('这个数据图需要作者给出明确数值');

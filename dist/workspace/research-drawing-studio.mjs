@@ -71,7 +71,15 @@ export function mountResearchDrawing(container,ctx={},options={}){
  const current=()=>live&&container.isConnected,$=selector=>container.querySelector(selector),stable=fn=>withStableView(container.closest('.dashboard')||container,fn);
  const notify=message=>ctx.notify?.(message);
  const status=(message,error=false)=>{const node=$('[data-rd-status]');if(node){node.textContent=message;node.classList.toggle('is-error',error);node.setAttribute('role',error?'alert':'status');}};
- function clearPreview(){previewEpoch++;if(objectUrl){objectUrls.revokeObjectURL(objectUrl);objectUrl='';}preview=null;const target=$('[data-rd-preview]');if(target)target.innerHTML=emptyPreview();}
+ function previewType(){
+  if(!preview){const selected=choice();return selected.categoryLabel+' · '+selected.label;}
+  const snapshot=preview.item?.snapshot||(preview.item?.id===jobState.itemId?jobState.snapshot:null),snapshotMode=snapshot?.mode;
+  if(!['basic','professional'].includes(snapshotMode))return '已生成作品';
+  const selected=researchFigureChoices(snapshotMode).find(item=>item.id===snapshot.context?.figureType&&item.categoryId===snapshot.context?.categoryId);
+  return selected?selected.categoryLabel+' · '+selected.label:'已生成作品';
+ }
+ function updatePreviewType(){const node=$('[data-rd-preview-type]');if(node)node.textContent=previewType();}
+ function clearPreview(){previewEpoch++;if(objectUrl){objectUrls.revokeObjectURL(objectUrl);objectUrl='';}preview=null;const target=$('[data-rd-preview]');if(target)target.innerHTML=emptyPreview();updatePreviewType();}
  function invalidate(){if(invalidOwner)return;invalidOwner=true;historyEpoch++;clearPreview();history=[];jobState={};pendingRecovery=null;exampleUndo=null;form=initialForm(mode);fillForm();$('[data-rd-recover-input]')?.setAttribute('hidden','');jobPanel?.dispose();jobPanel=null;const jobTarget=$('[data-rd-job]');if(jobTarget){jobTarget.replaceChildren();jobTarget.hidden=true;}for(const c of controllers)c.abort();const target=$('[data-rd-history]');if(target)target.innerHTML='<p class="rd-history-empty">账户已变化，原任务仍属于原账户。</p>';container.querySelectorAll('button,input,textarea,select').forEach(control=>control.disabled=true);status('登录账户已变化，请刷新页面后继续。原图片和任务仍保存在原账户。',true);}
  async function request(path,data,{binary=false,expectedOwner=ownerId}={}){
   if(!current()||invalidOwner)throw aborted();
@@ -108,7 +116,7 @@ export function mountResearchDrawing(container,ctx={},options={}){
   const figureLabel=$('[data-rd-figure-label]');if(figureLabel)figureLabel.textContent=selected.label;
   const figureNote=$('[data-rd-figure-note]');if(figureNote)figureNote.textContent=[selected.familyLabel,selected.description].filter(Boolean).join(' · ');
   const prompt=$('[data-rd-prompt]');if(prompt)prompt.placeholder=selected.example;
-  const previewHint=$('[data-rd-preview-type]');if(previewHint)previewHint.textContent=selected.categoryLabel+' · '+selected.label;
+  updatePreviewType();
   const selectedButton=[...container.querySelectorAll('[data-rd-figure]')].find(button=>button.dataset.rdFigure===selected.id);for(let ancestor=selectedButton?.parentElement;ancestor&&ancestor!==container;ancestor=ancestor.parentElement)if(ancestor.matches('details[data-rd-family],details[data-rd-group]'))ancestor.open=true;
  }
  function fillForm(){const title=$('[data-rd-title]'),prompt=$('[data-rd-prompt]'),ratio=$('[data-rd-ratio]');if(title)title.value=form.title;if(prompt)prompt.value=form.prompt;if(ratio)ratio.value=form.aspectRatio;container.querySelectorAll('[data-rd-palette]').forEach(input=>input.checked=input.value===form.palette);updateSelection();updateCounts();}
@@ -137,9 +145,9 @@ export function mountResearchDrawing(container,ctx={},options={}){
    const file=researchDrawingArtifact(output);
    const responseBlob=await request('/artifacts/'+encodeURIComponent(file.artifactId)+'/download?'+new URLSearchParams({expectedUserId:expectedOwner}),undefined,{binary:true,expectedOwner}),blob=await validateResearchDrawingBlob(responseBlob,file);
    await confirmOwner();if(!current()||epoch!==previewEpoch||ownerId!==expectedOwner)return;
-   if(objectUrl)objectUrls.revokeObjectURL(objectUrl);objectUrl=objectUrls.createObjectURL(blob);preview={file,item,output,ownerId:expectedOwner};
+   if(objectUrl)objectUrls.revokeObjectURL(objectUrl);objectUrl=objectUrls.createObjectURL(blob);preview={file,item,output,ownerId:expectedOwner};updatePreviewType();
    stable(()=>{target.innerHTML=`<figure class="rd-generated-image"><img alt="${esc(item?.title||'AI生成的科研图片')}" data-rd-generated-image><figcaption><b>${esc(item?.title||'科研图片')}</b><span>${file.width&&file.height?esc(file.width+' × '+file.height)+' · ':''}${esc(file.mimeType==='image/png'?'PNG':file.mimeType==='image/jpeg'?'JPG':'WebP')} · 已保存到账户</span></figcaption></figure><div class="rd-preview-actions"><button type="button" class="btn primary" data-rd-download>${icon('upload',16)} 下载图片</button>${output.artifacts?.some(a=>a.role==='vector')?'<button type="button" class="btn secondary" data-rd-vector>下载矢量图</button>':''}<button type="button" class="btn secondary" data-rd-copy-input>使用这份描述</button></div><p class="rd-preview-review">AI 生成图片，请核对文字、数据与科学表达后使用。</p>`;const image=target.querySelector('img');if(Number.isSafeInteger(file.width)&&file.width>0&&file.width<=4096&&Number.isSafeInteger(file.height)&&file.height>0&&file.height<=4096){image.width=file.width;image.height=file.height;}image.src=objectUrl;});status('图片已生成并保存到账户。可下载原图，或调整描述后重新生成。');
-  }catch(error){if(current()&&epoch===previewEpoch&&!invalidOwner){if(objectUrl){objectUrls.revokeObjectURL(objectUrl);objectUrl='';}preview=null;target.innerHTML='<div class="rd-preview-loading"><p>图片读取未完成，已保存的任务仍保留。</p><button type="button" class="btn secondary" data-rd-preview-retry>重新读取图片</button></div>';target.querySelector('button').onclick=()=>{if(jobPanel&&jobState.itemId===item?.id)void jobPanel.refresh();else void showOutput(output,item);};status(error.message||'图片暂时无法读取，请重试。',true);}throw error;}
+  }catch(error){if(current()&&epoch===previewEpoch&&!invalidOwner){if(objectUrl){objectUrls.revokeObjectURL(objectUrl);objectUrl='';}preview=null;updatePreviewType();target.innerHTML='<div class="rd-preview-loading"><p>图片读取未完成，已保存的任务仍保留。</p><button type="button" class="btn secondary" data-rd-preview-retry>重新读取图片</button></div>';target.querySelector('button').onclick=()=>{if(jobPanel&&jobState.itemId===item?.id)void jobPanel.refresh();else void showOutput(output,item);};status(error.message||'图片暂时无法读取，请重试。',true);}throw error;}
   finally{if(current()&&epoch===previewEpoch)previewBusy=false;}
  }
  async function showOutput(output,item){try{await displayImage(output,item);}catch(error){if(current()&&error.name!=='AbortError'&&!invalidOwner)status(error.message||'图片读取未完成，请重试。',true);}}

@@ -5,9 +5,15 @@ import {DOMParser} from '@xmldom/xmldom';
 import {createFormulaDocx,mathmlToOmml} from '../src/research-formula-document.js';
 import {formulaMathMLMarkup} from '../src/research-formula-core.js';
 import {expandedChemistryTemplates} from '../dist/workspace/research-formula-chemistry-expanded.mjs';
+import {formulaTemplates} from '../dist/workspace/research-formula-catalog.mjs';
 const mathNS='http://www.w3.org/1998/Math/MathML',m='http://schemas.openxmlformats.org/officeDocument/2006/math',w='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const math=body=>`<math xmlns="${mathNS}">${body}</math>`,parse=value=>new DOMParser({onError:()=>{throw Error('invalid XML');}}).parseFromString(value,'application/xml'),nodes=(doc,name)=>Array.from(doc.getElementsByTagNameNS(m,name)),raw=value=>formulaMathMLMarkup(value).markup;
 const convert=value=>parse(mathmlToOmml(raw(value)));
+
+test('every built-in formula can be exported as structured editable Word math',()=>{
+ assert.ok(formulaTemplates.length>500);
+ for(const row of formulaTemplates){const document=convert(row.formula);assert.equal(nodes(document,'oMath').length,1,row.id);assert.ok(nodes(document,'t').length,row.id);}
+});
 
 test('Word exporter creates a native editable package without image, HTML, external links, macros or embedded source MathML',async()=>{
  const bytes=await createFormulaDocx(raw('x=\\frac{a+b}{c}'),{title:'研究公式 <alpha> & β'});assert.ok(bytes instanceof Uint8Array);assert.deepEqual([...bytes.slice(0,2)],[80,75]);
