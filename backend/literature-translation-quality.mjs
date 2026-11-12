@@ -1,16 +1,27 @@
 import JSZip from 'jszip';
 import {DOMParser,XMLSerializer} from '@xmldom/xmldom';
 import {prepareTranslationPreview} from './document-translation-document.mjs';
-export const literatureTranslationQualityVersion=4;
+export const literatureTranslationQualityVersion=5;
 const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const paragraphs=doc=>[...doc.getElementsByTagNameNS(W,'p')];
 const texts=p=>[...p.getElementsByTagName('*')].filter(n=>n.localName==='t'&&[W,'http://schemas.openxmlformats.org/officeDocument/2006/math'].includes(n.namespaceURI));
 const text=p=>texts(p).map(n=>n.textContent).join('');
+// Signals are advisory: the source term and translated word may refer to
+// different passages or senses. Never rewrite the translated document.
+const reviewTerms=[
+ {id:'transformer',source:/\btransformer\b/i,context:/\b(?:neural|attention|model|network)\b/i,translation:/变压器|转换器/},
+ {id:'constituency-parsing',source:/\bconstituency parsing\b/i,context:/\b(?:language|parsing|nlp|syntactic)\b/i,translation:/选区解析/},
+ {id:'self-attention',source:/\bself[ -]attention\b/i,context:/\b(?:model|network|neural|attention)\b/i,translation:/自我关注/},
+ {id:'ensemble',source:/\bensembles?\b/i,context:/\b(?:model|neural|translation|network)\b/i,translation:/合奏/},
+];
+
 export async function repairAcademicTranslation(bytes,{source={}}={}){
  const prepared=await prepareTranslationPreview(bytes),zip=await JSZip.loadAsync(prepared.bytes),rawSource=source.text||'',knownRefs=new Set([...rawSource.matchAll(/\[(\d{1,4})\]/g)].map(m=>m[1]));
- const audit={version:literatureTranslationQualityVersion,terminologyCorrections:0,numberCorrections:0,citationCorrections:0,tableLayoutCorrections:0,titlePreserved:false,unresolvedCitations:[],sourceAvailable:!!rawSource};
+ const audit={version:literatureTranslationQualityVersion,terminologyCorrections:0,numberCorrections:0,citationCorrections:0,tableLayoutCorrections:0,titlePreserved:false,unresolvedCitations:[],sourceAvailable:!!rawSource,reviewTerms:[]};
+ let translatedText='';
  for(const name of ['word/document.xml','word/footnotes.xml','word/endnotes.xml']){
   const entry=zip.file(name);if(!entry)continue;const doc=new DOMParser({onError:()=>{throw Error('译文结构无法读取');}}).parseFromString(await entry.async('string'),'application/xml'),ps=paragraphs(doc);
+  if(name==='word/document.xml')translatedText=ps.map(text).join('\n');
   // Source-wide keyword matches cannot establish which translated paragraph or
   // formula they support. Preserve provider text, numbers, and citations rather
   // than silently rewriting a different passage. Flag unknown citations only.
@@ -29,5 +40,6 @@ export async function repairAcademicTranslation(bytes,{source={}}={}){
   zip.file(name,new XMLSerializer().serializeToString(doc));
  }
  audit.unresolvedCitations=[...new Set(audit.unresolvedCitations)].slice(0,30);
+ audit.reviewTerms=reviewTerms.filter(term=>term.source.test(rawSource)&&term.context.test(rawSource)&&term.translation.test(translatedText)).map(term=>term.id);
  return{bytes:await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'}),audit};
 }

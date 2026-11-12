@@ -36,6 +36,13 @@ test('input moderation rejection prevents search calls and never publishes a num
  assert.equal((await f.request('/jobs/'+id+'/retry',{})).status,409);await f.worker.tick();assert.equal(f.calls.length,0);
 });
 
+test('identical submissions disclose reused task without creating a second search',async t=>{
+ const f=await fixture(t),first=await f.submit();assert.equal(first.status,202);assert.equal(first.value.reused,undefined);
+ await f.worker.tick();const searches=f.calls.length;assert.ok(searches>0);
+ const second=await f.submit();assert.equal(second.status,200);assert.equal(second.value.reused,true);assert.equal(second.value.item.id,first.value.item.id);
+ await f.worker.tick();assert.equal(f.calls.length,searches);
+});
+
 test('generic task cancellation retains expected-owner confirmation and cannot bypass specialist retry policy',async t=>{
  const f=await fixture(t),id=(await f.submit()).value.item.id;
  assert.equal((await f.request('/jobs/'+id+'/cancel',{})).status,409);assert.equal((await f.request('/jobs/'+id+'/cancel',{expectedUserId:'bob'})).status,409);assert.equal((await f.request('/jobs/'+id+'/cancel',{expectedUserId:'alice'})).status,200);await f.worker.tick();assert.equal((await f.request('/web-similarity/'+id)).value.item.status,'cancelled');assert.equal(f.calls.length,0);

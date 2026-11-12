@@ -145,6 +145,14 @@ sudo /opt/paperknow/bin/release.sh --ref <完整40位提交SHA>
 sudo /usr/bin/python3 -I /opt/paperknow/bin/backup.py
 ```
 
+可以对一个已完成的快照做**数据库隔离恢复检查**，不会替换线上数据库：
+
+```sh
+sudo /usr/bin/python3 -I deploy/verify_snapshot.py /opt/paperknow/backups/<快照目录名>
+```
+
+该检查会将快照数据库复制至权限受限的临时目录，执行 SQLite 完整性和必要表检查后删除临时副本，不输出用户内容。请选择有足够空间、适合存放敏感临时数据的主机执行；此结果只证明 SQLite 快照可复制及通过检查，不覆盖配置文件、业务功能或 OSS 对象，也不等于完成完整灾难恢复演练。OSS 对象需要单独备份、验证版本与恢复；仅在隔离环境验证账户、任务、文件索引和对象之间的对应关系后，才能评估恢复是否可用。切勿直接用旧快照覆盖生产数据。
+
 回滚至服务器上已经构建过的版本（参数是实际版本目录名，含旧的 7 位目录也可）：
 
 ```sh

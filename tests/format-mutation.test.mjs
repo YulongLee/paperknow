@@ -42,3 +42,13 @@ test('nonblank source mapping is exact while original empty and whitespace parag
  const missing=structuredClone(doc);missing.paragraphs.pop();missing.paragraphs.push({sourceIndex:blankIndices[0],text:'',level:0,format:{}});await assert.rejects(()=>applyDocx(input,missing,defaultRules()),/段落记录不完整/);
  const explicitBlanks=structuredClone(doc);for(const index of blankIndices.slice(0,3))explicitBlanks.paragraphs.push({sourceIndex:index,text:Array.from(source[index].getElementsByTagNameNS(NS,'t')).map(node=>node.textContent).join(''),level:0,excluded:true,format:{}});const valid=await applyDocx(input,explicitBlanks,defaultRules());assert.deepEqual((await parseDocx(valid)).paragraphs.map(row=>row.text),doc.paragraphs.map(row=>row.text));await assertOtherPartsUnchanged(input,valid);
 });
+
+test('formatting preserves Word paragraph property schema order for frame and border settings',async()=>{
+ const input=await documentFixture(xml=>xml.replace('<w:pPr><w:spacing', '<w:pPr><w:framePr w:w="2000"/><w:pBdr><w:bottom w:val="single"/></w:pBdr><w:spacing'));
+ const doc=await parseDocx(input),output=await applyDocx(input,doc,defaultRules()),after=await documentXml(output),pr=after.getElementsByTagNameNS(NS,'body')[0].getElementsByTagNameNS(NS,'pPr')[0];
+ const names=Array.from(pr.childNodes).filter(n=>n.nodeType===1).map(n=>n.localName);
+ assert.ok(names.indexOf('framePr')<names.indexOf('pBdr'),JSON.stringify(names));
+ assert.ok(names.indexOf('pBdr')<names.indexOf('spacing'),JSON.stringify(names));
+ assert.ok(names.indexOf('spacing')<names.indexOf('outlineLvl'),JSON.stringify(names));
+ await assertOtherPartsUnchanged(input,output);
+});

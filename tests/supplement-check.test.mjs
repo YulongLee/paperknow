@@ -459,3 +459,26 @@ test('a rejected comparison to real results does not hide a later real measureme
 test('chapter anchors retain concrete missing locations in long manuscripts',()=>{
  const paragraphs=Array.from({length:60},(_,i)=>`第${i}段用于讨论研究边界和方法。`);paragraphs[27]='本研究仍有【待补充：具体数据来源】需要补充。';const chapter={id:'c',title:'正文',text:paragraphs.join('\n')},task=supplementCheckTask({chapters:[chapter],materials:[]});attachSupplementAnchors(task,[]);assert.ok(task.context.chapters[0].quoteAnchors.some(a=>a.text.includes('【待补充：具体数据来源】')));
 });
+test('research questions asking what problems exist do not assert an unverified finding',()=>{
+ const text='本研究以高校数字阅读服务为对象，拟回答三个问题：读者完成典型阅读任务时存在哪些可用性问题；这些问题与界面设计及服务流程有何关联；可形成哪些改进方案。';
+ const input=supplementCheckTask({kind:'proposal',phase:'final',chapters:[{id:'s',title:'研究背景',text}]});
+ const result=parseSupplementCheck(checkResponse(input),input);assert.equal(result[0].status,'not_required');
+ const fact='本平台存在显著的检索效率问题，用户难以找到资料。';const facts=supplementCheckTask({kind:'proposal',phase:'final',chapters:[{id:'s',title:'研究背景',text:fact}]});assert.equal(parseSupplementCheck(checkResponse(facts),facts)[0].status,'missing');
+});
+
+test('a later question does not erase an earlier asserted problem in the same sentence',()=>{
+ const text='本平台存在严重的检索效率问题，同时拟研究存在哪些可用性问题。';
+ const input=supplementCheckTask({kind:'proposal',phase:'final',chapters:[{id:'s',title:'研究背景',text}]});assert.equal(parseSupplementCheck(checkResponse(input),input)[0].status,'missing');
+});
+test('denying a presumed problem does not assert it; another independent assertion still requires evidence',()=>{
+ const phrase='本研究拟通过测试探讨，不预先认定存在普遍问题。';
+ const taskFor=text=>supplementCheckTask({kind:'proposal',phase:'final',chapters:[{id:'s',title:'研究背景',text}]});
+ const safe=taskFor(phrase);assert.equal(parseSupplementCheck(checkResponse(safe),safe)[0].status,'not_required');
+ const mixed=taskFor('本平台存在严重的检索效率问题，本研究不预先认定存在普遍问题。');assert.equal(parseSupplementCheck(checkResponse(mixed),mixed)[0].status,'missing');
+});
+test('unverified general trends are reviewable but sourced claims and hypotheses remain distinguishable',()=>{
+ const mk=(text,materials=[])=>supplementCheckTask({kind:'proposal',phase:'final',chapters:[{id:'s',title:'研究背景',text}],materials});
+ for(const text of ['数字阅读服务在高校文献资源利用中逐渐常见。','移动支付技术在商业领域日益普及。']){const input=mk(text);const result=parseSupplementCheck(checkResponse(input),input);assert.equal(result[0].status,'missing');}
+ const source='数字阅读服务在高校文献资源利用中逐渐常见。', input=mk(source,[{id:'m',name:'已确认来源',text:source,confirmed:true}]);assert.equal(parseSupplementCheck(checkResponse(input),input)[0].status,'sufficient');
+ const hypothetical=mk('数字阅读服务可能逐渐普及，有待验证。');assert.equal(parseSupplementCheck(checkResponse(hypothetical),hypothetical)[0].status,'not_required');
+});

@@ -357,3 +357,9 @@ test('numbered Markdown tables remain auditable with known Word formula or image
  assert.equal(run([]).length,0,'unknown preserved objects may contain opaque tables');
  assert.equal(run([{id,kind:'table'}]).length,0,'opaque Word table may account for reference');
 });
+test('preserved Word formulas or tables do not count as an image for missing figure review',()=>{
+ const id='obj-0123456789abcdef12345678',chapters=[{id:'c',title:'结果',text:'图1显示系统结构。\n\n[docx:'+id+']'}],run=objects=>auditWritingConsistency({chapters,docxObjects:objects}).findings.filter(f=>f.category==='figure_consistency'&&/未找到对应对象/.test(f.explanation));
+ for(const kind of ['formula','table'])assert.equal(run([{id,kind}]).length,1,kind);
+ assert.equal(run([{id,kind:'image'}]).length,0);
+ assert.equal(run([]).length,0,'an unclassified object may contain an image');
+});

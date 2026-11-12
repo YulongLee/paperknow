@@ -26,7 +26,7 @@ test('TXT and DOCX use the local parser without authentication, uploads or conse
 });
 test('PDF login and explicit cloud consent precede either POST, and include 20MB / 100-page scope',async()=>{
  const f=fixture();const result=await f.extract(pdf(),{onProgress:f.progress,projectId:'project-1'});
- assert.equal(result.text,f.done.result.text);assert.equal(result.documentParseId,'parse-1');assert.match(f.confirmations[0],/20MB、最多 100 页/);assert.match(f.confirmations[0],/保存至文件管理/);assert.match(f.confirmations[0],/任务中心查看处理进度/);assert.doesNotMatch(f.confirmations[0],/MinerU|第三方文档解析|上游/);
+ assert.equal(result.text,f.done.result.text);assert.equal(result.documentParseId,'parse-1');assert.match(f.confirmations[0],/20MB、最多 100 页/);assert.match(f.confirmations[0],/保存至文件管理/);assert.match(f.confirmations[0],/任务中心查看处理进度/);assert.match(f.confirmations[0],/第三方文档服务处理/);assert.match(f.confirmations[0],/隐私政策/);assert.doesNotMatch(f.confirmations[0],/MinerU|第三方文档解析|上游/);
  assert.deepEqual(f.calls.slice(0,4).map(c=>c.url),['/api/auth/me','/api/capabilities','/api/files','/api/document-parses']);assert.deepEqual(f.calls[2].body,{name:'论文.pdf',data:'JVBERg==',expectedUserId:'user-1',projectId:'project-1'});assert.deepEqual(f.calls[3].body,{fileId:'file-1',idempotencyKey:'stable-request-key',consent:true,expectedUserId:'user-1'});
  for(const call of f.calls){assert.equal(call.init.credentials,'same-origin');assert.equal(call.init.redirect,'error');}assert.ok(f.events.some(e=>e.stage==='ocr'&&typeof e.cancel==='function'));
 });
@@ -130,8 +130,8 @@ test('reselecting a readable PDF succeeds after a failed handle without a phanto
 });
 
 test('one batch approval is bound to the exact PDF objects and account without per-file confirmations',async()=>{
- const files=[pdf('one.pdf'),pdf('two.pdf')];let confirms=0;
- const batchConsent=await approveDocumentBatch(files,'user-1',{confirmImpl:async()=>{confirms++;return true;}}),f=fixture();
+ const files=[pdf('one.pdf'),pdf('two.pdf')];let confirms=0,message='';
+ const batchConsent=await approveDocumentBatch(files,'user-1',{confirmImpl:async text=>{message=text;confirms++;return true;}}),f=fixture();assert.match(message,/第三方文档服务处理/);assert.match(message,/隐私政策/);
  for(const file of files)await f.extract(file,{batchConsent,expectedUserId:'user-1'});
  assert.equal(confirms,1);assert.equal(f.confirmations.length,0);
  const before=f.calls.filter(c=>c.init.method==='POST').length;

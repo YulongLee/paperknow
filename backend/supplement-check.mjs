@@ -8,7 +8,7 @@ const pending=/(?:待补充|待核对|待填写|待提供|\bTODO\b|\bTBD\b|\{\{[
 // or a general conceptual discussion. This conservative check does not attempt
 // to decide whether a source semantically entails a claim.
 function assertedLocalProblem(text){
- return String(text||'').split(/[。！？\n]/u).find(sentence=>sentence.length<=500&&/存在.{1,80}(?:问题|不足|缺陷|障碍)/u.test(sentence)&&!/(?:不存在|未发现|不表明|不能证明|无法证明|无证据证明|尚无证据|不能认定|不能说明|不意味着|可能|疑似|假设|推测|预计|待验证|待核实|尚待|是否存在|或许|尚未证实)/u.test(sentence))||'';
+ return String(text||'').split(/[。！？；;，,\n]/u).find(clause=>clause.length<=500&&/存在(?!\s*(?:哪些|什么|何种|多少|何处|怎样|如何)).{1,80}(?:问题|不足|缺陷|障碍)/u.test(clause)&&!/(?:不存在|未发现|不表明|不能证明|无法证明|无证据证明|尚无证据|不能认定|不(?:预先|事先)?(?:认定|认为|断言|假定|预设)|不能说明|不意味着|可能|疑似|假设|推测|预计|待验证|待核实|尚待|是否存在|或许|尚未证实)/u.test(clause))||'';
 }
 // A short demonstration path cannot establish that other interface features do
 // not exist. Limit this check to an unscoped absence assertion about an interface.
@@ -20,7 +20,7 @@ function assertedInterfaceAbsence(text){
 function assertedBackgroundGeneralization(text){
  for(const match of String(text||'').matchAll(/[^。！？；;，,\n]+/gu)){
   const clause=match[0].trim();
-  if(/(?:现有|目前|当前)(?:的)?(?:讲解|教学|课程|教材|学生|用户|企业|研究|方法).{0,12}(?:多以|多为|多|少|较少|主要|普遍|通常|经常).{1,50}/u.test(clause)&&!/(?:是否|可能|假设|推测|待验证|待核实|尚待|尚未证实|并非|不能认定)/u.test(clause))return clause;
+  if((/(?:现有|目前|当前)(?:的)?(?:讲解|教学|课程|教材|学生|用户|企业|研究|方法).{0,12}(?:多以|多为|多|少|较少|主要|普遍|通常|经常).{1,50}/u.test(clause)||/(?:服务|产品|系统|技术|工具|应用).{0,55}(?:日益|逐渐|越来越)(?:常见|普及|广泛|普遍)/u.test(clause))&&!/(?:是否|可能|假设|推测|待验证|待核实|尚待|尚未证实|并非|不能认定)/u.test(clause))return clause;
  }
  return '';
 }

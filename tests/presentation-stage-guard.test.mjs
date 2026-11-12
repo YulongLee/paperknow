@@ -29,3 +29,11 @@ test('explicit completed or planned work is not treated as missing; negation rem
  assert.equal(unsupportedPresentationStage(slide('已完成系统测试'),[{text:'项目已完成系统设计，尚未完成系统测试。'}])?.stage,'completion');
  assert.equal(unsupportedPresentationStage(slide('后续：开展功能测试'),[{text:'后续计划开展需求调查，尚未制定测试计划。'}])?.stage,'plan');
 });
+
+test('a different completed or planned activity does not make an incomplete activity appear supported',()=>{
+ for(const source of ['测试尚未完成但设计已完成','测试尚未完成并且设计已完成']){
+  assert.equal(unsupportedPresentationStage(slide('已完成测试'),[{text:source}])?.stage,'completion');
+  assert.equal(unsupportedPresentationStage(slide('已完成设计'),[{text:source}]),null);
+ }
+ assert.equal(unsupportedPresentationStage(slide('后续开展测试'),[{text:'计划开展设计但是没有计划开展测试'}])?.stage,'plan');
+});

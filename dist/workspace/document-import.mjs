@@ -10,7 +10,7 @@ export async function approveDocumentBatch(files,ownerId,{confirmImpl=confirmDoc
  const pdfs=files.filter(file=>/\.pdf$/i.test(file.name||''));if(!pdfs.length)return null;
  const accepted=await confirmImpl(`添加 ${pdfs.length} 份文献
 
-文献将保存至文件管理，并加入研读列表。每份 PDF 最大 20MB、最多 100 页。
+文献将保存至文件管理，并加入研读列表。为支持全文研读，所选 PDF 将交由第三方文档服务处理，具体服务与数据处理说明见隐私政策。每份 PDF 最大 20MB、最多 100 页。
 
 处理将按顺序进行。请保持浏览器打开，直到文件上传完成。`);
  if(!accepted)throw Object.assign(Error('已取消本批 PDF 导入，文件未加入队列。'),{name:'DocumentImportCancelled'});
@@ -48,7 +48,7 @@ export function createWorkspaceDocumentImporter({fetchImpl=(...args)=>fetch(...a
 
 「${file.name}」${stored?'将使用文件管理中已保存的原文，无需重新上传':'将保存至文件管理，并加入研读列表'}。
 
-PDF 最大 ${Math.floor(limit/1024/1024)}MB、最多 ${pages} 页。上传完成后，可在任务中心查看处理进度。`);checkSignal(signal);if(!accepted)throw Object.assign(new Error('已取消导入，文件未提交解析。'),{name:'DocumentImportCancelled'});
+为支持全文研读，所选 PDF 将交由第三方文档服务处理，具体服务与数据处理说明见隐私政策。PDF 最大 ${Math.floor(limit/1024/1024)}MB、最多 ${pages} 页。上传完成后，可在任务中心查看处理进度。`);checkSignal(signal);if(!accepted)throw Object.assign(new Error('已取消导入，文件未提交解析。'),{name:'DocumentImportCancelled'});
    emit({stage:'uploading',message:stageMessages.uploading+'…',progress:null});
    if(!record.fileId){const reused=await reuseStoredOriginal(file,{api:(path,body)=>api(path,{body,signal}),expectedUserId:session.user.id,projectId}),uploaded=reused||await api('/files',{body:{name:file.name,data:await base64File(file,signal),expectedUserId:session.user.id,...(projectId?{projectId}:{})},signal});if(!uploaded.id)throw Error('原件上传未返回文件编号，请到我的项目核对原件。');record.fileId=uploaded.id;}
    emit({stage:'queued',message:'原文已保存，可先打开阅读；正在准备全文研读…',progress:null,fileId:record.fileId,ownerId:session.user.id});

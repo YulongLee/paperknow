@@ -70,3 +70,15 @@ test('translated numeric tables keep exact values on one line without paragraph 
 test('ambiguous related terminology within the same abstract never triggers unverified rewrites',async()=>{
  const zip=new JSZip(),W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';zip.file('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>');const sentence='我们提出网络架构，即变压器；英语选区解析；机器学习结果为28.4 BLEU和41.8。';zip.file('word/document.xml',`<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>摘要</w:t></w:r></w:p><w:p><w:r><w:t>${sentence}</w:t></w:r></w:p></w:body></w:document>`);const source={text:'A neural network Transformer and a physical transformer. English constituency parsing and electoral constituency parsing. 28.4 BLEU, 41.8.',pages:[{text:'Abstract\nA neural network Transformer and a physical transformer. English constituency parsing and electoral constituency parsing. 28.4 BLEU, 41.8.\n∗ Other.'}]};const out=await repairAcademicTranslation(await zip.generateAsync({type:'nodebuffer'}),{source});const xml=await(await JSZip.loadAsync(out.bytes)).file('word/document.xml').async('string');assert.equal(out.audit.terminologyCorrections,0);assert.ok(xml.includes(sentence));
 });
+
+test('ambiguous academic translation terms are flagged for review without changing text',async()=>{
+ const zip=new JSZip(),W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+ zip.file('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>');
+ const original='变压器和自我关注用于选区解析，而合奏提高结果。';
+ zip.file('word/document.xml',`<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>${original}</w:t></w:r></w:p></w:body></w:document>`);
+ const source={text:'The Transformer neural network model uses self-attention. We evaluate constituency parsing and ensembles in translation.'};
+ const result=await repairAcademicTranslation(await zip.generateAsync({type:'nodebuffer'}),{source});
+ assert.deepEqual(result.audit.reviewTerms,['transformer','constituency-parsing','self-attention','ensemble']);
+ const xml=await(await JSZip.loadAsync(result.bytes)).file('word/document.xml').async('string');assert.ok(xml.includes(original));assert.equal(result.audit.terminologyCorrections,0);
+ const noContext=await repairAcademicTranslation(await zip.generateAsync({type:'nodebuffer'}),{source:{text:'Physical transformer maintenance.'}});assert.deepEqual(noContext.audit.reviewTerms,[]);
+});

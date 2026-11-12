@@ -21,3 +21,12 @@ test('summary limits each cited detail to available text and taskbook separates 
  assert.match(taskbook.instructions,/各栏目各有用途/);
  assert.match(taskbook.instructions,/仅在用户或模板明确要求具体数值且缺失时保留待补充标记/);
 });
+test('completion cannot infer an unspecified local institution while correcting a typo',async()=>{
+ const {validateWritingCandidate}=await import('../backend/writing-model.mjs');
+ const s=normalizeWritingSnapshot({title:'高校数字阅读服务研究',profile:{level:'本科',language:'中文',targetWords:200},requirements:{},materials:[],references:[],outline:[{id:'a',title:'研究背景',targetWords:200}]});
+ const unit={...writingPlan(s,'draft')[0],completion:true,revisionOriginal:'本研究以校数字阅读服务为对象。'};
+ const body=text=>({text:JSON.stringify({complete:true,text,source_ids:[],missing_evidence:[]}),trace:[]});
+ const candidate=body('本研究以本校数字阅读服务为对象，'+ '拟研究如何改善阅读体验。'.repeat(18));const rejected=validateWritingCandidate(candidate,'proposal','draft',s,unit);assert.equal(rejected.valid,false);assert.equal(rejected.feedback.code,'unsupported_institution');assert.match(rejected.feedback.rule,/不能推测或虚构/);
+ const allowed=body('本研究以高校数字阅读服务为对象，'+'拟研究如何改善阅读体验。'.repeat(18));assert.notEqual(validateWritingCandidate(allowed,'proposal','draft',s,unit).feedback?.code,'unsupported_institution');
+ const userConfirmed={...unit,revisionOriginal:'本校数字阅读服务是研究对象。'};assert.notEqual(validateWritingCandidate(candidate,'proposal','draft',s,userConfirmed).feedback?.code,'unsupported_institution');
+});

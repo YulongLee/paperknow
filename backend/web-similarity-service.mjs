@@ -142,6 +142,6 @@ export function createWebSimilarityService(db,config={}){
     await removeWebSimilarityArtifacts(db,config,job);
    }
   }
-  return{status:reserved.existing?200:202,value:{ownerId:user.id,item:summary(own(reserved.id,user))}};
+  return{status:reserved.existing?200:202,value:{ownerId:user.id,item:summary(own(reserved.id,user)),...(reserved.existing?{reused:true}:{})}};
  }};
 }

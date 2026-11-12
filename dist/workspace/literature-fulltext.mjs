@@ -1,3 +1,4 @@
+import {confirmDocumentImport} from './document-import-confirm.mjs';
 export async function saveLiteratureFullText(row,{fetcher=(...args)=>fetch(...args),signal}={}){
  const timeout=AbortSignal.timeout(15*60000),combined=signal?AbortSignal.any([timeout,signal]):timeout;
  async function api(path,body){
@@ -16,12 +17,14 @@ export async function saveLiteratureFullText(row,{fetcher=(...args)=>fetch(...ar
  }catch(error){if(signal?.aborted)throw Object.assign(Error('已停止等待，文献获取会在后台继续；可稍后从相同文献继续查看。'),{name:'AbortError'});if(timeout.aborted)throw Error('获取全文超时，请稍后重试；已保存的文件可在文件管理查看。');throw error;}
 }
 
-export async function readSavedLiteratureFullText(paper,{fetcher=(...args)=>fetch(...args),signal,onJob=()=>{},onProgress=()=>{},pollInterval=1800,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
+export async function readSavedLiteratureFullText(paper,{fetcher=(...args)=>fetch(...args),signal,onJob=()=>{},onProgress=()=>{},confirmImpl=confirmDocumentImport,pollInterval=1800,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
  if(!paper.originalFileId||!paper.originalOwnerId)throw Error('请先保存文献全文。');
  const started=Date.now();
  async function api(path,body){const response=await fetcher('/api'+path,{method:body?'POST':'GET',credentials:'same-origin',cache:'no-store',redirect:'error',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(45000)]):AbortSignal.timeout(45000),headers:{'X-PaperKnow-User':paper.originalOwnerId,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});const value=await response.json();if(!response.ok)throw Error(typeof value.error==='string'?value.error:value.error?.message||'原文暂时无法处理，请稍后重试。');return value;}
  let jobId=paper.documentParseId;
- if(!jobId){onProgress('正在准备全文研读…');const job=await api('/document-parses',{fileId:paper.originalFileId,idempotencyKey:crypto.randomUUID(),consent:true,expectedUserId:paper.originalOwnerId});jobId=job.id;if(!jobId)throw Error('未取得原文处理任务，请到任务中心核对。');onJob(jobId);}
+ if(!jobId){const accepted=await confirmImpl(`准备全文研读
+
+所选文献将交由第三方文档服务处理，以支持全文研读；具体服务与数据处理说明见隐私政策。原件保留在文件管理中。`);if(!accepted)throw Object.assign(Error('已取消全文处理，文献原件仍保留。'),{name:'DocumentImportCancelled'});if(signal?.aborted)throw Object.assign(Error('页面已切换，未提交全文处理。'),{name:'AbortError'});onProgress('正在准备全文研读…');const job=await api('/document-parses',{fileId:paper.originalFileId,idempotencyKey:crypto.randomUUID(),consent:true,expectedUserId:paper.originalOwnerId});jobId=job.id;if(!jobId)throw Error('未取得原文处理任务，请到任务中心核对。');onJob(jobId);}
  for(;;){
   if(signal?.aborted)throw Object.assign(Error('页面已切换，原文处理可在任务中心继续查看。'),{name:'AbortError'});
   if(Date.now()-started>15*60000)throw Error('原文仍在处理中，可稍后重新打开或在任务中心查看，无需重复提交。');

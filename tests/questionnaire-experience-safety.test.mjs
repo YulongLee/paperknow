@@ -204,3 +204,19 @@ test('all-required claims, zero-day duration labels and undergraduate-only scree
  assert.throws(()=>normalizeAIQuestionnaire(make([college,experience,general]),{outputCount:3,instructions:'对象为高校在校学生'}),e=>e.validationIssues?.some(i=>i.code==='education_coverage'));
  const input=make([nonuser,experience,{...general,required:false}]);input.introduction='参与完全自愿。全部题目均为必答。请按真实情况作答。';const before=structuredClone(input);assert.throws(()=>normalizeAIQuestionnaire(input,{outputCount:3}),e=>e.validationCode==='questionnaire_statement_conflict');assert.deepEqual(input,before);
 });
+test('independent bike safety dimensions and reasons from a real prior sample require correction',()=>{
+ const options=['非常不同意','不同意','一般','同意','非常同意'];
+ const double={...experience,title:'您在多大程度上同意：车辆状况和停放秩序让我感到安全放心？',options};
+ const reasons={id:'q3',type:'multiple',title:'不使用的原因',options:['费用偏高或不熟悉租车流程','没有合适的出行需求'],required:false};
+ const input=make([nonuser,double,reasons]);const before=structuredClone(input);
+ assert.throws(()=>normalizeAIQuestionnaire(input,{outputCount:3}),e=>e.validationIssues.some(i=>i.code==='multiple_dimensions'&&i.questionIndex===2)&&e.validationIssues.some(i=>i.code==='multiple_reasons'&&i.questionIndex===3));assert.deepEqual(input,before);
+ const fixed=make([nonuser,{...double,title:'您对车辆状况是否满意？',options:scale},{...reasons,options:['费用偏高','不熟悉租车流程','没有合适的出行需求']}]);
+ assert.equal(normalizeAIQuestionnaire(fixed,{outputCount:3}).questions.length,3);
+});
+test('combined-reason errors provide actionable model feedback without copying private questionnaire text',()=>{
+ const snapshot=normalizeWritingSnapshot({title:'共享单车调查',profile:{level:'本科',major:'设计',language:'中文',targetWords:200},requirements:{outputCount:3},materials:[],references:[],outline:[]});
+ const unit=writingPlan(snapshot,'questionnaire')[0];
+ const output={...make([nonuser,experience,{id:'q3',type:'multiple',title:'不使用的原因',options:['费用偏高或不熟悉租车流程','其他'],required:false}]),complete:true,source_ids:[]};
+ const result=validateWritingCandidate({text:JSON.stringify(output),usage:{input:100,output:100},costUsd:.001,finishReason:'end_turn'},'questionnaire','questionnaire',snapshot,unit);
+ assert.equal(result.valid,false);assert.ok(result.feedback.issues.some(i=>i.code==='multiple_reasons'));assert.match(result.feedback.rule,/multiple_reasons/);assert.doesNotMatch(JSON.stringify(result.feedback),/费用偏高或不熟悉租车流程/);
+});

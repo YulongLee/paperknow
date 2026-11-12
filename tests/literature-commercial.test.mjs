@@ -21,7 +21,7 @@ test('cloud full-text client binds the owner and rejects an account change after
 });
 test('full-text reading recovers an existing parse without another submission and persists new task identity before waiting',async()=>{
  const paper={originalFileId:'saved-file',originalOwnerId:'alice'},calls=[],stages=[],jobs=[];let polls=0;const fetcher=async(path,options)=>{calls.push({path,options});if(options.method==='POST'){assert.equal(JSON.parse(options.body).fileId,'saved-file');return response({id:'parse-job'});}return response(++polls===1?{status:'running',progress:{extractedPages:1,totalPages:2}}:{status:'completed',result:{text:'Actual saved source text',pages:2}});};
- const result=await readSavedLiteratureFullText(paper,{fetcher,onJob:id=>jobs.push(id),onProgress:text=>stages.push(text),sleep:async()=>{}});assert.deepEqual(jobs,['parse-job']);assert.ok(stages.some(s=>s.includes('1 / 2')));assert.equal(result.documentParseId,'parse-job');
+ const result=await readSavedLiteratureFullText(paper,{fetcher,confirmImpl:async()=>true,onJob:id=>jobs.push(id),onProgress:text=>stages.push(text),sleep:async()=>{}});assert.deepEqual(jobs,['parse-job']);assert.ok(stages.some(s=>s.includes('1 / 2')));assert.equal(result.documentParseId,'parse-job');
  calls.length=0;const recovered=await readSavedLiteratureFullText({...paper,documentParseId:'parse-job'},{fetcher});assert.equal(recovered.text,'Actual saved source text');assert.equal(calls.length,1);assert.equal(calls[0].options.method,'GET');
 });
 test('selector includes the actual section heading in material names rather than inferring a section from the paragraph number',()=>{
@@ -33,4 +33,13 @@ test('discovery saves a paper to the cloud and exposes download/read actions wit
  const ui=mountLiteratureDiscovery({container:w.document.querySelector('main'),compact:true,fetcher,getExisting:()=>{reads++;return [];},onImport:()=>{},onSaveFullText:(row,file)=>{adopts++;assert.equal(file.id,'cloud-file');assert.equal(row.title,item.title);return{readerUrl:'#literature/saved'};}});
  try{await ui.ready;const input=w.document.querySelector('[name=q]');input.value='actual paper';w.document.querySelector('form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));for(let i=0;i<30&&!w.document.querySelector('[data-ld-download]');i++)await new Promise(r=>setImmediate(r));const before=reads;w.document.querySelector('[data-ld-download]').click();for(let i=0;i<40&&!w.document.querySelector('a[download]');i++)await new Promise(r=>setImmediate(r));assert.equal(posts,1);assert.equal(adopts,1);assert.equal(w.document.querySelector('a[download]').getAttribute('href'),'/api/files/cloud-file/download?expectedUserId=alice');assert.equal(w.document.querySelector('a[href="#literature/saved"]').textContent,'阅读全文');assert.ok(reads-before<8);}
  finally{ui.dispose();globalThis.FormData=oldFormData;globalThis.AbortSignal=oldSignal;w.close();}
+});
+
+test('full-text reading requires informed consent before creating a parse and resumes existing jobs without asking again',async()=>{
+ const paper={originalFileId:'saved-file',originalOwnerId:'alice'},calls=[];let message='';
+ const fetcher=async(path,options)=>{calls.push({path,options});return response({status:'completed',result:{text:'Document text',pages:1}});};
+ await assert.rejects(readSavedLiteratureFullText(paper,{fetcher,confirmImpl:async text=>{message=text;return false;}}),/取消全文处理/);
+ assert.match(message,/第三方文档服务/);assert.equal(calls.length,0);
+ const resumed=await readSavedLiteratureFullText({...paper,documentParseId:'existing'},{fetcher,confirmImpl:async()=>{throw Error('Existing job must not ask again');}});
+ assert.equal(resumed.text,'Document text');assert.equal(calls.length,1);assert.equal(calls[0].options.method,'GET');
 });

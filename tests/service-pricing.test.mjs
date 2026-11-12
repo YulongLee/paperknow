@@ -39,6 +39,7 @@ test('CSV contains exact published amounts and escapes commas, line breaks, quot
 });
 test('filtering, search, navigation and download stay read-only and download the complete current catalogue',async t=>{
  const f=view(t,async()=>ok(fixture()));await f.page.ready;
+ assert.match(f.doc.querySelector('.service-pricing-heading').textContent,/依次使用适用会员权益、专项套餐和积分/);
  assert.match(f.doc.querySelector('[data-price-rows]').textContent,/1,000 积分 \/ 次/);assert.equal(f.calls.length,1);assert.equal(f.calls[0][1].body,undefined);
  f.doc.querySelector('[data-price-group="detection"]').click();assert.equal(f.doc.querySelectorAll('[data-price-rows] tr').length,3);
  const input=f.doc.querySelector('[data-price-search]');input.value='联合';input.dispatchEvent(new f.dom.window.Event('input'));assert.equal(f.doc.querySelectorAll('[data-price-rows] tr').length,1);assert.equal(f.doc.querySelector('.service-price-open').getAttribute('href'),'#category/detection?view=combined');
