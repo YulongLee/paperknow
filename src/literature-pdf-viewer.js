@@ -11,9 +11,10 @@ export async function mountPdfViewer({container,bytes,isCurrent=()=>true,signal,
  const selectionListeners=new Set(),annotationListeners=new Set();let annotations=[],following=false,readingX=.2,pan=null,area=null,selectionTimer=null,selectionChanged=null;let live=true,scale=1,observer=null,resize=null,revision=0,documentPdf=null,scrollTimer=null,resizeTimer=null,resizing=false;
  const loading=getDocument({data:new Uint8Array(bytes),isEvalSupported:false,enableXfa:false,useSystemFonts:true,cMapUrl:'/workspace/assets/pdf-cmaps/',cMapPacked:true,standardFontDataUrl:'/workspace/assets/pdf-fonts/',wasmUrl:'/workspace/assets/pdf-wasm/'});
  const textContents=new Map(),dimensions=new Map();let textIndexPromise=null;
- const textTasks=new Map(),tasks=new Map(),renders=new Map(),painted=new Set(),visible=new Set();
+ const textTasks=new Map(),tasks=new Map(),renders=new Map(),painted=new Set(),visible=new Set(),evictions=new Map(),recent=new Map(),pageVersions=new Map();let touchSequence=0;
+ const clearEvictions=()=>{for(const timer of evictions.values())win.clearTimeout(timer);evictions.clear();};
  const current=()=>live&&!signal?.aborted&&container.isConnected&&isCurrent();
- const stop=()=>{if(!live)return;live=false;win.clearTimeout(scrollTimer);win.clearTimeout(resizeTimer);win.clearTimeout(selectionTimer);if(selectionChanged)doc.removeEventListener('selectionchange',selectionChanged);revision++;observer?.disconnect();resize?.disconnect();for(const task of tasks.values())task.cancel();for(const task of textTasks.values())task.cancel();textTasks.clear();tasks.clear();void loading.destroy().catch(()=>{});container.replaceChildren();};
+ const stop=()=>{if(!live)return;live=false;win.clearTimeout(scrollTimer);win.clearTimeout(resizeTimer);win.clearTimeout(selectionTimer);if(selectionChanged)doc.removeEventListener('selectionchange',selectionChanged);revision++;clearEvictions();observer?.disconnect();resize?.disconnect();for(const task of tasks.values())task.cancel();for(const task of textTasks.values())task.cancel();textTasks.clear();tasks.clear();void loading.destroy().catch(()=>{});container.replaceChildren();};
  signal?.addEventListener('abort',stop,{once:true});
  try{
   documentPdf=await loading.promise;if(documentPdf.numPages>100)throw Error('PDF 超过 100 页，请拆分后研读。');if(!current()){stop();return {dispose:stop};}
@@ -37,21 +38,44 @@ export async function mountPdfViewer({container,bytes,isCurrent=()=>true,signal,
   const acquireSlot=async()=>{if(renderSlots>=2)await new Promise(resolve=>renderQueue.push(resolve));else renderSlots++;return ()=>{const next=renderQueue.shift();if(next)next();else renderSlots--;};};
   function paint(number){
    if(!current()||resizing||painted.has(number))return Promise.resolve();if(renders.has(number))return renders.get(number);
-   const ticket=revision,host=hosts[number-1],canvas=host.querySelector('canvas');let task,textTask,releaseSlot;
+   const ticket=revision,pageVersion=pageVersions.get(number)||0,host=hosts[number-1],canvas=host.querySelector('canvas');let task,textTask,releaseSlot;
+   const valid=()=>current()&&ticket===revision&&(pageVersions.get(number)||0)===pageVersion;
    const render=(async()=>{try{
-    releaseSlot=await acquireSlot();if(!current()||ticket!==revision||number!==currentPage&&!visible.has(number))return;
-    const page=number===1?first:await documentPdf.getPage(number);if(!current()||ticket!==revision)return;
-    const unit=page.getViewport({scale:1}),anchor=view();dimensions.set(number,unit);const viewport=page.getViewport({scale:width*scale/unit.width}),ratio=Math.max(1,Math.min(win.devicePixelRatio||1,2,Math.sqrt(4000000/Math.max(1,viewport.width*viewport.height))));
-    host.style.setProperty('--total-scale-factor',String(viewport.scale));host.style.setProperty('--scale-round-x','1px');host.style.setProperty('--scale-round-y','1px');host.style.width=viewport.width+'px';host.style.height=viewport.height+'px';if(hosts[anchor.page-1])pages.scrollTop=Math.max(0,hosts[anchor.page-1].offsetTop+anchor.fraction*hosts[anchor.page-1].offsetHeight);canvas.width=Math.ceil(viewport.width*ratio);canvas.height=Math.ceil(viewport.height*ratio);canvas.style.width=viewport.width+'px';canvas.style.height=viewport.height+'px';
+    const page=number===1?first:await documentPdf.getPage(number);if(!valid())return;
+    releaseSlot=await acquireSlot();if(!valid()||number!==currentPage&&!visible.has(number))return;
+    const unit=page.getViewport({scale:1});dimensions.set(number,unit);const viewport=page.getViewport({scale:width*scale/unit.width}),ratio=Math.max(1,Math.min(win.devicePixelRatio||1,2,Math.sqrt(4000000/Math.max(1,viewport.width*viewport.height))));
+    // Preserve the actual scroll position unless a differently sized page changes the layout above it.
+    const oldHeight=host.offsetHeight,newHeight=viewport.height,top=pages.scrollTop,hostTop=host.offsetTop,delta=newHeight-oldHeight;
+    host.style.setProperty('--total-scale-factor',String(viewport.scale));host.style.setProperty('--scale-round-x','1px');host.style.setProperty('--scale-round-y','1px');host.style.width=viewport.width+'px';host.style.height=newHeight+'px';
+    if(Math.abs(delta)>.5&&top>hostTop){const fraction=Math.min(1,(top-hostTop)/Math.max(1,oldHeight));pages.scrollTop=Math.max(0,top+delta*fraction);}canvas.width=Math.ceil(viewport.width*ratio);canvas.height=Math.ceil(viewport.height*ratio);canvas.style.width=viewport.width+'px';canvas.style.height=viewport.height+'px';
     task=page.render({canvasContext:canvas.getContext('2d'),viewport,transform:ratio===1?undefined:[ratio,0,0,ratio,0,0]});tasks.set(number,task);await task.promise;
-    if(current()&&ticket===revision){painted.add(number);host.dataset.rendered='true';try{const layer=host.querySelector('.textLayer');layer.replaceChildren();textTask=new TextLayer({textContentSource:await textContent(page,number),container:layer,viewport});textTasks.set(number,textTask);await textTask.render();}catch{host.querySelector('.textLayer').replaceChildren();}}
-   }catch(error){if(current()&&ticket===revision&&error.name!=='RenderingCancelledException'){host.dataset.rendered='error';host.querySelector('.lit-pdf-page-number').textContent='第 '+number+' 页暂时未能显示，请重新打开文献或下载原文查看。';}}
-   finally{releaseSlot?.();if(tasks.get(number)===task)tasks.delete(number);if(textTasks.get(number)===textTask)textTasks.delete(number);}})();
+    if(valid()){painted.add(number);recent.set(number,++touchSequence);host.dataset.rendered='true';try{const layer=host.querySelector('.textLayer');layer.replaceChildren();textTask=new TextLayer({textContentSource:await textContent(page,number),container:layer,viewport});textTasks.set(number,textTask);await textTask.render();}catch{host.querySelector('.textLayer').replaceChildren();}}
+   }catch(error){if(valid()&&error.name!=='RenderingCancelledException'){host.dataset.rendered='error';host.querySelector('.lit-pdf-page-number').textContent='第 '+number+' 页暂时未能显示，请重新打开文献或下载原文查看。';}}
+   finally{releaseSlot?.();if(tasks.get(number)===task)tasks.delete(number);if(textTasks.get(number)===textTask)textTasks.delete(number);trimCache();}})();
    renders.set(number,render);void render.finally(()=>{if(renders.get(number)===render)renders.delete(number);});return render;
   }
-  function release(number){tasks.get(number)?.cancel();textTasks.get(number)?.cancel();const pending=renders.get(number)||Promise.resolve();void pending.finally(()=>{if(!current())return;if(visible.has(number)){if(!resizing){painted.delete(number);void paint(number);}return;}painted.delete(number);const host=hosts[number-1],canvas=host.querySelector('canvas');canvas.width=0;canvas.height=0;host.querySelector('.textLayer').replaceChildren();delete host.dataset.rendered;});}
+  // Keep recently viewed pages briefly so small scroll reversals do not rerender the PDF.
+  // Offscreen bitmaps are bounded; annotations live in a separate layer and are never removed here.
+  function evict(number){
+   if(visible.has(number)||number===currentPage)return;
+   const timer=evictions.get(number);if(timer)win.clearTimeout(timer);evictions.delete(number);
+   const ticket=revision,pending=renders.get(number)||Promise.resolve();if(renders.has(number))painted.delete(number);tasks.get(number)?.cancel();textTasks.get(number)?.cancel();
+   void pending.finally(()=>{if(!current()||ticket!==revision)return;if(visible.has(number)||number===currentPage){if(!resizing&&!painted.has(number))void paint(number);return;}painted.delete(number);recent.delete(number);const host=hosts[number-1],canvas=host.querySelector('canvas');canvas.width=0;canvas.height=0;host.querySelector('.textLayer').replaceChildren();delete host.dataset.rendered;});
+  }
+  function trimCache(){if(!current()||resizing)return;const candidates=[...painted].filter(number=>!visible.has(number)&&number!==currentPage).sort((a,b)=>(recent.get(a)||0)-(recent.get(b)||0));let excess=painted.size-6;for(const number of candidates){if(excess--<=0)break;evict(number);}}
+  function release(number){
+   if(!painted.has(number)&&renders.has(number)&&number!==pageAtScroll()){
+    // A page left the viewport before its bitmap completed. Stop spending render slots on it.
+    const cancelledVersion=(pageVersions.get(number)||0)+1,ticket=revision;pageVersions.set(number,cancelledVersion);tasks.get(number)?.cancel();textTasks.get(number)?.cancel();
+    const pending=renders.get(number);void pending.finally(()=>{if(!current()||resizing||ticket!==revision||pageVersions.get(number)!==cancelledVersion)return;if(visible.has(number)||number===pageAtScroll()){void paint(number);return;}const host=hosts[number-1],canvas=host.querySelector('canvas');canvas.width=0;canvas.height=0;host.querySelector('.textLayer').replaceChildren();delete host.dataset.rendered;});return;
+   }
+   if(evictions.has(number)||!painted.has(number)&&!renders.has(number))return;evictions.set(number,win.setTimeout(()=>{evictions.delete(number);evict(number);},8000));trimCache();
+  }
+  function retain(number){const timer=evictions.get(number);if(timer)win.clearTimeout(timer);evictions.delete(number);recent.set(number,++touchSequence);}
+
+  function pageAtScroll(){let low=0,high=hosts.length-1;const top=pages.scrollTop+20;while(low<high){const mid=(low+high)>>1;if(hosts[mid].offsetTop+hosts[mid].offsetHeight<top)low=mid+1;else high=mid;}return low+1;}
   async function layout(target){
-   if(!current()||pages.clientWidth<50)return;resizing=true;const anchor=hosts[currentPage-1],offset=target?.fraction??(width?Math.max(0,(pages.scrollTop-anchor.offsetTop)/Math.max(1,anchor.offsetHeight)):0),gap=target?.anchorGap??(width?Math.min(0,pages.scrollTop-anchor.offsetTop):0),ticket=++revision;for(const task of tasks.values())task.cancel();for(const task of textTasks.values())task.cancel();await Promise.allSettled([...renders.values()]);if(!current()||ticket!==revision)return;if(target?.isCurrent&&!target.isCurrent()){resizing=false;return layout();}tasks.clear();painted.clear();width=Math.max(180,pages.clientWidth-30);
+   if(!current()||pages.clientWidth<50)return;if(width&&!target){currentPage=pageAtScroll();updatePage();}resizing=true;clearEvictions();recent.clear();const anchor=hosts[currentPage-1],offset=target?.fraction??(width?Math.max(0,(pages.scrollTop-anchor.offsetTop)/Math.max(1,anchor.offsetHeight)):0),gap=target?.anchorGap??(width?Math.min(0,pages.scrollTop-anchor.offsetTop):0),ticket=++revision;for(const task of tasks.values())task.cancel();for(const task of textTasks.values())task.cancel();await Promise.allSettled([...renders.values()]);if(!current()||ticket!==revision)return;if(target?.isCurrent&&!target.isCurrent()){resizing=false;return layout();}tasks.clear();painted.clear();width=Math.max(180,pages.clientWidth-30);
    for(const host of hosts){host.style.width=width*scale+'px';const size=dimensions.get(Number(host.dataset.pdfPage))||base;host.style.height=width*scale*size.height/size.width+'px';host.querySelector('canvas').width=0;host.querySelector('.textLayer').replaceChildren();delete host.dataset.rendered;}
    zoom.textContent=scale===1?'适应宽度':Math.round(scale*100)+'%';zoomOut.disabled=scale<=.75;zoomIn.disabled=scale>=1.75;
    pages.scrollTop=Math.max(0,hosts[currentPage-1].offsetTop+offset*hosts[currentPage-1].offsetHeight+gap);if(target)pages.scrollLeft=(pages.scrollWidth-pages.clientWidth)*(target.xFraction||0);resizing=false;await paint(currentPage);for(const number of visible)void paint(number);
@@ -62,7 +86,7 @@ export async function mountPdfViewer({container,bytes,isCurrent=()=>true,signal,
   function userIntent(event){following=false;viewRevision++;if(Number.isFinite(event?.clientX)&&event.target?.closest?.('.lit-pdf-page')){const host=hosts[currentPage-1],r=host.getBoundingClientRect();readingX=Math.max(0,Math.min(1,(event.clientX-r.left)/Math.max(1,r.width)));}}
   function go(number){if(!current())return;userIntent();currentPage=Math.min(documentPdf.numPages,Math.max(1,Number.isInteger(number)?number:currentPage));pages.scrollTop=Math.max(0,hosts[currentPage-1].offsetTop-15);updatePage();void paint(currentPage);emit();}
   previous.onclick=()=>go(currentPage-1);next.onclick=()=>go(currentPage+1);pageInput.onchange=()=>go(Number(pageInput.value));pageInput.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();go(Number(pageInput.value));pageInput.blur();}};
-  pages.addEventListener('scroll',()=>{win.clearTimeout(scrollTimer);scrollTimer=win.setTimeout(()=>{if(!current()||resizing||pages.clientWidth<50||pages.clientHeight<50)return;let low=0,high=hosts.length-1;const top=pages.scrollTop+20;while(low<high){const mid=(low+high)>>1;if(hosts[mid].offsetTop+hosts[mid].offsetHeight<top)low=mid+1;else high=mid;}currentPage=low+1;updatePage();emit();},30);});updatePage();
+  pages.addEventListener('scroll',()=>{win.clearTimeout(scrollTimer);scrollTimer=win.setTimeout(()=>{if(!current()||resizing||pages.clientWidth<50||pages.clientHeight<50)return;currentPage=pageAtScroll();updatePage();emit();},30);});updatePage();
   pages.addEventListener('wheel',userIntent,{passive:true});
   pages.addEventListener('touchstart',userIntent,{passive:true});
   pages.addEventListener('keydown',userIntent);pages.tabIndex=0;
@@ -85,7 +109,7 @@ export async function mountPdfViewer({container,bytes,isCurrent=()=>true,signal,
   }
   async function setView(value,{notify=false,isCurrent:canApply=()=>true}={}){if(!current()||!canApply())return;const target={...mapPdfView(value,hosts.length),anchorGap:Number.isFinite(value.anchorGap)?value.anchorGap:0},ticket=++viewRevision;following=true;if(Number.isFinite(value.readingX))readingX=value.readingX;currentPage=target.page;updatePage();if(scale!==target.scale){scale=target.scale;await layout({...target,isCurrent:()=>ticket===viewRevision&&canApply()});if(ticket!==viewRevision||!current()||!canApply())return;}if(ticket!==viewRevision||!canApply())return;pages.scrollTop=Math.max(0,hosts[target.page-1].offsetTop+target.fraction*hosts[target.page-1].offsetHeight+target.anchorGap);pages.scrollLeft=Math.max(0,pages.scrollWidth-pages.clientWidth)*target.xFraction;void paint(currentPage);if(notify)onViewChange(view());}
   await layout();if(!current())return {dispose:stop};
-  if(win.IntersectionObserver){observer=new win.IntersectionObserver(entries=>{for(const entry of entries){const number=Number(entry.target.dataset.pdfPage);if(entry.isIntersecting){visible.add(number);void paint(number);}else{visible.delete(number);release(number);}}},{root:pages,rootMargin:'650px 0px'});hosts.forEach(host=>observer.observe(host));}
+  if(win.IntersectionObserver){observer=new win.IntersectionObserver(entries=>{for(const entry of entries){const number=Number(entry.target.dataset.pdfPage);if(entry.isIntersecting){visible.add(number);retain(number);void paint(number);}else{visible.delete(number);release(number);}}},{root:pages,rootMargin:'650px 0px'});hosts.forEach(host=>observer.observe(host));}
   else for(let number=2;number<=Math.min(documentPdf.numPages,3);number++)void paint(number);
   if(win.ResizeObserver){let oldWidth=pages.clientWidth;resize=new win.ResizeObserver(()=>{if(Math.abs(pages.clientWidth-oldWidth)<2||pages.clientWidth<50)return;oldWidth=pages.clientWidth;win.clearTimeout(resizeTimer);resizeTimer=win.setTimeout(()=>void layout(),140);});resize.observe(pages);}
   if(pages.clientWidth>=50&&(!hosts[currentPage-1]?.dataset.rendered||hosts[currentPage-1].dataset.rendered==='error'))throw Error('PDF 页面未能显示，请重新打开或下载原文查看。');
