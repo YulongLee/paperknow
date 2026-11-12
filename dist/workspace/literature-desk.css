@@ -131,3 +131,25 @@
 @media(max-width:999px){#app .dashboard .lit-reader-studio[data-pdf-compare=true] .lit-reader-document-toolbar,#app .dashboard .lit-reader-studio[data-pdf-compare=true] .lit-translation-pane>header{min-height:100px}}
 /* In parallel reading, both PDF viewports start on the same horizontal line. */
 .lit-reader-studio[data-pdf-compare=true] .lit-fulltext-ready{display:none!important}
+
+/* Full-screen reading keeps the existing document and PDF controls mounted. */
+#app .dashboard .lit-reader-studio[data-focus=true]{position:fixed;inset:0;z-index:10000;box-sizing:border-box;width:100%;height:100dvh;margin:0;padding:10px 16px 16px;display:flex;flex-direction:column;background:var(--pk-surface,#fff);overflow:hidden}
+#app .dashboard .lit-reader-studio[data-focus=true] .lit-reader-topbar{flex:0 0 auto;flex-direction:row;align-items:center;min-height:38px;margin:0 0 8px;gap:10px}
+.lit-reader-studio[data-focus=true] .lit-reader-title>div>span,.lit-reader-studio[data-focus=true] .lit-reader-title p,.lit-reader-studio[data-focus=true] .lit-reader-back,.lit-reader-studio[data-focus=true] .hub-heading-actions>*:not([data-reader-focus]),.lit-reader-studio[data-focus=true] .lit-reader-mobile-views,.lit-reader-studio[data-focus=true] .lit-reader-height-divider{display:none!important}
+#app .dashboard .lit-reader-studio[data-focus=true] .lit-reader-title h1{font-size:14px;line-height:1.4;margin:0;white-space:nowrap}
+#app .dashboard .lit-reader-studio[data-focus=true] .lit-reader-topbar [data-reader-focus]{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+#app .dashboard .lit-reader-studio[data-focus=true] .lit-reader-columns{flex:1 1 auto;height:auto;min-height:0;grid-template-columns:minmax(0,1fr);gap:0}
+#app .dashboard .lit-reader-studio[data-focus=true] .lit-reading-main{display:flex;height:100%;min-height:0}
+@media(max-width:700px){#app .dashboard .lit-reader-studio[data-focus=true]{padding:6px}#app .dashboard .lit-reader-studio .lit-reader-topbar [data-reader-focus]{display:inline-flex}#app .dashboard .lit-reader-studio[data-focus=true] .lit-reader-topbar{margin:0 0 5px}#app .dashboard .lit-reader-studio[data-focus=true] .lit-reading-main{min-height:0}}
+
+#app .dashboard .lit-reader-studio .lit-reader-topbar [data-reader-focus]{display:inline-flex;align-items:center;gap:5px}
+
+#app .dashboard .lit-reader-studio[data-pdf-compare=true] .lit-reader-topbar [data-reader-focus]{display:inline-flex!important}
+#app .dashboard .lit-reader-studio[data-focus=true] .lit-translation-pane{display:none!important}
+#app .dashboard .lit-reader-studio[data-focus=true][data-pdf-compare=true] .lit-reader-columns{height:auto;grid-template-columns:minmax(0,1fr);overflow:hidden}
+@container workspace (max-width:850px){.lit-reader-topbar .hub-heading-actions{max-width:100%;flex-wrap:wrap;justify-content:flex-end}}
+@media(max-width:700px){.lit-reader-topbar .hub-heading-actions{max-width:100%;flex-wrap:wrap;justify-content:flex-end}}
+
+/* 全屏时保留原文的 PDF 操作栏，将阅读状态和视图切换留在普通模式。 */
+#app .dashboard .lit-reader-studio[data-focus=true] .lit-reader-document-toolbar,
+#app .dashboard .lit-reader-studio[data-focus=true] .lit-fulltext-ready {display:none!important}

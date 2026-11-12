@@ -138,6 +138,37 @@ test('正文查找和目录定位不创建任务，专注阅读可以切回助�
  f.$('[data-reader-focus]').click();assert.equal(f.$('.lit-reader-studio').dataset.focus,'true');f.$('[data-reader-focus]').click();assert.equal(f.$('.lit-reader-studio').dataset.focus,'false');assert.equal(f.papers()[0].text,text);
 });
 
+test('全屏阅读保留原文与助手，支持浏览器全屏和 Escape 恢复',async t=>{
+ const f=fixture(t);mountLiteratureReader('saved-paper',f.ctx,'answer');const studio=f.$('.lit-reader-studio'),button=f.$('[data-reader-focus]'),scroll=f.$('.lit-reader-document-scroll'),answer=f.$('[data-reader-ai]');
+ let full=null,enter=0,exit=0;Object.defineProperty(f.w.document,'fullscreenElement',{configurable:true,get:()=>full});
+ studio.requestFullscreen=()=>{enter++;full=studio;f.w.document.dispatchEvent(new f.w.Event('fullscreenchange'));return Promise.resolve();};
+ f.w.document.exitFullscreen=()=>{exit++;full=null;f.w.document.dispatchEvent(new f.w.Event('fullscreenchange'));return Promise.resolve();};
+ scroll.scrollTop=32;button.click();await Promise.resolve();assert.equal(enter,1);assert.equal(studio.dataset.focus,'true');assert.equal(button.getAttribute('aria-pressed'),'true');assert.match(button.textContent,/退出全屏/);assert.equal(f.$('.lit-reader-document-scroll'),scroll);assert.equal(f.$('[data-reader-ai]'),answer);
+ f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(studio.dataset.focus,'false');assert.equal(exit,1);assert.equal(scroll.scrollTop,32);assert.equal(f.$('[data-reader-ai]'),answer);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);
+});
+
+test('浏览器全屏不可用时退化为页面全屏且可退出',async t=>{
+ const f=fixture(t);mountLiteratureReader('saved-paper',f.ctx,'answer');const studio=f.$('.lit-reader-studio'),button=f.$('[data-reader-focus]');studio.requestFullscreen=()=>Promise.reject(Error('unsupported'));
+ button.click();await Promise.resolve();await Promise.resolve();assert.equal(studio.dataset.focus,'true');button.click();assert.equal(studio.dataset.focus,'false');assert.match(button.textContent,/全屏阅读/);
+});
+
+test('全屏切换保留对照阅读和移动端助手状态',t=>{
+ const f=fixture(t);mountLiteratureReader('saved-paper',f.ctx,'answer');const studio=f.$('.lit-reader-studio'),button=f.$('[data-reader-focus]');
+ studio.dataset.pdfCompare='true';studio.dataset.mobilePane='assistant';button.click();assert.equal(studio.dataset.focus,'true');assert.equal(studio.dataset.pdfCompare,'true');assert.equal(studio.dataset.mobilePane,'source');button.click();assert.equal(studio.dataset.focus,'false');assert.equal(studio.dataset.pdfCompare,'true');assert.equal(studio.dataset.mobilePane,'assistant');
+});
+
+test('从笔记进入全屏显示原文，退出恢复笔记并保留未保存内容',t=>{
+ const f=fixture(t,{papers:[paper({noteDraft:{text:'尚未完成的笔记',location:'第 2 页'}})]});mountLiteratureReader('saved-paper',f.ctx,'notes');
+ const note=f.$('#note-text'),button=f.$('[data-reader-focus]');f.input('#note-text','继续编辑中的笔记');assert.equal(f.$('#reader-notes-pane').hidden,false);
+ button.click();assert.equal(f.$('#reader-text-pane').hidden,false);assert.equal(f.$('#reader-notes-pane').hidden,true);assert.equal(note.value,'继续编辑中的笔记');
+ button.click();assert.equal(f.$('#reader-notes-pane').hidden,false);assert.equal(f.$('#reader-text-pane').hidden,true);assert.equal(note.value,'继续编辑中的笔记');
+});
+
+test('从 PDF 文献笔记进入全屏显示 PDF 并恢复笔记',t=>{
+ const f=fixture(t,{papers:[paper({fileName:'original.pdf',originalFileId:'file-pdf',originalOwnerId:'owner'})]});globalThis.fetch=async()=>reply({user:{id:'other-owner'}});mountLiteratureReader('saved-paper',f.ctx,'notes');
+ assert.equal(f.$('#reader-notes-pane').hidden,false);f.$('[data-reader-focus]').click();assert.equal(f.$('#reader-pdf-pane').hidden,false);assert.equal(f.$('#reader-notes-pane').hidden,true);f.$('[data-reader-focus]').click();assert.equal(f.$('#reader-notes-pane').hidden,false);assert.equal(f.$('#reader-pdf-pane').hidden,true);
+});
+
 test('rapid question typing avoids library reads and writes, then saves the latest draft before leaving',async t=>{
  const f=fixture(t);mountLiteratureReader('saved-paper',f.ctx,'answer');let reads=0,writes=0;const nativeGet=f.w.Storage.prototype.getItem,nativeSet=f.w.Storage.prototype.setItem;
  f.w.Storage.prototype.getItem=function(key){if(key===literatureKey)reads++;return nativeGet.call(this,key);};f.w.Storage.prototype.setItem=function(key,value){if(key===literatureKey)writes++;return nativeSet.call(this,key,value);};t.after(()=>{f.w.Storage.prototype.getItem=nativeGet;f.w.Storage.prototype.setItem=nativeSet;});
