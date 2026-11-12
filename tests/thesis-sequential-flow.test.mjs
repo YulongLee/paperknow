@@ -154,7 +154,7 @@ test('changing a method proposal or removing confirmed research material locks f
    if(action==='method')f.input('#knowledge-method-input','更新后的拟开展方法，尚待真实研究验证。');else f.$('[data-knowledge-action="remove"][data-knowledge-id="material"]').click();
    await settle();const saved=f.save();assert.equal(saved.outlineConfirmed,false);assert.equal(saved.workflowUnlockedStage,2);assert.deepEqual(saved.bodySections,original.bodySections);assert.deepEqual(saved.outlineRows,original.outlineRows);
    if(action==='method')assert.equal(saved.methodSuggestion.text,'更新后的拟开展方法，尚待真实研究验证。');else assert.deepEqual(saved.knowledgeFiles,[]);
-   assert.equal(f.$('[data-writing-step="5"]').getAttribute('aria-disabled'),'true');f.$('[data-writing-step="5"]').click();await settle();assertOnlyStage(f,2);assert.deepEqual(f.calls,[]);
+   assert.equal(f.$('[data-writing-step="5"]').getAttribute('aria-disabled'),'true');f.$('[data-writing-step="5"]').click();await settle();assertOnlyStage(f,2);assert.equal(f.calls.some(row=>row.path==='/theses/methods'||row.path==='/theses/outlines'||row.path?.endsWith('/generate')),false);
   }finally{f.close();}
  }
 });

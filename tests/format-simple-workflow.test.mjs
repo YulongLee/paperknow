@@ -5,11 +5,11 @@ import {formatFixture,until,exampleDocx,parseDocx,applyDocx} from './fixtures/fo
 import {checkFormatting} from '../dist/workspace/format-model.mjs';
 
 test('format has exactly two upload inputs, three steps and one processing action without manual rule or service choices',async t=>{
- const f=await formatFixture(t);assert.equal(f.root.querySelectorAll('input[type=file]').length,2);assert.equal(f.root.querySelectorAll('[data-format-step-item]').length,3);assert.equal(f.root.querySelectorAll('[data-action="apply"]').length,1);assert.equal(f.$('[data-action="apply"]').disabled,true);assert.equal(f.root.querySelectorAll('select,input[type=checkbox],input[type=number],[data-template-choice],[data-format-service],[data-rule]').length,0);assert.equal(f.$('[data-format-result]').hidden,true);assert.equal(f.calls.length,0);
+ const f=await formatFixture(t);assert.equal(f.root.querySelectorAll('input[type=file]').length,2);assert.equal(f.root.querySelectorAll('[data-format-step-item]').length,3);assert.equal(f.root.querySelectorAll('[data-action="apply"]').length,1);assert.equal(f.$('[data-action="apply"]').disabled,true);assert.equal(f.root.querySelectorAll('select,input[type=checkbox],input[type=number],[data-template-choice],[data-format-service],[data-rule]').length,0);assert.equal(f.$('[data-format-result]').hidden,true);assert.equal(f.calls.filter(call=>call.path==='/tool-runs/jobs').length,0);
 });
 
 test('files automatically read template rules without touching the manuscript or submitting an AI task',async t=>{
- const f=await formatFixture(t),{original,target}=await f.ready();assert.equal(f.$('[data-format-workflow]').dataset.currentStep,'3');assert.equal(f.$('[data-action="apply"]').disabled,false);assert.equal(f.calls.length,0);const saved=f.getRows()[0];assert.equal(saved.formatting.rules.font,target.font);assert.equal(saved.formatting.rules.line,target.line);assert.deepEqual(Buffer.from(saved.formatting.original,'base64'),Buffer.from(original));assert.equal(saved.formatSample.name,'学校格式模板.docx');
+ const f=await formatFixture(t),{original,target}=await f.ready();assert.equal(f.$('[data-format-workflow]').dataset.currentStep,'3');assert.equal(f.$('[data-action="apply"]').disabled,false);assert.equal(f.calls.filter(call=>call.path==='/tool-runs/jobs').length,0);const saved=f.getRows()[0];assert.equal(saved.formatting.rules.font,target.font);assert.equal(saved.formatting.rules.line,target.line);assert.deepEqual(Buffer.from(saved.formatting.original,'base64'),Buffer.from(original));assert.equal(saved.formatSample.name,'学校格式模板.docx');
 });
 
 test('one click verifies the DOCX, submits one AI review and delivers a faithful editable Word with no adoption or fee confirmation step',async t=>{
@@ -26,7 +26,7 @@ test('results show AI suggestions as advice, state the actual review scope, and 
 
 test('original remains downloadable before completion and an oversized document cannot start a paid task',async t=>{
  const base=await exampleDocx(),parsed=await parseDocx(base),long={...parsed,paragraphs:parsed.paragraphs.map((p,i)=>({...p,text:i===0?'长'.repeat(20001):p.text}))};let count=0;
- const f=await formatFixture(t,{documentModule:{parseDocx:async()=>++count===1?parsed:long,applyDocx}});await f.upload('template',base);await f.upload('paper',base);assert.equal(f.$('[data-format-original]').hidden,false);assert.equal(f.$('[data-action="apply"]').disabled,true);assert.match(f.$('#format-status').textContent,/超过 20,000 字符/);assert.equal(f.calls.length,0);f.click('[data-format-original]');await until(()=>f.downloads.length===1);
+ const f=await formatFixture(t,{documentModule:{parseDocx:async()=>++count===1?parsed:long,applyDocx}});await f.upload('template',base);await f.upload('paper',base);assert.equal(f.$('[data-format-original]').hidden,false);assert.equal(f.$('[data-action="apply"]').disabled,true);assert.match(f.$('#format-status').textContent,/超过 20,000 字符/);assert.equal(f.calls.filter(call=>call.path==='/tool-runs/jobs').length,0);f.click('[data-format-original]');await until(()=>f.downloads.length===1);
 });
 
 test('queued and running review update in place and only saved completion unlocks the Word result',async t=>{
@@ -42,7 +42,7 @@ test('failed AI review shows its specific reason and a retry action without crea
 });
 
 for(const reason of ['积分不足，请充值后重试。','当前账户无权使用该功能，请联系管理员。'])test('quote failure shows actionable reason without submitting a job: '+reason,async t=>{
- const f=await formatFixture(t,{quoteError:reason});await f.ready();await f.generate();await until(()=>f.$('[data-tj-new]')||f.$('[data-tj-auth]'));assert.equal(f.$('#format-ai-task').hidden,false);assert.match(f.$('#format-ai-task').textContent,new RegExp(reason.slice(0,4)));assert.ok(f.$('[data-tj-new]')||f.$('[data-tj-auth]'));assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);assert.equal(f.$('[data-format-result]').hidden,true);
+ const f=await formatFixture(t,{quoteError:reason});await f.ready();await until(()=>f.$('[data-format-billing]').textContent.includes(reason));assert.match(f.$('[data-format-billing]').textContent,new RegExp(reason.slice(0,4)));assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);assert.equal(f.$('[data-format-result]').hidden,true);
 });
 
 test('replacing the template invalidates the prior result, keeps the manuscript and never automatically starts another charged task',async t=>{
@@ -58,19 +58,19 @@ test('an interrupted review recovers its saved task and produces a result withou
 });
 
 test('unreadable template or invalid input reports a specific reason and never calls the model',async t=>{
- const f=await formatFixture(t);await f.upload('template',new Uint8Array([1,2,3]),'坏模板.docx');assert.equal(f.$('[data-action="apply"]').disabled,true);assert.equal(f.$('[data-format-error]').hidden,false);assert.equal(f.calls.length,0);await f.upload('paper',await exampleDocx(),'不支持.pdf');assert.match(f.$('[data-format-error]').textContent,/DOCX/);assert.equal(f.calls.length,0);
+ const f=await formatFixture(t);await f.upload('template',new Uint8Array([1,2,3]),'坏模板.docx');assert.equal(f.$('[data-action="apply"]').disabled,true);assert.equal(f.$('[data-format-error]').hidden,false);assert.equal(f.calls.filter(call=>call.path==='/tool-runs/jobs').length,0);await f.upload('paper',await exampleDocx(),'不支持.pdf');assert.match(f.$('[data-format-error]').textContent,/DOCX/);assert.equal(f.calls.filter(call=>call.path==='/tool-runs/jobs').length,0);
 });
 
 test('a failed persistence boundary blocks new model billing while retaining the uploaded bytes in memory',async t=>{
- const f=await formatFixture(t);await f.ready();f.setStorageFailure(true);await f.generate();await until(()=>!f.$('[data-format-error]').hidden);assert.equal(f.calls.length,0);assert.equal(f.$('[data-format-result]').hidden,true);assert.equal(f.w.formatTest.formatRouteGuard(),false);f.setStorageFailure(false);assert.equal(f.w.formatTest.formatRouteGuard(),true);
+ const f=await formatFixture(t);await f.ready();f.setStorageFailure(true);await f.generate();await until(()=>!f.$('[data-format-error]').hidden);assert.equal(f.calls.filter(call=>call.path==='/tool-runs/jobs').length,0);assert.equal(f.$('[data-format-result]').hidden,true);assert.equal(f.w.formatTest.formatRouteGuard(),false);f.setStorageFailure(false);assert.equal(f.w.formatTest.formatRouteGuard(),true);
 });
 
 test('legacy formatted originals remain downloadable without calling AI or needing another template',async t=>{
- const original=await exampleDocx(),f=await formatFixture(t,{saved:[{id:'legacy',tool:'format',title:'历史排版',fileName:'历史原件.docx',formatting:{autoSession:true,original:Buffer.from(original).toString('base64'),applied:true,rules:{font:'宋体',size:12,line:1.5,indent:2,top:2.5,bottom:2.5,left:2.5,right:2.5,body:true,headings:true,margins:true,h1:16,h2:14,h3:12}}}]});assert.equal(f.$('[data-format-result]').hidden,false);assert.match(f.$('[data-format-result]').textContent,/已保存的排版结果/);assert.equal(f.calls.length,0);f.click('[data-action="export"]');await until(()=>f.downloads.length===1);assert.match(f.downloads[0].name,/\.docx$/);
+ const original=await exampleDocx(),f=await formatFixture(t,{saved:[{id:'legacy',tool:'format',title:'历史排版',fileName:'历史原件.docx',formatting:{autoSession:true,original:Buffer.from(original).toString('base64'),applied:true,rules:{font:'宋体',size:12,line:1.5,indent:2,top:2.5,bottom:2.5,left:2.5,right:2.5,body:true,headings:true,margins:true,h1:16,h2:14,h3:12}}}]});assert.equal(f.$('[data-format-result]').hidden,false);assert.match(f.$('[data-format-result]').textContent,/已保存的排版结果/);assert.equal(f.calls.filter(call=>call.path==='/tool-runs/jobs').length,0);f.click('[data-action="export"]');await until(()=>f.downloads.length===1);assert.match(f.downloads[0].name,/\.docx$/);
 });
 
 test('account scoped drafts do not submit a non-durable AI job or write across storage scopes',async t=>{
- const f=await formatFixture(t,{scoped:true});await f.ready();assert.equal(f.$('[data-action="apply"]').disabled,true);assert.match(f.$('[data-format-error]').textContent,/独立格式排版/);assert.equal(f.calls.length,0);const before=f.getRows();f.setScope(false);f.w.formatTest.disposeFormat();assert.deepEqual(f.getRows(),before);
+ const f=await formatFixture(t,{scoped:true});await f.ready();assert.equal(f.$('[data-action="apply"]').disabled,true);assert.match(f.$('[data-format-error]').textContent,/独立格式排版/);assert.equal(f.calls.filter(call=>call.path==='/tool-runs/jobs').length,0);const before=f.getRows();f.setScope(false);f.w.formatTest.disposeFormat();assert.deepEqual(f.getRows(),before);
 });
 
 test('simplified layout styles are loaded, responsive and respect reduced motion',async()=>{const html=await readFile(new URL('../dist/workspace.html',import.meta.url),'utf8'),css=await readFile(new URL('../dist/workspace/format-simple.css',import.meta.url),'utf8');assert.match(html,/workspace\/format-simple\.css/);assert.match(css,/@media\(max-width:900px\)/);assert.match(css,/@media\(max-width:600px\)/);assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);assert.doesNotMatch(css,/url\(['"]?https?:/);});

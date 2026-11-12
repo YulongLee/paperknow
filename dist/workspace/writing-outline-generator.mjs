@@ -14,6 +14,7 @@ const abortError=()=>Object.assign(new Error('页面已切换'),{name:'AbortErro
 export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getContextKey,getProjectRef=()=>'',onApply,onJobChange,onCommandChange,pendingJobId=null,pendingContextKey=null,pendingClientKey=null,isCurrent=()=>true}={}){
  if(!container)throw new TypeError('缺少提纲生成区域');
  const doc=container.ownerDocument,win=doc.defaultView;
+ let displayedCharge=null;
  let alive=true,opened=false,direct=false,epoch=0,timer=null,busy=false,user=null,accountId=null,cap=null,quote=null,item=null,snapshot=null,contextKey=pendingContextKey,jobId=pendingJobId||null,clientKey=pendingClientKey||null,commandPending=!!pendingClientKey,consent=false,disclosureOpen=false,ambiguous=!!pendingClientKey&&!pendingJobId,message='',error='',loadError=false,applied=false;
  let submitting=false,startedAt=null,clockTimer=null,syncError=false,backgroundReading=false,renderedProgressSignature=null;
  let projectRef='';try{const pending=JSON.parse(pendingContextKey);if(typeof pending?.projectRef==='string'&&typeof pending?.contextKey==='string'&&Object.keys(pending).length===2)projectRef=pending.projectRef;}catch{}
@@ -121,8 +122,8 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
   $('[data-outline-ai-consent]')?.addEventListener('change',event=>{consent=event.target.checked;const button=$('[data-outline-ai-start]');if(button)button.disabled=busy||!consent||!contextMatches();});
   $('[data-outline-ai-start]')?.addEventListener('click',()=>void start());
   $('[data-outline-ai-requote]')?.addEventListener('click',()=>void prepare());
-  $('[data-outline-ai-new]')?.addEventListener('click',()=>void prepare({newCommand:true,generate:direct}));
-  $('[data-outline-ai-reload]')?.addEventListener('click',()=>void (direct?generate():!user||loadError||jobId&&!item||commandPending&&!item?open({fresh:true}):prepare()));
+  $('[data-outline-ai-new]')?.addEventListener('click',()=>{direct=false;void prepare({newCommand:true});});
+  $('[data-outline-ai-reload]')?.addEventListener('click',()=>{direct=false;void (!user||loadError||jobId&&!item||commandPending&&!item?open({fresh:true}):prepare());});
   $('[data-outline-ai-refresh]')?.addEventListener('click',()=>void refresh());
   $('[data-outline-ai-cancel]')?.addEventListener('click',()=>void cancel());
   $('[data-outline-ai-retry]')?.addEventListener('click',()=>void run(adoptCompleted));
@@ -142,7 +143,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
   quote=null;consent=false;projectPayload();
   cap=await request('/theses/outlines/capabilities',undefined,token);
   if(!cap?.ready){quote=null;throw Error(cap?.reason||'提纲生成服务暂未开放，仍可上传提纲或自己编辑。');}
-  const value=await request('/billing/quote',{type:'agent',...(cap.billingServiceKey?{serviceKey:cap.billingServiceKey}:{})},token);
+  let value;if(displayedCharge){const approved=displayedCharge;displayedCharge=null;if(String(accountId)!==String(approved.owner)||approved.context!==getContextKey?.()||approved.projectRef!==String(getProjectRef()||'')||!validThesisQuote(approved.quote)||(cap.billingServiceKey||'')!==(approved.serviceKey||''))throw Error('写作信息、登录账户或费用已变化，请重新核对本次费用。');value=approved.quote;}else value=await request('/billing/quote',{type:'agent',...(cap.billingServiceKey?{serviceKey:cap.billingServiceKey}:{})},token);
   if(!validThesisQuote(value))throw Error('费用信息不完整或已过期，请重新获取费用。');
   quote=value;if(!preserveCommand)clientKey=win.crypto.randomUUID();consent=true;ambiguous=preserveCommand&&commandPending;message=preserveCommand?'上次任务尚未确认创建。请重新确认费用后重试同一任务；若后台已接收，会读取原任务。':'费用已就绪，可直接点击“生成提纲”。';
  }
@@ -182,7 +183,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
    if(generate&&usable(token)&&quote&&!item)await submit(token);
    if(usable(token))await adoptCompleted(token);
   }catch(failure){if(usable(token)&&failure.name!=='AbortError'){loadError=true;setError(failure);}}
-  finally{if(usable(token)){busy=false;submitting=false;render();schedule();}}
+  finally{displayedCharge=null;if(usable(token)){busy=false;submitting=false;render();schedule();}}
  }
  async function submit(token){
    await owner(token);
@@ -201,7 +202,7 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
   if(!consent||!quote)return;if(!contextMatches()){setError('论文主题或研究资料已变化，请重新核对信息并生成。');render();return;}
   return run(submit,{submission:true});
  }
- async function generate({reuseExisting=false}={}){if(!current()||busy&&!backgroundReading)return;direct=true;return open({fresh:true,generate:true,reuseExisting});}
+ async function generate({reuseExisting=false,displayedQuote=null}={}){if(!current()||busy&&!backgroundReading)return;displayedCharge=displayedQuote;direct=true;return open({fresh:true,generate:true,reuseExisting});}
  async function read(token){await owner(token);if(!jobId)return;const expected=jobId,value=await request('/theses/outlines/'+encodeURIComponent(expected),undefined,token);takeItem(value.item,expected);}
  async function refresh(){return run(async token=>{await read(token);message='已读取最新任务状态。';},{reading:true});}
  async function cancel(){return run(async token=>{await owner(token);if(!jobId||!active(item))return;const expected=jobId,value=await request('/theses/outlines/'+encodeURIComponent(expected)+'/cancel',{},token);takeItem(value.item,expected);message='已发送停止请求，原有提纲保持不变。';});}
@@ -225,5 +226,5 @@ export function mountWritingOutlineGenerator({container,ctx={},getSnapshot,getCo
  }
  function visibility(){if(!doc.hidden)schedule();scheduleClock();}
  doc.addEventListener('visibilitychange',visibility);
- return {open,generate,dispose(){if(!alive)return;alive=false;opened=false;epoch++;clearPoll();clearClock();abortRequests();doc.removeEventListener('visibilitychange',visibility);},busy:()=>current()&&busy,hasWork:()=>current()&&(busy||active(item))};
+ return {open,generate,recover(){direct=false;return open({fresh:true});},dispose(){if(!alive)return;alive=false;opened=false;epoch++;clearPoll();clearClock();abortRequests();doc.removeEventListener('visibilitychange',visibility);},busy:()=>current()&&busy,hasWork:()=>current()&&(busy||active(item))};
 }

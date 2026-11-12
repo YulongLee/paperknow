@@ -11,12 +11,12 @@ export function assertDetectionPrice(input,billing,key){
  const price=detectionPricing(billing,key);if(price.pricingMode==='unavailable')fail(503,'当前检测服务已暂停，本次未扣费。');
  if((price.pointsCharged||input.pricingVersion!==undefined)&&(input.pricingVersion!==price.pricingVersion||input.expectedCreditCost!==price.creditCost))fail(409,'检测费用已更新，请刷新页面后重新提交；尚未扣费。');
 }
-export function reserveDetection(billing,user,jobId,key,{createJob}={}){
+export function reserveDetection(billing,user,jobId,key,{createJob,billingToken}={}){
  if(!billing)return false;
- const quote=billing.quote(user,{type:'agent',serviceKey:key});
- if(quote.source==='free')return false;
- if(!['bundle','membership','credits'].includes(quote.source)||quote.source==='credits'&&quote.creditCost<=0||quote.source!=='credits'&&(quote.creditCost!==0||quote.entitlementKey!==key))fail(409,'本次检测扣费来源无法确认，未提交检测。');
- createJob?.();billing.reserve(user,jobId,1,'agent',quote.token,key);return true;
+ const quote=billingToken?null:billing.quote(user,{type:'agent',serviceKey:key});
+ if(detectionPricing(billing,key).pricingMode==='free')return false;
+ if(quote&&!['bundle','membership','credits'].includes(quote.source)||quote&&quote.source==='credits'&&quote.creditCost<=0||quote&&quote.source!=='credits'&&(quote.creditCost!==0||quote.entitlementKey!==key))fail(409,'本次检测扣费来源无法确认，未提交检测。');
+ createJob?.();billing.reserve(user,jobId,1,'agent',billingToken||quote.token,key);return true;
 }
 // Compatibility names for the former trial-only workflow.
 export const detectionFreeEntryReady=detectionEntryReady;

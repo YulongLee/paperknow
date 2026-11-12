@@ -1,4 +1,5 @@
 import {documentStateGroup} from '../dist/workspace/document-state.mjs';
+import {billingQuoteLabel} from '../dist/workspace/billing-notice.mjs';
 import {servicePricingEntry} from '../dist/workspace/service-pricing.mjs';
 import {entitlementUnit} from '../dist/workspace/v1-pricing.mjs';
 import {helpKnowledgeMarkup,bindHelpKnowledge} from '../dist/workspace/help.mjs';
@@ -31,7 +32,7 @@ async function fixture(t,{guest=false,ai=true,agent=true,view='projects',params=
  w.localStorage.setItem('paperknow-drafts','[{"id":"legacy-local","tool":"writing","title":"本地未上传成果"}]');
  w.download=async(name,content)=>{exportBodies.push(content);downloads.push(name);return {message:'已保存到账户云文件并发起下载。'};};
  const calls=[],navigations=[],downloads=[],notices=[];let saved=[],projects=[{id:'p1',title:'账户研究项目',degree:'本科',major:'教育学',updated_at:now}],files=[{id:'f1',name:'账户原件.txt',bytes:30,project_id:'p1'}],jobs=[{id:'pending',type:'parse',status:'queued',attempt:0,created_at:now},{id:'failed',type:'agent',status:'failed',attempt:1,created_at:now,error:'测试任务失败'}];
- Object.assign(w,{documentStateGroup,servicePricingEntry,mountProjectHistoryImport:()=>()=>{},updateAccountProjects,resolveAccountProjectId,workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel,workspaceResultTitle,workspaceJobError,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,thesisEditorPresentation,restoreThesisEditorText,presentThesisDocument,thesisDocumentPresentation});w.helpKnowledgeMarkup=helpKnowledgeMarkup;w.bindHelpKnowledge=bindHelpKnowledge;w.publicDraftCopy=publicDraftCopy;w.membershipPurchaseTiles=membershipPurchaseTiles;w.supportContactsMarkup=supportContactsMarkup;w.bindSupportContacts=bindSupportContacts;w.entitlementUnit=entitlementUnit;w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts',projects:'paperknow-projects'};w.hasDraftScope=()=>false;w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
+ Object.assign(w,{billingQuoteLabel,documentStateGroup,servicePricingEntry,mountProjectHistoryImport:()=>()=>{},updateAccountProjects,resolveAccountProjectId,workspaceJobLabel,workspaceJobActive,workspaceJobStatusLabel,workspaceResultTitle,workspaceJobError,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,thesisEditorPresentation,restoreThesisEditorText,presentThesisDocument,thesisDocumentPresentation});w.helpKnowledgeMarkup=helpKnowledgeMarkup;w.bindHelpKnowledge=bindHelpKnowledge;w.publicDraftCopy=publicDraftCopy;w.membershipPurchaseTiles=membershipPurchaseTiles;w.supportContactsMarkup=supportContactsMarkup;w.bindSupportContacts=bindSupportContacts;w.entitlementUnit=entitlementUnit;w.esc=esc;w.icon=icon;w.feedbackKey=feedbackKey;w.normalizeFeedback=normalizeFeedback;w.keys={drafts:'paperknow-drafts',projects:'paperknow-projects'};w.hasDraftScope=()=>false;w.list=key=>JSON.parse(w.localStorage.getItem(key)||'[]');w.eval(personalCode+'\nwindow.renderOnlinePersonal=renderOnlinePersonal;');
  w.fetch=async(path,options={})=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({path,body,options});if(request){const custom=await request(path,options);if(custom)return custom;}
   let status=200,value={};
   if(path==='/api/capabilities')value={ai,agent,aiProvider:'test-provider',storage:'local'};
@@ -190,8 +191,8 @@ test('task center contains no creation form and legacy type links only open the 
  assert.equal(f.calls.some(call=>call.body),false);assert.equal(f.calls.some(call=>call.path==='/api/billing/quote'),false);
 });
 
-test('account cancellation and explicit retry each execute once without a billing popup',async t=>{
- const f=await fixture(t,{view:'tasks'});f.doc.querySelector('[data-job="pending"]').click();await settle(()=>f.doc.querySelector('.tag.cancelled'));assert.ok(f.calls.some(call=>call.path==='/api/jobs/pending/cancel'));assert.equal(f.calls.some(call=>call.path==='/api/jobs/failed/retry'),false);f.doc.querySelector('[data-job="failed"]').click();await settle(()=>f.calls.some(call=>call.path==='/api/jobs/failed/retry'));assert.equal(f.calls.filter(call=>call.path==='/api/jobs/failed/retry').length,1);assert.equal(f.doc.querySelector('#online-confirm').open,false);assert.match(f.doc.querySelector('#job-list').textContent,/科研智能助手/);
+test('account cancellation and explicit retry each execute once after fee confirmation',async t=>{
+ const f=await fixture(t,{view:'tasks'});f.doc.querySelector('[data-job="pending"]').click();await settle(()=>f.doc.querySelector('.tag.cancelled'));assert.ok(f.calls.some(call=>call.path==='/api/jobs/pending/cancel'));assert.equal(f.calls.some(call=>call.path==='/api/jobs/failed/retry'),false);f.doc.querySelector('[data-job="failed"]').click();await settle(()=>f.doc.querySelector('#online-confirm').open);assert.match(f.doc.querySelector('#online-confirm-message').textContent,/本次免费/);assert.equal(f.calls.some(call=>call.path==='/api/jobs/failed/retry'),false);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.calls.some(call=>call.path==='/api/jobs/failed/retry'));assert.equal(f.calls.filter(call=>call.path==='/api/jobs/failed/retry').length,1);assert.equal(f.doc.querySelector('#online-confirm').open,false);assert.match(f.doc.querySelector('#job-list').textContent,/科研智能助手/);
 });
 
 test('account results preview, editing, saved versions and export preserve original model content',async t=>{
@@ -216,7 +217,7 @@ test('generated thesis outlines open and export safely without requesting unsupp
 });
 
 test('agent submission uses selected account materials and distinct task route',async t=>{
- const f=await fixture(t,{view:'agent'});input(f,'#agent-text','整理这份研究材料');f.doc.querySelector('#agent-materials option').selected=true;submit(f,'#agent-form');await settle(()=>f.calls.some(call=>call.path==='/api/jobs'&&call.body));
+ const f=await fixture(t,{view:'agent'});input(f,'#agent-text','整理这份研究材料');f.doc.querySelector('#agent-materials option').selected=true;submit(f,'#agent-form');await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.calls.some(call=>call.path==='/api/jobs'&&call.body));
  const job=f.calls.find(call=>call.path==='/api/jobs'&&call.body);assert.equal(job.body.type,'agent');assert.deepEqual(job.body.fileIds,['f1']);assert.ok(f.doc.querySelector('#online-mode-actions a[href="#tasks?scope=account"]'));assert.equal(f.w.onlineTest.onlineWorkspaceHref('agent'),'#tool/agent');
 });
 
@@ -316,8 +317,8 @@ test('task center separates manuscript follow-up from completed execution and ma
 
 function billingResponse(type,{source='credits',creditCost=12,expiresAt=new Date(Date.now()+60000).toISOString(),...rest}={}){return {ok:true,status:200,json:async()=>({token:'confirmed-'+type,type,title:({polish:'学术润色',review:'导师意见修改',agent:'科研智能助手'})[type],source,creditCost,expiresAt,policyVersion:2,...rest})};}
 
-test('one-click account generation checks usage silently and submits the original material once',async t=>{
- const f=await fixture(t,{view:'agent',request:async(path,options)=>path==='/api/billing/quote'?billingResponse(JSON.parse(options.body).type):undefined});input(f,'#agent-text','用户主动选择的正文');submit(f,'#agent-form');await settle(()=>f.calls.some(call=>call.path==='/api/jobs'&&call.body));assert.equal(f.doc.querySelector('#online-confirm').open,false);const post=f.calls.find(call=>call.path==='/api/jobs'&&call.body);assert.equal(post.body.billingQuote,'confirmed-agent');assert.equal(post.body.text,'用户主动选择的正文');assert.equal(post.body.type,'agent');assert.equal(f.calls.filter(call=>call.path==='/api/jobs'&&call.body).length,1);
+test('account generation displays the real cost before submitting the original material once',async t=>{
+ const f=await fixture(t,{view:'agent',request:async(path,options)=>path==='/api/billing/quote'?billingResponse(JSON.parse(options.body).type):undefined});input(f,'#agent-text','用户主动选择的正文');submit(f,'#agent-form');await settle(()=>f.doc.querySelector('#online-confirm').open);assert.match(f.doc.querySelector('#online-confirm-message').textContent,/消耗 12 (?:科研)?积分/);assert.equal(f.calls.some(call=>call.path==='/api/jobs'&&call.body),false);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.calls.some(call=>call.path==='/api/jobs'&&call.body));assert.equal(f.doc.querySelector('#online-confirm').open,false);const post=f.calls.find(call=>call.path==='/api/jobs'&&call.body);assert.equal(post.body.billingQuote,'confirmed-agent');assert.equal(post.body.text,'用户主动选择的正文');assert.equal(post.body.type,'agent');assert.equal(f.calls.filter(call=>call.path==='/api/jobs'&&call.body).length,1);
 });
 
 test('rejected account usage keeps the input and displays the concrete reason without a confirmation',async t=>{
@@ -334,8 +335,8 @@ test('expired account usage authorization cannot submit through the direct path'
  const f=await fixture(t,{view:'agent',request:async path=>path==='/api/billing/quote'?billingResponse('agent',{expiresAt:new Date(0).toISOString()}):undefined});input(f,'#agent-text','等待处理的正文');submit(f,'#agent-form');await settle(()=>f.notices.some(v=>v.includes('报价已过期')));assert.equal(f.calls.some(call=>call.path==='/api/jobs'&&call.body),false);assert.equal(f.doc.querySelector('#online-confirm').open,false);
 });
 
-test('explicit retry silently checks the real task type and applies its package entitlement',async t=>{
- const f=await fixture(t,{view:'tasks',request:async(path,options)=>path==='/api/billing/quote'?billingResponse(JSON.parse(options.body).type,{source:'bundle',creditCost:0,sourceOrderId:'paid-bundle'}):undefined});f.doc.querySelector('[data-job="failed"]').click();await settle(()=>f.calls.some(call=>call.path==='/api/jobs/failed/retry'));assert.equal(f.calls.find(call=>call.path==='/api/billing/quote').body.type,'agent');assert.equal(f.calls.find(call=>call.path==='/api/jobs/failed/retry').body.billingQuote,'confirmed-agent');assert.equal(f.calls.filter(call=>call.path==='/api/jobs/failed/retry').length,1);assert.equal(f.doc.querySelector('#online-confirm').open,false);
+test('explicit retry displays the real package entitlement before starting',async t=>{
+ const f=await fixture(t,{view:'tasks',request:async(path,options)=>path==='/api/billing/quote'?billingResponse(JSON.parse(options.body).type,{source:'bundle',creditCost:0,sourceOrderId:'paid-bundle'}):undefined});f.doc.querySelector('[data-job="failed"]').click();await settle(()=>f.doc.querySelector('#online-confirm').open);assert.match(f.doc.querySelector('#online-confirm-message').textContent,/套餐权益/);assert.equal(f.calls.some(call=>call.path==='/api/jobs/failed/retry'),false);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.calls.some(call=>call.path==='/api/jobs/failed/retry'));assert.equal(f.calls.find(call=>call.path==='/api/billing/quote').body.type,'agent');assert.equal(f.calls.find(call=>call.path==='/api/jobs/failed/retry').body.billingQuote,'confirmed-agent');assert.equal(f.calls.filter(call=>call.path==='/api/jobs/failed/retry').length,1);assert.equal(f.doc.querySelector('#online-confirm').open,false);
 });
 
 test('invalid or mismatched cost quotes are rejected without offering confirmation',async t=>{
@@ -346,8 +347,8 @@ test('invalid or mismatched cost quotes are rejected without offering confirmati
 
 test('uncertain AI submission retries the same material with the same server idempotency key',async t=>{
  let posts=0;const f=await fixture(t,{view:'agent',request:async(path,options)=>path==='/api/billing/quote'?billingResponse('agent'):path==='/api/jobs'&&options.body&&++posts===1?{ok:false,status:503,json:async()=>({error:'连接中断，请重试'})}:undefined});
- input(f,'#agent-text','只应创建一次的研究任务');submit(f,'#agent-form');await settle(()=>f.notices.includes('连接中断，请重试'));
- submit(f,'#agent-form');await settle(()=>posts===2);const requests=f.calls.filter(call=>call.path==='/api/jobs'&&call.body);assert.equal(requests.length,2);assert.equal(requests[0].body.idempotencyKey,requests[1].body.idempotencyKey);assert.equal(requests[0].body.text,requests[1].body.text);
+ input(f,'#agent-text','只应创建一次的研究任务');submit(f,'#agent-form');await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>f.notices.includes('连接中断，请重试'));
+ submit(f,'#agent-form');await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-yes').click();await settle(()=>posts===2);const requests=f.calls.filter(call=>call.path==='/api/jobs'&&call.body);assert.equal(requests.length,2);assert.equal(requests[0].body.idempotencyKey,requests[1].body.idempotencyKey);assert.equal(requests[0].body.text,requests[1].body.text);
 });
 
 
@@ -754,4 +755,8 @@ test('saved writing result exports a real editable Word draft with source proven
  assert.match(f.downloads.at(-1),/（初稿）\.docx$/);
  const JSZip=(await import('jszip')).default,zip=await JSZip.loadAsync(f.exportBodies.at(-1)),xml=await zip.file('word/document.xml').async('string');
  assert.match(xml,/研究正文/);assert.match(xml,/合成论文来源/);assert.doesNotMatch(xml,/\[source:ref-one\]/);
+});
+
+test('cancelling the account fee confirmation keeps the draft and submits no task',async t=>{
+ const f=await fixture(t,{view:'agent',request:async(path,options)=>path==='/api/billing/quote'?billingResponse(JSON.parse(options.body).type):undefined});input(f,'#agent-text','保留的论文材料');submit(f,'#agent-form');await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-no').click();await settle(()=>!f.doc.querySelector('#online-confirm').open);assert.equal(f.calls.some(call=>call.path==='/api/jobs'&&call.body),false);assert.equal(f.doc.querySelector('#agent-text').value,'保留的论文材料');
 });

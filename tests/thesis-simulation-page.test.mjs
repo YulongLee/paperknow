@@ -79,7 +79,7 @@ test('completed data automatically saves once, survives reload, and permits cont
  assert.equal(f.calls.filter(row=>row.path==='/theses/paper/completion').length,1);
  assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,0);
  assert.equal(f.calls.filter(row=>row.path==='/theses/methods').length,0);
- f.q('[data-completion-prepare]').click();await settle();
+ f.q('[data-completion-prepare]').click();await settle();assert.equal(f.calls.filter(row=>row.path==='/theses/paper/generate').length,0);f.q('[data-completion-start]').click();await settle();
  assert.equal(f.calls.filter(row=>row.path==='/theses/paper/generate').length,1,'the next click starts writing with the cloud-saved simulation');
  assert.equal(f.calls.find(row=>row.path==='/theses/paper/quote').data.version,2);
 });

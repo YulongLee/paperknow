@@ -4,15 +4,16 @@ import {JSDOM} from 'jsdom';
 import {mountCombinedDetection} from '../dist/workspace/combined-detection.mjs';
 const wait=()=>new Promise(r=>setImmediate(r));
 async function until(fn){for(let i=0;i<100;i++){if(fn())return;await new Promise(r=>setTimeout(r,3));}throw Error('Combined UI did not settle');}
-async function setup(t,{recent=null}={}){
+async function setup(t,{recent=null,quoteError=false}={}){
  const dom=new JSDOM('<main id="root"></main>',{url:'https://paperknow.cn/workspace.html#category/detection?view=combined'}),w=dom.window,root=w.document.querySelector('#root');
  let owner='alice',state='running',fail=false;const calls=[];
  const task=()=>({id:'joint-1',title:'Synthetic manuscript',status:state,createdAt:new Date().toISOString(),children:state==='completed'?[{id:'web-1',kind:'similarity',status:'completed'},{id:'ai-1',kind:'aigc',status:'completed'}]:[]});
- const fetchImpl=async(path,options={})=>{const body=options.body?JSON.parse(options.body):null;calls.push({path,body});let data;
+ const fetchImpl=async(path,options={})=>{const body=options.body?JSON.parse(options.body):null;if(path==='/api/billing/quote'&&quoteError)return{ok:false,status:402,json:async()=>({error:'积分不足'})};if(path==='/api/billing/quote')return{ok:true,status:200,json:async()=>({token:'quote-test',source:'credits',creditCost:149,expiresAt:new Date(Date.now()+300000).toISOString()})};calls.push({path,body});let data;
  if(path==='/api/auth/me')data={user:{id:owner}};
  else if(path==='/api/capabilities')data={combinedDetection:{ready:true,pricingMode:'paid',pointsCharged:true,creditCost:149,pricingVersion:3}};
  else if(path==='/api/combined-detections'&&!body)data={items:recent?[recent]:[]};
  else if(path==='/api/combined-detections'&&body){if(fail)return{ok:false,status:402,json:async()=>({error:'可用积分不足'})};data=task();}
+ else if(path==='/api/combined-detections/reuse')data={item:task()};
  else if(path==='/api/combined-detections/joint-1')data=task();
  else throw Error('Unexpected route '+path);
  return{ok:true,status:200,json:async()=>data};};
@@ -22,7 +23,7 @@ async function setup(t,{recent=null}={}){
  return{root,w,calls,upload,setOwner(value){owner=value;},fail(){fail=true;},complete(){state='completed';}};
 }
 test('joint detection imports once, shows real tariff and stable progress, and opens both completed reports',async t=>{
- const f=await setup(t);assert.match(f.root.textContent,/149/);assert.match(f.root.textContent,/14\.9/);assert.equal(f.root.querySelector('input[type=checkbox]'),null);
+ const f=await setup(t);assert.match(f.root.textContent,/149/);assert.match(f.root.textContent,/本次消耗 149 积分/);assert.equal(f.root.querySelector('input[type=checkbox]'),null);
  await f.upload();assert.equal(f.calls.filter(c=>c.body?.text).length,0);f.root.querySelector('[data-joint-start]').click();await until(()=>f.root.querySelector('[data-detection-progress]'));
  const progress=f.root.querySelector('[data-detection-progress]');await new Promise(r=>setTimeout(r,40));assert.equal(f.root.querySelector('[data-detection-progress]'),progress);assert.equal(f.calls.filter(c=>c.body?.text).length,1);
  f.complete();await until(()=>f.root.querySelectorAll('[data-joint-result] a').length===2);assert.equal(f.root.querySelector('[data-detection-progress]'),null);
@@ -63,4 +64,8 @@ test('failure keeps working report usable while unavailable card has no clickabl
  const item={id:'joint-1',status:'failed',error:'本次联合检测未扣费。',children:[{id:'web-1',kind:'similarity',status:'completed'},{id:'ai-1',kind:'aigc',status:'failed',error:'检测暂不可用 <img src=x>'}]};
  const f=await setup(t,{recent:item}),region=f.root.querySelector('[aria-label="联合检测结果"]'),cards=[...region.querySelectorAll('article')];
  assert.equal(cards.length,2);assert.ok(cards[0].querySelector('a'));assert.equal(cards[1].querySelector('a'),null);assert.match(cards[1].textContent,/未完成/);assert.match(cards[1].textContent,/<img src=x>/);assert.equal(cards[1].querySelector('img'),null);assert.match(region.textContent,/重新上传论文/);
+});
+
+test('joint detection opens an owned existing task despite insufficient credits without another submission',async t=>{
+ const f=await setup(t,{quoteError:true});await f.upload();f.root.querySelector('[data-joint-start]').click();await until(()=>f.root.querySelector('[data-detection-progress]'));assert.match(f.root.querySelector('[data-joint-status]').textContent,/未扣费/);assert.equal(f.calls.filter(c=>c.path==='/api/combined-detections'&&c.body).length,0);assert.equal(f.calls.find(c=>c.path==='/api/combined-detections/reuse').body.expectedUserId,'alice');
 });

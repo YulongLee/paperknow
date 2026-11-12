@@ -60,6 +60,14 @@ export function createToolRunService(db,config={}){
    const input=await readBody();fields(input,['kind','operation','snapshot','projectId']);const value=normalize(input,user),runtime=await settings(undefined,value),row=reusable(value,user,runtime.version);
    return response({item:row?serializeToolRun(db,row):null});
   }
+  if(path==='/api/tool-runs/quote-preview'&&method==='POST'){
+   const input=await readBody();fields(input,['kind','operation','mode','characters','materialCharacters','pages','documentCharacters','plan','revisionProductMode','revisionProductKind','projectId']);
+   if(!Object.hasOwn(toolOperations,input.kind)||!toolOperations[input.kind].includes(input.operation)||['mode','plan','revisionProductMode','revisionProductKind'].some(key=>typeof input[key]!=='string'||input[key].length>80)||['characters','materialCharacters','pages','documentCharacters'].some(key=>!Number.isSafeInteger(input[key])||input[key]<0)||input.characters>100000||input.materialCharacters>100000||input.documentCharacters>1000000||input.pages>100)fail(400,'费用信息不完整，请检查后重试');
+   const projectId=resolveTaskProject(db,input.projectId,user),context={pages:input.pages,documentCharacters:input.documentCharacters,...(input.plan?{plan:input.plan}:{}),...(input.revisionProductMode?{revisionProduct:{mode:input.revisionProductMode,kind:input.revisionProductKind}}:{})};
+   const value={kind:input.kind,operation:input.operation,projectId,snapshot:{mode:input.mode,text:'x'.repeat(input.characters),materials:input.materialCharacters?[{text:'x'.repeat(input.materialCharacters)}]:[],context}};
+   const runtime=await settings(undefined,value);await checkImage(value,runtime);
+   return response(thesisTransaction(db,()=>{resolveTaskProject(db,projectId,user);const charge=commercialToolIdentity(db,value),quote=billing.quote(user,{...charge,context:commercialWorkContext(value)});admission(user,quote.token,charge);db.prepare('DELETE FROM billing_quotes WHERE token=? AND user_id=?').run(quote.token,user.id);return {...quote,previewOnly:true};}));
+  }
   if(path==='/api/tool-runs/quote'&&method==='POST'){
    const input=await readBody();fields(input,['kind','operation','snapshot','projectId']);const value=normalize(input,user),runtime=await settings(undefined,value);await checkImage(value,runtime);await checkPresentation(value);
    return response(thesisTransaction(db,()=>{resolveTaskProject(db,value.projectId,user);const charge=commercialToolIdentity(db,value),quote=billing.quote(user,{...charge,context:commercialWorkContext(value)});admission(user,quote.token,charge);db.prepare('INSERT INTO tool_quotes VALUES(?,?,?,?)').run(quote.token,user.id,value.inputHash,clock());return{...quote,inputHash:value.inputHash,projectId:value.projectId,kind:value.kind,operation:value.operation};}));

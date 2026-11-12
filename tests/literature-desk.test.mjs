@@ -14,13 +14,13 @@ import {readingHeadings} from '../dist/workspace/literature-reader-tools.mjs';
 const source='A verified synthetic paragraph describes the research method and its observed evidence.\n\nA second synthetic paragraph explains the limitations and the scope of those observations.';
 const paper=(extra={})=>validatePaper({id:'saved-paper',title:'Existing research <img src=x>',scope:'full',text:source,authors:'Original Author',year:'2026',notes:[{id:'note-one',text:'Keep my research note.'}],...extra});
 const reply=(value,status=200)=>({ok:status<400,status,json:async()=>structuredClone(value)});
-const until=async check=>{for(let n=0;n<150;n++){if(check())return;await new Promise(resolve=>setTimeout(resolve,3));}assert.fail('Reading desk did not settle');};
+const until=async check=>{for(let n=0;n<700;n++){if(check())return;await new Promise(resolve=>setTimeout(resolve,3));}assert.fail('Reading desk did not settle');};
 function fixture(t,{papers=[paper()],fetcher}={}){
  const dom=new JSDOM('<div id="app"><main class="dashboard"></main><dialog id="workspace-dialog"><div id="workspace-dialog-body"></div></dialog></div>',{url:'https://reading.test/workspace.html#category/literature'}),w=dom.window,old={};
  for(const name of ['window','document','location','localStorage','FormData','AbortController','MutationObserver','DOMParser','XMLSerializer','fetch']){old[name]=globalThis[name];globalThis[name]=name==='window'?w:name==='fetch'?async()=>{throw Error('No external API allowed');}:w[name];}
  const calls=[],notices=[],jobs=new Map(),scrolls=[],$=s=>w.document.querySelector(s);
  w.HTMLElement.prototype.scrollIntoView=function(){scrolls.push(this.id);};$('dialog').close=function(){this.open=false;};
- const api=async(path,data)=>{calls.push({path,data});if(path==='/auth/me')return {user:{id:'owner'}};if(path==='/tool-runs/reuse')return{item:null};if(path==='/tool-runs/capabilities')return {ready:true};if(path==='/tool-runs/quote')return {type:'agent',source:'credits',title:'Reading',token:'quote-'+calls.length,creditCost:10,expiresAt:new Date(Date.now()+60000).toISOString()};if(path==='/tool-runs/jobs'){const materials=data.snapshot.materials,item={id:'job-'+jobs.size,kind:'literature',operation:data.operation,status:'completed',completedUnits:1,totalUnits:1,output:{text:'Verified answer grounded in the selected source.',sourceIds:materials.map(m=>m.id),citations:materials.map(m=>({sourceId:m.id,quote:m.text.slice(0,25)})),...(data.operation==='translate'?{targetLanguage:data.snapshot.language,segments:materials.map(m=>({id:m.id,source:m.text,translation:'A synthetic translation.'}))}:{})}};jobs.set(item.id,item);return {item};}if(path.startsWith('/tool-runs/jobs/'))return {item:jobs.get(path.split('/').at(-1))};throw Error('Unexpected '+path);};
+ const api=async(path,data)=>{calls.push({path,data});if(path==='/auth/me')return {user:{id:'owner'}};if(path==='/tool-runs/reuse')return{item:null};if(path==='/tool-runs/capabilities')return {ready:true};if(path==='/tool-runs/quote'||path==='/tool-runs/quote-preview')return {type:'agent',source:'credits',title:'Reading',token:'quote-'+calls.length,creditCost:10,expiresAt:new Date(Date.now()+60000).toISOString()};if(path==='/tool-runs/jobs'){const materials=data.snapshot.materials,item={id:'job-'+jobs.size,kind:'literature',operation:data.operation,status:'completed',completedUnits:1,totalUnits:1,output:{text:'Verified answer grounded in the selected source.',sourceIds:materials.map(m=>m.id),citations:materials.map(m=>({sourceId:m.id,quote:m.text.slice(0,25)})),...(data.operation==='translate'?{targetLanguage:data.snapshot.language,segments:materials.map(m=>({id:m.id,source:m.text,translation:'A synthetic translation.'}))}:{})}};jobs.set(item.id,item);return {item};}if(path.startsWith('/tool-runs/jobs/'))return {item:jobs.get(path.split('/').at(-1))};throw Error('Unexpected '+path);};
  const ctx={api,notify:message=>notices.push(message),modal:(_,html)=>{$('#workspace-dialog-body').innerHTML=html;$('dialog').open=true;}};
  const fetchImpl=async(url,init)=>{calls.push({url,init});return fetcher?fetcher(url,init):reply({academicSearchSources:['crossref']});};
  localStorage.setItem(literatureKey,JSON.stringify(papers));
@@ -32,7 +32,7 @@ test('enlarging the conversation preserves an in-flight answer, its question and
  const f=fixture(t);let submitted=false,release;const gate=new Promise(resolve=>{release=resolve;});t.after(()=>release());
  const ctx={...f.ctx,api:async(path,data)=>{if(path==='/tool-runs/jobs'){submitted=true;await gate;}return f.ctx.api(path,data);}};
  mountLiteratureReader('saved-paper',ctx,'answer');f.input('[data-lit-ai-question]','What method does the original paper describe?');
- f.$('[data-lit-ai-open]').click();await until(()=>submitted);
+ await until(()=>/本次消耗|本次免费|权益/.test(f.$('[data-lit-price]')?.textContent||''));f.$('[data-lit-ai-open]').click();await until(()=>submitted);
  f.$('[data-lit-assistant-expand]').click();assert.equal(f.$('.lit-reader-studio').dataset.assistantExpanded,'true');
  assert.equal(f.$('[data-lit-ai-question]').value,'What method does the original paper describe?');
  f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(f.$('.lit-reader-studio').dataset.assistantExpanded,'false');
@@ -82,20 +82,20 @@ test('compact search has a stable pending state and opens an explicitly labelled
 
 test('the reader keeps the original on the left, all assistance on the right and selected-paragraph questions do not submit',t=>{
  const f=fixture(t);f.w.history.replaceState(null,'','#literature/saved-paper?tab=answer');mountLiteratureReader('saved-paper',f.ctx,'answer');
- assert.ok(f.$('.lit-reader-columns>.lit-reading-main .lit-read-text'));assert.ok(f.$('.lit-reader-columns>.lit-reader-assistant [data-reader-ai]'));assert.equal(f.w.document.querySelectorAll('[data-lit-assistant-mode]').length,5);assert.equal(f.$('[data-reader-ai] .lit-ai-workspace'),null);assert.equal(f.calls.length,0);
- f.$('[data-reader-ask="2"]').click();assert.equal(f.$('[data-lit-ai-start]').value,'2');assert.equal(f.$('[data-lit-ai-end]').value,'2');assert.match(f.$('[data-lit-ai-question]').value,/解释这一段/);assert.equal(f.calls.length,0);assert.equal(f.papers()[0].notes[0].text,'Keep my research note.');assert.equal(f.$('.lit-read-text img'),null);
+ assert.ok(f.$('.lit-reader-columns>.lit-reading-main .lit-read-text'));assert.ok(f.$('.lit-reader-columns>.lit-reader-assistant [data-reader-ai]'));assert.equal(f.w.document.querySelectorAll('[data-lit-assistant-mode]').length,5);assert.equal(f.$('[data-reader-ai] .lit-ai-workspace'),null);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);
+ f.$('[data-reader-ask="2"]').click();assert.equal(f.$('[data-lit-ai-start]').value,'2');assert.equal(f.$('[data-lit-ai-end]').value,'2');assert.match(f.$('[data-lit-ai-question]').value,/解释这一段/);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);assert.equal(f.papers()[0].notes[0].text,'Keep my research note.');assert.equal(f.$('.lit-read-text img'),null);
 });
 
 test('mobile reading switches the same document between original and assistant without navigation or AI submission',t=>{
  const f=fixture(t);f.w.history.replaceState(null,'','#literature/saved-paper?tab=answer');mountLiteratureReader('saved-paper',f.ctx,'answer');
- const route=f.w.location.hash;f.$('[data-reader-mobile-view="assistant"]').click();assert.equal(f.$('.lit-reader-studio').dataset.mobilePane,'assistant');assert.equal(f.$('[data-reader-mobile-view="assistant"]').getAttribute('aria-pressed'),'true');assert.equal(f.w.location.hash,route);assert.equal(f.calls.length,0);
+ const route=f.w.location.hash;f.$('[data-reader-mobile-view="assistant"]').click();assert.equal(f.$('.lit-reader-studio').dataset.mobilePane,'assistant');assert.equal(f.$('[data-reader-mobile-view="assistant"]').getAttribute('aria-pressed'),'true');assert.equal(f.w.location.hash,route);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);
  f.$('[data-reader-mobile-view="source"]').click();assert.equal(f.$('.lit-reader-studio').dataset.mobilePane,'source');assert.equal(f.$('[data-reader-mobile-view="source"]').getAttribute('aria-pressed'),'true');assert.equal(f.w.location.hash,route);assert.equal(f.papers()[0].text,source);
 });
 
 test('summary and knowledge modes submit their own snapshots, keep separate recovery records and preserve source citations',async t=>{
  const f=fixture(t);mountLiteratureReader('saved-paper',f.ctx,'answer');
  for(const mode of ['summary','keypoints']){
-  f.$('[data-lit-assistant-mode="'+mode+'"]').click();assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,mode==='summary'?0:1);f.$('[data-lit-ai-open]').click();await until(()=>f.papers()[0].aiResults.some(r=>r.mode===mode));
+  f.$('[data-lit-assistant-mode="'+mode+'"]').click();assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,mode==='summary'?0:1);await until(()=>/本次消耗|本次免费|权益/.test(f.$('[data-lit-price]')?.textContent||''));f.$('[data-lit-ai-open]').click();await until(()=>f.papers()[0].aiResults.some(r=>r.mode===mode));
   assert.equal(f.calls.filter(c=>c.path==='/tool-runs/quote').at(-1).data.snapshot.mode,mode);assert.ok(f.papers()[0].aiJobStates['read:'+mode]?.itemId);assert.equal(f.papers()[0].text,source);
  }
  assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,2);f.$('[data-lit-source]').click();assert.equal(f.$('#reader-text-pane').hidden,false);assert.equal(f.$('#reader-pdf-pane').hidden,true);assert.equal(f.$('#lit-source-p1').classList.contains('lit-ai-source-highlight'),true);assert.equal(f.w.scrollY,0);assert.equal(f.papers()[0].notes[0].text,'Keep my research note.');
@@ -134,7 +134,7 @@ test('reading results render headings, lists and code while keeping HTML, links 
 test('正文查找和目录定位不创建任务，专注阅读可以切回助手',t=>{
  const text='1 Introduction\n\nThe first verified method explains a synthetic dataset.\n\n2 Methods\n\nThe second method preserves the source evidence.',f=fixture(t,{papers:[paper({text})]});mountLiteratureReader('saved-paper',f.ctx,'answer');
  assert.equal(readingHeadings([{text:'1 Introduction',index:1},{text:'A long paragraph containing a word methods.',index:2},{text:'2 Methods',index:3}]).length,2);assert.equal(f.w.document.querySelectorAll('[data-reader-heading]').length,2);
- f.input('[data-reader-find]','method');assert.equal(f.$('[data-reader-find-count]').textContent,'1 / 3');f.$('[data-reader-find-next]').click();assert.equal(f.$('[data-reader-find-count]').textContent,'2 / 3');assert.equal(f.$('#reader-text-pane').hidden,false);assert.equal(f.calls.length,0);
+ f.input('[data-reader-find]','method');assert.equal(f.$('[data-reader-find-count]').textContent,'1 / 3');f.$('[data-reader-find-next]').click();assert.equal(f.$('[data-reader-find-count]').textContent,'2 / 3');assert.equal(f.$('#reader-text-pane').hidden,false);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);
  f.$('[data-reader-focus]').click();assert.equal(f.$('.lit-reader-studio').dataset.focus,'true');f.$('[data-reader-focus]').click();assert.equal(f.$('.lit-reader-studio').dataset.focus,'false');assert.equal(f.papers()[0].text,text);
 });
 
@@ -145,13 +145,13 @@ test('rapid question typing avoids library reads and writes, then saves the late
 });
 
 test('a generated answer can become a linked note without changing the original or discarding an existing note draft',async t=>{
- const f=fixture(t,{papers:[paper({noteDraft:{text:'An unfinished personal note',location:'p2'}})]});mountLiteratureReader('saved-paper',f.ctx,'answer');f.input('[data-lit-ai-question]','Explain the verified method');f.$('[data-lit-ai-open]').click();await until(()=>!!f.$('[data-lit-ai-note]'));f.$('[data-lit-ai-note]').click();
+ const f=fixture(t,{papers:[paper({noteDraft:{text:'An unfinished personal note',location:'p2'}})]});mountLiteratureReader('saved-paper',f.ctx,'answer');f.input('[data-lit-ai-question]','Explain the verified method');await until(()=>/本次消耗|本次免费|权益/.test(f.$('[data-lit-price]')?.textContent||''));f.$('[data-lit-ai-open]').click();await until(()=>!!f.$('[data-lit-ai-note]'));f.$('[data-lit-ai-note]').click();
  const saved=f.papers()[0];assert.equal(saved.notes.length,2);assert.match(saved.notes[0].text,/Verified answer/);assert.match(saved.notes[0].location,/原文问答.*p1/);assert.equal(saved.noteDraft.text,'An unfinished personal note');assert.equal(f.$('#note-text').value,'An unfinished personal note');assert.equal(saved.text,source);f.$('[data-lit-ai-note]').click();assert.equal(f.papers()[0].notes.length,2);
 });
 
 test('another tab changing the source blocks stale edits and asks to reopen rather than overwriting that source',t=>{
  const f=fixture(t);mountLiteratureReader('saved-paper',f.ctx,'answer');const replacement=paper({text:'New source content from another tab, which must remain intact.'});f.w.localStorage.setItem(literatureKey,JSON.stringify([replacement]));f.w.dispatchEvent(new f.w.StorageEvent('storage',{key:literatureKey}));
- assert.equal(f.$('[data-reader-stale]').hidden,false);f.input('[data-lit-ai-question]','An old-source question');disposeLiterature();assert.equal(f.papers()[0].text,replacement.text);assert.equal(f.calls.length,0);
+ assert.equal(f.$('[data-reader-stale]').hidden,false);f.input('[data-lit-ai-question]','An old-source question');disposeLiterature();assert.equal(f.papers()[0].text,replacement.text);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);
 });
 
 test('private PDF preview restores a saved page and forwards location changes without refetching its original',async t=>{
@@ -160,8 +160,8 @@ test('private PDF preview restores a saved page and forwards location changes wi
 });
 
 test('quick prompts enable sending without a history checkbox; composition and Shift+Enter cannot submit a paid question',async t=>{
- const f=fixture(t);mountLiteratureReader('saved-paper',f.ctx,'answer');assert.equal(f.$('[data-lit-ai-open]').disabled,true);f.$('[data-lit-quick-question]').click();assert.equal(f.$('[data-lit-ai-open]').disabled,false);
- assert.equal(f.$('[data-lit-include-history]'),null);const question=f.$('[data-lit-ai-question]');question.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true}));question.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',shiftKey:true,bubbles:true}));assert.equal(f.calls.length,0);
+ const f=fixture(t);mountLiteratureReader('saved-paper',f.ctx,'answer');assert.equal(f.$('[data-lit-ai-open]').disabled,true);f.$('[data-lit-quick-question]').click();await until(()=>/本次消耗/.test(f.$('[data-lit-price]')?.textContent||''));assert.equal(f.$('[data-lit-ai-open]').disabled,false);
+ assert.equal(f.$('[data-lit-include-history]'),null);const question=f.$('[data-lit-ai-question]');question.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true}));question.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',shiftKey:true,bubbles:true}));assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);
  question.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await until(()=>f.papers()[0].aiResults.length===1);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);assert.equal(f.calls.find(c=>c.path==='/tool-runs/jobs').data.snapshot.context.chatHistory,undefined);
 });
 
@@ -171,7 +171,7 @@ test('PDF reading opens the original without extracted-text tabs, tools or expor
  globalThis.fetch=async url=>reply(url==='/api/auth/me'?{user:{id:'other-owner'}}:{});
  mountLiteratureReader('saved-paper',f.ctx,'text');
  assert.equal(f.$('[data-read-tab="text"]'),null);assert.equal(f.$('[data-reader-find]'),null);assert.equal(f.$('[data-reader-text-fallback]'),null);assert.equal(f.$('#lit-original-docx'),null);assert.equal(f.$('.lit-read-text'),null);assert.equal(f.$('#reader-pdf-pane').hidden,false);assert.equal(f.$('#reader-text-pane').hidden,true);
- f.$('[data-lit-assistant-mode="summary"]').click();f.$('[data-lit-ai-open]').click();await until(()=>f.papers()[0].aiResults.length===1);
+ f.$('[data-lit-assistant-mode="summary"]').click();await until(()=>/本次消耗|本次免费|权益/.test(f.$('[data-lit-price]')?.textContent||''));f.$('[data-lit-ai-open]').click();await until(()=>f.papers()[0].aiResults.length===1);
  const task=f.calls.find(c=>c.path==='/tool-runs/jobs');assert.equal(task.data.snapshot.materials[0].text,source.split('\n\n')[0]);
  assert.equal(f.$('[data-lit-source]').textContent,'原文依据');f.$('[data-lit-source]').click();assert.equal(f.$('#reader-pdf-pane').hidden,false);assert.equal(f.$('#reader-text-pane').hidden,true);assert.ok(f.$('[data-lit-source]').closest('blockquote').classList.contains('lit-ai-source-highlight'));
  f.$('[data-read-tab="notes"]').click();assert.equal(f.$('#reader-notes-pane').hidden,false);f.$('[data-read-tab="pdf"]').click();assert.equal(f.$('#reader-pdf-pane').hidden,false);assert.equal(f.papers()[0].notes[0].text,'Keep my research note.');
@@ -185,7 +185,7 @@ test('original cache survives PDF worker buffer transfer and still verifies the 
 
 test('reopening an already adopted completed answer does not fetch its task or flash a waiting panel',async t=>{
  const material={id:'p1',name:'Existing research <img src=x> · 第 1 段',text:source.split('\n\n')[0]},answer={id:'saved-answer',jobId:'saved-job',operation:'answer',question:'What method?',includeHistory:true,sourceScope:'full',language:'',createdAt:new Date().toISOString(),materials:[material],output:{text:'A saved answer grounded in the actual source.',sourceIds:['p1'],citations:[{sourceId:'p1',quote:material.text.slice(0,25)}]}};
- const f=fixture(t,{papers:[paper({aiDraft:{start:1,end:1,question:'What method?',includeHistory:true},aiResults:[answer],aiJobStates:{answer:{itemId:'saved-job'}}})]});mountLiteratureReader('saved-paper',f.ctx,'answer');for(let i=0;i<5;i++)await new Promise(resolve=>setImmediate(resolve));assert.equal(f.calls.length,0);assert.equal(f.$('.lit-reader-assistant [data-lit-ai-panel]').hidden,true);assert.equal(f.$('.lit-assistant-response').textContent,answer.output.text);
+ const f=fixture(t,{papers:[paper({aiDraft:{start:1,end:1,question:'What method?',includeHistory:true},aiResults:[answer],aiJobStates:{answer:{itemId:'saved-job'}}})]});mountLiteratureReader('saved-paper',f.ctx,'answer');for(let i=0;i<5;i++)await new Promise(resolve=>setImmediate(resolve));assert.equal(f.calls.some(c=>c.path==='/tool-runs/jobs/saved-job'),false);assert.equal(f.$('.lit-reader-assistant [data-lit-ai-panel]').hidden,true);assert.equal(f.$('.lit-assistant-response').textContent,answer.output.text);
 });
 
 test('the 200th uploaded paper can complete an existing saved metadata record',async t=>{
@@ -228,10 +228,8 @@ test('reading assistant price uses current service settings without inventing co
  assert.equal(readingPriceLabel({toolBilling:{services:[{...row,effectiveMode:'free'}]}}),'本次免费');assert.equal(readingPriceLabel({toolBilling:{services:[{...row,available:false}]}}),'文献研读暂未开放');assert.match(readingPriceLabel({}),/暂无法读取/);assert.match(readingPriceLabel({toolBilling:{services:[{...row,effectiveCreditCost:0}]}}),/暂无法读取/);
 });
 
-test('assistant displays dynamic pricing without a second confirmation or blocking on pricing failure',async t=>{
- const f=fixture(t);f.w.history.replaceState(null,'','#literature/saved-paper?tab=answer');let fail=false;
- globalThis.fetch=async url=>{assert.equal(url,'/api/payments/options');if(fail)throw Error('network');return reply({toolBilling:{services:[{key:'literature-read',effectiveMode:'paid',effectiveCreditCost:37,available:true}]}});};
- mountLiteratureReader('saved-paper',f.ctx,'answer');await until(()=>f.$('[data-lit-price]')?.textContent.includes('37 积分/次'));
- assert.match(f.$('[data-lit-price]').textContent,/适用会员或套餐优先/);f.input('[data-lit-ai-question]','What does the paper report?');assert.equal(f.$('[data-lit-ai-open]').disabled,false);
- fail=true;f.w.dispatchEvent(new f.w.Event('focus'));await until(()=>f.$('[data-lit-price]')?.textContent.includes('暂无法读取'));assert.doesNotMatch(f.$('[data-lit-price]').textContent,/37/);assert.equal(f.$('[data-lit-ai-open]').disabled,false);assert.equal(f.calls.filter(x=>x.path==='/tool-runs/jobs').length,0);
+test('assistant shows actual price, blocks on failed refresh, and does not submit on a stale fee',async t=>{
+ const f=fixture(t),original=f.ctx.api;let fail=false;f.ctx.api=async(path,data)=>{if(path==='/tool-runs/quote-preview'){if(fail)throw Error('network');return {type:'agent',source:'credits',title:'研读',token:'preview',creditCost:37,expiresAt:new Date(Date.now()+60000).toISOString()};}return original(path,data);};
+ mountLiteratureReader('saved-paper',f.ctx,'answer');f.input('[data-lit-ai-question]','What does the paper report?');await until(()=>/37 科研积分/.test(f.$('[data-lit-price]')?.textContent||''));assert.equal(f.$('[data-lit-ai-open]').disabled,false);
+ fail=true;f.input('[data-lit-ai-question]','What is the new question?');await until(()=>/暂时无法确认费用/.test(f.$('[data-lit-price]')?.textContent||''));assert.doesNotMatch(f.$('[data-lit-price]').textContent,/37/);f.$('[data-lit-ai-open]').click();assert.equal(f.calls.filter(x=>x.path==='/tool-runs/jobs').length,0);
 });

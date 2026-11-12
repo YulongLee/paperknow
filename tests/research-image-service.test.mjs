@@ -106,3 +106,4 @@ test('existing lettering is fully reviewed before one settlement or a complete r
   if(!accepted)assert.match(job.error,/文字标注/);
  }
 });
+test('research image private preview accepts real drawing settings and matches the input-bound quote',async t=>{const {toolQuotePreview}=await import('../dist/workspace/tool-quote-preview.mjs'),{sameThesisCharge}=await import('../dist/workspace/thesis-online.mjs');const f=fixture(t),value=input(),preview=toolQuotePreview(value);assert.doesNotMatch(JSON.stringify(preview),/文献检索|科研流程图/);const shown=await f.request('/quote-preview',preview),actual=await f.request('/quote',value);assert.equal(shown.status,200);assert.equal(actual.status,200);assert.equal(sameThesisCharge(shown.value,actual.value),true);assert.equal(f.calls.model,0);assert.equal(f.billing.balance('alice').held,0);});

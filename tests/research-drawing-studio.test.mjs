@@ -6,7 +6,7 @@ import {basicResearchFigures,professionalResearchFigures,researchFigureChoices,r
 import {beginDraftScope,endDraftScope} from '../dist/workspace/state.mjs';
 import {pngFixture} from './fixtures/research-image.mjs';
 
-const until=async check=>{for(let i=0;i<120;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}assert.ok(check(),'异步界面未达到预期状态');};
+const until=async check=>{for(let i=0;i<500;i++){if(check())return;await new Promise(resolve=>setTimeout(resolve,2));}assert.ok(check(),'异步界面未达到预期状态');};
 const baseForm=()=>({title:'【合成验收】研究技术路线',prompt:'从研究问题、资料收集、分析方法到研究结论，画一张清晰的流程示意图。',language:'中文',figureType:'flowchart',aspectRatio:'16:9',palette:'academic'});
 const imageOutput=()=>({text:'科研图片已生成，请核对。',image:{artifactId:'image-alice',downloadUrl:'/api/artifacts/image-alice/download',fileName:'合成验收.png',mimeType:'image/png',width:1600,height:900},artifacts:[{id:'image-alice',name:'合成验收.png',kind:'png',role:'image',downloadUrl:'/api/artifacts/image-alice/download'}],sourceIds:[],requiresReview:true});
 const completedJob=()=>({id:'job-alice',kind:'research',operation:'image',status:'completed',title:'【合成验收】科研流程',createdAt:new Date().toISOString(),completedUnits:1,totalUnits:1,snapshot:researchDrawingSnapshot(baseForm()),output:imageOutput()});
@@ -20,7 +20,7 @@ function fixture(t,{mode='basic',owner='alice',jobs=[],stored,storageFails=false
   await beforeApi?.(path,data);if(path==='/auth/me'){if(!identity)throw Object.assign(Error('请先登录'),{status:401});return {user:{id:identity}};}
   if(path==='/tool-runs/jobs'&&data===undefined)return {items:structuredClone(jobs)};
   if(path==='/tool-runs/capabilities')return {ready:true,researchImages:{ready:true}};
-  if(path==='/tool-runs/quote')return {type:'agent',source:'credits',creditCost:10,title:'科研绘图',token:'fixture-image-quote',expiresAt:new Date(Date.now()+60000).toISOString()};
+  if(path==='/tool-runs/quote'||path==='/tool-runs/quote-preview')return {type:'agent',source:'credits',creditCost:10,title:'科研绘图',token:'fixture-image-quote',expiresAt:new Date(Date.now()+60000).toISOString()};
   if(path==='/tool-runs/jobs'&&data){job={...completedJob(),snapshot:structuredClone(data.snapshot),status:submittedStatus,...(submittedStatus==='completed'?{}:{output:null,completedUnits:0})};return {item:structuredClone(job)};}
   if(path==='/tool-runs/jobs/job-alice')return {item:structuredClone(job)};
   if(path.startsWith('/tool-runs/jobs/by-key/'))throw Object.assign(Error('未找到原任务'),{status:404});
@@ -76,7 +76,7 @@ test('professional domain choices send their own semantic category without claim
 });
 
 test('drawing directly generates once and adopts an owned binary',async t=>{
- const f=fixture(t);await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));const starts=f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data);assert.equal(starts.length,1);assert.equal(starts[0].data.operation,'image');assert.equal(starts[0].data.kind,'research');assert.equal(starts[0].data.snapshot.text,baseForm().prompt);assert.equal(starts[0].headers['X-PaperKnow-User'],'alice');
+ const f=fixture(t);await f.mount.ready;f.fill();await until(()=>/本次消耗/.test(f.container.querySelector('[data-rd-billing]').textContent));const preview=f.requests.find(row=>row.path==='/tool-runs/quote-preview');assert.ok(preview);assert.doesNotMatch(JSON.stringify(preview.data),/研究问题|流程示意图/);assert.equal(f.requests.some(row=>row.path==='/tool-runs/quote'),false);f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));const starts=f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data);assert.equal(starts.length,1);assert.equal(starts[0].data.operation,'image');assert.equal(starts[0].data.billingToken,'fixture-image-quote');assert.equal(starts[0].data.kind,'research');assert.equal(starts[0].data.snapshot.text,baseForm().prompt);assert.equal(starts[0].headers['X-PaperKnow-User'],'alice');
  assert.equal(f.container.querySelector('[data-tj-apply]'),null);assert.equal(f.container.querySelector('[data-tj-result]'),null);assert.doesNotMatch(f.container.textContent,/点击下方按钮查看生成图片/);assert.equal(f.created.length,1);assert.equal(f.created[0].type,'image/png');assert.match(f.container.querySelector('[data-rd-generated-image]').src,/^blob:/);assert.equal(f.requests.find(row=>row.path.startsWith('/api/artifacts/')).headers['X-PaperKnow-User'],'alice');assert.match(f.requests.find(row=>row.path.startsWith('/api/artifacts/')).path,/expectedUserId=alice/);
  f.click('[data-rd-download]');await until(()=>f.downloads.length===1);assert.equal(f.downloads[0].name,'合成验收.png');const raw=f.w.localStorage.getItem(researchDrawingDraftKey+':basic:alice');assert.doesNotMatch(raw,/blob:|provider\.example|imageBase64|image-alice|downloadUrl|fixture-image/);f.mount.dispose();assert.equal(f.revoked.length,1);
 });
@@ -84,7 +84,7 @@ test('drawing directly generates once and adopts an owned binary',async t=>{
 test('completion polling previews the saved image automatically while preserving edits made during generation',async t=>{
  let poll;
  const f=fixture(t,{submittedStatus:'running',initialize:w=>{const timeout=w.setTimeout.bind(w);w.setTimeout=(fn,ms,...args)=>{if(ms===2500){poll=fn;return timeout(fn,60000,...args);}return timeout(fn,ms,...args);};}});
- await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!poll);assert.equal(f.container.querySelector('[data-rd-generated-image]'),null);
+ await f.mount.ready;f.fill();await until(()=>/本次消耗/.test(f.container.querySelector('[data-rd-billing]').textContent));f.click('[data-rd-generate]');await until(()=>!!poll);assert.equal(f.container.querySelector('[data-rd-generated-image]'),null);
  f.enter('[data-rd-prompt]','正在准备下一张图片的新描述');f.setJob(completedJob());poll();await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));
  assert.equal(f.container.querySelector('[data-rd-prompt]').value,'正在准备下一张图片的新描述');assert.equal(f.container.querySelector('[data-tj-apply]'),null);assert.equal(f.created.length,1);
  assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs'&&r.data).length,1);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/quote').length,1);
@@ -108,7 +108,7 @@ test('incomplete saved image metadata offers preview recovery rather than an emp
 
 test('a failed automatic image download exposes a read-only retry which never regenerates or requotes',async t=>{
  let fail=true;
- const f=fixture(t,{artifactBlob:async()=>{if(fail)throw Error('图片读取暂时中断');return new Blob([pngFixture(1600,900)],{type:'application/octet-stream'});}});await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-preview-retry]'));
+ const f=fixture(t,{artifactBlob:async()=>{if(fail)throw Error('图片读取暂时中断');return new Blob([pngFixture(1600,900)],{type:'application/octet-stream'});}});await f.mount.ready;f.fill();await until(()=>/本次消耗/.test(f.container.querySelector('[data-rd-billing]').textContent));f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-preview-retry]'));
  assert.equal(f.container.querySelector('[data-rd-generated-image]'),null);assert.equal(f.created.length,0);assert.equal(f.container.querySelector('[data-tj-apply]'),null);
  fail=false;f.click('[data-tj-preview-retry]');await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));await until(()=>!f.container.querySelector('[data-tj-preview-retry]'));
  assert.equal(f.created.length,1);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs'&&r.data).length,1);assert.equal(f.requests.filter(r=>r.path==='/tool-runs/quote').length,1);
@@ -116,18 +116,18 @@ test('a failed automatic image download exposes a read-only retry which never re
 
 test('switching accounts during automatic preview loading never exposes the original account image',async t=>{
  let read;
- const f=fixture(t,{artifactBlob:()=>new Promise(resolve=>read=resolve)});await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>typeof read==='function');
+ const f=fixture(t,{artifactBlob:()=>new Promise(resolve=>read=resolve)});await f.mount.ready;f.fill();await until(()=>/本次消耗/.test(f.container.querySelector('[data-rd-billing]').textContent));f.click('[data-rd-generate]');await until(()=>typeof read==='function');
  f.setOwner('bob');read(new Blob([pngFixture(1600,900)],{type:'application/octet-stream'}));await until(()=>f.container.querySelector('[data-rd-status]').textContent.includes('账户已变化'));
  assert.equal(f.created.length,0);assert.equal(f.container.querySelector('[data-rd-generated-image]'),null);assert.equal(f.container.querySelector('[data-rd-job]').textContent,'');assert.equal(f.container.querySelector('[data-rd-prompt]').value,'');
  assert.equal(f.requests.filter(r=>r.path==='/tool-runs/jobs'&&r.data).length,1);
 });
 
 test('changing a prompt during usage checking stops stale direct submission',async t=>{
- let release;const f=fixture(t,{beforeApi:async path=>{if(path==='/tool-runs/quote')await new Promise(resolve=>release=resolve);}});await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!release);f.enter('[data-rd-prompt]','修改后的研究问题和绘图内容');release();await until(()=>!f.container.querySelector('[data-tj-result-window]')||f.container.querySelector('[data-tj-result-window]').getAttribute('aria-busy')!=='true');assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);assert.equal(f.container.querySelector('[data-rd-prompt]').value,'修改后的研究问题和绘图内容');
+ let release;const f=fixture(t,{beforeApi:async path=>{if(path==='/tool-runs/quote'||path==='/tool-runs/quote-preview')await new Promise(resolve=>release=resolve);}});await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!release);f.enter('[data-rd-prompt]','修改后的研究问题和绘图内容');release();await until(()=>!f.container.querySelector('[data-tj-result-window]')||f.container.querySelector('[data-tj-result-window]').getAttribute('aria-busy')!=='true');assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);assert.equal(f.container.querySelector('[data-rd-prompt]').value,'修改后的研究问题和绘图内容');
 });
 
 test('a full browser store stops before charging or submitting and preserves editable input',async t=>{
- const f=fixture(t,{storageFails:true});await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-tj-error],.tool-job-error'));assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,0);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);assert.equal(f.container.querySelector('[data-rd-prompt]').value,baseForm().prompt);assert.match(f.container.textContent,/未能保存任务草稿/);
+ const f=fixture(t,{storageFails:true});await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>/未能保存任务草稿/.test(f.container.textContent));assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,0);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);assert.equal(f.container.querySelector('[data-rd-prompt]').value,baseForm().prompt);assert.match(f.container.textContent,/未能保存任务草稿/);
 });
 
 test('history only displays image jobs and retrieves an existing owned image without charging',async t=>{
@@ -172,7 +172,7 @@ test('account changes while downloading a preview clear private history and neve
 });
 
 test('account changes also clear a recovered private prompt and any fee or result content from the old task panel',async t=>{
- const f=fixture(t,{jobs:[completedJob()]});await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));assert.match(f.container.querySelector('[data-rd-prompt]').value,/研究问题/);f.setOwner('bob');f.click('[data-rd-history-refresh]');await until(()=>/账户已变化/.test(f.container.querySelector('[data-rd-status]').textContent));assert.equal(f.container.querySelector('[data-rd-prompt]').value,'');assert.equal(f.container.querySelector('[data-rd-title]').value,'');assert.equal(f.container.querySelector('[data-rd-job]').textContent,'');assert.equal(f.container.querySelector('[data-rd-job]').hidden,true);assert.doesNotMatch(f.container.textContent,/合成验收.*研究技术路线|fixture-image-quote/);
+ const f=fixture(t,{jobs:[completedJob()]});await f.mount.ready;f.fill();await until(()=>/本次消耗/.test(f.container.querySelector('[data-rd-billing]').textContent));f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));assert.match(f.container.querySelector('[data-rd-prompt]').value,/研究问题/);f.setOwner('bob');f.click('[data-rd-history-refresh]');await until(()=>/账户已变化/.test(f.container.querySelector('[data-rd-status]').textContent));assert.equal(f.container.querySelector('[data-rd-prompt]').value,'');assert.equal(f.container.querySelector('[data-rd-title]').value,'');assert.equal(f.container.querySelector('[data-rd-job]').textContent,'');assert.equal(f.container.querySelector('[data-rd-job]').hidden,true);assert.doesNotMatch(f.container.textContent,/合成验收.*研究技术路线|fixture-image-quote/);
 });
 
 test('leaving while an image body is arriving never paints or downloads its late result',async t=>{
@@ -231,11 +231,11 @@ test('professional search understands software/domain/scene combinations and cle
 
 
 test('drawing double-clicks while checking usage cannot submit duplicate jobs',async t=>{
- let release;const f=fixture(t,{beforeApi:async path=>{if(path==='/tool-runs/quote')await new Promise(resolve=>release=resolve);}});await f.mount.ready;f.fill();f.click('[data-rd-generate]');await until(()=>!!release);f.click('[data-rd-generate]');await new Promise(resolve=>setTimeout(resolve,10));release();await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));assert.equal(f.requests.filter(row=>row.path==='/tool-runs/quote').length,1);assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,1);assert.equal(f.container.querySelector('[data-tj-consent]'),null);
+ let release;const f=fixture(t,{beforeApi:async path=>{if(path==='/tool-runs/quote-preview'&&!release)await new Promise(resolve=>release=resolve);}});await f.mount.ready;f.fill();await until(()=>!!release);f.click('[data-rd-generate]');assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,0);release();await until(()=>/本次消耗/.test(f.container.querySelector('[data-rd-billing]').textContent));f.click('[data-rd-generate]');f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));assert.equal(f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data).length,1);assert.equal(f.container.querySelector('[data-tj-consent]'),null);
 });
 
 test('professional image generation directly submits the chosen scene once',async t=>{
- const f=fixture(t,{mode:'professional'});await f.mount.ready;f.click('[data-rd-figure="cell-mechanism"]');f.click('[data-rd-example]');f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));const starts=f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data);assert.equal(starts.length,1);assert.equal(starts[0].data.operation,'image');assert.equal(starts[0].data.snapshot.mode,'professional');assert.equal(starts[0].data.snapshot.context.figureType,'cell-mechanism');assert.equal(starts[0].data.consent,true);assert.equal(f.container.querySelector('[data-tj-start]'),null);
+ const f=fixture(t,{mode:'professional'});await f.mount.ready;f.click('[data-rd-figure="cell-mechanism"]');f.click('[data-rd-example]');await until(()=>/本次消耗/.test(f.container.querySelector('[data-rd-billing]').textContent));f.click('[data-rd-generate]');await until(()=>!!f.container.querySelector('[data-rd-generated-image]'));const starts=f.requests.filter(row=>row.path==='/tool-runs/jobs'&&row.data);assert.equal(starts.length,1);assert.equal(starts[0].data.operation,'image');assert.equal(starts[0].data.snapshot.mode,'professional');assert.equal(starts[0].data.snapshot.context.figureType,'cell-mechanism');assert.equal(starts[0].data.consent,true);assert.equal(f.container.querySelector('[data-tj-start]'),null);
 });
 test('editable vector download stays bound to the current owner and uses a private attachment',async t=>{
  const job=completedJob();job.output.artifacts.push({id:'vector-alice',kind:'svg',role:'vector',name:'科研图.svg',downloadUrl:'/api/artifacts/vector-alice/download'});

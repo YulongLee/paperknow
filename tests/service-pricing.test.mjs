@@ -14,6 +14,7 @@ test('the customer catalogue uses exact published tariffs, groups equal degree p
  const data=fixture(),before=JSON.stringify(data),c=buildServicePriceCatalogue(data);
  assert.equal(c.rows.find(row=>row.title==='毕业论文').cost,1000);assert.equal(c.rows.find(row=>row.title==='PPT 创作').cost,199);
  assert.equal(c.rows.find(row=>row.keys.includes('detection-combined')).cost,149);assert.equal(c.rows.find(row=>row.keys.includes('writing-planning')).mode,'free');assert.match(c.rows.find(row=>row.keys.includes('revision-dual')).range,/20,000/);assert.match(c.rows.find(row=>row.keys.includes('revision-targeted')).range,/10,000/);
+ assert.match(c.rows.find(row=>row.keys.includes('literature-read')).range,/研读最多 18,000/);assert.match(c.rows.find(row=>row.keys.includes('literature-answer')).range,/问答和片段翻译每次最多 3,000/);
  const keys=new Set(c.rows.flatMap(row=>row.keys));for(const {key}of toolBillingServiceTypes.filter(row=>row.key!=='writing-analysis'))assert.ok(keys.has(key),key);
  assert.ok(!keys.has('agent'));assert.ok(!keys.has('writing-analysis'));assert.equal(JSON.stringify(data),before);
 });
@@ -27,9 +28,14 @@ test('custom degree prices stay distinct and malformed or paused prices never be
  const paused=rows.find(r=>r.keys.includes('detection-aigc'));assert.equal(paused.cost,99);assert.equal(paused.available,false);
  assert.throws(()=>buildServicePriceCatalogue({billing:{services:[]}}));
 });
+test('incomplete or duplicate published tariffs cannot appear as a complete current price list',()=>{
+ const missing=fixture();missing.toolBilling.services=missing.toolBilling.services.filter(row=>row.key!=='detection-aigc');assert.throws(()=>buildServicePriceCatalogue(missing),/完整价目表/);
+ const duplicate=fixture();duplicate.toolBilling.services.push({...duplicate.toolBilling.services.find(row=>row.key==='research-image'),effectiveCreditCost:1});assert.throws(()=>buildServicePriceCatalogue(duplicate),/完整价目表/);
+ const missingBase=fixture();missingBase.billing.services=missingBase.billing.services.filter(row=>row.key!=='polish');assert.throws(()=>buildServicePriceCatalogue(missingBase),/完整价目表/);
+});
 test('CSV contains exact published amounts and escapes commas, line breaks, quotes and spreadsheet formulas',()=>{
  const catalogue=buildServicePriceCatalogue(fixture());catalogue.rows[0].title=' =HYPERLINK("bad", "x")';catalogue.rows[0].range='a,b\n"c"';
- const csv=servicePriceCSV(catalogue);assert.match(csv,/"分类","功能","积分费用"/);assert.match(csv,/"' =HYPERLINK/);assert.match(csv,/"a,b\n""c"""/);assert.match(csv,/149 积分 \/ 次/);assert.match(csv,/¥14\.90/);
+ const csv=servicePriceCSV(catalogue);assert.match(csv,/"分类","功能","积分费用"/);assert.match(csv,/"' =HYPERLINK/);assert.match(csv,/"a,b\n""c"""/);assert.match(csv,/149 积分 \/ 次/);assert.doesNotMatch(csv,/标准折合金额|¥14\.90/);
 });
 test('filtering, search, navigation and download stay read-only and download the complete current catalogue',async t=>{
  const f=view(t,async()=>ok(fixture()));await f.page.ready;

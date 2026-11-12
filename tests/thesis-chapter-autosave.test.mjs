@@ -84,7 +84,7 @@ test('malformed local recovery data is preserved rather than removed or submitte
 
 
 test('unsaved chapter edits prevent direct generation before any usage or model request',async t=>{
- const f=fixture(t),record=thesis();record.status='draft';f.setRecord(record);await f.mount();f.edit('[data-thesis-editor]','生成前尚未保存的编辑');assert.equal(f.$('[data-thesis-quote]').disabled,true);f.$('[data-thesis-quote]').dispatchEvent(new f.win.MouseEvent('click',{bubbles:true}));await settle();assert.equal(f.calls.some(row=>/quote|generate|resume/.test(row.path)),false);assert.equal(f.stored().chapters[0].text,'生成前尚未保存的编辑');assert.equal(f.$('[data-thesis-consent]'),null);
+ const f=fixture(t),record=thesis();record.status='draft';f.setRecord(record);await f.mount();const quotesBeforeEdit=f.calls.filter(row=>/quote/.test(row.path)).length;f.edit('[data-thesis-editor]','生成前尚未保存的编辑');assert.equal(f.$('[data-thesis-quote]').disabled,true);f.$('[data-thesis-quote]').dispatchEvent(new f.win.MouseEvent('click',{bubbles:true}));await settle();assert.equal(f.calls.filter(row=>/quote/.test(row.path)).length,quotesBeforeEdit,'unsaved edits must not cause a new price quote');assert.equal(f.calls.some(row=>/generate|resume/.test(row.path)),false);assert.equal(f.stored().chapters[0].text,'生成前尚未保存的编辑');assert.equal(f.$('[data-thesis-consent]'),null);
 });
 
 test('unavailable local storage does not block an unedited account page',async t=>{

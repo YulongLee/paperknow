@@ -95,6 +95,12 @@ export function createAigcDetectionService(db,config={}, {client}={}){
   }
  }
  return{capabilities:()=>{const cap=aigcDetectionCapabilities(config),ready=cap.ready&&cloud.ready!==false&&typeof cloud.detect==='function';return{...cap,maxCharacters:v1CommercialEnabled(db)?Math.min(cap.maxCharacters,20000):cap.maxCharacters,ready,reason:ready?'':'文本鉴别暂未开放，请稍后再试。'};},waitForIdle:()=>Promise.allSettled([...pending]),async handle({path,method,user,fundingParent=null,readBody}){
+  if(path==='/api/aigc-detections/reuse'&&method==='POST'){
+   if(!validId(user?.id))fail(401,'请先登录后使用文本鉴别');const input=await readBody();
+   if(!plain(input)||Object.keys(input).some(k=>!['text','expectedUserId'].includes(k))||input.expectedUserId!==user.id)fail(409,'登录账户已变化，请重新进入。');
+   prepareAigcText(input.text,limits);const hash=aigcInputHash(input.text,AIGC_PARAGRAPH_VERSION),row=db.prepare('SELECT * FROM aigc_detections WHERE user_id=? AND input_hash=?').get(user.id,hash);
+   return{value:{item:row&&row.status!=='failed'&&row.error!==partialMessage?summarize(row,true):null}};
+  }
   const item=path.match(/^\/api\/aigc-detections\/([-A-Za-z0-9_]{1,120})(\/(?:cancel|report))?$/);
   if(path!=='/api/aigc-detections'&&!item)return null;
   if(!validId(user?.id))fail(401,'请先登录后使用文本鉴别');
@@ -106,7 +112,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
   if(method==='GET'){expireStale();return{value:{items:db.prepare('SELECT * FROM aigc_detections WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT 10').all(user.id).map(row=>summarize(row))}};}
   if(method!=='POST')fail(405,'不支持的文本鉴别操作');
   const input=await readBody();
-  if(!plain(input)||Object.keys(input).some(key=>!['text','title','consent','expectedUserId','idempotencyKey','pricingVersion','expectedCreditCost'].includes(key)))fail(400,'文本鉴别请求包含不支持的内容');
+  if(!plain(input)||Object.keys(input).some(key=>!['text','title','consent','expectedUserId','idempotencyKey','pricingVersion','expectedCreditCost','billingToken'].includes(key)))fail(400,'文本鉴别请求包含不支持的内容');
   if(input.expectedUserId!==user.id)fail(409,'登录账户已变化，请刷新后重新确认提交');
   if(input.consent!==true)fail(400,'请确认将本次文本发送至云端鉴别服务');
   if(typeof input.idempotencyKey!=='string'||!/^[-A-Za-z0-9_]{8,100}$/.test(input.idempotencyKey))fail(400,'文本鉴别请求编号无效');
@@ -132,7 +138,7 @@ export function createAigcDetectionService(db,config={}, {client}={}){
    db.prepare("INSERT INTO aigc_detections(id,user_id,input_hash,status,characters,part_count,reserved_calls,reserved_billing_units,parts,created_at,updated_at) VALUES(?,?,?,'running',?,?,?,?,?,?,?)").run(id,user.id,hash,prepared.characters,parts.length,prepared.calls,prepared.billingUnits,JSON.stringify(parts),created,created);
    db.prepare('UPDATE aigc_detections SET title=?,partition_version=? WHERE id=?').run(input.title?.trim()||'送检论文',AIGC_PARAGRAPH_VERSION,id);
    db.prepare('INSERT INTO aigc_detection_requests VALUES(?,?,?,?)').run(user.id,input.idempotencyKey,id,hash);
-   if(fundingParent){db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,attempt,created_at,updated_at) VALUES(?,?,'aigc_detection','running','detecting','{}',?,?,1,?,?)").run(id,user.id,'aigc:'+id,hash,created,created);db.prepare('UPDATE aigc_detections SET billing_job_id=? WHERE id=?').run(id,id);attachCombinedChild(db,{parentId:fundingParent,userId:user.id,childId:id,key:'detection-aigc',text:input.text});}else reserveDetection(billing,user,id,'detection-aigc',{createJob:()=>{
+   if(fundingParent){db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,attempt,created_at,updated_at) VALUES(?,?,'aigc_detection','running','detecting','{}',?,?,1,?,?)").run(id,user.id,'aigc:'+id,hash,created,created);db.prepare('UPDATE aigc_detections SET billing_job_id=? WHERE id=?').run(id,id);attachCombinedChild(db,{parentId:fundingParent,userId:user.id,childId:id,key:'detection-aigc',text:input.text});}else reserveDetection(billing,user,id,'detection-aigc',{billingToken:input.billingToken,createJob:()=>{
     db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,attempt,created_at,updated_at) VALUES(?,?,'aigc_detection','running','detecting','{}',?,?,1,?,?)").run(id,user.id,'aigc:'+id,hash,created,created);
     db.prepare('UPDATE aigc_detections SET billing_job_id=? WHERE id=?').run(id,id);
    }});

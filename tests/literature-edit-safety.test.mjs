@@ -86,12 +86,12 @@ test('reading admission checks quote feasibility for each actual unit rather tha
  const materials=selectReadingMaterials({title:'Tail boundary',scope:'full',text:'x'.repeat(6000)+'\n\nabc'});assert.throws(()=>requireReadingCitationCoverage(materials),/至少 5 字符/);
 });
 
-test('short reading ranges are disabled before a quote while short translation remains available',t=>{
+test('short reading ranges are disabled before a quote while short translation remains available',async t=>{
  const f=setup(t);f.$('.dashboard').innerHTML='<div id="ai"></div>';let p={id:'short',title:'Short source',scope:'full',text:'abc\n\nA complete paragraph'};
- const ui=mountLiteratureAi({container:f.$('#ai'),ctx:f.ctx,getPaper:()=>p,updatePaper:updater=>{p=updater(p);}});t.after(()=>ui.dispose());
- f.input('[data-lit-ai-end]','1');assert.equal(f.$('[data-lit-ai-open]').disabled,true);assert.match(f.$('[data-lit-ai-range-status]').textContent,/至少 5 字符/);
- f.$('[data-lit-ai-operation="translate"]').click();assert.equal(f.$('[data-lit-ai-open]').disabled,false);
- f.$('[data-lit-ai-operation="read"]').click();assert.equal(f.$('[data-lit-ai-open]').disabled,true);f.input('[data-lit-ai-end]','2');assert.equal(f.$('[data-lit-ai-open]').disabled,false);assert.equal(f.calls.filter(([url])=>url!=='/api/payments/options').length,0);
+ f.ctx.api=async(path,data)=>{if(path==='/auth/me')return {user:{id:'alice'}};if(path==='/tool-runs/quote-preview')return {type:'agent',source:'credits',title:'研读',creditCost:10,token:'test',expiresAt:new Date(Date.now()+60000).toISOString()};throw Error('Unexpected '+path);};const ui=mountLiteratureAi({container:f.$('#ai'),ctx:f.ctx,getPaper:()=>p,updatePaper:updater=>{p=updater(p);}});t.after(()=>ui.dispose());
+ const waitPrice=async()=>{for(let i=0;i<800;i++){if(/本次消耗/.test(f.$('[data-lit-price]').textContent))return;await new Promise(resolve=>setTimeout(resolve,2));}throw Error('价格未就绪');};f.input('[data-lit-ai-end]','1');assert.equal(f.$('[data-lit-ai-open]').disabled,true);assert.match(f.$('[data-lit-ai-range-status]').textContent,/至少 5 字符/);
+ f.$('[data-lit-ai-operation="translate"]').click();await waitPrice();assert.equal(f.$('[data-lit-ai-open]').disabled,false);
+ f.$('[data-lit-ai-operation="read"]').click();assert.equal(f.$('[data-lit-ai-open]').disabled,true);f.input('[data-lit-ai-end]','2');await waitPrice();assert.equal(f.$('[data-lit-ai-open]').disabled,false);assert.equal(f.calls.filter(([url])=>url!=='/api/payments/options').length,0);
 });
 
 test('a citation clicked while viewing notes restores the original PDF pane before locating evidence',async t=>{

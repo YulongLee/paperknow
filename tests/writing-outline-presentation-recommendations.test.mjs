@@ -52,7 +52,7 @@ const {disposeOnlineThesis}=await import('../dist/workspace/thesis-online.mjs');
 bootstrap.close();
 
 async function adopt(f){
- f.$('#outline-ai-generate').click();await settle();
+ await settle();f.$('#outline-ai-generate').click();await settle();
  assert.equal(f.$('[data-outline-ai-start]'),null);
  assert.equal(f.$('[data-outline-ai-apply]'),null);assert.equal(f.$('#writing-outline-ai-result'),null);assert.equal(f.$('#writing-outline-ai-panel').hidden,true);assert.equal(f.save().outlineSource,'model');
 }

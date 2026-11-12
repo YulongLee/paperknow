@@ -15,7 +15,7 @@ async function fixture(t,kind,{importDocument}={}){
  const item=()=>ai?{id:'task-1',status:state==='queued'?'running':state,characters:Array.from(text).length,partCount:1,completedParts:state==='completed'?1:0,reportAvailable:state==='completed',parts:state==='completed'?[{index:0,start:0,end:Array.from(text).length,characters:Array.from(text).length,label:'ugc',confidence:90}]:[],verdict:'ugc'}:{id:'task-1',status:state,stage:state,title:'检测合成论文',characters:Array.from(text).length};
  const report={id:'report-1',mode:'web',title:'检测合成论文',ratio:0,totalChars:Array.from(text).length,similarChars:0,sourceCount:0,sections:[{id:'s1',title:'正文',included:true,paragraphs:[{id:'p1',text,matches:[]}]}],sources:[],web:{fetchedSources:1,totalParagraphs:1,sampledParagraphs:1,searchComplete:true}};
  const fetchImpl=async(url,init={})=>{
-  const body=init.body?JSON.parse(init.body):null;calls.push({url,body});
+  const body=init.body?JSON.parse(init.body):null;if(url==='/api/billing/quote')return response({token:'quote-test',source:'credits',creditCost:500,expiresAt:new Date(Date.now()+300000).toISOString()});calls.push({url,body});
   if(url==='/api/auth/me')return response({user:{id:owner}});
   if(url==='/api/capabilities')return response({[ai?'aigcDetection':'webSimilarity']:cap});
   if(url===base&&!body)return response({items:[]});

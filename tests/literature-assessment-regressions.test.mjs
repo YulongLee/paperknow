@@ -26,10 +26,10 @@ test('long overviews preserve limits and tell the truth when some sections canno
 });
 test('switching a formula question to summary does not reuse the question or fabricate the displayed range',async()=>{
  const dom=new JSDOM('<div id="ai"></div>',{url:'https://reading.test',pretendToBeVisual:true});let p=structuredClone(paper),snapshot;
- const api=async(path,data)=>{if(path==='/auth/me')return{user:{id:'isolated'}};if(path==='/tool-runs/reuse')return{item:null};if(path==='/tool-runs/capabilities')return{ready:true};if(path==='/tool-runs/quote'){snapshot=data.snapshot;throw Error('No paid generation in this test');}throw Error('Unexpected route '+path);};
+ const api=async(path,data)=>{if(path==='/auth/me')return{user:{id:'isolated'}};if(path==='/tool-runs/reuse')return{item:null};if(path==='/tool-runs/capabilities')return{ready:true};if(path==='/tool-runs/quote-preview'){assert.equal(Object.hasOwn(data,'snapshot'),false);return {type:'agent',source:'credits',title:'文献研读',creditCost:10,token:'preview',expiresAt:new Date(Date.now()+60000).toISOString()};}if(path==='/tool-runs/quote'){snapshot=data.snapshot;throw Error('No paid generation in this test');}throw Error('Unexpected route '+path);};
  const ui=mountLiteratureAi({container:dom.window.document.querySelector('#ai'),layout:'assistant',initialOperation:'answer',ctx:{api},getPaper:()=>p,updatePaper:fn=>p=fn(p)});
  try{const d=dom.window.document,question=d.querySelector('[data-lit-ai-question]');question.value='Explain scaled attention formula';question.dispatchEvent(new dom.window.Event('input'));d.querySelector('[data-lit-ai-operation="read"][data-lit-assistant-mode="summary"]').click();
-  assert.match(d.querySelector('[data-lit-range-label]').textContent,/7 \/ 7 节/);d.querySelector('[data-lit-ai-open]').click();for(let i=0;i<30&&!snapshot;i++)await new Promise(r=>setTimeout(r,5));
+  assert.match(d.querySelector('[data-lit-range-label]').textContent,/7 \/ 7 节/);for(let i=0;i<200&&!/本次消耗/.test(d.querySelector('[data-lit-price]').textContent);i++)await new Promise(r=>setTimeout(r,5));d.querySelector('[data-lit-ai-open]').click();for(let i=0;i<200&&!snapshot;i++)await new Promise(r=>setTimeout(r,5));
   assert.ok(snapshot);assert.equal(snapshot.question,'');assert.ok(snapshot.materials.some(m=>m.text.includes('27.3')));assert.ok(snapshot.materials.some(m=>m.text.includes('limitation')));assert.equal(snapshot.context.readingCoverage.coveredSections,7);
  }finally{ui.dispose();dom.window.close();}
 });

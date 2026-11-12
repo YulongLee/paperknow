@@ -31,7 +31,7 @@ test('continuous jobs render writing, source verification and review stages with
    assert.doesNotMatch(f.$('.thesis-progress').textContent,/provider|qwen|max_tokens|onerror/);
    assert.equal(f.$('img'),null);
   }
-  assert.equal(f.calls.some(row=>row.data),false);
+  assert.equal(f.calls.some(row=>row.data&&!row.path.endsWith('/quote')),false);
  }finally{f.close();}
 });
 
@@ -46,7 +46,7 @@ test('automatic recovery gives bounded user guidance without exposing internal r
   f.setItem(thesis({stage:'auto_recovering',recovery:{automaticRetries:'<script>bad</script>',lastReason:'secret'}}));
   f.$('[data-thesis-refresh]').click();await settle();
   assert.doesNotMatch(f.$('.thesis-continuity-note').textContent,/script|secret|NaN/);
-  assert.equal(f.calls.some(row=>row.data),false);
+  assert.equal(f.calls.some(row=>row.data&&!row.path.endsWith('/quote')),false);
  }finally{f.close();}
 });
 
@@ -58,7 +58,7 @@ test('stopping a continuous task masks stale recovery stages and never resumes o
   assert.match(f.$('.thesis-continuity-note').textContent,/任务已停止，不会自动继续/);
   assert.doesNotMatch(f.$('.thesis-progress').textContent,/正在自动恢复/);
   assert.equal(f.calls.filter(row=>row.path.endsWith('/cancel')).length,1);
-  assert.equal(f.calls.some(row=>/\/(resume|generate|quote)$/.test(row.path)),false);
+  assert.equal(f.calls.some(row=>/\/(resume|generate)$/.test(row.path)),false);
   assert.ok(f.$('[data-thesis-quote="resume"]'),'only a deliberate new quote can start a later resume');
  }finally{f.close();}
 });
@@ -92,7 +92,7 @@ test('quality window is reserved before results arrive and remains collapsed wit
   assert.match(scroll.textContent,/仅检查提供的正文片段，未覆盖完整全文/);
   assert.equal(f.$('img,script'),null);
   assert.match(scroll.textContent,/<img src=x onerror=1>/);
-  assert.equal(f.calls.some(row=>row.data),false);
+  assert.equal(f.calls.some(row=>row.data&&!row.path.endsWith('/quote')),false);
  }finally{f.close();}
 });
 
@@ -110,7 +110,7 @@ test('quality refresh preserves user expansion, inner scroll and keyboard focus 
   assert.equal(f.$('[data-thesis-quality-scroll]').scrollTop,127);
   assert.equal(document.activeElement,f.$('[data-thesis-quality-summary]'));
   assert.match(f.$('.thesis-quality-stale').textContent,/正文已修改，以下为生成时检查记录/);
-  assert.equal(f.calls.some(row=>row.data),false);
+  assert.equal(f.calls.some(row=>row.data&&!row.path.endsWith('/quote')),false);
  }finally{f.close();}
 });
 

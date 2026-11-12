@@ -57,7 +57,7 @@ test('new-generation cleanup never changes an already active recovered task',asy
  assert.equal(preparations,0);assert.equal(f.requests.some(r=>r.path==='/tool-runs/quote'||r.path==='/tool-runs/jobs'),false);
  assert.deepEqual(panel.getState().snapshot,originalSnapshot());
 });
-function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),initialOwner='alice',kind='presentation',operation='ppt',initialProjectRef='',getQuote=quote,beforeApi=async()=>{},autoApply=false,getAdoptionKey,onPersist,beforeGenerate}={}){
+function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),initialOwner='alice',kind='presentation',operation='ppt',initialProjectRef='',getQuote=quote,beforeApi=async()=>{},autoApply=false,getAdoptionKey,onPersist,beforeGenerate,getDisplayedQuote}={}){
  const dom=new JSDOM('<main class="dashboard"><div id="job"></div></main>',{url:'https://paperknow.cn/workspace.html#category/ppt'}),w=dom.window,container=w.document.querySelector('#job');
  let ownerId=initialOwner,projectRef=initialProjectRef,snapshot=originalSnapshot(),job=structuredClone(initialJob),applies=0;const requests=[],states=[],instances=[];
  const api=async(path,data)=>{await beforeApi(path,data);requests.push({path,data:data===undefined?undefined:structuredClone(data),ownerId});
@@ -69,7 +69,7 @@ function fixture(t,{initialState={},onApply=()=>{},initialJob=completedJob(),ini
   if(path==='/tool-runs/jobs/'+job.id){if(!job.id.endsWith(ownerId))throw Object.assign(Error('任务不存在'),{status:404});return {item:structuredClone(job)};}
   throw Error('测试不允许的请求 '+path);
  };
- const options={container,kind,operation,autoApply,getAdoptionKey,beforeGenerate,getSnapshot:()=>snapshot,getProjectRef:()=>projectRef,ctx:{api},onStateChange:state=>{states.push(structuredClone(state));return onPersist?.(state);},onApply:async(output,item)=>{applies++;return onApply(output,item);}};
+ const options={container,kind,operation,autoApply,getAdoptionKey,beforeGenerate,getDisplayedQuote,getSnapshot:()=>snapshot,getProjectRef:()=>projectRef,ctx:{api},onStateChange:state=>{states.push(structuredClone(state));return onPersist?.(state);},onApply:async(output,item)=>{applies++;return onApply(output,item);}};
  const mount=state=>{const panel=mountToolJobPanel({...options,initialState:state});instances.push(panel);return panel;};const panel=mount(initialState);
  t.after(()=>{for(const instance of instances)instance.dispose();w.close();});
  const stateFor=(value=originalSnapshot(),id='job-alice',owner='alice')=>({snapshot:structuredClone(value),contextKey:JSON.stringify(value),ownerId:owner,itemId:id,commandKey:'old-command-key'});
@@ -165,7 +165,7 @@ test('a project belonging to another account cannot request a tool fee or create
 
 
 test('resuming a failed tool task keeps its original project in both renewed quote and resumed submission',async t=>{
- const ref=projectReference('alice','project-a'),f=fixture(t,{initialProjectRef:ref,initialJob:{...completedJob(),projectId:'project-a',status:'failed',completedUnits:1,totalUnits:2,output:null}}),snap=originalSnapshot(),panel=f.mount({...f.stateFor(),snapshot:snap,projectRef:ref,projectId:'project-a',contextKey:JSON.stringify({snapshot:snap,projectRef:ref})});await panel.open();f.click('[data-tj-resume]');await until(()=>f.requests.some(row=>row.path==='/tool-runs/quote'));assert.equal(f.requests.find(row=>row.path==='/tool-runs/quote').data.projectId,'project-a');f.consent();f.click('[data-tj-start]');await until(()=>f.requests.some(row=>row.path==='/tool-runs/jobs'));const posted=f.requests.find(row=>row.path==='/tool-runs/jobs').data;assert.equal(posted.projectId,'project-a');assert.equal(posted.resumeFromJobId,'job-alice');assert.notEqual(posted.clientKey,'old-command-key');
+ const ref=projectReference('alice','project-a'),f=fixture(t,{initialProjectRef:ref,initialJob:{...completedJob(),projectId:'project-a',status:'failed',completedUnits:1,totalUnits:2,output:null}}),snap=originalSnapshot(),panel=f.mount({...f.stateFor(),snapshot:snap,projectRef:ref,projectId:'project-a',contextKey:JSON.stringify({snapshot:snap,projectRef:ref})});await panel.open();f.click('[data-tj-resume]');await until(()=>f.requests.some(row=>row.path==='/tool-runs/quote'));assert.equal(f.requests.find(row=>row.path==='/tool-runs/quote').data.projectId,'project-a');assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);f.consent();f.click('[data-tj-start]');await until(()=>f.requests.some(row=>row.path==='/tool-runs/jobs'));const posted=f.requests.find(row=>row.path==='/tool-runs/jobs').data;assert.equal(posted.projectId,'project-a');assert.equal(posted.resumeFromJobId,'job-alice');assert.notEqual(posted.clientKey,'old-command-key');
 });
 
 
@@ -248,3 +248,5 @@ test('a failed two-of-two content plan reports unfinished PPT pages without chap
  const job={...completedJob(),status:'failed',stage:'failed',completedUnits:2,totalUnits:2,progress:{stage:'authoring',completedPages:0,currentPage:1,totalPages:12},output:null,error:'本次生成已达到系统处理上限，已完成章节已保存。这不是积分不足；继续生成时会从未完成部分接着处理。'},f=fixture(t,{initialJob:job}),panel=f.mount(f.stateFor());await panel.open();
  assert.match(f.container.querySelector('.tool-job-progress').textContent,/页面制作：0 \/ 12 页已完成/);assert.doesNotMatch(f.container.textContent,/2 \/ 2 个处理单元|章节|积分不足|系统处理上限/);assert.equal(f.container.querySelector('[aria-current="step"]').textContent,'2制作演示页面');assert.ok(f.container.querySelector('[data-tj-resume]'));
 });
+
+test('changed price or entitlement after preview stops tool submission without charging',async t=>{const preview={...quote(),creditCost:10,sourceOrderId:'old',policyVersion:1};const f=fixture(t,{getDisplayedQuote:()=>preview,getQuote:()=>({...quote(),creditCost:20,sourceOrderId:'new',policyVersion:2})});await f.panel.generate();assert.equal(f.requests.some(row=>row.path==='/tool-runs/jobs'),false);assert.match(f.container.textContent,/费用或使用的权益已变化/);});

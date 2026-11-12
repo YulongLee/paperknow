@@ -56,3 +56,14 @@ test('failed thesis tool diagnostics remain private in HTTP task reads and owner
  const stored=f.db.prepare("SELECT trace FROM thesis_checkpoints WHERE status='failed'").get();assert.match(stored.trace,/requestedTool/);assert.match(stored.trace,/read_material/);
  const read=await f.request('/theses/'+item.id),archive=await f.request('/account/export');assert.equal(read.status,200);assert.equal(archive.status,200);assert.match(read.value.item.job.error,/已保存的内容会保留/);assert.doesNotMatch(JSON.stringify(read.value),/requestedTool|read_material|private-model-secret|private-request-argument/);assert.doesNotMatch(JSON.stringify(archive.value),/requestedTool|read_material|private-model-secret|private-request-argument/);assert.ok(archive.value.thesisSections.every(row=>row.trace.length===0));
 });
+
+test('frequent fee previews and thesis quotes cannot exhaust task or detection request limits',async t=>{
+ const f=await fixture(t),item=await f.create();const preview={kind:'proposal',operation:'draft',profile:{level:'本科',language:'中文',targetWords:200},characters:0};
+ for(let n=0;n<600;n++){const response=await f.request('/writing/quote-preview',preview);assert.equal(response.status,200,'preview '+n+' '+JSON.stringify(response.value));}
+ assert.equal((await f.request('/writing/quote-preview',preview)).status,429);
+ for(let n=0;n<80;n++){const q=await f.request('/billing/quote',{type:'agent'});assert.equal(q.status,200,'general quote '+n+' '+JSON.stringify(q.value));}
+ let thesisQuote;for(let n=0;n<80;n++){thesisQuote=await f.request('/theses/'+item.id+'/quote',{version:item.version,action:'generate'});assert.equal(thesisQuote.status,200,'thesis quote '+n+' '+JSON.stringify(thesisQuote.value));}
+ for(let n=0;n<440;n++)assert.equal((await f.request('/billing/quote',{type:'agent'})).status,200);assert.equal((await f.request('/billing/quote',{type:'agent'})).status,429,'formal quote requests have their own account/IP budget');
+ const detection=await f.request('/web-similarity/reuse',{text:'这是一份用来核对研究材料和验证检测服务完整请求流程的合成正文，不包含任何真实参与者信息。'.repeat(2),title:'检测测试',expectedUserId:'alice'});assert.notEqual(detection.status,429);
+ const result=await f.request('/theses/'+item.id+'/generate',{version:item.version,clientKey:randomUUID(),consent:true,billingToken:thesisQuote.value.token});assert.equal(result.status,202,JSON.stringify(result.value));
+});

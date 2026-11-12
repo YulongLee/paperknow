@@ -1,4 +1,5 @@
 import {documentStateGroup} from './document-state.mjs';
+import {billingQuoteLabel} from './billing-notice.mjs';
 import {mountPresentationViewer} from './presentation-viewer.mjs';
 import {mountProjectHistoryImport} from './project-history-import.mjs';
 import {updateAccountProjects,resolveAccountProjectId} from './project-directory.mjs';
@@ -89,6 +90,7 @@ export async function mountOnlineWorkspace(root,requestedView,ctx={},params=new 
   if(!valid)throw Error('暂时无法核对本次任务费用，请稍后重试。');
   if(Date.parse(quote.expiresAt)<=Date.now())throw Error('本次报价已过期，请重新提交并确认最新费用。');
   if(!alive)return null;
+  if(!await ask(`${billingQuoteLabel(quote)}。完成后结算，失败或取消将释放预占。`,{title:retry?'确认重试费用':'确认任务费用',cancel:'暂不处理',confirm:retry?'确认并重试':'确认并开始'}))return null;
   if(Date.parse(quote.expiresAt)<=Date.now())throw Error('本次报价已过期，请重新提交并确认最新费用。');
   return {billingQuote:quote.token};
  }

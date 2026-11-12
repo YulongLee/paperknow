@@ -73,6 +73,13 @@ export function createWebSimilarityService(db,config={}){
  const own=(id,user)=>{const row=db.prepare("SELECT j.*,r.title,r.characters,r.report_artifact_id,r.html_artifact_id,r.coverage FROM jobs j JOIN web_similarity_runs r ON r.id=j.id WHERE j.id=? AND j.user_id=? AND j.type='web_similarity'").get(id,user.id);if(!row)fail(404,'查重任务不存在。');return row;};
  const summary=row=>({id:row.id,title:row.title,status:row.status==='preparing'?'queued':row.status,stage:row.stage,characters:row.characters,error:row.error||null,reportId:row.status==='completed'?row.id:null,coverage:JSON.parse(row.coverage),createdAt:row.created_at,updatedAt:row.updated_at});
  return{capabilities:()=>webSimilarityCapabilities(config),async handle({path,method,user,fundingParent=null,readBody,query=new URLSearchParams()}){
+  if(path==='/api/web-similarity/reuse'&&method==='POST'){
+   if(!safeId(user?.id))fail(401,'请先登录服务账户。');const raw=await readBody();
+   if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['text','title','expectedUserId'].includes(k))||raw.expectedUserId!==user.id)fail(409,'登录账户已变化，请重新进入。');
+   const input=webSimilarityInput({...raw,consent:true,idempotencyKey:'reuse-lookup'},user),hash=digest(JSON.stringify({version:webSimilarityVersion,text:input.text,title:input.title}));
+   const row=db.prepare("SELECT j.*,r.title,r.characters,r.coverage FROM jobs j JOIN web_similarity_runs r ON r.id=j.id WHERE j.user_id=? AND j.type='web_similarity' AND j.input_hash=? AND (j.status IN ('preparing','queued','running') OR (j.status='completed' AND j.created_at>=?)) ORDER BY j.created_at DESC LIMIT 1").get(user.id,hash,new Date(Date.now()-86400000).toISOString());
+   return{value:{ownerId:user.id,item:row?summary(row):null}};
+  }
   const match=path.match(/^\/api\/web-similarity\/([-A-Za-z0-9_]{1,120})(\/(?:cancel|report))?$/);
   if(path!=='/api/web-similarity'&&!match)return null;
   if(!safeId(user?.id))fail(401,'请先登录服务账户。');
@@ -114,7 +121,7 @@ export function createWebSimilarityService(db,config={}){
    db.prepare("INSERT INTO jobs(id,user_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,'web_similarity','preparing','saving_input','{}',?,?,?,?)").run(id,user.id,input.idempotencyKey,hash,at,at);
    const coverage={sampledParagraphs:plan.sampledParagraphs,totalParagraphs:plan.totalParagraphs,queries:plan.queries.length,candidateSources:0,fetchedSources:0,failedSources:0,searchComplete:false};
    db.prepare('INSERT INTO web_similarity_runs(id,user_id,title,characters,queries_reserved,coverage,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(id,user.id,input.title,input.characters,plan.queries.length,JSON.stringify(coverage),at,at);
-   if(fundingParent)attachCombinedChild(db,{parentId:fundingParent,userId:user.id,childId:id,key:'detection-similarity',text:input.text});else reserveDetection(config.billing,user,id,'detection-similarity');
+   if(fundingParent)attachCombinedChild(db,{parentId:fundingParent,userId:user.id,childId:id,key:'detection-similarity',text:input.text});else reserveDetection(config.billing,user,id,'detection-similarity',{billingToken:input.billingToken});
    if(!includedDetectionHeld(db,user.id,id,'detection-similarity')){
     const day=webSimilarityDay(),window={since:day.start,until:day.end,excludeId:id};
     if(detectionTrialUsage(db,'detection-similarity',{...window,userId:user.id}).n>=webSimilarityLimits.userDailyLimit)fail(429,'今日论文重复率检测次数已用完，请明日再试。');

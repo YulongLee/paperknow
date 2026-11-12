@@ -259,3 +259,10 @@ test('direct outline generation submits once and shows progress without asking f
 test('direct outline generation validates input again after saving the recovery command',async t=>{
  let f;f=fixture(t,{onCommandChange:async key=>{if(key)f.setBrief({...f.getBrief(),title:'保存期间修改的题目'});}});await f.controller.generate();assert.equal(f.calls.filter(row=>row.path==='/theses/outlines').length,0);assert.match(f.container.textContent,/信息.*变化|输入.*变化/);
 });
+
+test('displayed outline quote is reused and a changed owner is blocked',async t=>{
+ const f=fixture(t);const displayed={quote:quote(),owner:'u1',context:JSON.stringify(f.getBrief()),projectRef:'',serviceKey:''};await f.controller.generate({displayedQuote:displayed});assert.equal(f.calls.filter(row=>row.path==='/billing/quote').length,0);assert.equal(f.calls.find(row=>row.path==='/theses/outlines').data.billingToken,displayed.quote.token);
+});
+test('displayed outline quote cannot be used by a different account',async t=>{
+ const f=fixture(t);const displayed={quote:quote(),owner:'u1',context:JSON.stringify(f.getBrief()),projectRef:'',serviceKey:''};f.setUser({id:'u2'});await f.controller.generate({displayedQuote:displayed});assert.equal(f.calls.filter(row=>row.path==='/theses/outlines').length,0);assert.match(f.container.textContent,/账户或费用已变化/);
+});

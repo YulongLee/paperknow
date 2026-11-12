@@ -1,3 +1,7 @@
+import {toolQuotePreview} from '../dist/workspace/tool-quote-preview.mjs';
+import {mountBillingNotice} from '../dist/workspace/billing-notice.mjs';
+import {validServiceQuote} from '../dist/workspace/thesis-online.mjs';
+import {resolveAccountProjectId} from '../dist/workspace/project-directory.mjs';
 import {serviceMessage} from '../dist/workspace/service-message.mjs';
 import {projectPickerOptions} from '../dist/workspace/project-directory.mjs';
 import test from 'node:test';
@@ -41,7 +45,7 @@ function harness(t,{mode='formula',session,drafts=[],ownerId,loadFormula,loadDra
   formula:{mountResearchFormulaStudio:options=>mounted('formula',options.container,options)},
   drawing:{mountResearchDrawing:(container,ctx,options)=>mounted('drawing',container,{...options,ctx})}
  };
- Object.assign(w,{serviceMessage},{projectPickerOptions},researchModel,deliveryModel,state,{structuredClone,mountFormulaOcr,toolBanner,withStableView,esc,icon,download,formatDate,
+ Object.assign(w,{toolQuotePreview,mountBillingNotice,validServiceQuote,resolveAccountProjectId},{serviceMessage},{projectPickerOptions},researchModel,deliveryModel,state,{structuredClone,mountFormulaOcr,toolBanner,withStableView,esc,icon,download,formatDate,
   loadToolJobPanelModule:async()=>({mountToolJobPanel:options=>{let value={};const panel={setState(next){value=next;return options.onStateChange(next);},options};calls.toolPanels.push(panel);return{open(){},getState:()=>value,inputChanged(){},dispose(){}};}}),
   loadFormulaStudioModule:()=>{calls.formulaLoads++;return loadFormula?loadFormula(modules.formula,calls.formulaLoads):Promise.resolve(modules.formula);},
   loadDrawingStudioModule:()=>{calls.drawingLoads++;return loadDrawing?loadDrawing(modules.drawing,calls.drawingLoads):Promise.resolve(modules.drawing);}

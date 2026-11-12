@@ -2,13 +2,13 @@ import {serviceMessage} from './service-message.mjs';
 import {resolveAccountProjectId} from './project-directory.mjs';
 import {withStableView} from './view-stability.mjs';
 import {writingQualityPanel} from './writing-quality-panel.mjs';
-import {validThesisQuote} from './thesis-online.mjs';
+import {validThesisQuote,sameThesisCharge} from './thesis-online.mjs';
 import {presentThesisDocument} from './thesis-document.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const active=item=>['queued','running','cancelling'].includes(item?.status);
 const retryableStatusRead=error=>!Number.isInteger(error?.status)||error.status===0||error.status>=500&&error.status<600||[408,429].includes(error.status);
 const names={method:'研究方法建议',outline:'提纲',draft:'正文',abstract:'摘要',ideas:'题目及研究思路',questionnaire:'问卷草稿'};
-export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapshot,getProjectRef=()=>'',onApply,onStateChange,onItem,autoApply=false,getAdoptionKey,getCompletion=()=>undefined,initialState={},isCurrent=()=>true}={}){
+export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapshot,getProjectRef=()=>'',onApply,onStateChange,onItem,autoApply=false,getAdoptionKey,getCompletion=()=>undefined,onPriceMismatch,initialState={},isCurrent=()=>true}={}){
  if(!container)throw Error('缺少生成区域');
  const operationName=kind==='proposal'&&operation==='method'?'研究方案':names[operation]||'内容';
  const doc=container.ownerDocument,win=doc.defaultView;
@@ -32,7 +32,7 @@ export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapsho
  async function owner({retainStatus=false}={}){authLoading=true;try{const value=await api('/auth/me');if(!value.user?.id)throw Object.assign(Error('请先登录账户。'),{status:401});if(identity&&identity.id!==value.user.id||state.ownerId&&state.ownerId!==value.user.id){item=null;quote=null;identity=null;authState='changed';throw Error('登录账户已变化，请重新打开此功能。原任务仅属于原账户。');}identity=value.user;authState='authenticated';return identity;}catch(e){if(e.status===401){identity=null;item=null;quote=null;authState='guest';}else if(authState!=='changed'&&!(retainStatus&&identity&&active(item)))authState='error';throw e;}finally{authLoading=false;}}
  const automaticallyApply=autoApply||operation==='outline';
  async function take(value){if(!value?.id||!['queued','running','cancelling','completed','failed','cancelled'].includes(value.status))throw Error('任务状态不完整，请重新读取。');item=value;state.itemId=value.id;if(onItem||automaticallyApply){state.status=value.status;state.completedUnits=value.completedUnits||0;state.totalUnits=value.totalUnits||0;}if(Object.hasOwn(value,'projectId'))state.projectId=value.projectId;await persist();await onItem?.(structuredClone(value));if(automaticallyApply&&(!getAdoptionKey||state.adoptionKey!==undefined)&&value.status==='completed'&&state.appliedItemId!==value.id&&same())await applyOutput();}
- function cost(){return quote?.source==='credits'?`${quote.creditCost} 科研积分（¥${(quote.creditCost/10).toFixed(2).replace(/\.00$/,'')}）`:quote?.source==='membership'?'1 次会员权益':quote?.source==='bundle'?'1 次套餐权益':'本次免费';}
+ function cost(){return quote?.source==='credits'?`${quote.creditCost} 科研积分`:quote?.source==='membership'?'1 次会员权益':quote?.source==='bundle'?'1 次套餐权益':'本次免费';}
  const needsSupplements=()=>item?.output?.quality?.supplementCheck?.status==='needs_materials';
  const status={queued:'正在排队',running:operation==='outline'?'正在生成提纲':'正在生成',cancelling:'正在停止',completed:'已生成，等待核对',failed:'生成未完成',cancelled:'已停止'};
  const rawStage=()=>needsSupplements()?'等待补充检查清单中的具体资料':item?.status==='failed'&&item.completedUnits>0?'已保留完成内容，可继续生成剩余单元':item?.status==='cancelled'?'任务已停止，不会自动继续':item?.status==='cancelling'?'正在停止':active(item)?({checking_method:'正在检查方法建议',repairing_method:'正在自动完善方法建议，无需重新提交',method_ready:'方法建议检查通过，正在保存',checking_outline:'正在检查提纲',repairing_outline:'正在自动完善提纲，无需重新提交',outline_ready:'提纲检查通过，正在保存',auto_recovering:'正在自动恢复',verifying_citations:'核验参考文献题录',checking_consistency:'检查正文一致性',reviewing_manuscript:'正在审校全文',checking_supplements:'正在检查补充资料完整性'}[item.stage]||'按确认内容生成'):'检查记录随结果保存';
@@ -64,8 +64,8 @@ export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapsho
   const qualityDetails=container.querySelector('[data-writing-quality-panel]');if(qualityDetails)qualityDetails.open=qualityOpen;
   const $=s=>container.querySelector(s);$('[data-wj-close]').onclick=()=>{opened=false;container.hidden=true;};$('[data-wj-auth-retry]')?.addEventListener('click',()=>void open({recoverOnly:recoveryOnly}));
   $('[data-wj-consent]')?.addEventListener('change',e=>{consent=e.target.checked;$('[data-wj-start]').disabled=busy||!consent||!same();});
-  $('[data-wj-start]')?.addEventListener('click',()=>void command(start));$('[data-wj-new]')?.addEventListener('click',()=>void (direct?generate():command(()=>prepare(true))));$('[data-wj-refresh]')?.addEventListener('click',()=>void command(refresh));$('[data-wj-recover]')?.addEventListener('click',()=>void command(recover));$('[data-wj-cancel]')?.addEventListener('click',()=>void command(async()=>{await owner();await take((await api('/writing/jobs/'+item.id+'/cancel',{})).item);schedule();}));
-  $('[data-wj-resume]')?.addEventListener('click',()=>void command(async()=>{const resume=item.id;await prepare(true,resume,{resumeOnly:true});if(direct)await start();},{submit:direct}));
+  $('[data-wj-start]')?.addEventListener('click',()=>void command(start));$('[data-wj-new]')?.addEventListener('click',()=>{direct=false;void command(async()=>{if(state.submitPending&&state.commandKey&&!item){await recover();if(!item)await prepare(false);}else await prepare(true);});});$('[data-wj-refresh]')?.addEventListener('click',()=>void command(refresh));$('[data-wj-recover]')?.addEventListener('click',()=>void command(recover));$('[data-wj-cancel]')?.addEventListener('click',()=>void command(async()=>{await owner();await take((await api('/writing/jobs/'+item.id+'/cancel',{})).item);schedule();}));
+  $('[data-wj-resume]')?.addEventListener('click',()=>void command(async()=>{const resume=item.id;direct=false;await prepare(true,resume,{resumeOnly:true});},{submit:direct}));
   $('[data-wj-apply]')?.addEventListener('click',()=>void command(applyOutput));
  },{restoreFocus:true});}
  async function applyOutput(){await owner();if(!same())throw Error('生成输入已有变化，请先核对当前内容。');const used=await onApply?.(structuredClone(item.output),item);if(operation==='outline'&&used===false)throw Error('提纲已生成，但尚未保存成功；请重试填入，无需重新生成。');state.appliedItemId=item.id;if(current())await persist();message='已采用并保存，仍可继续完善。';if(operation==='outline'&&current()){opened=false;container.hidden=true;container.replaceChildren();}}
@@ -73,7 +73,7 @@ export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapsho
  async function refresh(){await owner({retainStatus:true});await take((await api('/writing/jobs/'+state.itemId)).item);syncInterrupted=false;readBlocked=false;message='';schedule();}
  function schedule(){stopPoll();if(current()&&active(item))timer=win.setTimeout(()=>void command(refresh,{quiet:true}),2500);}
  async function recover(){await owner();if(state.itemId)return refresh();if(state.commandKey){try{await take((await api('/writing/jobs/by-key/'+encodeURIComponent(state.commandKey))).item);syncInterrupted=false;readBlocked=false;message='';schedule();return;}catch(e){if(e.status!==404)throw e;message=recoveryOnly?'尚未找到原任务。仅查询已有任务，没有重新提交或扣费；可稍后再次读取。':'尚未找到原任务。没有自动重提或扣费，请重新读取费用后确认。';}}}
- async function prepare(newCommand=false,resumeFromJobId=null,{resumeOnly=false}={}){
+ async function prepare(newCommand=false,resumeFromJobId=null,{resumeOnly=false,displayedQuote=null,displayedContext=null,displayedOwner=null}={}){
   if(recoveryOnly)throw Error('当前仅查看原任务。请返回写作页面，核对当前信息后再生成新任务。');
   if(readBlocked)throw Error('请先读取原任务状态，确认后再继续。');
   await owner();if((resumeFromJobId||!newCommand&&state.commandKey&&key)&&!same())throw Error('资料或所属项目已变化，请重新确认当前信息后生成。');
@@ -88,29 +88,29 @@ export function mountWritingJobPanel({container,ctx={},kind,operation,getSnapsho
   const projectRef=resumeFromJobId?state.projectRef||'':String(getProjectRef()||''),projectId=resolveAccountProjectId(projectRef,identity.id)||(resumeFromJobId?state.projectId:null);stopPoll();syncInterrupted=false;snapshot=structuredClone(getSnapshot());completion=structuredClone(getCompletion()||null);key=contextKey(snapshot,projectRef,completion);item=null;quote=null;consent=false;
   if(newCommand){state={ownerId:identity.id};resultWindowOpened=false;}if(resumeFromJobId)state.resumeFromJobId=resumeFromJobId;else delete state.resumeFromJobId;if(completion)state.completion=completion;else delete state.completion;if(getAdoptionKey)state.adoptionKey=getAdoptionKey();state.projectRef=projectRef;state.projectId=projectId;state.commandKey||=win.crypto.randomUUID();state.snapshot=snapshot;state.contextKey=key;await persist();await owner();if(!same())throw Error('保存期间输入已有变化，请重新确认后读取费用。');
   const cap=await api('/writing/capabilities');if(!cap.ready)throw Error(cap.reason||'生成服务暂未开放。');
-  quote=await api('/writing/quote',{kind,operation,snapshot,...projectPayload(),...(completion?{completion}:{})});if(!validThesisQuote(quote))throw Error('费用信息不完整，请重试读取。');
+  if(displayedQuote){if(identity.id!==displayedOwner||displayedContext!==key||!validThesisQuote(displayedQuote))throw Error('写作信息、登录账户或费用已变化，请重新核对本次费用。');quote=await api('/writing/quote',{kind,operation,snapshot,...projectPayload(),...(completion?{completion}:{})});if(!validThesisQuote(quote)||!sameThesisCharge(quote,displayedQuote)){onPriceMismatch?.();throw Error('本次费用或使用的权益已变化，请重新核对费用。');}}else quote=await api('/writing/quote',{kind,operation,snapshot,...projectPayload(),...(completion?{completion}:{})});if(!validThesisQuote(quote))throw Error('费用信息不完整，请重试读取。');
   if(resumeFromJobId&&(typeof origin.inputHash!=='string'||typeof quote.inputHash!=='string'||origin.inputHash!==quote.inputHash)){
    const previousProject=JSON.stringify(projectPayload());delete state.resumeFromJobId;state.projectRef=String(getProjectRef()||'');state.projectId=resolveAccountProjectId(state.projectRef,identity.id);key=contextKey(snapshot,state.projectRef,completion);state.contextKey=key;await persist();
    if(resumeOnly){quote=null;throw Error('当前写作资料或要求已更新，不能合并旧章节；原稿已保留，请按当前资料重新生成。');}
-   if(previousProject!==JSON.stringify(projectPayload())){quote=null;quote=await api('/writing/quote',{kind,operation,snapshot,...projectPayload(),...(completion?{completion}:{})});if(!validThesisQuote(quote))throw Error('费用信息不完整，请重试读取。');}
+   if(previousProject!==JSON.stringify(projectPayload())){quote=null;if(displayedQuote)throw Error('所属项目已变化，请重新核对本次费用。');quote=await api('/writing/quote',{kind,operation,snapshot,...projectPayload(),...(completion?{completion}:{})});if(!validThesisQuote(quote))throw Error('费用信息不完整，请重试读取。');}
    message='写作资料或要求已更新，将按当前内容生成新稿，原任务和旧稿保留。';
   }else message='核对本次费用后，点击生成即可。';
   consent=true;
  }
  async function start(){
   if(recoveryOnly)throw Error('当前仅查看原任务，不会提交新的生成请求。');
-  if(!quote||!consent||!same())throw Error('请先确认当前信息和费用。');const agreed=quote;await persist();await owner();if(!consent||!same()||quote!==agreed||!validThesisQuote(agreed))throw Error('保存期间输入、登录状态或费用已有变化，请重新确认。');
-  const response=await api('/writing/jobs',{kind,operation,snapshot,...projectPayload(),...(completion?{completion}:{}),clientKey:state.commandKey,billingToken:quote.token,consent:true,...(state.resumeFromJobId?{resumeFromJobId:state.resumeFromJobId}:{})});quote=null;message='';await take(response.item);schedule();
+  if(!quote||!consent||!same())throw Error('请先确认当前信息和费用。');const agreed=quote;await persist();await owner();if(!consent||!same()||quote!==agreed||!validThesisQuote(agreed))throw Error('保存期间输入、登录状态或费用已有变化，请重新确认。');state.submitPending=true;await persist();await owner();if(!same()||quote!==agreed||!validThesisQuote(agreed))throw Error('保存期间输入、登录状态或费用已有变化，请重新确认。');
+  const response=await api('/writing/jobs',{kind,operation,snapshot,...projectPayload(),...(completion?{completion}:{}),clientKey:state.commandKey,billingToken:quote.token,consent:true,...(state.resumeFromJobId?{resumeFromJobId:state.resumeFromJobId}:{})});quote=null;state.submitPending=false;message='';await take(response.item);schedule();
  }
  async function open({recoverOnly=false}={}){if(busy||!current())return;recoveryOnly=recoverOnly;if(recoveryOnly){quote=null;consent=false;}authLoading=true;opened=true;container.hidden=false;const token=++revision;await command(async()=>{await owner();if(token!==revision)return;if(recoveryOnly&&!state.itemId&&!state.commandKey)throw Error('未找到已提交任务标识，请回到原草稿核对。');if(state.itemId||state.commandKey){await recover();if(item||recoveryOnly)return;}await prepare(false);});}
  // Only an explicit generation action may quote and submit in one step.
  // Opening/restoring a panel remains read-only with respect to task creation.
- async function generate({reuseExisting=false}={}){
+ async function generate({reuseExisting=false,displayedQuote=null,displayedContext=null,displayedOwner=null}={}){
   if(busy||!current())return;direct=true;recoveryOnly=false;opened=true;authLoading=true;
   return command(async()=>{
    await owner();if(state.itemId||state.commandKey){await recover();if(!current()||item&&sameFeature(item)&&(reuseExisting&&same()||active(item)&&(!key||!snapshot||same())))return;}
    const resume=item?.status==='failed'&&resumable(item)&&same()&&!getCompletion()?item.id:undefined;
-   await prepare(!!item,resume);if(!current())return;await start();
+   await prepare(!!item,resume,{displayedQuote,displayedContext,displayedOwner});if(!current())return;await start();
   },{submit:true});
  }
  function dispose(){if(!live)return;live=false;stopPoll();for(const controller of controllers)controller.abort();controllers.clear();}

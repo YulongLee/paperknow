@@ -152,3 +152,4 @@
 .rd-search-result[hidden]{display:none}
 @media(min-width:1750px){.rd-studio-grid{grid-template-columns:240px minmax(470px,1fr) minmax(380px,.85fr)}}
 @media(max-width:600px){.rd-type-list [data-rd-family]{border-left:0}.rd-type-list [data-rd-family]>div{padding:0 4px 8px}.rd-type-list [data-rd-family]>div>button{font-size:10px;padding:6px 8px}}
+.rd-billing-notice{margin:10px 0 0;color:#526988;font-size:13px;line-height:1.6}
