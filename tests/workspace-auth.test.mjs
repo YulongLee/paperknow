@@ -47,7 +47,7 @@ import {validateRevisionProtection} from '../dist/workspace/revision-protection.
 import {normalizeRevisionComparison,compareRevisionDocument} from '../dist/workspace/revision-comparison-model.mjs';
 import {revisionComparisonMarkup,openRevisionSources} from '../dist/workspace/revision-source-ui.mjs';
 import {loadRevisionComparisonHandoff,hasRevisionComparisonHandoff} from '../dist/workspace/revision-comparison-handoff.mjs';
-import {workspaceLinks} from '../dist/workspace/interface.mjs';
+import {workspaceLinks,userManualUrl} from '../dist/workspace/interface.mjs';
 import * as revisionModel from '../dist/workspace/revision-model.mjs';
 import * as taskModel from '../dist/workspace/task-model.mjs';
 import * as projectModel from '../dist/workspace/project-model.mjs';
@@ -103,7 +103,7 @@ async function fixture(fetcher,{hash='#account',allReports=async()=>[],setup}={}
  storage.setItem(keys.drafts,JSON.stringify([{id:'draft-one',title:'未上传的研究草稿'}]));
  const reads=[];const read=(key,fallback)=>{reads.push(key);return JSON.parse(storage.getItem(key)||'null')??fallback;};
  Object.assign(dom.window,{setEditingIdentity:()=>false,documentStateGroup,documentStateLabel,serviceMessage,completionReviewPanel,mountBillingNotice,billingQuoteLabel},thesisFinalFlow,thesisReader,thesisWritingModes,thesisDraftImport,docxMarkers,{readFileBytes,reuseStoredOriginal},thesisCompletion,thesisSimulation,{renderOnlinePersonal:async()=>false,createLiteratureAccountStore:()=>({setUser(){}}),thesisCoverFields,thesisFrontMatterKind,thesisManualBackMatter,helpKnowledgeMarkup,bindHelpKnowledge,supportContactsMarkup,bindSupportContacts,projectPickerOptions,hasDraftScope:()=>false,installUploadPresentation,installStoredFilePickers:()=>({dispose(){}}),installProjectPickers:()=>()=>{},selectableProjects:()=>[],setProjectDirectorySession:()=>{},updateAccountProjects:()=>false,resolveAccountProjectId,captureDraftScope,workspaceJobLabel,workspaceResultTitle,workspaceJobError,workspaceJobStatusLabel,workspaceJobActive,workspaceJobHref,accountOverviewItems,accountOverviewTasks,mountArtifactLibrary:()=>({refresh(){},dispose(){}}),normalizeThesisFigures,thesisFigureTitle,renderThesisFigureSvg,thesisEditorPresentation,restoreThesisEditorText,thesisEditorWordCount,isOutlineReferenceChapter,presentThesisDocument,buildThesisBibliography,withBibliographicMetadata,assessThesisEvidence,writingQualityPanel,thesisTemplatePanel,uploadThesisTemplate,thesisExportMetadata,downloadDefaultThesisTemplate,createDocumentExportProgress,renderThesisDocument,showThesisExportCheck,publicBackupCopy,publicDraftCopy,publicTaskCopy,withStableView,resetStableView,keepsWorkspacePosition,installStableDisclosures,fetch:fetcher,AbortController,structuredClone,setTimeout:setTimer,clearTimeout:timer=>{timers.delete(timer);clearTimeout(timer);},matchMedia:()=>({matches:false}),scrollTo:()=>{},requestAnimationFrame:()=>{},keys,esc,icon,empty,toolBanner,toolConfigs:{writing:['AI 写作','整理研究内容']},
-  ...taskModel,...projectModel,...assetModel,...overviewModel,homeLayout,fitHomeRows,continuationAssets,readHomeService:async()=>({cap:{},user:null}),preferences:()=>({degree:'本科',...read(keys.preferences,{})}),profile:()=>({name:'研究者',...read(keys.profile,{})}),read,list:key=>read(key,[]),write:(key,value)=>storage.setItem(key,JSON.stringify(value)),projects:()=>read(keys.projects,[]),repository:{all:allReports},formatDate:()=>'',mountNavigation:()=>({close(){}}),
+  ...taskModel,...projectModel,...assetModel,...overviewModel,userManualUrl,updateUserManualLinks:async()=>{},homeLayout,fitHomeRows,continuationAssets,readHomeService:async()=>({cap:{},user:null}),preferences:()=>({degree:'本科',...read(keys.preferences,{})}),profile:()=>({name:'研究者',...read(keys.profile,{})}),read,list:key=>read(key,[]),write:(key,value)=>storage.setItem(key,JSON.stringify(value)),projects:()=>read(keys.projects,[]),repository:{all:allReports},formatDate:()=>'',mountNavigation:()=>({close(){}}),
   disposeLiteraturePages:()=>{},readingFeatures,mountLiteratureLanding:()=>{},mountLiteratureFeaturePage:()=>{},disposeWritingFlows:()=>{},disposeDataAnalysis:()=>{},disposeQuestionnaire:()=>{},questionnaireRouteGuard:async()=>true,questionnaireSessionChanged:()=>{},disposeFormat:()=>{},disposeResearch:()=>{},disposePresentation:()=>{},disposeRevision:()=>{},disposeAccountDraft:()=>{},accountDraftEditing:()=>false,accountDraftHasWork:()=>false,accountDraftConfirmLeave:async()=>true,accountDraftSessionChanged:()=>{},accountDraftRouteGuard:()=>true,
   disposeServicePricing:()=>{},mountServicePricing:()=>{},disposePayment:()=>{paymentCalls.push({type:'dispose'});},renderPaymentOrders:async()=>{paymentCalls.push({type:'orders'});},renderPaymentCheckout:async options=>{paymentCalls.push({type:'checkout',productId:options.productId,orderId:options.orderId});},clearEditor:()=>{},clearHelpWork:()=>{},clearSettingsWork:()=>{},clearMoreWork:()=>{},trackDialogForm:()=>()=>{},retainWritingCatalog:()=>{},isCurrentRouteChange:()=>false,
   editorIsActive:()=>false,editorRouteGuard:()=>true,helpHasWork:()=>false,helpRouteGuard:()=>true,settingsHasWork:()=>false,settingsRouteGuard:()=>true,moreHasWork:()=>false,moreRouteGuard:()=>true,formatHasWork:()=>false,formatRouteGuard:()=>true,researchHasWork:()=>false,researchRouteGuard:()=>true,presentationHasWork:()=>false,presentationRouteGuard:()=>true,revisionHasWork:()=>false,revisionRouteGuard:()=>true,detectionRouteGuard:()=>true,
@@ -294,6 +294,19 @@ test('leaving a payment or order route disposes the previous payment lifecycle b
   f.dom.window.history.replaceState(null,'','/workspace.html#account');f.api.render();
   assert.deepEqual(f.paymentCalls.slice(-2),[{type:'orders'},{type:'dispose'}]);
   assert.equal(f.document.querySelector('.breadcrumb strong').textContent,'账户中心');
+ }finally{f.close();}
+});
+
+test('user manual opens the same external destination from the workspace and report navigation',async()=>{
+ const f=await fixture(async()=>response(401));
+ try{
+  const link=[...f.document.querySelectorAll('.sidebar nav a')].find(a=>a.textContent.trim()==='用户手册');
+  assert.ok(link);assert.equal(link.href,userManualUrl);assert.equal(link.target,'_blank');
+  assert.ok(link.rel.split(/\s+/).includes('noopener'));assert.ok(link.rel.split(/\s+/).includes('noreferrer'));
+  assert.match(link.getAttribute('aria-label'),/新标签页/);
+  const services=workspaceLinks.find(([group])=>group==='个人与服务')[1];
+  assert.deepEqual(services.find(([,label])=>label==='用户手册'),[userManualUrl,'用户手册','book',true]);
+  assert.ok(services.findIndex(([,label])=>label==='用户手册')<services.findIndex(([,label])=>label==='帮助与反馈'));
  }finally{f.close();}
 });
 

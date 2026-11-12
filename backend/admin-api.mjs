@@ -1,3 +1,4 @@
+import {readManualUrl,saveManualUrl} from './user-manual-settings.mjs';
 import {createCreditCodeService} from './credit-code-service.mjs';
 import {createAdminUserManagement} from './admin-user-management.mjs';
 import {createAdminRevenue} from './admin-revenue.mjs';
@@ -105,7 +106,7 @@ export function createAdminAPI(db,worker,config,auth){
 
   function settings(){
     const available=auth.options();
-    return {ai:publicModelSettings(modelConfig()),agent:agentSettings.public(),researchImages:researchImageSettings.public(),auth:{emailCode:available.emailCode,phoneCode:available.phoneCode},storage:{provider:config.storage?.provider||'local_server_sqlite'},payment:config.payments?.options().enabled||false};
+    return {userManualUrl:readManualUrl(db),ai:publicModelSettings(modelConfig()),agent:agentSettings.public(),researchImages:researchImageSettings.public(),auth:{emailCode:available.emailCode,phoneCode:available.phoneCode},storage:{provider:config.storage?.provider||'local_server_sqlite'},payment:config.payments?.options().enabled||false};
   }
 
   function overview(query){
@@ -178,6 +179,7 @@ export function createAdminAPI(db,worker,config,auth){
     if(path==='/api/admin/overview'&&method==='GET')return overview(query);
     const listMatch=path.match(/^\/api\/admin\/(users|jobs|results|feedback|orders|usage|audit)$/);
     if(listMatch&&method==='GET')return list(listMatch[1],query);
+    if(path==='/api/admin/user-manual'&&method==='POST'){parameters(query,[]);const input=await readBody();if(!input||typeof input!=='object'||Object.keys(input).some(k=>k!=='url'))fail(400,'手册地址无效');return transaction(()=>{saveManualUrl(db,input.url,actor.id);audit(actor,'user_manual.update','setting','user_manual',{url:input.url});return {url:input.url};});}
     if(path==='/api/admin/settings'&&method==='GET'){parameters(query,[]);return settings();}
     if(path==='/api/admin/model'&&['GET','POST'].includes(method)){
       parameters(query,[]);

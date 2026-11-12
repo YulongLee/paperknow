@@ -1,3 +1,4 @@
+import {readManualUrl} from './user-manual-settings.mjs';
 import {workspaceDocumentStates} from './workspace-document-state.mjs';
 import {createCreditCodeService} from './credit-code-service.mjs';
 import {createCombinedDetectionService} from './combined-detection-service.mjs';
@@ -105,6 +106,7 @@ if(notification&&method==='POST'){
  return;
 }
 if(method==='POST'){const origin=req.headers.origin;if(!origin||origin!==`${config.secure?'https':'http'}://${req.headers.host}`)fail(403,'请求来源不匹配');}
+if(path==='/api/public/user-manual'&&method==='GET'){send(200,{url:readManualUrl(db)});return;}
 if(path==='/api/desktop/releases'&&method==='GET'){send(200,desktopReleases.catalog());return;}
 const desktopDownload=path.match(/^\/api\/desktop\/download\/([^/]+)\/([^/]+)$/);
 if(desktopDownload&&method==='GET'){rate(req,120);const location=await desktopReleases.download(desktopDownload[1],desktopDownload[2]);res.writeHead(302,{'Location':location,'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}).end();return;}

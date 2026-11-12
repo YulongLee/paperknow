@@ -301,3 +301,15 @@ test('administrator API does not offer role changes and an ordinary account cann
   assert.equal(f.db.prepare('SELECT role FROM users WHERE id=?').get(user.value.user.id).role,'user');
   assert.equal(sessionUser(f.db,{headers:{cookie:user.cookie}},owner).role,'user');
 });
+
+test('public handbook link is configurable only by an active administrator and audited',async t=>{
+  const f=await fixture(t),admin=await f.legacy('manual-admin@example.com',{role:'admin'}),user=await f.legacy('manual-user@example.com');
+  const initial=await f.request('/api/public/user-manual');assert.equal(initial.status,200);assert.match(initial.value.url,/^https:\/\/pwksrh0z1i6\.feishu\.cn\//);
+  const changed='https://docs.example.com/manual';
+  assert.equal((await f.request('/api/admin/user-manual',{data:{url:changed}})).status,401);
+  assert.equal((await f.request('/api/admin/user-manual',{cookie:user.cookie,data:{url:changed}})).status,403);
+  for(const url of ['javascript:alert(1)','http://example.com','https://user:pw@example.com','https://127.0.0.1','https://localhost.local'])assert.equal((await f.request('/api/admin/user-manual',{cookie:admin.cookie,data:{url}})).status,400,url);
+  assert.equal((await f.request('/api/admin/user-manual',{cookie:admin.cookie,data:{url:changed}})).status,200);
+  assert.equal((await f.request('/api/public/user-manual')).value.url,changed);
+  assert.equal(f.db.prepare("SELECT count(*) n FROM admin_audit WHERE action='user_manual.update'").get().n,1);
+});

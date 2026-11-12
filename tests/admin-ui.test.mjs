@@ -217,3 +217,8 @@ test('a request timeout leaves a retry action instead of an endless loading stat
   assert.match(ui.$('#admin-content').textContent, /请求超时/);
   assert.ok(ui.$('#retry-view')); assert.equal(ui.$('.loading-state'), null);
 });
+
+test('administrator can update the user manual link from settings',async t=>{
+ let saved;const ui=await page(t,{hash:'#settings',handle:(url,payload)=>{if(url==='/api/admin/settings')return {body:{...settings,userManualUrl:'https://docs.example.com/old'}};if(url==='/api/admin/user-manual'){saved=payload;return {body:{url:payload.url}};}}});
+ assert.equal(ui.$('#manual-url').value,'https://docs.example.com/old');ui.fill('#manual-url','https://docs.example.com/new');ui.submit('#manual-settings-form');await settle(()=>!!saved);assert.deepEqual(saved,{url:'https://docs.example.com/new'});
+});
