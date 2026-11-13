@@ -53,6 +53,12 @@ export function repairableBackgroundGap(item,chapter,snapshot={}){
 }
 // Check each clause independently: a simulation disclaimer in another clause
 // cannot substantiate an actual observation. Explicit negation is not a claim.
+// Flag wording that may imply a planned activity already happened. This is a
+// request for clarification, not a conclusion that an event did or did not occur.
+function ambiguousPlannedActivity(text){
+ for(const match of String(text||'').matchAll(/[^。！？；;，,\n]+/gu)){const clause=match[0].trim(),rule=/(?:经|经过)(?:模拟)?(?:预测试|预实验|预调查).{0,16}(?:检查|验证|调整|确定|形成)|(?:经|经过)知情同意.{0,12}完成(?:单次)?(?:任务|观察|测试|实验|调查)/u.exec(clause);if(!rule)continue;const before=clause.slice(Math.max(0,rule.index-12),rule.index);if(/(?:拟|计划|将|尚未|未经|未|不曾|没有).{0,5}$/u.test(before))continue;return clause;}
+ return '';
+}
 function unsupportedObservedClaim(text){
  for(const match of String(text||'').matchAll(/[^。！？；;\n]+/gu)){const clause=match[0].trim();if(!clause)continue;
   const explicit=/(?:实际|真实)(?:测试|实验|调查|测量|采集|收集|开展|完成|参与|受试者|用户|参与者)|实测|真实(?:结果|数据|记录)/u.exec(clause);
@@ -164,6 +170,8 @@ export function parseSupplementCheck(result,task){
    }
   }
   if(task.context.phase==='final'){for(const claim of demonstrationClaims(section.text)){if(row.status==='sufficient'&&evidence.some(proof=>supportsDemonstrationClaim(proof,claim)))continue;return{...(checkedFigureIds.length?{checkedFigureIds}:{}),id:row.id,title:section.title,status:'missing',requirement:'演示记录的具体依据',reason:'正文包含具体演示过程或观察，所引用材料尚未提供对应记录。',manuscriptQuote:claim.clause,evidence,missing:['补充对应演示记录，或将未获依据的细节调整为计划、假设或研究局限。']};}}
+  const ambiguousActivity=task.context.phase==='final'?ambiguousPlannedActivity(section.text):'';
+  if(ambiguousActivity&&(row.status==='not_required'||row.status==='sufficient'&&evidence.length&&evidence.every(proof=>planOnlyProof(proof,sources.get(proof.sourceId)))))return{...(checkedFigureIds.length?{checkedFigureIds}:{}),id:row.id,title:section.title,status:'missing',requirement:'研究实施状态',reason:'当前资料为计划或模拟，正文对活动是否已执行的表述不清。',manuscriptQuote:ambiguousActivity,evidence,missing:['请依据真实记录核对实施状态；尚未开展的活动应明确表述为计划，不得写成已经完成。']};
   const generalization=task.context.phase==='final'?assertedBackgroundGeneralization(section.text):'';
   // This is a narrow guard for an ungrounded item or plan-only evidence,
   // not a semantic entailment test: valid evidence may be paraphrased or in

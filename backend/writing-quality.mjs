@@ -139,6 +139,11 @@ export function auditWritingConsistency({chapters=[],references=[],materials=[],
  const add=(section,category,quote,offset,explanation,extra={})=>{detected++;if(findings.length<integer(maxFindings,100,1,300))findings.push({id:'quality-'+detected,sectionId:section.id,sectionTitle:section.title,category,severity:'warning',quote:quote.slice(0,500),offset,explanation,...extra});};
  for(const table of numberedTables){const earlier=seenTableNumbers.get(table.number);if(earlier&&!table.continued)add(table.section,'table_consistency',table.quote,table.offset,'不同表格使用了相同的表号，正文引用可能无法区分对应表格。',{reasonCode:'duplicate_table_number',relatedSectionId:earlier.section.id,relatedOffset:earlier.offset,suggestion:'请为每张表使用唯一表号，并逐处核对正文引用；无法确定引用对象时不要自动改号。'});else seenTableNumbers.set(table.number,table);}
  for(const section of sections){
+  // A named standard is a concrete source claim, not a stylistic suggestion.
+  // Matching the identifier only avoids an unsupported-reference warning; it
+  // does not establish the cited standard's contents or applicability.
+  const verifiedStandards=new Set([...references,...materials].filter(row=>row?.confirmed!==false).flatMap(row=>[...String((row?.title||'')+' '+(row?.text||'')).matchAll(/\bISO\s*\d{3,5}(?:\s*-\s*\d{1,4})?\b/giu)].map(m=>m[0].replace(/\s+/g,'').toUpperCase())));
+  for(const match of maskFencedCode(section.text).matchAll(/\bISO\s*\d{3,5}(?:\s*-\s*\d{1,4})?\b/giu)){if(!verifiedStandards.has(match[0].replace(/\s+/g,'').toUpperCase()))add(section,'source_support',match[0],match.index,'文稿引用了具体标准编号，但已确认资料中未找到对应标准，请核对来源及适用范围。',{reasonCode:'unsupported_standard',suggestion:'补充对应标准来源并核对相关条款；不能确认时删除无依据的引用。'});}
   // Guard a concrete, reproducible ambiguity: n is discrete in this count,
   // so a derivative must not silently stand in for the one-step difference.
   // This deliberately does not pretend to validate arbitrary mathematics.

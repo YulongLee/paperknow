@@ -8,6 +8,14 @@ const json=(value,options={})=>new Response(JSON.stringify(value),{headers:{'con
 const atom=(entries=[])=>'<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"><opensearch:totalResults>'+entries.length+'</opensearch:totalResults>'+entries.map(({id='2609.00065v1',title='Evidence and research methods'})=>'<entry><id>https://arxiv.org/abs/'+id+'</id><title>'+title+'</title><published>2026-09-01T00:00:00Z</published><updated>2026-09-02T00:00:00Z</updated><author><name>Jane Smith</name></author><summary>Public abstract.</summary></entry>').join('')+'</feed>';
 const xml=value=>new Response(value,{headers:{'content-type':'application/atom+xml'}});
 
+test('a specific ISO standard without an authorized source is a substantive warning',()=>{
+ const chapters=[{id:'c',title:'研究方法',text:'本研究参照 ISO 9241-11 设计评价框架。'}];
+ const unsupported=auditWritingConsistency({chapters,materials:[{id:'m',confirmed:true,text:'仅有普通研究计划。'}]});
+ assert.ok(unsupported.findings.some(x=>x.reasonCode==='unsupported_standard'&&x.severity==='warning'));
+ const confirmed=auditWritingConsistency({chapters,materials:[{id:'m',confirmed:true,text:'标准编号 ISO 9241-11 的参考资料。'}]});assert.ok(!confirmed.findings.some(x=>x.reasonCode==='unsupported_standard'));
+ const unconfirmed=auditWritingConsistency({chapters,materials:[{id:'m',confirmed:false,text:'ISO 9241-11'}]});assert.ok(unconfirmed.findings.some(x=>x.reasonCode==='unsupported_standard'));
+});
+
 test('citation verification uses only a fixed official GET identifier route and never transmits manuscript fields',async()=>{
  const calls=[],input=reference({text:'PRIVATE-MANUSCRIPT-BODY',url:'http://127.0.0.1/private',privateField:'PRIVATE-USER-SECRET'}),before=structuredClone(input);
  const result=await createCitationVerifier({fetchImpl:async(url,options)=>{calls.push({url:new URL(url),options});return json(record());}}).verify([input]);

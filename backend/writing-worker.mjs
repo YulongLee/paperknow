@@ -1,3 +1,4 @@
+import {buildWritingGapEvidenceTask,parseWritingGapEvidence,resolvedVirtualPlatformRequirement} from './writing-gap-evidence.mjs';
 import {assembleProposalText} from './proposal-writing.mjs';
 import {createWritingContinuity} from './writing-continuity.mjs';
 import {classifyWritingRetry} from './writing-execution-policy.mjs';
@@ -72,7 +73,7 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
   if(!continuous&&(inputTokens+outputTokens>budget||costConsumedBudget>runtime.maxCostUsd))throw thesisError(429,'审校达到执行预算','budget_exceeded');if(continuous){const trace=task.context.operation==='supplement-check'?(output.trace||[]).filter(item=>item.tool==='read_material'&&item.status==='completed'&&typeof item.materialId==='string'&&item.materialId.length<=160&&Number.isSafeInteger(item.offset)&&item.offset>=0&&Number.isSafeInteger(item.limit)&&item.limit>0&&item.limit<=8000).slice(-50).map(({tool,status,materialId,offset,limit})=>({tool,status,materialId,offset,limit})):[];const saved=JSON.stringify({text:output.text,trace,usage:output.usage});transaction(()=>{if(!running())throw thesisError(499,'任务已停止','cancelled');writingStorageCheck(db,row.user_id,Buffer.byteLength(saved),config);db.prepare('INSERT INTO writing_review_checkpoints VALUES(?,?,?,?,?,?)').run(row.id,row.attempt,unitId,reviewHash,saved,clock());});}return output;
  };
  const reportStage=value=>{if(!running()||controller.signal.aborted)return;db.prepare('UPDATE writing_runs SET stage=?,updated_at=? WHERE id=?').run(value,clock(),row.id);db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(value,clock(),row.id);};
- const automaticBackgroundRepairs=new Map();
+ const automaticBackgroundRepairs=new Map(),automaticEvidenceRepairs=new Map(),unresolvedPreflight=[];
  if(checkSupplements&&plan.some(unit=>unit.completion===true)&&!(continuous&&row.output&&JSON.parse(row.output).quality?.supplementCheck?.status==='materials_ready')){
   const chapters=plan.map(unit=>{const saved=completed.find(value=>value.id===unit.id),original=unit.revisionOriginal||saved?.text||'本节尚未生成，按已确认的章节目的核对所需资料。',figures=unit.revisionOriginal?unit.revisionFigures:saved?.figures;return{id:unit.id,title:unit.title,text:original,...(figures?.length?{figures}:{})};});
   const supplementCheck=await runSupplementCheck({snapshot,chapters,kind:row.kind,phase:'materials',recover:continuous,runtime,dispatch:reviewDispatch,signal:controller.signal,isCurrent:()=>Boolean(running()),onStage:reportStage});
@@ -81,9 +82,17 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
   if(supplementCheck.status!=='materials_ready'){
    const gaps=supplementCheck.items.filter(item=>item.status==='missing');
    const chapterForGap=item=>{const match=/^check-(\d+)-(\d+)$/u.exec(item.id||'');return match?chapters[Number(match[1])]:undefined;};
-   const repairable=supplementCheck.status==='needs_materials'&&supplementCheck.coverage?.complete===true&&gaps.length>0&&gaps.every(item=>repairableBackgroundGap(item,chapterForGap(item),snapshot));
+   const background=gaps.filter(item=>repairableBackgroundGap(item,chapterForGap(item),snapshot)),other=gaps.filter(item=>!background.includes(item));
+   let evidenceResult=null;
+   const evidenceTask=supplementCheck.status==='needs_materials'&&supplementCheck.coverage?.complete===true&&other.length&&other.every(item=>chapterForGap(item)?.text?.includes(item.manuscriptQuote))?buildWritingGapEvidenceTask(other,snapshot):null;
+   if(evidenceTask){
+    const validateReviewOutput=result=>{try{parseWritingGapEvidence(result,evidenceTask);return{valid:true};}catch{return{valid:false,feedback:{code:'gap_evidence',rule:'逐项覆盖原有缺项，支持结论必须引用本次列出的授权原文；不确定或无法证明时标记 missing。'}};}};
+    try{const out=await reviewDispatch({task:evidenceTask,settings:{...runtime,maxTurns:Math.min(runtime.maxTurns,5),timeoutMs:Math.min(runtime.timeoutMs,90000)},validateReviewOutput,unitId:'supplement-evidence-recheck'});evidenceResult=parseWritingGapEvidence(out,evidenceTask);}catch(error){if(controller.signal.aborted||!running())throw error;throw thesisError(503,'补充资料复核暂未完成，不能据此认定资料缺失；原稿和已上传材料已保留，请稍后重试。','supplement_check_unavailable');}
+   }
+   const repairable=supplementCheck.status==='needs_materials'&&supplementCheck.coverage?.complete===true&&gaps.length>0&&(!other.length||evidenceResult&&evidenceResult.checks.some(check=>check.supported.length));
    if(!repairable)throw thesisError(422,supplementCheck.status==='needs_materials'?'补充资料仍有缺项，请查看“补充内容检查”后继续补充；原稿与已上传资料已保留。':'补充资料检查尚未完成，请稍后重试；原稿与材料已保留。','supplement_incomplete');
-   for(const gap of gaps){const id=chapterForGap(gap).id;automaticBackgroundRepairs.set(id,[...(automaticBackgroundRepairs.get(id)||[]),gap.manuscriptQuote]);}
+   for(const gap of background){const id=chapterForGap(gap).id;automaticBackgroundRepairs.set(id,[...(automaticBackgroundRepairs.get(id)||[]),gap.manuscriptQuote]);}
+   for(const [index,gap] of other.entries()){const id=chapterForGap(gap)?.id,review=evidenceResult?.checks.find(check=>check.id==='gap-'+index);if(!id||!review)throw thesisError(422,'资料检查位置无效，原稿已保留。','supplement_incomplete');if(review.supported.length)automaticEvidenceRepairs.set(id,[...(automaticEvidenceRepairs.get(id)||[]),{quote:gap.manuscriptQuote,missing:review.supported,unresolved:review.missing}]);if(review.missing.length)unresolvedPreflight.push({...gap,missing:review.missing});}
   }
  }
  for(const unit of plan){
@@ -91,6 +100,7 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
   if(controller.signal.aborted||!running())return;if(completed.some(value=>value.id===unit.id))break;
   const began=Date.now();let task=writingCompletionTask(writingTask(row.kind,row.operation,snapshot,unit,completed),unit);
   if(automaticBackgroundRepairs.has(unit.id)){task={...task,context:{...task.context,unsupportedBackgroundQuote:automaticBackgroundRepairs.get(unit.id)[0],unsupportedBackgroundQuotes:automaticBackgroundRepairs.get(unit.id)},instructions:task.instructions+'context.unsupportedBackgroundQuotes 是缺少来源的背景概括，删除或改为清晰的研究问题，不得补造证据、数据或将假设写成既有事实；之后仍须通过完整审校。'};}
+  if(automaticEvidenceRepairs.has(unit.id)){task={...task,context:{...task.context,providedEvidenceGaps:automaticEvidenceRepairs.get(unit.id)},instructions:task.instructions+'context.providedEvidenceGaps 指出正文待补内容；独立资料检查认为本次授权片段可能已覆盖这些要求。这只允许尝试改写，不代表终稿通过或旧稿事实已获证实。必须先实际读取对应授权资料，仅写材料直接支持的事实，明确区分计划、虚构与实测；未解决事项必须保留为待核对或未定，不得编造或假称已解决；不得删除应保留的事实、数据与引用。改写后仍须经过完整终稿审查。'};}
   if(retryLengthFeedback){task={...task,context:{...task.context,retryLengthFeedback},instructions:task.instructions+'上一轮候选未达字数要求，未保存。context.retryLengthFeedback 是服务器对上一轮候选的实际计数；请重新读取所需材料，一次按目标组织完整正文并提交原有校验。不要把上一轮候选当作已通过的正文或证据。'};}
   let output=await dispatch(task,maxTurns,runtime.timeoutMs,unit,[],minimumTokens,retries===0),parsed;if(!output)return;lastOutput=output;
   try{parsed=parseWritingOutput(output,row.kind,row.operation,snapshot,unit);}catch(error){
@@ -118,6 +128,10 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
   const sections=new Map(plan.filter(unit=>unit.chapterId&&unit.sectionId).map(unit=>[unit.id,unit.chapterId+'::'+unit.sectionId]));
   const chapters=completed.map(unit=>({id:unit.id,title:unit.title||snapshot.title,text:unit.text,sourceIds:unit.sourceIds,...(row.kind==='proposal'&&sections.has(unit.id)?{sectionKey:sections.get(unit.id)}:{}),...(unit.figures?.length?{figures:unit.figures}:{})}));
   quality=await qualityRunner({snapshot,kind:row.kind,checkSupplements,recoverSupplements:continuous,chapters,runtime,runId:row.id,signal:controller.signal,isCurrent:()=>Boolean(running()),onStage:value=>{if(!running()||controller.signal.aborted)return;const name=/^[a-z][a-z0-9_]{0,60}$/i.test(value)?value:'reviewing_manuscript';db.prepare('UPDATE writing_runs SET stage=?,updated_at=? WHERE id=?').run(name,clock(),row.id);db.prepare("UPDATE jobs SET stage=?,updated_at=? WHERE id=? AND status='running'").run(name,clock(),row.id);},dispatch:reviewDispatch});
+  // A successful partial rewrite cannot erase preflight facts that were not
+  // supported. Keep the final gate closed until the user supplies or resolves
+  // those issues and a fresh task rechecks the updated materials.
+  if(unresolvedPreflight.length&&quality?.supplementCheck?.phase==='final'){const pending=unresolvedPreflight.flatMap((gap,index)=>{const n=/^check-(\d+)-\d+$/u.exec(gap.id||'')?.[1],checks=n===undefined?[]:quality.supplementCheck.items.filter(item=>item.id?.startsWith('check-'+n+'-'));const final=checks.length&&checks.every(item=>item.status==='sufficient')?checks[0]:null,chapter=n===undefined?null:chapters[Number(n)];const missing=gap.missing.filter(item=>!resolvedVirtualPlatformRequirement(gap,item,final,chapter,snapshot));return missing.length?[{...gap,missing,id:'unresolved-preflight-'+index,status:'missing',reason:'部分内容已按资料完善，以下事项仍需核对或补充；未确定前不能视为真实研究事实。'}]:[];});if(pending.length){quality.supplementCheck.status='needs_materials';quality.supplementCheck.items.push(...pending);}}
  }
  transaction(()=>{if(controller.signal.aborted||!running())return;const baseOutput=row.operation==='questionnaire'?aggregateWritingQuestionnaire(snapshot,plan,completed):row.operation==='draft'?{text:row.kind==='proposal'?assembleProposalText(snapshot,plan,completed):completed.map(unit=>unit.structured?unit.text:unit.title+'\n\n'+unit.text).join('\n\n'),sourceIds:[...new Set(completed.flatMap(unit=>unit.sourceIds||[]))],sections:completed,...(completed.some(unit=>unit.figures?.length)?{figures:completed.flatMap(unit=>unit.figures||[])}:{}),requiresReview:true}:completed[0];const used=new Set(baseOutput.sourceIds||[]),sourceSnapshot={title:snapshot.title,materials:snapshot.materials.filter(source=>used.has(source.id)).map(({id,name})=>({id,name,confirmed:true})),references:snapshot.references.filter(source=>used.has(source.id)).map(source=>{const {sourceLabel,...metadata}=thesisReferenceMetadata(source);return {...metadata,confirmed:true};})};
   const saved=fitOptionalWritingQuality(quality,{build:candidate=>{const output={...baseOutput,...(candidate?{quality:candidate}:{})};return {json:JSON.stringify(output),body:JSON.stringify({...output,sourceSnapshot,writingJobId:row.id,kind:row.kind,operation:row.operation})};},check:value=>writingStorageCheck(db,row.user_id,Buffer.byteLength(value.body)+Buffer.byteLength(value.json),config)});quality=saved.quality;const {body,json}=saved.value;

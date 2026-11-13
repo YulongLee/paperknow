@@ -30,3 +30,12 @@ test('completion cannot infer an unspecified local institution while correcting 
  const allowed=body('本研究以高校数字阅读服务为对象，'+'拟研究如何改善阅读体验。'.repeat(18));assert.notEqual(validateWritingCandidate(allowed,'proposal','draft',s,unit).feedback?.code,'unsupported_institution');
  const userConfirmed={...unit,revisionOriginal:'本校数字阅读服务是研究对象。'};assert.notEqual(validateWritingCandidate(candidate,'proposal','draft',s,userConfirmed).feedback?.code,'unsupported_institution');
 });
+test('completion cannot add an ISO standard absent from the manuscript and authorized materials',async()=>{
+ const {validateWritingCandidate}=await import('../backend/writing-model.mjs');
+ const s=normalizeWritingSnapshot({title:'高校数字阅读服务研究',profile:{level:'本科',language:'中文',targetWords:200},requirements:{},materials:[],references:[],outline:[{id:'a',title:'研究背景',targetWords:200}]});
+ const unit={...writingPlan(s,'draft')[0],completion:true,revisionOriginal:'本研究拟探讨阅读服务。'},body=text=>({text:JSON.stringify({complete:true,text,source_ids:[],missing_evidence:[]}),trace:[]});
+ const text='参考 ISO 9241-11，'+'拟研究如何改善阅读体验。'.repeat(18),rejected=validateWritingCandidate(body(text),'proposal','draft',s,unit);assert.equal(rejected.valid,false);assert.equal(rejected.feedback.code,'unsupported_standard');assert.match(rejected.feedback.rule,/不得编造标准条款/);
+ const retained={...unit,revisionOriginal:'本研究参考ISO 9241-11。'};assert.notEqual(validateWritingCandidate(body(text),'proposal','draft',s,retained).feedback?.code,'unsupported_standard');
+ const withRequirement={...s,requirements:{...s.requirements,instructions:'请按 ISO 9241-11 研究'}};assert.notEqual(validateWritingCandidate(body(text),'proposal','draft',withRequirement,unit).feedback?.code,'unsupported_standard');
+ const unconfirmed={...s,materials:[{id:'x',name:'未确认资料',text:'ISO 9241-11',confirmed:false}]};assert.equal(validateWritingCandidate(body(text),'proposal','draft',unconfirmed,unit).feedback.code,'unsupported_standard');
+});
