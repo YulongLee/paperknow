@@ -551,3 +551,10 @@ test('review cannot attribute four reading flows to a chapter that only has thre
  const real={...wrong,manuscriptQuote:actual,missing:['请提供真实用户满意度95%的观察数据']};assert.equal(parseSupplementCheck(response([real]),t2)[0].status,'missing');
  const mixed={...wrong,missing:['四个流程需要依据','真实用户满意度95%的原始调查数据']};assert.throws(()=>parseSupplementCheck(response([mixed]),t));
 });
+test('planned invitation carries through a dependent consent action across a comma, not an actual completed action',()=>{
+ const source='尚未招募。计划邀请年满18岁的本科生和研究生共12人，经知情同意完成单次任务观察。';
+ const make=text=>supplementCheckTask({kind:'proposal',phase:'final',chapters:[{id:'s',title:'方案',text}],materials:[{id:'m',name:'计划',text:source,confirmed:true}]});
+ const row=text=>({id:'s',status:'sufficient',requirement:'方案',reason:'计划',manuscriptQuote:text.slice(0,80),evidence:[{sourceId:'m',quote:source}],missing:[]});
+ const plan='计划在虚构平台下，以方便抽样邀请年满18岁的本科生与研究生共12人，经知情同意完成单次任务观察与任务后问卷。尚未招募，暂无任何观察记录。';assert.equal(parseSupplementCheck(response([row(plan)]),make(plan))[0].status,'sufficient');
+ for(const actual of ['计划邀请并已实际招募12人，经知情同意完成单次任务观察。','计划邀请并已经招募12人，经知情同意完成单次任务观察。','计划明年继续招募12人，参与者已经经知情同意完成单次任务观察。','计划招募12人，实际已完成测试，参与者经知情同意完成单次任务观察。','计划开展文献梳理，参与者经知情同意完成单次任务观察。'])assert.equal(parseSupplementCheck(response([row(actual)]),make(actual))[0].status,'missing');
+});

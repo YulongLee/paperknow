@@ -56,7 +56,13 @@ export function repairableBackgroundGap(item,chapter,snapshot={}){
 // Flag wording that may imply a planned activity already happened. This is a
 // request for clarification, not a conclusion that an event did or did not occur.
 function ambiguousPlannedActivity(text){
- for(const match of String(text||'').matchAll(/[^。！？；;，,\n]+/gu)){const clause=match[0].trim(),rule=/(?:经|经过)(?:模拟)?(?:预测试|预实验|预调查).{0,16}(?:检查|验证|调整|确定|形成)|(?:经|经过)知情同意.{0,12}完成(?:单次)?(?:任务|观察|测试|实验|调查)/u.exec(clause);if(!rule)continue;const before=clause.slice(Math.max(0,rule.index-12),rule.index);if(/(?:拟|计划|将|尚未|未经|未|不曾|没有).{0,5}$/u.test(before))continue;return clause;}
+ for(const match of String(text||'').matchAll(/[^。！？；;，,\n]+/gu)){const clause=match[0].trim(),rule=/(?:经|经过)(?:模拟)?(?:预测试|预实验|预调查).{0,16}(?:检查|验证|调整|确定|形成)|(?:经|经过)知情同意.{0,12}完成(?:单次)?(?:任务|观察|测试|实验|调查)/u.exec(clause);if(!rule)continue;const before=clause.slice(Math.max(0,rule.index-12),rule.index);if(/(?:拟|计划|将|尚未|未经|未|不曾|没有).{0,5}$/u.test(before))continue;
+  // A comma may separate the planned invitation from its dependent action.
+  // Only carry the tense over when the immediately preceding clause explicitly
+  // plans to invite/recruit a counted group; unrelated future plans or an
+  // intervening assertion of completion must not waive factual evidence.
+  if(/^经知情同意/.test(rule[0])){const preceding=String(text||'').slice(0,match.index+rule.index).split(/[。！？；;\n]/u).at(-1);if(/(?:拟|计划).{0,120}(?:邀请|招募).{0,80}(?:\d+|[一二三四五六七八九十百]+)(?:人|名)[，,]\s*$/u.test(preceding)&&!/(?:已(?:经|实际|经实际|完成|招募|邀请|开展|进行|实施)|实际(?:已|完成|招募|邀请|开展|进行|实施)|完成招募|完成邀请)/u.test(preceding))continue;}
+  return clause;}
  return '';
 }
 function unsupportedObservedClaim(text){
