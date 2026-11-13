@@ -14,6 +14,19 @@ export function resolvedVirtualPlatformRequirement(gap,missing,finalCheck,chapte
  const sources=[...(snapshot.materials||[]),...(snapshot.references||[])].filter(source=>source?.confirmed!==false&&typeof source.id==='string'&&typeof source.text==='string');
  return finalCheck.evidence.some(proof=>{const source=sources.find(s=>s.id===proof.sourceId);if(!source||typeof proof.quote!=='string'||!source.text.includes(proof.quote)||!/(?:虚构|模拟|假设).{0,30}平台/u.test(proof.quote)||!/(?:目前|尚)?(?:无|没有|不存在).{0,10}真实平台/u.test(source.text))return false;const cited=identity(proof.quote);return cited&&cited.name===stated.name&&cited.version===stated.version;});
 }
+
+// A later review does not by itself invalidate a previously reported gap.
+// Only retire this narrowly recognisable, fully verified case. Everything
+// else remains pending for a user or reviewer to resolve.
+export function resolvedDeferredScheduleRequirement(gap,missing,finalCheck,chapter,snapshot,allChapters){
+ const demand=String(missing||''),text=String(chapter?.text||'');
+ if(!/(?:时间节点|日期).{0,12}(?:确定依据|由导师|尚未提供)/u.test(demand)||/(?:结果|实验|调查|样本|人数|数据)/u.test(demand))return false;
+ if(!finalCheck||finalCheck.status!=='sufficient'||!Array.isArray(finalCheck.evidence)||!/(?:日期|时间节点).{0,8}(?:待定|待确认|尚未确定|待导师确认)/u.test(text))return false;
+ if(/(?:\d{4}年|\d{1,2}月|\d{4}[-/]\d{1,2}|[一二三四五六七八九十]{1,3}月|第\s*\d+\s*周)/u.test((allChapters||[]).map(c=>c.text||'').join('\n')))return false;
+ const sources=[...(snapshot?.materials||[]),...(snapshot?.references||[])].filter(s=>s?.confirmed!==false&&typeof s.id==='string'&&typeof s.text==='string');
+ return finalCheck.evidence.some(proof=>{const s=sources.find(x=>x.id===proof.sourceId);return s&&typeof proof.quote==='string'&&s.text.includes(proof.quote)&&/(?:日期|时间节点).{0,16}导师.{0,8}(?:后续|以后|日后).{0,8}确认/u.test(proof.quote);});
+}
+
 export function buildWritingGapEvidenceTask(gaps,snapshot){
  if(!Array.isArray(gaps)||!gaps.length||gaps.length>4)return null;
  const sources=new Map([...(snapshot.materials||[]),...(snapshot.references||[])].filter(x=>x?.confirmed!==false&&typeof x.id==='string'&&typeof x.text==='string').map(x=>[x.id,x]));

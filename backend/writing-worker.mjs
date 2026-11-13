@@ -1,4 +1,4 @@
-import {buildWritingGapEvidenceTask,parseWritingGapEvidence,resolvedVirtualPlatformRequirement} from './writing-gap-evidence.mjs';
+import {buildWritingGapEvidenceTask,parseWritingGapEvidence,resolvedVirtualPlatformRequirement,resolvedDeferredScheduleRequirement} from './writing-gap-evidence.mjs';
 import {assembleProposalText} from './proposal-writing.mjs';
 import {createWritingContinuity} from './writing-continuity.mjs';
 import {classifyWritingRetry} from './writing-execution-policy.mjs';
@@ -131,7 +131,7 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
   // A successful partial rewrite cannot erase preflight facts that were not
   // supported. Keep the final gate closed until the user supplies or resolves
   // those issues and a fresh task rechecks the updated materials.
-  if(unresolvedPreflight.length&&quality?.supplementCheck?.phase==='final'){const pending=unresolvedPreflight.flatMap((gap,index)=>{const n=/^check-(\d+)-\d+$/u.exec(gap.id||'')?.[1],checks=n===undefined?[]:quality.supplementCheck.items.filter(item=>item.id?.startsWith('check-'+n+'-'));const final=checks.length&&checks.every(item=>item.status==='sufficient')?checks[0]:null,chapter=n===undefined?null:chapters[Number(n)];const missing=gap.missing.filter(item=>!resolvedVirtualPlatformRequirement(gap,item,final,chapter,snapshot));return missing.length?[{...gap,missing,id:'unresolved-preflight-'+index,status:'missing',reason:'部分内容已按资料完善，以下事项仍需核对或补充；未确定前不能视为真实研究事实。'}]:[];});if(pending.length){quality.supplementCheck.status='needs_materials';quality.supplementCheck.items.push(...pending);}}
+  if(unresolvedPreflight.length&&quality?.supplementCheck?.phase==='final'){const review=quality.supplementCheck,coverage=review.coverage,complete=coverage?.complete===true&&coverage.checked===coverage.total&&review.items.length===coverage.total;const pending=unresolvedPreflight.flatMap((gap,index)=>{const n=/^check-(\d+)-\d+$/u.exec(gap.id||'')?.[1],checks=n===undefined?[]:review.items.filter(item=>item.id?.startsWith('check-'+n+'-'));const final=complete&&checks.length&&checks.every(item=>item.status==='sufficient')?checks[0]:null,chapter=n===undefined?null:chapters[Number(n)];const missing=gap.missing.filter(item=>!resolvedVirtualPlatformRequirement(gap,item,final,chapter,snapshot)&&!resolvedDeferredScheduleRequirement(gap,item,final,chapter,snapshot,chapters));return missing.length?[{...gap,missing,id:'unresolved-preflight-'+index,status:'missing',reason:'部分内容已按资料完善，以下事项仍需核对或补充；未确定前不能视为真实研究事实。'}]:[];});if(pending.length){review.status='needs_materials';review.items.push(...pending);}}
  }
  // If attempted improvements produce no changed text or figures and the final
  // material review has not passed, there is no improved deliverable to charge
