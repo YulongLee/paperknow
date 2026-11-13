@@ -1,6 +1,7 @@
 import {manuscriptFigures,manuscriptPart} from '../dist/workspace/manuscript-figures.mjs';
 import {proposalModelInstructions} from '../dist/workspace/proposal-standard.mjs';
 import {runSupplementCheck} from './supplement-check.mjs';
+import {supplementCitationFingerprint} from './supplement-citation-status.mjs';
 import {createCitationVerifier,auditWritingConsistency,writingReviewTask,parseWritingReview} from './writing-quality.mjs';
 
 const aborted=()=>Object.assign(new Error('写作质量检查已取消或任务已变化'),{name:'AbortError',code:'quality_cancelled',status:499});
@@ -67,12 +68,12 @@ export function createWritingQualityRunner(config={}){
   const active=async()=>{if(signal?.aborted)throw aborted();if(await isCurrent()!==true||signal?.aborted)throw aborted();};
   const stage=async value=>{await active();await onStage?.(value);await active();};
   await active();const requirementCharacters=Math.min(12000,typeof snapshot.requirements?.instructions==='string'?snapshot.requirements.instructions.length:0),batches=batchesFor(chapters,Math.min(kind==='thesis'?8000:22000,26000-requirementCharacters),kind==='thesis'?4:12),quality={status:'completed',checkedAt:timestamp(),citations:null,consistency:null,reviews:[],limitations:[]};let partial=false;
-  if(checkSupplements===true){quality.supplementCheck=await runSupplementCheck({snapshot,chapters,kind,phase:'final',recover:recoverSupplements,runtime,dispatch,signal,isCurrent,onStage:stage});await active();}
-  await stage('verifying_citations');
+  const referenceFingerprint=supplementCitationFingerprint(snapshot);await stage('verifying_citations');
   try{
    quality.citations=await guarded(verifier.verify(Array.isArray(snapshot.references)?snapshot.references:[],{signal}),signal);await active();
    if(quality.citations.items?.some(item=>item.metadataStatus==='unavailable'||item.reasonCode==='budget_exhausted'))partial=true;
   }catch(error){await active();partial=true;quality.citations={version:1,status:'unavailable',checkedAt:timestamp(),scope:'public_identifier_metadata_only',claimSupport:'not_checked',items:[],summary:{matched:0,conflict:0,not_found:0,unverified:0,unavailable:0},limitations:['题录来源核验未完成，不能据此认定引用真实或虚假。']};}
+  if(checkSupplements===true){quality.supplementCheck=await runSupplementCheck({snapshot,chapters,kind,phase:'final',recover:recoverSupplements,runtime,dispatch,signal,isCurrent,onStage:stage,citationVerification:{referenceFingerprint,verification:quality.citations}});await active();}
   await stage('checking_consistency');
   try{quality.consistency=auditWritingConsistency({chapters,references:snapshot.references||[],materials:snapshot.materials||[],docxObjects});}catch(error){await active();partial=true;quality.consistency={version:1,status:'unavailable',checkedSections:0,findings:[],totalFindings:0,truncated:false,limitations:['正文一致性检查未完成。']};}
   let stoppedReason=typeof dispatch==='function'?'':'not_configured',automaticRecoveries=0,totalBatches=batches.length;

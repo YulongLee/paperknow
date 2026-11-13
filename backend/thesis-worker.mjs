@@ -5,6 +5,7 @@ import {completionContentAudit} from './thesis-completion-audit.mjs';
 import {assertExpressionRepairUnchanged,normalizeExpressionPatch,safeExpressionReplacement} from './thesis-expression-repair.mjs';
 import {normalizeSourceRepair} from './thesis-source-repair.mjs';
 import {completionRepairs} from './thesis-completion-repair.mjs';
+import {thesisFactView,currentThesisFactView} from './thesis-fact-view.mjs';
 import {runSupplementCheck} from './supplement-check.mjs';
 import {completionBaseline,completionManuscriptHash} from './thesis-completion.mjs';
 import {randomUUID,createHash} from 'node:crypto';
@@ -138,6 +139,11 @@ export function startThesisWorker(db,config={}){
    if(typeof runner!=='function')throw thesisError(503,'毕业论文 Agent 执行器尚未接入');
    const reviewDispatch=async({task,settings,validateReviewOutput,validateThesisOutput,unitId})=>{
      if(!running()||stopped)throw thesisError(499,'任务已停止','cancelled');
+     if(fullCompletion&&!validateThesisOutput&&/^completion-quality-\d+::(?:supplement-final|quality-review)::/.test(unitId)&&run.snapshot_hash===thesisHash(snapshot)){
+      const chapters=completionReviewChapters().map(chapter=>({...chapter,versionId:manuscriptVersions().find(row=>row.id===chapter.id)?.record?.id||null})),batchIds=new Set((task.context.manuscriptExcerpts||[]).map(row=>row.id));for(const section of task.context.chapters||[]){const match=/^check-(\d+)-\d+/.exec(section.id||'');if(match&&chapters[Number(match[1])])batchIds.add(chapters[Number(match[1])].id);}
+      const identity={ownerId:run.user_id,thesisId:run.thesis_id,runId:run.id,snapshotHash:run.snapshot_hash},views=[];for(const chapter of chapters){if(!batchIds.has(chapter.id)||views.length>=2)continue;const args={...identity,chapters,unit:{chapterId:chapter.id,completion:{originalText:chapter.text}},phase:'candidate',materials:[]},view=thesisFactView(args);if(view.numberChecks.length&&currentThesisFactView(view,args)){const {ownerId,thesisId,runId,...safe}=view;views.push(safe);}}
+      if(views.length&&JSON.stringify(task.context).length+JSON.stringify(views).length<33500){task.context.factViews=views;task.instructions+='factViews 只针对当前候选稿指定章节的字面小数及覆盖范围，不能代替实际计算、来源核验或终稿检查；coverage 不完整时不能据此推断。保留真实缺项，判断问题必须定位本批原文。';}
+     }
      const hash=thesisHash(task),checkpointKey=reviewBatchReuseKey({task,snapshot,chapters:completionReviewChapters(),settings});
      // An unverifiable build cannot safely identify or dispatch a review:
      // do not create a random retry identity that could spend twice.
@@ -186,7 +192,16 @@ export function startThesisWorker(db,config={}){
     assertThesisSettings(await config.getAgentSettings?.());
     if(!running())return;
     const complete=db.prepare("SELECT * FROM thesis_checkpoints WHERE run_id=? AND status='completed' ORDER BY position").all(run.id);
-    const contextSections=completionMode?[...savedBaseline.filter(row=>!targetChapters.has(row.chapter_id)).map(row=>({...row,unit_id:'saved::'+row.chapter_id})),...complete]:complete;let task=thesisAgentTask(snapshot,withCompletionDiagnosis(unit,diagnosis),contextSections);if(completionMode&&task.context?.revision?.excerpted)throw thesisError(422,'章节内容较长，当前无法完整处理，请拆分小节后重试；原稿已保留，本次未扣费。','completion_excerpt');const maxTurns=Math.min(continuous?12:6,Math.max(1,Number(runtime.maxTurns)||3)),maxOutputTokens=Math.min(continuous?16384:8000,Math.max(32,Number(runtime.maxOutputTokens)||4096));
+    const contextSections=completionMode?[...savedBaseline.filter(row=>!targetChapters.has(row.chapter_id)).map(row=>({...row,unit_id:'saved::'+row.chapter_id})),...complete]:complete;let task=thesisAgentTask(snapshot,withCompletionDiagnosis(unit,diagnosis),contextSections);if(completionMode&&task.context?.revision?.excerpted)throw thesisError(422,'章节内容较长，当前无法完整处理，请拆分小节后重试；原稿已保留，本次未扣费。','completion_excerpt');
+    if(fullCompletion&&unit.completion?.originalText&&run.snapshot_hash===thesisHash(snapshot)){
+     // Both views are tied to this account/run and exact versions. Missing
+     // candidate chapters remain incomplete instead of inheriting old text.
+     const baseline=snapshot.outline.map(chapter=>{const record=savedBaseline.find(row=>row.chapter_id===chapter.id);return {id:chapter.id,title:chapter.title,kind:chapter.kind,text:record?.text||'',figures:JSON.parse(record?.figures||'[]'),versionId:record?.id||null};});
+     const candidate=completionReviewChapters().map(chapter=>({...chapter,versionId:manuscriptVersions().find(row=>row.id===chapter.id)?.record?.id||null}));
+     const confirmedIds=new Set(snapshot.materials.filter(row=>row.confirmed).map(row=>row.id)),materials=(task.materials||[]).filter(row=>confirmedIds.has(row.id)),identity={ownerId:run.user_id,thesisId:run.thesis_id,runId:run.id,snapshotHash:run.snapshot_hash},views=[['baseline',baseline],['candidate',candidate]].map(([phase,chapters])=>{const args={...identity,chapters,unit,phase,materials};const view=thesisFactView(args);return currentThesisFactView(view,args)?view:null;}).filter(view=>view?.numberChecks.length);
+     if(views.length&&JSON.stringify(task.context).length+JSON.stringify(views).length<33500){task.context.factViews=views.map(({ownerId,thesisId,runId,...safe})=>safe);task.instructions+='factViews 是绑定当前论文、资料和章节版本的文字定位结果：baseline 为本轮开始前保存稿，candidate 仅为当前已完成内容，coverage 不全不能推断缺失。numberChecks 只统计指定章节文字中实际出现的小数，不核验研究含义、计算或图表，不证明旧占位已解决；作者声明仅为待读取的材料线索。须实际读取资料并对照当前完整正文后决定是否修改，保留无法核实的事项，最终由独立审校判断。';}
+    }
+    const maxTurns=Math.min(continuous?12:6,Math.max(1,Number(runtime.maxTurns)||3)),maxOutputTokens=Math.min(continuous?16384:8000,Math.max(32,Number(runtime.maxOutputTokens)||4096));
     if(retries){task.instructions+='上一次执行未完成。本次只处理当前单元：根据 retryFeedback 中服务器给出的校验反馈修正完整候选；过短补足论证，过长精简完整句段，不追求精确等于目标，不编造依据。';if(deniedToolRetries)task.instructions+='上次尝试调用了未提供的工具，该调用未执行。只使用本次明确提供的工具，不调用其他工具；直接通过已提供的提交工具提交完整结果。';if(retryFeedback)task.context.retryFeedback=retryFeedback;task=withThesisRetryCandidate(task,retryCandidate);}
     // The runtime relay enforces maxTotalTokens against the complete actual SDK
     // request, including system instructions, tool schemas and growing history.

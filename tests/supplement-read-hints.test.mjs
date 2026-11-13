@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {supplementReadHints,runSupplementCheck,supplementCheckTask} from '../backend/supplement-check.mjs';
+import {supplementReadHints,runSupplementCheck,supplementCheckTask,parseSupplementCheck} from '../backend/supplement-check.mjs';
 
 test('user-provided literature excerpts keep a precise but unverified reference association in review',async()=>{
  const refs=[{id:'r1',title:'同名论文',text:'第一篇摘要正文。',confirmed:true},{id:'r2',title:'同名论文',text:'第二篇摘要正文。',confirmed:true}],materials=[{id:'m',name:'文献片段：同名论文',text:'用户提供的第3.2.1节方法片段。',confirmed:true,relatedReferenceId:'r2'},{id:'bad',name:'文献片段',text:'另一个用户片段。',confirmed:true,relatedReferenceId:'not-authorized'}],snapshot={title:'研究',profile:{},requirements:{},materials,references:refs};const direct=supplementCheckTask({snapshot,materials,chapters:[]});assert.equal(direct.context.evidence.find(row=>row.id==='m').relatedReferenceId,'r2');assert.equal(direct.context.evidence.find(row=>row.id==='bad').relatedReferenceId,undefined);assert.match(direct.instructions,/不能证明片段出处或完整性/);assert.match(direct.instructions,/不能将片段当作另一来源已读正文/);
@@ -38,4 +38,33 @@ test('English paper and Chinese source get multilingual locations, and a missing
   assert.equal(validate(candidate(trace)).valid,true);return candidate(trace);
  }});
  assert.equal(called,true);assert.equal(report.status,'needs_materials');assert.equal(report.coverage.complete,true);assert.match(report.items[0].reason,/尚未在已核对范围内定位/);
+});
+
+test('linked English paper locations must be read before a Chinese missing claim, without treating the link as proof',async()=>{
+ const prefix='Unrelated article text. '.repeat(300),sentence='The sequential nature precludes parallelization within training examples.';
+ const source=prefix+sentence+'\n'+'More article text. '.repeat(2000),other=prefix+'Parallelization is described for a different model.'+' Extra. '.repeat(500);
+ const text='循环模型的顺序计算限制并行化[source:r1]。',refs=[{id:'r1',title:'英文论文',text:'摘要文字足够阅读。',confirmed:true},{id:'r2',title:'其他论文',text:'另一篇摘要文字。',confirmed:true}],materials=[{id:'m1',name:'作者关联片段',text:source,confirmed:true,relatedReferenceId:'r1'},{id:'m2',name:'其他关联片段',text:other,confirmed:true,relatedReferenceId:'r2'}];
+ const snapshot={title:'研究',profile:{},requirements:{},references:refs,materials};let observed=false;
+ const report=await runSupplementCheck({snapshot,chapters:[{id:'c',title:'背景',text}],kind:'thesis',phase:'final',runtime:{maxOutputTokens:1024},dispatch:async({task,validateReviewOutput})=>{
+  observed=true;const m=task.context.evidence.find(s=>s.id==='m1'),hint=m.readHints.find(h=>h.term==='parallelization');assert.ok(hint);assert.match(task.instructions,/不能证明片段出处或完整性/);
+  const row={id:task.context.chapters[0].id,status:'missing',requirement:'循环顺序限制并行的依据',reason:'授权资料仅有摘要句',manuscriptQuote:text,evidence:[],missing:['提供循环计算限制并行的依据']};const candidate=trace=>({text:JSON.stringify({items:[row]}),trace});
+  const entry=(materialId,offset,limit=200)=>({tool:'read_material',status:'completed',materialId,offset,limit});
+  assert.equal(validateReviewOutput(candidate([])).valid,false);assert.equal(validateReviewOutput(candidate([entry('m1',0,20)])).valid,false);assert.equal(validateReviewOutput(candidate([entry('m2',hint.offset)])).valid,false);
+  const trace=[entry('m1',hint.offset,600)];assert.equal(validateReviewOutput(candidate(trace)).valid,true);return candidate(trace);
+ }});
+ assert.ok(observed);assert.equal(report.status,'needs_materials');assert.match(report.items[0].reason,/已核对范围内仅定位到摘要/);
+});
+
+test('no lexical hit or no linked authorized source is not guessed to be evidence',async()=>{
+ const text='循环模型的顺序计算限制并行化[source:r]。',snapshot={title:'研究',profile:{},requirements:{},references:[{id:'r',title:'论文',text:'本文摘要内容。',confirmed:true}],materials:[{id:'m',name:'作者关联片段',text:'Nothing related. '.repeat(500),confirmed:true,relatedReferenceId:'r'}]};
+ const report=await runSupplementCheck({snapshot,chapters:[{id:'c',title:'背景',text}],kind:'thesis',runtime:{maxOutputTokens:1024},dispatch:async({task,validateReviewOutput})=>{const result={text:JSON.stringify({items:[{id:task.context.chapters[0].id,status:'missing',requirement:'循环顺序限制并行的依据',reason:'尚未定位对应段落',manuscriptQuote:text,evidence:[],missing:['核对对应来源']}]})};assert.equal(validateReviewOutput(result).valid,true);return result;}});
+ assert.equal(report.status,'needs_materials');
+});
+
+test('a short source also requires reading when its selected preview omits the hit',()=>{
+ const text='循环模型的顺序计算限制并行化[source:r]。',source='Unrelated text. '.repeat(220)+'sequential processing precludes parallelization.';assert.ok(source.length<6000);
+ const snapshot={references:[{id:'r',confirmed:true}],materials:[]},task=supplementCheckTask({snapshot,chapters:[{id:'c',title:'背景',text}],materials:[{id:'m',name:'用户关联片段',text:source.slice(0,120),relatedReferenceId:'r'}]});
+ task.materials=[{id:'m',name:'用户关联片段',text:source}];task.context.evidence[0].readHints=supplementReadHints(source,[{text}]);
+ const row={id:'c',status:'missing',requirement:'循环顺序限制并行的依据',reason:'尚未定位对应段落',manuscriptQuote:text,evidence:[],missing:['核对对应来源']},candidate=trace=>({text:JSON.stringify({items:[row]}),trace});
+ assert.throws(()=>parseSupplementCheck(candidate([]),task));const hint=task.context.evidence[0].readHints.find(h=>h.term==='parallelization');assert.ok(hint);assert.equal(parseSupplementCheck(candidate([{tool:'read_material',status:'completed',materialId:'m',offset:hint.offset,limit:600}]),task)[0].status,'missing');
 });
