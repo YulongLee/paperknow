@@ -238,6 +238,7 @@ export function auditThesisSubmission(input={}) {
  const report=auditThesisExport(input),text=String(input.text||''),lines=scanLines(text),requirements=input.templateProfile?.submission||{},issues=[];
  const add=(code,message)=>issues.push({code,message});
  for(const check of report.checks)if(['body_present','incomplete_manuscript','audit_scope','unresolved_placeholders','unresolved_sources','citation_provenance','reference_number_duplicates','references_not_cited','duplicate_paragraphs','duplicate_headings'].includes(check.id)&&check.status!=='passed')add(check.id,check.message);
+ if(lines.some(line=>!line.literal&&/^参考文献整理原文（待核对）$/u.test(stripHeading(line.text).trim())))add('bibliography_unreconciled','参考文献原始条目与当前题录存在差异，请核对并统一后再导出终稿。');
  const section=label=>{const at=lines.findIndex(line=>!line.literal&&label.test(stripHeading(line.text)));if(at<0)return '';let end=at+1;while(end<lines.length&&(!lines[end].heading||/^(?:关键词|key\s*words?)/i.test(lines[end].text.trim()))&&!/^(?:Abstract|摘\s*要)$/i.test(stripHeading(lines[end].text)))end++;return lines.slice(at+1,end).map(line=>line.text).join('\n').trim();};
  for(const [kind,label,pattern]of [['zh','中文摘要',/^摘\s*要$/u],['en','英文摘要',/^abstract$/i]]) {
   const body=section(pattern),words=body.match(kind==='zh'?/^关键词\s*[:：]\s*(.+)$/m:/^key\s*words?\s*[:：]\s*(.+)$/im);

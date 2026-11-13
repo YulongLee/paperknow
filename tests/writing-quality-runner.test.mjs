@@ -44,6 +44,23 @@ test('a failed review batch does not discard completed checks and later batches 
  assert.equal(quality.status,'partial');assert.deepEqual(quality.reviews.map(row=>row.status),['completed','unavailable','completed']);assert.equal(quality.coverage.complete,false);assert.equal(count,3);assert.doesNotMatch(JSON.stringify(quality),/PRIVATE|diagnostics/);assert.match(quality.limitations.join(''),/未覆盖全部正文/);
 });
 
+test('thesis final review recovers a turn-limited batch at a safe paragraph boundary with exact offsets',async()=>{
+ const text='引言。'+'甲'.repeat(2000)+'\n\n$$a+b=c$$\n\n'+'乙'.repeat(2000)+'。\n\n'+'丙'.repeat(1200),requests=[];
+ const quality=await plainRunner()({kind:'thesis',checkSupplements:false,recoverSupplements:true,chapters:[{id:'c',title:'章节',text}],runtime,dispatch:async({task,unitId})=>{requests.push({task,unitId});if(requests.length===1)throw Object.assign(Error('turn limit'),{code:'turn_limit',status:502});return response(task.context.manuscriptExcerpts.map(finding));}});
+ assert.deepEqual(requests.map(x=>x.unitId),['quality-review::1','quality-review::1.1','quality-review::1.2']);assert.equal(quality.coverage.complete,true);assert.equal(quality.coverage.reviewedCharacters,text.length);assert.equal(quality.coverage.totalBatches,2);
+ const segments=quality.reviews.flatMap(row=>row.segments);assert.equal(segments[0].offset,0);assert.equal(segments[1].offset,segments[0].characters);assert.equal(segments.reduce((n,s)=>n+s.characters,0),text.length);
+ for(const f of quality.reviews.flatMap(row=>row.findings))assert.equal(text.slice(f.offset,f.offset+f.quote.length),f.quote);
+});
+
+test('a failed indivisible thesis excerpt stays incomplete and budget errors never split or retry',async()=>{
+ for(const code of ['turn_limit','budget_exceeded']){let calls=0;const text='单句'.repeat(2000),quality=await plainRunner()({kind:'thesis',checkSupplements:false,recoverSupplements:true,chapters:[{id:'c',title:'章节',text}],runtime,dispatch:async()=>{calls++;throw Object.assign(Error(code),{code,status:code==='budget_exceeded'?429:502});}});assert.equal(calls,1);assert.equal(quality.coverage.complete,false);assert.equal(quality.coverage.reviewedCharacters,0);}
+});
+
+test('recovery never cuts a mathematical block or associates a standalone source marker with another paragraph',async()=>{
+ const formula='开始。'+'甲'.repeat(1800)+'\n\n$$a='+'乙'.repeat(1800)+'\n\n'+'丙'.repeat(1800)+'$$结束。';let calls=0;const result=await plainRunner()({kind:'thesis',checkSupplements:false,recoverSupplements:true,chapters:[{id:'c',title:'章节',text:formula}],runtime,dispatch:async({task})=>{calls++;for(const excerpt of task.context.manuscriptExcerpts)assert.equal((excerpt.text.match(/\$\$/g)||[]).length%2,0);throw Object.assign(Error('turn limit'),{code:'turn_limit',status:502});}});assert.ok(calls>1);assert.equal(result.coverage.complete,false);
+ const cited='论断。'+'甲'.repeat(1800)+'\n\n[source:r]'+'乙'.repeat(2200);calls=0;const result2=await plainRunner()({kind:'thesis',checkSupplements:false,recoverSupplements:true,chapters:[{id:'c',title:'章节',text:cited}],runtime,dispatch:async()=>{calls++;throw Object.assign(Error('turn limit'),{code:'turn_limit',status:502});}});assert.equal(calls,1);assert.equal(result2.coverage.complete,false);
+});
+
 test('unresolved batch scope error keeps coverage incomplete and does not discard a mixed substantive warning',async()=>{
  const input=chapters(1,100),quality=await plainRunner()({chapters:input,runtime,dispatch:async({task,validateReviewOutput})=>{
   const row={...finding(task.context.manuscriptExcerpts[0]),category:'structure',explanation:'本批未提供参考文献，无法判断其是否存在。这不是已发现的缺失错误。本段还将未实施的实验写成已完成。'};

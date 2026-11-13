@@ -13,8 +13,9 @@ export function assertExpressionRepairUnchanged(checkpoint,content){
 }
 
 // Only remove explicitly enumerated discourse fillers, never change claims.
-export function safeExpressionReplacement(value){return String(value||'').replace(/^(显而易见|众所周知|毋庸置疑)[，,]\s*/u,'');}
-export function canSafeExpressionEdit(text,quote){const at=String(text).indexOf(quote);if(at<0||String(text).indexOf(quote,at+1)>=0||safeExpressionReplacement(quote)===quote)return false;const start=String(text).lastIndexOf('\n',at)+1,end=String(text).indexOf('\n',at),line=String(text).slice(start,end<0?undefined:end);return !/^[\s]*>|[“”"「」『』]|\[source:/u.test(line);}
+const duplicateCitationStop=/。(?:[ \t]*(?:\[source:[^\]\n]{1,200}\]|〔(?:文献|材料)\d+〕)[ \t]*)?。/gu;
+export function safeExpressionReplacement(value){return String(value||'').replace(/^(显而易见|众所周知|毋庸置疑)[，,]\s*/u,'').replace(duplicateCitationStop,match=>match.slice(0,-1));}
+export function canSafeExpressionEdit(text,quote){const at=String(text).indexOf(quote);if(at<0||String(text).indexOf(quote,at+1)>=0||safeExpressionReplacement(quote)===quote)return false;const start=String(text).lastIndexOf('\n',at)+1,end=String(text).indexOf('\n',at),line=String(text).slice(start,end<0?undefined:end),isDuplicate=/。(?:[ \t]*(?:\[source:[^\]\n]{1,200}\]|〔(?:文献|材料)\d+〕)[ \t]*)?。/u.test(quote);return !/^[\s]*>|[“”"「」『』]|[|`$]|\[docx:/iu.test(line)&&(isDuplicate||!/\[source:/u.test(line));}
 
 // Apply only exact, uniquely located edits inside the server-selected findings.
 // The model cannot choose another paragraph or replace the complete section.

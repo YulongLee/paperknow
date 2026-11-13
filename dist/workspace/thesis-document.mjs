@@ -2,7 +2,7 @@ import {simulationResearchDisclosure} from './simulation-data.mjs';
 import {normalizeThesisFigures} from './thesis-figure.mjs';
 import {isOutlineReferenceChapter} from './outline-word-budget.mjs';
 import {thesisFrontMatterKind,stripThesisOwnedHeadings} from './thesis-delivery.mjs';
-import {citationMetadataFields,recoverCitationMetadata,preservedUnparsedCitation} from './citation-import.mjs';
+import {citationMetadataFields,recoverCitationMetadata,preservedUnparsedCitation,parseCitationImport} from './citation-import.mjs';
 
 const bibliographyFields=[...new Set(['id','title','authors','year','doi','url','venue','sourceLabel',...citationMetadataFields])];
 export function thesisReferenceMetadata(row={}){
@@ -113,23 +113,55 @@ export function thesisDocumentPresentation(snapshot={},chapters=[],{title=snapsh
  const bibliographyModel=buildThesisBibliography(snapshot,chapters),references=new Map((snapshot.references||[]).filter(row=>row?.confirmed===true).map(row=>[row.id,row]));
  const render=text=>renderThesisCitations(text,bibliographyModel),unknown=bibliographyModel.unresolved.length>0;
  const referenceChapters=rows.filter(isOutlineReferenceChapter),normalize=value=>String(value??'').replace(/\s+/g,' ').trim();
+ // A chapter entry can be removed only if that exact source will actually be
+ // printed. Formal exports omit uncited sources; do not discard their text.
+ const printedReferenceIds=new Set([...bibliographyModel.references,...(!submission?bibliographyModel.uncitedReferences:[])].map(row=>row.id));
  const canonicalReferenceChapter=row=>{
   const lines=String(row.text).split(/\r?\n/).map(line=>line.trim()).filter(Boolean);if(!lines.length)return false;
-  return lines.every(line=>{const match=line.match(/^\[source:([^\]]+)\]\s*(.*)$/);return match&&references.has(match[1])&&[formatThesisReference(references.get(match[1])),legacyThesisReference(references.get(match[1])),legacyThesisReference(Object.fromEntries(['title','authors','year','doi','url'].map(key=>[key,references.get(match[1])[key]])))].some(value=>normalize(match[2])===normalize(value));});
+  return lines.every(line=>{const match=line.match(/^\[source:([^\]]+)\]\s*(.*)$/);return match&&printedReferenceIds.has(match[1])&&references.has(match[1])&&[formatThesisReference(references.get(match[1])),legacyThesisReference(references.get(match[1])),legacyThesisReference(Object.fromEntries(['title','authors','year','doi','url'].map(key=>[key,references.get(match[1])[key]])))].some(value=>normalize(match[2])===normalize(value));});
  };
  const referenceNumbers=new Map(bibliographyModel.references.map(row=>[row.id,row.number]));
  const semanticBody=text=>{const raw=String(text),citationRanges=[];let value='',cursor=0;for(const match of raw.matchAll(/\[source:([^\]]+)\]/g)){value+=raw.slice(cursor,match.index);const label=render(match[0]),start=value.length;value+=label;if(referenceNumbers.has(match[1]))citationRanges.push({start,end:value.length,number:referenceNumbers.get(match[1])});cursor=match.index+match[0].length;}value+=raw.slice(cursor);return {text:value,citationRanges};};
  const renderChapter=row=>{const title=String(row.title||'');let text=stripThesisOwnedHeadings(row.text,[title]);if(thesisFrontMatterKind(row)==='abstract_en')text=text.replace(/^(?:英文题目|English title)\s*[:：].*\n*/im,'');return [title,semanticBody(text)];};
- const manuscript=rows.filter(row=>!isOutlineReferenceChapter(row)),front=manuscript.filter(thesisFrontMatterKind).flatMap(renderChapter),body=manuscript.filter(row=>!thesisFrontMatterKind(row)).flatMap(renderChapter);
- const bibliography=[...bibliographyModel.references.map(row=>row.label+' '+row.text),...(!submission?bibliographyModel.uncitedReferences.map((row,index)=>'['+(bibliographyModel.references.length+index+1)+'] '+row.text):[])];
+ const manuscript=rows.filter(row=>!isOutlineReferenceChapter(row)),isAcknowledgements=row=>/^(?:致谢|acknowledg(?:e)?ments?)$/i.test(String(row.title||'').replace(/\s/g,'')),front=manuscript.filter(thesisFrontMatterKind).flatMap(renderChapter),body=manuscript.filter(row=>!thesisFrontMatterKind(row)&&!isAcknowledgements(row)).flatMap(renderChapter),acknowledgements=manuscript.filter(isAcknowledgements).flatMap(renderChapter);
+ // The original bibliography may be an earlier but equivalent GB/T spelling
+ // of the same explicit source IDs. Preserve that complete supplied entry
+ // only when every identity and bibliographic field agrees; otherwise retain
+ // the original notes for manual reconciliation rather than guessing.
+ const authorKey=value=>String(value||'').normalize('NFKC').toLocaleLowerCase().replace(/\./gu,'').replace(/\s+/gu,' ').trim(),fieldKey=value=>String(value||'').normalize('NFKC').toLocaleLowerCase().replace(/\s+/gu,' ').trim(),same=(a,b)=>fieldKey(a)===fieldKey(b),sameURL=(a,b)=>{try{return new URL(a).href===new URL(b).href;}catch{return false;}},originalEntries=new Map();
+ const equivalentEntry=(raw,reference)=>{try{
+  const result=parseCitationImport(raw);if(result.items.length!==1)return false;const parsed=result.items[0],known=thesisReferenceMetadata(reference);if(!known.title||!known.year||!known.authors||!parsed.title||!parsed.year||!parsed.authors||!same(parsed.title,known.title)||!same(parsed.year,known.year))return false;
+  for(const key of ['documentType','journal','publisher','publicationPlace','publicationSource','volume','issue','pages','edition','medium'])if(parsed[key]&&known[key]&&!same(parsed[key],known[key]))return false;
+  for(const key of ['doi','url'])if(known[key]&&!parsed[key]||parsed[key]&&known[key]&&!(key==='url'?sameURL(parsed[key],known[key]):same(parsed[key],known[key])))return false;
+  const date=raw.match(/\[((?:19|20|21)\d{2}[-/]\d{2}[-/]\d{2})\]/)?.[1]?.replaceAll('/','-');if(known.accessedAt&&(!date||!same(date,known.accessedAt)))return false;
+  const author=parsed.authors.replace(/,?\s*(?:et\s+al\.?|等)\s*$/iu,''),hasEtAl=/(?:et\s+al\.?|等)\s*$/iu.test(parsed.authors),actual=author.split(/[,;，；、]/u).map(authorKey).filter(Boolean),expected=referenceAuthors(reference).split(/[,;，；、]/u).map(authorKey).filter(Boolean);if(!actual.length||!expected.length||actual.length>expected.length||actual.some((name,index)=>name!==expected[index])||!hasEtAl&&actual.length!==expected.length)return false;
+  // When the earlier spelling lacks any structured publication detail, do not
+  // lose it by substituting a shorter record. A parsed field absent from the
+  // structured record is retained verbatim in the supplied entry.
+  for(const key of ['documentType','journal','publisher','publicationPlace','publicationSource','volume','issue','pages','edition','medium'])if(known[key]&&!parsed[key])return false;
+  // A parseable citation may still contain arbitrary appended prose. Only
+  // accept a record whose remaining text consists of citation separators;
+  // never smuggle unparsed words into the formal bibliography.
+  let remaining=raw.replace(/\[(?:J|D|M|C|N|R|S|P|EB|DB|A|Z|PP|DS|CM|G|CP)(?:\/OL)?\]/ig,' ').replace(/\bDOI\s*[:：]/ig,' ');
+  for(const token of [parsed.authors,parsed.title,parsed.journal,parsed.publisher,parsed.publicationPlace,parsed.publicationSource,parsed.year,parsed.volume,parsed.issue,parsed.pages,parsed.edition,parsed.doi,parsed.url,date].filter(Boolean).sort((a,b)=>b.length-a.length))remaining=remaining.replace(token,' ');
+  if(/[\p{L}\p{N}]/u.test(remaining))return false;
+  return true;
+ }catch{return false;}};
+ const equivalentReferenceChapter=row=>{const lines=String(row.text).split(/\r?\n/).map(line=>line.trim()).filter(Boolean),entries=[];if(!lines.length)return false;for(const line of lines){const match=line.match(/^\[source:([^\]]+)\]\s*(.*)$/),reference=match&&references.get(match[1]);if(!reference||!printedReferenceIds.has(match[1])||entries.some(entry=>entry.id===match[1])||!equivalentEntry(match[2],reference)||originalEntries.has(match[1])&&originalEntries.get(match[1])!==match[2])return false;entries.push({id:match[1],text:match[2]});}for(const entry of entries)originalEntries.set(entry.id,entry.text);return true;};
+ const referenceNotes=referenceChapters.filter(row=>!canonicalReferenceChapter(row)&&!equivalentReferenceChapter(row)).map(row=>render(row.text).replace(/\[(\d+)\]/g,'〔文献$1〕'));
+ const bibliography=[...bibliographyModel.references.map(row=>row.label+' '+(originalEntries.get(row.id)||row.text)),...(!submission?bibliographyModel.uncitedReferences.map((row,index)=>'['+(bibliographyModel.references.length+index+1)+'] '+(originalEntries.get(row.id)||row.text)):[])];
  const bibliographyTitle=snapshot.profile?.language==='English'?'References':'参考文献';
  // Canonical references always follow citation order. Keep differing manual
  // bibliography text as clearly separate notes, never as a second numeric list.
- const referenceNotes=referenceChapters.filter(row=>!canonicalReferenceChapter(row)).map(row=>render(row.text).replace(/\[(\d+)\]/g,'〔文献$1〕'));
- const materialList=submission?[]:[...bibliographyModel.materials.map(row=>row.label+' '+row.name+(row.purpose?'（'+row.purpose+'）':'')),...bibliographyModel.associatedMaterials.map(row=>row.label+' '+row.name+(row.purpose?'（'+row.purpose+'）':'')+'（关联来源，当前正文未标注）')];
+ // A formal manuscript can cite the author's own evidence. Preserve a
+ // matching source entry for each material marker; these are research
+ // materials, never invented journal publications. Uncited associations
+ // remain a draft-only aid. Keep names and purposes on a single line.
+ const inline=value=>String(value||'').replace(/[\r\n\x00-\x1f\x7f]+/g,' ').replace(/\s+/g,' ').trim();
+ const materialList=[...bibliographyModel.materials.map(row=>row.label+' '+inline(row.name)+(row.purpose?'（'+inline(row.purpose)+'）':'')),...(!submission?bibliographyModel.associatedMaterials.map(row=>row.label+' '+inline(row.name)+(row.purpose?'（'+inline(row.purpose)+'）':'')+'（关联来源，当前正文未标注）'):[])];
  // Workflow diagnostics belong to export metadata and the completion panel,
  // never to manuscript paragraphs or the generated table of contents.
- const parts=[title,...front,...body,...simulationResearchDisclosure(snapshot,chapters).filter(note=>!chapters.some(chapter=>(String(chapter.title||'')+'\n'+String(chapter.text||'')).replace(/\s/g,'').includes(note.replace(/\s/g,'')))),...(bibliography.length?[bibliographyTitle,...bibliography]:[]),...(materialList.length?[(snapshot.materials||[]).some(row=>row.dataKind==='simulation')?'研究材料来源（含已标识的模拟数据）':'研究材料来源（用户提供，待人工核对）',...materialList]:[]),...(referenceNotes.length?['参考文献整理原文（待核对）',...referenceNotes]:[]),...(unknown?['引用核对提示','正文含有未匹配的来源标记，请补充并核对来源后再用于提交。']:[])].filter(part=>part&&typeof part==='object'?Boolean(part.text):Boolean(part));
+ const parts=[title,...front,...body,...simulationResearchDisclosure(snapshot,chapters).filter(note=>!chapters.some(chapter=>(String(chapter.title||'')+'\n'+String(chapter.text||'')).replace(/\s/g,'').includes(note.replace(/\s/g,'')))),...(bibliography.length?[bibliographyTitle,...bibliography]:[]),...(materialList.length?[(snapshot.materials||[]).some(row=>row.dataKind==='simulation')?'研究材料来源（含已标识的模拟数据）':submission?'研究材料来源':'研究材料来源（用户提供，待人工核对）',...materialList]:[]),...(referenceNotes.length?['参考文献整理原文（待核对）','【待核对：参考文献原始条目与当前题录存在差异，请核对并统一。】',...referenceNotes]:[]),...(unknown?['引用核对提示','正文含有未匹配的来源标记，请补充并核对来源后再用于提交。']:[]),...acknowledgements].filter(part=>part&&typeof part==='object'?Boolean(part.text):Boolean(part));
  let rawText='';const rawRanges=[];for(const part of parts){if(rawText)rawText+='\n\n';const offset=rawText.length;rawText+=typeof part==='object'?part.text:String(part);if(typeof part==='object')rawRanges.push(...part.citationRanges.map(range=>({...range,start:range.start+offset,end:range.end+offset})));}
  // Match writing-document.documentLines before exposing UTF-16 offsets. Only
  // characters removed before a range change its position; ordinary [n] text,

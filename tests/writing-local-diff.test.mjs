@@ -78,3 +78,12 @@ test('patch rejects newly introduced repeated sentence punctuation, including ac
  assert.equal(materializeLocalReviewCandidate('已有瑕疵。。其他内容待补。',finding,body('已补')).text,'已有瑕疵。。其他内容已补。');
  const distant='保留的瑕疵。。'+'甲'.repeat(1992)+'待补。';assert.equal(materializeLocalReviewCandidate(distant,finding,body('已补'+'乙'.repeat(100))).text,distant.replace('待补','已补'+'乙'.repeat(100)),'window comparisons remain aligned after a length change');
 });
+
+test('patch preserves a sentence boundary outside its frozen edit scope',()=>{
+ const original='现状缺乏依据。拟考察对象为数字阅读。',finding=[{quote:'现状缺乏依据。'}];
+ const body=replacement=>({complete:true,edits:[{index:1,replacement}],source_ids:[],missing_evidence:[]});
+ assert.throws(()=>materializeLocalReviewCandidate(original,finding,body('研究将检验现状')),error=>error.localPatchReason==='punctuation');
+ assert.equal(materializeLocalReviewCandidate(original,finding,body('研究将检验现状。')).text,'研究将检验现状。拟考察对象为数字阅读。');
+ assert.equal(materializeLocalReviewCandidate(original,finding,body('')).text,'拟考察对象为数字阅读。');
+ assert.equal(materializeLocalReviewCandidate('现状缺乏依据。\n拟考察对象',finding,body('研究将检验现状')).text,'研究将检验现状\n拟考察对象');
+});

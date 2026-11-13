@@ -31,6 +31,22 @@ test('snapshot supports all study levels and arbitrary/interdisciplinary domains
  const legacy=normalizeThesisSnapshot({title:'已有论文',degree:'硕士',major:'文学',targetWords:500,knowledgeFiles:[{id:'m-1',name:'旧资料',text:'正文'}],writingReferences:[],outlineRows:[{id:'c-1',title:'第一章',level:1,words:500},{id:'s-1',title:'1.1 背景',level:2,words:500}]});assert.equal(legacy.materials[0].confirmed,false);assert.equal(legacy.outline[0].sections[0].id,'s-1');
 });
 
+test('cross-type duplicate sources are rejected on input and old conflicting snapshots cannot obtain a quote',async t=>{
+ const duplicate=snapshot({references:[{id:'source-1',title:'另一份文献',text:'这是真实来源范围内的测试文献内容。',confirmed:true}]});
+ assert.throws(()=>normalizeThesisSnapshot(duplicate),/编号不能重复/);
+ const f=fixture(t);f.pay();const item=await f.create(),current=f.db.prepare('SELECT snapshot FROM theses WHERE id=?').get(item.id),legacy=JSON.parse(current.snapshot);legacy.references=duplicate.references;const serialized=JSON.stringify(legacy);
+ f.db.prepare('UPDATE theses SET snapshot=?,snapshot_hash=? WHERE id=?').run(serialized,thesisHash(legacy),item.id);
+ const before=f.billing.balance(f.user.id);const loaded=f.get(item.id);assert.equal(loaded.snapshot.materials[0].id,loaded.snapshot.references[0].id);
+ await assert.rejects(f.request(`/api/theses/${item.id}/quote`,'POST',{version:loaded.version,action:'generate'}),error=>error.status===409&&/重复的来源标识/.test(error.message));
+ assert.deepEqual(f.billing.balance(f.user.id),before);assert.equal(f.db.prepare('SELECT snapshot FROM theses WHERE id=?').get(item.id).snapshot,serialized);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_generation_quotes').get().n,0);
+});
+
+test('an already queued legacy conflict stops before model dispatch, releases its hold and preserves manuscript',async t=>{
+ let calls=0;const f=fixture(t,{agentTaskRunner:async({task})=>{calls++;return output(task);}});f.pay();const initial=await f.create(),queued=await f.generate(initial),run=f.db.prepare('SELECT snapshot FROM thesis_runs WHERE id=?').get(queued.job.id),legacy=JSON.parse(run.snapshot);legacy.references=[{id:legacy.materials[0].id,title:'不同文献',text:'这是一份不同的测试文献原文内容。',confirmed:true}];
+ f.db.prepare('UPDATE thesis_runs SET snapshot=? WHERE id=?').run(JSON.stringify(legacy),queued.job.id);const prior=f.db.prepare('SELECT snapshot FROM theses WHERE id=?').get(initial.id).snapshot;assert.equal(f.billing.balance(f.user.id).held,10);
+ await f.start().tick();const failed=f.get(initial.id);assert.equal(failed.status,'failed');assert.match(failed.job.error,/重复的来源标识/);assert.equal(calls,0);assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.db.prepare('SELECT snapshot FROM theses WHERE id=?').get(initial.id).snapshot,prior);assert.equal(f.db.prepare('SELECT count(*) n FROM results').get().n,0);
+});
+
 test('generation can plan an unsourced initial draft while retaining bounded chapters and output plan',()=>{
  const unconfirmed=normalizeThesisSnapshot(snapshot({materials:[{...snapshot().materials[0],confirmed:false}]})),unconfirmedPlan=thesisPlan(unconfirmed);assert.equal(unconfirmedPlan.length,2);assert.deepEqual(thesisAgentTask(unconfirmed,unconfirmedPlan[0],[]).materials,[]);assert.deepEqual(thesisAgentTask(unconfirmed,unconfirmedPlan[0],[]).context.confirmedSources,[]);
  assert.throws(()=>normalizeThesisSnapshot(snapshot({outline:Array.from({length:31},(_,i)=>({id:'c-'+i,title:'章'}))})),/30/);
@@ -63,7 +79,7 @@ test('blank optional profile fields pass cloud saving, generation and worker exe
 test('evidence extraction is deterministic, source-linked, bounded and explicitly excerpts',()=>{
  const value=normalizeThesisSnapshot(snapshot({materials:Array.from({length:30},(_,i)=>({id:'m-'+i,name:i===29?'课堂反馈研究':'其他资料',text:('其他研究内容。'.repeat(100)+(i===29?'课堂学习反馈记录。':'')).repeat(3),confirmed:true}))}));
  const unit=thesisPlan(value)[0],first=selectThesisEvidence(value,unit),second=selectThesisEvidence(value,unit);assert.deepEqual(first,second);assert.equal(first.sources.length,10);assert.equal(first.excludedCount,20);assert.ok(first.sources.some(source=>source.id==='m-29'));assert.ok(first.sources.every(source=>source.fragments.every(fragment=>fragment.end<=value.materials.find(row=>row.id===source.id).text.length)));
- const task=thesisAgentTask(value,unit,[]);assert.ok(task.materials.reduce((n,row)=>n+row.text.length,0)<80000);assert.equal(task.context.evidenceSelection.excerpted,true);assert.equal(task.context.evidenceSelection.onlineVerification,false);assert.match(task.materials[0].text,/原文字符/);
+ const task=thesisAgentTask(value,unit,[]);assert.ok(task.materials.reduce((n,row)=>n+row.text.length,0)<=80000);assert.equal(task.context.evidenceSelection.excerpted,true);assert.equal(task.context.evidenceSelection.onlineVerification,false);for(const row of task.materials){const source=value.materials.find(x=>x.id===row.id),scope=task.context.confirmedSources.find(x=>x.id===row.id);assert.equal(row.text,source.text.slice(0,scope.readableCharacters));assert.equal(scope.totalCharacters,source.text.length);assert.equal(scope.readTruncated,scope.readableCharacters<scope.totalCharacters);}
 });
 
 test('strict section validation rejects unknown/unread sources, shortages, truncation and missing research evidence',()=>{

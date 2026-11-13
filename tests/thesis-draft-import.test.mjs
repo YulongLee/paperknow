@@ -112,3 +112,39 @@ test('long imported manuscripts retain the tail and Word objects or stop before 
   const divided=thesisCompletionPlan(f.db,raw,[{...base,id:'part1',part:1,parts:2},{...base,id:'part2',part:2,parts:2}],[],{scope:'full'}).plan.filter(row=>row.chapterId==='c2');assert.equal(divided.map(row=>row.completion.originalText).join(''),text);assert.match(divided.at(-1).completion.originalText,/唯一尾部内容/);assert.equal(divided.flatMap(row=>row.completion.originalObjects||[]).length,2);assert.ok(divided.every(row=>!thesisAgentTask(saved.snapshot,row,[]).context.revision.excerpted));
  }
 });
+
+test('repeated completion keeps the imported text intact and bounds each incremental repair by the original outline target',async t=>{
+ const f=fixture(t);let item=await f.create();const original='研'.repeat(900)+'【待核对：具体来源】';item=(await f.request('/'+item.id+'/chapters/c1',{version:item.version,text:original})).item;
+ let previous=original;
+ for(let round=0;round<5;round++){
+  const raw=f.db.prepare('SELECT * FROM theses WHERE id=?').get(item.id),plan=thesisCompletionPlan(f.db,raw,thesisPlan(item.snapshot,{}),[],{scope:'full'}).plan,unit=plan.find(row=>row.chapterId==='c1');
+  assert.equal(unit.completion.originalText,previous);assert.equal(unit.completion.baselineTargetWords,500);
+  const task=thesisAgentTask(item.snapshot,unit,[]),max=task.context.lengthBudget.max;
+  const count=[...previous.replace(/\s/gu,'')].length;assert.ok(max>=count,'the saved original always fits');assert.ok(max-count<=Math.ceil(original.length*.35),'long original grows only within its fixed initial hard allowance');
+  const candidate=text=>({text:JSON.stringify({text,source_ids:[],missing_evidence:['具体来源'],complete:true,figures:[],draft:true}),trace:[]});
+  const expanded=previous+'研'.repeat(max-count),tooLong=expanded+'研';assert.equal(validateThesisCandidate(candidate(expanded),item.snapshot,unit).valid,true);assert.equal(validateThesisCandidate(candidate(tooLong),item.snapshot,unit).feedback.code,'word_limit_exceeded');
+  assert.equal(f.service.get(item.id,f.user).chapters.find(row=>row.id==='c1').text,previous,'rejected candidate never overwrites stored manuscript');
+  const version=f.db.prepare('SELECT max(version) version FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=?').get(item.id,'c1').version;
+  f.db.prepare('INSERT INTO thesis_chapter_versions(id,thesis_id,chapter_id,version,run_id,source,text,source_ids,created_at,figures) VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),item.id,'c1',version+1,null,'generated',expanded,'[]',new Date().toISOString(),'[]');item=f.service.get(item.id,f.user);previous=expanded;
+ }
+ assert.ok(previous.length<=original.length+Math.ceil(original.length*.35));assert.ok(previous.startsWith(original));
+ // Re-saving the same current text is a no-op, not an author edit that lets
+ // an automatic completion silently reset its own cumulative growth cap.
+ const beforeVersion=item.chapters.find(row=>row.id==='c1').version;item=(await f.request('/'+item.id+'/chapters/c1',{version:item.version,text:previous})).item;assert.equal(item.chapters.find(row=>row.id==='c1').version,beforeVersion);
+ {const raw=f.db.prepare('SELECT * FROM theses WHERE id=?').get(item.id),unit=thesisCompletionPlan(f.db,raw,thesisPlan(item.snapshot,{}),[],{scope:'full'}).plan.find(row=>row.chapterId==='c1');assert.equal(unit.completion.anchorWords,[...original.replace(/\s/gu,'')].length);}
+ // A deliberate author edit is a new anchor; generated revisions are not.
+ item=(await f.request('/'+item.id+'/chapters/c1',{version:item.version,text:previous+'作者确认新增信息。'})).item;const raw=f.db.prepare('SELECT * FROM theses WHERE id=?').get(item.id),unit=thesisCompletionPlan(f.db,raw,thesisPlan(item.snapshot,{}),[],{scope:'full'}).plan.find(row=>row.chapterId==='c1');assert.equal(unit.completion.anchorWords,[...item.chapters.find(row=>row.id==='c1').text.replace(/\s/gu,'')].length);
+
+});
+
+test('first generated draft remains the fixed anchor across later automatic chapter versions',async t=>{
+ const f=fixture(t);let item=await f.create();const initial='原'.repeat(900)+'【待核对：来源】';
+ for(const [version,text]of [[1,initial],[2,initial+'新'.repeat(40)]])f.db.prepare('INSERT INTO thesis_chapter_versions(id,thesis_id,chapter_id,version,run_id,source,text,source_ids,created_at,figures) VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),item.id,'c1',version,null,'generated',text,'[]',new Date().toISOString(),'[]');
+ item=f.service.get(item.id,f.user);const raw=f.db.prepare('SELECT * FROM theses WHERE id=?').get(item.id),unit=thesisCompletionPlan(f.db,raw,thesisPlan(item.snapshot,{}),[],{scope:'full'}).plan.find(row=>row.chapterId==='c1');assert.equal(unit.completion.anchorWords,[...initial.replace(/\s/gu,'')].length);assert.equal(unit.completion.originalText,initial+'新'.repeat(40));const max=thesisAgentTask(item.snapshot,unit,[]).context.lengthBudget.max;assert.equal(max,[...initial.replace(/\s/gu,'')].length+Math.ceil([...initial.replace(/\s/gu,'')].length*.35));
+});
+
+test('the allocation of one chapter baseline to multiple subsections stays fixed after an automatic subsection grows',async t=>{
+ const f=fixture(t),data=snapshot();data.outline=[{id:'c1',title:'第一章',targetWords:1000,sections:[{id:'s1',title:'1.1 研究背景',targetWords:400},{id:'s2',title:'1.2 研究方法',targetWords:600}]}];let item=(await f.request('',{snapshot:data,clientKey:randomUUID()})).item;const initial='1.1 研究背景\n'+'甲'.repeat(400)+'\n\n1.2 研究方法\n'+'乙'.repeat(600);item=(await f.request('/'+item.id+'/chapters/c1',{version:item.version,text:initial})).item;
+ const plan=()=>{const raw=f.db.prepare('SELECT * FROM theses WHERE id=?').get(item.id);return thesisCompletionPlan(f.db,raw,thesisPlan(item.snapshot,{}),[],{scope:'full'}).plan.filter(row=>row.chapterId==='c1');};const before=plan().map(row=>[row.sectionId,row.completion.anchorWords]);assert.equal(before.length,2);
+ const modified=initial.replace('甲'.repeat(400),'甲'.repeat(500)),version=f.db.prepare('SELECT max(version) version FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=?').get(item.id,'c1').version;f.db.prepare('INSERT INTO thesis_chapter_versions(id,thesis_id,chapter_id,version,run_id,source,text,source_ids,created_at,figures) VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),item.id,'c1',version+1,null,'generated',modified,'[]',new Date().toISOString(),'[]');item=f.service.get(item.id,f.user);assert.deepEqual(plan().map(row=>[row.sectionId,row.completion.anchorWords]),before);
+});

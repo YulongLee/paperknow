@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {hasCompletionChanges} from '../backend/thesis-worker.mjs';
+import {completionReviewPanel} from '../dist/workspace/thesis-completion-review.mjs';
+const target=new Set(['c']);const before=[{chapter_id:'c',text:'原稿  内容[source:a]',figures:'[]'},{chapter_id:'r',text:'[source:a] 作者. 文章[J]. 2024.',figures:'[]'}];
+const chapters=()=>[{id:'c',title:'正文',text:'原稿 内容[source:a]',figures:[]},{id:'r',title:'参考文献',text:'[source:a] 作者. 文章[J]. 2024.',figures:[]}];
+test('unchanged content is not charged, while text, source and reference repairs are retained as useful changes',()=>{assert.equal(hasCompletionChanges(chapters(),before,target),false);for(const text of ['原稿 内容已完善[source:a]','原稿 内容[source:b]']){const rows=chapters();rows[0].text=text;assert.equal(hasCompletionChanges(rows,before,target),true);}const repaired=chapters();repaired[1].text='[source:a] 作者. 文章[J]. 2025.';assert.equal(hasCompletionChanges(repaired,before,target),true);});
+test('a changed figure is useful even if surrounding text is identical',()=>{const rows=chapters();rows[0].figures=[{id:'f1',kind:'flowchart'}];assert.equal(hasCompletionChanges(rows,before,target),true);});
+test('settled but incomplete deliverable and released fees are both clearly disclosed',()=>{const result={status:'needs_materials',billingStatus:'settled',changes:[],checks:{},missing:[],issues:[]};assert.match(completionReviewPanel(result),/自动完善费用已结算/);assert.match(completionReviewPanel({...result,billingStatus:'released'}),/未扣积分或套餐次数/);});
+test('reordered object properties alone never count as a figure revision',()=>{const baseline=[{chapter_id:'c',text:'原稿',figures:JSON.stringify([{id:'f',kind:'flowchart',title:'实验',nodes:[{id:'n',label:'结果'}]}])}],current=[{id:'c',title:'正文',text:'原稿',figures:[{nodes:[{label:'结果',id:'n'}],title:'实验',kind:'flowchart',id:'f'}]}];assert.equal(hasCompletionChanges(current,baseline,target),false);current[0].figures[0].nodes[0].label='不同结果';assert.equal(hasCompletionChanges(current,baseline,target),true);});

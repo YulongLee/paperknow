@@ -7,7 +7,31 @@ import {randomUUID} from 'node:crypto';
 import {normalizeThesisSnapshot,thesisHash,thesisError,isThesisReferenceChapter,thesisAgentTask} from './thesis-model.mjs';
 import {thesisCompletionNeeds,safeCompletionIssues} from '../dist/workspace/thesis-completion-model.mjs';
 import {thesisFrontMatterKind,thesisManualBackMatter,thesisCoverFields} from '../dist/workspace/thesis-delivery.mjs';
+import {completionDiagnosis} from './thesis-completion-guidance.mjs';
 const fail=(status,message)=>{throw thesisError(status,message);};
+const referenceDoi=value=>{const doi=String(value||'').trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//iu,'').replace(/^doi\s*:\s*/iu,'').toLowerCase();return /^10\.\d{4,9}\/[^\s<>\u0000-\u001f]+$/u.test(doi)?doi:'';};
+const referenceTitle=value=>String(value||'').normalize('NFKC').trim().replace(/\s+/gu,' ').toLowerCase();
+const referenceAuthorsCompatible=(left,right)=>{
+ if(!String(left||'').trim()||!String(right||'').trim())return true;
+ const tokens=value=>String(value).split(/[;,；，]/u)[0].normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}]+/gu)||[],a=tokens(left),b=tokens(right);
+ if(a.length&&a.length===b.length&&a.every((token,index)=>token===b[index]))return true;
+ if(a.length===1&&b.length===1)return a[0]===b[0];
+ // Support surname-first initials and given-name-first names only when the
+ // surname is identical and the remaining given name is not contradictory.
+ const shared=a.filter(token=>token.length>=2&&b.includes(token));if(shared.length!==1)return false;
+ const restA=a.filter(token=>token!==shared[0]),restB=b.filter(token=>token!==shared[0]);if(restA.length!==1||restB.length!==1)return false;
+ return restA[0]===restB[0]||(restA[0].length===1&&restB[0].startsWith(restA[0]))||(restB[0].length===1&&restA[0].startsWith(restB[0]));
+};
+const referenceFieldsCompatible=(left,right)=>['year','journal','volume','issue','pages','publisher','documentType','url'].every(key=>!String(left[key]||'').trim()||!String(right[key]||'').trim()||referenceTitle(left[key])===referenceTitle(right[key]))&&referenceAuthorsCompatible(left.authors,right.authors);
+function linkExistingReferenceExcerpts(references){
+ for(const original of references){if(original.confirmed!==true||String(original.text||'').trim())continue;const doi=referenceDoi(original.doi);if(!doi)continue;
+  const matches=references.filter(row=>row.confirmed===true&&referenceDoi(row.doi)===doi);
+  if(matches.length!==2)continue;const other=matches.find(row=>row!==original);
+  if(!other||!String(other.text||'').trim()||referenceTitle(original.title)!==referenceTitle(other.title)||!referenceFieldsCompatible(original,other))continue;
+  // Keep both IDs and original metadata: older snapshots may cite either one.
+  original.text=other.text;original.sourceLabel='对应的用户提供文献内容，不代表全文或题录已核验';
+ }
+}
 export function recoverableThesisSimulation(db,row){
  if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='thesis_method_runs'").get())return null;
  const saved=new Set(JSON.parse(row.snapshot).materials.filter(material=>material.dataKind==='simulation').map(material=>material.simulation?.jobId));
@@ -24,7 +48,7 @@ export function recoverableThesisSimulation(db,row){
 export function savedThesisChapters(db,row){return JSON.parse(row.snapshot).outline.map(chapter=>({...chapter,record:db.prepare('SELECT * FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? ORDER BY version DESC LIMIT 1').get(row.id,chapter.id)}));}
 export function completionAssessment(db,row){const chapters=savedThesisChapters(db,row).map(({record,...chapter})=>({...chapter,text:record?.text||'',figures:JSON.parse(record?.figures||'[]')}));return thesisCompletionNeeds({snapshot:JSON.parse(row.snapshot),chapters});}
 export function completionInput(row,input,config,db){
- const allowed=['version','clientKey','supplement','materials','references','metadata','acknowledgements','simulationRunIds'];if(!input||Object.keys(input).some(key=>!allowed.includes(key)))fail(400,'补充资料包含不支持的字段');
+ const allowed=['version','clientKey','supplement','materials','references','referenceFragments','metadata','acknowledgements','simulationRunIds'];if(!input||Object.keys(input).some(key=>!allowed.includes(key)))fail(400,'补充资料包含不支持的字段');
  const snapshot=JSON.parse(row.snapshot);snapshot.requirements={...snapshot.requirements,deliveryVersion:1};const metadata={...JSON.parse(row.export_metadata||'{}')};
  if(input.metadata!==undefined){if(!input.metadata||typeof input.metadata!=='object'||Array.isArray(input.metadata)||Object.keys(input.metadata).some(key=>!Object.hasOwn(thesisCoverFields,key)||typeof input.metadata[key]!=='string'||input.metadata[key].length>200))fail(400,'封面补充信息无效');Object.assign(metadata,input.metadata);}
  if(input.supplement!==undefined&&(typeof input.supplement!=='string'||input.supplement.length>50000))fail(400,'研究补充最多 50,000 字符');
@@ -33,6 +57,8 @@ export function completionInput(row,input,config,db){
  if(input.acknowledgements!==undefined&&(typeof input.acknowledgements!=='string'||input.acknowledgements.length>5000))fail(400,'致谢事实最多 5,000 字符');
  if(input.acknowledgements?.trim())materials.push({name:'作者确认的致谢事实',text:input.acknowledgements.trim(),purpose:'致谢事实'});
  for(const material of materials)snapshot.materials.push({id:'material:'+randomUUID(),name:material.name,text:material.text,purpose:material.purpose==='致谢事实'?'致谢事实':'研究证据补充',confirmed:true});
+ const fragments=input.referenceFragments??[];if(!Array.isArray(fragments)||fragments.length>10||fragments.some(row=>!row||Object.keys(row).some(key=>!['referenceId','text'].includes(key))||typeof row.referenceId!=='string'||!row.referenceId||row.referenceId.length>150||typeof row.text!=='string'||!row.text.trim()||row.text.length>50000))fail(400,'请选择已有文献并填写需补充的正文片段');
+ for(const fragment of fragments){const matches=snapshot.references.filter(row=>row.id===fragment.referenceId&&row.confirmed===true);if(matches.length!==1)fail(404,'所选文献不存在或尚未确认');const reference=matches[0];snapshot.materials.push({id:'material:'+randomUUID(),name:'文献补充片段：'+String(reference.title).slice(0,200),text:fragment.text.trim(),purpose:'文献补充片段（作者提供，未核验为全文）',relatedReferenceId:reference.id,confirmed:true});}
  const simulationIds=input.simulationRunIds??[];if(!Array.isArray(simulationIds)||simulationIds.length>3||simulationIds.some(id=>typeof id!=='string'||id.length>100)||new Set(simulationIds).size!==simulationIds.length)fail(400,'本次最多采用 3 份模拟数据');
  for(const simulationId of simulationIds){
   if(!db)fail(503,'模拟数据来源暂不可核对');const run=db.prepare('SELECT * FROM thesis_method_runs WHERE id=? AND user_id=?').get(simulationId,row.user_id);if(!run||run.status!=='completed')fail(404,'已完成的模拟任务不存在');const source=JSON.parse(run.snapshot),output=JSON.parse(run.output||'null');
@@ -43,8 +69,29 @@ export function completionInput(row,input,config,db){
   snapshot.materials.push({id:materialId,name:'AI模拟数据：'+generated.recipe.title,text:generated.text,purpose:'仿真研究数据（非实测）',dataKind:'simulation',confirmed:true,simulation:{jobId:run.id,seed:generated.seed,generatorVersion:1,recipe:generated.recipe}});
  }
  const references=input.references??[];if(!Array.isArray(references)||references.length>30||references.some(r=>!r||typeof r.title!=='string'||!r.title.trim()||typeof r.text!=='string'||!r.text.trim()))fail(400,'文献需提供真实题名与可引用正文');
- for(const reference of references)snapshot.references.push({...reference,id:'reference:'+randomUUID(),sourceLabel:'作者终稿补充文献',confirmed:true});
+ const batchDoiCounts=new Map();for(const reference of references){const doi=referenceDoi(reference.doi);if(doi)batchDoiCounts.set(doi,(batchDoiCounts.get(doi)||0)+1);}
+ for(const reference of references){
+  // A user may supply text for a bibliography entry already cited in the
+  // draft. Bind it only on an unambiguous DOI AND title, retaining that ID
+  // and all original metadata. A title-only match is never enough.
+  const doi=referenceDoi(reference.doi),matches=doi?snapshot.references.filter(row=>row.confirmed===true&&referenceDoi(row.doi)===doi):[],original=matches.length===1&&batchDoiCounts.get(doi)===1?matches[0]:null;
+  const sameTitle=original&&referenceTitle(original.title)===referenceTitle(reference.title),sameFields=original&&referenceFieldsCompatible(original,reference);
+  if(original&&sameTitle&&sameFields&&!String(original.text||'').trim()){
+   original.text=reference.text;original.sourceLabel='作者补充文献内容，原题录未系统核验';
+  }else snapshot.references.push({...reference,id:'reference:'+randomUUID(),sourceLabel:'作者终稿补充文献',confirmed:true});
+ }
+ linkExistingReferenceExcerpts(snapshot.references);
  return {snapshot:normalizeThesisSnapshot(snapshot,config),metadata};
+}
+// A review quote that maps uniquely to one original section need not be sent
+// to every sibling. Ambiguous or boundary-spanning quotes stay on all units,
+// so a cross-section issue is never silently dismissed by this optimisation.
+export function scopeCompletionFindings(units){
+ for(const unit of units){const candidates=unit.completion?.findings||[];unit.completion.findings=candidates.filter(finding=>{
+  const quote=String(finding.quote||'');if(!quote)return true;
+  const matches=units.filter(other=>String(other.completion?.originalText||'').includes(quote));
+  return matches.length!==1||matches[0]===unit;
+ }).slice(0,6);}
 }
 // The server selects the affected chapters and binds their exact baseline to
 // the quote. Client issue codes can request work, never provide executable plans.
@@ -55,9 +102,15 @@ export function thesisCompletionPlan(db,row,basePlan,issueCodes=[],{scope='affec
  const broad=scope==='full'||simulationChanged||issues.includes('supplement_check')&&!targets.size||referencesChanged||issues.some(code=>/reference|citation|sources|duplicate|review_findings|raw_formula|table_numbers/.test(code));
  for(const chapter of saved){if(isThesisReferenceChapter(chapter))continue;if(issues.includes('figure_review')&&JSON.parse(chapter.record?.figures||'[]').length)targets.add(chapter.id);if(broad&&!thesisManualBackMatter(chapter)||thesisFrontMatterKind(chapter)&&issues.some(code=>/abstract|keywords|english_title/.test(code)))targets.add(chapter.id);}
  const bodyChanged=saved.some(chapter=>targets.has(chapter.id)&&!thesisFrontMatterKind(chapter)&&!thesisManualBackMatter(chapter));if(bodyChanged)for(const chapter of saved.filter(thesisFrontMatterKind))targets.add(chapter.id);
- const priorQuality=row.current_run_id?db.prepare('SELECT quality FROM thesis_runs WHERE id=? AND thesis_id=?').get(row.current_run_id,row.id)?.quality:null,reviewFindings=priorQuality?(JSON.parse(priorQuality).reviews||[]).flatMap(review=>review.findings||[]):[];
- const priority=[...(latestSimulation?[latestSimulation]:[]),...snapshot.materials.filter(row=>row.confirmed&&row.purpose==='研究证据补充').slice(-6),...snapshot.references.filter(row=>row.confirmed&&row.sourceLabel==='作者终稿补充文献').slice(-4)].map(row=>row.id);
- const plan=basePlan.filter(unit=>targets.has(unit.chapterId)).map(unit=>({...unit,sourceIds:[],completionSourceIds:priority,completion:{missingInformation:[...new Set([...needs.chapters.filter(chapter=>chapter.id===unit.chapterId).flatMap(chapter=>chapter.requests),...(priorQuality?JSON.parse(priorQuality).supplementCheck?.items||[]:[]).filter(row=>row.status==='missing'&&row.title===unit.chapterTitle).flatMap(row=>row.missing||[])])].slice(0,10).map(text=>String(text).slice(0,400)),findings:reviewFindings.filter(finding=>typeof finding.quote==='string'&&finding.quote.length>=6&&saved.find(c=>c.id===unit.chapterId)?.record?.text.includes(finding.quote)).slice(0,6).map(({quote,explanation,suggestion,category})=>({quote:quote.slice(0,500),explanation:String(explanation||'').slice(0,500),suggestion:String(suggestion||'').slice(0,300),category})),originalText:String(saved.find(c=>c.id===unit.chapterId)?.record?.text||''),originalFigures:manuscriptFigures({text:String(saved.find(c=>c.id===unit.chapterId)?.record?.text||''),figures:JSON.parse(saved.find(c=>c.id===unit.chapterId)?.record?.figures||'[]')}),excerpted:false}}));
+ // Findings are bound to both the reviewed sources and the exact full
+ // manuscript. A still-matching short quote is insufficient: its explanation
+ // may refer to an older version of another chapter or older evidence.
+ const priorRun=row.current_run_id?db.prepare('SELECT quality,snapshot_hash FROM thesis_runs WHERE id=? AND thesis_id=? AND user_id=?').get(row.current_run_id,row.id,row.user_id):null;
+ let priorQuality=null;try{const quality=priorRun?.quality&&JSON.parse(priorRun.quality),currentManuscript=saved.map(chapter=>({id:chapter.id,text:chapter.record?.text||'',figures:JSON.parse(chapter.record?.figures||'[]')}));if(priorRun?.snapshot_hash===row.snapshot_hash&&quality?.manuscriptHash===completionManuscriptHash(currentManuscript))priorQuality=quality;}catch{/* An invalid or legacy check cannot be used as current evidence. */}
+ const reviewFindings=(priorQuality?.reviews||[]).flatMap(review=>review.findings||[]);
+ const priorChapters=saved.map(chapter=>({id:chapter.id,title:chapter.title,text:chapter.record?.text||'',figures:JSON.parse(chapter.record?.figures||'[]')})),priorDiagnosis=priorQuality?completionDiagnosis(priorQuality.supplementCheck,priorChapters):null,priorItems=priorDiagnosis?.status==='checked'?priorDiagnosis.items.filter(item=>{const text=priorChapters.find(chapter=>chapter.id===item.chapterId)?.text||'',quote=item.manuscriptQuote||'',at=quote.length>=8?text.indexOf(quote):-1;return at>=0&&text.indexOf(quote,at+1)<0;}):[];
+ const priority=[...(latestSimulation?[latestSimulation]:[]),...snapshot.materials.filter(row=>row.confirmed&&(row.purpose==='研究证据补充'||row.relatedReferenceId)).slice(-6),...snapshot.references.filter(row=>row.confirmed&&row.sourceLabel==='作者终稿补充文献').slice(-4)].map(row=>row.id);
+ const plan=basePlan.filter(unit=>targets.has(unit.chapterId)).map(unit=>{const originalText=String(saved.find(c=>c.id===unit.chapterId)?.record?.text||'');return {...unit,sourceIds:[],completionSourceIds:priority,completion:{missingInformation:[...new Set([...needs.chapters.filter(chapter=>chapter.id===unit.chapterId).flatMap(chapter=>chapter.requests),...priorItems.filter(item=>item.status==='missing'&&item.chapterId===unit.chapterId).flatMap(item=>item.missing||[])])].slice(0,10).map(text=>String(text).slice(0,400)),findings:reviewFindings.filter(finding=>{if(finding.sectionId!==unit.chapterId||typeof finding.quote!=='string'||finding.quote.length<6)return false;const at=originalText.indexOf(finding.quote);return at>=0&&originalText.indexOf(finding.quote,at+1)<0;}).map(({quote,explanation,suggestion,category})=>({quote:quote.slice(0,500),explanation:String(explanation||'').slice(0,500),suggestion:String(suggestion||'').slice(0,300),category})),originalText,originalFigures:manuscriptFigures({text:originalText,figures:JSON.parse(saved.find(c=>c.id===unit.chapterId)?.record?.figures||'[]')}),excerpted:false}};});
  const acknowledgementFacts=snapshot.materials.filter(row=>row.confirmed&&row.purpose==='致谢事实').map(row=>row.text).join('\n');
  for(const chapter of saved.filter(thesisManualBackMatter))if((targets.has(chapter.id)||scope==='full'&&!chapter.record?.text?.trim())&&(acknowledgementFacts.trim()||scope==='full'))plan.push({id:chapter.id+'::completion::1',chapterId:chapter.id,chapterTitle:chapter.title,sectionId:chapter.id,title:chapter.title,part:1,parts:1,targetWords:200,sourceIds:[],presentation:{},personalMatter:true,completion:{originalText:chapter.record?.text||'',acknowledgementFacts:acknowledgementFacts.slice(0,5000),generalAcknowledgement:!acknowledgementFacts.trim()}});
  const chapterUnits=new Map();for(const unit of plan){const rows=chapterUnits.get(unit.chapterId)||[];rows.push(unit);chapterUnits.set(unit.chapterId,rows);}
@@ -74,6 +127,7 @@ export function thesisCompletionPlan(db,row,basePlan,issueCodes=[],{scope='affec
   }else if(groups.length>1){for(const group of groups)group.text='';}else groups[0].text=chapter;
   for(const group of groups)for(const unit of group.units)sectionGroups.set(unit,group);
  }
+ const stableTargets=new Map(plan.map(unit=>[unit,unit.targetWords]));
  for(const unit of plan){
   const grouped=sectionGroups.get(unit),group=grouped.units,partIndex=group.indexOf(unit),text=grouped.text,parts=group.length;let points=[0];
   if(parts>1){
@@ -96,8 +150,15 @@ export function thesisCompletionPlan(db,row,basePlan,issueCodes=[],{scope='affec
   // A revision must be able to preserve the author's existing text. The
   // original per-unit target can be much smaller than an imported manuscript.
   // Align its target with that segment instead of repeatedly forcing cuts.
-  if(scope==='full'&&!unit.personalMatter){const lang=unit.frontMatter==='abstract_en'?'English':unit.frontMatter==='abstract_zh'?'中文':snapshot.profile.language,existing=researchWordCount(unit.completion.originalText,lang);if(existing>unit.targetWords)unit.targetWords=existing;}
+  if(scope==='full'&&!unit.personalMatter){const lang=unit.frontMatter==='abstract_en'?'English':unit.frontMatter==='abstract_zh'?'中文':snapshot.profile.language,existing=researchWordCount(unit.completion.originalText,lang),chapterText=String(saved.find(c=>c.id===unit.chapterId)?.record?.text||'');
+   // A later automatic completion must not reset its own growth allowance.
+   // The latest author edit/import, or the first generated chapter, forms a
+   // stable per-chapter anchor until the author intentionally edits it again.
+   const anchor=db.prepare("SELECT text FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? AND source IN ('manual','imported') AND length(trim(text))>0 ORDER BY version DESC LIMIT 1").get(row.id,unit.chapterId)||db.prepare("SELECT text FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? AND source='generated' AND length(trim(text))>0 ORDER BY version ASC LIMIT 1").get(row.id,unit.chapterId);
+   const anchorCount=anchor?researchWordCount(anchor.text,lang):0,chapterTargets=(chapterUnits.get(unit.chapterId)||[]).reduce((sum,row)=>sum+(stableTargets.get(row)||0),0);
+   unit.completion.baselineTargetWords=unit.targetWords;if(chapterTargets>0&&anchor&&chapterText)unit.completion.anchorWords=Math.ceil(anchorCount*(stableTargets.get(unit)||0)/chapterTargets);if(existing>unit.targetWords)unit.targetWords=existing;}
  }
+ for(const units of chapterUnits.values())scopeCompletionFindings(units);
  if(scope==='full')for(const unit of plan)unit.completion={...unit.completion,scope:'full'};
  // Never send a model an excerpt and then overwrite the complete chapter.
  // Admission happens before quote creation and billing; all saved text and

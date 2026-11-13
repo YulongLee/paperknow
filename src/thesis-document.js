@@ -276,17 +276,54 @@ async function updateManuscriptCoreProperties(zip,metadata={}){
  const types=parse(await readXml(zip.file('[Content_Types].xml')));if(![...types.getElementsByTagNameNS(CT,'Override')].some(node=>node.getAttribute('PartName')==='/'+part)){const node=types.createElementNS(CT,'Override');node.setAttribute('PartName','/'+part);node.setAttribute('ContentType','application/vnd.openxmlformats-package.core-properties+xml');types.documentElement.appendChild(node);zip.file('[Content_Types].xml',xml(types));}
 }
 
-function preserveRegionSections(original,placement,region,generated){
+async function safeSampleHeaderExpansion(source,original){
+ const boundaries=original.filter(node=>node.namespaceURI===W&&node.localName==='p'&&children(children(node,'pPr')[0],'sectPr').length);if(boundaries.length<2)return false;
+ const refs=boundaries.map(node=>children(children(children(node,'pPr')[0],'sectPr')[0],'headerReference'));
+ const identities=refs.map(list=>list.map(node=>[node.getAttributeNS(W,'type'),node.getAttributeNS(R,'id')].join(':')).sort().join('|'));
+ if(identities[0]&&identities.every(id=>id===identities[0])){
+  // A shared header may still contain a hard-coded chapter title. Only reuse
+  // it when the referenced headers do not contain chapter-specific text.
+  const relFile=source.file('word/_rels/document.xml.rels');if(!relFile)return false;
+  const relationships=[...parse(await readXml(relFile)).getElementsByTagNameNS(P,'Relationship')];
+  for(const ref of refs[0]){const rel=relationships.find(node=>node.getAttribute('Id')===ref.getAttributeNS(R,'id')&&node.getAttribute('Type')===R+'/header'&&node.getAttribute('TargetMode')!=='External');if(!rel)return false;const part=resolvePart('word/document.xml',rel.getAttribute('Target'));if(!source.file(part))return false;const header=parse(await readXml(source.file(part)));if(/第\s*[一二三四五六七八九十\d]+\s*章/u.test(texts(header)))return false;}
+  return true;
+ }
+ const last=refs.at(-1);if(last.length!==1||last[0].getAttributeNS(W,'type')!=='default')return false;
+ const file=source.file('word/_rels/document.xml.rels');if(!file)return false;
+ const id=last[0].getAttributeNS(R,'id'),relation=[...parse(await readXml(file)).getElementsByTagNameNS(P,'Relationship')].find(node=>node.getAttribute('Id')===id&&node.getAttribute('Type')===R+'/header'&&node.getAttribute('TargetMode')!=='External');if(!relation)return false;
+ const part=resolvePart('word/document.xml',relation.getAttribute('Target')),header=source.file(part)?parse(await readXml(source.file(part))):null;if(!header||header.getElementsByTagNameNS(W,'hyperlink').length||header.getElementsByTagNameNS(W,'drawing').length||header.getElementsByTagNameNS(W,'pict').length)return false;
+ return /^第[一二三四五六七八九十\d]+章标题$/u.test(texts(header).replace(/\s/g,''));
+}
+function preserveRegionSections(original,placement,region,generated,{expandHeaderSafe=false}={}){
  const boundaries=original.filter(node=>node.namespaceURI===W&&node.localName==='p'&&children(children(node,'pPr')[0],'sectPr').length);
  if(!boundaries.length)return generated;
  const result=[...generated],topLevels=result.map((node,index)=>({index,style:children(children(node,'pPr')[0],'pStyle')[0]?.getAttributeNS(W,'val'),outline:children(children(node,'pPr')[0],'outlineLvl')[0]?.getAttributeNS(W,'val')})).filter(row=>row.style==='PKHeading1'||row.outline==='0');
+ const isTop=node=>{const pr=children(node,'pPr')[0],outline=children(pr,'outlineLvl')[0]?.getAttributeNS(W,'val'),style=children(pr,'pStyle')[0]?.getAttributeNS(W,'val'),value=texts(node);if(!value.trim())return false;if(outline!==undefined)return outline==='0';return Boolean(style&&style===placement.roleStyles.Heading1||heading(value)===1&&!referenceHeading(value));};
+ const sampleHeads=original.filter(isTop),sectionWithoutHeader=node=>{const sect=children(children(node,'pPr')[0],'sectPr')[0]?.cloneNode(true);if(!sect)return '';for(const child of children(sect,'headerReference'))sect.removeChild(child);for(const name of ['rsidR','rsidSect','rsidRPr','rsidDel'])sect.removeAttributeNS(W,name);return xml(sect);};
+ // Only trim unused *trailing sample chapters*, never an institutional
+ // section with different pagination, footer, margins, or non-placeholder
+ // headings. Preserve the first section's page-number restart unchanged.
+ const placeholderLayout=region.kind==='body'&&topLevels.length>0&&sampleHeads.length>1&&sampleHeads.length===boundaries.length&&sampleHeads.every((node,index)=>/^[一二三四五六七八九十]+、$/u.test(texts(node).replace(/\s/g,''))&&original.indexOf(node)<original.indexOf(boundaries[index])&&(index+1===sampleHeads.length||original.indexOf(boundaries[index])<original.indexOf(sampleHeads[index+1])))&&boundaries.slice(1).every(node=>sectionWithoutHeader(node)===sectionWithoutHeader(boundaries[1]));
+ const placeholderSections=placeholderLayout&&sampleHeads.length>topLevels.length;
  let inserted=0;
  for(const boundary of boundaries){
   const local=original.indexOf(boundary),following=original.slice(local+1).some(node=>{const value=texts(node).replace(/\s/g,'');return value&&!/^[（(]空[一二三四五六七八九十\d]+行[）)]$/.test(value);});let at=result.length;
   if(following){
-   const before=original.slice(0,local+1).filter(node=>{const pr=children(node,'pPr')[0],outline=children(pr,'outlineLvl')[0]?.getAttributeNS(W,'val'),style=children(pr,'pStyle')[0]?.getAttributeNS(W,'val'),value=texts(node);return outline==='0'||outline===undefined&&style&&style===placement.roleStyles.Heading1||heading(value)===1&&!referenceHeading(value);}).length;
-   if(region.kind!=='body'||before<1||topLevels.length<=before)throw Error('模板正文包含无法与本次章节对应的独立分节。请在保留的学校版式中设置独立 {{正文}} 占位符后重新上传。');
-   at=topLevels[before].index+inserted;
+   const before=original.slice(0,local+1).filter(isTop).length;
+   if(placeholderSections&&before>topLevels.length)continue;
+   if(region.kind!=='body'||before<1||topLevels.length<before||topLevels.length===before&&!placeholderSections)throw Error('模板正文包含无法与本次章节对应的独立分节。请在保留的学校版式中设置独立 {{正文}} 占位符后重新上传。');
+   if(before<topLevels.length)at=topLevels[before].index+inserted;
+  }else if(placeholderSections&&original.slice(0,local+1).filter(isTop).length>topLevels.length){
+   continue;
+  }
+  // More chapters than the interchangeable samples: duplicate the last
+  // ordinary body-section boundary before each additional chapter. The
+  // chapter header is converted to STYLEREF by refreshSampleChapterHeaders;
+  // all other page properties were verified equal above.
+  if(!following&&placeholderLayout&&boundary===boundaries[boundaries.length-1]&&topLevels.length>sampleHeads.length){
+   if(!expandHeaderSafe)throw Error('模板新增章节的页眉无法可靠对应，请核对模板后重试。');
+   for(let index=sampleHeads.length;index<topLevels.length;index++){const carrier=boundary.cloneNode(false),properties=children(boundary,'pPr')[0].cloneNode(true);carrier.appendChild(properties);result.splice(topLevels[index].index+inserted,0,carrier);inserted++;}
+   at=result.length;
   }
   const carrier=boundary.cloneNode(false),properties=children(boundary,'pPr')[0].cloneNode(true);carrier.appendChild(properties);result.splice(at,0,carrier);inserted++;
  }
@@ -359,6 +396,12 @@ function fillKnownCoverField(para,metadata){
  // four-character first-line indent can otherwise strand its final 日.
  if(/^\s*日期[:：]\s*年\s*月\s*日\s+日期[:：]\s*年\s*月\s*日\s*$/.test(value)){const pr=children(para,'pPr')[0];if(pr){for(const ind of children(pr,'ind')){ind.setAttributeNS(W,'w:firstLine','0');ind.setAttributeNS(W,'w:firstLineChars','0');}for(const old of children(pr,'keepLines'))pr.removeChild(old);pr.appendChild(para.ownerDocument.createElementNS(W,'w:keepLines'));}}
 }
+// A cover often puts the label and its answer in different cells. Never put
+// long metadata in the label cell or mistake “外文题目” for “题目”.
+function fillCoverTable(table,metadata){
+ const labels={'中文题目':'title','论文题目':'title','题目':'title','外文题目':'englishTitle','英文题目':'englishTitle','学号':'studentId','姓名':'author','作者':'author','专业':'major','学院':'college','指导教师':'supervisor','完成日期':'completionDate'};
+ for(const row of children(table,'tr')){const cells=children(row,'tc');if(cells.length!==2)continue;const label=texts(cells[0]).replace(/[\s:：]/g,''),key=labels[label];if(!key)continue;const provided=String(metadata[key]||'').trim(),target=cells[1],existing=texts(target).trim();if(!provided||existing&&!(key==='college'&&/学院$/.test(existing)))continue;const para=children(target,'p')[0];if(!para||para.getElementsByTagNameNS(W,'drawing').length||para.getElementsByTagNameNS(W,'fldChar').length)continue;const textNodes=[...para.getElementsByTagNameNS(W,'t')];if(textNodes.length){textNodes[0].textContent=provided;for(const node of textNodes.slice(1))node.textContent='';}else{const doc=para.ownerDocument,r=doc.createElementNS(W,'w:r'),t=doc.createElementNS(W,'w:t');t.setAttribute('xml:space','preserve');t.textContent=provided;r.appendChild(t);para.appendChild(r);}}
+}
 function replaceParagraphTextRanges(para,operations){
  if(!operations.length)return;let offset=0;const spans=[...para.getElementsByTagNameNS(W,'t')].map(node=>{const span={node,from:offset,to:offset+node.textContent.length};offset=span.to;return span;});
  for(const operation of operations.sort((a,b)=>b.from-a.from)){
@@ -395,7 +438,11 @@ function joinInlineAbstract(fragment,label){
 }
 async function refreshSampleChapterHeaders(source,document,placement,styles,chapterTitle){
  const relationFile=source.file('word/_rels/document.xml.rels');if(!relationFile)return;
- const relations=new Map([...parse(await readXml(relationFile)).getElementsByTagNameNS(P,'Relationship')].map(node=>[node.getAttribute('Id'),node])),styleId=placement.roleStyles.Heading1||'PKHeading1',style=[...styles.getElementsByTagNameNS(W,'style')].find(node=>node.getAttributeNS(W,'styleId')===styleId),name=children(style,'name')[0]?.getAttributeNS(W,'val')||'PaperKnow Heading1',changed=new Set();
+ const relations=new Map([...parse(await readXml(relationFile)).getElementsByTagNameNS(P,'Relationship')].map(node=>[node.getAttribute('Id'),node])),styleId=placement.roleStyles.Heading1||'PKHeading1',style=[...styles.getElementsByTagNameNS(W,'style')].find(node=>node.getAttributeNS(W,'styleId')===styleId),changed=new Set();let name=children(style,'name')[0]?.getAttributeNS(W,'val')||'PaperKnow Heading1';
+ // Some schools use one visual style for both chapter and subsection titles.
+ // STYLEREF on that shared style otherwise selects the last subsection.
+ const paragraphs=[...document.getElementsByTagNameNS(W,'p')],usesSharedStyle=paragraphs.some(para=>{const pr=children(para,'pPr')[0];return children(pr,'pStyle')[0]?.getAttributeNS(W,'val')===styleId&&['1','2'].includes(children(pr,'outlineLvl')[0]?.getAttributeNS(W,'val'));});
+ if(style&&usesSharedStyle){const ids=new Set([...styles.getElementsByTagNameNS(W,'style')].map(node=>node.getAttributeNS(W,'styleId')));let id='PKChapterTitle';while(ids.has(id))id+='_';name='PaperKnow Chapter Title '+id;const clone=style.cloneNode(true);clone.setAttributeNS(W,'w:styleId',id);const n=children(clone,'name')[0];if(n)n.setAttributeNS(W,'w:val',name);else{const added=styles.createElementNS(W,'w:name');added.setAttributeNS(W,'w:val',name);clone.insertBefore(added,clone.firstChild);}styles.documentElement.appendChild(clone);for(const para of paragraphs){const pr=children(para,'pPr')[0],pstyle=children(pr,'pStyle')[0];if(pstyle?.getAttributeNS(W,'val')===styleId&&children(pr,'outlineLvl')[0]?.getAttributeNS(W,'val')==='0')pstyle.setAttributeNS(W,'w:val',id);}source.file(await relatedPart(source,'styles','word/styles.xml'),xml(styles));}
  for(const reference of document.getElementsByTagNameNS(W,'headerReference')){
   const relation=relations.get(reference.getAttributeNS(R,'id'));if(!relation)continue;const part=resolvePart('word/document.xml',relation.getAttribute('Target'));if(changed.has(part)||!source.file(part))continue;changed.add(part);
   const header=parse(await readXml(source.file(part))),label=texts(header).replace(/\s/g,'');if(!/^(?:第.{1,12}[章节篇].{0,80}|参考文献|致谢|正文|附录.{0,20})$/.test(label)||header.getElementsByTagNameNS(W,'hyperlink').length||header.getElementsByTagNameNS(W,'drawing').length||header.getElementsByTagNameNS(W,'pict').length)continue;
@@ -412,7 +459,7 @@ async function fillRecognizedTemplate(source,rules,metadata,placement,{frontGrou
  // prose remains literal, including research discussing template syntax.
  const removed=new Set();for(const region of placement.regions)for(let i=region.startIndex;i<region.endIndex;i++)removed.add(sourceNodes[i]);
  const coverEnd=Math.min(...placement.regions.filter(row=>/^(?:abstract_|toc$|body$)/.test(row.kind)).map(row=>row.startIndex));
- for(const [index,node]of sourceNodes.entries()){if(removed.has(node))continue;if(proposal&&proposalTemplateFiller(node,values)){root.removeChild(node);continue;}for(const para of node.localName==='p'?[node,...node.getElementsByTagNameNS(W,'p')]:node.getElementsByTagNameNS(W,'p'))if(!fillTemplateMetadataParagraph(para,values)&&index<coverEnd)fillKnownCoverField(para,metadata);}
+ for(const [index,node]of sourceNodes.entries()){if(removed.has(node))continue;if(proposal&&proposalTemplateFiller(node,values)){root.removeChild(node);continue;}if(index<coverEnd&&node.localName==='tbl')fillCoverTable(node,metadata);for(const para of node.localName==='p'?[node,...node.getElementsByTagNameNS(W,'p')]:node.getElementsByTagNameNS(W,'p')){if(fillTemplateMetadataParagraph(para,values)||index>=coverEnd)continue;let cell=para.parentNode;while(cell&&cell!==node&&cell.localName!=='tc')cell=cell.parentNode;if(cell?.localName==='tc'&&children(cell.parentNode,'tc').length===2)continue;fillKnownCoverField(para,metadata);}}
  const regions=[...placement.regions].sort((a,b)=>b.startIndex-a.startIndex);
  for(const region of regions){
   const original=sourceNodes.slice(region.startIndex,region.endIndex),anchor=sourceNodes[region.startIndex];if(!anchor)throw Error('模板正文定位已变化，请重新选择模板。');let body='';
@@ -427,7 +474,7 @@ async function fillRecognizedTemplate(source,rules,metadata,placement,{frontGrou
   const area=slotContentArea(root,anchor,rules.page),fragment=parse(`<w:body xmlns:w="${W}" xmlns:r="${R}" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">${fitTables(body,area.width,area.height,rules.styles.Normal)}</w:body>`);
   if(region.kind.startsWith('abstract_')&&/[:：]/.test(texts(anchor)))joinInlineAbstract(fragment,region.kind==='abstract_zh'?'摘要：':'Abstract: ');
   adoptTemplateParagraphs(fragment,sourceNodes,placement,styles,region,rules);
-  let inserted=children(fragment.documentElement);if(region.kind!=='instructions'&&!(region.kind==='appendix'&&metadata.submission&&!body))inserted=preserveRegionSections(original,placement,region,inserted);
+  let inserted=children(fragment.documentElement);if(region.kind!=='instructions'&&!(region.kind==='appendix'&&metadata.submission&&!body))inserted=preserveRegionSections(original,placement,region,inserted,{expandHeaderSafe:region.kind==='body'&&await safeSampleHeaderExpansion(source,original)});
   // Abstracts or bibliography without their own template region still belong
   // to this manuscript. Insert them at the recognized body boundary, never at
   // the document tail after the school's appendix or declaration.

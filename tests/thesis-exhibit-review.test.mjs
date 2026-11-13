@@ -15,6 +15,11 @@ const result=value=>({text:JSON.stringify(value),usage:{input:100,output:100},co
 const reviewed=task=>result({complete:true,findings:[],limitations:[],checkedFigureIds:task.context.manuscriptExcerpts.flatMap(row=>(row.figures||[]).map(f=>f.id))});
 const runtime={maxTurns:6,maxOutputTokens:4096,timeoutMs:30000,maxCostUsd:.5};
 const runner=()=>createWritingQualityRunner({citationVerifier:{verify:async()=>({version:1,status:'completed',items:[],summary:{},limitations:[]})}});
+test('recovered thesis review retains diagrams and requires their acknowledgement',async()=>{
+ const input={...chapter(),text:'首段。'+'甲'.repeat(1800)+'\n\n[figure:flow]\n'+ '乙'.repeat(1800)+'\n\n结尾。'+'丙'.repeat(1200)},calls=[];
+ const quality=await runner()({kind:'thesis',checkSupplements:false,recoverSupplements:true,chapters:[input],runtime,dispatch:async({task,unitId})=>{calls.push({task,unitId});if(calls.length===1)throw Object.assign(Error('turn limit'),{code:'turn_limit',status:502});return reviewed(task);}});
+ assert.equal(quality.coverage.complete,true);assert.equal(quality.figureReview.status,'completed');assert.deepEqual(quality.figureReview.checkedFigureIds,['flow']);assert.equal(calls.slice(1).flatMap(x=>x.task.context.manuscriptExcerpts).map(x=>x.text).join(''),input.text);
+});
 function supplementResult(task,{status='not_required',checked=true}={}){return result({items:task.context.chapters.map(row=>({id:row.id,status,requirement:'本节图文所需资料',reason:'仅说明结构关系，无实测结果。',manuscriptQuote:row.text.slice(0,25),evidence:[],missing:status==='missing'?['原始实验记录和样本范围']:[],...(checked?{checkedFigureIds:(row.figures||[]).map(f=>f.id)}:{})}))});}
 
 test('review receives actual diagram nodes, relationships and captions and requires exact image coverage',()=>{
@@ -40,6 +45,10 @@ test('long manuscript batches retain full diagram markers and all diagram conten
  assert.equal(tasks.flatMap(task=>task.context.manuscriptExcerpts).map(row=>row.text).join(''),input.text);
  const crossing={...chapter(),text:'文'.repeat(21995)+'[figure:flow]后文'};const first=manuscriptPart(crossing,0,22000),next=manuscriptPart(crossing,first.end,22000);
  assert.equal(first.text.length,21995);assert.equal(first.figures.length,0);assert.equal(next.figures[0].id,'flow');assert.equal(first.text+next.text,crossing.text);
+ const citation={text:'文。'.repeat(10995)+'重要研究结论。[source:reference-id]后文',figures:[]},before=manuscriptPart(citation,0,22000),after=manuscriptPart(citation,before.end,22000);assert.ok(after.text.startsWith('重要研究结论。[source:reference-id]'));assert.equal(before.text+after.text,citation.text);
+ for(const gap of [0,1,5]){const prefix='文。'.repeat(100)+'本句保留数字3.14与英文缩写e.g.，最后引用';const input={text:prefix+' '.repeat(gap)+'[source:ref]继续',figures:[]},limit=prefix.length+gap,part=manuscriptPart(input,0,limit),nextPart=manuscriptPart(input,part.end,limit);assert.equal(part.text+nextPart.text,input.text);assert.ok(nextPart.text.startsWith('本句保留数字3.14与英文缩写e.g.，最后引用'));}
+ assert.throws(()=>manuscriptPart({text:'长'.repeat(22000)+'[source:ref]',figures:[]},0,22000),/单句及其引用超过/);
+ assert.throws(()=>manuscriptPart({text:'Data 3.14 and e.g. '.repeat(1500)+'[source:ref]',figures:[]},0,22000),/单句及其引用超过/);
  assert.throws(()=>manuscriptFigures({text:'[figure:unknown]',figures:input.figures}));
 });
 

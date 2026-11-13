@@ -106,3 +106,11 @@ test('a bounded current simulation is supplied in full for completion, with expl
  const evidence=selectThesisEvidence(source,unit).sources[0];assert.ok(generated.text.length>2400);assert.ok(evidence.text.includes(generated.text),'all generated records, summaries and disclosure must reach the writing task');assert.deepEqual(evidence.fragments,[{start:0,end:generated.text.length,totalCharacters:generated.text.length}]);assert.match(evidence.text,/完整内容/);
  const task=thesisAgentTask(source,unit,[]);assert.equal(task.context.revision.simulationCompletion.mode,'disclosed_simulation_analysis');assert.deepEqual(task.context.revision.simulationCompletion.sourceIds,[material.id]);assert.equal(task.context.revision.simulationCompletion.preserveObservedFacts,true);assert.match(task.instructions,/不原样继续索要实测日志/);assert.match(task.instructions,/不补造作者、学校/);assert.ok(task.materials[0].text.includes(generated.text));assert.equal(thesisAgentTask(source,{...unit,completion:undefined},[]).context.revision,undefined);
 });
+
+test('reference additions to final completion are account-owned and idempotent',async t=>{
+ const f=fixture(t),thesis=await f.create(),payload={version:thesis.version,clientKey:randomUUID(),references:[{title:'Attention Is All You Need',authors:'Ashish Vaswani',year:'2017',doi:'10.48550/arXiv.1706.03762',text:'用户提供的摘要片段。'}]};
+ await assert.rejects(f.request('/api/theses/'+thesis.id+'/completion',payload,f.other),error=>error.status===404);
+ const saved=(await f.request('/api/theses/'+thesis.id+'/completion',payload)).item;assert.equal(saved.snapshot.references.length,1);assert.equal(saved.snapshot.references[0].text,payload.references[0].text);
+ const replay=(await f.request('/api/theses/'+thesis.id+'/completion',payload)).item;assert.equal(replay.version,saved.version);assert.equal(replay.snapshot.references.length,1);
+ await assert.rejects(f.request('/api/theses/'+thesis.id+'/completion',payload,f.other),error=>error.status===404);
+});

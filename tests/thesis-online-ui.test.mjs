@@ -112,7 +112,7 @@ test('a paused legacy completion distinguishes its zero progress from the saved 
  assert.match(f.$('.thesis-progress').textContent,/初稿已保存/);assert.match(f.$('.thesis-progress').textContent,/本轮完善 0 \/ 18/);assert.doesNotMatch(f.$('[data-thesis-wait]').textContent,/本次生成已暂停/);assert.equal(f.$('#thesis-online-draft').disabled,false);assert.equal(f.$('#thesis-online-docx').disabled,true);
  const drawer=f.$('[data-thesis-supplement-drawer]');assert.equal(drawer.open,true);assert.match(drawer.textContent,/第五章 实验结果/);assert.match(drawer.textContent,/训练测试日志、准确率与响应时间/);assert.match(f.$('[data-thesis-delivery-state]').textContent,/初稿已保存，可直接下载/);
  const buttons=f.dom.window.document.querySelectorAll('[data-thesis-open-supplement]');assert.equal(buttons.length,2);for(const button of buttons){drawer.open=false;button.click();assert.equal(drawer.open,true);}assert.equal(f.calls.some(row=>row.data&&!row.path.endsWith('/quote')),false);
- f.$('[data-thesis-writing-mode="draft"]').click();await settle();f.$('[data-thesis-quote="resume"]').click();await settle();assert.equal(f.calls.filter(row=>row.path==='/theses/t1/resume').length,1);assert.equal(f.calls.find(row=>row.path==='/theses/t1/quote').data.action,'resume');
+ assert.equal(f.$('[data-thesis-writing-mode="final"]').getAttribute('aria-selected'),'true');await settle();f.$('[data-thesis-quote="resume"]').click();await settle();assert.equal(f.calls.filter(row=>row.path==='/theses/t1/resume').length,1);assert.equal(f.calls.find(row=>row.path==='/theses/t1/quote').data.action,'resume');
  }finally{f.close();}
 });
 test('completed draft writing with missing final facts stays downloadable and is not presented as a failed generation or a ready final',async()=>{

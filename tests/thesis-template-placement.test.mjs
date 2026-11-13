@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import {DOMParser,XMLSerializer} from '@xmldom/xmldom';
-import {createWritingDocx} from '../src/writing-document.js';
+import {createWritingDocx,inspectThesisExportContent} from '../src/writing-document.js';
 import {inspectThesisTemplatePlacement} from '../src/thesis-template-placement.js';
 const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main',R='http://schemas.openxmlformats.org/officeDocument/2006/relationships',P='http://schemas.openxmlformats.org/package/2006/relationships';
 const text=(value,style='',extra='')=>`<w:p><w:pPr>${style?`<w:pStyle w:val="${style}"/>`:''}${extra}</w:pPr><w:r><w:t>${value}</w:t></w:r></w:p>`;
@@ -45,6 +45,13 @@ test('recognized abstract table width follows its own section instead of last-se
 test('recognized appendix and acknowledgments use supplied content without retaining the old sample or pending marker',async()=>{
  const result=await output(await fixture(),paper+'\n致谢\n感谢实际提供的研究支持。\n附录A\n这是实际提供的附录材料。'),content=paragraphRows(result.document).map(row=>row.text).join('\n');assert.match(content,/感谢实际提供的研究支持/);assert.match(content,/这是实际提供的附录材料/);assert.doesNotMatch(content,/【待补充：致谢】|【待补充：附录】|旧致谢|旧附录/);
 });
+test('template backmatter order differing from manuscript stays subject to strict text order verification',async()=>{
+ const zip=await JSZip.loadAsync(await fixture());let xml=await zip.file('word/document.xml').async('string');
+ const references=text('参考文献','SchoolH1')+text('[1] 旧示例文献必须删除。','SchoolRefs')+boundary(),ack=text('致谢','SchoolH1')+text('旧致谢示例，绝不可被当作用户论文原文。','SchoolBody')+boundary();
+ assert.ok(xml.includes(references+ack));xml=xml.replace(references+ack,ack+references).replace('合成学校封面 {{作者}}','合成学校封面 合成论文题目 {{作者}}');zip.file('word/document.xml',xml);
+ const textValue=paper+'\n致谢\n感谢实际提供的研究支持。',result=await output(await zip.generateAsync({type:'uint8array',compression:'DEFLATE'}),textValue);
+ await assert.rejects(inspectThesisExportContent(result.bytes,textValue),/正文完整性核对未通过/);
+});
 test('chapter-aligned original section breaks retain their original page properties',async()=>{
  const source=await fixture({innerSection:true}),result=await output(source),before=parse(await (await JSZip.loadAsync(source)).file('word/document.xml').async('string'));
  const sections=doc=>[...doc.getElementsByTagNameNS(W,'sectPr')].map(serialize);assert.deepEqual(sections(result.document),sections(before));
@@ -52,6 +59,21 @@ test('chapter-aligned original section breaks retain their original page propert
 });
 test('unmatched complex chapter section structures fail instead of moving breaks to arbitrary prose',async()=>{
  await assert.rejects(output(await fixture({innerSection:true}),'合成论文题目\n第一章 唯一章节\n这是唯一章节的合成正文。'),/独立分节|章节对应/);
+});
+test('trailing placeholder chapters with equivalent section layouts may be omitted while preserving existing chapter breaks',async()=>{
+ const zip=await JSZip.loadAsync(await fixture({innerSection:true}));let xml=await zip.file('word/document.xml').async('string');
+ xml=xml.replace('第一章 旧正文标题','一、').replace('第二章 旧正文方法','二、');
+ const target=text('参考文献','SchoolH1');assert.ok(xml.includes(target));xml=xml.replace(target,text('三、','SchoolH1')+text('第三章模板示例。','SchoolBody')+boundary(2100)+text('四、','SchoolH1')+text('第四章模板示例。','SchoolBody')+boundary(2100)+target);
+ // The noninitial body sections must be equivalent except for headers.
+ xml=xml.replace(boundary(1900),boundary(2100));zip.file('word/document.xml',xml);
+ const source=await zip.generateAsync({type:'uint8array',compression:'DEFLATE'}),result=await output(source),rows=paragraphRows(result.document),second=rows.findIndex(row=>row.text==='第二章 新的方法'&&row.style==='SchoolH1');
+ assert.ok(second>0);assert.equal(rows[second-1].node.getElementsByTagNameNS(W,'sectPr').length,1);assert.match(rows.map(row=>row.text).join('\n'),/新的第二章正文内容/);assert.doesNotMatch(rows.map(row=>row.text).join('\n'),/第三章模板示例|第四章模板示例/);
+ const expanded=await output(source,'合成论文题目\n'+['一','二','三','四','五'].map(n=>'第'+n+'章 内容'+n+'\n第'+n+'章真实正文。').join('\n')),expandedRows=paragraphRows(expanded.document),fifth=expandedRows.findIndex(row=>row.text==='第五章 内容五'&&row.style==='SchoolH1');
+ assert.ok(fifth>0);assert.equal(expandedRows[fifth-1].node.getElementsByTagNameNS(W,'sectPr').length,1,'each additional chapter retains a preceding section break');
+ const fixedHeader=await JSZip.loadAsync(source);fixedHeader.file('word/header1.xml',`<w:hdr xmlns:w="${W}">${text('第五章 固定标题')}</w:hdr>`);
+ await assert.rejects(output(await fixedHeader.generateAsync({type:'uint8array',compression:'DEFLATE'}),'合成论文题目\n'+['一','二','三','四','五'].map(n=>'第'+n+'章 内容'+n+'\n第'+n+'章真实正文。').join('\n')),/页眉无法可靠对应/);
+ const changed=await JSZip.loadAsync(source),different=(await changed.file('word/document.xml').async('string')).replace(boundary(2100)+target,boundary(2400)+target);changed.file('word/document.xml',different);
+ await assert.rejects(output(await changed.generateAsync({type:'uint8array',compression:'DEFLATE'})),/独立分节|章节对应/);
 });
 test('empty or ambiguous institutional templates are rejected instead of silently rebuilding their cover',async()=>{
  const zip=await JSZip.loadAsync(await fixture());zip.file('word/document.xml',`<w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${text('合成学校封面')}${text('原创性声明')}${text('作者：待填写')}${text('未标记正文位置')}${text('请按学校要求填写内容')}${section()}</w:body></w:document>`);const bytes=await zip.generateAsync({type:'uint8array'}),report=await inspectThesisTemplatePlacement(bytes);assert.equal(report.mode,'ambiguous');await assert.rejects(output(bytes),/正文区域|正文位置|占位符/);
@@ -82,11 +104,21 @@ test('only a clearly identified guide before a distinct formal cover is omitted'
 test('provided metadata fills only empty recognized cover fields while preserving existing names and signatures',async()=>{
  const zip=await JSZip.loadAsync(await fixture()),xml=await zip.file('word/document.xml').async('string');zip.file('word/document.xml',xml.replace('合成学校封面 {{作者}}</w:t></w:r></w:p>','合成学校封面 {{作者}}</w:t></w:r></w:p>'+text('题    目      （宋体 四号 粗体）')+text('姓    名：____')+text('指导教师：已有真实导师')+text('作者签名：____')));const result=await output(await zip.generateAsync({type:'uint8array'})),content=paragraphRows(result.document).map(row=>row.text).join('\n');assert.match(content,/题\s*目\s+合成论文题目/);assert.match(content,/姓\s*名：真实提供作者/);assert.match(content,/指导教师：已有真实导师/);assert.match(content,/作者签名：____/);assert.doesNotMatch(content,/题\s*目[^\n]*宋体/);
 });
+test('two-cell cover labels retain their width, use the value cell and never invent a foreign title',async()=>{
+ const zip=await JSZip.loadAsync(await fixture()),original=await zip.file('word/document.xml').async('string'),row=(label,value='')=>`<w:tr><w:tc>${text(label)}</w:tc><w:tc>${text(value)}</w:tc></w:tr>`,table=`<w:tbl>${row('中文题目：')}${row('外文题目：')}${row('学院：','生命科学学院')}${row('完成日期：')}</w:tbl>`;zip.file('word/document.xml',original.replace(text('合成学校封面 {{作者}}'),text('合成学校封面 {{作者}}')+table));
+ const bytes=await createWritingDocx(paper,{documentKind:'thesis',metadata:{title:'合成论文题目',college:'计算机学院',completionDate:'2026年11月'},template:{status:'ready',bytes:await zip.generateAsync({type:'uint8array'})}}),doc=parse(await (await JSZip.loadAsync(bytes)).file('word/document.xml').async('string'));
+ const pairs=[...doc.getElementsByTagNameNS(W,'tr')].map(row=>[...row.getElementsByTagNameNS(W,'tc')].map(paragraphText));assert.ok(pairs.some(row=>row[0]==='中文题目：'&&row[1]==='合成论文题目'));assert.ok(pairs.some(row=>row[0]==='外文题目：'&&row[1]===''));assert.ok(pairs.some(row=>row[0]==='学院：'&&row[1]==='计算机学院'));assert.ok(pairs.some(row=>row[0]==='完成日期：'&&row[1]==='2026年11月'));
+});
 test('inline abstract templates keep a single label-and-body paragraph instead of adding an extra heading line',async()=>{
  const zip=await JSZip.loadAsync(await fixture()),xml=await zip.file('word/document.xml').async('string');zip.file('word/document.xml',xml.replace(text('摘要','SchoolAbstract')+text('旧摘要示例，必须被新摘要替换，不能在最终文档中重复出现。','SchoolBody'),text('摘要：在此输入摘要内容（宋体 小四号）。','SchoolAbstract')));const result=await output(await zip.generateAsync({type:'uint8array'})),row=paragraphRows(result.document).find(row=>row.text.startsWith('摘要：'));assert.ok(row);assert.match(row.text,/这是新的合成摘要正文/);assert.equal(row.node.getElementsByTagNameNS(W,'b').length,1);assert.equal(paragraphRows(result.document).filter(row=>row.text==='摘要').length,0);
 });
 test('recognized sample chapter headers become dynamic fields for the actual school heading style',async()=>{
  const zip=await JSZip.loadAsync(await fixture()),original=`<w:hdr xmlns:w="${W}">${text('第一章 旧正文标题')}</w:hdr>`;zip.file('word/header1.xml',original);const source=await zip.generateAsync({type:'uint8array'}),result=await output(source),header=await result.zip.file('word/header1.xml').async('string');assert.match(header,/STYLEREF &quot;heading 1&quot;|STYLEREF "heading 1"/);assert.match(header,/第一章 真实新绪论/);assert.doesNotMatch(header,/旧正文标题/);assert.equal(await (await JSZip.loadAsync(source)).file('word/header1.xml').async('string'),original);
+});
+test('shared chapter and subsection styles use a distinct chapter-only header style',async()=>{
+ const zip=await JSZip.loadAsync(await fixture()),doc=await zip.file('word/document.xml').async('string');zip.file('word/document.xml',doc.replace(text('1.1 旧二级标题','SchoolH2'),text('1.1 旧二级标题','SchoolH1','<w:outlineLvl w:val="1"/>')));zip.file('word/header1.xml',`<w:hdr xmlns:w="${W}">${text('第一章 旧正文标题')}</w:hdr>`);
+ const result=await output(await zip.generateAsync({type:'uint8array'})),rows=paragraphRows(result.document),chapter=rows.find(row=>row.text==='第一章 真实新绪论'&&row.node.getElementsByTagNameNS(W,'outlineLvl')[0]?.getAttributeNS(W,'val')==='0'),sub=rows.find(row=>row.text==='1.1 新的研究问题'&&row.node.getElementsByTagNameNS(W,'outlineLvl')[0]?.getAttributeNS(W,'val')==='1');
+ assert.ok(chapter&&sub);assert.notEqual(chapter.style,sub.style);const header=await result.zip.file('word/header1.xml').async('string');assert.match(header,/STYLEREF.*PaperKnow Chapter Title/);
 });
 test('unmistakable sectioned writing-guide pages are removed while the following institutional cover stays',async()=>{
  const zip=await JSZip.loadAsync(await fixture()),xml=await zip.file('word/document.xml').async('string'),prefix=text('本科毕业论文撰写规范要求')+text('说明：前置填写规范正文，不属于论文。')+boundary();zip.file('word/document.xml',xml.replace('<w:body>','<w:body>'+prefix).replace('合成学校封面 {{作者}}','合成大学毕业论文封面 {{作者}}').replace('<w:tbl>','<w:p><w:r><w:t>学号：____</w:t></w:r></w:p><w:tbl>'));const bytes=await zip.generateAsync({type:'uint8array'}),report=await inspectThesisTemplatePlacement(bytes),result=await output(bytes),content=paragraphRows(result.document).map(row=>row.text).join('\n');assert.equal(report.regions.filter(row=>row.kind==='instructions').length,1);assert.doesNotMatch(content,/撰写规范要求|前置填写规范正文/);assert.match(content,/合成大学毕业论文封面/);

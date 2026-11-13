@@ -8,6 +8,14 @@ const json=(value,options={})=>new Response(JSON.stringify(value),{headers:{'con
 const atom=(entries=[])=>'<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"><opensearch:totalResults>'+entries.length+'</opensearch:totalResults>'+entries.map(({id='2609.00065v1',title='Evidence and research methods'})=>'<entry><id>https://arxiv.org/abs/'+id+'</id><title>'+title+'</title><published>2026-09-01T00:00:00Z</published><updated>2026-09-02T00:00:00Z</updated><author><name>Jane Smith</name></author><summary>Public abstract.</summary></entry>').join('')+'</feed>';
 const xml=value=>new Response(value,{headers:{'content-type':'application/atom+xml'}});
 
+test('review locates duplicate sentence stops around citations without altering content or flagging code and normal punctuation',()=>{
+ const text='结论已有来源。[source:ref-1]。下一句。\n编辑预览。〔文献1〕。结束。\n普通引用[source:ref-1]。小数1.25和省略号……正常。\n```txt\n不应检查。。\n```';
+ const report=auditWritingConsistency({chapters:[{id:'c',title:'正文',text}],references:[reference()]});
+ const findings=report.findings.filter(x=>x.reasonCode==='repeated_sentence_stop');
+ assert.equal(findings.length,2);for(const finding of findings){assert.equal(text.slice(finding.offset,finding.offset+finding.quote.length),finding.quote);assert.equal(finding.severity,'warning');}
+ assert.match(findings[0].quote,/\[source:ref-1\]/);assert.match(findings[1].quote,/〔文献1〕/);
+});
+
 test('a specific ISO standard without an authorized source is a substantive warning',()=>{
  const chapters=[{id:'c',title:'研究方法',text:'本研究参照 ISO 9241-11 设计评价框架。'}];
  const unsupported=auditWritingConsistency({chapters,materials:[{id:'m',confirmed:true,text:'仅有普通研究计划。'}]});
@@ -382,3 +390,5 @@ test('deterministic repeated transition is advisory but unsupported certainty re
  const prose='此外，第一段说明已有条件。\n此外，第二段说明已有条件。\n此外，第三段说明已有条件。\n众所周知，该观点成立。';
  const result=auditWritingConsistency({chapters:[{id:'c',title:'论述',text:prose}]});const repeated=result.findings.find(row=>row.reasonCode==='repeated_transition');assert.ok(repeated);assert.equal(repeated.category,'language_expression');assert.equal(repeated.severity,'info');const certainty=result.findings.find(row=>row.quote.includes('众所周知'));assert.ok(certainty);assert.notEqual(certainty.reasonCode,'repeated_transition');
 });
+
+test('quality review distinguishes rounding order and never assumes two experiments match',()=>{const task=writingReviewTask({chapters:[{id:'c',title:'比较',text:'均值差按原始数据计算，口径仍待核对。'}]});assert.match(task.instructions,/先相减再舍入/);assert.match(task.instructions,/先舍入再相减/);assert.match(task.instructions,/不猜测数值或拼接不同实验/);});

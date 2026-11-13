@@ -70,6 +70,12 @@ export function materializeLocalReviewCandidate(original,findings,body){
   if(!safeString(edit.replacement))reject('replacement');
   if(/[\n\r|`$<>]|\[(?:source|figure):/u.test(edit.replacement))reject('protected_content');
   if(edit.replacement.length>Math.max(500,(span.end-span.start)*3))reject('length');
+  // A finding can include the original sentence terminator while the next
+  // sentence begins immediately outside its frozen span. Dropping that mark
+  // silently fuses two unrelated sentences. Empty replacement is allowed
+  // (the author may remove the entire unsupported sentence).
+  const old=original.slice(span.start,span.end),next=original.slice(span.end);
+  if(edit.replacement.trim()&&/[。！？]$/u.test(old)&&/^[\p{L}\p{N}]/u.test(next)&&!/[。！？]$/u.test(edit.replacement))reject('punctuation');
   text+=original.slice(cursor,span.start);const start=text.length;text+=edit.replacement;changes.push({oldStart:span.start,oldEnd:span.end,newStart:start,newEnd:text.length});cursor=span.end;
  }
  text+=original.slice(cursor);

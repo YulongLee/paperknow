@@ -8,6 +8,15 @@ const bounded=(value,fallback,min,max)=>Number.isSafeInteger(value)&&value>=min&
 const publicReason=Object.freeze({unavailable:'本批辅助审校尚未完成，已生成的正文已保留。',budget_exhausted:'辅助审校已达到本次执行预算，剩余检查尚未完成；已生成的正文已保留。',not_configured:'辅助审校执行器尚未启用，已生成的正文已保留。',cost_unconfirmed:'本批审校用量或费用暂未核实，已保存内容保留；请联系支持核对，避免重复处理。'});
 const budgetFailure=error=>error?.status===429||/budget|usage_unknown|unknown_usage|unknown_cost|cost_unknown/i.test(String(error?.code||''))||/预算|额度|用量.*(?:未知|核算|未返回)/.test(String(error?.message||''));
 
+// Recovery may split only at a paragraph boundary outside formula and code
+// blocks. Indivisible excerpts remain explicitly incomplete.
+function splitReviewPiece(piece){
+ const text=piece.text,candidates=[...text.matchAll(/\n[ \t]*\n/g)].map(match=>match.index+match[0].length).filter(offset=>offset>=1000&&text.length-offset>=1000).sort((a,b)=>Math.abs(a-text.length/2)-Math.abs(b-text.length/2));
+ const balanced=prefix=>{const fences=[...prefix.matchAll(/^\s*(?:`{3,}|~{3,})[^\n]*$/gm)];if(fences.length%2)return false;let math='';for(const match of prefix.matchAll(/(?<!\\)\${1,2}/g)){if(!math)math=match[0];else if(math===match[0])math='';else return false;}if(math)return false;for(const [open,close]of [['\\(','\\)'],['\\[','\\]']])if(prefix.split(open).length!==prefix.split(close).length)return false;return true;};
+ for(const offset of candidates){if(!balanced(text.slice(0,offset))||!balanced(text.slice(offset))||/^\s*\[source:/u.test(text.slice(offset)))continue;try{return [text.slice(0,offset),text.slice(offset)].map((part,i)=>({...piece,id:piece.id+'-recovery-'+i,text:part,figures:manuscriptFigures(piece,part),originalOffset:piece.originalOffset+(i?offset:0),partialChapter:true}));}catch{}}
+ return [];
+}
+
 // Only the worker-owned dispatch can spend model budget or touch task records.
 // This coordinator never creates jobs, acquires extra credit or invokes an LLM.
 // Return actionable, bounded feedback without weakening exact-quote checks or
@@ -66,9 +75,11 @@ export function createWritingQualityRunner(config={}){
   }catch(error){await active();partial=true;quality.citations={version:1,status:'unavailable',checkedAt:timestamp(),scope:'public_identifier_metadata_only',claimSupport:'not_checked',items:[],summary:{matched:0,conflict:0,not_found:0,unverified:0,unavailable:0},limitations:['题录来源核验未完成，不能据此认定引用真实或虚假。']};}
   await stage('checking_consistency');
   try{quality.consistency=auditWritingConsistency({chapters,references:snapshot.references||[],materials:snapshot.materials||[],docxObjects});}catch(error){await active();partial=true;quality.consistency={version:1,status:'unavailable',checkedSections:0,findings:[],totalFindings:0,truncated:false,limitations:['正文一致性检查未完成。']};}
-  let stoppedReason=typeof dispatch==='function'?'':'not_configured';
-  for(const [index,batch]of batches.entries()){
-   await active();const unitId='quality-review::'+(index+1),sectionIds=[...new Set(batch.map(piece=>piece.originalSectionId))];
+  let stoppedReason=typeof dispatch==='function'?'':'not_configured',automaticRecoveries=0,totalBatches=batches.length;
+  const pending=batches.map((batch,index)=>({batch,key:String(index+1),index}));
+  while(pending.length){
+   const {batch,key,index}=pending.shift();
+   await active();const unitId='quality-review::'+key,sectionIds=[...new Set(batch.map(piece=>piece.originalSectionId))];
    if(stoppedReason){partial=true;quality.reviews.push({unitId,status:'not_started',sectionIds,reasonCode:stoppedReason,reason:publicReason[stoppedReason],findings:[],checkedSections:0});continue;}
    await stage('reviewing_manuscript');
    const ids=new Set(sectionIds),audit={...quality.consistency,findings:(quality.consistency.findings||[]).filter(finding=>ids.has(finding.sectionId))};
@@ -89,7 +100,17 @@ export function createWritingQualityRunner(config={}){
     const parsed=parseWritingReview(result,task),mapped=parsed.findings.map(finding=>{const piece=batch.find(row=>row.id===finding.sectionId);return {...finding,sectionId:piece.originalSectionId,offset:piece.originalOffset+finding.offset};});
     quality.reviews.push({...parsed,outcome:parsed.status,status:'completed',unitId,sectionIds,findings:mapped,checkedAt:timestamp(),batchOnly:true,checkedCharacters:batch.reduce((sum,piece)=>sum+piece.text.length,0),segments:batch.map(({originalSectionId,originalOffset,text,totalCharacters})=>({sectionId:originalSectionId,offset:originalOffset,characters:text.length,totalCharacters}))});
    }catch(error){
-    await active();partial=true;const reasonCode=error?.code==='cost_unknown'?'cost_unconfirmed':budgetFailure(error)?'budget_exhausted':'unavailable';if(reasonCode==='budget_exhausted'||reasonCode==='cost_unconfirmed')stoppedReason=reasonCode;
+    await active();
+    // Split only bounded truncation/turn failures, never denials, budget errors,
+    // invalid evidence or user cancellation. Pieces retain exact source text,
+    // original offsets and figure contracts; an unsafe split stays incomplete.
+    if(kind==='thesis'&&recoverSupplements&&automaticRecoveries<8&&['turn_limit','truncated'].includes(error?.code)&&![401,403,409,422,429,499].includes(Number(error?.status))&&!error?.agentTrace?.some(row=>row.status==='denied')){
+     let halves=[];
+     if(batch.length>1){const mid=Math.ceil(batch.length/2);halves=[batch.slice(0,mid),batch.slice(mid)];}
+     else if(batch[0].text.length>=3000)halves=splitReviewPiece(batch[0]).map(piece=>[piece]);
+     if(halves.length===2&&halves.every(rows=>rows.length)){pending.unshift(...halves.map((part,i)=>({batch:part,key:key+'.'+(i+1),index})));automaticRecoveries++;totalBatches++;continue;}
+    }
+    partial=true;const reasonCode=error?.code==='cost_unknown'?'cost_unconfirmed':budgetFailure(error)?'budget_exhausted':'unavailable';if(reasonCode==='budget_exhausted'||reasonCode==='cost_unconfirmed')stoppedReason=reasonCode;
     quality.reviews.push({unitId,status:'unavailable',sectionIds,reasonCode,reason:publicReason[reasonCode],findings:[],checkedSections:0});
    }
   }
@@ -98,7 +119,7 @@ export function createWritingQualityRunner(config={}){
   const figureIds=chapters.flatMap(chapter=>manuscriptFigures(chapter).map(row=>row.id)),checkedFigureIds=successful.flatMap(review=>review.checkedFigureIds||[]);
   if(figureIds.length)quality.figureReview={version:1,status:figureIds.every(id=>checkedFigureIds.includes(id))?'completed':'partial',figureIds:[...new Set(figureIds)],checkedFigureIds:[...new Set(checkedFigureIds)]};
   quality.status=partial?'partial':'completed';if(!successful.length&&quality.consistency.status==='unavailable'&&(!quality.citations.items?.length||quality.citations.status==='unavailable'))quality.status='unavailable';
-  quality.checkedAt=timestamp();quality.coverage={totalSections:chapters.length,totalCharacters,reviewedCharacters:checkedCharacters,reviewedBatches:successful.length,totalBatches:batches.length,complete:successful.length===batches.length&&checkedCharacters===totalCharacters};
+  quality.checkedAt=timestamp();quality.coverage={totalSections:chapters.length,totalCharacters,reviewedCharacters:checkedCharacters,reviewedBatches:successful.length,totalBatches,complete:successful.length===totalBatches&&checkedCharacters===totalCharacters};
   quality.limitations=[...new Set([...(chapters.some(row=>row.figures?.length)?[quality.figureReview?.status==='completed'?'图片已纳入本次可见图文审校范围；检查不鉴定研究事实或实验真实性。':'图片内容审校尚未完整完成，不能据此确认图文已检查。']:[]),...(quality.citations.limitations||[]),...(quality.consistency.limitations||[]),'自动检查不能替代作者对研究事实、来源含义和院校要求的核对。',...(quality.coverage.complete?[]:['AI 辅助审校未覆盖全部正文；请查看未完成批次及检查范围。']),...(batches.length>1?['长文按片段审校；跨批次的逻辑和术语关系仍需全文人工复核。']:[])])];
   return quality;
  };

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import {presentThesisDocument,thesisChapterCompletion} from '../dist/workspace/thesis-document.mjs';
 import {createWritingDocx} from '../src/writing-document.js';
+import {auditThesisSubmission} from '../src/thesis-export-check.js';
 import {thesisSnapshotFromDraft} from '../dist/workspace/writing-model.mjs';
 import {normalizeThesisSnapshot,thesisAgentTask,thesisFullText,compileThesisReferences,thesisManualSourceIds} from '../backend/thesis-model.mjs';
 
@@ -21,6 +22,15 @@ test('document citations have independent reference and private-material numbers
  assert.match(compileThesisReferences(value,['reference-b']),/\[source:reference-b\]/);
 });
 
+test('formal manuscript identifies cited research materials without inventing publication metadata or listing unused files',async()=>{
+ const value=snapshot(),rows=chapters();value.materials[0].text='仅供核验的私有正文不得输出';value.materials[0].name='本人的实验笔记';
+ const text=presentThesisDocument(value,rows,{submission:true});
+ assert.match(text,/原始笔记\[材料1\]/);assert.match(text,/研究材料来源\n\n\[材料1\] 本人的实验笔记（研究记录）/);
+ assert.match(text,/\[1\] 用户确认作者乙/);assert.doesNotMatch(text,/未使用的访谈|仅供核验的私有正文|\[source:|待人工核对|已确认但未引用/);
+ const zip=await JSZip.loadAsync(await createWritingDocx(text)),xml=await zip.file('word/document.xml').async('string');
+ assert.match(xml,/\[材料1\]/);assert.match(xml,/本人的实验笔记/);assert.doesNotMatch(xml,/仅供核验的私有正文|未使用的访谈/);
+});
+
 test('unknown, unconfirmed and ambiguous source markers remain visibly unresolved and never become a bibliography',()=>{
  const value=snapshot();value.materials.push({id:'ambiguous',name:'私有材料',confirmed:true});value.references.push({id:'ambiguous',title:'冲突题录',confirmed:true});
  const text=presentThesisDocument(value,[{title:'本节',text:'缺失[source:unknown-internal]，未确认[source:unconfirmed-ref]，冲突[source:ambiguous]。'}]);
@@ -34,9 +44,28 @@ test('an existing reference chapter renders its real entries once while a privat
  assert.equal(presentThesisDocument(snapshot(),[{title:'未生成',text:''}]),'');
 });
 
+test('citations and explicit reference chapters precede acknowledgements without losing text',()=>{
+ const value=snapshot(),rows=[...chapters(),{title:'致谢',text:'感谢实际提供的支持。'},{title:'参考文献',kind:'references',text:'[source:reference-b] 用户确认作者乙. 真实文献乙. 2024. DOI: 10.1234/user-confirmed. https://example.test/paper\n[source:reference-a] 真实文献甲'}],before=structuredClone(rows);
+ for(const submission of [false,true]){const text=presentThesisDocument(value,rows,{submission});assert.ok(text.indexOf('\n\n参考文献\n\n')<text.indexOf('\n\n致谢\n\n'));assert.match(text,/感谢实际提供的支持。/);assert.equal((text.match(/真实文献乙/g)||[]).length,1);}
+ const without=presentThesisDocument({title:'无来源',profile:{},references:[],materials:[]},[{title:'正文',text:'正文内容。'},{title:'致谢',text:'感谢同行的支持。'}]);assert.doesNotMatch(without,/参考文献/);assert.match(without,/致谢\n\n感谢同行的支持。/);assert.deepEqual(rows,before);
+});
+
 test('a manually edited reference chapter cannot hide an associated but omitted source record',()=>{
  const rows=chapters();rows.push({title:'参考文献',text:'用户正在整理的参考文献文本，不作真实性验证。'});
  const text=presentThesisDocument(snapshot(),rows);assert.match(text,/参考文献/);assert.match(text,/\[1\] 用户确认作者乙\. 真实文献乙/);assert.match(text,/\[2\] 真实文献甲/);
+});
+
+test('different manual bibliography text stays visible and blocks formal delivery until reviewed',()=>{
+ const rows=chapters();rows.push({title:'参考文献',kind:'references',text:'手工记录的另一种题录格式，必须保留原文供核对。'});
+ const value=snapshot(),draft=presentThesisDocument(value,rows),final=presentThesisDocument(value,rows,{submission:true});
+ for(const text of [draft,final]){assert.match(text,/手工记录的另一种题录格式/);assert.match(text,/【待核对：参考文献原始条目与当前题录存在差异/);}
+ const audit=auditThesisSubmission({text:final,metadata:{title:value.title,citationRanges:[]}});assert.equal(audit.submission.ready,false);assert.ok(audit.submission.issues.some(issue=>issue.code==='bibliography_unreconciled'));
+});
+
+test('same-source complete standard citations reconcile without duplicates, while conflicts remain reviewable',()=>{
+ const reference={id:'paper',title:'Research Model',authors:'Smith, Alice; Jones, Bob; White, Carol; Black, David',year:'2024',documentType:'journal',journal:'Journal of Testing',volume:'10',issue:'2',pages:'1-9',doi:'10.1234/example',url:'https://example.test/paper',confirmed:true},value={title:'合成论文',profile:{},materials:[],references:[reference]},raw='Smith A, Jones B, White C, et al. Research Model[J]. Journal of Testing, 2024, 10(2): 1-9. DOI: 10.1234/example. https://example.test/paper.',rows=[{title:'正文',text:'引文论述[source:paper]。'},{title:'参考文献',kind:'references',text:'[source:paper] '+raw}];
+ const text=presentThesisDocument(value,rows,{submission:true});assert.match(text,/\[1\] Smith A, Jones B, White C, et al\./);assert.ok(text.includes(raw));assert.doesNotMatch(text,/参考文献整理原文|【待核对：参考文献原始条目/);
+ for(const changed of [raw.replace('2024','2023'),raw.replace('Smith A','Smith B'),raw.replace('10.1234/example','10.1234/other'),raw.replace('1-9','1-8'),raw.replace('Research Model','Other Model'),raw.replace('example.test/paper','other.test/paper'),raw+' 附加的未经识别内容']){const altered=[rows[0],{...rows[1],text:'[source:paper] '+changed}],output=presentThesisDocument(value,altered,{submission:true});assert.match(output,/参考文献整理原文/);assert.ok(output.includes(changed));assert.ok(auditThesisSubmission({text:output}).submission.issues.some(issue=>issue.code==='bibliography_unreconciled'));}
 });
 
 test('a retained source marker or partial bibliography cannot suppress its canonical bibliographic metadata',()=>{

@@ -2,7 +2,8 @@ import {thesisDocxObjects} from './thesis-docx-objects.mjs';
 import {withThesisRetryCandidate,safeThesisValidation} from './thesis-retry-context.mjs';
 import {completionDiagnosis,withCompletionDiagnosis} from './thesis-completion-guidance.mjs';
 import {completionContentAudit} from './thesis-completion-audit.mjs';
-import {assertExpressionRepairUnchanged,normalizeExpressionPatch} from './thesis-expression-repair.mjs';
+import {assertExpressionRepairUnchanged,normalizeExpressionPatch,safeExpressionReplacement} from './thesis-expression-repair.mjs';
+import {normalizeSourceRepair} from './thesis-source-repair.mjs';
 import {completionRepairs} from './thesis-completion-repair.mjs';
 import {runSupplementCheck} from './supplement-check.mjs';
 import {completionBaseline,completionManuscriptHash} from './thesis-completion.mjs';
@@ -13,7 +14,7 @@ import {join,relative} from 'node:path';
 import {buildThesisBibliography,thesisReferenceMetadata} from '../dist/workspace/thesis-document.mjs';
 import {createBillingService} from './billing-service.mjs';
 import {createModelBudget} from './model-budget.mjs';
-import {initializeThesisSchema,thesisAgentTask,parseThesisSection,validateThesisCandidate,thesisFullText,thesisLimits,thesisHash,thesisError,thesisPublicError,thesisTransaction,assertThesisAccountQuota,assertThesisChapterCapacity,isThesisReferenceChapter,compileThesisReferences} from './thesis-model.mjs';
+import {initializeThesisSchema,thesisAgentTask,parseThesisSection,validateThesisCandidate,thesisFullText,thesisLimits,thesisHash,thesisError,thesisPublicError,thesisTransaction,assertThesisAccountQuota,assertThesisChapterCapacity,assertThesisSourceIdsUnique,isThesisReferenceChapter,compileThesisReferences} from './thesis-model.mjs';
 import {assertThesisSettings} from './thesis-service.mjs';
 import {runAgentTask,safeProviderNetworkFailure} from './agent-runtime.mjs';
 import {createThesisContinuity} from './thesis-continuity.mjs';
@@ -26,6 +27,11 @@ const active=status=>status==='running'||status==='queued';
 const validUsage=value=>Number.isSafeInteger(value)&&value>=0;
 const knownUsage=usage=>validUsage(usage?.input)&&validUsage(usage?.output)&&Number.isSafeInteger(usage.input+usage.output)&&usage.input+usage.output>0;
 const safeStage=value=>typeof value==='string'&&/^[a-z][a-z0-9_-]{0,60}$/i.test(value)?value:'agent_running';
+export function hasCompletionChanges(chapters,savedBaseline,targetChapters){
+ const comparable=text=>String(text||'').replace(/\s+/gu,' ').trim();
+ const canonical=value=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item);
+ return chapters.filter(chapter=>targetChapters.has(chapter.id)||isThesisReferenceChapter(chapter)).some(chapter=>{const before=savedBaseline.find(row=>row.chapter_id===chapter.id);return comparable(chapter.text)!==comparable(before?.text)||canonical(chapter.figures||[])!==canonical(JSON.parse(before?.figures||'[]'));});
+}
 // A deployment that changes any prompt, validator or runtime cannot inherit
 // a prior semantic review just because its JSON still parses.
 export function reviewRulesFingerprint(root=fileURLToPath(new URL('../',import.meta.url))){try{const hash=createHash('sha256'),files=[];const walk=dir=>{for(const entry of readdirSync(dir,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))){const path=join(dir,entry.name);if(entry.isSymbolicLink())throw Error('unverifiable build');if(entry.isDirectory())walk(path);else if(entry.isFile()&&/\.(?:js|mjs|cjs|json|md|html|css|sql|wasm)$/i.test(entry.name))files.push(path);}};for(const dir of ['backend','src','dist'])walk(join(root,dir));for(const name of ['server.mjs','package.json','package-lock.json'])files.push(join(root,name));files.sort();for(const file of files){hash.update(relative(root,file));hash.update('\0');hash.update(readFileSync(file));hash.update('\0');}return hash.digest('hex');}catch{return null;}}
@@ -35,14 +41,19 @@ const reviewRulesVersion=reviewRulesFingerprint();
 export function reviewBatchReuseKey({task,snapshot,chapters,settings,validatorVersion=reviewRulesVersion}){
  const {engine,model,version,baseURL,workspaceId,maxTurns,maxOutputTokens,timeoutMs,maxCostUsd,maxTotalTokens}=settings||{};
  if(!validatorVersion)return null;
- return thesisHash({schema:'review-batch-v2',validatorVersion,task,snapshot,manuscriptHash:completionManuscriptHash(chapters),settings:{engine,model,version,baseURL,workspaceId,maxTurns,maxOutputTokens,timeoutMs,maxCostUsd,maxTotalTokens}});
+ return thesisHash({schema:'review-batch-v3',validatorVersion,task,snapshot,chapters,settings:{engine,model,version,baseURL,workspaceId,maxTurns,maxOutputTokens,timeoutMs,maxCostUsd,maxTotalTokens}});
 }
 // Failed, unpriced or corrupt results are never reused. The current validator
 // must re-check original trace and exact quotations before a cache hit.
 export async function reusableReviewBatch(rows,reuseKey,validator){
  if(!reuseKey||typeof validator!=='function')return null;
- for(const row of rows){let prior;try{prior=JSON.parse(row.result);}catch{continue;}if(prior.reuseKey!==reuseKey||prior.costKnown!==true||!knownUsage(prior.usage))continue;try{if((await validator(prior))?.valid===true)return prior;}catch{}}
+ for(const row of rows){let prior;try{prior=JSON.parse(row.result);}catch{continue;}if(prior.reuseKey!==reuseKey||prior.costKnown!==true||!knownUsage(prior.usage))continue;try{const checked=await validator(prior);if(checked?.valid===true)return typeof checked.normalizedText==='string'?{...prior,text:checked.normalizedText,trace:checked.normalizedTrace||prior.trace}:prior;}catch{}}
  return null;
+}
+// Only completed terminal review batches belonging to the current account and
+// run can be considered, and never a future attempt or an initial diagnosis.
+export function eligibleReviewCheckpoints(db,{runId,userId,attempt,taskHash}){
+ return db.prepare('SELECT c.result FROM thesis_review_checkpoints c JOIN thesis_runs r ON r.id=c.run_id WHERE c.run_id=? AND r.user_id=? AND c.attempt<=? AND c.task_hash=? AND (c.unit_id LIKE ? OR c.unit_id LIKE ?) ORDER BY c.attempt DESC,c.created_at DESC').all(runId,userId,attempt,taskHash,'completion-quality-%::supplement-final::%','completion-quality-%::quality-review::%');
 }
 export function reviewCheckpointUnitId(unitId,key){if(!key)throw thesisError(503,'审校规则暂不可核实，已保存内容保留，请稍后再试。','review_version_unknown');return unitId+'::key-'+key.slice(0,16);}
 export async function restoreReviewCheckpoint(cached,hash,checkpointKey,validator){
@@ -112,7 +123,7 @@ export function startThesisWorker(db,config={}){
    runtime=thesisExecutionSettings(assertThesisSettings(await config.getAgentSettings?.(run.settings_version)),JSON.parse(run.settings_meta||'{}').executionMaxCostUsd);
    if(!running())return;
    if(runtime.version!==run.settings_version)throw thesisError(503,'原生成配置版本不可用，请联系管理员');
-   const snapshot=JSON.parse(run.snapshot),plan=JSON.parse(run.plan),baseline=run.input_tokens+run.output_tokens;
+   const snapshot=JSON.parse(run.snapshot),plan=JSON.parse(run.plan),baseline=run.input_tokens+run.output_tokens;assertThesisSourceIdsUnique(snapshot);
    const savedBaseline=completionBaseline(db,run),completionMode=Boolean(JSON.parse(run.settings_meta||'{}').completion),targetChapters=new Set(plan.map(unit=>unit.chapterId)),fullCompletion=JSON.parse(run.settings_meta||'{}').completion?.scope==='full';
    const manuscriptVersions=()=>snapshot.outline.map(chapter=>{let generated=db.prepare("SELECT * FROM thesis_chapter_versions WHERE run_id=? AND chapter_id=? AND source='generated' ORDER BY version DESC LIMIT 1").get(run.id,chapter.id);
     if(!generated&&fullCompletion&&targetChapters.has(chapter.id)){const units=db.prepare("SELECT * FROM thesis_checkpoints WHERE run_id=? AND chapter_id=? ORDER BY position").all(run.id,chapter.id);if(units.length&&units.every(unit=>unit.status==='completed'))generated={chapter_id:chapter.id,text:units.map(row=>{const unit=plan.find(unit=>unit.id===row.unit_id);return `${unit.part===1&&unit.title!==unit.chapterTitle?unit.title+'\n\n':''}${row.text}`;}).join('\n\n'),figures:JSON.stringify(units.flatMap(row=>JSON.parse(row.figures||'[]'))),source_ids:JSON.stringify([...new Set(units.flatMap(row=>JSON.parse(row.source_ids)))])};}
@@ -133,9 +144,9 @@ export function startThesisWorker(db,config={}){
      unitId=reviewCheckpointUnitId(unitId,checkpointKey);
      const cached=db.prepare('SELECT task_hash,result FROM thesis_review_checkpoints WHERE run_id=? AND attempt=? AND unit_id=?').get(run.id,run.attempt,unitId),validator=validateThesisOutput||validateReviewOutput;
      if(cached)return restoreReviewCheckpoint(cached,hash,checkpointKey,validator);
-     const canReuse=!validateThesisOutput&&/^completion-quality-\d+::(?:supplement-final|quality-review)::/.test(unitId);
+     const canReuse=typeof settings?.version==='string'&&!!settings.version&&!validateThesisOutput&&/^completion-quality-\d+::(?:supplement-final|quality-review)::/.test(unitId);
      const reuseKey=canReuse?checkpointKey:null;
-     if(reuseKey){const candidates=db.prepare('SELECT result FROM thesis_review_checkpoints WHERE run_id=? AND attempt=? AND task_hash=? AND unit_id LIKE ? ORDER BY created_at DESC').all(run.id,run.attempt,hash,'completion-quality-%');const prior=await reusableReviewBatch(candidates,reuseKey,validator);if(prior)return prior;}
+     if(reuseKey){const candidates=eligibleReviewCheckpoints(db,{runId:run.id,userId:run.user_id,attempt:run.attempt,taskHash:hash});const prior=await reusableReviewBatch(candidates,reuseKey,validator);if(prior){if(!running()||stopped)throw thesisError(499,'任务已停止或执行批次已变化','cancelled');return prior;}}
 
      if(!continuous)throw thesisError(429,'本次未配置审校执行预算','budget_exceeded');
      assertThesisSettings(await config.getAgentSettings?.());
@@ -156,7 +167,7 @@ export function startThesisWorker(db,config={}){
    if(checkSupplements&&completionMode){
     const chapters=snapshot.outline.map(chapter=>({id:chapter.id,title:chapter.title,text:savedBaseline.find(row=>row.chapter_id===chapter.id)?.text||'本节尚未生成，按已确认的章节目的核对所需资料。',figures:JSON.parse(savedBaseline.find(row=>row.chapter_id===chapter.id)?.figures||'[]')}));
     const supplementCheck=await runSupplementCheck({snapshot,chapters,kind:'thesis',phase:'materials',recover:completionMode,runtime,dispatch:reviewDispatch,signal:controller.signal,isCurrent:running,onStage:()=>stage(auditingDraft?'reviewing_draft':'checking_supplements')});
-    diagnosis=completionDiagnosis(supplementCheck,chapters);
+    diagnosis=completionDiagnosis(supplementCheck,chapters,plan);
     if(!writeRunning(()=>{const json=JSON.stringify({status:'partial',supplementCheck,completionDiagnosis:diagnosis,manuscriptHash:completionManuscriptHash(chapters)});assertThesisAccountQuota(db,run.user_id,Buffer.byteLength(json),config);db.prepare('UPDATE thesis_runs SET quality=?,updated_at=? WHERE id=? AND attempt=?').run(json,clock(),run.id,run.attempt);}))return;
     // Missing research facts restrict final delivery, not draft writing. This
     // also applies to resumed legacy completion jobs with no scope metadata.
@@ -241,11 +252,24 @@ export function startThesisWorker(db,config={}){
       if(pass===2)break;
       const current=db.prepare("SELECT * FROM thesis_checkpoints WHERE run_id=? AND status='completed' ORDER BY position").all(run.id),repairs=completionRepairs(snapshot,plan,current,quality,pass,{expressionOnly:quality.coverage?.complete!==true||quality.supplementCheck?.coverage?.complete!==true});
       let repaired=current.some(row=>JSON.parse(row.trace||'[]').some(entry=>entry.stage==='completion_repair_'+pass)),repairStopped=false;
-      for(const {unit,checkpoint,task,unitId,expressionOnly}of repairs){
+      for(const {unit,checkpoint,task,unitId,expressionOnly,sourceSupport}of repairs){
        stage('repairing_completion');let result;
-       try{result=await reviewDispatch({task,settings:{...runtime,maxTurns:Math.min(12,runtime.maxTurns||3),maxOutputTokens:Math.min(16384,runtime.maxOutputTokens||4096)},validateThesisOutput:candidate=>{try{const normalized=expressionOnly?normalizeExpressionPatch(candidate,checkpoint,task.context.revision.findings):candidate;const result=validateThesisCandidate(normalized,snapshot,unit);if(result.valid!==true||!expressionOnly)return result;assertExpressionRepairUnchanged(checkpoint,parseThesisSection(normalized,snapshot,unit));return {...result,normalizedText:normalized.text,normalizedTrace:normalized.trace};}catch(error){return{valid:false,feedback:{code:"expression_integrity",rule:error.message}};}},unitId});}
-       catch(error){if(!running()||stopped)throw error;throw thesisError(502,'自动修改未完成，原稿和已处理内容已保留，本次未扣费。','repair_incomplete');}
-       const content=parseThesisSection(result,snapshot,unit);if(expressionOnly)assertExpressionRepairUnchanged(checkpoint,content);
+       try{if(expressionOnly){
+        // The accepted edit is already a fixed, uniquely located substitution;
+        // use the same strict validator directly rather than asking a model to
+        // rediscover it. The subsequent independent review remains mandatory.
+        const edits=task.context.revision.findings.map(({quote})=>({old:quote,new:safeExpressionReplacement(quote)}));
+        result=normalizeExpressionPatch({text:JSON.stringify({complete:true,edits}),trace:[]},checkpoint,task.context.revision.findings);
+        const verified=validateThesisCandidate(result,snapshot,unit);if(verified.valid!==true)throw thesisError(502,'表达修正未通过正文检查，原稿已保留。','invalid_output');
+       }else result=await reviewDispatch({task,settings:{...runtime,maxTurns:Math.min(12,Math.max(6,runtime.maxTurns||3)),maxOutputTokens:Math.min(16384,runtime.maxOutputTokens||4096)},validateThesisOutput:candidate=>{try{const normalized=sourceSupport?normalizeSourceRepair(candidate,checkpoint,task.context.revision.findings[0],snapshot,task):candidate;const result=validateThesisCandidate(normalized,snapshot,unit);if(result.valid!==true||!sourceSupport)return result;assertExpressionRepairUnchanged(checkpoint,parseThesisSection(normalized,snapshot,unit));return {...result,normalizedText:normalized.text,normalizedTrace:normalized.trace};}catch(error){const allowed=new Set(['location','format','shape','evidence','read','quotation','research_status','protected_content']),code=sourceSupport&&allowed.has(error.repairReason)?'source_repair_'+error.repairReason:sourceSupport?'source_repair_integrity':'expression_integrity';return{valid:false,feedback:{code,rule:error.message}};}},unitId});}
+       catch(error){if(!running()||stopped)throw error;
+        // Operational-only diagnostic: no excerpts, model messages or tool args.
+        const allowedCodes=new Set(['source_repair_integrity','source_repair_location','source_repair_format','source_repair_shape','source_repair_evidence','source_repair_read','source_repair_quotation','source_repair_research_status','source_repair_protected_content','expression_integrity','invalid_output','invalid_review_output','turn_limit','timeout','cost_budget','budget_exceeded','runtime_error']);
+        const counts={};for(const row of Array.isArray(error.agentTrace)?error.agentTrace:[]){const code=row?.validation?.code;if(allowedCodes.has(code))counts[code]=(counts[code]||0)+1;}
+        const diagnostic={stage:'completion_repair_failed',repairType:expressionOnly?'expression':sourceSupport?'source_support':'other',errorCode:allowedCodes.has(error.code)?error.code:'other',rejections:counts};
+        writeRunning(()=>{const prior=JSON.parse(checkpoint.trace||'[]');const trace=JSON.stringify([...prior.slice(-49),diagnostic]);assertThesisAccountQuota(db,run.user_id,Math.max(0,Buffer.byteLength(trace)-Buffer.byteLength(checkpoint.trace||'[]')),config);db.prepare('UPDATE thesis_checkpoints SET trace=?,updated_at=? WHERE run_id=? AND unit_id=?').run(trace,clock(),run.id,unit.id);});
+        throw thesisError(502,'自动修改未完成，原稿和已处理内容已保留，本次未扣费。','repair_incomplete');}
+       const content=parseThesisSection(result,snapshot,unit);if(expressionOnly||sourceSupport)assertExpressionRepairUnchanged(checkpoint,content);
        if(!writeRunning(()=>{const figures=JSON.stringify(content.figures||[]),trace=JSON.stringify([...cleanTrace(result.trace),{stage:'completion_repair_'+pass}]);assertThesisAccountQuota(db,run.user_id,Math.max(0,Buffer.byteLength(content.text)+Buffer.byteLength(figures)+Buffer.byteLength(trace)-Buffer.byteLength(checkpoint.text)-Buffer.byteLength(checkpoint.figures||'[]')-Buffer.byteLength(checkpoint.trace||'[]')),config);db.prepare('UPDATE thesis_checkpoints SET text=?,source_ids=?,missing_evidence=?,figures=?,trace=?,updated_at=? WHERE run_id=? AND unit_id=?').run(content.text,JSON.stringify(content.sourceIds),JSON.stringify(content.missingEvidence||[]),figures,trace,clock(),run.id,unit.id);db.prepare('UPDATE theses SET version=version+1,updated_at=? WHERE id=? AND current_run_id=?').run(clock(),run.thesis_id,run.id);}))return;
        repaired=true;
       }
@@ -274,7 +298,10 @@ export function startThesisWorker(db,config={}){
     const completionRecords=completionMode?manuscriptVersions():null;const chapters=snapshot.outline.map(chapter=>{const personal=snapshot.requirements.deliveryVersion===1&&thesisManualBackMatter(chapter),version=completionMode?completionRecords.find(row=>row.id===chapter.id)?.record:personal?db.prepare('SELECT * FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? ORDER BY version DESC LIMIT 1').get(run.thesis_id,chapter.id):db.prepare("SELECT * FROM thesis_chapter_versions WHERE run_id=? AND chapter_id=? AND source='generated'").get(run.id,chapter.id);if(!version&&!isThesisReferenceChapter(chapter)&&!personal)throw thesisError(409,'章节检查点尚未完整保存');return {...chapter,text:version?.text||'',sourceIds:version?JSON.parse(version.source_ids):[],figures:version?JSON.parse(version.figures||'[]'):[],source:isThesisReferenceChapter(chapter)?'confirmed_reference_list':'agent_draft'};});
     const suggestion=thesisFullText(snapshot,chapters),resultId=randomUUID(),at=clock(),totals=db.prepare('SELECT input_tokens,output_tokens,usage_known FROM thesis_runs WHERE id=?').get(run.id);
     const checkIncomplete=fullCompletion&&meta.completion?.purpose!=='draft'&&(!quality||quality.status!=='completed'||quality.coverage?.complete!==true||quality.supplementCheck?.coverage?.complete!==true||(quality.figureReview&&quality.figureReview.status!=='completed')||(quality.completionAudit?.issues||[]).some(issue=>['review_not_run','review_partial','review_stale','figure_review'].includes(issue.code)));
-    if(checkIncomplete)billing.release(run.id);else billing.settle(run.id);
+    // A complete review that found real remaining gaps is still useful work
+    // when it saved a substantive revision. A no-op is not a paid revision.
+    const noCompletionChange=fullCompletion&&meta.completion?.purpose!=='draft'&&!hasCompletionChanges(chapters,savedBaseline,targetChapters);
+    if(checkIncomplete||noCompletionChange)billing.release(run.id);else billing.settle(run.id);
     db.prepare('INSERT INTO results VALUES(?,?,?,?,?,?,?,?)').run(resultId,run.user_id,db.prepare('SELECT project_id FROM theses WHERE id=?').get(run.thesis_id).project_id,run.id,'agent',snapshot.title,JSON.stringify({original:'',suggestion,thesisId:run.thesis_id,engine:runtime.engine||'claude-agent-sdk',model:runtime.model,settingsVersion:run.settings_version,...(quality?{quality}:{}),chapters:chapters.map(({id,title,text,sourceIds,figures,source})=>({id,title,text,sourceIds,figures,source})),materials:snapshot.materials.filter(row=>row.confirmed).map(({id,name})=>({id,name})),references:snapshot.references.filter(row=>row.confirmed).map(thesisReferenceMetadata),bibliography:buildThesisBibliography(snapshot,chapters),trace:checkpoints.flatMap(row=>JSON.parse(row.trace)).slice(-100),referenceListIncomplete:(snapshot.outline.some(isThesisReferenceChapter)||snapshot.references.some(row=>row.confirmed))&&!bibliography,missingEvidence:[...new Set(checkpoints.flatMap(row=>JSON.parse(row.missing_evidence||'[]')))],draft:true,requiresReview:true}),at);
     db.prepare('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),run.user_id,run.id,runtime.engine||'claude-agent-sdk',runtime.model,totals.usage_known?totals.input_tokens:null,totals.usage_known?totals.output_tokens:null,billing.isBillable(run.id)?1:0,at);
     db.prepare("UPDATE thesis_runs SET status='completed',stage='completed',error=NULL,result_id=?,updated_at=? WHERE id=? AND attempt=?").run(resultId,at,run.id,run.attempt);

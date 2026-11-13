@@ -268,8 +268,8 @@ test('simulation disclaimer elsewhere cannot substantiate a real measurement, wh
  const sim={id:'m',name:'模拟资料',text:'请明确说明这是模拟案例、并非真实调查或实测结论。假设5名参与者，模拟时间40秒。'},real={id:'r',name:'真实记录',text:'实际测试中，50名受试者均完成了任务。'};
  const assess=(text,materials,evidence)=>{const task=supplementCheckTask({phase:'final',materials,chapters:[{id:'s',title:'结果',text}]}),row={id:'s',status:'sufficient',requirement:'结果分析',reason:'依据资料分析',manuscriptQuote:text,evidence,missing:[]};return parseSupplementCheck(response([row]),task)[0];};
  const bad='本章节介绍模拟案例。实际测试中，50名受试者均完成了任务。';assert.equal(assess(bad,[sim],[{sourceId:'m',quote:'假设5名参与者'}]).status,'missing');
- const good='模拟案例中，假设5名参与者完成了模拟任务。并非真实调查或实测结论。';assert.equal(assess(good,[sim],[{sourceId:'m',quote:'假设5名参与者'}]).status,'sufficient');
- const documented='实际测试中，50名受试者均完成了任务。';assert.equal(assess(documented,[real],[{sourceId:'r',quote:'50名受试者均完成了任务'}]).status,'sufficient');
+ const good='模拟案例中，假设5名参与者完成了模拟任务。并非真实调查或实测结论。';assert.equal(assess(good,[sim],[{sourceId:'m',quote:'假设5名参与者'}]).status,'missing','a short fragment does not prove the complete claim');
+ const documented='实际测试中，50名受试者均完成了任务。';assert.equal(assess(documented,[real],[{sourceId:'r',quote:'50名受试者均完成了任务'}]).status,'missing','the quote omits the claimed test context');assert.equal(assess(documented,[real],[{sourceId:'r',quote:'实际测试中，50名受试者均完成了任务。'}]).status,'sufficient');
 });
 
 test('final empirical results require matching evidence rather than simulated or unrelated numbers',()=>{
@@ -280,10 +280,10 @@ test('final empirical results require matching evidence rather than simulated or
  assert.equal(run('结果分析','本研究实测识别准确率为99%。',mixed).status,'missing');
  assert.equal(run('结果分析','模拟分析显示准确率为99%。',sim).status,'missing');
  assert.equal(run('实证结果','本研究已招募100名读者，满意度达到98%。',[],'not_required').status,'missing');
- assert.equal(run('结果','本研究实测识别准确率为80%。',[{sourceId:'real',quote:'测试集共100条，实测识别准确率为80%。'}]).status,'sufficient');
+ assert.equal(run('结果','本研究实测识别准确率为80%。',[{sourceId:'real',quote:'测试集共100条，实测识别准确率为80%。'}]).status,'missing','a fragment without the claimed research context requires review');
  assert.equal(run('结果','本研究计划招募100名读者，尚未开展调查。',[],'not_required').status,'not_required');
  assert.equal(run('结果','本文没有进行任何真实受试者实验。',[],'not_required').status,'not_required');
- assert.equal(run('结果','模拟分析显示准确率为80%。',sim).status,'sufficient');
+ assert.equal(run('结果','模拟分析显示准确率为80%。',sim).status,'missing','different simulation wording requires review instead of assuming equivalence');
 });
 
 test('an unrelated future plan in the same sentence cannot waive evidence for a completed recruitment',()=>{
@@ -521,7 +521,7 @@ test('unperformed planned study actions cannot be read as already completed',()=
 test('conditional review items ask for confirmation without claiming an unneeded file is missing',()=>{
  const base={status:'needs_materials',coverage:{total:1,checked:1,complete:true},items:[{title:'研究范围',status:'missing',requirement:'范围一致',reason:'仍需核对',missing:['若新增效果检验需提供方案'],evidence:[]}]};
  const html=supplementCheckPanel(base);assert.match(html,/检查事项待确认/);assert.match(html,/请核对：若新增效果检验/);assert.doesNotMatch(html,/请提供：若新增效果检验/);assert.match(html,/检查通过后才能导出终稿/);
- const mixed=supplementCheckPanel({...base,items:[{...base.items[0],missing:['若新增效果检验需提供方案','真实实验记录']}]});assert.match(mixed,/资料仍有缺项/);assert.match(mixed,/请核对：若新增效果检验/);assert.match(mixed,/请提供：真实实验记录/);
+ const mixed=supplementCheckPanel({...base,items:[{...base.items[0],missing:['若新增效果检验需提供方案','真实实验记录']}]});assert.match(mixed,/资料仍有缺项/);assert.match(mixed,/请核对：若新增效果检验/);assert.match(mixed,/请核对或补充：真实实验记录/);
  assert.equal(supplementCheckReady({coverage:{complete:true},supplementCheck:{...base,phase:'final',version:1}}),false);
 });
 
@@ -561,4 +561,78 @@ test('planned invitation carries through a dependent consent action across a com
  const row=text=>({id:'s',status:'sufficient',requirement:'方案',reason:'计划',manuscriptQuote:text.slice(0,80),evidence:[{sourceId:'m',quote:source}],missing:[]});
  const plan='计划在虚构平台下，以方便抽样邀请年满18岁的本科生与研究生共12人，经知情同意完成单次任务观察与任务后问卷。尚未招募，暂无任何观察记录。';assert.equal(parseSupplementCheck(response([row(plan)]),make(plan))[0].status,'sufficient');
  for(const actual of ['计划邀请并已实际招募12人，经知情同意完成单次任务观察。','计划邀请并已经招募12人，经知情同意完成单次任务观察。','计划明年继续招募12人，参与者已经经知情同意完成单次任务观察。','计划招募12人，实际已完成测试，参与者经知情同意完成单次任务观察。','计划开展文献梳理，参与者经知情同意完成单次任务观察。'])assert.equal(parseSupplementCheck(response([row(actual)]),make(actual))[0].status,'missing');
+});
+
+test('separate model-confirmed snippets cannot combine counts and metrics into an unsupported experiment',()=>{
+ const one={id:'real',name:'实验记录',text:'第一部分：SVM_RBF 测试集共100条。第二部分：SVM_RBF 实测识别准确率为80%。'},other={id:'other',name:'其他记录',text:'另一次 SVM_RBF 测试集共100条。'},sim={id:'sim',name:'模拟',dataKind:'simulation',text:'SVM_RBF 模拟测试集共100条。SVM_RBF 模拟识别准确率为80%。'};
+ const text='本研究 SVM_RBF 实测识别准确率为80%，测试集共100条。';
+ const assess=(evidence,status='sufficient')=>{const task=supplementCheckTask({phase:'final',chapters:[{id:'c',title:'结果',text}],materials:[one,other,sim]});return parseSupplementCheck(response([{id:'c',status,requirement:'结果核查',reason:'已核对实验记录',manuscriptQuote:text,evidence,missing:status==='missing'?['需核验']:[]}]),task)[0].status;};
+ const metric={sourceId:'real',quote:'SVM_RBF 实测识别准确率为80%'},count={sourceId:'real',quote:'SVM_RBF 测试集共100条'};
+ assert.equal(assess([metric,count]),'missing');
+ assert.equal(assess([metric,{sourceId:'other',quote:'另一次 SVM_RBF 测试集共100条'}]),'missing');
+ assert.equal(assess([{sourceId:'sim',quote:'SVM_RBF 模拟识别准确率为80%'},{sourceId:'sim',quote:'SVM_RBF 模拟测试集共100条'}]),'missing');
+ assert.equal(assess([metric,count],'missing'),'missing');
+});
+
+test('same model and source cannot combine training/test, distinct experiments or unlabelled groups',()=>{
+ const text='本研究 SVM_RBF 实测识别准确率为90%，测试集共30条。';
+ const check=(source,quotes)=>{const task=supplementCheckTask({phase:'final',chapters:[{id:'c',title:'结果',text}],materials:[{id:'real',name:'实验记录',text:source}]});return parseSupplementCheck(response([{id:'c',status:'sufficient',requirement:'结果核查',reason:'资料支持结论',manuscriptQuote:text,evidence:quotes.map(quote=>({sourceId:'real',quote})),missing:[]}]),task)[0].status;};
+ const cases=[['实验A SVM_RBF 训练准确率90%。实验A SVM_RBF 测试集共30条。',['实验A SVM_RBF 训练准确率90%','实验A SVM_RBF 测试集共30条']],['实验A SVM_RBF 测试准确率90%。实验B SVM_RBF 测试集共30条。',['实验A SVM_RBF 测试准确率90%','实验B SVM_RBF 测试集共30条']],['SVM_RBF 识别准确率90%。SVM_RBF 测试集共30条。',['SVM_RBF 识别准确率90%','SVM_RBF 测试集共30条']]];
+ for(const [source,quotes] of cases)assert.equal(check(source,quotes),'missing');
+});
+
+test('supplement reading fairly redistributes the fixed budget without truncating affordable sources',async()=>{
+ const {supplementReadAllocations}=await import('../backend/supplement-check.mjs');
+ assert.deepEqual(supplementReadAllocations([3337,141,23192,118,...Array(11).fill(850)]),[3337,141,23192,118,...Array(11).fill(850)]);
+ assert.deepEqual(supplementReadAllocations([1000,100000,100000],80000),[1000,39500,39500]);
+ for(const lengths of [[100000,100000,100000],[1,2,3,100000],[0,0,0],Array(20).fill(100000)]){const alloc=supplementReadAllocations(lengths);assert.ok(alloc.reduce((a,b)=>a+b,0)<=80000);alloc.forEach((v,i)=>assert.ok(v>=0&&v<=lengths[i]));}
+});
+
+test('separately checked chapters are not mistaken for absent text and true current gaps are retained',async()=>{
+ const materials=[{id:'long',name:'完整实验记录',confirmed:true,text:'首部可核查内容。'+'甲'.repeat(23000)+'版本尾部记录。'},...Array.from({length:11},(_,i)=>({id:'r'+i,name:'参考资料',confirmed:true,text:'公开资料。'.repeat(100)}))];
+ const chapters=[{id:'a',title:'摘要',text:'摘要正文的软件版本及【待补充：当前章节的数据】。'},...Array.from({length:6},(_,i)=>({id:'c'+i,title:'第'+(i+1)+'章',text:'章节内容。'.repeat(1500)}))];let sawFullTail=false,sawBatch=false;
+ const report=await runSupplementCheck({snapshot:{materials,references:[],profile:{}},chapters,kind:'thesis',runtime,dispatch:async({task})=>{
+  if(task.materials.find(row=>row.id==='long')?.text.endsWith('版本尾部记录。')){sawFullTail=true;if(task.context.chapters.some(c=>c.text.includes('版本'))){const hint=task.context.evidence.find(row=>row.id==='long').readHints.find(row=>row.term==='版本');assert.ok(task.materials.find(row=>row.id==='long').text.slice(hint.offset,hint.offset+200).includes('版本尾部记录。'));}}
+  if(task.context.documentScope?.batchOnly){sawBatch=true;assert.equal(task.context.documentScope.totalChapters,7);assert.ok(task.context.documentScope.chapterTitles.includes('第6章'));assert.ok(task.context.chapters.length<7);}
+  const rows=task.context.chapters.map(c=>({id:c.id,status:c.id==='check-0-0'?'missing':'not_required',requirement:'检查',reason:'检查当前正文',manuscriptQuote:c.text.slice(0,30),evidence:[],missing:c.id==='check-0-0'?['当前章节的数据']:[]}));
+  if(rows[0].id==='check-0-0'){const fabricated=structuredClone(rows);fabricated[0].missing.push('论文正文其余各章节是否已提供；本次仅收到摘要与第一章，无法完成全文核对');assert.throws(()=>parseSupplementCheck(response(fabricated),task));}
+  return response(rows);
+ }});assert.ok(sawFullTail);assert.ok(sawBatch);assert.equal(report.coverage.complete,true);assert.equal(report.status,'needs_materials');assert.ok(report.items.some(item=>item.missing.includes('当前章节的数据')));
+});
+
+test('result evidence must match cited source and cannot mix training with testing',()=>{
+ const a={id:'a',name:'已引用来源',text:'测试集30条，实测识别准确率为80%。'},b={id:'b',name:'其他来源',text:'测试集30条，实测识别准确率为90%。'},mixed={id:'m',name:'混合记录',text:'训练集准确率为90%，测试集共30条。'};
+ const assess=(text,proof)=>{const task=supplementCheckTask({phase:'final',materials:[a,b,mixed],chapters:[{id:'c',title:'结果',text}]});return parseSupplementCheck(response([{id:'c',status:'sufficient',requirement:'结果',reason:'记录支持',manuscriptQuote:text,evidence:[proof],missing:[]}]),task)[0].status;};
+ assert.equal(assess('本研究实测识别准确率为90%，测试集共30条[source:a]。',{sourceId:'b',quote:b.text}),'missing');
+ assert.equal(assess('本研究实测识别准确率为90%，测试集共30条[source:m]。',{sourceId:'m',quote:mixed.text}),'missing');
+ assert.equal(assess('本研究实测识别准确率为80%，测试集共30条[source:a]。',{sourceId:'a',quote:a.text}),'missing','matching numbers in a different wording do not independently verify the claim');
+});
+
+test('metadata growth and large escaped excerpts remain bounded without losing manuscript or authorized source',async()=>{
+ const {fitSupplementEvidenceContext}=await import('../backend/supplement-check.mjs');const large='证据原句。'+'\"\\'.repeat(18000)+'尾部关键记录';const chapter='本章真实研究正文。'.repeat(600),context={chapters:[{id:'c',title:'结果',text:chapter}],evidence:[{id:'m',name:'材料',text:large,readHints:[{term:'记录',offset:35000}]}],documentScope:{batchOnly:true,chapterTitles:Array(30).fill('章节'.repeat(40))}};assert.ok(JSON.stringify(context).length>39000);assert.equal(fitSupplementEvidenceContext(context),true);assert.ok(JSON.stringify(context).length<=37800);assert.equal(context.chapters[0].text,chapter);assert.equal(context.evidence[0].id,'m');assert.equal(context.evidence[0].readHints[0].offset,35000);assert.equal(context.evidence[0].contextExcerptTruncated,true);assert.ok(context.evidence[0].text.length>=120);
+});
+
+test('more than 20 sources clearly exposes the read boundary and prioritizes cited sources',async()=>{
+ const materials=Array.from({length:21},(_,i)=>({id:'m'+i,name:'材料'+i,confirmed:true,text:'本材料真实内容'+i+'。'}));const seen=[];
+ const check=async text=>runSupplementCheck({snapshot:{materials,references:[],profile:{}},chapters:[{id:'c',title:'正文',text}],kind:'thesis',runtime,dispatch:async({task})=>{seen.push(task);return response(task.context.chapters.map(c=>({id:c.id,status:'missing',requirement:'研究资料',reason:'核对原文',manuscriptQuote:c.text,evidence:[],missing:['核对正文']})));}});
+ const plain=await check('此段正文需要核对。');let task=seen.at(-1);assert.equal(task.context.evidence.length,21);assert.equal(task.materials.length,20);const omitted=task.context.evidence.find(row=>row.id==='m20');assert.equal(omitted.readToolAvailable,false);assert.equal(omitted.readableCharacters,0);assert.equal(omitted.totalCharacters,materials[20].text.length);assert.equal(omitted.readTruncated,true);assert.match(task.instructions,/不可调用 read_material/);assert.match(plain.limitations.join(' '),/部分资料仅展示相关预览/);assert.equal(plain.evidenceScope,'relevant_excerpts');
+ await check('此段明确引用后面的材料[source:m20]。');task=seen.at(-1);assert.equal(task.materials[0].id,'m20');assert.equal(task.context.evidence.find(row=>row.id==='m20').readToolAvailable,true);
+ const tooMany=materials.map(row=>'[source:'+row.id+']').join('');const incomplete=await check('引用范围：'+tooMany+'。');assert.equal(incomplete.status,'unavailable');assert.equal(incomplete.coverage.complete,false);assert.match(incomplete.reason,/引用来源较多/);
+ const missing=await check('引用无法读取的来源[source:unknown]。');assert.equal(missing.status,'unavailable');assert.match(missing.reason,/无法读取正文/);
+});
+
+test('a missing citation split at the chapter batch boundary prevents final readiness',async()=>{
+ const text='文。'.repeat(3995)+'关键研究结论。[source:missing-reference]后文';let calls=0;
+ const report=await runSupplementCheck({snapshot:{title:'边界测试',profile:{},requirements:{},materials:[],references:[]},chapters:[{id:'c',title:'长章节',text}],kind:'thesis',phase:'final',runtime,dispatch:async({task})=>{calls++;return response(task.context.chapters.map(c=>({id:c.id,status:'not_required',requirement:'检查',reason:'已检查',manuscriptQuote:c.text.slice(0,30),evidence:[],missing:[]})));}});
+ assert.equal(calls,1);assert.equal(report.status,'unavailable');assert.equal(report.coverage.complete,false);assert.match(report.reason,/无法读取正文/);
+});
+
+test('a specifically cited source is not lost when large source selection filters the index',async()=>{
+ const materials=Array.from({length:15},(_,i)=>({id:'m'+i,name:'资料'+i,confirmed:true,text:'研究资料'+i+'。'+'甲'.repeat(5000)}));const target='m14';let inspected=false;
+ const report=await runSupplementCheck({snapshot:{title:'合成研究',profile:{},requirements:{deliveryVersion:1},materials,references:[]},chapters:[{id:'c',title:'研究',text:'正文引用[source:'+target+']。'}],kind:'thesis',runtime,dispatch:async({task})=>{inspected=true;assert.equal(task.materials[0].id,target);assert.equal(task.context.evidence.find(row=>row.id===target).readToolAvailable,true);assert.equal(task.materials[0].text.length,materials[14].text.length);assert.ok(JSON.stringify(task.context).length<=39000);return response(task.context.chapters.map(c=>({id:c.id,status:'missing',requirement:'核对',reason:'请核对',manuscriptQuote:c.text,evidence:[],missing:['核对记录']})));}});assert.ok(inspected);assert.equal(report.coverage.complete,true);assert.equal(report.status,'needs_materials');
+});
+
+test('readable source truncation reports the actual budgeted length and cannot masquerade as full text',async()=>{
+ const materials=Array.from({length:3},(_,i)=>({id:'m'+i,name:'长资料'+i,confirmed:true,text:'正文记录'+i+'。'+'乙'.repeat(39990)}));let inspected=false;
+ const report=await runSupplementCheck({snapshot:{title:'长资料',profile:{},requirements:{},materials,references:[]},chapters:[{id:'c',title:'正文',text:'需要核对本段正文。'}],kind:'thesis',runtime,dispatch:async({task})=>{inspected=true;assert.ok(task.materials.reduce((sum,row)=>sum+row.text.length,0)<=80000);for(const source of task.context.evidence){const original=materials.find(row=>row.id===source.id),readable=task.materials.find(row=>row.id===source.id);assert.equal(source.readToolAvailable,true);assert.equal(source.readTruncated,true);assert.equal(source.totalCharacters,original.text.length);assert.equal(source.readableCharacters,readable.text.length);assert.ok(source.readableCharacters<source.totalCharacters);}return response(task.context.chapters.map(c=>({id:c.id,status:'missing',requirement:'核对',reason:'范围未覆盖',manuscriptQuote:c.text,evidence:[],missing:['请核对资料']})));}});assert.ok(inspected);assert.equal(report.status,'needs_materials');assert.equal(report.coverage.complete,true);
 });
