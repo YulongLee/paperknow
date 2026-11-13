@@ -455,6 +455,13 @@ test('absence of a real test set is not treated as an actual experimental claim'
 test('a rejected comparison to real results does not hide a later real measurement claim',()=>{
  const src={id:'s',name:'模拟资料',text:'仿真假设给出配对数量，仅用于理论分析。'},check=text=>{const c={id:'c',title:'模型',text},task=supplementCheckTask({chapters:[c],materials:[src],phase:'final'}),candidate={text:JSON.stringify({items:[{id:'c',status:'sufficient',requirement:'模型依据',reason:'资料说明理论范围',manuscriptQuote:text,evidence:[{sourceId:'s',quote:src.text}],missing:[],checkedFigureIds:[]}]}),trace:[]};return parseSupplementCheck(candidate,task)[0].status;};assert.equal(check('不能把本章的C(n)当作对上述任何实测结果的复现或解释。'),'sufficient');assert.equal(check('不能把本章的C(n)当作对上述任何实测结果的复现，但实际测试显示识别率为95%。'),'missing');
 });
+test('a research hypothesis about satisfaction is not mistaken for a reported result',()=>{
+ const source={id:'m',name:'研究计划',text:'研究尚未实施，现有服务问题均待验证。'},make=text=>supplementCheckTask({kind:'proposal',phase:'final',chapters:[{id:'c',title:'研究背景',text}],materials:[source]}),judge=text=>{const t=make(text);return parseSupplementCheck(response([{id:'c',status:'sufficient',requirement:'研究计划',reason:'计划尚未实施',manuscriptQuote:text,evidence:[{sourceId:'m',quote:source.text}],missing:[],checkedFigureIds:[]}]),t)[0].status;};
+ assert.equal(judge('研究不预设现有服务存在缺陷，而将效率、易用性与满意度方面的薄弱环节作为待验证假设。'),'sufficient');
+ assert.equal(judge('本研究拟探讨用户满意度是否存在问题。'),'sufficient');
+ assert.equal(judge('实际测试显示满意度为95%。'),'missing');
+ assert.equal(judge('本研究将满意度作为待验证假设，但实际测试显示满意度为95%。'),'missing');
+});
 
 test('chapter anchors retain concrete missing locations in long manuscripts',()=>{
  const paragraphs=Array.from({length:60},(_,i)=>`第${i}段用于讨论研究边界和方法。`);paragraphs[27]='本研究仍有【待补充：具体数据来源】需要补充。';const chapter={id:'c',title:'正文',text:paragraphs.join('\n')},task=supplementCheckTask({chapters:[chapter],materials:[]});attachSupplementAnchors(task,[]);assert.ok(task.context.chapters[0].quoteAnchors.some(a=>a.text.includes('【待补充：具体数据来源】')));
