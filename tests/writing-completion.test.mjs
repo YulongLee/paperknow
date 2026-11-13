@@ -19,6 +19,17 @@ test('completion quotes cannot be swapped with regular generation, another owner
 
 test('an interrupted draft continues with new materials and does not repeat accepted units',async t=>{const f=fixture(t);let count=0;f.setRunner(async({task})=>{if(++count===2)throw Object.assign(Error('尚缺生成本单元所需的真实资料：实际观察记录'),{code:'needs_materials',usage:{input:30,output:20},costUsd:.001});return{text:JSON.stringify({complete:true,text:'已'.repeat(task.context.unit.targetWords),source_ids:[],missing_evidence:[]}),usage:{input:100,output:600},costUsd:.001};});const first=await f.submit();await f.worker.tick();assert.equal(f.get(first.id).status,'failed');assert.equal(f.get(first.id).completedUnits,1);assert.equal(f.billing.balance('alice').balance,200);f.setRunner(async({task})=>({text:JSON.stringify({complete:true,text:'续'.repeat(task.context.unit.targetWords)+'[source:new-evidence]',source_ids:['new-evidence'],missing_evidence:[]}),trace:[{tool:'read_material',status:'completed',materialId:'new-evidence'}],usage:{input:100,output:600},costUsd:.001}));const next=await f.submit(supplement(),{baseJobId:first.id});await f.worker.tick();const done=f.get(next.id);assert.equal(done.status,'completed',JSON.stringify(done));assert.equal(done.output.sections[0].text,'已'.repeat(500));assert.equal(f.calls.length,3);assert.equal(f.billing.balance('alice').balance,190);});
 
+test('updated confirmed materials are prioritised and sections that used them are revised',async t=>{
+ const f=fixture(t),initial={...snapshot(),materials:[{id:'study-plan',name:'研究计划',text:'计划邀请十位参与者进行观察。',confirmed:true}]};
+ const base=await f.submit(initial);await f.worker.tick();flagSecond(f,base.id);
+ const revised={...initial,materials:[{...initial.materials[0],text:'计划邀请十二位参与者进行观察，计划于第六周整理。'}]};
+ const prepared=prepareWritingCompletion(f.db,f.user,{kind:'proposal',operation:'draft',snapshot:normalizeWritingSnapshot(revised),projectId:null},{baseJobId:base.id});
+ assert.equal(prepared.retained.length,0,'all sections citing the changed source must be revisited');
+ assert.ok(prepared.plan.every(unit=>unit.completionSourceIds.includes('study-plan')));
+ for(const unit of prepared.plan){const task=writingTask('proposal','draft',normalizeWritingSnapshot(revised),unit);assert.ok(task.materials.some(source=>source.id==='study-plan'&&source.text.includes('十二位')));}
+ assert.equal(f.get(base.id).status,'completed','the saved original remains immutable');
+});
+
 test('the full current author edit is preserved as revision context instead of using stale generated prose',async t=>{const f=fixture(t),base=await f.submit();await f.worker.tick();const text='作者当前修改。'.repeat(250)+'最后一句需要保留。',value=prepareWritingCompletion(f.db,f.user,{kind:'proposal',operation:'draft',snapshot:normalizeWritingSnapshot(supplement()),projectId:null},{baseJobId:base.id,text});assert.equal(value.retained.length,0);assert.equal(value.plan.map(unit=>unit.revisionOriginal).join(''),text);assert.ok(value.plan.every(unit=>unit.completion));const task=writingCompletionTask({instructions:'原契约。',context:{unit:value.plan[0]}},value.plan[0]);assert.match(task.instructions,/不能当作证据/);assert.equal(task.context.unit.revisionOriginal,undefined);});
 
 test('both imported and edited drafts preserve complete Unicode characters in every independently processed fragment',async t=>{

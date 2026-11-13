@@ -29,6 +29,20 @@ test('workspace reads require login and every mutation requires same-origin',asy
  assert.equal(f.db.prepare('SELECT count(*) n FROM workspace_drafts').get().n,0);
 });
 
+test('writing result lookup only returns an exact linked draft for the job owner',async t=>{
+ const f=await fixture(t),at=new Date().toISOString();
+ f.db.prepare('INSERT INTO jobs(id,user_id,project_id,type,status,stage,input,idempotency_key,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run('writing-job','alice',null,'writing','completed','completed','{}','writing-job','hash',at,at);
+ const saved=await f.save({tool:'proposal',payload:{title:'开题',tool:'proposal',writingFlow:{bodyJobId:'writing-job',title:'原初稿'}}});
+ assert.equal(saved.status,201);
+ const linked=await f.request('/workspace/writing-draft-for-job/writing-job');
+ assert.equal(linked.status,200);assert.equal(linked.value.item.id,saved.value.item.id);
+ assert.equal((await f.request('/workspace/writing-draft-for-job/writing-job',undefined,f.users.bob)).status,404);
+ assert.equal((await f.request('/workspace/writing-draft-for-job/no-such-job')).status,404);
+ const aliceDraft=await f.request('/workspace/drafts/'+saved.value.item.id,undefined,f.users.bob);assert.equal(aliceDraft.status,404);
+ const update=await f.request('/workspace/drafts/'+saved.value.item.id,{version:1,payload:{title:'开题',tool:'proposal',writingFlow:{bodyJobId:'newer-job',jobs:{draft:{itemId:'writing-job'}}}}});assert.equal(update.status,200);
+ assert.equal((await f.request('/workspace/writing-draft-for-job/writing-job')).value.item,null,'a newer body cannot masquerade as the old result');
+});
+
 test('account profile changes only the signed-in display name and preserves login identities and role',async t=>{
  const f=await fixture(t);const read=await f.request('/account/profile');assert.equal(read.value.user.name,'测试研究者');
  const saved=await f.request('/account/profile',{name:' 新研究者 '});assert.equal(saved.status,200);assert.equal(saved.value.user.name,'新研究者');assert.equal(saved.value.user.role,'user');

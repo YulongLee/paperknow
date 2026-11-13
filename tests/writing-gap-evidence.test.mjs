@@ -36,3 +36,19 @@ test('a deferred schedule is resolved only with verified authorization and no in
  assert.equal(check(final,chapter,snapshot,[chapter,{text:'研究将于三月开始。'}]),false);
  assert.equal(check(final,chapter,snapshot,[chapter],'实验结果的数据和人数待导师确认'),false);
 });
+
+test('conditional stale findings require fresh full coverage and independently anchored review',async()=>{
+ const {buildConditionalGapRecheck,parseConditionalGapRecheck}=await import('../backend/writing-gap-evidence.mjs');
+ const chapters=[{id:'a',text:'本研究仅提出改进建议，不开展效果检验。'},{id:'b',text:'本方案拟观察参与者完成阅读任务。'}];
+ const gaps=[{manuscriptQuote:'拟进行改造前后效果检验',missing:['若新增效果检验，需提供方案','实际调查记录','提供原文证据或删除该现状断言','需删除该方法并提供真实调查数据']}];
+ const review={phase:'final',status:'final_ready',coverage:{complete:true,total:2,checked:2},items:[{status:'sufficient'},{status:'sufficient'}]};
+ const task=buildConditionalGapRecheck(gaps,chapters,review);assert.ok(task);assert.equal(task.context.checks.length,2);
+ const row={id:'conditional-0-0',status:'removed',chapters:chapters.map(c=>({id:c.id,quote:c.text}))},second={...row,id:'conditional-0-2',status:'retain'};
+ assert.deepEqual([...parseConditionalGapRecheck({text:JSON.stringify({checks:[row,second]})},task)],['conditional-0-0']);
+ assert.equal(buildConditionalGapRecheck(gaps,chapters,{...review,coverage:{...review.coverage,checked:1}}),null);
+ assert.equal(buildConditionalGapRecheck(gaps,chapters,{...review,items:[{status:'sufficient'},{status:'missing'}]}),null);
+ assert.equal(buildConditionalGapRecheck(gaps,[{...chapters[0],text:'拟进行改造前后效果检验' },chapters[1]],review),null);
+ for(const bad of [{checks:[]},{checks:[{...row,chapters:[row.chapters[0]]},second]},{checks:[{...row,chapters:[row.chapters[0],row.chapters[0]]},second]},{checks:[{...row,chapters:[row.chapters[0],{id:'b',quote:'编造的不存在的引用文字'}]},second]},{checks:[{...row,status:'unknown'},second]}])assert.throws(()=>parseConditionalGapRecheck({text:JSON.stringify(bad)},task));
+ assert.throws(()=>parseConditionalGapRecheck({text:'',truncated:true},task));
+ assert.equal(parseConditionalGapRecheck({text:JSON.stringify({checks:[{...row,status:'retain'},second]})},task).size,0);
+});

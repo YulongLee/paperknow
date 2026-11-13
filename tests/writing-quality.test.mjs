@@ -371,3 +371,10 @@ test('preserved Word formulas or tables do not count as an image for missing fig
  assert.equal(run([{id,kind:'image'}]).length,0);
  assert.equal(run([]).length,0,'an unclassified object may contain an image');
 });
+
+test('review uses applicable degree-specific guidance without changing user requirements or suppressing source concerns',()=>{
+ const base='开题报告撰写规范 v1：学校要求优先。研究生按实际任务展开创新点、前期基础与困难对策。不得假造研究结果。\n学校要求：明确研究对象。';
+ const make=level=>writingReviewTask({snapshot:{profile:{level},requirements:{instructions:base}},chapters:[{id:'a',text:'本研究拟进行模拟预测试，具体实施条件尚待确定。'}]});
+ const under=make('本科'),post=make('硕士'),unknown=make('');assert.doesNotMatch(under.context.writingRequirements,/研究生按实际任务/);assert.match(under.context.writingRequirements,/学校要求：明确研究对象/);assert.match(post.context.writingRequirements,/研究生按实际任务/);assert.match(unknown.context.writingRequirements,/研究生按实际任务/);assert.match(under.instructions,/不得把研究生专属要求套用到本科/);assert.match(under.instructions,/同句另外包含实际未授权的方法或缺乏依据的陈述/);
+ const userCustom=writingReviewTask({snapshot:{profile:{level:'本科'},requirements:{instructions:'学校特别规定：研究生按实际任务展开创新点、前期基础与困难对策。'}},chapters:[{id:'a',text:'正文内容足够检查。'}]});assert.match(userCustom.context.writingRequirements,/研究生按实际任务/);
+});
