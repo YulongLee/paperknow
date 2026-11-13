@@ -61,3 +61,15 @@ test('removing an old evidence demand without a delete alternative requires exac
  for(const auth of [undefined,{sourceId:'wrong',quote:'研究不包括跨设备阅读',term:'跨设备阅读'},{sourceId:'m',quote:'研究不包括其他内容',term:'研究'},{sourceId:'m',quote:'研究不包括跨设备阅读',term:'研究'},{sourceId:'m',quote:'研究不包括跨设备阅读',term:'无障碍'}])assert.throws(()=>parse({...row,authorization:auth}));
  assert.equal(buildConditionalGapRecheck([gap],chapters,review,{materials:[{...snapshot.materials[0],confirmed:false}]}),null);
 });
+test('explicitly authorized deletion is bound to one exact unsupported background assertion',async()=>{
+ const {explicitlyRequestedBackgroundDeletion:allow}=await import('../backend/writing-gap-evidence.mjs');
+ const original='高校数字阅读服务通常需要支持从检索到阅读的连续过程。',chapter={text:original},source={id:'m',confirmed:true,text:'请删除“高校数字阅读服务通常需要支持”这类未经核实的真实现状断言。'},snapshot={materials:[source]},gap={manuscriptQuote:original,missing:['补充调查依据，或删除该现状断言'],evidence:[{sourceId:'m',quote:source.text}]};
+ assert.equal(allow(gap,chapter,snapshot),true);
+ assert.equal(allow({...gap,missing:['真实调查数据']},chapter,snapshot),false);
+ assert.equal(allow({...gap,missing:['补充依据或删除，并提供真实数据']},chapter,snapshot),false);
+ assert.equal(allow({...gap,missing:[...gap.missing,'实际调查记录']},chapter,snapshot),false);
+ assert.equal(allow({...gap,evidence:[{sourceId:'m',quote:'请删除所有'}]},chapter,snapshot),false);
+ assert.equal(allow(gap,chapter,{materials:[{...source,confirmed:false}]}),false);
+ const empirical='实际测试中高校数字阅读服务通常需要支持，准确率为95%。';assert.equal(allow({...gap,manuscriptQuote:empirical},{text:empirical},snapshot),false);
+ assert.equal(allow(gap,{text:'新版正文已经更改'},snapshot),false);
+});

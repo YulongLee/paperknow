@@ -1,4 +1,4 @@
-import {buildWritingGapEvidenceTask,parseWritingGapEvidence,resolvedVirtualPlatformRequirement,resolvedDeferredScheduleRequirement,buildConditionalGapRecheck,parseConditionalGapRecheck} from './writing-gap-evidence.mjs';
+import {buildWritingGapEvidenceTask,parseWritingGapEvidence,resolvedVirtualPlatformRequirement,resolvedDeferredScheduleRequirement,buildConditionalGapRecheck,parseConditionalGapRecheck,explicitlyRequestedBackgroundDeletion} from './writing-gap-evidence.mjs';
 import {assembleProposalText} from './proposal-writing.mjs';
 import {createWritingContinuity} from './writing-continuity.mjs';
 import {classifyWritingRetry} from './writing-execution-policy.mjs';
@@ -82,17 +82,17 @@ export function startWritingWorker(db,config={}){initializeWritingSchema(db);con
   if(supplementCheck.status!=='materials_ready'){
    const gaps=supplementCheck.items.filter(item=>item.status==='missing');
    const chapterForGap=item=>{const match=/^check-(\d+)-(\d+)$/u.exec(item.id||'');return match?chapters[Number(match[1])]:undefined;};
-   const background=gaps.filter(item=>repairableBackgroundGap(item,chapterForGap(item),snapshot)),other=gaps.filter(item=>!background.includes(item));
+   const background=gaps.filter(item=>repairableBackgroundGap(item,chapterForGap(item),snapshot)||explicitlyRequestedBackgroundDeletion(item,chapterForGap(item),snapshot)),other=gaps.filter(item=>!background.includes(item));
    let evidenceResult=null;
    const evidenceTask=supplementCheck.status==='needs_materials'&&supplementCheck.coverage?.complete===true&&other.length&&other.every(item=>chapterForGap(item)?.text?.includes(item.manuscriptQuote))?buildWritingGapEvidenceTask(other,snapshot):null;
    if(evidenceTask){
     const validateReviewOutput=result=>{try{parseWritingGapEvidence(result,evidenceTask);return{valid:true};}catch{return{valid:false,feedback:{code:'gap_evidence',rule:'逐项覆盖原有缺项，支持结论必须引用本次列出的授权原文；不确定或无法证明时标记 missing。'}};}};
     try{const out=await reviewDispatch({task:evidenceTask,settings:{...runtime,maxTurns:Math.min(runtime.maxTurns,5),timeoutMs:Math.min(runtime.timeoutMs,90000)},validateReviewOutput,unitId:'supplement-evidence-recheck'});evidenceResult=parseWritingGapEvidence(out,evidenceTask);}catch(error){if(controller.signal.aborted||!running())throw error;const safe=thesisError(503,'补充资料复核暂未完成，不能据此认定资料缺失；原稿和已上传材料已保留，请稍后重试。','supplement_check_unavailable');safe.gapReviewReason=['turn_limit','truncated','invalid_review_output','timeout','budget_exceeded','cost_budget','usage_unknown','review_changed'].includes(error?.code)?error.code:'other';safe.gapReviewFeedback=error?.lastValidation?.code==='gap_evidence'?'gap_evidence':null;throw safe;}
    }
-   const repairable=supplementCheck.status==='needs_materials'&&supplementCheck.coverage?.complete===true&&gaps.length>0&&(!other.length||evidenceResult&&evidenceResult.checks.some(check=>check.supported.length));
+   const repairable=supplementCheck.status==='needs_materials'&&supplementCheck.coverage?.complete===true&&gaps.length>0&&(background.length>0||!other.length||evidenceResult&&evidenceResult.checks.some(check=>check.supported.length));
    if(!repairable)throw thesisError(422,supplementCheck.status==='needs_materials'?'补充资料仍有缺项，请查看“补充内容检查”后继续补充；原稿与已上传资料已保留。':'补充资料检查尚未完成，请稍后重试；原稿与材料已保留。','supplement_incomplete');
    for(const gap of background){const id=chapterForGap(gap).id;automaticBackgroundRepairs.set(id,[...(automaticBackgroundRepairs.get(id)||[]),gap.manuscriptQuote]);}
-   for(const [index,gap] of other.entries()){const id=chapterForGap(gap)?.id,review=evidenceResult?.checks.find(check=>check.id==='gap-'+index);if(!id||!review)throw thesisError(422,'资料检查位置无效，原稿已保留。','supplement_incomplete');if(review.supported.length)automaticEvidenceRepairs.set(id,[...(automaticEvidenceRepairs.get(id)||[]),{quote:gap.manuscriptQuote,missing:review.supported,unresolved:review.missing}]);if(review.missing.length)unresolvedPreflight.push({...gap,missing:review.missing});}
+   for(const [index,gap] of other.entries()){const id=chapterForGap(gap)?.id,review=evidenceResult?.checks.find(check=>check.id==='gap-'+index);if(!id)throw thesisError(422,'资料检查位置无效，原稿已保留。','supplement_incomplete');if(!review){unresolvedPreflight.push(gap);continue;}if(review.supported.length)automaticEvidenceRepairs.set(id,[...(automaticEvidenceRepairs.get(id)||[]),{quote:gap.manuscriptQuote,missing:review.supported,unresolved:review.missing}]);if(review.missing.length)unresolvedPreflight.push({...gap,missing:review.missing});}
   }
  }
  for(const unit of plan){

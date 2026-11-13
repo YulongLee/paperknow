@@ -68,3 +68,13 @@ export function parseConditionalGapRecheck(result,task){
  for(const row of obj.checks){if(!expected.some(c=>c.id===row?.id)||seen.has(row.id)||!['retain','removed'].includes(row.status)||!Array.isArray(row.chapters)||row.chapters.length!==chapters.length)throw Error('复核覆盖不完整');seen.add(row.id);const checked=new Set();for(const cite of row.chapters){const chapter=chapters.find(c=>c.id===cite?.id);if(!chapter||checked.has(cite.id)||typeof cite.quote!=='string'||cite.quote.trim().length<8||cite.quote.length>500||!chapter.text.includes(cite.quote))throw Error('复核章节依据无效');checked.add(cite.id);}if(row.status==='removed'){const check=expected.find(c=>c.id===row.id);if(check.requiresAuthorization){const a=row.authorization,source=task.context.authorizations?.find(s=>s.sourceId===a?.sourceId),term=String(a?.term||'');if(!source||typeof a.quote!=='string'||a.quote.length>500||!source.text.includes(a.quote)||!/(?:删除|删去|移除|不研究|不包括)/u.test(a.quote)||term.length<2||term.length>30||/^(?:研究|方案|内容|项目|数据|方法|文献|范围|用户|情况|资料|现有|结果|问题|报告|断言|平台|提供|高校|学校|文字|所有|全部|材料|要求|其他)$/u.test(term)||!a.quote.includes(term)||!check.priorQuote.includes(term)||!String(check.requirement).includes(term))throw Error('缺少与旧主张对应的明确删除授权');}removed.add(row.id);}}
  return removed;
 }
+
+// A user's explicit instruction to remove a quoted, unsupported background
+// assertion authorizes that precise deletion, not facts or empirical results.
+// The final full-manuscript check and evidence review still run afterward.
+export function explicitlyRequestedBackgroundDeletion(gap,chapter,snapshot){
+ const original=String(gap?.manuscriptQuote||'');if(!original||!chapter?.text?.includes(original)||!Array.isArray(gap?.missing)||gap.missing.length!==1||!/(?:或删除|或删去|或移除)/u.test(gap.missing[0]))return false;
+ if(/\d|(?:实测|实际|真实)(?:测试|实验|调查|结果|数据|样本|参与者)|(?:实际|真实|实测).{0,8}(?:结果|数据|样本|实验)/u.test(original)||/(?:同时|并(?:需|须|要|请|提供|补充)|还需)/u.test(gap.missing[0]))return false;
+ const sources=(snapshot?.materials||[]).filter(s=>s?.confirmed===true&&typeof s.id==='string'&&typeof s.text==='string');
+ return (gap.evidence||[]).some(proof=>{const source=sources.find(s=>s.id===proof?.sourceId);if(!source||typeof proof.quote!=='string'||!source.text.includes(proof.quote))return false;for(const m of proof.quote.matchAll(/(?:请|应|须|明确)?(?:删除|删去|移除)\s*[“「『]([^”」』\n]{8,120})[”」』]/gu))if(original.includes(m[1]))return true;return false;});
+}
