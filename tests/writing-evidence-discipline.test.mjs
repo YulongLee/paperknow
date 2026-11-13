@@ -39,3 +39,10 @@ test('completion cannot add an ISO standard absent from the manuscript and autho
  const withRequirement={...s,requirements:{...s.requirements,instructions:'请按 ISO 9241-11 研究'}};assert.notEqual(validateWritingCandidate(body(text),'proposal','draft',withRequirement,unit).feedback?.code,'unsupported_standard');
  const unconfirmed={...s,materials:[{id:'x',name:'未确认资料',text:'ISO 9241-11',confirmed:false}]};assert.equal(validateWritingCandidate(body(text),'proposal','draft',unconfirmed,unit).feedback.code,'unsupported_standard');
 });
+test('completion cannot invent a specific laboratory observation format',async()=>{
+ const {validateWritingCandidate}=await import('../backend/writing-model.mjs');
+ const s=normalizeWritingSnapshot({title:'高校数字阅读服务研究',profile:{level:'本科',language:'中文',targetWords:200},requirements:{},materials:[],references:[],outline:[{id:'a',title:'研究背景',targetWords:200}]});
+ const unit={...writingPlan(s,'draft')[0],completion:true,revisionOriginal:'拟开展参与者观察。'},body=text=>({text:JSON.stringify({complete:true,text,source_ids:[],missing_evidence:[]}),trace:[]});
+ const text='测试拟采用实验室一对一主持式观察。'+'拟研究如何改善阅读体验。'.repeat(18),rejected=validateWritingCandidate(body(text),'proposal','draft',s,unit);assert.equal(rejected.feedback.code,'unsupported_observation');
+ const explicit={...unit,revisionOriginal:'测试拟采用实验室一对一主持式观察。'};assert.notEqual(validateWritingCandidate(body(text),'proposal','draft',s,explicit).feedback?.code,'unsupported_observation');
+});
