@@ -6,8 +6,13 @@
 export function resolvedVirtualPlatformRequirement(gap,missing,finalCheck,chapter,snapshot){
  if(!/实际(?:平台)?(?:的)?名称(?:和|与|、)版本/u.test(String(missing||''))||!chapter?.text||!/(?:虚构|模拟|假设).{0,30}平台/u.test(chapter.text))return false;
  if(!finalCheck||finalCheck.status!=='sufficient'||!Array.isArray(finalCheck.evidence)||!finalCheck.evidence.length)return false;
+ // Only eliminate a real-platform demand when one specific platform name and
+ // version agree exactly between the rewritten chapter and a single cited
+ // source excerpt. Ambiguous, absent or cross-source identities fail closed.
+ const identity=text=>{const value=String(text),names=[...new Set([...value.matchAll(/平台\s*([A-Za-z][A-Za-z0-9_-]{0,30})/gu)].map(m=>m[1]))],versions=[...new Set([...value.matchAll(/版本\s*([A-Za-z0-9][A-Za-z0-9._-]{0,30})/gu)].map(m=>m[1]))],otherCodes=[...new Set([...value.matchAll(/(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9]*[-._]\d+(?:[._-]\d+)*)/gu)].map(m=>m[1]))];return names.length===1&&versions.length===1&&otherCodes.every(code=>code===versions[0])?{name:names[0],version:versions[0]}:null;};
+ const stated=identity(chapter.text);if(!stated)return false;
  const sources=[...(snapshot.materials||[]),...(snapshot.references||[])].filter(source=>source?.confirmed!==false&&typeof source.id==='string'&&typeof source.text==='string');
- return finalCheck.evidence.some(proof=>{const source=sources.find(s=>s.id===proof.sourceId);return source&&typeof proof.quote==='string'&&source.text.includes(proof.quote)&&/(?:研究对象|平台).{0,30}(?:虚构|模拟|假设).{0,30}平台|(?:虚构|模拟|假设).{0,30}平台/u.test(source.text)&&/(?:目前|尚)?(?:无|没有|不存在).{0,10}真实平台/u.test(source.text)&&/(?:虚构|模拟|假设).{0,30}平台/u.test(proof.quote);});
+ return finalCheck.evidence.some(proof=>{const source=sources.find(s=>s.id===proof.sourceId);if(!source||typeof proof.quote!=='string'||!source.text.includes(proof.quote)||!/(?:虚构|模拟|假设).{0,30}平台/u.test(proof.quote)||!/(?:目前|尚)?(?:无|没有|不存在).{0,10}真实平台/u.test(source.text))return false;const cited=identity(proof.quote);return cited&&cited.name===stated.name&&cited.version===stated.version;});
 }
 export function buildWritingGapEvidenceTask(gaps,snapshot){
  if(!Array.isArray(gaps)||!gaps.length||gaps.length>4)return null;

@@ -14,6 +14,14 @@ test('a final verified explicitly virtual platform does not require a real deplo
  assert.equal(resolvedVirtualPlatformRequirement({},missing,checked,chapter,{materials:[{...material,confirmed:false}]}),false);
  assert.equal(resolvedVirtualPlatformRequirement({},missing,{...checked,evidence:[{sourceId:'v',quote:'捏造的虚构平台'}]},chapter,snapshot),false);
  assert.equal(resolvedVirtualPlatformRequirement({},missing,checked,chapter,{materials:[{...material,text:'研究对象为真实平台，预期未来做模拟。'}]}),false);
+ const altered=(c,e=text)=>resolvedVirtualPlatformRequirement({},missing,{status:'sufficient',evidence:[{sourceId:'v',quote:e}]},{text:c},{materials:[{id:'v',confirmed:true,text:e}]});
+ assert.equal(altered('研究对象为虚构平台B，假设版本A-1.0。'),false,'different platform');
+ assert.equal(altered('研究对象为虚构平台A，假设版本A-2.0。'),false,'different version');
+ assert.equal(altered('研究对象为虚构平台A。'),false,'missing version');
+ assert.equal(altered('研究对象为虚构平台A，假设版本A-1.0和B-2.0。'),false,'ambiguous version');
+ assert.equal(altered(chapter.text,'研究对象为虚构平台A，目前无真实平台。'),false,'no cited version');
+ const split={materials:[{id:'v',confirmed:true,text:'研究对象为虚构平台A，目前无真实平台。'},{id:'v2',confirmed:true,text:'研究对象假设版本A-1.0。'}]};
+ assert.equal(resolvedVirtualPlatformRequirement({},missing,{status:'sufficient',evidence:[{sourceId:'v',quote:split.materials[0].text},{sourceId:'v2',quote:split.materials[1].text}]},chapter,split),false,'cannot join identity across separate sources');
 });
 test('source excerpts retain nearby and early qualifiers before the independent review',()=>{
  const long='该研究尚未实施。不得将计划当成真实结果。'+'背景介绍'.repeat(650)+'计划招募12名成年学生。'+'后续还需完成调查。';const quote='计划招募12名成年学生。',t=buildWritingGapEvidenceTask([{...gap,evidence:[{sourceId:'m',quote}]}],{materials:[{...source,text:long}]});assert.ok(t.context.checks[0].evidence.some(p=>p.quote.includes('尚未实施')));assert.ok(t.context.checks[0].evidence.some(p=>p.quote.includes(quote)));
