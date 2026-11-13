@@ -36,4 +36,3 @@ test('a deferred schedule is resolved only with verified authorization and no in
  assert.equal(check(final,chapter,snapshot,[chapter,{text:'研究将于三月开始。'}]),false);
  assert.equal(check(final,chapter,snapshot,[chapter],'实验结果的数据和人数待导师确认'),false);
 });
-
