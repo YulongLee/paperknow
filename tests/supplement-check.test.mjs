@@ -530,10 +530,10 @@ for(const mode of ['conditional-removed','conditional-retain','conditional-error
 test('planned measurement criteria and low-fidelity prototype are not mistaken for observed results',()=>{
  const source='本研究尚未实施，拟观察任务完成与用时，问卷拟采用自拟五级体验题，拟制作低保真原型；预试对象与方式尚待确认。';
  const make=text=>supplementCheckTask({kind:'proposal',phase:'final',chapters:[{id:'s',title:'方法',text}],materials:[{id:'m',name:'研究计划',text:source,confirmed:true}]});
- const planned='可学习性、效率与错误拟以任务观察记录为主要依据，满意度以任务后自拟五级体验题为主要依据。设计预试阶段拟制作仅供测试的低保真网页原型，预试对象与方式尚待确定。目前尚未建立原型，也未开展观察。';
+ const planned='可学习性、效率与错误拟以任务观察记录为主要依据，满意度以任务后自拟五级体验题为主要依据。据此，本方案拟将效率对应为任务用时，将错误对应为任务未完成或偏离预期步骤，将满意度对应为任务后问卷反馈。设计预试阶段拟制作仅供测试的低保真网页原型，预试对象与方式尚待确定。目前尚未建立原型，也未开展观察。';
  const row=text=>({id:'s',status:'sufficient',requirement:'研究计划',reason:'计划内容有依据',manuscriptQuote:text.slice(0,80),evidence:[{sourceId:'m',quote:source}],missing:[]});
  const t=make(planned);assert.equal(parseSupplementCheck(response([row(planned)]),t)[0].status,'sufficient');assert.match(t.instructions,/不能要求提供已经落实的条件或已经完成的结果/);
- for(const real of ['实际测试显示满意度为95%。','参与者实际完成观察，满意度达到较高水平。','满意度为良好。','满意度为五分。','满意度以问卷为依据，但实际满意度为五分。']){const check=make(real);assert.equal(parseSupplementCheck(response([row(real)]),check)[0].status,'missing');}
+ for(const real of ['实际测试显示满意度为95%。','参与者实际完成观察，满意度达到较高水平。','满意度为良好。','满意度为五分。','满意度以问卷为依据，但实际满意度为五分。','满意度对应为任务后问卷反馈显示95%。','满意度对应为95%的问卷反馈。','满意度对应为五分的问卷反馈。']){const check=make(real);assert.equal(parseSupplementCheck(response([row(real)]),check)[0].status,'missing');}
 });
 
 for(const mode of ['missing','unavailable','no-evidence'])test('background repair with another unresolved gap preserves the final gate: '+mode,async t=>{
@@ -542,4 +542,12 @@ for(const mode of ['missing','unavailable','no-evidence'])test('background repai
  if(mode==='unavailable'){assert.equal(done.status,'failed');assert.match(done.error,/复核暂未完成/);assert.equal(done.completedUnits,0);assert.equal(f.billing.balance('owner').balance,200);}
  else{assert.equal(done.status,'completed',done.error);if(mode==='no-evidence')assert.equal(f.calls.some(c=>c.task.context.operation==='writing-gap-evidence'),false);assert.ok(f.calls.some(c=>c.task.context.unsupportedBackgroundQuote));assert.equal(done.output.quality.supplementCheck.status,'needs_materials');assert.ok(done.output.quality.supplementCheck.items.some(x=>x.missing?.includes('真实调查数据')));assert.equal(f.billing.balance('owner').balance,190);}
  assert.equal(f.billing.balance('owner').held,0);assert.equal(f.db.prepare('select count(*) n from billing_reservations where job_id=?').get(item.id).n,1);
+});
+test('review cannot attribute four reading flows to a chapter that only has three',()=>{
+ const text='在虚构高校图书馆数字阅读平台A的检索、获取与在线阅读流程中，会出现哪些可观察的可用性问题。',t=supplementCheckTask({kind:'proposal',phase:'final',chapters:[{id:'s',title:'范围',text}],materials:[material]});
+ const wrong={id:'s',status:'missing',requirement:'四个流程须说明依据',reason:'材料只含三个流程，正文出现“四个流程”需补依据',manuscriptQuote:text,evidence:[],missing:['四个流程需要依据']};
+ assert.throws(()=>parseSupplementCheck(response([wrong]),t),error=>error.code==='invalid_supplement_check');
+ const actual='本研究发现真实用户满意度为95%，四个流程均已完成。',t2=supplementCheckTask({kind:'proposal',phase:'final',chapters:[{id:'s',title:'范围',text:actual}],materials:[material]});
+ const real={...wrong,manuscriptQuote:actual,missing:['请提供真实用户满意度95%的观察数据']};assert.equal(parseSupplementCheck(response([real]),t2)[0].status,'missing');
+ const mixed={...wrong,missing:['四个流程需要依据','真实用户满意度95%的原始调查数据']};assert.throws(()=>parseSupplementCheck(response([mixed]),t));
 });

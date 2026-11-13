@@ -71,7 +71,7 @@ function unsupportedObservedClaim(text){
 // remain reviewable until the calculation can be checked.
 function empiricalClaims(text){
  const claims=[];for(const match of String(text||'').matchAll(/[^。！？；;\n]+/gu)){const clause=match[0].trim();if(!clause)continue;
-  const assertions=clause.matchAll(/(?:已招募|已采集|已收集|实测|实际测试|真实测试|实际调查|实际测量|受试者.{0,24}(?:完成|参与)|参与者.{0,24}(?:完成|参与)|(?:准确率|正确率|满意度|成功率|召回率|精确率|错误率|识别率)(?!以[^，。；;\n]{0,40}为(?:主要)?依据).{0,12}(?:(?<![作视认称以])为|达到|是(?!否|什么)|得到|取得|显示)|(?:模拟|仿真).{0,25}(?:结果|分析|测试).{0,20}(?:显示|表明|达到))/gu);for(const assertion of assertions){const prefix=clause.slice(Math.max(0,assertion.index-12),assertion.index),before=clause.slice(0,assertion.index).split(/[，,]/u).at(-1);if(/(?:尚未|未曾|未进行|未开展|没有|无|并非|不是|不代表|无法证明|不能证明|计划|拟招募|拟开展|拟进行).{0,6}$/u.test(prefix)||/(?:不能|不应|不可).{0,50}(?:当作|视为|等同于|解释为).{0,40}$/u.test(before)||/(?:有待验证)/u.test(clause.slice(assertion.index)))continue;claims.push(clause);break;}
+  const assertions=clause.matchAll(/(?:已招募|已采集|已收集|实测|实际测试|真实测试|实际调查|实际测量|受试者.{0,24}(?:完成|参与)|参与者.{0,24}(?:完成|参与)|(?:准确率|正确率|满意度|成功率|召回率|精确率|错误率|识别率)(?!以[^，。；;\n]{0,40}为(?:主要)?依据)(?!对应为[^，。；;\n\d%０-９零一二三四五六七八九十百千万]{1,40}(?:依据|反馈|问卷|题项|指标)(?=[，。；;\n]|$)).{0,12}(?:(?<![作视认称以])为|达到|是(?!否|什么)|得到|取得|显示)|(?:模拟|仿真).{0,25}(?:结果|分析|测试).{0,20}(?:显示|表明|达到))/gu);for(const assertion of assertions){const prefix=clause.slice(Math.max(0,assertion.index-12),assertion.index),before=clause.slice(0,assertion.index).split(/[，,]/u).at(-1);if(/(?:尚未|未曾|未进行|未开展|没有|无|并非|不是|不代表|无法证明|不能证明|计划|拟招募|拟开展|拟进行).{0,6}$/u.test(prefix)||/(?:不能|不应|不可).{0,50}(?:当作|视为|等同于|解释为).{0,40}$/u.test(before)||/(?:有待验证)/u.test(clause.slice(assertion.index)))continue;claims.push(clause);break;}
  }return claims;
 }
 function measuredQuantities(value){const result=[];for(const match of String(value||'').normalize('NFKC').matchAll(/(\d+(?:\.\d+)?)\s*(%|人|名|位|例|次|份|条|秒|分钟)/gu)){const unit=match[2],kind=['人','名','位'].includes(unit)?'person':unit;result.push(Number(match[1])+':'+kind);}return [...new Set(result)];}
@@ -145,6 +145,12 @@ export function parseSupplementCheck(result,task){
   // and quoted labels in an explanation do not establish a location.
   if(row.status==='missing')for(const match of (row.requirement+' '+row.reason+' '+(Array.isArray(row.missing)?row.missing.join(' '):'')).matchAll(/[“「『]([^”」』\n]{4,100})[”」』]/gu)){
    const phrase=match[1];if([...expected.values()].some(item=>item.text.includes(phrase))&&(!section.text.includes(phrase)||!manuscriptQuote.includes(phrase)))fail(field+'.manuscriptQuote','引用的具体缺项属于其所在章节，manuscriptQuote 必须包含该处原文，不要使用其他章节或通用锚点。');
+  }
+  // A positive claim that a phrase appears in THIS manuscript is checkable.
+  // Reject the whole candidate for correction, rather than discarding a mixed
+  // substantive finding or trusting another chapter's similarly named item.
+  if(row.status==='missing')for(const match of (row.requirement+' '+row.reason+' '+(Array.isArray(row.missing)?row.missing.join(' '):'')).matchAll(/(?:正文|本节|原文)(?:中|里)?(?:出现|写明|写成|写作|写了|声称|表述为|描述为)\s*[“「『]([^”」』\n]{2,100})[”」』]/gu)){
+   if(!section.text.includes(match[1]))fail(field+'.manuscriptQuote','你称正文出现的引号内短语不在本章节，请逐字核对原文并重新判断；其它已定位、真实存在的缺项仍须保留。');
   }
   if(!Array.isArray(row.evidence)||row.evidence.length>4||!Array.isArray(row.missing)||row.missing.length>4||row.missing.some(v=>typeof v!=='string'||!v.trim()||v.length>240))fail(field,'evidence 和 missing 必须是数组，每项最多四条；无内容使用 []。');
   let checkedFigureIds;try{checkedFigureIds=assertCheckedFigures(row.checkedFigureIds,section.figures||[]);}catch{fail(field+'.checkedFigureIds','完整复制当前章节提供的全部图片 ID，无图使用 []。');}
