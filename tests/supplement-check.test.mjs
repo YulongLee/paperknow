@@ -513,3 +513,10 @@ test('unperformed planned study actions cannot be read as already completed',()=
  for(const text of ['问卷拟经模拟预测试检查措辞。','参与者计划经知情同意完成单次任务观察。'])assert.equal(parseSupplementCheck(response([row(text)]),make(text))[0].status,'sufficient');
  const observed='经预测试检查问卷措辞，预测试发现两个具体问题并已记录。',actual='问卷经预测试检查措辞。',real=supplementCheckTask({kind:'proposal',phase:'final',chapters:[{id:'s',title:'方案',text:actual}],materials:[{id:'m',name:'实际记录',text:observed}]});assert.equal(parseSupplementCheck(response([{...row(actual),evidence:[{sourceId:'m',quote:observed}]}]),real)[0].status,'sufficient');
 });
+
+test('conditional review items ask for confirmation without claiming an unneeded file is missing',()=>{
+ const base={status:'needs_materials',coverage:{total:1,checked:1,complete:true},items:[{title:'研究范围',status:'missing',requirement:'范围一致',reason:'仍需核对',missing:['若新增效果检验需提供方案'],evidence:[]}]};
+ const html=supplementCheckPanel(base);assert.match(html,/检查事项待确认/);assert.match(html,/请核对：若新增效果检验/);assert.doesNotMatch(html,/请提供：若新增效果检验/);assert.match(html,/检查通过后才能导出终稿/);
+ const mixed=supplementCheckPanel({...base,items:[{...base.items[0],missing:['若新增效果检验需提供方案','真实实验记录']}]});assert.match(mixed,/资料仍有缺项/);assert.match(mixed,/请核对：若新增效果检验/);assert.match(mixed,/请提供：真实实验记录/);
+ assert.equal(supplementCheckReady({coverage:{complete:true},supplementCheck:{...base,phase:'final',version:1}}),false);
+});
