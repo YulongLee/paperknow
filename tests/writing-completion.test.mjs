@@ -5,7 +5,7 @@ import {database} from '../backend/database.mjs';
 import {createWritingService} from '../backend/writing-service.mjs';
 import {startWritingWorker} from '../backend/writing-worker.mjs';
 import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
-import {normalizeWritingSnapshot,writingTask} from '../backend/writing-model.mjs';
+import {normalizeWritingSnapshot,writingTask,validateWritingCandidate,writingLengthFeedback,writingSourceFeedback} from '../backend/writing-model.mjs';
 import {prepareWritingCompletion,writingCompletionTask} from '../backend/writing-completion.mjs';
 const runtime={enabled:true,engine:'claude-agent-sdk',baseURL:'https://fixture.invalid',model:'fixture',apiKey:'fixture-private',version:'completion-v1',maxTurns:6,maxOutputTokens:4096,maxCostUsd:.1,timeoutMs:30000};
 const snapshot=()=>({title:'合成材料补充验收',profile:{level:'本科',language:'中文',targetWords:1000},materials:[],references:[],outline:[{id:'a',title:'研究范围',targetWords:500},{id:'b',title:'研究讨论',targetWords:500}]});
@@ -30,6 +30,53 @@ test('updated confirmed materials are prioritised and sections that used them ar
  assert.equal(f.get(base.id).status,'completed','the saved original remains immutable');
 });
 
+test('localized completion preserves unrelated facts and source attribution with one settlement',async t=>{
+ const f=fixture(t),snap=supplement(),original='第3周保留。需要补充方案。'+'研'.repeat(470)+'[source:new-evidence]';
+ f.setRunner(async({task})=>({text:JSON.stringify({complete:true,...(task.context.localRevisionAnchors?{edits:[{index:1,replacement:'计划开展方案。'}]}:{text:original}),source_ids:['new-evidence'],missing_evidence:[]}),trace:[{tool:'read_material',status:'completed',materialId:'new-evidence'}],usage:{input:100,output:600},costUsd:.001}));
+ const base=await f.submit(snap);await f.worker.tick();const row=f.db.prepare('SELECT output,plan FROM writing_runs WHERE id=?').get(base.id),output=JSON.parse(row.output),plan=JSON.parse(row.plan);
+ output.quality={consistency:{findings:[{sectionId:plan[0].id,quote:'需要补充方案。',category:'logic'}]},reviews:[]};f.db.prepare('UPDATE writing_runs SET output=? WHERE id=?').run(JSON.stringify(output),base.id);
+ const prepared=prepareWritingCompletion(f.db,f.user,{kind:'proposal',operation:'draft',snapshot:normalizeWritingSnapshot(snap),projectId:null},{baseJobId:base.id});assert.equal(prepared.plan[0].localRevisionQuotes?.[0].quote,'需要补充方案。');assert.equal(prepared.plan[1].retained,true);
+ const next=await f.submit(snap,{baseJobId:base.id});await f.worker.tick();const done=f.get(next.id);assert.equal(done.status,'completed',JSON.stringify(done));assert.equal(done.output.sections[0].text,original.replace('需要补充方案。','计划开展方案。'));assert.deepEqual(done.output.sections[0].sourceIds,['new-evidence']);assert.equal(done.output.sections[1].text,original);assert.equal(f.billing.balance('alice').balance,180);assert.equal(f.billing.balance('alice').held,0);
+});
+
+test('localized completion fails safely if the candidate changes an unrelated confirmed condition',async t=>{
+ const f=fixture(t),snap=supplement(),original='第3周保留。需要补充方案。'+'研'.repeat(470)+'\n[source:new-evidence]';
+ f.setRunner(async({task})=>({text:JSON.stringify({complete:true,text:task.context.revisionOriginal?task.context.revisionOriginal.replace('第3周','第4周').replace('需要补充方案。','计划开展方案。'):original,source_ids:['new-evidence'],missing_evidence:[]}),trace:[{tool:'read_material',status:'completed',materialId:'new-evidence'}],usage:{input:100,output:600},costUsd:.001}));
+ const base=await f.submit(snap);await f.worker.tick();const row=f.db.prepare('SELECT output,plan FROM writing_runs WHERE id=?').get(base.id),output=JSON.parse(row.output),plan=JSON.parse(row.plan);output.quality={consistency:{findings:[{sectionId:plan[0].id,quote:'需要补充方案。'}]},reviews:[]};f.db.prepare('UPDATE writing_runs SET output=? WHERE id=?').run(JSON.stringify(output),base.id);
+ const next=await f.submit(snap,{baseJobId:base.id});await f.worker.tick();const failed=f.get(next.id);assert.equal(failed.status,'failed',JSON.stringify(failed));assert.equal(f.get(base.id).output.sections[0].text,original);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);
+});
+
+test('localized completion still refuses unread or forged sources and releases its reservation',async t=>{
+ const f=fixture(t),snap=supplement(),original='计划条件不变。需要补充方案。'+'研'.repeat(470)+'[source:new-evidence]';
+ f.setRunner(async({task})=>({text:JSON.stringify({complete:true,...(task.context.localRevisionAnchors?{edits:[{index:1,replacement:'计划开展方案。'}]}:{text:original}),source_ids:['new-evidence'],missing_evidence:[]}),trace:task.context.revisionOriginal?[]:[{tool:'read_material',status:'completed',materialId:'new-evidence'}],usage:{input:100,output:600},costUsd:.001}));
+ const base=await f.submit(snap);await f.worker.tick();const row=f.db.prepare('SELECT output,plan FROM writing_runs WHERE id=?').get(base.id),output=JSON.parse(row.output),plan=JSON.parse(row.plan);output.quality={consistency:{findings:[{sectionId:plan[0].id,quote:'需要补充方案。'}]},reviews:[]};f.db.prepare('UPDATE writing_runs SET output=? WHERE id=?').run(JSON.stringify(output),base.id);
+ const next=await f.submit(snap,{baseJobId:base.id});await f.worker.tick();assert.equal(f.get(next.id).status,'failed');assert.equal(f.get(base.id).output.sections[0].text,original);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);
+});
+
+test('local patch reports real missing evidence and releases the reservation',async t=>{
+ const f=fixture(t),snap=supplement(),original='计划条件不变。需要补充方案。'+'研'.repeat(470)+'[source:new-evidence]';
+ f.setRunner(async({task})=>({text:JSON.stringify(task.context.localRevisionAnchors?{complete:false,missing_evidence:['补充真实研究计划']}:{complete:true,text:original,source_ids:['new-evidence'],missing_evidence:[]}),trace:[{tool:'read_material',status:'completed',materialId:'new-evidence'}],usage:{input:100,output:600},costUsd:.001}));
+ const base=await f.submit(snap);await f.worker.tick();const row=f.db.prepare('SELECT output,plan FROM writing_runs WHERE id=?').get(base.id),output=JSON.parse(row.output),plan=JSON.parse(row.plan);output.quality={consistency:{findings:[{sectionId:plan[0].id,quote:'需要补充方案。'}]},reviews:[]};f.db.prepare('UPDATE writing_runs SET output=? WHERE id=?').run(JSON.stringify(output),base.id);
+ const next=await f.submit(snap,{baseJobId:base.id});await f.worker.tick();const failed=f.get(next.id);assert.equal(failed.status,'failed');assert.match(failed.error,/补充真实研究计划/);assert.equal(f.db.prepare('SELECT code FROM writing_diagnostics WHERE run_id=?').get(next.id).code,'needs_materials');assert.equal(f.get(base.id).output.sections[0].text,original);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);
+});
+test('a patch introducing duplicate punctuation is rejected without charging or replacing the original',async t=>{
+ const f=fixture(t),snap=supplement(),original='计划条件不变。需要补充方案。'+'研'.repeat(470)+'[source:new-evidence]';
+ f.setRunner(async({task})=>({text:JSON.stringify({complete:true,...(task.context.localRevisionAnchors?{edits:[{index:1,replacement:'计划开展。。'}]}:{text:original}),source_ids:['new-evidence'],missing_evidence:[]}),trace:[{tool:'read_material',status:'completed',materialId:'new-evidence'}],usage:{input:100,output:600},costUsd:.001}));
+ const base=await f.submit(snap);await f.worker.tick();const row=f.db.prepare('SELECT output,plan FROM writing_runs WHERE id=?').get(base.id),output=JSON.parse(row.output),plan=JSON.parse(row.plan);output.quality={consistency:{findings:[{sectionId:plan[0].id,quote:'需要补充方案。'}]},reviews:[]};f.db.prepare('UPDATE writing_runs SET output=? WHERE id=?').run(JSON.stringify(output),base.id);
+ const next=await f.submit(snap,{baseJobId:base.id});await f.worker.tick();assert.equal(f.get(next.id).status,'failed');assert.equal(f.get(base.id).output.sections[0].text,original);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);
+});
+
+test('patch validator measures the merged original, checks reads, and keeps the legacy contract',()=>{
+ const snap=normalizeWritingSnapshot(supplement()),original='原条件。待补说明。'+'研'.repeat(490)+'[source:new-evidence]',unit={id:'a',title:'研究范围',targetWords:500,completion:true,completionSourceIds:[],revisionOriginal:original,localRevisionQuotes:[{quote:'待补说明。'}],localRevisionMode:'patch-v1'};
+ const candidate={text:JSON.stringify({complete:true,edits:[{index:1,replacement:'计划说明。'}],source_ids:['new-evidence'],missing_evidence:[]}),trace:[{tool:'read_material',status:'completed',materialId:'new-evidence'}]};
+ assert.equal(validateWritingCandidate(candidate,'proposal','draft',snap,unit).valid,true);
+ assert.equal(writingLengthFeedback(candidate,snap,unit,'proposal').withinRange,true);
+ assert.deepEqual(writingSourceFeedback(candidate,'proposal',snap,unit).unlistedMarkerIds,[]);
+ assert.equal(validateWritingCandidate({...candidate,trace:[]},'proposal','draft',snap,unit).valid,false);
+ const legacy={...unit};delete legacy.localRevisionMode;
+ assert.equal(validateWritingCandidate({text:JSON.stringify({complete:true,text:original.replace('待补说明。','计划说明。'),source_ids:['new-evidence'],missing_evidence:[]}),trace:candidate.trace},'proposal','draft',snap,legacy).valid,true);
+});
+
 test('the full current author edit is preserved as revision context instead of using stale generated prose',async t=>{const f=fixture(t),base=await f.submit();await f.worker.tick();const text='作者当前修改。'.repeat(250)+'最后一句需要保留。',value=prepareWritingCompletion(f.db,f.user,{kind:'proposal',operation:'draft',snapshot:normalizeWritingSnapshot(supplement()),projectId:null},{baseJobId:base.id,text});assert.equal(value.retained.length,0);assert.equal(value.plan.map(unit=>unit.revisionOriginal).join(''),text);assert.ok(value.plan.every(unit=>unit.completion));const task=writingCompletionTask({instructions:'原契约。',context:{unit:value.plan[0]}},value.plan[0]);assert.match(task.instructions,/不能当作证据/);assert.equal(task.context.unit.revisionOriginal,undefined);});
 
 test('both imported and edited drafts preserve complete Unicode characters in every independently processed fragment',async t=>{
@@ -45,6 +92,19 @@ test('both imported and edited drafts preserve complete Unicode characters in ev
 });
 
 test('a failed completion releases its fee and keeps the previous manuscript untouched',async t=>{const f=fixture(t),base=await f.submit();await f.worker.tick();const before=f.get(base.id);f.setRunner(async()=>{throw Object.assign(Error('模拟连接故障'),{usage:{input:20,output:10},costUsd:.001});});const next=await f.submit(supplement(),{baseJobId:base.id});await f.worker.tick();assert.equal(f.get(next.id).status,'failed');assert.deepEqual(f.get(base.id),before);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);});
+
+test('unchanged completion does not settle even when supplementary checking is disabled',async t=>{
+ const f=fixture(t),base=await f.submit();await f.worker.tick();const before=f.get(base.id);
+ f.setRunner(async({task})=>({text:JSON.stringify({complete:true,text:task.context.revisionOriginal,source_ids:[],missing_evidence:[]}),usage:{input:20,output:10},costUsd:.001}));
+ const next=await f.submit(snapshot(),{baseJobId:base.id});await f.worker.tick();assert.equal(f.get(next.id).status,'failed');assert.match(f.get(next.id).error,/本次不扣费/);assert.deepEqual(f.get(base.id),before);assert.equal(f.billing.balance('alice').balance,190);assert.equal(f.billing.balance('alice').held,0);
+});
+
+test('failed local completion records only an approved validation category and never private text',async t=>{
+ const f=fixture(t),base=await f.submit();await f.worker.tick();
+ f.setRunner(async()=>{const error=Object.assign(Error('执行超时'),{code:'turn_limit',usage:{input:20,output:10},costUsd:.001});Object.defineProperty(error,'lastValidation',{value:{code:'local_revision_scope',rule:'PRIVATE-SYNTHETIC-MANUSCRIPT'}});Object.defineProperty(error,'agentTrace',{value:[{tool:'submit_writing_output',status:'completed',validation:{code:'local_revision_scope',private:'PRIVATE-SYNTHETIC-MANUSCRIPT'}},{tool:'read_material',status:'completed',materialId:'PRIVATE-SOURCE'}]});throw error;});
+ const next=await f.submit(supplement(),{baseJobId:base.id});await f.worker.tick();
+ const metrics=f.db.prepare('SELECT metrics FROM writing_diagnostics WHERE run_id=?').get(next.id).metrics,parsed=JSON.parse(metrics);assert.equal(parsed.lastValidationCode,'local_revision_scope');assert.deepEqual(parsed.toolActivity,{submissions:1,rejectedSubmissions:1,rejectionCodes:['local_revision_scope'],localPatchReasons:['other']});assert.doesNotMatch(metrics,/PRIVATE-SYNTHETIC-MANUSCRIPT|PRIVATE-SOURCE/);assert.equal(f.billing.balance('alice').held,0);
+});
 
 
 test('article rich content survives real worker checkpoints, settlement and editable Word export',async t=>{
@@ -111,4 +171,8 @@ test('repeated text in different sections never moves a supplement finding to th
  output.quality={supplementCheck:{items:[{id:'check-0-0',title:plan[0].title,status:'missing',manuscriptQuote:quote,reason:'第一节缺少依据',missing:['补充相关资料']}]}};f.db.prepare('UPDATE writing_runs SET output=? WHERE id=?').run(JSON.stringify(output),base.id);
  const input={kind:'proposal',operation:'draft',snapshot:normalizeWritingSnapshot(snapshot()),projectId:null},result=prepareWritingCompletion(f.db,f.user,input,{baseJobId:base.id});assert.equal(result.plan[0].revisionFindings[0].reason,'第一节缺少依据');assert.equal(result.plan[1].revisionFindings,undefined);assert.equal(result.plan[1].retained,true);
  output.quality.supplementCheck.items[0].title='';f.db.prepare('UPDATE writing_runs SET output=? WHERE id=?').run(JSON.stringify(output),base.id);const ambiguous=prepareWritingCompletion(f.db,f.user,input,{baseJobId:base.id});assert.ok(ambiguous.plan.every(unit=>!unit.revisionFindings),'a legacy ambiguous quote must not be assigned to either section');
+});
+
+test('completion guidance requires explicit future tense on planned pretest itself',()=>{
+ const task=writingCompletionTask({instructions:'',context:{}},{completion:true,revisionOriginal:'拟检查问卷措辞。'});assert.match(task.instructions,/访前拟进行模拟预测试以检查措辞/);assert.match(task.instructions,/不得将真实已经完成的预试改成未发生/);
 });

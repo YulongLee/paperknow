@@ -378,3 +378,7 @@ test('review uses applicable degree-specific guidance without changing user requ
  const under=make('本科'),post=make('硕士'),unknown=make('');assert.doesNotMatch(under.context.writingRequirements,/研究生按实际任务/);assert.match(under.context.writingRequirements,/学校要求：明确研究对象/);assert.match(post.context.writingRequirements,/研究生按实际任务/);assert.match(unknown.context.writingRequirements,/研究生按实际任务/);assert.match(under.instructions,/不得把研究生专属要求套用到本科/);assert.match(under.instructions,/同句另外包含实际未授权的方法或缺乏依据的陈述/);
  const userCustom=writingReviewTask({snapshot:{profile:{level:'本科'},requirements:{instructions:'学校特别规定：研究生按实际任务展开创新点、前期基础与困难对策。'}},chapters:[{id:'a',text:'正文内容足够检查。'}]});assert.match(userCustom.context.writingRequirements,/研究生按实际任务/);
 });
+test('deterministic repeated transition is advisory but unsupported certainty remains reviewable',()=>{
+ const prose='此外，第一段说明已有条件。\n此外，第二段说明已有条件。\n此外，第三段说明已有条件。\n众所周知，该观点成立。';
+ const result=auditWritingConsistency({chapters:[{id:'c',title:'论述',text:prose}]});const repeated=result.findings.find(row=>row.reasonCode==='repeated_transition');assert.ok(repeated);assert.equal(repeated.category,'language_expression');assert.equal(repeated.severity,'info');const certainty=result.findings.find(row=>row.quote.includes('众所周知'));assert.ok(certainty);assert.notEqual(certainty.reasonCode,'repeated_transition');
+});

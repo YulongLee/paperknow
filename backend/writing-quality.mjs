@@ -183,7 +183,7 @@ export function auditWritingConsistency({chapters=[],references=[],materials=[],
    const previous=paragraphs.get(fingerprint);if(previous)add(section,'duplicate_paragraph',paragraph,match.index,previous.sectionId===section.id?'此段与本章节前面的段落相同，请核对是否为不必要的重复。':'此段与另一个章节中的段落相同，请核对是否为不必要的重复。',{relatedSectionId:previous.sectionId,relatedOffset:previous.offset});else paragraphs.set(fingerprint,{sectionId:section.id,offset:match.index});
   }
  }
- for(const finding of academicExpressionFindings(sections))add(finding.section,'language_expression',finding.quote,finding.offset,finding.explanation,{severity:'info',suggestion:finding.suggestion});
+ for(const finding of academicExpressionFindings(sections))add(finding.section,'language_expression',finding.quote,finding.offset,finding.explanation,{severity:'info',...(finding.reasonCode?{reasonCode:finding.reasonCode}:{}),suggestion:finding.suggestion});
  // Advisory notices come after actionable checks, and cannot hide a real
  // defect by consuming the finding budget first.
  for(const section of sections)for(const item of uncheckedFormulaCitations(maskFencedCode(section.text)).slice(0,2))add(section,'source_support',item.quote,item.offset,'公式与附近引用的对应关系尚需结合原文核对；文字相同不代表引用已获支持。',{severity:'info',reasonCode:'formula_citation_manual_review',suggestion:'请结合引用原文核对公式、适用条件及其上下文。'});

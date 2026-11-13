@@ -73,3 +73,12 @@ test('explicitly authorized deletion is bound to one exact unsupported backgroun
  const empirical='实际测试中高校数字阅读服务通常需要支持，准确率为95%。';assert.equal(allow({...gap,manuscriptQuote:empirical},{text:empirical},snapshot),false);
  assert.equal(allow(gap,{text:'新版正文已经更改'},snapshot),false);
 });
+test('a preflight suggestion to turn an unsupported claim into a research question is independently rechecked',async()=>{
+ const {buildConditionalGapRecheck,parseConditionalGapRecheck}=await import('../backend/writing-gap-evidence.mjs');
+ const chapters=[{id:'a',text:'这些指标能否反映可用性问题尚待观察。'}],gap={manuscriptQuote:'研究发现存在实际可用性问题',missing:['提供现状问题调查来源；如尚未核实，请将该表述改为待验证的研究问题。','已发生的真实调查结果数据']},review={phase:'final',status:'final_ready',coverage:{complete:true,total:1,checked:1},items:[{status:'sufficient'}]};
+ const task=buildConditionalGapRecheck([gap],chapters,review);assert.ok(task);assert.equal(task.context.checks.length,1);assert.equal(task.context.checks[0].requiresAuthorization,undefined);assert.match(task.instructions,/仅将该内容作为研究问题而非既成事实/);
+ const row={id:'conditional-0-0',status:'removed',chapters:[{id:'a',quote:chapters[0].text}]};assert.ok(parseConditionalGapRecheck({text:JSON.stringify({checks:[row]})},task).has(row.id));assert.equal(parseConditionalGapRecheck({text:JSON.stringify({checks:[{...row,status:'retain'}]})},task).size,0);
+});
+test('duplicate-sentence reconciliation must allow retaining a single supported fact while checking consistency',async()=>{
+ const {buildConditionalGapRecheck}=await import('../backend/writing-gap-evidence.mjs');const chapters=[{id:'a',text:'研究对象为虚构平台，原型尚未建立。'}],gap={manuscriptQuote:'研究对象为虚构平台，原型尚未建立。研究对象为虚构平台',missing:['补证并非缺资料，需删除重复的研究对象句并确认原型状态表述一致']},review={phase:'final',status:'final_ready',coverage:{complete:true,total:1,checked:1},items:[{status:'sufficient'}]};const task=buildConditionalGapRecheck([gap],chapters,review);assert.ok(task);assert.equal(task.context.checks[0].requiresAuthorization,undefined);assert.match(task.instructions,/不要求把被重复的有依据事实全部删除/);assert.match(task.instructions,/仍有矛盾、真实事实无依据或判断不确定时须 retain/);
+});

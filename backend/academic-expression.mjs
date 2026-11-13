@@ -14,7 +14,7 @@ export function* academicExpressionFindings(sections){
    if(/^(?:众所周知|毋庸置疑|不言而喻|显而易见)[，,：:]|^(?:It is (?:obvious|undeniable) that\b|As (?:we all know|is well known),)/i.test(text))yield {section,offset,quote:section.text.slice(offset,offset+Math.min(200,text.length)).trimEnd(),explanation:'此处以笼统的确定性判断起句，建议核对后续是否给出具体依据。',suggestion:'在有来源支持时直接说明具体对象、观察和适用条件；证据不足时保留限定，不增加事实或把推测改成结论。'};
   }
   for(const [lead,rows]of starts)if(rows.length>=3){
-   const row=rows[1];yield {section,offset:row.offset,quote:section.text.slice(row.offset,row.offset+Math.min(200,row.characters)).trimEnd(),explanation:`本节有 ${rows.length} 段以“${lead}”起句，段落衔接可能重复。`,suggestion:'结合相邻段落的实际论证关系调整衔接；保留有必要的并列步骤、术语、事实和引用，不为了变化而打乱顺序。'};
+   const row=rows[1];yield {section,offset:row.offset,reasonCode:'repeated_transition',quote:section.text.slice(row.offset,row.offset+Math.min(200,row.characters)).trimEnd(),explanation:`本节有 ${rows.length} 段以“${lead}”起句，段落衔接可能重复。`,suggestion:'结合相邻段落的实际论证关系调整衔接；保留有必要的并列步骤、术语、事实和引用，不为了变化而打乱顺序。'};
   }
  }
 }

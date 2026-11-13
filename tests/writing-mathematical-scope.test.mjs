@@ -43,3 +43,8 @@ test('AI wording advice and mixed factual issues remain reviewable',()=>{
  ];
  for(const row of findings)assert.equal(writingAdvisoryFinding(row),false,JSON.stringify(row));
 });
+test('only system-identified repeated transitions are non-blocking; substantive and unverified AI suggestions remain reviewable',()=>{
+ const text='此外，第二段说明已有条件。',safe={category:'language_expression',severity:'info',reasonCode:'repeated_transition',quote:text,explanation:'本节有 3 段以“此外”起句，段落衔接可能重复。'};
+ assert.equal(writingAdvisoryFinding(safe),true);assert.equal(assessWritingDelivery({kind:'proposal',text,quality:{consistency:{findings:[safe]}}}).ready,true);
+ for(const unsafe of [{...safe,reasonCode:undefined,explanation:'指代不清，研究对象未确认。'},{...safe,category:'source_support',explanation:'该引用不支持论断。'},{...safe,severity:'warning',explanation:'存在缺失的真实数据。'}])assert.equal(assessWritingDelivery({kind:'proposal',text,quality:{reviews:[{findings:[unsafe]}]}}).ready,false);
+});

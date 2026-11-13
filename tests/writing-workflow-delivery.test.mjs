@@ -268,3 +268,6 @@ test('AI editorial suggestions and substantive findings remain reviewable across
   assert.equal(assessWritingDelivery({kind,text:text+'【待核对：数据来源】',snapshot,quality,requireSupplementCheck:true}).ready,false,kind+' marker');
  }
 });
+test('completion billing copy covers unchanged work whether or not the supplement check passed',()=>{
+ for(const ready of [true,false]){const html=writingDeliveryMarkup({kind:'proposal',assessment:{ready,issues:[],supplementCheck:null,stale:false}});assert.match(html,/未形成正文或图表修改时不扣费/);assert.doesNotMatch(html,/未形成修改且补充内容检查未通过时不扣费/);}
+});
