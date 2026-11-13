@@ -52,3 +52,12 @@ test('conditional stale findings require fresh full coverage and independently a
  assert.throws(()=>parseConditionalGapRecheck({text:'',truncated:true},task));
  assert.equal(parseConditionalGapRecheck({text:JSON.stringify({checks:[{...row,status:'retain'},second]})},task).size,0);
 });
+test('removing an old evidence demand without a delete alternative requires exact topic-bound user authorization',async()=>{
+ const {buildConditionalGapRecheck,parseConditionalGapRecheck}=await import('../backend/writing-gap-evidence.mjs');
+ const chapters=[{id:'a',text:'本研究仅限网页端，不研究跨设备阅读。'}],gap={manuscriptQuote:'高校数字阅读中跨设备阅读存在问题',missing:['支持跨设备阅读存在缺口的研究依据','真实调查数据']},review={phase:'final',status:'final_ready',coverage:{complete:true,total:1,checked:1},items:[{status:'sufficient'}]},snapshot={materials:[{id:'m',confirmed:true,text:'研究不包括跨设备阅读；真实调查数据仍须提供。'}]};
+ const task=buildConditionalGapRecheck([gap],chapters,review,snapshot);assert.equal(task.context.checks.length,1);assert.equal(task.context.checks[0].requiresAuthorization,true);
+ const row={id:'conditional-0-0',status:'removed',chapters:[{id:'a',quote:chapters[0].text}],authorization:{sourceId:'m',quote:'研究不包括跨设备阅读',term:'跨设备阅读'}};
+ const parse=r=>parseConditionalGapRecheck({text:JSON.stringify({checks:[r]})},task);assert.ok(parse(row).has(row.id));
+ for(const auth of [undefined,{sourceId:'wrong',quote:'研究不包括跨设备阅读',term:'跨设备阅读'},{sourceId:'m',quote:'研究不包括其他内容',term:'研究'},{sourceId:'m',quote:'研究不包括跨设备阅读',term:'研究'},{sourceId:'m',quote:'研究不包括跨设备阅读',term:'无障碍'}])assert.throws(()=>parse({...row,authorization:auth}));
+ assert.equal(buildConditionalGapRecheck([gap],chapters,review,{materials:[{...snapshot.materials[0],confirmed:false}]}),null);
+});
