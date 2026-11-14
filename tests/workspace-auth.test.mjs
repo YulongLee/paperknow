@@ -338,9 +338,21 @@ test('homepage research navigation matches the rendered workspace and report sid
   const reportSidebar=workspaceLinks.find(([group])=>group==='论文与科研')[1]
    .map(([path,label])=>({key:path.slice('category/'.length),label,path:`/workspace.html#${path}`}));
   assert.deepEqual(homepage,expected,'all eight capabilities must remain directly linked in the homepage navigation');
-  assert.deepEqual(sidebar,expected,'homepage labels, order and links must match the actual workspace sidebar');
-  assert.deepEqual(reportSidebar,expected,'opening a detection report must not restore the old sidebar');
+  const expectedSidebar=[...expected,{key:'ai-plaza',label:'AI科研广场',path:'/workspace.html#category/ai-plaza'}];
+  assert.deepEqual(sidebar,expectedSidebar,'the research tools plaza follows the existing workspace capabilities');
+  assert.deepEqual(reportSidebar,expectedSidebar,'opening a detection report must retain the same sidebar');
  }finally{home.window.close();f.close();}
+});
+
+test('AI research plaza opens at its own route and selects the matching sidebar item',async()=>{
+ const f=await fixture(async()=>response(401));const calls=[];
+ try{
+  f.dom.window.mountAiPlaza=(root,ctx)=>{calls.push({root,ctx});root.innerHTML='<h1>AI科研广场</h1>';};
+  f.dom.window.history.replaceState(null,'','/workspace.html#category/ai-plaza');f.api.render();
+  assert.equal(calls.length,1);assert.equal(calls[0].root,f.document.querySelector('.dashboard'));
+  assert.match(f.document.querySelector('.dashboard').textContent,/AI科研广场/);
+  assert.equal(f.document.querySelector('.sidebar a[href="#category/ai-plaza"]').getAttribute('aria-current'),'page');
+ }finally{f.close();}
 });
 
 test('direct AI-rate navigation mounts the AI reduction service and updates the active sidebar link',async()=>{
