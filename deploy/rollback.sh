@@ -14,5 +14,9 @@ if [[ "$TARGET" == "$PREVIOUS" ]]; then
   exit 0
 fi
 log 'Rolling back code only. Database and environment are kept; confirm schema compatibility before using this command.'
+ROLLBACK_STOPPED=1
+systemctl stop paperknow.service || die 'Cannot stop current service; rollback was not attempted.'
+rollback_compatible "$TARGET" || die 'Rollback blocked: this version cannot safely edit existing analysis drafts, or compatibility could not be checked. Use a compatible forward fix or reviewed migration.'
 backup
 activate "$TARGET"
+ROLLBACK_STOPPED=0

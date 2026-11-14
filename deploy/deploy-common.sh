@@ -12,6 +12,7 @@ RUNTIME=$BASE/runtime/bin
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 PREVIOUS=
 SWITCHED=0
+ROLLBACK_STOPPED=0
 BUILD_DIR=
 BUILD_UNIT=
 INCOMING=
@@ -65,6 +66,24 @@ healthy() {
   return 1
 }
 
+# Run only after the service is stopped, so no new compact draft can be written
+# between this check and the code switch. A missing/bad database fails closed.
+rollback_compatible() {
+  local target=$1 marker="$1/deploy/features/analysis-dataset-reference-v1"
+  if [[ -f "$marker" && ! -L "$marker" && $(cat -- "$marker") == 'paperknow-analysis-dataset-reference-v1' ]]; then return 0; fi
+  /usr/bin/python3 -I - /var/lib/paperknow/paperknow.sqlite 2>/dev/null <<'PY'
+import sqlite3, sys
+from urllib.parse import quote
+try:
+    db = sqlite3.connect('file:' + quote(sys.argv[1], safe='/') + '?mode=ro', uri=True, timeout=3)
+    row = db.execute("SELECT 1 FROM workspace_drafts WHERE tool='analysis' AND CASE WHEN json_valid(payload) THEN COALESCE(json_type(payload,'$.analysisState.datasetReference'),'')='object' ELSE 1 END LIMIT 1").fetchone()
+    db.close()
+    sys.exit(2 if row else 0)
+except Exception:
+    sys.exit(1)
+PY
+}
+
 finish() {
   local code=$?
   trap - EXIT HUP INT TERM
@@ -73,13 +92,23 @@ finish() {
     systemctl stop "$BUILD_UNIT" >/dev/null 2>&1
   fi
   if (( code != 0 && SWITCHED == 1 )); then
-    printf 'PaperKnow: deployment failed; restoring previous code link %s\n' "$PREVIOUS" >&2
-    if atomic_link "$PREVIOUS" && systemctl restart paperknow.service && healthy "$PREVIOUS"; then
+    printf 'PaperKnow: deployment failed; checking safe recovery for previous code %s\n' "$PREVIOUS" >&2
+    if ! systemctl stop paperknow.service; then
+      printf 'PaperKnow: cannot stop service; automatic rollback blocked to protect data.\n' >&2
+    elif ! rollback_compatible "$PREVIOUS"; then
+      printf 'PaperKnow: automatic rollback blocked: previous version cannot safely edit existing analysis drafts, or compatibility could not be checked. Service is stopped; use a compatible forward fix or migration.\n' >&2
+    elif atomic_link "$PREVIOUS" && systemctl start paperknow.service && healthy "$PREVIOUS"; then
       printf 'PaperKnow: previous code is healthy. Database and environment were not restored.\n' >&2
     else
       printf 'PaperKnow: previous code could not be verified; inspect only paperknow.service logs.\n' >&2
     fi
     printf 'PaperKnow: database migrations are not reversed automatically; use the snapshot only after reviewing compatibility.\n' >&2
+  elif (( code != 0 && ROLLBACK_STOPPED == 1 )); then
+    if systemctl start paperknow.service && healthy "$PREVIOUS"; then
+      printf 'PaperKnow: rollback stopped; current service was restarted unchanged.\n' >&2
+    else
+      printf 'PaperKnow: rollback stopped; current service could not be verified.\n' >&2
+    fi
   fi
   [[ -z "$BUILD_DIR" || "$BUILD_DIR" != "$BASE/builds/"* ]] || rm -rf -- "$BUILD_DIR"
   [[ -z "$INCOMING" || "$INCOMING" != "$RELEASES/.incoming."* ]] || rm -rf -- "$INCOMING"
