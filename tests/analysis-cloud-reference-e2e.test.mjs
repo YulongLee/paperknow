@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import {JSDOM} from 'jsdom';
+import {database} from '../backend/database.mjs';
+import {createAPI} from '../backend/api.mjs';
+import {createSession} from '../backend/auth.mjs';
+import {createStorage} from '../backend/storage.mjs';
+import {beginDraftScope,endDraftScope,lastDraftScopeRow,draftScopeRevision} from '../dist/workspace/state.mjs';
+import {mountDataAnalysis,disposeDataAnalysis,archiveAnalysisOriginal} from '../dist/workspace/data-analysis.mjs';
+import {mountAccountDraft,disposeAccountDraft,saveAccountDraft} from '../dist/workspace/account-draft-editor.mjs';
+import {clearEditor} from '../dist/workspace/edit-guard.mjs';
+const settle=async(test)=>{for(let i=0;i<200&&!test();i++)await new Promise(r=>setTimeout(r,10));assert.ok(test(),'interface did not settle');};
+test('large table archives through real account API and is reconstructed after reopening',async t=>{
+ const db=database(':memory:'),objects=new Map(),settings={ossBucket:'test-bucket',ossEndpoint:'https://oss-cn-shanghai.aliyuncs.com',ossRegion:'cn-shanghai',ossPrefix:'paperknow/',ossAccessKeyId:'synthetic',ossAccessKeySecret:'synthetic'},storage=createStorage(settings,{async put(key,buffer){objects.set(key,Buffer.from(buffer));},async get(key){return {content:objects.get(key)};},async delete(key){objects.delete(key);}}),api=createAPI(db,{cancel(){}},{getAI:()=>({enabled:false}),storage}),server=http.createServer((req,res)=>void api(req,res));
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`,now=new Date().toISOString();db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run('alice','alice@example.invalid','测试者',null,'user',now);const cookie='pk_session='+createSession(db,'alice');
+ const nativeFetch=globalThis.fetch,dom=new JSDOM('<main class="dashboard"></main>',{url:'https://paperknow.cn/workspace.html#tool/analysis'});for(const key of ['window','document','localStorage','location','MutationObserver'])globalThis[key]=dom.window[key];
+ globalThis.fetch=(url,options={})=>nativeFetch(base+url,{...options,headers:{...options.headers,Cookie:cookie,Origin:base}});
+ t.after(async()=>{disposeAccountDraft();clearEditor();disposeDataAnalysis();endDraftScope();globalThis.fetch=nativeFetch;dom.window.close();await new Promise(resolve=>server.close(resolve));db.close();});
+ const request=async(path,data)=>{const r=await fetch('/api'+path,{method:data?'POST':'GET',headers:{...(data?{'Content-Type':'application/json'}:{}),'X-PaperKnow-User':'alice'},body:data?JSON.stringify(data):undefined});return {status:r.status,value:await r.json()};};
+ const start=await request('/workspace/drafts',{title:'合成分析',tool:'analysis',payload:{title:'合成分析',tool:'analysis'},clientKey:'synthetic-create-key'});assert.equal(start.status,201);const id=start.value.item.id;
+ const ctx={notify(){},modal(){},mount(draft){mountDataAnalysis({container:document.querySelector('main'),draftId:draft.id,ctx});},saveNative:async()=>{const before=draftScopeRevision();document.querySelector('#writing-save').click();return draftScopeRevision()>before?lastDraftScopeRow():null;},archiveAnalysis:archiveAnalysisOriginal,disposeNative:disposeDataAnalysis};await mountAccountDraft(id,ctx);assert.match(document.querySelector('#analysis-upload-panel').textContent,/保存后原始文件将计入云空间/);assert.doesNotMatch(document.querySelector('#analysis-upload-panel').textContent,/较大的数据请使用本地分析/);const input=document.querySelector('#analysis-file'),text='列\n'+Array.from({length:100},()=>('x'.repeat(8000))).join('\n'),bytes=new TextEncoder().encode(text);assert.ok(bytes.length>750*1024);Object.defineProperty(input,'files',{configurable:true,value:[{name:'large.csv',size:bytes.length,arrayBuffer:async()=>bytes.buffer}]});input.dispatchEvent(new dom.window.Event('change',{bubbles:true}));await settle(()=>lastDraftScopeRow()?.analysisState?.dataset?.rows?.length===100);
+ assert.equal(await saveAccountDraft(),true,'full editor save must succeed for a large file');const saved=await request('/workspace/drafts/'+id);assert.equal(saved.status,200);const payload=saved.value.item.payload,archived=payload.analysisState.sourceArtifact;assert.ok(archived.id);assert.equal(payload.analysisState.dataset,null);assert.ok(Buffer.byteLength(JSON.stringify(payload))<750*1024);assert.equal(objects.size,1);const blocked=await request('/artifacts/'+archived.id+'/delete',{expectedSha256:archived.sha256,expectedUserId:'alice'});assert.equal(blocked.status,409);const stale=await request('/workspace/drafts/'+id,{version:1,title:'旧版本',payload});assert.equal(stale.status,409);const read=await request('/workspace/drafts/'+id);assert.equal(read.status,200);
+ disposeAccountDraft();clearEditor();await mountAccountDraft(id,ctx);await settle(()=>document.querySelector('#analysis-file-summary').textContent.includes('100 行记录'));assert.match(document.querySelector('#analysis-preview-table').textContent,/x{100}/);assert.equal(document.querySelector('#analysis-error').textContent,'');
+});

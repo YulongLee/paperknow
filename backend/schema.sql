@@ -150,3 +150,19 @@ CREATE TABLE IF NOT EXISTS admin_membership_overrides(
  updated_by TEXT NOT NULL REFERENCES users(id),updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS admin_membership_overrides_owner ON admin_membership_overrides(user_id);
+
+-- Administrator-entered channel records only; never mutate payment or entitlements.
+CREATE TABLE IF NOT EXISTS manual_refund_records(
+ id TEXT PRIMARY KEY,
+ order_id TEXT NOT NULL REFERENCES orders(id),
+ provider TEXT NOT NULL CHECK(provider IN ('wechat','alipay')),
+ channel_reference TEXT NOT NULL,
+ amount_cents INTEGER NOT NULL CHECK(amount_cents>0),
+ note TEXT NOT NULL,
+ actor_id TEXT NOT NULL REFERENCES users(id),
+ command_id TEXT NOT NULL,
+ created_at TEXT NOT NULL,
+ UNIQUE(provider,channel_reference),
+ UNIQUE(actor_id,command_id)
+);
+CREATE INDEX IF NOT EXISTS manual_refund_records_order ON manual_refund_records(order_id,created_at);

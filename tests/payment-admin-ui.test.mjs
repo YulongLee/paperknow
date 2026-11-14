@@ -393,7 +393,7 @@ test('order management displays server prices, both channel names and complete s
     { id: 'order-alipay', product_id: 'advanced', product_title: '高级会员', status: 'pending', amount_cents: 29, provider: 'alipay', out_trade_no: 'PK-alipay-demo', provider_trade_no: null, created_at: '2026-10-15T06:00:00.000Z' },
     { id: 'order-old', product_id: 'premium', status: 'expired', amount_cents: null, provider: null, created_at: '2026-10-15T05:00:00.000Z' }
   ];
-  const ui = await page(t, { hash: '#orders', handle: url => url.startsWith('/api/admin/orders?') ? { body: { items: rows, total: rows.length, page: 1, pageSize: 20 } } : undefined });
+  const ui = await page(t, { hash: '#orders', handle: url => url.startsWith('/api/admin/orders?') ? { body: { items: rows, total: rows.length, page: 1, pageSize: 20 } } : url === '/api/admin/orders/order-wechat/manual-refunds' ? {body: {paidCents:12901,provider:'wechat',records:[]}} : undefined });
   const rendered = [...ui.win.document.querySelectorAll('tbody tr')];
   assert.equal(rendered[0].children[3].textContent, '¥129.01');
   assert.equal(rendered[0].children[4].textContent, '微信支付');
@@ -411,7 +411,23 @@ test('order management displays server prices, both channel names and complete s
   assert.doesNotMatch(rendered[2].textContent, /¥0/);
   assert.match(rendered[2].textContent, /已过期/);
   assert.doesNotMatch(ui.$('#admin-content').innerHTML, /clipboard|navigator\.clipboard/);
-  assert.equal(ui.win.document.querySelectorAll('tbody button').length, 0);
+  assert.equal(rendered[0].querySelector('[data-manual-refund]').textContent, '退款记录');
+  assert.equal(rendered[1].querySelector('[data-manual-refund]'), null);
+  assert.equal(rendered[2].querySelector('[data-manual-refund]'), null);
+  ui.click('[data-manual-refund="order-wechat"]');await settle(() => !!ui.$('#manual-refund-form'));
+  assert.match(ui.$('#dialog-body').textContent, /不会发起退款/);
+  assert.equal(ui.calls.filter(call => call.url.includes('/manual-refunds') && call.method === 'POST').length, 0);
+});
+
+test('refund record is inaccessible to non-admins and revoked access clears the order view', async t => {
+  const user = await page(t, { role: 'user', hash: '#orders' });
+  assert.deepEqual(user.calls.map(call => call.url), ['/api/auth/me']);
+  assert.equal(user.$('[data-manual-refund]'), null);
+  const row = {id:'paid-revoked',status:'paid',provider:'wechat',amount_cents:500};
+  const ui = await page(t, {hash:'#orders',handle:url => url.startsWith('/api/admin/orders?') ? {body:{items:[row],total:1,page:1,pageSize:20}} : url === '/api/admin/orders/paid-revoked/manual-refunds' ? {status:403,body:{error:'权限已失效'}} : undefined});
+  ui.click('[data-manual-refund="paid-revoked"]');await settle(() => !ui.$('#access-gate').hidden);
+  assert.equal(ui.$('#admin-app').hidden,true);assert.equal(ui.$('#admin-content').innerHTML,'');assert.equal(ui.$('#manual-refund-form'),null);
+  assert.equal(ui.calls.filter(call => call.method === 'POST').length,0);
 });
 
 test('closed and expired orders have explicit filter values and unavailable amounts never become zero', async t => {

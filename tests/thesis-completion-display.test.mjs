@@ -25,6 +25,13 @@ test('initial incomplete diagnosis is distinguished from final review and dedupl
 });
 
 
+test('separate claims with the same missing text retain their locations and escape original text',()=>{
+ const first={chapterId:'c',title:'方法',status:'missing',requirement:'核实',missing:['核对数据'],manuscriptQuote:'甲研究 <样本>'};
+ const second={...first,manuscriptQuote:'乙研究 数据'};
+ const html=completionDiagnosisPanel({status:'checked',items:[first,second,first],coverage:{checked:1}});
+ assert.match(html,/发现 2 项缺项/);assert.match(html,/甲研究 &lt;样本&gt;/);assert.match(html,/乙研究 数据/);
+});
+
 test('source markers are user-friendly without changing unique chapter navigation or leaking markup',()=>{
  const quote='irst fold records 29 samples. [source:r1]';const text='The first fold records 29 samples. [source:r1] It was checked.';
  const q={supplementCheck:{items:[{title:'Abstract',status:'missing',missing:['核对 [source:r1]'],manuscriptQuote:quote}]}};
@@ -51,4 +58,13 @@ test('a truncated duplicate in the missing instruction is replaced only when act
  const r={reportCurrent:true,status:'needs_materials',missing:['Abstract：'+detail],issues:[],checks:{},changes:[]},q={supplementCheck:{items:[{status:'missing',title:'Abstract',missing:[detail],manuscriptQuote:'irst fold produ'}]}};
  const good=completionReviewPanel(r,{quality:q,chapters:[{id:'c',title:'Abstract',text:full}]});assert.match(good,/请查看下方原文/);assert.match(good,/The first fold produced 29 test records/);assert.doesNotMatch(good,/数值：irst fold produ/);
  const bad=completionReviewPanel(r,{quality:q,chapters:[{id:'c',title:'Abstract',text:'unrelated'}]});assert.match(bad,/数值：irst fold produ/);assert.doesNotMatch(bad,/请查看下方原文/);
+});
+
+test('review acknowledgement is clearly separate from proving facts and is disabled on stale content',()=>{
+ const issue={id:'a'.repeat(64),quote:'论文 <原句>',suggestion:'请核对来源',reviewed:false};
+ const current={status:'check_required',reportCurrent:true,checks:{},missing:[],issues:[],changes:[],reviewItems:[issue]};
+ const html=completionReviewPanel(current);assert.match(html,/标记仅表示已查看/);assert.match(html,/论文 &lt;原句&gt;/);assert.match(html,/data-issue-receipt/);assert.match(html,/标记已查看/);
+ assert.match(completionReviewPanel({...current,reviewItems:[{...issue,reviewed:true}]}),/撤销已查看/);
+ assert.doesNotMatch(completionReviewPanel(current,{dirty:true}),/data-issue-receipt/);
+ assert.doesNotMatch(completionReviewPanel({...current,reportCurrent:false}),/data-issue-receipt/);
 });

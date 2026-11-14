@@ -16,6 +16,16 @@ async function fixture(t){
  return {db,base,request,users,project,save};
 }
 
+test('analysis draft only links a ready original owned by the current account',async t=>{
+ const f=await fixture(t),now=new Date().toISOString(),bytes=3,sha='a'.repeat(64);
+ f.db.prepare("INSERT INTO artifacts(id,user_id,name,kind,bytes,sha256,source_type,storage_provider,storage_bucket,storage_key,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)").run('a1','alice','a.csv','csv',bytes,sha,'other','aliyun_oss','test-bucket','test-key','ready',now,now);
+ const payload=id=>({title:'分析',tool:'analysis',analysisState:{sourceArtifact:{id,name:'a.csv',sha256:sha,projectId:null}}}),created=await f.request('/workspace/drafts',{title:'分析',tool:'analysis',payload:payload('a1')});assert.equal(created.status,201);
+ const other=await f.request('/workspace/drafts',{title:'其他',tool:'analysis',payload:payload('a1')},f.users.bob);assert.equal(other.status,409);
+ const bad=payload('a1');bad.analysisState.sourceArtifact.sha256='b'.repeat(64);const changed=await f.request('/workspace/drafts/'+created.value.item.id,{version:1,payload:bad});assert.equal(changed.status,409);
+ const p=await f.project('另一项目');const moved=await f.request('/workspace/drafts/'+created.value.item.id,{version:1,projectId:p.id,payload:payload('a1')});assert.equal(moved.status,409);
+ f.db.prepare("UPDATE artifacts SET status='deleted' WHERE id='a1'").run();const update=await f.request('/workspace/drafts/'+created.value.item.id,{version:1,payload:payload('a1')});assert.equal(update.status,409);
+});
+
 function seedCloudArtifact(db,{id,projectId,user='alice',status='ready',sourceType='other',sourceId=null}){
  const at=new Date().toISOString();
  db.prepare("INSERT INTO artifacts(id,user_id,project_id,name,kind,bytes,sha256,source_type,source_id,storage_provider,storage_bucket,storage_key,status,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?,?,'aliyun_oss',?,?,?, ?,?)").run(id,user,projectId,id+'.txt','txt',id.padEnd(64,'0'),sourceType,sourceId,'private-project-bucket','private-oss-key/'+id,status,at,at);
@@ -292,4 +302,19 @@ test('account archive includes owned AI and web checking records without upstrea
  assert.deepEqual(archive.aigcDetections.map(row=>row.id),['aigc-alice']);assert.equal(archive.aigcDetections[0].parts[0].label,'ugc');
  assert.deepEqual(archive.webSimilarityRuns.map(row=>row.id),['web-alice']);assert.equal(archive.webSimilarityRuns[0].coverage.fetchedSources,1);
  assert.doesNotMatch(JSON.stringify(archive),/aigc-bob|web-bob|upstream-secret-id/);
+});
+
+test('manual order support links only an owned order and does not change payment state',async t=>{
+ const f=await fixture(t),at=new Date().toISOString();
+ f.db.prepare('INSERT INTO products VALUES(?,?,?,?)').run('support-product','测试商品','active','{}');
+ f.db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run('alice-order','alice','support-product','paid',at);
+ f.db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run('bob-order','bob','support-product','paid',at);
+ f.db.prepare('INSERT INTO payment_config_versions(id,provider,sealed_settings,identity_hash,created_by,created_at) VALUES(?,?,?,?,?,?)').run('support-config','wechat','{}','identity','admin',at);
+ f.db.prepare('INSERT INTO payment_orders(order_id,provider,out_trade_no,config_id,amount_cents,title,entitlement,idempotency_key,input_hash,user_id,expires_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run('alice-order','wechat','trade123','support-config',100,'商品','{}','support-key','hash','alice',at,at);
+ assert.equal((await f.request('/feedback',{category:'订单与退款',text:'请核对这笔订单',orderId:'bob-order'})).status,404);
+ assert.equal((await f.request('/feedback',{category:'功能问题',text:'请核对这笔订单',orderId:'alice-order'})).status,400);
+ const created=await f.request('/feedback',{category:'订单与退款',text:'请核对这笔订单',orderId:'trade123'});
+ assert.equal(created.status,201);assert.equal(created.value.item.body,'订单号：trade123\n请核对这笔订单');
+ assert.equal(f.db.prepare('SELECT status FROM orders WHERE id=?').get('alice-order').status,'paid');
+ assert.deepEqual((await f.request('/feedback',undefined,f.users.bob)).value.items,[]);
 });

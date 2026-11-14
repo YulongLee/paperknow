@@ -100,6 +100,12 @@ test('failed feedback keeps input and draft carry requires explicit route and a 
 test('local feedback is never read into account without explicit draft route',async()=>{
  const env=setup(async()=>({items:[]}));try{localStorage.setItem(feedbackKey,JSON.stringify({content:'其他使用者留在浏览器的反馈'}));await renderOnlinePersonal('help',env.ctx);assert.equal(document.querySelector('#feedback').value,'');assert.equal(await renderOnlinePersonal('projects',env.ctx),false);}finally{env.dom.window.close();}
 });
+test('restored order or privacy drafts display their matching guidance without submission',async()=>{
+ for(const type of ['订单与退款','个人信息请求','体验建议']){
+  const calls=[],env=setup(async(path,data)=>{calls.push({path,data});return {items:[]};},'#help?scope=account&draft=local');
+  try{localStorage.setItem(feedbackKey,JSON.stringify({type,content:'请协助处理这项请求'}));await renderOnlinePersonal('help',env.ctx);assert.equal(document.querySelector('#feedback-category').value,type);assert.equal(document.querySelector('#feedback-order-field').hidden,type!=='订单与退款');if(type==='个人信息请求')assert.match(document.querySelector('#feedback-guidance').textContent,/账户归属/);if(type==='订单与退款')assert.match(document.querySelector('#feedback-guidance').textContent,/订单/);assert.equal(calls.some(call=>call.data),false);}finally{env.dom.window.close();}
+ }
+});
 test('feedback input is frozen only during save and restored after failure',async()=>{
  let rejectSave;const env=setup(async(path,data)=>data?new Promise((_,reject)=>{rejectSave=reject;}):{items:[]});
  try{await renderOnlinePersonal('help',env.ctx);document.querySelector('#feedback').value='发送中的反馈';const saving=env.submit();await Promise.resolve();await Promise.resolve();assert.equal(document.querySelector('#feedback').disabled,true);assert.equal(document.querySelector('#feedback-category').disabled,true);rejectSave(Error('暂时无法保存'));await saving;assert.equal(document.querySelector('#feedback').disabled,false);assert.equal(document.querySelector('#feedback-category').disabled,false);assert.equal(document.querySelector('#feedback').value,'发送中的反馈');}finally{env.dom.window.close();}
@@ -208,4 +214,16 @@ test('purchased polish and review allowances open their actual modern editor whe
  const cap={ai:false,tools:{ready:true},billing:{services:['polish','review'].map(key=>({key,mode:'paid',available:true}))}};
  const env=setup(async path=>path==='/payments/entitlements'?{items:[{order_id:'modern-member',type:'membership',title:'研究会员',starts_at:'2020-01-01',expires_at:'2099-01-01',usage:['polish','review'].map(key=>({key,title:key,quantity:2,used:0,held:0,remaining:2}))}],bundles:[]}:path==='/capabilities'?cap:{counts:{}},'#membership?scope=account');
  try{await renderOnlinePersonal('membership',env.ctx);const links=[...document.querySelectorAll('.member-quota-rows a')].map(link=>link.getAttribute('href'));assert.deepEqual(links,['#tool/polish','#tool/review']);}finally{env.dom.window.close();}
+});
+
+test('manual support offers order and privacy categories without executing refund or deletion',async()=>{
+ const calls=[],env=setup(async(path,data)=>{calls.push({path,data});return data?{id:'f-1',item:{id:'f-1',category:data.category,body:data.text,status:'open'}}:{items:[]};});
+ try{
+  await renderOnlinePersonal('help',env.ctx);const category=document.querySelector('#feedback-category'),order=document.querySelector('#feedback-order');
+  category.value='订单与退款';category.dispatchEvent(new window.Event('change',{bubbles:true}));assert.equal(document.querySelector('#feedback-order-field').hidden,false);
+  order.value='order-123';document.querySelector('#feedback').value='请协助核对退款';await env.submit();
+  assert.deepEqual(calls.filter(call=>call.data).map(call=>call.data),[{category:'订单与退款',orderId:'order-123',text:'请协助核对退款'}]);
+  assert.ok(calls.every(call=>call.path==='/feedback'));assert.equal(document.querySelector('#feedback-order-field').hidden,true);
+  category.value='个人信息请求';category.dispatchEvent(new window.Event('change',{bubbles:true}));assert.match(document.querySelector('#feedback-guidance').textContent,/删除个人信息或注销账户/);assert.match(document.querySelector('#feedback-guidance').textContent,/人工受理并核对账户归属，处理进度将另行反馈/);
+ }finally{env.dom.window.close();}
 });

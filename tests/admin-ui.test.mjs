@@ -222,3 +222,13 @@ test('administrator can update the user manual link from settings',async t=>{
  let saved;const ui=await page(t,{hash:'#settings',handle:(url,payload)=>{if(url==='/api/admin/settings')return {body:{...settings,userManualUrl:'https://docs.example.com/old'}};if(url==='/api/admin/user-manual'){saved=payload;return {body:{url:payload.url}};}}});
  assert.equal(ui.$('#manual-url').value,'https://docs.example.com/old');ui.fill('#manual-url','https://docs.example.com/new');ui.submit('#manual-settings-form');await settle(()=>!!saved);assert.deepEqual(saved,{url:'https://docs.example.com/new'});
 });
+
+test('manual refund entry records a verified channel result without claiming to move funds or entitlements',async t=>{
+ const order={id:'order-1',user_name:'用户',product_title:'积分',amount_cents:1000,provider:'wechat',out_trade_no:'trade-1',status:'paid',created_at:'2026-11-14'};
+ const ui=await page(t,{hash:'#orders',handle:(url,payload)=>url.startsWith('/api/admin/orders?')?{body:list([order])}:url==='/api/admin/orders/order-1/manual-refunds'?{body:payload?{records:[]}:{paidCents:1000,provider:'wechat',records:[]}}:undefined});
+ ui.click('[data-manual-refund]');await settle(()=>!!ui.$('#manual-refund-form'));
+ assert.match(ui.$('#dialog-body').textContent,/不会发起退款、核验渠道、修改订单状态或扣回权益/);
+ ui.fill('#manual-refund-reference','channel-ref-1');ui.fill('#manual-refund-amount','200');ui.fill('#manual-refund-note','渠道已核对');ui.$('#manual-refund-confirmed').checked=true;ui.submit('#manual-refund-form');
+ await settle(()=>ui.calls.some(call=>call.url==='/api/admin/orders/order-1/manual-refunds'&&call.method==='POST'));
+ const calls=ui.calls.filter(call=>call.url==='/api/admin/orders/order-1/manual-refunds'&&call.method==='POST');assert.equal(calls.length,1);assert.equal(calls[0].payload.amountCents,200);assert.equal(calls[0].payload.confirmed,true);
+});

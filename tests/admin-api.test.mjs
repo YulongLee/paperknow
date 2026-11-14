@@ -313,3 +313,24 @@ test('public handbook link is configurable only by an active administrator and a
   assert.equal((await f.request('/api/public/user-manual')).value.url,changed);
   assert.equal(f.db.prepare("SELECT count(*) n FROM admin_audit WHERE action='user_manual.update'").get().n,1);
 });
+
+test('manual refund records are admin-only, order-bound, idempotent and never change payment or entitlements',async t=>{
+ const f=await fixture(t),admin=await f.register(),user=await f.legacy('customer@example.invalid'),at=timestamp();
+ f.db.prepare('INSERT INTO products VALUES(?,?,?,?)').run('refund-test-product','测试商品','active','{}');
+ f.db.prepare('INSERT INTO orders VALUES(?,?,?,?,?)').run('refund-order',user.id,'refund-test-product','paid',at);
+ f.db.prepare('INSERT INTO payment_config_versions(id,provider,sealed_settings,identity_hash,created_by,created_at) VALUES(?,?,?,?,?,?)').run('refund-config','wechat','{}','identity',admin.value.user.id,at);
+ f.db.prepare('INSERT INTO payment_orders(order_id,provider,out_trade_no,config_id,amount_cents,title,entitlement,idempotency_key,input_hash,user_id,expires_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run('refund-order','wechat','refund-trade','refund-config',1000,'测试商品','{}','refund-key','hash',user.id,at,at);
+ const path='/api/admin/orders/refund-order/manual-refunds',input={commandId:'manualcommand1',channelReference:'channel-ref-1',amountCents:600,note:'已核对渠道结果',confirmed:true};
+ assert.equal((await f.request(path,{data:input,cookie:user.cookie})).status,403);
+ assert.equal((await f.request(path,{data:{...input,confirmed:false},cookie:admin.cookie})).status,400);
+ const saved=await f.request(path,{data:input,cookie:admin.cookie});assert.equal(saved.status,200);assert.equal(saved.value.records.length,1);
+ assert.equal((await f.request(path,{data:input,cookie:admin.cookie})).value.records.length,1);
+ assert.equal((await f.request(path,{data:{...input,amountCents:700},cookie:admin.cookie})).status,409);
+ assert.equal((await f.request(path,{data:{...input,commandId:'manualcommand2'},cookie:admin.cookie})).status,409);
+ assert.equal((await f.request(path,{data:{...input,commandId:'manualcommand3',channelReference:'channel-ref-2',amountCents:401},cookie:admin.cookie})).status,409);
+ assert.equal((await f.request(path,{data:{...input,commandId:'manualcommand4',channelReference:'channel-ref-2',amountCents:400},cookie:admin.cookie})).value.records.length,2);
+ assert.equal(f.db.prepare('SELECT status FROM orders WHERE id=?').get('refund-order').status,'paid');
+ assert.equal(f.db.prepare('SELECT count(*) n FROM payment_entitlements WHERE order_id=?').get('refund-order').n,0);
+ assert.equal(f.db.prepare("SELECT count(*) n FROM admin_audit WHERE action='order.manual_refund_record' AND target_id=?").get('refund-order').n,2);
+ assert.equal((await f.request(path,{cookie:admin.cookie})).value.records.length,2);
+});

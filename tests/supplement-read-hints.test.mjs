@@ -2,6 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {supplementReadHints,runSupplementCheck,supplementCheckTask,parseSupplementCheck} from '../backend/supplement-check.mjs';
 
+test('an unverified linked fragment is acknowledged but cannot become the cited source',async()=>{
+ const snapshot={references:[{id:'r',title:'已导入题录',confirmed:true}],materials:[{id:'m',name:'用户提供文献片段',text:'一段用户提供的片段，来源尚未核实。',relatedReferenceId:'r',confirmed:true}]};let called=false;
+ const report=await runSupplementCheck({snapshot,chapters:[{id:'c',title:'背景',text:'引用某文献的论断[source:r]。'}],kind:'thesis',dispatch:async()=>{called=true;throw Error('must not dispatch');}});
+ assert.equal(called,false);assert.equal(report.coverage.complete,false);assert.match(report.reason,/已保存作者提供的独立文献片段/);assert.match(report.reason,/尚未核验其文献出处/);
+});
+test('author-provided reference text retains its unverified provenance in the review prompt',()=>{
+ const reference={id:'r',title:'论文',text:'作者提供的摘要片段。',sourceLabel:'作者提供原文或摘要，文献出处未独立核验',confirmed:true},task=supplementCheckTask({snapshot:{references:[reference]},materials:[{...reference,name:reference.title}],chapters:[]});assert.equal(task.context.evidence[0].sourceLabel,reference.sourceLabel);assert.match(task.instructions,/未经独立核验出处/);assert.match(task.instructions,/不能假定其为全文/);
+});
+
 test('user-provided literature excerpts keep a precise but unverified reference association in review',async()=>{
  const refs=[{id:'r1',title:'同名论文',text:'第一篇摘要正文。',confirmed:true},{id:'r2',title:'同名论文',text:'第二篇摘要正文。',confirmed:true}],materials=[{id:'m',name:'文献片段：同名论文',text:'用户提供的第3.2.1节方法片段。',confirmed:true,relatedReferenceId:'r2'},{id:'bad',name:'文献片段',text:'另一个用户片段。',confirmed:true,relatedReferenceId:'not-authorized'}],snapshot={title:'研究',profile:{},requirements:{},materials,references:refs};const direct=supplementCheckTask({snapshot,materials,chapters:[]});assert.equal(direct.context.evidence.find(row=>row.id==='m').relatedReferenceId,'r2');assert.equal(direct.context.evidence.find(row=>row.id==='bad').relatedReferenceId,undefined);assert.match(direct.instructions,/不能证明片段出处或完整性/);assert.match(direct.instructions,/不能将片段当作另一来源已读正文/);
  let observed=false;await runSupplementCheck({snapshot,chapters:[{id:'c',title:'方法',text:'本节讨论方法说明。'}],kind:'thesis',phase:'final',runtime:{maxOutputTokens:1024},dispatch:async({task})=>{observed=true;assert.equal(task.context.evidence.find(row=>row.id==='m').relatedReferenceId,'r2');assert.equal(task.context.evidence.find(row=>row.id==='bad').relatedReferenceId,undefined);return {text:JSON.stringify({items:[{id:task.context.chapters[0].id,status:'not_required',requirement:'一般说明',reason:'无具体事实断言',evidence:[],missing:[]}]})};}});assert.equal(observed,true);
@@ -53,6 +62,10 @@ test('linked English paper locations must be read before a Chinese missing claim
   const trace=[entry('m1',hint.offset,600)];assert.equal(validateReviewOutput(candidate(trace)).valid,true);return candidate(trace);
  }});
  assert.ok(observed);assert.equal(report.status,'needs_materials');assert.match(report.items[0].reason,/已核对范围内仅定位到摘要/);
+});
+test('a cited English gradient passage is read before declaring the Chinese claim missing',async()=>{
+ const text='原论文指出缩放可缓解 softmax 梯度趋平[source:r]。',passage='large values push the softmax function into regions with extremely small gradients',source='Background material. '.repeat(500)+passage+' Further material. '.repeat(1200),snapshot={title:'研究',profile:{},requirements:{},materials:[],references:[{id:'r',title:'论文',text:source,confirmed:true}]};let observed=false;
+ const report=await runSupplementCheck({snapshot,chapters:[{id:'c',title:'结论',text}],kind:'thesis',phase:'final',runtime:{maxOutputTokens:1024},dispatch:async({task,validateReviewOutput})=>{observed=true;const entry=task.context.evidence.find(x=>x.id==='r'),hint=entry.readHints?.find(x=>x.term==='gradient');assert.ok(hint);const row={id:task.context.chapters[0].id,status:'missing',requirement:'缩放与 softmax 梯度依据',reason:'本次尚未找到 gradients 依据',manuscriptQuote:text,evidence:[],missing:['核对缩放和梯度的原文']},candidate=trace=>({text:JSON.stringify({items:[row]}),trace});assert.equal(validateReviewOutput(candidate([])).valid,false);const trace=[{tool:'read_material',status:'completed',materialId:'r',offset:hint.offset,limit:1000}];assert.equal(validateReviewOutput(candidate(trace)).valid,true);return candidate(trace);}});assert.ok(observed);assert.equal(report.status,'needs_materials');
 });
 
 test('no lexical hit or no linked authorized source is not guessed to be evidence',async()=>{

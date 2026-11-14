@@ -167,6 +167,21 @@ export function createThesisService(db,config={}){
    const selected=await exportTemplates.inspect(input.templateFileId,user.id),encoded=selected?JSON.stringify(selected):null;
    return response(thesisTransaction(db,()=>{const current=own(id,user);expectedTemplate(input,current);exportTemplates.assertReference(selected,user.id);if(encoded===current.export_template)return {item:serialize(current)};assertThesisAccountQuota(db,user.id,Math.max(512,Buffer.byteLength(current.snapshot)+Buffer.byteLength(encoded||''))-Math.max(512,Buffer.byteLength(current.snapshot)+Buffer.byteLength(current.export_template||'')),config);db.prepare('UPDATE theses SET export_template=?,version=version+1,updated_at=? WHERE id=? AND user_id=?').run(encoded,clock(),id,user.id);return {item:serialize(own(id,user))};}));
   }
+  // Acknowledgement records that the author saw a precisely located issue.
+  // It does not confirm the truth of the finding or affect delivery gates.
+  const issueReceiptPath=path.match(/^\/api\/theses\/([^/]+)\/completion\/issue-receipt$/);
+  if(issueReceiptPath){
+   const id=issueReceiptPath[1];own(id,user);if(method!=='POST')fail(405,'请提交检查项操作');const input=await readBody();fields(input,['version','runId','issueId','reviewed']);
+   if(!Number.isSafeInteger(input.version)||typeof input.runId!=='string'||typeof input.issueId!=='string'||!/^[a-f0-9]{64}$/.test(input.issueId)||typeof input.reviewed!=='boolean')fail(400,'检查项操作格式无效');
+   return response(thesisTransaction(db,()=>{const current=own(id,user);expected(input,current);const run=current.current_run_id?db.prepare('SELECT * FROM thesis_runs WHERE id=? AND user_id=?').get(current.current_run_id,user.id):null;
+    const review=run&&completionReview(db,current,run),issue=review?.reviewItems?.find(value=>value.id===input.issueId);
+    if(input.runId!==current.current_run_id||!issue)fail(409,'检查项或论文内容已变化，请重新检查');
+    if(input.reviewed){const existing=db.prepare('SELECT 1 FROM thesis_review_issue_receipts WHERE thesis_id=? AND user_id=? AND issue_id=?').get(id,user.id,issue.id);if(!existing)assertThesisAccountQuota(db,user.id,512,config);
+     db.prepare('INSERT INTO thesis_review_issue_receipts(thesis_id,user_id,run_id,issue_id,basis,reviewed_at) VALUES(?,?,?,?,?,?) ON CONFLICT(thesis_id,issue_id) DO UPDATE SET reviewed_at=excluded.reviewed_at').run(id,user.id,run.id,issue.id,issue.basis,clock());
+    }else db.prepare('DELETE FROM thesis_review_issue_receipts WHERE thesis_id=? AND user_id=? AND issue_id=? AND basis=?').run(id,user.id,issue.id,issue.basis);
+    return {item:serialize(current)};
+   }));
+  }
   const confirmationPath=path.match(/^\/api\/theses\/([^/]+)\/completion\/confirm$/);
   if(confirmationPath){
    const id=confirmationPath[1];own(id,user);if(method!=='POST')fail(405,'请提交终稿补充确认');const input=await readBody();

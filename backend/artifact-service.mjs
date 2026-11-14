@@ -69,6 +69,7 @@ export function createArtifactService(db,config={}){
  const checkSignature=(kind,buffer)=>{
   validateFormulaArtifact(kind,buffer);
   validateCitationArtifact(kind,buffer);
+  if(['csv','tsv'].includes(kind)){try{const text=new TextDecoder('utf-8',{fatal:true}).decode(buffer);if(text.includes('\0'))throw Error();}catch{fail(400,'表格文本必须为有效 UTF-8 编码');}}
   if(kind==='pdf'&&!buffer.subarray(0,5).equals(Buffer.from('%PDF-')))fail(400,'PDF 文件格式无效');
   if(['docx','pptx','xlsx','zip'].includes(kind)&&!buffer.subarray(0,2).equals(Buffer.from('PK')))fail(400,'压缩文档格式无效');
   if(kind==='png'&&!buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))fail(400,'PNG 文件格式无效');
@@ -142,7 +143,7 @@ export function createArtifactService(db,config={}){
     if(row.version!==input.version)fail(409,'成果信息已在其他页面修改，请刷新后重试');
     if(rename&&(!name.includes('.')||name.split('.').at(-1).toLowerCase()!==row.kind))fail(400,'重命名时请保留原文件扩展名');
     if(move&&pid!==null&&!db.prepare('SELECT 1 FROM projects WHERE id=? AND user_id=?').get(pid,user.id))fail(404,'所属项目不存在');
-    const nextName=rename?name:row.name,nextProject=move?pid:row.project_id;
+    const nextName=rename?name:row.name,nextProject=move?pid:row.project_id;if(((move&&(nextProject||null)!==(row.project_id||null))||(rename&&nextName!==row.name))&&db.prepare("SELECT 1 FROM workspace_drafts WHERE user_id=? AND tool='analysis' AND json_valid(payload) AND json_extract(payload,'$.analysisState.sourceArtifact.id')=? LIMIT 1").get(user.id,row.id))fail(409,'此文件正在被数据分析草稿使用，请先在草稿中移除数据后再重命名或调整所属项目。');
     if(nextName!==row.name||nextProject!==row.project_id){
      // This changes the account library only: file bytes, content hash, source
      // linkage, kind and private OSS key remain exactly as originally stored.
@@ -157,7 +158,7 @@ export function createArtifactService(db,config={}){
    fields(input,['expectedSha256','expectedUserId']);checkAccount(input.expectedUserId,user);if(!shaValid(input.expectedSha256))fail(400,'请确认需要删除的成果文件');
    const existing=own(deletion[1],user);if(existing.sha256!==input.expectedSha256)fail(409,'成果文件已变化，请刷新后删除');
    if(existing.status==='deleted')return {value:{ok:true,id:existing.id,deleted:true}};
-   const store=requireStorage(),row=transaction(()=>{const row=own(existing.id,user);if(row.status==='uploading'&&row.lease_until>clock())fail(409,'成果仍在保存中，请完成后删除');if(row.status!=='deleted')db.prepare("UPDATE artifacts SET status='deleting',lease_token=NULL,lease_until=NULL,updated_at=? WHERE id=?").run(clock(),row.id);return {...row,status:row.status==='deleted'?'deleted':'deleting'};});
+   const store=requireStorage(),row=transaction(()=>{const row=own(existing.id,user);if(db.prepare("SELECT 1 FROM workspace_drafts WHERE user_id=? AND tool='analysis' AND json_valid(payload) AND json_extract(payload,'$.analysisState.sourceArtifact.id')=? LIMIT 1").get(user.id,row.id))fail(409,'此文件正在被数据分析草稿使用，请先在草稿中移除或更换数据后再删除。');if(row.status==='uploading'&&row.lease_until>clock())fail(409,'成果仍在保存中，请完成后删除');if(row.status!=='deleted')db.prepare("UPDATE artifacts SET status='deleting',lease_token=NULL,lease_until=NULL,updated_at=? WHERE id=?").run(clock(),row.id);return {...row,status:row.status==='deleted'?'deleted':'deleting'};});
    if(row.status!=='deleted'){
     try{await store.removeArtifact(row);}catch{db.prepare("UPDATE artifacts SET last_error='成果删除待重试',updated_at=? WHERE id=? AND status='deleting'").run(clock(),row.id);fail(503,'成果云端删除未完成，已保留记录供重试');}
     db.prepare("UPDATE artifacts SET status='deleted',last_error=NULL,updated_at=? WHERE id=? AND user_id=? AND status='deleting'").run(clock(),row.id,user.id);

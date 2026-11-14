@@ -15,6 +15,22 @@ test('review locates duplicate sentence stops around citations without altering 
  assert.equal(findings.length,2);for(const finding of findings){assert.equal(text.slice(finding.offset,finding.offset+finding.quote.length),finding.quote);assert.equal(finding.severity,'warning');}
  assert.match(findings[0].quote,/\[source:ref-1\]/);assert.match(findings[1].quote,/〔文献1〕/);
 });
+test('a source cited earlier in a chapter can surface exact numeric evidence for a later claim without creating a citation',()=>{
+ const actual='Experiment reports 28.4 BLEU, 41.8 BLEU, and training for 3.5 days on eight GPUs.',source='Header '.repeat(300)+actual+' Other text '.repeat(1000),body='该架构基于注意力[source:paper]。\n文献报告 28.4 和 41.8 BLEU，训练 3.5 天。';
+ const task=writingReviewTask({snapshot:{references:[{id:'paper',title:'论文',confirmed:true,text:source}]},chapters:[{id:'c',title:'背景',text:body}]});const row=task.context.sourceEvidence.items[0];assert.ok(row.text.includes(actual));assert.equal(source.slice(row.offset,row.offset+row.text.length),row.text);assert.equal(task.context.manuscriptExcerpts[0].text,body);assert.ok(!body.endsWith('[source:paper]'));
+});
+test('numeric windows stay source-bound for conflicting papers and never add uncited sources',()=>{
+ const a='Paper A reported 28.4 BLEU.',b='Paper B reported 32.9 BLEU.',refs=[{id:'a',confirmed:true,text:'Header A '.repeat(250)+a+'Tail A '.repeat(900)},{id:'b',confirmed:true,text:'Header B '.repeat(250)+b+'Tail B '.repeat(900)},{id:'uncited',confirmed:true,text:'Never used 99.9 BLEU.'}];const body='报告 A 的实验[source:a]。报告 B 的实验[source:b]。\n A 取得 28.4，B 取得 32.9，99.9 仅为未引用内容。';const task=writingReviewTask({snapshot:{references:refs},chapters:[{id:'c',title:'背景',text:body}]});const rows=task.context.sourceEvidence.items;assert.deepEqual(rows.map(row=>row.id),['a','b']);assert.ok(rows[0].text.includes(a));assert.ok(rows[1].text.includes(b));for(const row of rows){const original=refs.find(ref=>ref.id===row.id).text;assert.equal(row.text,original.slice(row.offset,row.offset+row.text.length));assert.ok(!row.text.includes('99.9'));}
+});
+test('Chinese gradient and scaling claims retrieve the actual English method window without fabricating it',()=>{
+ const method='Scaled dot-product attention avoids large dot products pushing softmax into regions with extremely small gradients.',text='Statistical table 4.88 25.5 0.0 0.2 '.repeat(200)+method+'Irrelevant page '.repeat(1000),body='原论文指出缩放因子可缓解梯度趋平[source:r]。中间值 0.669762。';const row=writingReviewTask({snapshot:{references:[{id:'r',confirmed:true,text}]},chapters:[{id:'c',title:'结论',text:body}]}).context.sourceEvidence.items[0];assert.ok(row.text.includes(method));assert.equal(row.text,text.slice(row.offset,row.offset+row.text.length));
+});
+test('two chapters citing one document receive separate bounded verbatim windows',()=>{
+ const abstract='Paper reports 28.4 BLEU and 41.8 BLEU after 3.5 days.',method='Scaling limits softmax regions with very small gradients.',source='Header '.repeat(300)+abstract+' filler '.repeat(2500)+method+' End '.repeat(1000),chapters=[{id:'a',title:'背景',text:'实验结果 28.4 和 41.8，训练 3.5 天[source:r]。'},{id:'b',title:'结论',text:'原论文讨论缩放和梯度[source:r]。'}];const row=writingReviewTask({snapshot:{references:[{id:'r',confirmed:true,text:source}]},chapters}).context.sourceEvidence.items[0],windows=[row,...row.additionalWindows];assert.equal(windows.length,2);assert.ok(windows[0].text.includes(abstract));assert.ok(windows[1].text.includes(method));assert.ok(windows.reduce((sum,window)=>sum+window.text.length,0)<=2000);for(const window of windows)assert.equal(window.text,source.slice(window.offset,window.offset+window.text.length));
+});
+test('an uncited source and a numeric claim outside the supplied review excerpt are not introduced as evidence',()=>{
+ const refs=[{id:'a',confirmed:true,text:'A record 28.4.'},{id:'b',confirmed:true,text:'B record 99.9.'}],body='当前章节引用 A[source:a]。'+'无关说明。'.repeat(8000)+'末尾未引用来源 B 的 99.9。';const task=writingReviewTask({snapshot:{references:refs},chapters:[{id:'c',title:'背景',text:body}]});assert.deepEqual(task.context.sourceEvidence.items.map(row=>row.id),['a']);assert.ok(!task.context.sourceEvidence.items[0].text.includes('99.9'));assert.ok(task.context.manuscriptExcerpts[0].text.length<body.length);
+});
 
 test('a specific ISO standard without an authorized source is a substantive warning',()=>{
  const chapters=[{id:'c',title:'研究方法',text:'本研究参照 ISO 9241-11 设计评价框架。'}];
@@ -65,8 +81,11 @@ test('unconfirmed references and malformed input never spend metadata requests',
 
 test('arXiv identifiers are verified in one bounded official id_list request and are never treated as missing DOI failures',async()=>{
  const calls=[],inputs=[reference({id:'arxiv:2609.00065',year:'2026',doi:'10.48550/arXiv.2609.00065',url:''}),reference({id:'second',year:'2026',doi:'',url:'https://arxiv.org/pdf/2609.00066v2.pdf'})];
- const result=await createCitationVerifier({openAlexApiKey:'private-openalex-key',fetchImpl:async(url,options)=>{calls.push({url:new URL(url),options});return xml(atom([{id:'2609.00065v1'},{id:'2609.00066v2'}]));}}).verify(inputs);
- assert.equal(calls.length,1);assert.equal(calls[0].url.origin,'https://export.arxiv.org');assert.equal(calls[0].url.pathname,'/api/query');assert.equal(calls[0].url.searchParams.get('id_list'),'2609.00065,2609.00066v2');assert.equal(calls[0].url.searchParams.get('max_results'),'2');assert.equal(calls[0].options.headers.Authorization,undefined);assert.ok(result.items.every(row=>row.metadataStatus==='matched'&&row.provider==='arxiv'));assert.equal(result.requests,1);
+ const result=await createCitationVerifier({openAlexApiKey:'private-openalex-key',fetchImpl:async(url,options)=>{calls.push({url:new URL(url),options});return new URL(url).hostname==='api.datacite.org'?json({data:{id:'10.48550/arxiv.2609.00065',attributes:{doi:'10.48550/arxiv.2609.00065',titles:[{title:'Evidence and research methods'}]}}}):xml(atom([{id:'2609.00065v1'},{id:'2609.00066v2'}]));}}).verify(inputs);
+ assert.equal(calls.length,2);assert.equal(calls[0].url.origin,'https://export.arxiv.org');assert.equal(calls[0].url.pathname,'/api/query');assert.equal(calls[0].url.searchParams.get('id_list'),'2609.00065,2609.00066v2');assert.equal(calls[0].url.searchParams.get('max_results'),'2');assert.equal(calls[0].options.headers.Authorization,undefined);assert.equal(calls[1].url.origin,'https://api.datacite.org');assert.equal(calls[1].options.headers.Authorization,undefined);assert.equal(result.items[0].record.doi,'10.48550/arxiv.2609.00065');assert.ok(result.items.every(row=>row.metadataStatus==='matched'&&row.provider==='arxiv'));assert.equal(result.requests,2);
+});
+test('arXiv DOI is not verified when registration record is missing, mismatched or unavailable',async()=>{
+ const input=reference({id:'arxiv:2609.00065',year:'2026',doi:'10.48550/arXiv.2609.00065'});for(const reply of [json({data:{id:'10.48550/arxiv.2609.00065',attributes:{doi:'10.48550/arxiv.2609.00065',titles:[{title:'Different title'}]}}}),json({data:{id:'10.48550/arxiv.2609.00066',attributes:{doi:'10.48550/arxiv.2609.00066',titles:[{title:'Evidence and research methods'}]}}}),new Response('unavailable',{status:503})]){const result=await createCitationVerifier({fetchImpl:async url=>new URL(url).hostname==='api.datacite.org'?reply:xml(atom([{id:'2609.00065v1'}]))}).verify([input]);assert.equal(result.items[0].record.doi,'');}
 });
 
 test('an arXiv response for another version or identifier cannot verify the requested version',async()=>{
@@ -208,6 +227,16 @@ test('a reviewer cannot claim an exact phrase is absent from a named source that
  const distinct={sectionId:'one',quote:'教学成效尚需核对',category:'source_support',severity:'warning',explanation:'ba来源没有提及“教学成效”，请核实对应论断。',suggestion:'核对 ba 来源。'};
  assert.equal(parseWritingReview(aiResult([distinct]),ambiguous).findings.length,1);
 });
+test('additional source windows are independently checked without joining separate fragments into an equation',()=>{
+ const task=writingReviewTask({snapshot:{references:[{id:'r',confirmed:true,text:'ordinary context'}]},chapters:[{id:'one',title:'范围',text:'本段讨论模型表现与方法[source:r]。'}]});task.context.sourceEvidence.items[0].additionalWindows=[{text:'确有教学成效但不能推断其他结果。',offset:50,excerpted:true}];
+ const finding={sectionId:'one',quote:'本段讨论模型表现与方法',category:'source_support',severity:'warning',explanation:'r来源没有提及“教学成效”，请核实。',suggestion:'请核查。'};assert.throws(()=>parseWritingReview(aiResult([finding]),task),/逐字片段描述与原文不一致/);
+ task.context.sourceEvidence.items[0].text='来源公式 f(x)=';task.context.sourceEvidence.items[0].additionalWindows=[{text:'x+1 仅为另一个不连续片段',offset:100,excerpted:true}];const equation={...finding,category:'logic',explanation:'文献公式 f(x)=x+1，需核对。'};assert.throws(()=>parseWritingReview(aiResult([equation]),task),/公式无法逐字核对/);
+});
+test('identical numeric corrections cause re-review and never suppress a mixed substantive issue',()=>{
+ const text='基准输出为(0.669762, 0.330238)，对照输出为(0.330238, 0.669762)。',task=writingReviewTask({chapters:[{id:'one',title:'摘要',text}]});const finding={sectionId:'one',quote:text,category:'logic',severity:'warning',explanation:'摘要内部是笔误，输出数值有误。',suggestion:'建议改为基准(0.669762, 0.330238)，对照(0.330238, 0.669762)。'};
+ assert.throws(()=>parseWritingReview(aiResult([finding]),task),/相同的数值列为更正/);assert.throws(()=>parseWritingReview(aiResult([{...finding,explanation:finding.explanation+' 同时样本量未经证实。'}]),task),/相同的数值列为更正/);
+ const changed={...finding,suggestion:'建议改为基准(0.600000, 0.400000)，对照(0.400000, 0.600000)。'};assert.equal(parseWritingReview(aiResult([changed]),task).findings.length,1);const onlyOne={...finding,suggestion:'建议改为基准(0.669762, 0.330238)，并核查实验来源。'};assert.equal(parseWritingReview(aiResult([onlyOne]),task).findings.length,1);
+});
 
 test('a completed review with no located findings is limited to supplied excerpts rather than a quality certification',()=>{
  const task=writingReviewTask({chapters:manuscript()}),result=parseWritingReview(aiResult(),task);assert.equal(result.status,'no_ai_findings');assert.equal(result.requiresReview,true);assert.equal(result.findings.length,0);assert.equal(result.excerpted,false);
@@ -345,7 +374,7 @@ test('later numeric citation remains searchable after an earlier long Chinese cl
  const text='unrelated introduction '.repeat(150)+'WMT 2014 achieved 28.4 BLEU and 41.8 BLEU in 3.5 days. '+'additional background '.repeat(100);
  const chapters=[{id:'first',text:'注意力机制的设计及架构背景讨论有大量中文论述与细节。'.repeat(8)+'[source:a]'},{id:'second',text:'其结果在 WMT 2014 达到 28.4 与 41.8 BLEU，训练 3.5 天[source:a]。'}];
  const row=writingReviewTask({snapshot:{references:[{id:'a',confirmed:true,text}]},chapters}).context.sourceEvidence.items[0];
- assert.ok(row.text.includes('28.4 BLEU')&&row.text.includes('41.8 BLEU')&&row.text.includes('3.5 days'));
+ assert.ok([row,...row.additionalWindows||[]].some(window=>window.text.includes('28.4 BLEU')&&window.text.includes('41.8 BLEU')&&window.text.includes('3.5 days')));
 });
 
 test('citation windows share a fixed budget without starving later confirmed sources',()=>{

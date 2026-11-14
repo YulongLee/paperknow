@@ -1,5 +1,5 @@
 export const feedbackKey='paperknow-help-feedback';
-export const feedbackTypes=['功能问题','使用咨询','体验建议','其他'];
+export const feedbackTypes=['功能问题','使用咨询','体验建议','订单与退款','个人信息请求','其他'];
 export const helpCategories=[{"id":"start","title":"新手入门","description":"创建项目与管理成果","icon":"book","color":"blue"},{"id":"writing","title":"写作与修改","description":"大纲编辑与内容保存","icon":"pen","color":"purple"},{"id":"literature","title":"文献研读","description":"原文解读、问答与翻译","icon":"file","color":"mint"},{"id":"detection","title":"论文检测","description":"上传要求与报告解读","icon":"search","color":"orange"},{"id":"files","title":"文件与导出","description":"Word、PDF 与 PPT","icon":"upload","color":"blue"},{"id":"data","title":"账户与数据","description":"账户资料导出与隐私设置","icon":"settings","color":"purple"}];
 export const relatedFeatures=['未选择','工作台与项目','文件管理','任务中心','AI 写作','文献研读','降重复率','降 AI 率','论文检测','PPT 创作','科研工具','格式排版','会员与用量','设置与备份','其他'];
 export const articles=[

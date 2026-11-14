@@ -25,7 +25,18 @@ export function completionResolutions(diagnosis,report,chapters,{current=false}=
  if(!diagnosis)return null;
  const final=completionDiagnosis(report,chapters),complete=current&&report?.phase==='final'&&report?.coverage?.complete===true;
  return {...diagnosis,items:diagnosis.items.map(item=>{
-  const checked=final.items.filter(row=>row.chapterId===item.chapterId),passed=checked.length&&checked.every(row=>['sufficient','not_required'].includes(row.status));
-  return {...item,resolution:!complete?'pending':passed?'resolved':'needs_materials',remaining:complete?[...new Set(checked.flatMap(row=>row.missing))]:[]};
+  // A final check for the same chapter may concern an entirely different
+  // claim. Only bind a unique, explicit matching requirement; ambiguous or
+  // rewritten requirements remain pending instead of claiming a resolution.
+  const requirement=String(item.requirement||'').trim();
+  const checked=requirement?final.items.filter(row=>row.chapterId===item.chapterId&&String(row.requirement||'').trim()===requirement):[];
+  const originalMatches=requirement?diagnosis.items.filter(row=>row.chapterId===item.chapterId&&String(row.requirement||'').trim()===requirement):[];
+  const candidate=checked.length===1&&originalMatches.length===1?checked[0]:null;
+  const quote=typeof item.manuscriptQuote==='string'?item.manuscriptQuote:'';
+  const chapterText=String(chapters.find(chapter=>chapter.id===item.chapterId)?.text||'');
+  const offset=quote.length>=8?chapterText.indexOf(quote):-1;
+  const matched=candidate&&candidate.manuscriptQuote===quote&&offset>=0&&chapterText.indexOf(quote,offset+1)<0?candidate:null;
+  const resolution=!complete||!matched?'pending':['sufficient','not_required'].includes(matched.status)?'resolved':matched.status==='missing'?'needs_materials':'pending';
+  return {...item,resolution,remaining:resolution==='needs_materials'?[...new Set(matched.missing)]:[]};
  })};
 }

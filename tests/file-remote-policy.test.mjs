@@ -25,3 +25,16 @@ test('mandatory OSS writes a zero-byte database body and leaves binary bytes exc
  const result=await f.service({path:'/api/files',method:'POST',user:f.user,readBody:async()=>({name:'a.txt',data:'YQ=='})});assert.equal(result.status,201);
  const row=f.db.prepare('SELECT * FROM files').get();assert.equal(Buffer.from(row.body).length,0);assert.equal(row.storage_provider,'aliyun_oss');assert.equal(uploaded.toString(),'a');
 });
+test('remote upload failure never falls back to SQLite and releases its reservation',async t=>{
+ const f=fixture(t,{requireRemoteStorage:true,storage:{provider:'aliyun_oss',bucket:'test',async put(){throw new Error('unavailable');}}});
+ await assert.rejects(f.service({path:'/api/files',method:'POST',user:f.user,readBody:async()=>({name:'a.txt',data:'YQ=='})}),/unavailable/);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM files').get().n,0);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM workspace_file_uploads').get().n,0);
+});
+test('remote policy rejects a non-OSS or incomplete storage capability before reading input',async t=>{
+ for(const storage of [{provider:'local_server_sqlite',put(){}},{provider:'aliyun_oss'}]){
+  const f=fixture(t,{requireRemoteStorage:true,storage});let reads=0;
+  await assert.rejects(f.service({path:'/api/files',method:'POST',user:f.user,readBody:async()=>{reads++;return {};}}),error=>error.status===503);
+  assert.equal(reads,0);assert.equal(f.db.prepare('SELECT count(*) n FROM files').get().n,0);
+ }
+});

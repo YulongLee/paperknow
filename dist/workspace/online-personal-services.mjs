@@ -97,9 +97,12 @@ export async function renderOnlinePersonal(view,ctx){
  }
  let records=[],listError='';try{const data=await api('/feedback');if(!Array.isArray(data.items))throw Error('invalid_feedback_list');records=data.items;}catch(error){if(error.status===401||error.code==='ACCOUNT_CHANGED'||error.name==='AbortError')throw error;listError='反馈记录暂时无法读取，仍可填写问题或联系支持；点击刷新重新读取。';}
  withStableView(target.closest('.dashboard')||target,()=>{target.innerHTML='<div class="help-unified">'+helpKnowledgeMarkup()+
-  `<div class="grid personal-feedback-columns"><section class="card personal-detail-card personal-feedback-form"><h2>提交问题或建议</h2><form id="feedback-form"><label for="feedback-category">反馈类型</label><select id="feedback-category"><option>功能问题</option><option>使用咨询</option><option>体验建议</option><option>其他</option></select><label for="feedback">问题描述</label><textarea id="feedback" required minlength="2" maxlength="3000" rows="7" placeholder="请说明所在页面、操作步骤、问题现象及期望结果"></textarea><p class="muted">请勿填写密码、验证码、支付密钥或私人研究正文。提交后可以在反馈记录中查看处理状态。</p><div class="actions"><button class="primary" type="submit">提交反馈</button></div><p id="feedback-submit-status" role="status" aria-live="polite"></p></form><section class="personal-feedback-support" aria-label="人工支持"><h3>人工支持</h3><p class="muted">也可以通过邮箱或微信联系我们。</p>${supportContactsMarkup()}</section></section><section class="card personal-detail-card personal-feedback-history"><div class="account-personal-heading"><h2>我的反馈记录</h2><button type="button" id="feedback-refresh">刷新状态</button></div><p class="muted">显示最近 100 条记录；“已处理”表示后台已结束本次处理，可通过客服邮箱或微信补充情况。</p><div id="feedback-records" aria-live="polite"></div><p id="feedback-list-status" role="status"></p></section></div></div>`;});
+  `<div class="grid personal-feedback-columns"><section class="card personal-detail-card personal-feedback-form"><h2>提交问题或建议</h2><form id="feedback-form"><label for="feedback-category">反馈类型</label><select id="feedback-category"><option>功能问题</option><option>使用咨询</option><option>体验建议</option><option>订单与退款</option><option>个人信息请求</option><option>其他</option></select><div id="feedback-order-field" hidden><label for="feedback-order">订单号（选填）</label><input id="feedback-order" maxlength="64" autocomplete="off" placeholder="填写我的订单中的订单号"><p class="muted">填写后关联本人订单，退款由人工核对处理，不会自动退款。<a href="#orders">查看我的订单</a></p></div><p id="feedback-guidance" class="muted" aria-live="polite"></p><label for="feedback">问题描述</label><textarea id="feedback" required minlength="2" maxlength="3000" rows="7" placeholder="请说明所在页面、操作步骤、问题现象及期望结果"></textarea><p class="muted">请勿填写密码、验证码、支付密钥或私人研究正文。提交后可以在反馈记录中查看处理状态。</p><div class="actions"><button class="primary" type="submit">提交反馈</button></div><p id="feedback-submit-status" role="status" aria-live="polite"></p></form><section class="personal-feedback-support" aria-label="人工支持"><h3>人工支持</h3><p class="muted">也可以通过邮箱或微信联系我们。</p>${supportContactsMarkup()}</section></section><section class="card personal-detail-card personal-feedback-history"><div class="account-personal-heading"><h2>我的反馈记录</h2><button type="button" id="feedback-refresh">刷新状态</button></div><p class="muted">显示最近 100 条记录；“已处理”表示后台已结束本次处理，可通过客服邮箱或微信补充情况。</p><div id="feedback-records" aria-live="polite"></div><p id="feedback-list-status" role="status"></p></section></div></div>`;});
  bindHelpKnowledge(target,{modal:ctx.modal,notify});
  bindSupportContacts(target);
+ const categoryInput=$('#feedback-category'),orderField=$('#feedback-order-field'),orderInput=$('#feedback-order'),guidance=$('#feedback-guidance');
+ const updateGuidance=()=>{const order=categoryInput.value==='订单与退款';orderField.hidden=!order;guidance.textContent=order?'请说明需要核对的订单和问题；也可以先提交问题，再通过客服补充订单号。':categoryInput.value==='个人信息请求'?'可申请查阅、更正、删除个人信息或注销账户，请说明请求范围。支持人员将人工受理并核对账户归属，处理进度将另行反馈；请勿填写密码、验证码或私人研究正文。':'';};
+ categoryInput.addEventListener('change',updateGuidance);updateGuidance();
  const renderRecords=()=>withStableView(target.closest('.dashboard')||target,()=>{$('#feedback-records').innerHTML=records.length?records.map(item=>`<article class="account-feedback-record"><div class="row"><b>${esc(item.category||'产品反馈')}</b><span class="tag ${item.status==='resolved'?'completed':''}">${publicFeedbackStatus(item.status)}</span></div><p class="account-feedback-body">${esc(item.body)}</p><small class="muted">提交：${date(item.created_at)}${item.updated_at?`<br>更新：${date(item.updated_at)}`:''}<br>编号：${esc(item.id)}</small></article>`).join(''):'<div class="account-empty"><b>还没有提交过反馈</b><p>在问题描述中填写遇到的情况，提交后可在这里查看处理进度。</p></div>';});
  renderRecords();
  if(listError){$('#feedback-records').innerHTML='<div class="account-empty"><b>反馈记录暂时无法读取</b><p>这不代表没有已提交的反馈，请刷新重试。</p></div>';$('#feedback-list-status').textContent=listError;}
@@ -112,9 +115,10 @@ export async function renderOnlinePersonal(view,ctx){
   const controls=[...form.elements].map(element=>[element,element.disabled]);
   controls.forEach(([element])=>element.disabled=true);
   try{
-   const saved=await api('/feedback',{text,category});
+   const orderId=category==='订单与退款'?orderInput.value.trim():'';
+   const saved=await api('/feedback',{text,category,...(orderId?{orderId}:{})});
    recordsRevision++;if(saved.item){records=[saved.item,...records.filter(item=>item.id!==saved.item.id)].slice(0,100);renderRecords();}
-   form.reset();rememberForms(true);
+   form.reset();updateGuidance();rememberForms(true);
    $('#feedback-submit-status').textContent=`反馈已提交${saved.id?'，编号 '+saved.id:''}。`;
    notify('反馈已提交，可在反馈记录中查看处理状态。');
    if(refreshPromise)await refreshPromise;await refresh();
@@ -126,6 +130,7 @@ export async function renderOnlinePersonal(view,ctx){
    if(draft.content.trim()){
     $('#feedback').value=draft.content;
     if([...$('#feedback-category').options].some(option=>option.value===draft.type))$('#feedback-category').value=draft.type;
+    updateGuidance();
     $('#feedback-submit-status').textContent=`已从当前浏览器草稿预填${draft.feature&&draft.feature!=='未选择'?'（'+draft.feature+'）':''}，请核对后点击“提交反馈”。本地草稿会保留。`;
    }
   }catch{$('#feedback-submit-status').textContent='本地草稿暂时无法读取，请保留原数据；仍可在这里重新填写。';}

@@ -235,6 +235,12 @@ test('usage and feedback stay attached to the signed-in account without inventin
  assert.equal(f.calls.find(call=>call.path==='/api/feedback'&&call.body).body.text,'请完善上传提示');
  assert.equal(f.calls.some(call=>call.path.startsWith('/api/admin')),false);
 });
+test('unsaved support order input participates in navigation guard and does not cross account switches',async t=>{
+ let user='u1';const f=await fixture(t,{view:'help',request:async path=>path==='/api/auth/me'?{ok:true,status:200,json:async()=>({user:{id:user,name:'测试账户'}})}:undefined});
+ const category=f.doc.querySelector('#feedback-category');category.value='订单与退款';category.dispatchEvent(new f.w.Event('change',{bubbles:true}));input(f,'#feedback-order','order-private');
+ assert.equal(f.w.onlineTest.onlineWorkspaceHasWork(),true);assert.equal(f.w.onlineTest.onlineWorkspaceRouteGuard('#projects'),false);await settle(()=>f.doc.querySelector('#online-confirm').open);f.doc.querySelector('#online-confirm-no').click();await settle(()=>!f.doc.querySelector('#online-confirm').open);assert.equal(f.doc.querySelector('#feedback-order').value,'order-private');
+ user='u2';f.w.onlineTest.onlineWorkspaceSessionChanged({id:user});await settle(()=>f.doc.querySelector('#feedback-order')?.value==='');assert.equal(f.doc.querySelector('#feedback-order-field').hidden,true);assert.equal(f.calls.some(call=>call.path==='/api/feedback'&&call.body),false);
+});
 
 test('purchased membership shows escaped order snapshots with active, scheduled and expired states',async t=>{
  const today=Date.now(),stamp=offset=>new Date(today+offset*86400000).toISOString();

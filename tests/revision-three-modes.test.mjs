@@ -76,6 +76,14 @@ for(const kind of ['similarity','aigc']){
   assert.equal(f.$('[data-revision-workflow]').dataset.phase,'blocked_start');assert.equal(f.$('[data-revision-workflow]').dataset.currentStep,'2');assert.equal(f.$('[data-revision-workflow-step="result"]').disabled,true);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,0);f.input('#revision-service-requirements','保留术语');assert.equal(f.$('[data-revision-workflow]').dataset.currentStep,'2');assert.doesNotMatch(f.$('[data-revision-workflow-hint]').textContent,/上次修改结果/);
  });
 }
+for(const kind of ['similarity','aigc']) test(`${kind} accurately discloses rebuilt DOCX limitations before submission`,t=>{
+ const f=fixture(t,{kind});
+ assert.match(f.$('.revision-entry-heading').textContent,/核对研究事实、数据、公式和引用/);
+ assert.match(f.$('[data-product-file-note]').textContent,/排版、图片、图表和公式等可能不保留/);
+ assert.doesNotMatch(f.$('.revision-entry-heading').textContent,/保留论文原意、真实数据、公式和引用/);
+ assert.equal(f.calls.filter(call=>/quote|jobs/.test(call.path)).length,0);
+});
+
 test('waiting locks form and all three modes, and cancel unlocks without applying a partial result',async t=>{
  const f=fixture(t,{queued:true});f.choose('paragraph');f.input('#revision-service-text',paragraphs[0]);await waitForFee(f);f.submit();await settle(()=>!!f.$('[data-tj-cancel]'));assert.equal(f.$('[data-product-start]').disabled,true);assert.ok([...f.root.querySelectorAll('[data-report-basis]')].every(b=>b.disabled));assert.equal(f.$('[data-product-result]').hidden,true);f.click('[data-tj-cancel]');await settle(()=>!f.$('[data-product-start]').disabled);assert.ok(f.draft().paragraphs.every(p=>!p.accepted));assert.equal(f.$('[data-revision-workflow]').dataset.phase,'cancelled');assert.equal(f.$('[data-revision-workflow-step="result"]').disabled,true);assert.equal(f.calls.filter(c=>c.path==='/tool-runs/jobs').length,1);
 });

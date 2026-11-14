@@ -32,6 +32,20 @@ test('exports store bytes only in private OSS, preserve metadata and enforce own
  assert.equal((await f.request('/api/artifacts',undefined,'bob')).value.items.length,0);
 });
 
+test('TSV originals retain exact UTF-8 bytes and stay isolated by owner',async t=>{
+ const f=fixture(t),data=Buffer.from('姓名\t得分\n小李\t93\n'),input={name:'数据.tsv',data:data.toString('base64'),sourceType:'other'},first=await f.upload(input),again=await f.upload(input);
+ assert.equal(first.value.item.kind,'tsv');assert.equal(first.value.item.mimeType,'text/tab-separated-values;charset=utf-8');assert.equal(again.value.item.id,first.value.item.id);assert.equal(again.value.deduplicated,true);
+ const read=await f.request(first.value.item.downloadUrl);assert.deepEqual(read.body,data);read.release();await rejected(f.request(first.value.item.downloadUrl,undefined,'bob'),404);
+ await rejected(f.upload({...input,data:Buffer.from([0xff,0xfe]).toString('base64')}),400);
+});
+test('an analysis source cannot be deleted until its owning draft removes the reference',async t=>{
+ const f=fixture(t),result=await f.upload({name:'数据.csv',data:Buffer.from('x,y\n1,2').toString('base64'),sourceType:'other'}),item=result.value.item,payload=JSON.stringify({analysisState:{sourceArtifact:{id:item.id}}}),now=new Date().toISOString();
+ f.db.prepare('INSERT INTO workspace_drafts(id,user_id,title,tool,payload,bytes,version,input_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run('d1','alice','分析','analysis',payload,Buffer.byteLength(payload),1,'h',now,now);
+ await rejected(f.request('/api/artifacts/'+item.id+'/delete',{expectedSha256:item.sha256,expectedUserId:'alice'}),409);assert.equal(f.objects.size,1);
+ await rejected(f.request('/api/artifacts/'+item.id+'/metadata',{version:1,name:'更名.csv',expectedUserId:'alice'}),409);
+ f.db.prepare('UPDATE workspace_drafts SET payload=? WHERE id=?').run('{}','d1');const deleted=await f.request('/api/artifacts/'+item.id+'/delete',{expectedSha256:item.sha256,expectedUserId:'alice'});assert.equal(deleted.value.deleted,true);assert.equal(f.objects.size,0);
+});
+
 test('same owner/content/kind is idempotent while another user has a separate private object',async t=>{
  const f=fixture(t),first=await f.upload(),second=await f.upload({name:'重新导出.txt'});
  assert.equal(second.value.item.id,first.value.item.id);assert.equal(second.value.deduplicated,true);assert.equal(f.calls.put,1);

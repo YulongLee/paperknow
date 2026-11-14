@@ -72,3 +72,12 @@ CREATE TRIGGER IF NOT EXISTS thesis_chapter_history_no_update BEFORE UPDATE ON t
  BEGIN SELECT RAISE(ABORT,'论文章节历史不可覆盖'); END;
 CREATE TRIGGER IF NOT EXISTS thesis_chapter_history_no_delete BEFORE DELETE ON thesis_chapter_versions
  BEGIN SELECT RAISE(ABORT,'论文章节历史不可删除'); END;
+
+-- Reading an individual finding is an acknowledgement only; it is never
+-- research evidence and never clears a final-delivery gate.
+CREATE TABLE IF NOT EXISTS thesis_review_issue_receipts(
+ thesis_id TEXT NOT NULL REFERENCES theses(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ run_id TEXT NOT NULL REFERENCES thesis_runs(id) ON DELETE CASCADE,issue_id TEXT NOT NULL,basis TEXT NOT NULL,reviewed_at TEXT NOT NULL,
+ PRIMARY KEY(thesis_id,issue_id)
+);
+CREATE INDEX IF NOT EXISTS thesis_review_issue_receipts_owner ON thesis_review_issue_receipts(user_id,thesis_id);

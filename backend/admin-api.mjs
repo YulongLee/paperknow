@@ -142,6 +142,28 @@ export function createAdminAPI(db,worker,config,auth){
     if(path==='/api/admin/credit-codes'||path.startsWith('/api/admin/credit-codes/')||path.startsWith('/api/admin/credit-code-items/'))return creditCodes.adminHandle({path,method,query,readBody,user:actor});
     if(path==='/api/admin/revenue'&&method==='GET')return revenue.report(query);
     if(path==='/api/admin/revenue/export'&&method==='GET'){const result=revenue.exportCSV(query);audit(actor,'revenue.export','report',result.filters.startDate+'_'+result.filters.endDate,{startDate:result.filters.startDate,endDate:result.filters.endDate,provider:result.filters.provider,kind:result.filters.kind,rows:result.rows,amountCents:result.amountCents});return result;}
+    const manualRefund=path.match(/^\/api\/admin\/orders\/([^/]+)\/manual-refunds$/);
+    if(manualRefund){
+      parameters(query,[]);const orderId=manualRefund[1];
+      const order=db.prepare(`SELECT o.id,o.status,p.provider,p.amount_cents FROM orders o JOIN payment_orders p ON p.order_id=o.id WHERE o.id=?`).get(orderId);
+      if(!order)fail(404,'订单不存在或缺少支付记录');
+      const read=()=>({orderId:order.id,provider:order.provider,orderStatus:order.status,paidCents:order.amount_cents,records:db.prepare('SELECT id,channel_reference AS channelReference,amount_cents AS amountCents,note,actor_id AS actorId,created_at AS createdAt FROM manual_refund_records WHERE order_id=? ORDER BY created_at,id').all(order.id)});
+      if(method==='GET')return read();
+      if(method!=='POST')fail(405,'不支持该操作');
+      const input=await readBody(),keys=['commandId','channelReference','amountCents','note','confirmed'];
+      if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!keys.includes(key))||!/^[-A-Za-z0-9_]{8,100}$/.test(input.commandId||'')||typeof input.channelReference!=='string'||input.channelReference.trim().length<2||input.channelReference.length>120||/[\u0000-\u001f]/.test(input.channelReference)||!Number.isSafeInteger(input.amountCents)||input.amountCents<=0||typeof input.note!=='string'||input.note.trim().length<2||input.note.length>500||input.confirmed!==true)fail(400,'请确认渠道结果并填写有效退款流水、金额和处理备注');
+      transaction(()=>{
+        const previous=db.prepare('SELECT order_id,provider,channel_reference,amount_cents,note FROM manual_refund_records WHERE actor_id=? AND command_id=?').get(actor.id,input.commandId);
+        if(previous){if(previous.order_id!==order.id||previous.provider!==order.provider||previous.channel_reference!==input.channelReference.trim()||previous.amount_cents!==input.amountCents||previous.note!==input.note.trim())fail(409,'操作标识已用于其他登记');return;}
+        if(db.prepare('SELECT status FROM orders WHERE id=?').get(order.id)?.status!=='paid')fail(409,'只有已支付订单可以登记退款流水，请先核对订单状态');
+        if(db.prepare('SELECT 1 FROM manual_refund_records WHERE provider=? AND channel_reference=?').get(order.provider,input.channelReference.trim()))fail(409,'该渠道退款流水已登记，请勿重复登记');
+        const total=db.prepare('SELECT COALESCE(sum(amount_cents),0) n FROM manual_refund_records WHERE order_id=?').get(order.id).n;
+        if(total+input.amountCents>order.amount_cents)fail(409,'登记退款金额超过订单已支付金额，请核对后处理');
+        db.prepare('INSERT INTO manual_refund_records(id,order_id,provider,channel_reference,amount_cents,note,actor_id,command_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),order.id,order.provider,input.channelReference.trim(),input.amountCents,input.note.trim(),actor.id,input.commandId,new Date().toISOString());
+        audit(actor,'order.manual_refund_record','order',order.id,{amountCents:input.amountCents,provider:order.provider});
+      });
+      return {...read(),notice:'仅记录人工核对结果；不发起退款、不核验渠道，也不改变订单状态或权益。'};
+    }
     const managedUser=path.match(/^\/api\/admin\/users\/([^/]+)\/(manage|credits|membership|status)$/);
     if(managedUser){parameters(query,[]);if(!config.billing)fail(503,'账户计费管理尚未启用');if(managedUser[2]==='manage'&&method==='GET')return userManagement.detail(managedUser[1]);if(managedUser[2]!=='manage'&&method==='POST')return userManagement.mutate(actor,managedUser[1],managedUser[2],await readBody());fail(404,'用户管理接口不存在');}
     if(path.startsWith('/api/admin/monitoring')){
