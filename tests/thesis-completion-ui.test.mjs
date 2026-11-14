@@ -88,3 +88,60 @@ test('an unavailable final resume quote cannot dispatch a paid continuation',asy
  const value={...base(),status:'failed',job:{id:'paused',operation:'completion',purpose:'completion',status:'failed',canResume:true,completedSections:1,totalSections:3}};
  const f=fixture(t,{handle:async(path,data)=>{if(path==='/theses/t1'&&!data)return{item:structuredClone(value)};if(path.endsWith('/quote'))throw Object.assign(Error('积分不足'),{status:402});}});await f.ready;await settle();assert.match(f.q('[data-thesis-billing-notice]').textContent,/积分不足/);f.q('[data-thesis-quote="resume"]').click();await settle();assert.equal(f.calls.filter(row=>row.path.endsWith('/resume')).length,0);
 });
+
+test('paid-session recheck is hidden unless explicitly enabled and eligible, and only uses saved inputs',()=>{
+ const draft=createCompletionDraft(),item=base();
+ assert.doesNotMatch(completionPanelHTML(item,draft),/data-review-saved/);
+ for(const state of [{enabled:false,eligible:true},{enabled:true,eligible:false}])assert.doesNotMatch(completionPanelHTML({...item,recheck:state},draft),/data-review-saved/);
+ const eligible={...item,recheck:{enabled:true,eligible:true}},dom=new JSDOM(completionPanelHTML(eligible,draft));const root=dom.window.document.querySelector('[data-thesis-completion]');let calls=0;
+ bindCompletionPanel(root,draft,{reviewSaved:()=>calls++});root.querySelector('[data-review-saved]').click();assert.equal(calls,1);assert.match(root.textContent,/不修改正文.*不再扣除积分或套餐次数/);
+ draft.dirty=true;root.querySelector('[data-review-saved]').click();assert.equal(calls,1);assert.match(completionPanelHTML(eligible,draft),/data-review-saved disabled/);
+ assert.equal(completionProgressText({job:{operation:'recheck',status:'running'}}),'正在检查已保存的正文和资料…');dom.window.close();
+});
+
+test('rechecking a paid completion submits only once with no quote and shows its own progress',async t=>{
+ const item={...base(),recheck:{enabled:true,eligible:true},job:{id:'paid',status:'completed',operation:'completion',purpose:'completion'},completionReview:{required:true,status:'check_required',changes:[],missing:[],issues:[],checks:{}}};
+ const f=fixture(t,{handle:async(path,data)=>{
+  if(path==='/theses/t1'&&!data)return {item:structuredClone(item)};
+  if(path.endsWith('/completion/recheck'))return {item:{...item,version:2,status:'queued',job:{id:'review-run',status:'queued',operation:'recheck',purpose:'completion',totalSections:0}}};
+ }});await f.ready;f.q('[data-thesis-writing-mode="final"]').click();const button=f.q('[data-review-saved]');assert.ok(button);button.click();button.click();await settle();
+ const submits=f.calls.filter(row=>row.path.endsWith('/completion/recheck'));assert.equal(submits.length,1);assert.deepEqual(Object.keys(submits[0].data).sort(),['clientKey','version']);assert.equal(submits[0].data.version,1);assert.equal(f.calls.some(row=>/\/(quote|generate)$/.test(row.path)),false);
+ assert.match(f.q('.thesis-progress').textContent,/正在重新检查.*本次不额外扣费/s);assert.doesNotMatch(f.q('.thesis-progress').textContent,/0\s*\/\s*0|自动补齐正文/);assert.match(f.q('[data-thesis-cancel]').textContent,/停止检查/);
+});
+
+test('recheck refusal displays the actual reason rather than a version error or paid continuation',async t=>{
+ const item={...base(),recheck:{enabled:true,eligible:true},job:{id:'paid',status:'completed',operation:'completion',purpose:'completion'}};
+ const f=fixture(t,{handle:async(path,data)=>{if(path==='/theses/t1'&&!data)return {item:structuredClone(item)};if(path.endsWith('/completion/recheck'))throw Object.assign(Error('上次复查费用尚待核对，请联系支持；本次未额外扣费。'),{status:409});}});
+ await f.ready;f.q('[data-thesis-writing-mode="final"]').click();f.q('[data-review-saved]').click();await settle();assert.match(f.dom.window.document.body.textContent,/上次复查费用尚待核对/);assert.doesNotMatch(f.dom.window.document.body.textContent,/内容版本已更新/);assert.equal(f.calls.some(row=>/\/(quote|generate)$/.test(row.path)),false);
+});
+
+test('uncertain network response retries with the same recheck key, without initiating a paid run',async t=>{
+ const item={...base(),recheck:{enabled:true,eligible:true},job:{id:'paid',status:'completed',operation:'completion',purpose:'completion'}};let n=0;
+ const f=fixture(t,{handle:async(path,data)=>{if(path==='/theses/t1'&&!data)return {item:structuredClone(item)};if(path.endsWith('/completion/recheck')){if(!n++)throw Object.assign(Error('超时'),{name:'AbortError'});return {item:{...item,version:2,status:'queued',job:{id:'review',operation:'recheck',status:'queued',purpose:'completion'}}};}}});
+ await f.ready;f.q('[data-thesis-writing-mode="final"]').click();f.q('[data-review-saved]').click();await settle();assert.match(f.dom.window.document.body.textContent,/暂未收到检查结果.*不额外扣费/s);f.q('[data-review-saved]').click();await settle();const attempts=f.calls.filter(x=>x.path.endsWith('/completion/recheck'));assert.equal(attempts.length,2);assert.equal(attempts[0].data.clientKey,attempts[1].data.clientKey);assert.equal(f.calls.some(x=>/\/(quote|generate|resume)$/.test(x.path)),false);
+});
+
+test('failed recheck has no paid resume action and retains the failure reason',async t=>{
+ const item={...base(),status:'failed',recheck:{enabled:true,eligible:true},job:{id:'failed-review',status:'failed',operation:'recheck',purpose:'completion',canResume:true,error:'检查暂未完成，原文保留；没有额外扣费。'}};
+ const f=fixture(t,{handle:async(path,data)=>path==='/theses/t1'&&!data?{item:structuredClone(item)}:null});await f.ready;assert.equal(f.q('[data-thesis-quote="resume"]'),null);assert.match(f.q('.thesis-progress').textContent,/原文保留.*没有额外扣费/s);assert.ok(f.q('[data-review-saved]'));
+});
+
+test('unsaved supplementary material and manuscript edits cannot start recheck',async t=>{
+ const item={...base(),recheck:{enabled:true,eligible:true},job:{id:'paid',status:'completed',operation:'completion',purpose:'completion'}};
+ const f=fixture(t,{handle:async(path,data)=>path==='/theses/t1'&&!data?{item:structuredClone(item)}:null});await f.ready;f.q('[data-thesis-writing-mode="final"]').click();f.input('[data-completion-field="supplement"]','尚未保存的研究信息');assert.equal(f.q('[data-review-saved]').disabled,true);f.q('[data-review-saved]').click();await settle();assert.equal(f.calls.some(row=>row.path.endsWith('/completion/recheck')),false);
+});
+
+test('response after navigation or switching accounts cannot update another paper or report success',async t=>{
+ const item={...base(),recheck:{enabled:true,eligible:true},job:{id:'paid',status:'completed',operation:'completion',purpose:'completion'}};let resolveRequest;
+ const f=fixture(t,{handle:async(path,data)=>{if(path==='/theses/t1'&&!data)return {item:structuredClone(item)};if(path.endsWith('/completion/recheck'))return new Promise(resolve=>{resolveRequest=resolve;});}});
+ await f.ready;f.q('[data-thesis-writing-mode="final"]').click();f.q('[data-review-saved]').click();await settle();assert.equal(typeof resolveRequest,'function');
+ thesisOnlineSessionChanged({id:'u2'});resolveRequest({item:{...item,id:'t1',version:2,status:'queued',job:{id:'queued',operation:'recheck',status:'queued'}}});await settle();
+ assert.match(f.dom.window.document.body.textContent,/账户已切换/);assert.doesNotMatch(f.dom.window.document.body.textContent,/已提交重新检查|正在重新检查/);
+});
+
+test('late recheck response from the previous thesis cannot alter the next thesis',async t=>{
+ const first={...base(),recheck:{enabled:true,eligible:true},job:{id:'paid',status:'completed',operation:'completion',purpose:'completion'}};let finishFirst;
+ const f=fixture(t,{handle:async(path,data)=>{if(path==='/theses/t1'&&!data)return {item:structuredClone(first)};if(path.endsWith('/completion/recheck'))return new Promise(resolve=>{finishFirst=resolve;});}});await f.ready;f.q('[data-thesis-writing-mode="final"]').click();f.q('[data-review-saved]').click();await settle();assert.equal(typeof finishFirst,'function');
+ const second={...base(),id:'t2',title:'另一份论文',recheck:{enabled:true,eligible:false}};const api=async(path)=>{if(path==='/auth/me')return {user:{id:'u1'}};if(path==='/capabilities')return {thesis:{ready:true}};if(path==='/theses/t2')return {item:structuredClone(second)};throw Error('unexpected '+path);};
+ const next=mountOnlineThesis({id:'t2',container:f.dom.window.document.querySelector('main'),ctx:{api,session:async()=>({status:'ready',user:{id:'u1'}})}});await next.ready;finishFirst({item:{...first,status:'queued',job:{id:'old-review',operation:'recheck',status:'queued'}}});await settle();assert.match(f.dom.window.document.body.textContent,/另一份论文/);assert.equal(f.q('[data-review-saved]'),null);assert.doesNotMatch(f.dom.window.document.body.textContent,/已提交重新检查|正在重新检查/);
+});

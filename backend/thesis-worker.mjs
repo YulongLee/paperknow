@@ -1,4 +1,8 @@
 import {thesisDocxObjects} from './thesis-docx-objects.mjs';
+import {createThesisReviewSessions} from './thesis-review-session.mjs';
+import {createThesisReviewLifecycle} from './thesis-review-lifecycle.mjs';
+import {reviewSavedThesis,createSessionReviewDispatch} from './thesis-review-only.mjs';
+import {savedThesisChapters} from './thesis-completion.mjs';
 import {withThesisRetryCandidate,safeThesisValidation} from './thesis-retry-context.mjs';
 import {completionDiagnosis,withCompletionDiagnosis} from './thesis-completion-guidance.mjs';
 import {completionContentAudit} from './thesis-completion-audit.mjs';
@@ -82,6 +86,7 @@ export function startThesisWorker(db,config={}){
  initializeThesisSchema(db);
  const billing=config.billing||createBillingService(db,config),modelBudget=config.modelBudget||createModelBudget(db,config),limits=thesisLimits(config);
  const continuity=createThesisContinuity(db,config),qualityRunner=createWritingQualityRunner(config);
+ const reviewSchema=Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='thesis_review_sessions'").get()),reviewSessions=(config.thesisReviewOnlyEnabled===true||reviewSchema)?createThesisReviewSessions(db,config):null,reviewLifecycle=reviewSessions?createThesisReviewLifecycle(db,config,{sessions:reviewSessions}):null;
  const clock=()=>new Date(config.thesisNow?.()??Date.now()).toISOString();
  let busy=false,stopped=false,currentPromise=null;const controllers=new Map();
  const transaction=fn=>thesisTransaction(db,fn);
@@ -90,7 +95,7 @@ export function startThesisWorker(db,config={}){
  // Every callback retains the attempt it claimed, never the latest row's identity.
  const ownsAttempt=run=>Boolean(run&&db.prepare('SELECT 1 FROM thesis_runs r JOIN jobs j ON j.id=r.id JOIN theses t ON t.id=r.thesis_id WHERE r.id=? AND r.user_id=? AND r.attempt=? AND j.user_id=r.user_id AND t.current_run_id=r.id').get(run.id,run.user_id,run.attempt));
  function requeue(run){
-  if(!ownsAttempt(run)||!isContinuous(run))return false;
+  if(!ownsAttempt(run)||!isContinuous(run)||JSON.parse(run.settings_meta||'{}').reviewOnly===true)return false;
   const job=db.prepare('SELECT status FROM jobs WHERE id=?').get(run.id);
   if(job?.status!=='running'||!db.prepare("SELECT 1 FROM thesis_runs WHERE id=? AND attempt=? AND status='running'").get(run.id,run.attempt)||!db.prepare("SELECT 1 FROM billing_reservations WHERE job_id=? AND attempt=? AND user_id=? AND status='held'").get(run.id,run.attempt,run.user_id))return false;
   const recovered=continuity.recover(run);if(recovered.recoveredDispatches>0)db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=? AND attempt=?').run(run.id,run.attempt);if(!recovered.ready)return false;
@@ -99,6 +104,7 @@ export function startThesisWorker(db,config={}){
  function markStopped(runId,attempt,status,message){
   if(!Number.isSafeInteger(attempt)||attempt<1)return;
   const run=db.prepare('SELECT * FROM thesis_runs WHERE id=? AND attempt=?').get(runId,attempt);if(!run||!active(run.status)||!ownsAttempt(run))return;
+  if(JSON.parse(run.settings_meta||'{}').reviewOnly===true&&reviewLifecycle){reviewLifecycle.stop(run,status);return;}
   const at=clock();db.prepare('UPDATE thesis_runs SET status=?,stage=?,error=?,updated_at=? WHERE id=? AND attempt=?').run(status,status,message,at,runId,attempt);
   // The shared task centre uses its existing terminal states; the thesis run
   // retains the precise reason (missing evidence, interruption or cancellation).
@@ -118,13 +124,23 @@ export function startThesisWorker(db,config={}){
   try{
    const claimed=transaction(()=>{if(!ownsAttempt(run)||db.prepare("SELECT id FROM thesis_runs WHERE status='running' AND id!=? LIMIT 1").get(run.id))return false;if(!db.prepare("UPDATE thesis_runs SET status='running',stage='preparing',updated_at=? WHERE id=? AND attempt=? AND status='queued'").run(clock(),run.id,run.attempt).changes)return false;
     db.prepare("UPDATE jobs SET status='running',stage='preparing',attempt=?,updated_at=? WHERE id=? AND status='queued'").run(run.attempt,clock(),run.id);
-    db.prepare("UPDATE theses SET status='running',version=version+1,updated_at=? WHERE id=? AND current_run_id=?").run(clock(),run.thesis_id,run.id);modelBudget.start(run.id,run.attempt);return true;});
+    db.prepare("UPDATE theses SET status='running',version=version+1,updated_at=? WHERE id=? AND current_run_id=?").run(clock(),run.thesis_id,run.id);if(JSON.parse(run.settings_meta||'{}').reviewOnly!==true)modelBudget.start(run.id,run.attempt);return true;});
    if(!claimed)return;
    assertThesisSettings(await config.getAgentSettings?.());
    runtime=thesisExecutionSettings(assertThesisSettings(await config.getAgentSettings?.(run.settings_version)),JSON.parse(run.settings_meta||'{}').executionMaxCostUsd);
    if(!running())return;
    if(runtime.version!==run.settings_version)throw thesisError(503,'原生成配置版本不可用，请联系管理员');
    const snapshot=JSON.parse(run.snapshot),plan=JSON.parse(run.plan),baseline=run.input_tokens+run.output_tokens;assertThesisSourceIdsUnique(snapshot);
+   const reviewMeta=JSON.parse(run.settings_meta||'{}');
+   if(reviewMeta.reviewOnly===true){
+    if(config.thesisReviewOnlyEnabled!==true||!reviewLifecycle||!reviewSessions)throw thesisError(503,'终稿复查暂未开放','review_disabled');
+    const row=db.prepare('SELECT * FROM theses WHERE id=? AND user_id=?').get(run.thesis_id,run.user_id);
+    const chapters=savedThesisChapters(db,row).map(({record,...chapter})=>({...chapter,text:record?.text||'',sourceIds:JSON.parse(record?.source_ids||'[]'),figures:JSON.parse(record?.figures||'[]')}));
+    const isCurrent=()=>Boolean(running()&&reviewLifecycle.current(run));
+    const dispatch=createSessionReviewDispatch({sessions:reviewSessions,userId:run.user_id,thesisId:run.thesis_id,sessionId:reviewMeta.reviewSessionId,reviewRunId:run.id,attempt:run.attempt,runner:config.agentTaskRunner||runAgentTask,isCurrent,signal:controller.signal,onStage:stage});
+    const result=await reviewSavedThesis({snapshot,chapters,docxObjects:thesisDocxObjects(db,run.thesis_id,run.user_id,chapters),row,runtime:{...runtime,maxTotalTokens:thesisCallTokenCeiling},runId:run.id,qualityRunner:config.thesisReviewQualityRunner||qualityRunner,dispatch,isCurrent,signal:controller.signal,onStage:stage});
+    if(!running())return;reviewLifecycle.finish(run,result);return;
+   }
    const savedBaseline=completionBaseline(db,run),completionMode=Boolean(JSON.parse(run.settings_meta||'{}').completion),targetChapters=new Set(plan.map(unit=>unit.chapterId)),fullCompletion=JSON.parse(run.settings_meta||'{}').completion?.scope==='full';
    const manuscriptVersions=()=>snapshot.outline.map(chapter=>{let generated=db.prepare("SELECT * FROM thesis_chapter_versions WHERE run_id=? AND chapter_id=? AND source='generated' ORDER BY version DESC LIMIT 1").get(run.id,chapter.id);
     if(!generated&&fullCompletion&&targetChapters.has(chapter.id)){const units=db.prepare("SELECT * FROM thesis_checkpoints WHERE run_id=? AND chapter_id=? ORDER BY position").all(run.id,chapter.id);if(units.length&&units.every(unit=>unit.status==='completed'))generated={chapter_id:chapter.id,text:units.map(row=>{const unit=plan.find(unit=>unit.id===row.unit_id);return `${unit.part===1&&unit.title!==unit.chapterTitle?unit.title+'\n\n':''}${row.text}`;}).join('\n\n'),figures:JSON.stringify(units.flatMap(row=>JSON.parse(row.figures||'[]'))),source_ids:JSON.stringify([...new Set(units.flatMap(row=>JSON.parse(row.source_ids)))])};}

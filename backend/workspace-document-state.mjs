@@ -48,9 +48,10 @@ export function workspaceDocumentStates(db,rows,userId,{theses=false}={}){
    return row?{...item,documentState:state(row)}:item;
   }
   if(item.type==='thesis'&&hasTheses){
-   const run=db.prepare('SELECT thesis_id FROM thesis_runs WHERE id=? AND user_id=?').get(item.id,userId);
+   const run=db.prepare('SELECT thesis_id,settings_meta FROM thesis_runs WHERE id=? AND user_id=?').get(item.id,userId);
+   let operation=null;try{if(JSON.parse(run?.settings_meta||'{}').reviewOnly===true)operation='final_review';}catch{}
    const row=run?db.prepare('SELECT * FROM theses WHERE id=? AND user_id=?').get(run.thesis_id,userId):null;
-   if(row){const historical=item.id!==row.current_run_id;return {...item,documentTitle:row.title,historical,currentJobId:row.current_run_id,...(!historical?{documentState:state(row)}:{})};}
+   if(row){const historical=item.id!==row.current_run_id;return {...item,...(operation?{thesis_operation:operation}:{}),documentTitle:row.title,historical,currentJobId:row.current_run_id,...(!historical?{documentState:state(row)}:{})};}
   }
   if(item.type==='writing'&&hasWriting){const row=db.prepare('SELECT * FROM writing_runs WHERE id=? AND user_id=?').get(item.id,userId);if(row){const documentState=writingDocumentState(db,row);if(documentState)return {...item,documentTitle:JSON.parse(row.snapshot).title,documentState};}}
   return item;

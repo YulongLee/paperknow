@@ -4,7 +4,7 @@ export const thesisHasDraft=item=>thesisPreviewItem(item).chapters.some(chapter=
 export function thesisTaskMode(item){
  if(item?.status==='draft'||item?.job?.snapshotChanged===true)return 'draft';
  if(item?.job?.purpose==='draft')return 'draft';
- return item?.job?.purpose==='completion'||item?.job?.operation==='completion'?'final':'draft';
+ return item?.job?.purpose==='completion'||['completion','recheck'].includes(item?.job?.operation)?'final':'draft';
 }
 export function initialThesisWritingMode(item){
  if(!thesisHasDraft(item))return 'draft';

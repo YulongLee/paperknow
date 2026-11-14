@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {environmentConfig,modelRequestLimits,toolRunTokenLimit} from '../backend/config.mjs';
+
+test('终稿只读复查配置默认关闭，仅明确设为字符串 1 才启用',()=>{
+ assert.equal(environmentConfig({}).thesisReviewOnlyEnabled,false);
+ for(const value of ['0','true','yes','',true,1])assert.equal(environmentConfig({PK_THESIS_REVIEW_ONLY_ENABLED:value}).thesisReviewOnlyEnabled,false);
+ assert.equal(environmentConfig({PK_THESIS_REVIEW_ONLY_ENABLED:'1'}).thesisReviewOnlyEnabled,true);
+});
 import {modelLimits} from '../backend/model-budget.mjs';
 
 test('model request limits accept bounded settings and reject malformed or excessive overrides',()=>{

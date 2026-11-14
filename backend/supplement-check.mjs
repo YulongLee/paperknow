@@ -3,6 +3,7 @@ import {manuscriptFigures,manuscriptPart,assertCheckedFigures} from '../dist/wor
 import {isOutlineReferenceChapter} from '../dist/workspace/outline-word-budget.mjs';
 import {selectThesisEvidence} from './thesis-model.mjs';
 import {supplementCitationStatus} from './supplement-citation-status.mjs';
+import {supplementIssueDetails} from './supplement-issue-details.mjs';
 // Server-owned semantic check. Drafts and AI plans are never treated as evidence.
 const fail=(field='items',rule='按当前契约返回完整检查项与逐字依据。')=>{throw Object.assign(new Error('补充资料检查结果未通过依据核对'),{status:502,code:'invalid_supplement_check',feedback:{code:'supplement_evidence',field,rule}});};
 const pending=/(?:待补充|待核对|待填写|待提供|\bTODO\b|\bTBD\b|\{\{[^}]+\}\})/i;
@@ -338,7 +339,12 @@ export async function runSupplementCheck({snapshot={},chapters=[],kind='writing'
    const partialSources=task.context.evidence.some(source=>{const original=sources.find(row=>row.id===source.id)?.text||'',material=task.materials.find(row=>row.id===source.id);if(!original)return false;if(source.text.includes(original))return false;if(!material||material.text.length<original.length)return true;const ranges=(output.trace||[]).filter(row=>row.tool==='read_material'&&row.status==='completed'&&row.materialId===source.id&&Number.isFinite(row.offset)&&Number.isFinite(row.limit)&&row.offset>=0&&row.limit>0).map(row=>[row.offset,Math.min(original.length,row.offset+row.limit)]).sort((a,b)=>a[0]-b[0]);let end=0;for(const [start,stop]of ranges){if(start>end)break;end=Math.max(end,stop);}return end<original.length;});
    if(partialSources){report.evidenceScope='relevant_excerpts';report.limitations.push('部分已上传资料仅核对了相关片段；未定位不代表原资料不存在。');}
    const soften=value=>String(value||'').replace(/(?:尚未|没有|未曾|未)提供|未给出|未取得/gu,'尚未在已核对范围内定位').replace(/(?:授权资料|资料|材料)?(?:仅有|只有|只含|仅含)(摘要(?:句|内容)?)/gu,'已核对范围内仅定位到$1');
-   report.items.push(...parsed.map(item=>item.status==='missing'?{...item,reason:soften(item.reason),missing:item.missing.map(soften)}:item));report.coverage.checked+=batch.length;}
+   const safeItems=parsed.map(item=>item.status==='missing'?{...item,reason:soften(item.reason),missing:item.missing.map(soften)}:item);
+   report.items.push(...safeItems);
+   // Capture only genuinely read ranges; previewed or unlocated material is
+   // intentionally not represented as a confirmed evidence item.
+   (report.issueDetails??=[]).push(...supplementIssueDetails({items:safeItems,chapters,snapshot,phase,materials:task.materials,trace:output.trace}));
+   report.coverage.checked+=batch.length;}
   catch(error){await active();
    const denied=error.agentTrace?.some(row=>row.status==='denied'),status=Number(error.status),retryable=!denied&&![401,403,409,422,429,499].includes(status)&&(['turn_limit','truncated','invalid_supplement_check','invalid_review_output','timeout'].includes(error.code)||status===504);
    if(recover&&retryable&&automaticRetries<maxRecoveries&&retries<2){

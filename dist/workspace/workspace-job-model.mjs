@@ -6,6 +6,7 @@ const writingOperations={method:'方法建议',outline:'提纲生成',draft:'正
 const toolNames={image:'AI 科研绘图',read:'文献解读',answer:'原文问答',translate:'文献翻译',rewrite:'学术表达优化',ppt:'演示文稿创作',chart:'图表配置',diagram:'科研结构示意图',formula:'公式辅助',format:'格式建议'};
 const jobNames={document_translation:'整篇文档翻译',document_parse:'PDF 文献处理',parse:'正文解析',polish:'学术润色',review:'导师意见修改',web_similarity:'论文重复率检测',aigc_detection:'AI 文本鉴别',compare:'材料查重',agent:'科研智能助手',thesis:'毕业论文撰写',thesis_outline:'论文提纲生成',thesis_method:'研究方法建议'};
 export function workspaceJobLabel(row){
+ if(row?.type==='thesis'&&row.thesis_operation==='final_review')return '终稿检查';
  if(row?.type==='thesis_method'&&(row.thesis_operation==='simulation'||row.operation==='simulation'))return 'AI模拟数据补充';
  if(row?.type==='writing')return[writingNames[row.writing_kind||row.kind]||'AI 写作',writingOperations[row.writing_operation||row.operation]||'写作任务'].join(' · ');
  if(row?.type==='tool_run')return toolNames[row.tool_operation||row.operation]||'科研工具任务';
