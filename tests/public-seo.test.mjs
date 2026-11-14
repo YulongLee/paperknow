@@ -25,7 +25,7 @@ test('Baidu ownership verification serves the unmodified official file publicly 
   assert.equal(head.status,200);
   assert.equal(await head.text(),'');
 });
-const expectedModifiedAt=slug=>slug==='/guides/docx-format/'?'2026-10-29':'2026-11-04';
+const expectedModifiedAt=slug=>slug==='/guides/docx-format/'?'2026-10-29':slug==='/terms/'?'2026-11-14':'2026-11-04';
 const features={
   'ai-writing':'writing','ai-reading':'literature','reduce-similarity':'reduce',
   'reduce-ai':'aigc','similarity-check':'detection','ppt':'ppt',
@@ -136,7 +136,17 @@ test('homepage metadata describes shipped research workflows and keeps its own m
   assert.equal(data.find(node=>node['@type']==='WebPage').dateModified,'2026-11-04');
   assert.match(data.find(node=>node['@type']==='WebApplication').description,/毕业论文五步确认与分章生成/);
   assert.equal(pages.get('/privacy/').document.querySelector('.public-updated').textContent.includes(expectedModifiedAt('/privacy/')),true);
-  assert.equal(pages.get('/terms/').document.querySelector('.public-updated').textContent.includes('2026-11-04'),true);
+  assert.equal(pages.get('/terms/').document.querySelector('.public-updated').textContent.includes(expectedModifiedAt('/terms/')),true);
+});
+
+test('service terms distinguish voluntary renewal from task usage and identify open-source resources',()=>{
+  const text=pages.get('/terms/').document.body.textContent;
+  assert.match(text,/不自动续费/);
+  assert.match(text,/未主动确认购买时从微信或支付宝自动扣款/);
+  assert.match(text,/任务优先抵扣有效会员次数/);
+  assert.match(text,/需要退款、开票或对账时/);
+  assert.match(text,/第三方开源 Skill/);
+  assert.match(text,/不影响依法应承担的责任/);
 });
 
 test('all feature pages connect to the correct existing tool and useful public documentation',()=>{

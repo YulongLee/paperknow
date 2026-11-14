@@ -18,6 +18,10 @@ test('广场展示六项上游开源 Skill 与固定版本',()=>{
  assert.equal(cards(root).length,6);
  assert.equal(root.querySelector('[data-ap-count]').textContent,'6 个 Skill');
  assert.ok(!root.textContent.includes('PaperKnow 原创'));
+ assert.match(root.querySelector('.ap-section-heading').textContent,/第三方开源项目/);
+ assert.match(root.querySelector('.ap-section-heading').textContent,/未接入 PaperKnow 站内服务/);
+ assert.match(root.querySelector('.ap-section-heading').textContent,/自行核对功能、效果与适用性/);
+ assert.equal(root.querySelector('.ap-other'),null);
  for(const skill of plazaSkills){
   const button=root.querySelector(`[data-ap-detail="${skill.id}"]`);
   assert.ok(button,`${skill.id} 详情入口`);
@@ -41,6 +45,9 @@ test('广场展示六项上游开源 Skill 与固定版本',()=>{
   assert.ok(links.some(url=>/^https:\/\/github\.com\//.test(url)&&url.includes(skill.id)),`${skill.id} 的上游源码`);
   assert.ok(links.some(url=>/^https:\/\/github\.com\/.+\/archive\/[a-f0-9]{40}\.zip$/.test(url)),`${skill.id} 的固定版本上游项目压缩包`);
   assert.match(dialog.textContent,/整个|完整|项目|仓库/);
+  assert.match(dialog.textContent,/第三方开源项目提供并维护/);
+  assert.match(dialog.textContent,/仅整理分享，未接入站内服务/);
+  assert.match(dialog.textContent,/自行核对功能、效果及适用性/);
   for(const link of dialog.querySelectorAll('a[target="_blank"]')) assert.match(link.rel,/noopener.*noreferrer/);
   dialog.querySelector('[data-ap-close]').click();
   assert.equal(dialog.hasAttribute('open'),false);
