@@ -425,6 +425,10 @@ function replaceParagraphTextRanges(para,operations){
   let first=true;for(const span of spans){if(span.to<=operation.from||span.from>=operation.to)continue;const from=Math.max(0,operation.from-span.from),to=Math.min(span.to-span.from,operation.to-span.from);span.node.textContent=span.node.textContent.slice(0,from)+(first?operation.text:'')+span.node.textContent.slice(to);first=false;}
   if(first&&operation.from===operation.to){const span=spans.find(row=>row.from<=operation.from&&row.to>=operation.from)||spans.at(-1);if(span){const at=Math.min(span.node.textContent.length,Math.max(0,operation.from-span.from));span.node.textContent=span.node.textContent.slice(0,at)+operation.text+span.node.textContent.slice(at);}}
  }
+ // Word discards leading/trailing spaces on a text run without xml:space.
+ // Replacements can introduce those spaces even when the original run did
+ // not need the attribute (for example, between a supervisor and title).
+ for(const {node} of spans)if(/^\s|\s$/u.test(node.textContent||''))node.setAttributeNS('http://www.w3.org/XML/1998/namespace','xml:space','preserve');
 }
 function typographyNoteRanges(value){
  const result=[];for(const match of value.matchAll(/[（(]([^（）()]{1,100})[）)]/g)){const note=match[1].replace(/\s/g,'');if(!/(?:宋体|黑体|楷体|仿宋|TimesNewRoman|Arial|Calibri|小[一二三四五六]|[一二三四五六七八九十]+号|\d+(?:pt|磅))/i.test(note))continue;if(!/^(?:(?:新宋体|宋体|黑体|楷体|仿宋|TimesNewRoman|Arial|Calibri|Cambria|居中|左对齐|右对齐|两端对齐|顶格|粗体|加粗|斜体|常规|字体|字号|中文|英文|西文|数字|小?[一二三四五六七八九十]号?|\d+(?:\.\d+)?(?:pt|磅|号))|[，,、；;:：/])+$/i.test(note))continue;result.push({from:match.index,to:match.index+match[0].length,text:''});}return result;
@@ -491,6 +495,20 @@ async function fillRecognizedTemplate(source,rules,metadata,placement,{frontGrou
   const area=slotContentArea(root,anchor,rules.page),fragment=parse(`<w:body xmlns:w="${W}" xmlns:r="${R}" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">${fitTables(body,area.width,area.height,rules.styles.Normal)}</w:body>`);
   if(region.kind.startsWith('abstract_')&&/[:：]/.test(texts(anchor)))joinInlineAbstract(fragment,region.kind==='abstract_zh'?'摘要：':'Abstract: ');
   adoptTemplateParagraphs(fragment,sourceNodes,placement,styles,region,rules);
+  // Apply only an explicit school instruction, after adopting the template's
+  // paragraph style. Keep the author's keyword text untouched and insert one
+  // line of paragraph spacing, rather than a fake empty content paragraph.
+  if(region.kind.startsWith('abstract_')&&rules.abstractKeywordsBlankLine===true){
+   for(const paragraph of fragment.getElementsByTagNameNS(W,'p'))if(/^(?:关键词|key\s*words?)\s*[:：]/iu.test(texts(paragraph).trim())){
+    let properties=children(paragraph,'pPr')[0];if(!properties){properties=fragment.createElementNS(W,'w:pPr');paragraph.insertBefore(properties,paragraph.firstChild);}
+    let spacing=children(properties,'spacing')[0];if(!spacing){spacing=fragment.createElementNS(W,'w:spacing');properties.appendChild(spacing);}
+    spacing.removeAttributeNS(W,'beforeLines');spacing.removeAttributeNS(W,'beforeAutospacing');spacing.setAttributeNS(W,'w:before',String(rules.styles.Abstract?.line||360));
+   }
+  }
+  if(region.kind==='references'&&rules.referencesStartNewPage===true){
+   const heading=children(fragment.documentElement).find(node=>node.namespaceURI===W&&node.localName==='p');
+   if(heading){let properties=children(heading,'pPr')[0];if(!properties){properties=fragment.createElementNS(W,'w:pPr');heading.insertBefore(properties,heading.firstChild);}for(const old of children(properties,'pageBreakBefore'))properties.removeChild(old);const pageBreak=fragment.createElementNS(W,'w:pageBreakBefore');const style=children(properties,'pStyle')[0];properties.insertBefore(pageBreak,style?style.nextSibling:properties.firstChild);}
+  }
   let inserted=children(fragment.documentElement);if(region.kind!=='instructions'&&!(region.kind==='appendix'&&metadata.submission&&!body))inserted=preserveRegionSections(original,placement,region,inserted,{expandHeaderSafe:region.kind==='body'&&await safeSampleHeaderExpansion(source,original)});
   // Abstracts or bibliography without their own template region still belong
   // to this manuscript. Insert them at the recognized body boundary, never at

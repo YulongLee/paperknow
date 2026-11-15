@@ -161,6 +161,8 @@ async function inspectTemplate(bytes,{includeBytes=false,requireStatic=false}={}
  const referenceMinimum=specification.match(/(?:文献|资料)[^\n。]{0,45}?(\d{1,2})\s*种以上/),foreignMinimum=specification.match(/至少(?:有)?\s*(\d{1,2})\s*篇外文/);
  result.submission={...(referenceMinimum?{minimumReferences:Number(referenceMinimum[1])}:{}),...(foreignMinimum?{minimumForeignReferences:Number(foreignMinimum[1])}:{})};
  if(/(?:采用|使用|编排)[^\n。]{0,20}三线表/.test(specification))rules.tableFormat='threeLine';
+ if(/参考文献(?:表)?[^\n。]{0,40}另起页/.test(specification))rules.referencesStartNewPage=true;
+ if(/关键词与摘要之间空一行/.test(specification))rules.abstractKeywordsBlankLine=true;
  if(/页码从正文开始编排/.test(specification)&&/页码内容为[^\n。]{0,30}第\s*X\s*页/.test(specification))rules.bodyPageNumbers=true;
  result.submission.requiredCoverFields=[...(/学\s*号[:：]/.test(specification)?['studentId']:[]),...(/学\s*院/.test(specification)?['college']:[]),...(/××××[^\n]{0,80}届/.test(specification)?['graduationYear']:[]),...(/二[○〇]××年×月/.test(specification)?['completionDate']:[])];
  if(sections.length>1)warnings.push(preserve?'导出保留模板的多个分节及页面设置，请核对分节页码和页眉页脚。':pages.some(value=>JSON.stringify(value)!==JSON.stringify(pages.at(-1)))?'模板包含不同页面设置的多个分节，本次规则采用最后一节；封面、横向页及其他分节需人工核对。':'模板包含多个分节，规则采用最后一节，分节页码与页眉页脚需人工核对。');

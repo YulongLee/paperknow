@@ -124,7 +124,12 @@ export function thesisDocumentPresentation(snapshot={},chapters=[],{title=snapsh
  };
  const referenceNumbers=new Map(bibliographyModel.references.map(row=>[row.id,row.number]));
  for(const alias of bibliographyModel.sourceAliases||[])if(referenceNumbers.has(alias.parent))referenceNumbers.set(alias.id,referenceNumbers.get(alias.parent));
- const semanticBody=text=>{const raw=String(text),citationRanges=[];let value='',cursor=0;for(const match of raw.matchAll(/\[source:([^\]]+)\]/g)){value+=raw.slice(cursor,match.index);const label=render(match[0]),start=value.length;value+=label;if(referenceNumbers.has(match[1]))citationRanges.push({start,end:value.length,number:referenceNumbers.get(match[1])});cursor=match.index+match[0].length;}value+=raw.slice(cursor);return {text:value,citationRanges};};
+ const semanticBody=text=>{const raw=String(text),citationRanges=[];let value='',cursor=0,previousNumber=null;for(const match of raw.matchAll(/\[source:([^\]]+)\]/g)){const gap=raw.slice(cursor,match.index),number=referenceNumbers.get(match[1]);
+  // A parent reference and its explicitly linked excerpt can occur together
+  // in source text. They resolve to one bibliography entry; present adjacent
+  // identical references once, without touching the stored evidence markers.
+  if(number!==undefined&&number===previousNumber&&/^[ \t]*$/.test(gap)){cursor=match.index+match[0].length;continue;}
+  value+=gap;const label=render(match[0]),start=value.length;value+=label;if(number!==undefined)citationRanges.push({start,end:value.length,number});previousNumber=number??null;cursor=match.index+match[0].length;}value+=raw.slice(cursor);return {text:value,citationRanges};};
  const renderChapter=row=>{const title=String(row.title||'');let text=stripThesisOwnedHeadings(row.text,[title]);if(thesisFrontMatterKind(row)==='abstract_en')text=text.replace(/^(?:英文题目|English title)\s*[:：].*\n*/im,'');return [title,semanticBody(text)];};
  const manuscript=rows.filter(row=>!isOutlineReferenceChapter(row)),isAcknowledgements=row=>/^(?:致谢|acknowledg(?:e)?ments?)$/i.test(String(row.title||'').replace(/\s/g,'')),front=manuscript.filter(thesisFrontMatterKind).flatMap(renderChapter),body=manuscript.filter(row=>!thesisFrontMatterKind(row)&&!isAcknowledgements(row)).flatMap(renderChapter),acknowledgements=manuscript.filter(isAcknowledgements).flatMap(renderChapter);
  // The original bibliography may be an earlier but equivalent GB/T spelling

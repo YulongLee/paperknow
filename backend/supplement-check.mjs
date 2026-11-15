@@ -311,6 +311,10 @@ export async function runSupplementCheck({snapshot={},chapters=[],docxObjects=[]
  // Independent batches can each encounter transient failures; keep recovery
  // finite and within the original dispatch/cost/token reservation ceilings.
  const pendingBatches=batches.map((batch,index)=>({batch,key:String(index+1)}));let automaticRetries=0,crossTableIndex=null;const maxRecoveries=Math.min(8,Math.max(2,batches.length+1));
+ // A retry of an unchanged batch must not pay for already verified excerpts
+ // again. The cache is scoped to this single run and exact authorized task;
+ // a changed excerpt, manuscript, account or cancellation cannot reuse it.
+ const citationExcerptCache=new Map();
  while(pendingBatches.length){
   const {batch,key,retries=0}=pendingBatches.shift();
   const section={title:batch.map(row=>row.title).join('、')};
@@ -371,7 +375,9 @@ export async function runSupplementCheck({snapshot={},chapters=[],docxObjects=[]
   try{const citationRows=[];
    if(splitCitations){const scopedMaterials=task.materials.map(material=>({...material,totalCharacters:(sources.find(source=>source.id===material.id)?.text||'').length})),slices=citationExcerptBatches(batch,scopedMaterials);for(const [index,slice] of slices.entries()){
     await active();const validator=result=>{try{validateCitationExcerptBatch(slice,result);return{valid:true};}catch{return{valid:false,feedback:{code:'supplement_evidence',rule:'逐项返回本批 chapters 中的 id，状态只能为 located 或 unavailable。located 的 quote 必须逐字来自对应的授权来源或实际读取范围；未找到时返回 unavailable，不能代用其他来源。'}};}};
-    const citationOutput=await dispatch({task:slice.task,settings:{...runtime,maxTurns:Math.min(6,runtime.maxTurns||3),maxOutputTokens:outputLimit,timeoutMs:Math.min(recover?180000:90000,runtime.timeoutMs||60000)},validateReviewOutput:validator,unitId:'supplement-'+phase+'::'+key+'.citations.'+(index+1),signal});await active();citationRows.push(...validateCitationExcerptBatch(slice,citationOutput));
+    const cacheKey=JSON.stringify({task:slice.task,pairs:slice.pairs}),cached=citationExcerptCache.get(cacheKey);
+    if(cached){citationRows.push(...cached);continue;}
+    const citationOutput=await dispatch({task:slice.task,settings:{...runtime,maxTurns:Math.min(6,runtime.maxTurns||3),maxOutputTokens:outputLimit,timeoutMs:Math.min(recover?180000:90000,runtime.timeoutMs||60000)},validateReviewOutput:validator,unitId:'supplement-'+phase+'::'+key+'.citations.'+(index+1),signal});await active();const verified=validateCitationExcerptBatch(slice,citationOutput);if(verified.every(row=>row.status==='located'))citationExcerptCache.set(cacheKey,verified);citationRows.push(...verified);
    }
     citationClaimContext=citationClaimReview(batch,citationRows);task.context.citationClaimReview=citationClaimContext;
     task.instructions+='citationClaimReview.sources 是各来源实际可用的候选摘录，claims 标出本批正文所有引用位置；逐个定位当前章节 text 的 offset，核对每处论断与对应来源摘录是否相符。每项增加 citationAssessments:[{id,status}]，逐项覆盖本章节 claims，每个 ID 恰好一次；status 只能是 supported、unsupported、uncertain。来源 unavailable、摘录不相关、缺失或不能判断时不得标 supported，须将该章标 missing 并描述具体缺项；其他研究事实、图表、公式和引文仍独立检查。候选摘录不代表事实真实，也不代表全文已读取。';

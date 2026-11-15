@@ -105,7 +105,11 @@ export function createWritingQualityRunner(config={}){
    if(JSON.stringify(task.context).length>39000){partial=true;quality.reviews.push({unitId,status:'unavailable',sectionIds,reasonCode:'context_limit',reason:publicReason.unavailable,findings:[],checkedSections:0});continue;}
    const validateReviewOutput=candidate=>{try{parseWritingReview(candidate,task);return {valid:true};}catch(error){return {valid:false,feedback:{code:'review_grounding',rule:reviewValidationRule(candidate,task,error)}};}};
    try{
-    const settings={...runtime,maxTurns:Math.min(4,bounded(runtime.maxTurns,3,1,12)),maxOutputTokens:Math.min(4096,bounded(runtime.maxOutputTokens,2048,32,16384)),timeoutMs:Math.min(90000,bounded(runtime.timeoutMs,60000,5000,300000))};
+    // A full thesis completion includes citation and cross-chapter context;
+    // allow the configured request window instead of aborting it at 90s.
+    // The dispatcher still enforces the existing cost and token limits.
+    const timeoutCap=kind==='thesis'&&recoverSupplements?180000:90000;
+    const settings={...runtime,maxTurns:Math.min(4,bounded(runtime.maxTurns,3,1,12)),maxOutputTokens:Math.min(4096,bounded(runtime.maxOutputTokens,2048,32,16384)),timeoutMs:Math.min(timeoutCap,bounded(runtime.timeoutMs,60000,5000,300000))};
     // Dispatch owns model-budget accounting and may write task state in its
     // finally path. Cancellation must await that cleanup before worker.stop()
     // can finish or its database can close; never race this owned operation.

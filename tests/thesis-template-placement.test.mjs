@@ -36,6 +36,18 @@ test('recognized exports replace samples in place, retain package furniture and 
  for(const path of ['word/header1.xml','word/footer1.xml','word/media/school-logo.png'])assert.deepEqual(await result.zip.file(path).async('uint8array'),await before.file(path).async('uint8array'),path);
  assert.ok(!result.zip.file('word/pk-footer.xml'),'school template must not become a generic new package');assert.deepEqual(source,original);assert.equal(result.document.getElementsByTagNameNS(W,'tbl').length,2,'cover table plus generated table; sample appendix table removed');
 });
+test('explicit school requirement starts the actual bibliography on a new page',async()=>{
+ const source=await fixture({prefix:text('参考文献表应置于正文后，并另起页。')}),result=await output(source),headings=paragraphRows(result.document).filter(row=>row.text==='参考文献'&&row.style==='SchoolH1');
+ assert.equal(headings.length,1);const breaks=headings[0].node.getElementsByTagNameNS(W,'pageBreakBefore');assert.equal(breaks.length,1);assert.notEqual(breaks[0].getAttributeNS(W,'val'),'0');
+});
+test('explicit school requirement gives keywords one blank line without changing their text',async()=>{
+ const input='合成论文题目\n摘要\n这是中文摘要正文。\n\n关键词：算例，公式，方法\nAbstract\nThis is the abstract.\n\nKey words: example, formula, method\n第一章 真实新绪论\n这是正文内容。\n参考文献\n[1] 示例文献。';
+ const required=await output(await fixture({prefix:text('关键词与摘要之间空一行。关键词之间用逗号分开。')}),input),ordinary=await output(await fixture(),input);
+ const keywords=paragraphRows(required.document).filter(row=>/^(?:关键词|key\s*words?)\s*[:：]/iu.test(row.text.trim()));assert.equal(keywords.length,2);
+ for(const row of keywords){const spacing=row.node.getElementsByTagNameNS(W,'spacing')[0];assert.ok(Number(spacing?.getAttributeNS(W,'before'))>0);}
+ assert.ok(keywords.some(row=>row.text.includes('算例，公式，方法')));assert.ok(keywords.some(row=>row.text.includes('example, formula, method')));
+ const normal=paragraphRows(ordinary.document).find(row=>row.text.startsWith('关键词'));assert.notEqual(normal?.node.getElementsByTagNameNS(W,'spacing')[0]?.getAttributeNS(W,'before'),'360');
+});
 test('generated paragraphs use actual school style IDs, preserve paragraph detail and suppress duplicate automatic heading numbers',async()=>{
  const result=await output(await fixture()),rows=paragraphRows(result.document),body=rows.find(row=>row.text.startsWith('这是新的合成正文段落')),heading=rows.find(row=>row.text==='第一章 真实新绪论'&&row.style==='SchoolH1');assert.equal(body.style,'SchoolBody');assert.equal(body.node.getElementsByTagNameNS(W,'pBdr').length,1);assert.equal(body.node.getElementsByTagNameNS(W,'tabs').length,1);assert.ok(heading);assert.equal(heading.node.getElementsByTagNameNS(W,'numId')[0]?.getAttributeNS(W,'val'),'0');assert.ok(rows.some(row=>row.text==='1.1 新的研究问题'&&row.style==='SchoolH2'));assert.ok(rows.some(row=>row.text==='1.1.1 新的研究细节'&&row.style==='SchoolH3'));
 });
@@ -143,6 +155,11 @@ test('tables in different retained chapter sections fit their respective origina
 test('multi-run school cover fields fill provided major and primary supervisor without guessing secondary fields or dates',async()=>{
  const zip=await JSZip.loadAsync(await fixture()),source=await zip.file('word/document.xml').async('string'),cover='<w:p><w:r><w:t>学    院  </w:t></w:r><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t>（宋体 四号 粗体）</w:t></w:r><w:r><w:t> 专业班级 </w:t></w:r><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t>（宋体 四号 粗体）</w:t></w:r></w:p>'+text('校内指导教师 （宋体 四号 粗体）专业技术职务 （宋体 四号 粗体）')+text('校外指导老师 （宋体 四号 粗体）专业技术职务 （宋体 四号 粗体）')+text('二○××年×月（居中 宋体 四号 粗体）')+text('作者签名：____ 日期：____');zip.file('word/document.xml',source.replace('合成学校封面 {{作者}}</w:t></w:r></w:p>','合成学校封面 {{作者}}</w:t></w:r></w:p>'+cover));
  const bytes=await createWritingDocx(paper,{documentKind:'thesis',metadata:{title:'合成论文题目',author:'真实作者',major:'计算机科学与技术',supervisor:'实际提供导师'},template:{status:'ready',bytes:await zip.generateAsync({type:'uint8array'})}}),result=await JSZip.loadAsync(bytes),document=parse(await result.file('word/document.xml').async('string')),rows=paragraphRows(document),content=rows.map(row=>row.text).join('\n');assert.match(content,/专业班级 计算机科学与技术/);assert.match(content,/校内指导教师 实际提供导师\s+专业技术职务/);assert.match(content,/校外指导老师\s+专业技术职务/);assert.doesNotMatch(content,/校外指导老师\s*实际提供导师/);assert.match(content,/二○××年×月/);assert.match(content,/作者签名：____ 日期：____/);assert.doesNotMatch(content,/宋体 四号 粗体/);assert.equal(rows.find(row=>row.text.includes('专业班级')).node.getElementsByTagNameNS(W,'u').length,2,'source underline runs remain intact');
+});
+test('cover field replacement preserves separating spaces when Word renders individual runs',async()=>{
+ const zip=await JSZip.loadAsync(await fixture()),source=await zip.file('word/document.xml').async('string'),cover='<w:p><w:r><w:t xml:space="preserve">校内指导教师 </w:t></w:r><w:r><w:t>（宋体 四号）</w:t></w:r><w:r><w:t xml:space="preserve">专业技术职务 </w:t></w:r></w:p>';zip.file('word/document.xml',source.replace('合成学校封面 {{作者}}</w:t></w:r></w:p>','合成学校封面 {{作者}}</w:t></w:r></w:p>'+cover));
+ const bytes=await createWritingDocx(paper,{documentKind:'thesis',metadata:{title:'合成论文题目',supervisor:'测试教师'},template:{status:'ready',bytes:await zip.generateAsync({type:'uint8array'})}}),result=await JSZip.loadAsync(bytes),doc=parse(await result.file('word/document.xml').async('string')),row=paragraphRows(doc).find(item=>item.text.includes('校内指导教师'));
+ const run=[...row.node.getElementsByTagNameNS(W,'t')].find(node=>node.textContent.includes('测试教师'));assert.match(run.textContent,/测试教师\s+$/);assert.equal(run.getAttributeNS('http://www.w3.org/XML/1998/namespace','space'),'preserve');
 });
 
 test('school header/footer typography instructions are removed without removing institutional or research parentheses',async()=>{
