@@ -61,7 +61,7 @@ else
     --property="ReadWritePaths=$BUILD_DIR $BUILD_HOME" \
     /usr/bin/env -i HOME="$BUILD_HOME" PATH="$RUNTIME:/usr/bin:/bin" \
     npm_config_cache="$BUILD_HOME/npm-cache" NODE_ENV=development \
-    /bin/bash -c 'npm ci --no-audit --no-fund && npm run build && npm run check && npm test && npm prune --omit=dev --no-audit --no-fund && printf "%s\n" "$1" > .paperknow-build-success' paperknow-build "$SHA"
+    /bin/bash -c 'NODE_OPTIONS=--max-old-space-size=384 npm ci --no-audit --no-fund && npm run build && npm run check && npm test && npm prune --omit=dev --no-audit --no-fund && printf "%s\n" "$1" > .paperknow-build-success' paperknow-build "$SHA"
   BUILD_UNIT=
   require_build_success "$BUILD_DIR"
   [[ ! -e "$BUILD_DIR/.env" && ! -L "$BUILD_DIR/.env" && ! -e "$BUILD_DIR/.data" ]] || die 'Build unexpectedly created local configuration or data.'
