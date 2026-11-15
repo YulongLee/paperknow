@@ -210,3 +210,7 @@ test('a user with insufficient credits can open their existing identical AI task
 test('insufficient credits and changed AI text cannot create a free new task',async()=>{
  const f=fixture((url)=>url==='/api/aigc-detections/reuse'?response({item:null}):null,{quoteError:true});try{await f.panel.ready;f.input('这是不同的测试正文');f.$('[data-aigc-start]').click();await settle();assert.match(f.$('[data-aigc-status]').textContent,/积分或对应权益不足/);assert.equal(f.calls.filter(c=>c.url==='/api/aigc-detections'&&c.body).length,0);}finally{f.close();}
 });
+
+test('AI detection discloses that its estimate is not a verified generation percentage before submission',async()=>{
+ const f=fixture();try{await f.panel.ready;const text=f.$('.aigc-detection-boundary').textContent;assert.match(text,/不代表真实 AI 生成比例/);assert.match(text,/可能存在误判/);assert.match(text,/不替代学校或机构指定/);assert.equal(f.calls.some(call=>call.body?.text),false);}finally{f.close();}
+});

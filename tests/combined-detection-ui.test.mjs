@@ -24,6 +24,7 @@ async function setup(t,{recent=null,quoteError=false}={}){
 }
 test('joint detection imports once, shows real tariff and stable progress, and opens both completed reports',async t=>{
  const f=await setup(t);assert.match(f.root.textContent,/149/);assert.match(f.root.textContent,/本次消耗 149 积分/);assert.equal(f.root.querySelector('input[type=checkbox]'),null);
+ const boundary=f.root.querySelector('[data-detection-boundary]');assert.match(boundary.textContent,/公开网页文字/);assert.match(boundary.textContent,/不覆盖学校封闭或付费数据库/);assert.match(boundary.textContent,/不代表真实 AI 生成比例/);assert.match(boundary.textContent,/不替代学校或机构指定/);assert.ok(boundary.compareDocumentPosition(f.root.querySelector('[data-joint-start]')) & f.w.Node.DOCUMENT_POSITION_FOLLOWING);
  await f.upload();assert.equal(f.calls.filter(c=>c.body?.text).length,0);f.root.querySelector('[data-joint-start]').click();await until(()=>f.root.querySelector('[data-detection-progress]'));
  const progress=f.root.querySelector('[data-detection-progress]');await new Promise(r=>setTimeout(r,40));assert.equal(f.root.querySelector('[data-detection-progress]'),progress);assert.equal(f.calls.filter(c=>c.body?.text).length,1);
  f.complete();await until(()=>f.root.querySelectorAll('[data-joint-result] a').length===2);assert.equal(f.root.querySelector('[data-detection-progress]'),null);

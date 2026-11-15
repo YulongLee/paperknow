@@ -1,5 +1,6 @@
 import {paragraphAigcParts,MAX_AIGC_PARTS,MAX_AIGC_PARAGRAPHS,AIGC_PARAGRAPH_VERSION} from '../reports/aigc-partitions.mjs';
-export const AIGC_NOTICE='本报告展示本次文本的 AI 生成特征与疑似片段占比。分段标签不能证明文字来源，结果不替代学校指定的检测报告。';
+import {AIGC_BOUNDARY} from './detection-boundary.mjs';
+export const AIGC_NOTICE='本报告展示本次文本的 AI 生成特征与疑似片段占比。'+AIGC_BOUNDARY;
 const safeLimit=(value,fallback)=>Number.isInteger(value)&&value>0?value:fallback;
 export function aigcLimits(cap={}){return {maxCharacters:safeLimit(cap.maxCharacters,50000),maxPartCharacters:safeLimit(cap.maxPartCharacters,5000),maxParagraphs:safeLimit(cap.maxParagraphs,MAX_AIGC_PARAGRAPHS),userDailyCharacters:safeLimit(cap.userDailyCharacters,100000),userDailyLimit:safeLimit(cap.userDailyLimit,10)};}
 export function validateAigcText(input,cap={}){const text=String(input??''),limits=aigcLimits(cap),characters=Array.from(text).length;if(!text.trim())throw Error('请先粘贴或导入需要鉴别的正文。');if(characters>limits.maxCharacters)throw Error(`正文超过 ${limits.maxCharacters.toLocaleString('en-US')} 字符，请分章节提交；不会自动截断。`);const {parts,paragraphs}=paragraphAigcParts(text,limits.maxPartCharacters,limits.maxParagraphs);return {text,characters,partCount:parts.length,paragraphs};}

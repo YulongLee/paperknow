@@ -130,3 +130,7 @@ test('an identical existing report stays accessible when the user cannot afford 
 test('insufficient credits and unmatched similarity text cannot create a free new task',async()=>{
  const f=fixture(url=>url==='/api/web-similarity/reuse'?response({item:null}):null,{quoteError:true});try{await f.panel.ready;await f.input(text);f.$('[data-web-start]').click();await settle();assert.match(f.$('[data-web-status]').textContent,/积分或对应权益不足/);assert.equal(f.calls.filter(c=>c.url==='/api/web-similarity'&&c.body).length,0);}finally{f.close();}
 });
+
+test('similarity coverage is visible before submitting a paid detection',async()=>{
+ const f=fixture();try{await f.panel.ready;const boundary=f.$('[data-detection-boundary]');assert.ok(boundary);assert.match(boundary.textContent,/公开网页文字/);assert.match(boundary.textContent,/不覆盖学校封闭或付费数据库/);assert.match(boundary.textContent,/不替代学校或机构指定/);assert.ok(boundary.compareDocumentPosition(f.$('[data-web-start]')) & f.dom.window.Node.DOCUMENT_POSITION_FOLLOWING);assert.equal(f.calls.some(call=>call.body?.text),false);}finally{f.close();}
+});
