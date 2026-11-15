@@ -112,7 +112,7 @@ sudo /opt/paperknow/bin/release.sh
 
 脚本拉取 `origin/main`，要求新提交是当前版本的后代。**如果 GitHub 分支比线上代码旧，脚本会拒绝发布，避免把功能退回旧版本。** 相同提交只做健康检查，不重建、不重启。
 
-每次发布在独立临时目录执行 `npm ci`、构建、语法检查和完整测试，再移除开发依赖。依赖安装阶段的 Node 堆限制为 384 MiB，避免构建进程因内存回收长时间停滞；构建单元的整体资源限制保持不变。只复用 npm 下载缓存，不复用 `node_modules`，不改变已运行版本。完成后写入 `/opt/paperknow/releases/<完整SHA>`，由 root 持有；原子切换 `current` 并只重启 `paperknow.service`。成功需要服务主进程确实运行于目标版本，且本机能力接口返回正常。
+每次发布在独立临时目录执行 `npm ci`、构建、语法检查、后端与代理限流测试，再移除开发依赖。只复用 npm 下载缓存，不复用 `node_modules`，不改变已运行版本。完成后写入 `/opt/paperknow/releases/<完整SHA>`，由 root 持有；原子切换 `current` 并只重启 `paperknow.service`。成功需要服务主进程确实运行于目标版本，且本机能力接口返回正常。
 
 ### GitHub 尚未包含本地最新提交时
 
