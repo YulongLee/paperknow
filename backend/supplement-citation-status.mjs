@@ -18,7 +18,8 @@ export function supplementCitationStatus(snapshot,boundVerification,citedIds){
    const actual=arxiv(record.identifier),candidates=[ref.arxivId,ref.url,ref.doi].map(arxiv).filter(x=>/^(?:\d{4}\.\d{4,5}|[a-z][a-z.\-]*\/\d{7})$/i.test(x));
    if(!actual||!candidates.includes(actual))continue;identifier='arxiv';
   }else if(['crossref','openalex'].includes(item.provider)&&wantedDoi&&wantedDoi===recordDoi)identifier='doi';else continue;
-  out.push({sourceId:id,identifier,doiProvided:!!wantedDoi,doiStatus:wantedDoi&&recordDoi===wantedDoi?'matched':'not_checked',fields:Object.fromEntries(['title','year','authors'].filter(k=>['matched','conflict','not_checked','not_provided'].includes(item.fieldChecks?.[k])).map(k=>[k,item.fieldChecks[k]])),documentType:/^(?:EB\/OL|EB|webpage)$/i.test(String(ref.documentType||'').trim())?'electronic_document':null});
+  const type=String(ref.documentType||'').trim();
+  out.push({sourceId:id,identifier,doiProvided:!!wantedDoi,doiStatus:!wantedDoi?'not_provided':recordDoi===wantedDoi?'matched':'not_checked',fields:Object.fromEntries(['title','year','authors'].filter(k=>['matched','conflict','not_checked','not_provided'].includes(item.fieldChecks?.[k])).map(k=>[k,item.fieldChecks[k]])),documentType:/^(?:EB\/OL|EB|webpage)$/i.test(type)?'electronic_document':/^(?:preprint|PP|PP\/OL)$/i.test(type)?'preprint':null});
   if(out.length===20)break;
  }
  return out;

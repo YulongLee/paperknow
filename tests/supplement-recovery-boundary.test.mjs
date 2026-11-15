@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {runSupplementCheck} from '../backend/supplement-check.mjs';
 const snapshot={title:'隔离合成研究',profile:{},requirements:{},materials:[],references:[]};
 const runtime={maxOutputTokens:4096,maxTurns:6,timeoutMs:30000};
-const answer=task=>({text:JSON.stringify({items:task.context.chapters.map(c=>({id:c.id,status:'not_required',requirement:'核对',reason:'没有外部事实',manuscriptQuote:c.text.slice(0,Math.min(80,c.text.length)),evidence:[],missing:[],checkedFigureIds:(c.figures||[]).map(f=>f.id)}))})});
+const answer=task=>({text:JSON.stringify({items:task.context.chapters.map(c=>({id:c.id,status:'not_required',requirement:'核对',reason:'没有外部事实',manuscriptQuote:c.text.slice(0,Math.min(80,c.text.length)),evidence:[...new Set([...c.text.matchAll(/\[source:([^\]]+)\]/gu)].map(match=>match[1]))].map(id=>({sourceId:id,quote:task.context.evidence.find(row=>row.id===id).text})),missing:[],checkedFigureIds:(c.figures||[]).map(f=>f.id)}))})});
 test('independent batch failures recover within a bounded budget and retain checked chapters',async()=>{
  const chapters=Array.from({length:6},(_,i)=>({id:'c'+i,title:'章节'+i,text:'本节为理论介绍。'.repeat(500)})),seen=[],failed=new Set();
  const report=await runSupplementCheck({snapshot,chapters,kind:'thesis',recover:true,runtime,dispatch:async({task,unitId})=>{seen.push(unitId);if((unitId.endsWith('::1')||unitId.endsWith('::3'))&&!failed.has(unitId)){failed.add(unitId);throw Object.assign(Error('test timeout'),{status:504,code:'timeout'});}return answer(task);}});
@@ -11,7 +11,7 @@ test('independent batch failures recover within a bounded budget and retain chec
 });
 test('a truncated long section is split safely without skipping citation or text',async()=>{
  const content='首段说明。'.repeat(600)+'关键发现。[source:record]'+'另一段说明。'.repeat(600),source={id:'record',name:'记录',text:'关键发现来自记录。',confirmed:true},parts=[];
- const report=await runSupplementCheck({snapshot:{...snapshot,materials:[source]},chapters:[{id:'c',title:'长节',text:content}],kind:'thesis',recover:true,runtime,dispatch:async({task,unitId})=>{if(!unitId.includes('.part'))throw Object.assign(Error('synthetic truncation'),{status:502,code:'truncated'});parts.push(task.context.chapters[0].text);return answer(task);}});
+ const report=await runSupplementCheck({snapshot:{...snapshot,materials:[source]},chapters:[{id:'c',title:'长节',text:content}],kind:'thesis',recover:true,runtime,dispatch:async({task,unitId})=>{if(!unitId.includes('.part'))throw Object.assign(Error('synthetic truncation'),{status:502,code:'truncated'});parts.push(task.context.chapters[0].text);if(task.context.chapters[0].text.includes('[source:record]'))return {text:JSON.stringify({items:task.context.chapters.map(c=>({id:c.id,status:'sufficient',requirement:'核对引用',reason:'有资料依据',manuscriptQuote:c.text.slice(0,80),evidence:[{sourceId:'record',quote:'关键发现来自记录。'}],missing:[],checkedFigureIds:[]}))})};return answer(task);}});
  assert.equal(report.status,'final_ready');assert.ok(parts.length>=2);assert.equal(parts.join(''),content);assert.ok(parts.some(part=>part.includes('关键发现。[source:record]')));assert.equal(report.coverage.checked,report.coverage.total);assert.equal(report.recovery.automaticRetries,1);
 });
 test('an indivisible cited sentence cannot be counted as checked after repeated failure',async()=>{

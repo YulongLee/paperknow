@@ -75,6 +75,13 @@ test('thesis source correction records only the actual authorized range, without
  const record=checkedTrace.find(row=>row.tool==='read_material');assert.equal(record.offset,3);assert.equal(record.limit,4);assert.equal(record.materialId,'allowed');assert.ok(!JSON.stringify(record).includes('defg'));
 });
 
+test('ordinary thesis completion records the precise read range without copying source text',async t=>{
+ const {settings}=fixture(t);settings.save('admin',valid);let checkedTrace;
+ const task={skill:'thesis-section',instructions:'Read the authorized scope',context:{},materials:[{id:'allowed',name:'source',text:'abcdefghij'}]};
+ await assert.rejects(()=>runAgentTask({settings:settings.get(),task,validateThesisOutput:async result=>{checkedTrace=result.trace;return {valid:true};},dependencies:{lookup,query:({options})=>(async function*(){const tools=options.mcpServers.paperknow.instance._registeredTools;await tools.read_material.handler({id:'allowed',offset:3,limit:4});await tools.submit_writing_output.handler({candidate:{complete:true}});yield success;})()}}),/真实用量/);
+ const record=checkedTrace.find(row=>row.tool==='read_material');assert.deepEqual(record,{tool:'read_material',status:'completed',materialId:'allowed',offset:3,limit:4});assert.ok(!JSON.stringify(record).includes('defg'));
+});
+
 test('rejected revision exposes only bounded diagnostics in the runtime trace',async t=>{
  const {settings}=fixture(t);settings.save('admin',valid);
  const privateText='private-manuscript-do-not-log';

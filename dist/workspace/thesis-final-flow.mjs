@@ -6,7 +6,7 @@ export const finalWritingSteps=[['source','准备初稿','使用当前初稿或�
 export function finalWritingState(item,{dirty=false,completionRunId=null}={}){
  const hasDraft=!!item&&thesisHasDraft(item),draftActive=draftGenerationActive(item,completionRunId),active=['queued','running','cancelling'].includes(item?.job?.status)||['queued','running','cancelling'].includes(item?.status),review=item?.completionReview;
  const current=hasDraft&&!draftActive&&!active&&!dirty&&!review?.basisChanged&&!review?.suggestions?.length;
- const ready=current&&review?.status==='ready',confirmed=current&&(review?.status==='confirmed'||!review?.required&&supplementCheckReady(item?.quality));
+ const ready=current&&review?.status==='ready',confirmed=current&&(review?.status==='confirmed'||!review?.required&&supplementCheckReady(item?.quality,{requireCitationCoverage:true}));
  return {hasDraft,draftActive,active,ready,confirmed,canProceed:hasDraft&&!draftActive,recommended:!hasDraft||draftActive?'source':ready||confirmed?'review':'prepare'};
 }
 export function finalWritingStepsHTML(){

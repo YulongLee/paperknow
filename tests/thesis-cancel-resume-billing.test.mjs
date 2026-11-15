@@ -5,6 +5,7 @@ import {database} from '../backend/database.mjs';
 import {createBillingService,billingServiceTypes} from '../backend/billing-service.mjs';
 import {createThesisService} from '../backend/thesis-service.mjs';
 import {startThesisWorker} from '../backend/thesis-worker.mjs';
+import {publicAIResponse} from '../backend/public-ai-metadata.mjs';
 
 const settings={enabled:true,engine:'claude-agent-sdk',baseURL:'https://fixture.example.invalid',model:'fixture',apiKey:'synthetic-only',version:'attempt-race-fixture',maxTurns:12,maxOutputTokens:4096,maxCostUsd:.5,timeoutMs:30000};
 const snapshot={title:'合成验收：论文取消与恢复',profile:{level:'本科',language:'中文',targetWords:500},materials:[],references:[],outline:[{id:'a',title:'研究背景',targetWords:250},{id:'b',title:'研究设计',targetWords:250}]};
@@ -31,6 +32,18 @@ function fixture(t,{quality=false,runner}={}){
  t.after(async()=>{for(const request of requests)request.reject(Object.assign(new Error('fixture cleanup'),{code:'cancelled',status:499}));for(const worker of workers)await worker.stop();db.close();});
  return {db,user,config,billing,api,get,create,submit,resume,start,hold,holds,state};
 }
+
+test('cost protection preserves checkpoints, releases failed hold and resumes with one successful charge',async t=>{
+ let calls=0;
+ const f=fixture(t,{runner:args=>{calls++;if(calls===2)throw Object.assign(Error('synthetic cost cap'),{status:429,code:'cost_budget',usage:{input:100,output:30},costUsd:.533608});return section(args.task);}});
+ const item=await f.submit(await f.create()),worker=f.start();await worker.tick();
+ const failed=f.get(item.id),before=f.state(item.id,item.job.id);
+ assert.equal(failed.status,'failed');assert.match(failed.job.error,/已保留处理进度/);assert.match(failed.job.error,/本次未扣积分或套餐次数/);assert.doesNotMatch(failed.job.error,/章节已保存/);
+ const published=publicAIResponse('/api/theses/'+item.id,{item:failed},{identityValues:['fixture']});assert.match(published.item.job.error,/已保留处理进度/);assert.match(published.item.job.error,/本次未扣积分或套餐次数/);
+ assert.equal(before.checkpoints.filter(row=>row.status==='completed').length,1);assert.deepEqual(f.holds(item.job.id),[{attempt:1,status:'released',credits:10}]);assert.equal(f.billing.balance(f.user.id).balance,200);
+ const resumed=await f.submit(failed,'resume');assert.equal(resumed.job.attempt,2);await worker.tick();
+ assert.equal(f.get(item.id).status,'completed');assert.equal(calls,3,'resume must reuse the first completed checkpoint');assert.deepEqual(f.holds(item.job.id),[{attempt:1,status:'released',credits:10},{attempt:2,status:'settled',credits:10}]);assert.equal(f.billing.balance(f.user.id).balance,190);
+});
 
 for(const outcome of ['reject','success'])test('a late section '+outcome+' cannot mutate a newly queued resume or release its new credit hold',async t=>{
  let entered;const ready=new Promise(resolve=>entered=resolve);let old;

@@ -2,10 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {supplementReadHints,runSupplementCheck,supplementCheckTask,parseSupplementCheck} from '../backend/supplement-check.mjs';
 
+test('exact decimal matches locate source text without inferring rounded or unprovided values',()=>{
+ const text='背景说明。'.repeat(400)+'对照数据 0.330238、0.669762。',hints=supplementReadHints(text,[{text:'对照输出为 (0.330238, 0.669762)。'}]);assert.ok(hints.some(row=>row.term==='0.330238'));assert.ok(hints.some(row=>row.term==='0.669762'));assert.ok(!hints.some(row=>row.term==='0.669761'));
+});
+test('numeric-format guidance preserves real missing evidence and does not turn estimates into observations',async()=>{
+ const snapshot={materials:[{id:'m',name:'作者数据',text:'对照条件仅用于模拟，结果分别为 0.330238、0.669762。',confirmed:true}],references:[]},chapters=[{id:'c',title:'结果',text:'输出为 (0.330238, 0.669762)。'}];
+ const report=await runSupplementCheck({snapshot,chapters,kind:'thesis',phase:'final',runtime:{maxOutputTokens:2048},dispatch:async({task})=>{assert.match(task.instructions,/不同条件、数值不一致或缺真实记录时仍须保留具体缺项/);assert.match(task.instructions,/不能用模拟数据或推算冒充真实实验记录/);const row=task.context.chapters[0];return{text:JSON.stringify({items:[{id:row.id,status:'missing',requirement:'真实实验',reason:'实际观察尚无依据。',manuscriptQuote:row.text,evidence:[{sourceId:'m',quote:snapshot.materials[0].text}],missing:['真实实验记录'],checkedFigureIds:[]}]})};}});assert.equal(report.status,'needs_materials');assert.ok(report.items[0].missing.includes('真实实验记录'));
+});
+
+test('two independent reference fragments never authenticate a fabricated cross-boundary quote',()=>{
+ const chapter={id:'check-0-0',title:'背景',text:'这里是一句需要证据支持的完整论断。'},materials=[{id:'s1',name:'第一段',text:'甲段独立原文结束',relatedReferenceId:'r',sourceLabel:'作者提供，未独立核验'},{id:'s2',name:'第二段',text:'乙段独立原文开始',relatedReferenceId:'r',sourceLabel:'作者提供，未独立核验'}],task=supplementCheckTask({snapshot:{references:[{id:'r',confirmed:true}]},chapters:[chapter],materials,kind:'thesis'});
+ const candidate=quote=>({text:JSON.stringify({items:[{id:chapter.id,status:'sufficient',requirement:'核对依据',reason:'引用原文',manuscriptQuote:chapter.text,evidence:[{sourceId:'s1',quote}],missing:[]}]})});
+ assert.throws(()=>parseSupplementCheck(candidate('甲段独立原文结束乙段独立原文开始'),task));
+ assert.equal(parseSupplementCheck(candidate('甲段独立原文结束'),task)[0].evidence[0].sourceId,'s1');
+});
+
 test('an unverified linked fragment is acknowledged but cannot become the cited source',async()=>{
  const snapshot={references:[{id:'r',title:'已导入题录',confirmed:true}],materials:[{id:'m',name:'用户提供文献片段',text:'一段用户提供的片段，来源尚未核实。',relatedReferenceId:'r',confirmed:true}]};let called=false;
  const report=await runSupplementCheck({snapshot,chapters:[{id:'c',title:'背景',text:'引用某文献的论断[source:r]。'}],kind:'thesis',dispatch:async()=>{called=true;throw Error('must not dispatch');}});
  assert.equal(called,false);assert.equal(report.coverage.complete,false);assert.match(report.reason,/已保存作者提供的独立文献片段/);assert.match(report.reason,/尚未核验其文献出处/);
+});
+test('an unread parent reference is never authenticated merely by a separately linked segment',async()=>{
+ const snapshot={references:[{id:'r',title:'文献题录',text:'',confirmed:true}],materials:[{id:'seg',name:'作者提供的独立片段',text:'独立片段的实际正文。',relatedReferenceId:'r',referenceSegment:true,confirmed:true}]};let called=false;
+ const report=await runSupplementCheck({snapshot,chapters:[{id:'c',title:'背景',text:'正文仍引用父题录[source:r]。'}],kind:'thesis',dispatch:async()=>{called=true;throw Error('must not dispatch');}});
+ assert.equal(called,false);assert.equal(report.coverage.complete,false);assert.match(report.reason,/不能自动视为该引用已读取/);assert.match(report.reason,/提供原文或摘要/);
 });
 test('author-provided reference text retains its unverified provenance in the review prompt',()=>{
  const reference={id:'r',title:'论文',text:'作者提供的摘要片段。',sourceLabel:'作者提供原文或摘要，文献出处未独立核验',confirmed:true},task=supplementCheckTask({snapshot:{references:[reference]},materials:[{...reference,name:reference.title}],chapters:[]});assert.equal(task.context.evidence[0].sourceLabel,reference.sourceLabel);assert.match(task.instructions,/未经独立核验出处/);assert.match(task.instructions,/不能假定其为全文/);

@@ -4,9 +4,10 @@ import {thesisDocumentState} from './workspace-document-state.mjs';
 import {completionReview,confirmCompletionReview} from './thesis-completion-review.mjs';
 import {createWritingReferencePreparation} from './writing-reference-preparation.mjs';
 import {thesisDocxObjects} from './thesis-docx-objects.mjs';
+import {initializeThesisImageReview,confirmThesisImage} from './thesis-image-review.mjs';
 import {docxObjectIds,assertDocxObjectMarkers} from '../dist/workspace/docx-object-markers.mjs';
 import {createThesisDraftImporter} from './thesis-draft-import.mjs';
-import {recoverableThesisSimulation,completionAssessment,completionInput,thesisCompletionPlan,completionManuscriptHash,assertCompletionResumeUnchanged} from './thesis-completion.mjs';
+import {recoverableThesisSimulation,completionAssessment,completionInput,thesisCompletionPlan,completionManuscriptHash,assertCompletionResumeUnchanged,savedThesisChapters} from './thesis-completion.mjs';
 import {randomUUID} from 'node:crypto';
 import {thesisCoverFields} from '../dist/workspace/thesis-delivery.mjs';
 import {buildThesisBibliography} from '../dist/workspace/thesis-document.mjs';
@@ -40,6 +41,7 @@ export function assertThesisSettings(settings){if(!agentSettingsReady(settings))
 export function createThesisService(db,config={}){
  const referencePreparation=createWritingReferencePreparation(config),referencePreparations=new Map();
  initializeThesisSchema(db);
+ initializeThesisImageReview(db);
  const continuity=createThesisContinuity(db,config);
  const exportTemplates=createThesisExportTemplates(db,config);
  function expectedTemplate(input,row){
@@ -71,7 +73,7 @@ export function createThesisService(db,config={}){
   const plan=run?JSON.parse(run.plan):[],checkpoints=run?db.prepare('SELECT * FROM thesis_checkpoints WHERE run_id=? ORDER BY position').all(run.id):[];
   const chapters=snapshot.outline.map(chapter=>{const latest=chapterVersion(row.id,chapter.id),units=checkpoints.filter(unit=>unit.chapter_id===chapter.id),completed=units.filter(unit=>unit.status==='completed').length;return {id:chapter.id,title:chapter.title,kind:chapter.kind||'body',targetWords:chapter.targetWords,version:latest?.version||0,status:active.has(row.status)&&units.length?(completed===units.length?'completed':completed?'partial':'pending'):latest?'saved':units.some(unit=>unit.status==='failed')?'failed':'pending',text:summary?'':latest?.text||'',sourceIds:latest?JSON.parse(latest.source_ids):[],...(!summary?{figures:latest?JSON.parse(latest.figures||'[]'):[]}:{}),source:latest?.source==='generated'&&isThesisReferenceChapter(chapter)?'compiled_references':latest?.source||null,stale:Boolean(latest?.run_id&&db.prepare('SELECT snapshot_hash FROM thesis_runs WHERE id=?').get(latest.run_id)?.snapshot_hash!==row.snapshot_hash),completedSections:completed,totalSections:units.length,error:units.find(unit=>unit.error)?.error||null};});
   const item={id:row.id,version:row.version,title:row.title,projectId:row.project_id,status:row.status,profile:snapshot.profile,outline:snapshot.outline,chapters,exportTemplate:exportTemplates.stored(row),exportMetadata:JSON.parse(row.export_metadata||'{}'),createdAt:row.created_at,updatedAt:row.updated_at,billingService:'agent',requiresReview:true,job:run?{id:run.id,snapshotChanged:run.snapshot_hash!==row.snapshot_hash,status:run.status,stage:run.stage,error:run.error,attempt:run.attempt,resultId:run.result_id,completedSections:checkpoints.filter(unit=>unit.status==='completed').length,totalSections:plan.length,settingsVersion:run.settings_version,inputTokens:run.usage_known?run.input_tokens:null,outputTokens:run.usage_known?run.output_tokens:null,usageIncomplete:!run.usage_known,providerCalls:run.provider_calls,missingEvidence:checkpoints.flatMap(unit=>JSON.parse(unit.missing_evidence||'[]')),canResume:!active.has(run.status)&&run.status!=='completed'&&run.snapshot_hash===row.snapshot_hash}:null};
-  if(!summary&&config.thesisReviewOnlyEnabled===true&&reviewLifecycle){const source=paidReviewSource(row);item.recheck={enabled:true,eligible:Boolean(source&&chapters.some(chapter=>chapter.text?.trim())&&db.prepare('SELECT 1 FROM thesis_execution_budgets WHERE run_id=? AND attempt=? AND user_id=?').get(source.id,source.attempt,row.user_id))};}
+  if(!summary&&config.thesisReviewOnlyEnabled===true&&reviewLifecycle){const source=paidReviewSource(row),prior=source&&db.prepare('SELECT id FROM thesis_review_sessions WHERE paid_run_id=? AND thesis_id=? AND user_id=?').get(source.id,row.id,row.user_id),usage=prior&&reviewSessions.summary({userId:row.user_id,thesisId:row.id,sessionId:prior.id}),reason=usage?.unknown?'usage_pending':usage?.inFlight?'in_progress':usage&&(usage.remainingTokens<1||usage.remainingCostUsd<=0)?'limit_reached':null;item.recheck={enabled:true,eligible:!reason&&Boolean(source&&chapters.some(chapter=>chapter.text?.trim())&&db.prepare('SELECT 1 FROM thesis_execution_budgets WHERE run_id=? AND attempt=? AND user_id=?').get(source.id,source.attempt,row.user_id)),...(reason?{reason}:{})};}
   if(!summary){item.snapshot=snapshot;item.bibliography=buildThesisBibliography(snapshot,chapters);item.fullText=thesisFullText(snapshot,chapters);item.sections=checkpoints.map(unit=>({id:unit.unit_id,chapterId:unit.chapter_id,status:unit.status,text:unit.text,sourceIds:JSON.parse(unit.source_ids),figures:JSON.parse(unit.figures||'[]'),missingEvidence:JSON.parse(unit.missing_evidence),error:unit.error}));}
   if(run){const meta=JSON.parse(run.settings_meta);item.job.continuous=meta.continuous===true;if(meta.completion)item.job.operation=meta.reviewOnly===true?'recheck':'completion';item.job.purpose=meta.completion?.purpose||(meta.completion?.baseline?.length?'completion':'draft');const recovery=continuity.summary(run);if(recovery)item.job.recovery={automaticRetries:recovery.automaticRetries,lastReason:recovery.lastReason};if(run.quality&&!summary){
    const quality=JSON.parse(run.quality),preflight=meta.completion&&quality.supplementCheck?.phase==='materials';
@@ -179,6 +181,34 @@ export function createThesisService(db,config={}){
     if(input.reviewed){const existing=db.prepare('SELECT 1 FROM thesis_review_issue_receipts WHERE thesis_id=? AND user_id=? AND issue_id=?').get(id,user.id,issue.id);if(!existing)assertThesisAccountQuota(db,user.id,512,config);
      db.prepare('INSERT INTO thesis_review_issue_receipts(thesis_id,user_id,run_id,issue_id,basis,reviewed_at) VALUES(?,?,?,?,?,?) ON CONFLICT(thesis_id,issue_id) DO UPDATE SET reviewed_at=excluded.reviewed_at').run(id,user.id,run.id,issue.id,issue.basis,clock());
     }else db.prepare('DELETE FROM thesis_review_issue_receipts WHERE thesis_id=? AND user_id=? AND issue_id=? AND basis=?').run(id,user.id,issue.id,issue.basis);
+    return {item:serialize(current)};
+   }));
+  }
+  const imageConfirmationPath=path.match(/^\/api\/theses\/([^/]+)\/completion\/image-confirmation$/);
+  if(imageConfirmationPath){
+   const id=imageConfirmationPath[1];own(id,user);if(method!=='POST')fail(405,'请提交图片核对操作');const input=await readBody();fields(input,['version','runId','imageId','confirmed']);
+   return response(thesisTransaction(db,()=>{const current=own(id,user);expected(input,current);const run=current.current_run_id?db.prepare('SELECT * FROM thesis_runs WHERE id=? AND user_id=?').get(current.current_run_id,user.id):null;
+    const review=run&&completionReview(db,current,run),image=review?.imageReviews?.find(value=>value.id===input.imageId&&value.available);if(!review?.reportCurrent||!image)fail(409,'论文或检查结果已变化，请重新检查。');
+    if(input.confirmed===true&&!image.confirmed)assertThesisAccountQuota(db,user.id,512,config);
+    confirmThesisImage(db,current,run,savedThesisChapters(db,current),run.quality?JSON.parse(run.quality):null,input,clock(),true);
+    if(image.confirmed!==input.confirmed)db.prepare('DELETE FROM thesis_completion_confirmations WHERE thesis_id=? AND user_id=? AND run_id=?').run(id,user.id,run.id);
+    return {item:serialize(current)};
+   }));
+  }
+  // Explicitly retain the current wording for a strictly classified,
+  // deterministic cosmetic finding. This is separate from merely viewing it.
+  const expressionConfirmationPath=path.match(/^\/api\/theses\/([^/]+)\/completion\/expression-confirmation$/);
+  if(expressionConfirmationPath){
+   const id=expressionConfirmationPath[1];own(id,user);if(method!=='POST')fail(405,'请提交表达确认');const input=await readBody();fields(input,['version','runId','issueId','confirmed']);
+   if(!Number.isSafeInteger(input.version)||typeof input.runId!=='string'||typeof input.issueId!=='string'||!/^[a-f0-9]{64}$/.test(input.issueId)||typeof input.confirmed!=='boolean')fail(400,'表达确认格式无效');
+   return response(thesisTransaction(db,()=>{const current=own(id,user);expected(input,current);const run=current.current_run_id?db.prepare('SELECT * FROM thesis_runs WHERE id=? AND user_id=?').get(current.current_run_id,user.id):null;
+    const review=run&&completionReview(db,current,run),issue=review?.reviewItems?.find(value=>value.id===input.issueId);
+    if(input.runId!==current.current_run_id||!review?.reportCurrent||!issue?.confirmable)fail(409,'该检查项不可确认或论文内容已变化，请重新检查');
+    const existing=db.prepare('SELECT 1 FROM thesis_expression_confirmations WHERE thesis_id=? AND user_id=? AND run_id=? AND issue_id=? AND basis=?').get(id,user.id,run.id,issue.id,issue.basis);
+    if(input.confirmed){if(!existing)assertThesisAccountQuota(db,user.id,512,config);
+     db.prepare('INSERT INTO thesis_expression_confirmations(thesis_id,user_id,run_id,issue_id,basis,confirmed_at) VALUES(?,?,?,?,?,?) ON CONFLICT(thesis_id,issue_id) DO UPDATE SET confirmed_at=excluded.confirmed_at').run(id,user.id,run.id,issue.id,issue.basis,clock());
+    }else db.prepare('DELETE FROM thesis_expression_confirmations WHERE thesis_id=? AND user_id=? AND issue_id=? AND basis=?').run(id,user.id,issue.id,issue.basis);
+    if(Boolean(existing)!==input.confirmed)db.prepare('DELETE FROM thesis_completion_confirmations WHERE thesis_id=? AND user_id=? AND run_id=?').run(id,user.id,run.id);
     return {item:serialize(current)};
    }));
   }

@@ -1,7 +1,8 @@
 // Only for presentation: the saved source markers and exact-match locations remain unchanged.
 export function visibleCompletionSources(value,references=[]){
  const titles=new Map(references.map(row=>[String(row.id||''),String(row.title||row.name||'').trim().slice(0,100)]));
- return String(value??'').replace(/\[source:([^\]\s，。；、：！？…]*)(\])?/gu,(_,id,close)=>{if(!close)return '〔来源信息〕';const title=titles.get(id);return title?'〔文献：'+title+'〕':id.startsWith('material:')?'〔研究资料〕':'〔来源信息〕';});
+ const clean=String(value??'').replace(/\[source:([^\]\s，。；、：！？…]*)(\])?/gu,(_,id,close)=>{if(!close)return '〔来源信息〕';const title=titles.get(id);return title?'〔文献：'+title+'〕':id.startsWith('material:')?'〔研究资料〕':'〔来源信息〕';});
+ return clean.split(/(?<=[。；;！？\n])/u).map(part=>/\b(?:evidenceLimit|maxOutputTokens|checkedFigureIds|sourceId|manuscriptAnchorId|quoteAnchor|read_materials?)\b/iu.test(part)?'请继续核对引用来源及正文依据。':part.replace(/\b(?:reference|material):[a-z0-9_-]+/giu,'相关资料').replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/giu,'相关资料')).join('');
 }
 export function completionQuoteContext(chapter,quote){
  const text=String(chapter??''),needle=String(quote??'').trim();if(!needle)return '';

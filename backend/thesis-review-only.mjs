@@ -27,7 +27,7 @@ export async function reviewSavedThesis({snapshot,chapters,docxObjects=[],row,ru
 // The session ledger reserves provider cost before dispatch. A repeated or
 // interrupted request is never silently sent again: callers may reuse only a
 // separately persisted, independently validated result.
-export function createSessionReviewDispatch({sessions,userId,thesisId,sessionId,reviewRunId,attempt,runner,isCurrent,signal,onStage=()=>{}}={}){
+export function createSessionReviewDispatch({sessions,userId,thesisId,sessionId,reviewRunId,attempt,runner,isCurrent,signal,onStage=()=>{},diagnosticForUnit}={}){
  if(!sessions||typeof sessions.reserve!=='function'||typeof sessions.finish!=='function'||typeof sessions.summary!=='function'||typeof sessions.markStarted!=='function'||typeof sessions.cancelBeforeDispatch!=='function'||typeof runner!=='function'||typeof isCurrent!=='function')throw thesisError(400,'复查调度配置不完整');
  const identity={userId,thesisId,sessionId};
  const current=async()=>{if(signal?.aborted||await isCurrent()!==true)throw thesisError(409,'论文或资料已变化，请重新检查','review_changed');};
@@ -44,10 +44,10 @@ export function createSessionReviewDispatch({sessions,userId,thesisId,sessionId,
   const requestKey=thesisHash({reviewRunId,attempt,unitId,task,settings});
   const reservation=sessions.reserve({...identity,reviewRunId,attempt,unitId,requestKey,reservedTokens,reservedCostUsd});
   if(reservation.created!==true)throw thesisError(409,'此复查单元已提交，请核对已保存的检查记录','review_dispatch_exists');
-  let output,settled=false,dispatched=false;
+  let output,settled=false,dispatched=false;const diagnostic=typeof diagnosticForUnit==='function'?diagnosticForUnit(unitId):undefined;
   try{
    await current();
-   sessions.markStarted({...identity,dispatchId:reservation.id});dispatched=true;output=await runner({task,settings:boundedSettings,validateReviewOutput,signal,onStage});
+   sessions.markStarted({...identity,dispatchId:reservation.id});dispatched=true;output=await runner({task,settings:boundedSettings,validateReviewOutput,signal,onStage,...(diagnostic?{onDiagnostic:diagnostic}:{})});
    const usage=output?.usage,costUsd=output?.costUsd;
    const receipt=sessions.finish({...identity,dispatchId:reservation.id,usage,costUsd});settled=true;
    if(receipt.budgetExceeded)throw thesisError(429,'复查已达到本次处理上限，已保存内容保留','review_budget_exhausted');
@@ -57,6 +57,6 @@ export function createSessionReviewDispatch({sessions,userId,thesisId,sessionId,
    if(validated?.valid!==true)throw thesisError(502,'复查内容未通过核对，已保存内容保留','invalid_review_output');
    await current();
    return typeof validated.normalizedText==='string'?{...output,text:validated.normalizedText,trace:validated.normalizedTrace||output.trace}:output;
-  }catch(error){if(!settled){if(!dispatched&&typeof sessions.cancelBeforeDispatch==='function')sessions.cancelBeforeDispatch({...identity,dispatchId:reservation.id});else sessions.finish({...identity,dispatchId:reservation.id,usage:output?.usage||error?.usage,costUsd:output?.costUsd??error?.costUsd,errorCode:error?.code||'execution_failed'});}throw error;}
+  }catch(error){try{diagnostic?.({tool:'review_error',status:'failed',code:error?.code});}catch{}if(!settled){if(!dispatched&&typeof sessions.cancelBeforeDispatch==='function')sessions.cancelBeforeDispatch({...identity,dispatchId:reservation.id});else sessions.finish({...identity,dispatchId:reservation.id,usage:output?.usage||error?.usage,costUsd:output?.costUsd??error?.costUsd,errorCode:error?.code||'execution_failed'});}throw error;}
  };
 }

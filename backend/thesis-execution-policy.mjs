@@ -42,15 +42,18 @@ export function computeThesisRunBudget({snapshot={},plan,settings={},config={},r
  const turns=integer(settings.maxTurns,6,1,12),output=integer(settings.maxOutputTokens,4096,32,16384);
  const reviews=integer(reviewAllowance,1,0,24);
  const sources=[...(Array.isArray(snapshot.materials)?snapshot.materials:[]),...(Array.isArray(snapshot.references)?snapshot.references:[])].filter(row=>row?.confirmed===true&&typeof row.text==='string'&&row.text.trim());
- // The chapter selector supplies at most ten sources and two 1200-character
- // excerpts per source. Count their maximum bounded content, never whole PDFs.
- const evidence=sources.map(row=>Buffer.byteLength(row.text.slice(0,2400))).sort((a,b)=>b-a).slice(0,10).reduce((sum,size)=>sum+size,0);
+ // Multi-source completion can authorize up to 20 original sources, sharing
+ // an 80,000-character read budget. Estimate conservatively for their actual
+ // readable prefixes rather than pretending the two preview snippets are the
+ // only text a tool call can return. Ordinary draft estimates remain intact.
+ const manyOriginalSources=plan.some(unit=>unit?.completion&&new Set([...String(unit.completion.originalText||'').matchAll(/\[source:([^\]\r\n]+)\]/gu)].map(match=>match[1])).size>10);
+ const evidence=manyOriginalSources?Math.min(320000,sources.map(row=>Buffer.byteLength(row.text.slice(0,80000))).sort((a,b)=>b-a).slice(0,20).reduce((sum,size)=>sum+size,0)):sources.map(row=>Buffer.byteLength(row.text.slice(0,2400))).sort((a,b)=>b-a).slice(0,10).reduce((sum,size)=>sum+size,0);
  const metadata=bytes({title:snapshot.title,profile:snapshot.profile,requirements:snapshot.requirements,outline:snapshot.outline},90000);
  const priorContext=plan.length>1?12000:0;
  // A normal submitted section needs one writing turn, one material-reading
  // turn when evidence exists, and one bounded repair allowance. Four turns
  // covers a larger evidence set; configured lower limits are never exceeded.
- const expectedTurns=Math.min(turns,sources.length>4?4:sources.length?3:2);
+ const expectedTurns=Math.min(turns,manyOriginalSources?6:sources.length>4?4:sources.length?3:2);
  const requestBytes=18000+metadata+evidence+priorContext;
  const perUnit=requestBytes*expectedTurns+output*expectedTurns;
  // Reserve repair headroom and all planned review/supplement passes up front.

@@ -1,11 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {completionInput} from '../backend/thesis-completion.mjs';
+import {formatThesisReference} from '../dist/workspace/thesis-document.mjs';
+import {buildThesisBibliography} from '../dist/workspace/thesis-document.mjs';
 import {normalizeThesisSnapshot,thesisAgentTask} from '../backend/thesis-model.mjs';
 const original={id:'ref-old',title:'Attention Is All You Need',authors:'VASWANI A, SHAZEER N, et al',year:'2017',doi:'10.48550/arXiv.1706.03762',text:'',citationText:'原有题录和引用信息',sourceLabel:'用户导入引文，题录未系统核验',confirmed:true};
 const supplement={title:'Attention Is All You Need',authors:'Ashish Vaswani; Noam Shazeer',year:'2017',doi:'https://doi.org/10.48550/arXiv.1706.03762',text:'真实用户提供的摘要片段，仅描述注意力机制，不声称包含完整论文。'};
 function make(refs=[original]){return normalizeThesisSnapshot({title:'注意力研究',profile:{level:'本科',language:'中文',targetWords:1000},requirements:{},materials:[],references:refs,outline:[{id:'c',title:'研究背景',targetWords:500}]});}
 function apply(snapshot,refs=[supplement]){return completionInput({snapshot:JSON.stringify(snapshot),export_metadata:'{}',user_id:'owner'}, {references:refs}, {}, null).snapshot;}
+
+test('explicit reference types and verified source links survive completion and format without inventing metadata',()=>{
+ const source={title:'Neural Machine Translation by Jointly Learning to Align and Translate',authors:'Bahdanau D; Cho K; Bengio Y',year:'2014',doi:'10.48550/arXiv.1409.0473',documentType:'preprint',url:'https://arxiv.org/abs/1409.0473',text:'Author-provided excerpt.'};
+ const row=apply(make([]),[source]).references[0],formatted=formatThesisReference(row);
+ assert.equal(row.documentType,'preprint');assert.equal(row.url,source.url);assert.match(formatted,/\[PP\/OL\]/);assert.match(formatted,/arxiv\.org\/abs\/1409\.0473/);assert.doesNotMatch(formatted,/\[J\]/);
+ const noType=apply(make([]),[{...source,documentType:undefined,url:undefined}]).references[0];assert.doesNotMatch(formatThesisReference(noType),/\[PP\/OL\]|\[J\]/);
+ assert.throws(()=>apply(make([]),[{...source,url:'javascript:alert(1)'}]),/文献网址无效/);
+ assert.throws(()=>apply(make([]),[{...source,url:'https://user:pass@example.com/x'}]),/文献网址无效/);
+ assert.throws(()=>apply(make([]),[{...source,documentType:'invented'}]),/文献类型/);
+});
+test('existing source metadata updates preserve citation identity and never replace original unparsed citations',()=>{
+ const reference={...original,citationText:'',text:'已保存摘要。'},before=make([reference]);
+ const updated=completionInput({snapshot:JSON.stringify(before),export_metadata:'{}',user_id:'owner'},{referenceMetadataUpdates:[{referenceId:reference.id,documentType:'preprint',url:'https://arxiv.org/abs/1706.03762'}]}, {},null).snapshot;
+ assert.equal(updated.references.length,1);assert.equal(updated.references[0].id,reference.id);assert.equal(updated.references[0].text,reference.text);assert.equal(updated.references[0].title,reference.title);
+ const bibliography=buildThesisBibliography(updated,[{id:'c',title:'正文',text:'实质性论述[source:ref-old]。'}]);assert.equal(bibliography.references.length,1);assert.match(bibliography.references[0].text,/\[PP\/OL\]/);
+ assert.throws(()=>completionInput({snapshot:JSON.stringify(make()),export_metadata:'{}',user_id:'owner'},{referenceMetadataUpdates:[{referenceId:original.id,documentType:'preprint',url:'https://arxiv.org/abs/1706.03762'}]}, {},null),/保留原始题录/);
+ assert.throws(()=>completionInput({snapshot:JSON.stringify(before),export_metadata:'{}',user_id:'owner'},{referenceMetadataUpdates:[{referenceId:'other',documentType:'preprint',url:'https://arxiv.org/abs/1706.03762'}]}, {},null),/不存在或尚未确认/);
+});
 test('unique DOI and title link supplied excerpt to the original cited ID without changing bibliography',()=>{const before=make(),after=apply(before);assert.equal(after.references.length,1);assert.equal(after.references[0].id,original.id);assert.equal(after.references[0].text,supplement.text);assert.equal(after.references[0].citationText,original.citationText);assert.equal(after.references[0].authors,original.authors);assert.match(after.references[0].sourceLabel,/原题录未系统核验/);const unit={id:'u',chapterId:'c',sectionId:'c',chapterTitle:'研究背景',title:'研究背景',targetWords:500,part:1,parts:1,presentation:{},completion:{scope:'full',originalText:'注意力机制[source:ref-old]。'}};const task=thesisAgentTask(after,unit,[]);assert.equal(task.materials.find(x=>x.id==='ref-old').text,supplement.text);assert.match(task.instructions,/实际读取/);assert.doesNotMatch(task.instructions,/以下原稿引用仅有文献题录/);});
 test('missing DOI, title mismatch, conflicting fields, duplicate matches and existing text never overwrite an original reference',()=>{for(const [existing,input] of [[original,{...supplement,doi:''}],[original,{...supplement,title:'Different Title'}],[original,{...supplement,year:'2021'}],[original,{...supplement,authors:'Unrelated Person'}],[{...original,journal:'Journal A'},{...supplement,journal:'Journal B'}],[{...original,text:'旧正文保持原样'},supplement]]){const before=make([existing]),after=apply(before,[input]);assert.equal(after.references.length,2);assert.equal(after.references[0].text,existing.text);assert.equal(after.references[1].text,supplement.text);}const ambiguous=make([original,{...original,id:'other'}]),after=apply(ambiguous);assert.equal(after.references.length,3);assert.equal(after.references[0].text,'');assert.equal(after.references[1].text,'');});
 test('old snapshots with one matching confirmed excerpt can link it while preserving both original IDs',()=>{const old=make([original,{...supplement,id:'ref-new',confirmed:true}]),after=apply(old,[]);assert.equal(after.references.length,2);assert.deepEqual(after.references.map(row=>row.id),['ref-old','ref-new']);assert.equal(after.references[0].text,supplement.text);assert.equal(after.references[1].text,supplement.text);assert.match(after.references[0].sourceLabel,/不代表全文/);});

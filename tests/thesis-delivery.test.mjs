@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import {DOMParser} from '@xmldom/xmldom';
+import {JSDOM} from 'jsdom';
+import {bindDocumentExports} from '../dist/workspace/document-export.mjs';
+import {auditThesisSubmission as bundledAudit} from '../dist/workspace/assets/writing-document.js';
 import {prepareThesisDeliverySnapshot} from '../dist/workspace/thesis-delivery.mjs';
 import {normalizeThesisSnapshot,thesisPlan,thesisAgentTask,parseThesisSection,selectThesisEvidence} from '../backend/thesis-model.mjs';
 import {thesisDocumentPresentation} from '../dist/workspace/thesis-document.mjs';
@@ -53,7 +56,27 @@ test('a structurally complete cited document passes while school-specific minimu
  const text='合成研究\n摘要\n'+('研究设计与验证。'.repeat(35))+'\n关键词：研究；设计；验证\nAbstract\n'+('This study reports the supplied design and evaluation. '.repeat(25))+'\nKey words: study; design; evaluation\n第一章 研究方法\n已经保存的实际方法和来源[1]。\n参考文献\n[1] A. Author. A verified study[J]. Journal, 2025.';
  const pos=text.indexOf('[1]'),metadata={englishTitle:'A Study Design',citationRanges:[{start:pos,end:pos+3,number:1}]};
  assert.equal(auditThesisSubmission({text,metadata}).submission.ready,true);
- const report=auditThesisSubmission({text,metadata,templateProfile:{submission:{minimumReferences:10,minimumForeignReferences:3}}});assert.equal(report.submission.ready,false);assert.ok(report.submission.issues.some(row=>row.code==='reference_minimum'));assert.ok(report.submission.issues.some(row=>row.code==='foreign_references'));
+ const report=auditThesisSubmission({text,metadata,templateProfile:{submission:{minimumReferences:10,minimumForeignReferences:3}}});assert.equal(report.submission.ready,false);const countIssue=report.submission.issues.find(row=>row.code==='reference_minimum');assert.match(countIssue.message,/参考文献表可识别 1 条/);assert.match(countIssue.message,/至少 10 条/);assert.doesNotMatch(countIssue.message,/1 篇有正文引用/);assert.ok(report.submission.issues.some(row=>row.code==='foreign_references'));
+});
+
+test('formal export blocks located logic warnings without turning optional suggestions into blockers',()=>{
+ const text='合成研究\n摘要\n'+('研究设计与验证。'.repeat(35))+'\n关键词：研究；设计；验证\nAbstract\n'+('This study reports the supplied design and evaluation. '.repeat(25))+'\nKey words: study; design; evaluation\n第一章 研究方法\n已经保存的实际方法和来源[1]。\n参考文献\n[1] A. Author. A verified study[J]. Journal, 2025.';
+ const pos=text.indexOf('[1]'),metadata={englishTitle:'A Study Design',citationRanges:[{start:pos,end:pos+3,number:1}]};
+ const finding={severity:'warning',category:'logic',quote:'已经保存的实际方法',explanation:'逻辑结论需要核对。'};
+ for(const quality of [{reviews:[{findings:[finding]}]},{consistency:{findings:[finding]}}]){
+  const report=auditThesisSubmission({text,metadata,quality});assert.equal(report.submission.ready,false);assert.ok(report.submission.issues.some(row=>row.code==='review_findings'&&/逻辑/.test(row.message)));
+ }
+ assert.equal(auditThesisSubmission({text,metadata,quality:{reviews:[{findings:[{...finding,severity:'info'}]}]}}).submission.ready,true);
+});
+
+test('the actual browser export stops before creating or downloading DOCX when logic requires review',async t=>{
+ const dom=new JSDOM('<main><button id="check-docx">导出</button><div><p id="status"></p></div></main>',{url:'https://paperknow.test/'}),prior={window:globalThis.window,document:globalThis.document};
+ globalThis.window=dom.window;globalThis.document=dom.window.document;t.after(()=>{globalThis.window=prior.window;globalThis.document=prior.document;dom.window.close();});
+ const text='合成研究\n摘要\n'+('研究设计与验证。'.repeat(35))+'\n关键词：研究；设计；验证\nAbstract\n'+('This study reports the supplied design and evaluation. '.repeat(25))+'\nKey words: study; design; evaluation\n第一章 研究方法\n已保存的方法与来源[1]。\n参考文献\n[1] A. Author. A verified study[J]. Journal, 2025.',pos=text.indexOf('[1]');
+ const quality={reviews:[{findings:[{severity:'warning',category:'logic'}]}]},metadata={englishTitle:'A Study Design',citationRanges:[{start:pos,end:pos+3,number:1}]};let result,generated=0,downloaded=0;
+ bindDocumentExports('check',()=>text,()=> '测试论文',dom.window.document.querySelector('#status'),{docxOnly:true,getDocumentOptions:()=>({documentKind:'thesis',submission:true,quality,metadata}),loadDocument:async()=>({auditThesisSubmission:bundledAudit,createWritingDocx:async()=>{generated++;return new Uint8Array();}}),downloadFile:async()=>{downloaded++;},onNeedsCompletion:async details=>{result=details;}});
+ dom.window.document.querySelector('#check-docx').click();for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(result?.report?.submission?.issues?.map(row=>row.code),['review_findings']);assert.equal(generated,0);assert.equal(downloaded,0);
 });
 
 test('thesis DOCX exports code without Markdown fences and keeps each original code line in its source range',async()=>{

@@ -1,3 +1,8 @@
+import {manuscriptDecimalSums} from './thesis-decimal-sum.mjs';
+import {attachSupplementReviewEvidence} from './supplement-review-evidence.mjs';
+import {supplementCrossTableContext,supplementCrossTableIndex} from './supplement-cross-context.mjs';
+import {attachDocxReviewContext} from './docx-review-context.mjs';
+import {thesisReviewBibliographyContext} from './thesis-review-bibliography-context.mjs';
 import {manuscriptFigures,manuscriptPart} from '../dist/workspace/manuscript-figures.mjs';
 import {proposalModelInstructions} from '../dist/workspace/proposal-standard.mjs';
 import {runSupplementCheck} from './supplement-check.mjs';
@@ -73,9 +78,10 @@ export function createWritingQualityRunner(config={}){
    quality.citations=await guarded(verifier.verify(Array.isArray(snapshot.references)?snapshot.references:[],{signal}),signal);await active();
    if(quality.citations.items?.some(item=>item.metadataStatus==='unavailable'||item.reasonCode==='budget_exhausted'))partial=true;
   }catch(error){await active();partial=true;quality.citations={version:1,status:'unavailable',checkedAt:timestamp(),scope:'public_identifier_metadata_only',claimSupport:'not_checked',items:[],summary:{matched:0,conflict:0,not_found:0,unverified:0,unavailable:0},limitations:['题录来源核验未完成，不能据此认定引用真实或虚假。']};}
-  if(checkSupplements===true){quality.supplementCheck=await runSupplementCheck({snapshot,chapters,kind,phase:'final',recover:recoverSupplements,runtime,dispatch,signal,isCurrent,onStage:stage,citationVerification:{referenceFingerprint,verification:quality.citations}});await active();}
+  if(checkSupplements===true){quality.supplementCheck=await runSupplementCheck({snapshot,chapters,docxObjects,kind,phase:'final',recover:recoverSupplements,citationBatches:kind==='thesis'&&config.thesisCitationBatchesEnabled===true,runtime,dispatch,signal,isCurrent,onStage:stage,citationVerification:{referenceFingerprint,verification:quality.citations}});await active();}
   await stage('checking_consistency');
   try{quality.consistency=auditWritingConsistency({chapters,references:snapshot.references||[],materials:snapshot.materials||[],docxObjects});}catch(error){await active();partial=true;quality.consistency={version:1,status:'unavailable',checkedSections:0,findings:[],totalFindings:0,truncated:false,limitations:['正文一致性检查未完成。']};}
+  const bibliographyContext=kind==='thesis'?thesisReviewBibliographyContext(snapshot,chapters):null,crossTableIndex=kind==='thesis'?supplementCrossTableIndex(chapters):null;
   let stoppedReason=typeof dispatch==='function'?'':'not_configured',automaticRecoveries=0,totalBatches=batches.length;
   const pending=batches.map((batch,index)=>({batch,key:String(index+1),index}));
   while(pending.length){
@@ -84,7 +90,13 @@ export function createWritingQualityRunner(config={}){
    if(stoppedReason){partial=true;quality.reviews.push({unitId,status:'not_started',sectionIds,reasonCode:stoppedReason,reason:publicReason[stoppedReason],findings:[],checkedSections:0});continue;}
    await stage('reviewing_manuscript');
    const ids=new Set(sectionIds),audit={...quality.consistency,findings:(quality.consistency.findings||[]).filter(finding=>ids.has(finding.sectionId))};
-   const task=writingReviewTask({snapshot,chapters:batch,audit,citationVerification:quality.citations});
+   const task=writingReviewTask({snapshot,chapters:batch,audit,citationVerification:quality.citations});attachDocxReviewContext(task,task.context.manuscriptExcerpts,docxObjects);if(kind==='thesis')attachSupplementReviewEvidence(task,{snapshot,chapters,batch,supplementCheck:quality.supplementCheck});
+   if(crossTableIndex&&batch.some(piece=>/(?:表\s*|\btable\s+)\d/iu.test(piece.text))){const remaining=Math.max(0,Math.min(3200,38000-JSON.stringify(task.context).length-600)),cross=supplementCrossTableContext(batch,chapters,{maxCharacters:remaining,tableIndex:crossTableIndex});if(cross&&JSON.stringify({...task.context,crossChapterTables:cross}).length<=38500){task.context.crossChapterTables=cross;const decimalSums=manuscriptDecimalSums(cross);if(decimalSums.length&&JSON.stringify({...task.context,exactDecimalSums:decimalSums}).length<=38500){task.context.exactDecimalSums=decimalSums;task.instructions+='exactDecimalSums 是对当前已提供的十进制数对进行精确相加的结果，仅供核对算术；不证明这些数值真实、方法正确或舍入口径合理。对同一对已展示数值的精确加和，应以对应算术结果为准；不同精度、数据条件或未列出的数对不可套用。单个算例的展示值之和为 1 不代表其他互补数分别舍入后之和必然为 1；例如采用十进制四舍五入到两位时，0.005 和 0.995 分别为 0.01 和 1.00，其和为 1.01。该反例只说明不能作一般化结论，不证明论文数据有误，也不决定其采用何种舍入规则。对真实精度、单位、上下文或数据不一致仍须独立检查并报告。';}task.instructions+='crossChapterTables 是同一篇当前已保存正文中与本批明确表号对应的连续片段，仅用于跨章定位，不是外部研究资料或真实性证明。只有 entireTable=true 才表示表格正文完整；各方向截断或 unavailable 时不能断言内容不存在。不同章节采用不同展示精度不必然矛盾；应核对同一数据、上下文、措辞范围和舍入口径。若原文明称全篇或正文统一某一精度，而其他正文实际采用不同精度，该范围不一致或歧义仍须指出；真实数值差异、无依据的计算及独立事实问题必须保留。所有检查项仍须定位本批实际正文。';}}
+   if(bibliographyContext){
+    const available=Math.max(0,34500-JSON.stringify(task.context).length),full=JSON.stringify(bibliographyContext).length<=available;
+    const compact=full?bibliographyContext:{...bibliographyContext,indexStatus:'partial',references:[],referencesTruncated:true,savedReferenceChapters:(bibliographyContext.savedReferenceChapters||[]).map(({preview,...row})=>({...row,previewTruncated:true})),contextLimited:true};
+    if(JSON.stringify(compact).length<=available){task.context.bibliographyIndex=compact;task.instructions+='bibliographyIndex 分别记录当前已保存参考文献章、全文引用标记及按导出规则编排的题录候选；条目和计数仅反映覆盖范围，不代表原文已验证或支持任何结论。已保存章与导出候选可能不同，不能把一个冒充另一个；只检查本批可定位原句。索引不完整、存在无法解析标记或截断时，不得断言不存在。';}
+   }
    const overviewBudget=Math.max(0,Math.min(9000,35000-JSON.stringify(task.context).length)),overviewAllowance=Math.max(0,Math.floor(overviewBudget/Math.max(1,chapters.length))-160);task.context.manuscriptOverview=overviewAllowance?chapters.map(chapter=>({title:String(chapter.title||'').slice(0,100),text:chapter.text.length<=overviewAllowance?chapter.text:chapter.text.slice(0,Math.floor(overviewAllowance/2))+'\n…\n'+chapter.text.slice(-Math.floor(overviewAllowance/2)),excerpted:chapter.text.length>overviewAllowance})):[];
    // The model sees and returns bounded synthetic segment IDs. Original section
    // IDs/offsets are server-owned mappings and never accepted from its output.
@@ -121,7 +133,7 @@ export function createWritingQualityRunner(config={}){
   if(figureIds.length)quality.figureReview={version:1,status:figureIds.every(id=>checkedFigureIds.includes(id))?'completed':'partial',figureIds:[...new Set(figureIds)],checkedFigureIds:[...new Set(checkedFigureIds)]};
   quality.status=partial?'partial':'completed';if(!successful.length&&quality.consistency.status==='unavailable'&&(!quality.citations.items?.length||quality.citations.status==='unavailable'))quality.status='unavailable';
   quality.checkedAt=timestamp();quality.coverage={totalSections:chapters.length,totalCharacters,reviewedCharacters:checkedCharacters,reviewedBatches:successful.length,totalBatches,complete:successful.length===totalBatches&&checkedCharacters===totalCharacters};
-  quality.limitations=[...new Set([...(chapters.some(row=>row.figures?.length)?[quality.figureReview?.status==='completed'?'图片已纳入本次可见图文审校范围；检查不鉴定研究事实或实验真实性。':'图片内容审校尚未完整完成，不能据此确认图文已检查。']:[]),...(quality.citations.limitations||[]),...(quality.consistency.limitations||[]),'自动检查不能替代作者对研究事实、来源含义和院校要求的核对。',...(quality.coverage.complete?[]:['AI 辅助审校未覆盖全部正文；请查看未完成批次及检查范围。']),...(batches.length>1?['长文按片段审校；跨批次的逻辑和术语关系仍需全文人工复核。']:[])])];
+  quality.limitations=[...new Set([...(docxObjects.some(row=>row.kind==='image')?['原稿图片已保留，本次文字检查未读取图片内容；请查看原图并核对图中细节。']:[]),...(chapters.some(row=>row.figures?.length)?[quality.figureReview?.status==='completed'?'图片已纳入本次可见图文审校范围；检查不鉴定研究事实或实验真实性。':'图片内容审校尚未完整完成，不能据此确认图文已检查。']:[]),...(quality.citations.limitations||[]),...(quality.consistency.limitations||[]),'自动检查不能替代作者对研究事实、来源含义和院校要求的核对。',...(quality.coverage.complete?[]:['AI 辅助审校未覆盖全部正文；请查看未完成批次及检查范围。']),...(batches.length>1?['长文按片段审校；跨批次的逻辑和术语关系仍需全文人工复核。']:[])])];
   return quality;
  };
 }

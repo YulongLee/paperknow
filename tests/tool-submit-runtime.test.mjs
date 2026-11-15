@@ -14,13 +14,25 @@ function fixture(){
  const candidate=(excerpt=quote,sourceId='paper-1')=>({complete:true,text:'原文明确说明这是一份合成研究资料。',sourceIds:[sourceId],citations:[{sourceId,quote:excerpt}]}),validator=result=>validateToolCandidate(result,value,unit);
  return {value,unit,task,prefix,quote,suffix,text,candidate,validator};
 }
-async function execute(script,{task,validateToolOutput=true,validateWritingOutput,signal,runtime=settings,providerUsage}={}){
+async function execute(script,{task,validateToolOutput=true,validateWritingOutput,signal,onDiagnostic,runtime=settings,providerUsage}={}){
  const f=fixture(),validator=validateToolOutput===true?f.validator:validateToolOutput;
  // These cases exercise the manual-reading fallback. The preloaded production
  // path and actual SDK stream are covered separately in literature-performance.
  const manualTask=structuredClone(task||f.task);delete manualTask.context.unit;
- return runAgentTask({settings:runtime,task:manualTask,signal,...(validator!==false?{validateToolOutput:validator}:{}),...(validateWritingOutput?{validateWritingOutput}:{}),dependencies:{lookup,httpsRequest:providerFixture({usage:providerUsage}).requestImpl,query:({options})=>(async function*(){await primeProvider(options);yield*script(options,f);})()}});
+ return runAgentTask({settings:runtime,task:manualTask,signal,onDiagnostic,...(validator!==false?{validateToolOutput:validator}:{}),...(validateWritingOutput?{validateWritingOutput}:{}),dependencies:{lookup,httpsRequest:providerFixture({usage:providerUsage}).requestImpl,query:({options})=>(async function*(){await primeProvider(options);yield*script(options,f);})()}});
 }
+
+test('optional diagnostics receive tool outcomes and rejected codes without arguments or content',async()=>{
+ const events=[];
+ await execute(async function*(options,f){const tools=options.mcpServers.paperknow.instance._registeredTools;
+  await tools.submit_writing_output.handler({candidate:f.candidate()});
+  await tools.read_material.handler({id:'paper-1'});
+  await tools.submit_writing_output.handler({candidate:f.candidate()});
+  yield{...success,result:'ACK'};
+ },{onDiagnostic:event=>events.push(event)});
+ assert.equal(events.length,3);assert.equal(events[0].accepted,false);assert.equal(events[1].tool,'read_material');assert.equal(events[2].accepted,true);
+ assert.doesNotMatch(JSON.stringify(events),/paper-1|合成研究资料/);
+});
 
 // The query double never contacts a model provider; it only invokes registered
 // in-process MCP tools and emits an SDK acknowledgement with fixture accounting.

@@ -1,4 +1,5 @@
 import {thesisDocxObjects} from './thesis-docx-objects.mjs';
+import {thesisAgentDiagnostic} from './thesis-agent-diagnostics.mjs';
 import {createThesisReviewSessions} from './thesis-review-session.mjs';
 import {createThesisReviewLifecycle} from './thesis-review-lifecycle.mjs';
 import {reviewSavedThesis,createSessionReviewDispatch} from './thesis-review-only.mjs';
@@ -69,7 +70,13 @@ export async function restoreReviewCheckpoint(cached,hash,checkpointKey,validato
 }
 // Whole reports are not restored across worker restarts: even identical text
 // cannot prove the same sources, object metadata or review rules were used.
-export const cleanThesisTrace=value=>(Array.isArray(value)?value:[]).slice(-50).map(row=>({stage:safeStage(typeof row==='string'?row:row?.stage||row?.tool||row?.type),...(safeThesisValidation(row?.validation)?{validation:safeThesisValidation(row.validation)}:{}),...(row?.tool==='read_material'&&row.status==='completed'&&typeof row.materialId==='string'?{tool:'read_material',status:'completed',materialId:row.materialId.slice(0,160),...(Number.isSafeInteger(row.offset)&&row.offset>=0&&Number.isSafeInteger(row.limit)&&row.limit>0?{offset:row.offset,limit:row.limit}:{})}:{})}));
+export const cleanThesisTrace=value=>{const rows=Array.isArray(value)?value:[],selected=new Set(),seen=new Set();
+ // Keep at least the latest actual read for each of the (at most 20) allowed
+ // sources before filling the remainder with recent events. This is a record
+ // of those exact ranges, never a claim that the full document was read.
+ for(let i=rows.length-1;i>=0&&seen.size<20;i--){const row=rows[i];if(row?.tool==='read_material'&&row.status==='completed'&&typeof row.materialId==='string'&&!seen.has(row.materialId)){seen.add(row.materialId);selected.add(i);}}
+ for(let i=rows.length-1;i>=0&&selected.size<50;i--)selected.add(i);
+ return [...selected].sort((a,b)=>a-b).map(i=>rows[i]).map(row=>({stage:safeStage(typeof row==='string'?row:row?.stage||row?.tool||row?.type),...(safeThesisValidation(row?.validation)?{validation:safeThesisValidation(row.validation)}:{}),...(row?.tool==='read_material'&&row.status==='completed'&&typeof row.materialId==='string'?{tool:'read_material',status:'completed',materialId:row.materialId.slice(0,160),...(Number.isSafeInteger(row.offset)&&row.offset>=0&&Number.isSafeInteger(row.limit)&&row.limit>0?{offset:row.offset,limit:row.limit}:{})}:{})}));};
 const cleanTrace=cleanThesisTrace;
 
 // Denied tool names are operational diagnostics. Keep neither arguments nor
@@ -101,10 +108,15 @@ export function startThesisWorker(db,config={}){
   const recovered=continuity.recover(run);if(recovered.recoveredDispatches>0)db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=? AND attempt=?').run(run.id,run.attempt);if(!recovered.ready)return false;
   const at=clock();db.prepare("UPDATE thesis_runs SET status='queued',stage='auto_recovering',error=NULL,updated_at=? WHERE id=? AND attempt=? AND status='running'").run(at,run.id,run.attempt);db.prepare("UPDATE jobs SET status='queued',stage='auto_recovering',error=NULL,updated_at=? WHERE id=? AND status='running'").run(at,run.id);db.prepare("UPDATE thesis_checkpoints SET status='pending',error=NULL,updated_at=? WHERE run_id=? AND status='running'").run(at,run.id);db.prepare("UPDATE theses SET status='queued',version=version+1,updated_at=? WHERE id=? AND current_run_id=?").run(at,run.thesis_id,run.id);return true;
  }
- function markStopped(runId,attempt,status,message){
+ function markStopped(runId,attempt,status,message,reasonCode){
   if(!Number.isSafeInteger(attempt)||attempt<1)return;
   const run=db.prepare('SELECT * FROM thesis_runs WHERE id=? AND attempt=?').get(runId,attempt);if(!run||!active(run.status)||!ownsAttempt(run))return;
-  if(JSON.parse(run.settings_meta||'{}').reviewOnly===true&&reviewLifecycle){reviewLifecycle.stop(run,status);return;}
+  if(JSON.parse(run.settings_meta||'{}').reviewOnly===true&&reviewLifecycle){reviewLifecycle.stop(run,status,reasonCode);return;}
+  // A failed paid writing attempt releases its hold below. Its completed
+  // checkpoints may not yet be published as chapter versions, so describe
+  // them as progress, not as saved final chapters. Resume obtains a fresh
+  // quote and holds funds only until the resumed attempt succeeds or fails.
+  if(status==='failed'&&['cost_budget','budget_exceeded'].includes(reasonCode))message='本次处理暂未完成，已保留处理进度。本次未扣积分或套餐次数；可点击继续生成并确认费用，完成后结算。';
   const at=clock();db.prepare('UPDATE thesis_runs SET status=?,stage=?,error=?,updated_at=? WHERE id=? AND attempt=?').run(status,status,message,at,runId,attempt);
   // The shared task centre uses its existing terminal states; the thesis run
   // retains the precise reason (missing evidence, interruption or cancellation).
@@ -137,7 +149,7 @@ export function startThesisWorker(db,config={}){
     const row=db.prepare('SELECT * FROM theses WHERE id=? AND user_id=?').get(run.thesis_id,run.user_id);
     const chapters=savedThesisChapters(db,row).map(({record,...chapter})=>({...chapter,text:record?.text||'',sourceIds:JSON.parse(record?.source_ids||'[]'),figures:JSON.parse(record?.figures||'[]')}));
     const isCurrent=()=>Boolean(running()&&reviewLifecycle.current(run));
-    const dispatch=createSessionReviewDispatch({sessions:reviewSessions,userId:run.user_id,thesisId:run.thesis_id,sessionId:reviewMeta.reviewSessionId,reviewRunId:run.id,attempt:run.attempt,runner:config.agentTaskRunner||runAgentTask,isCurrent,signal:controller.signal,onStage:stage});
+    const dispatch=createSessionReviewDispatch({sessions:reviewSessions,userId:run.user_id,thesisId:run.thesis_id,sessionId:reviewMeta.reviewSessionId,reviewRunId:run.id,attempt:run.attempt,runner:config.agentTaskRunner||runAgentTask,isCurrent,signal:controller.signal,onStage:stage,...(config.thesisDiagnosticsEnabled===true?{diagnosticForUnit:id=>thesisAgentDiagnostic(config,{id},run.attempt)}:{})});
     const result=await reviewSavedThesis({snapshot,chapters,docxObjects:thesisDocxObjects(db,run.thesis_id,run.user_id,chapters),row,runtime:{...runtime,maxTotalTokens:thesisCallTokenCeiling},runId:run.id,qualityRunner:config.thesisReviewQualityRunner||qualityRunner,dispatch,isCurrent,signal:controller.signal,onStage:stage});
     if(!running())return;reviewLifecycle.finish(run,result);return;
    }
@@ -177,7 +189,7 @@ export function startThesisWorker(db,config={}){
      const account=usage=>writeAttempt(()=>{if(knownUsage(usage))db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE id=? AND attempt=?').run(usage.input,usage.output,clock(),run.id,run.attempt);else db.prepare('UPDATE thesis_runs SET usage_known=0 WHERE id=? AND attempt=?').run(run.id,run.attempt);});
      try{
       if(!writeRunning(()=>db.prepare('UPDATE thesis_runs SET provider_calls=provider_calls+1 WHERE id=? AND attempt=?').run(run.id,run.attempt)))throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
-      output=await runner({settings:{...settings,maxTotalTokens:reservation.maxTotalTokens,maxCostUsd:reservation.maxCostUsd},task,validateReviewOutput,validateThesisOutput,signal:controller.signal,onStage:()=>stage(validateThesisOutput?'repairing_completion':task.context.operation==='supplement-check'?(auditingDraft&&task.context.phase==='materials'?'reviewing_draft':'checking_supplements'):'reviewing_manuscript')});
+      output=await runner({settings:{...settings,maxTotalTokens:reservation.maxTotalTokens,maxCostUsd:reservation.maxCostUsd},task,validateReviewOutput,validateThesisOutput,onDiagnostic:thesisAgentDiagnostic(config,{id:unitId},1),signal:controller.signal,onStage:()=>stage(validateThesisOutput?'repairing_completion':task.context.operation==='supplement-check'?(auditingDraft&&task.context.phase==='materials'?'reviewing_draft':'checking_supplements'):'reviewing_manuscript')});
       account(output?.usage);accounted=true;
       if(!knownUsage(output?.usage))throw thesisError(502,'审校未返回可核算用量','usage_unknown');
       if(!running()||stopped)throw thesisError(499,'任务已停止','cancelled');
@@ -188,7 +200,7 @@ export function startThesisWorker(db,config={}){
     };
    if(checkSupplements&&completionMode){
     const chapters=snapshot.outline.map(chapter=>({id:chapter.id,title:chapter.title,text:savedBaseline.find(row=>row.chapter_id===chapter.id)?.text||'本节尚未生成，按已确认的章节目的核对所需资料。',figures:JSON.parse(savedBaseline.find(row=>row.chapter_id===chapter.id)?.figures||'[]')}));
-    const supplementCheck=await runSupplementCheck({snapshot,chapters,kind:'thesis',phase:'materials',recover:completionMode,runtime,dispatch:reviewDispatch,signal:controller.signal,isCurrent:running,onStage:()=>stage(auditingDraft?'reviewing_draft':'checking_supplements')});
+    const supplementCheck=await runSupplementCheck({snapshot,chapters,docxObjects:thesisDocxObjects(db,run.thesis_id,run.user_id,chapters),kind:'thesis',phase:'materials',recover:completionMode,runtime,dispatch:reviewDispatch,signal:controller.signal,isCurrent:running,onStage:()=>stage(auditingDraft?'reviewing_draft':'checking_supplements')});
     diagnosis=completionDiagnosis(supplementCheck,chapters,plan);
     if(!writeRunning(()=>{const json=JSON.stringify({status:'partial',supplementCheck,completionDiagnosis:diagnosis,manuscriptHash:completionManuscriptHash(chapters)});assertThesisAccountQuota(db,run.user_id,Buffer.byteLength(json),config);db.prepare('UPDATE thesis_runs SET quality=?,updated_at=? WHERE id=? AND attempt=?').run(json,clock(),run.id,run.attempt);}))return;
     // Missing research facts restrict final delivery, not draft writing. This
@@ -228,7 +240,7 @@ export function startThesisWorker(db,config={}){
     try{
      if(continuous)reservation=transaction(()=>continuity.reserve(run,unit.id,{remainingUnits:plan.length-complete.length,settings:runtime,minimumTokens}));
      if(!writeRunning(()=>db.prepare('UPDATE thesis_runs SET provider_calls=provider_calls+1 WHERE id=? AND attempt=?').run(run.id,run.attempt)))throw thesisError(499,'任务已停止或执行批次已变化','cancelled');
-     dispatched=true;result=await runner({settings:{...runtime,maxTurns,maxOutputTokens,...(reservation?{maxTotalTokens:reservation.maxTotalTokens,maxCostUsd:reservation.maxCostUsd}:{maxTotalTokens:Math.min(thesisCallTokenCeiling,limits.maxRunTokens-spent)})},task,validateThesisOutput:candidate=>{const checked=validateThesisCandidate(candidate,snapshot,unit);if(!checked.valid){const value=checked.feedback;retryFeedback={code:value.code,rule:value.rule,...Object.fromEntries(['count','target','min','max'].filter(key=>Number.isSafeInteger(value[key])&&value[key]>=0).map(key=>[key,value[key]]))};}return checked;},signal:controller.signal,onStage:stage});
+     dispatched=true;result=await runner({settings:{...runtime,maxTurns,maxOutputTokens,...(reservation?{maxTotalTokens:reservation.maxTotalTokens,maxCostUsd:reservation.maxCostUsd}:{maxTotalTokens:Math.min(thesisCallTokenCeiling,limits.maxRunTokens-spent)})},task,onDiagnostic:thesisAgentDiagnostic(config,unit,retries+1),validateThesisOutput:candidate=>{const checked=validateThesisCandidate(candidate,snapshot,unit);if(!checked.valid){const value=checked.feedback;retryFeedback={code:value.code,rule:value.rule,...Object.fromEntries(['count','target','min','max'].filter(key=>Number.isSafeInteger(value[key])&&value[key]>=0).map(key=>[key,value[key]]))};}return checked;},signal:controller.signal,onStage:stage});
      if(!ownsAttempt(run)){if(reservation){transaction(()=>continuity.finish(reservation.id,{usage:result?.usage,costUsd:result?.costUsd,errorCode:'cancelled'}));finishedReservation=true;}return;}
      if(!knownUsage(result?.usage))throw thesisError(502,'模型未返回可核算的用量，当前章节未标记完成，请联系管理员后重试','usage_unknown');
      writeAttempt(()=>{db.prepare('UPDATE thesis_runs SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE id=? AND attempt=?').run(result.usage.input,result.usage.output,clock(),run.id,run.attempt);db.prepare('UPDATE thesis_checkpoints SET input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated_at=? WHERE run_id=? AND unit_id=?').run(result.usage.input,result.usage.output,clock(),run.id,unit.id);});
@@ -324,7 +336,7 @@ export function startThesisWorker(db,config={}){
     for(const chapter of snapshot.outline.filter(isThesisReferenceChapter))if(bibliography&&!db.prepare("SELECT id FROM thesis_chapter_versions WHERE run_id=? AND chapter_id=? AND source='generated'").get(run.id,chapter.id)){
      assertThesisChapterCapacity(db,run.thesis_id,chapter.id);assertThesisAccountQuota(db,run.user_id,Math.max(512,Buffer.byteLength(bibliography)),config);
      const previous=db.prepare('SELECT coalesce(max(version),0) version FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=?').get(run.thesis_id,chapter.id).version;
-     db.prepare('INSERT INTO thesis_chapter_versions(id,thesis_id,chapter_id,version,run_id,source,text,source_ids,created_at) VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),run.thesis_id,chapter.id,previous+1,run.id,'generated',bibliography,JSON.stringify(snapshot.references.filter(row=>row.confirmed&&usedSources.includes(row.id)).map(row=>row.id)),clock());
+     db.prepare('INSERT INTO thesis_chapter_versions(id,thesis_id,chapter_id,version,run_id,source,text,source_ids,created_at) VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),run.thesis_id,chapter.id,previous+1,run.id,'generated',bibliography,JSON.stringify(snapshot.references.filter(row=>row.confirmed&&(usedSources.includes(row.id)||snapshot.materials.some(material=>material.confirmed&&material.referenceSegment===true&&material.relatedReferenceId===row.id&&usedSources.includes(material.id)))).map(row=>row.id)),clock());
     }
     const completionRecords=completionMode?manuscriptVersions():null;const chapters=snapshot.outline.map(chapter=>{const personal=snapshot.requirements.deliveryVersion===1&&thesisManualBackMatter(chapter),version=completionMode?completionRecords.find(row=>row.id===chapter.id)?.record:personal?db.prepare('SELECT * FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? ORDER BY version DESC LIMIT 1').get(run.thesis_id,chapter.id):db.prepare("SELECT * FROM thesis_chapter_versions WHERE run_id=? AND chapter_id=? AND source='generated'").get(run.id,chapter.id);if(!version&&!isThesisReferenceChapter(chapter)&&!personal)throw thesisError(409,'章节检查点尚未完整保存');return {...chapter,text:version?.text||'',sourceIds:version?JSON.parse(version.source_ids):[],figures:version?JSON.parse(version.figures||'[]'):[],source:isThesisReferenceChapter(chapter)?'confirmed_reference_list':'agent_draft'};});
     const suggestion=thesisFullText(snapshot,chapters),resultId=randomUUID(),at=clock(),totals=db.prepare('SELECT input_tokens,output_tokens,usage_known FROM thesis_runs WHERE id=?').get(run.id);
@@ -342,7 +354,7 @@ export function startThesisWorker(db,config={}){
   }catch(error){
    if(stopped&&continuous){const requeued=transaction(()=>requeue(run));if(requeued)return;}
    const status=stopped?'interrupted':error.code==='needs_materials'?'needs_materials':'failed',message=stopped?'服务停止中断了任务；已完成章节已保存，预占权益已释放':thesisPublicError(error,runtime);
-   transaction(()=>markStopped(run.id,run.attempt,status,message));
+   transaction(()=>markStopped(run.id,run.attempt,status,message,error?.code));
   }finally{if(stopped&&continuous)transaction(()=>{if(ownsAttempt(run)&&db.prepare("SELECT 1 FROM thesis_runs WHERE id=? AND attempt=? AND status='running'").get(run.id,run.attempt)&&!requeue(run))markStopped(run.id,run.attempt,'interrupted','服务维护中断了任务，已保留完成章节，请确认后继续');});if(controllers.get(run.id)?.controller===controller)controllers.delete(run.id);busy=false;}
  }
  function tick(){if(busy||stopped)return Promise.resolve();currentPromise=execute();return currentPromise;}

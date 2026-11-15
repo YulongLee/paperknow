@@ -73,26 +73,28 @@ export function buildThesisBibliography(snapshot={},chapters=[]){
  for(const row of Array.isArray(snapshot.references)?snapshot.references:[])if(row?.confirmed===true&&typeof row.id==='string'){if(references.has(row.id))ambiguous.add(row.id);references.set(row.id,row);}
  for(const row of Array.isArray(snapshot.materials)?snapshot.materials:[])if(row?.confirmed===true&&typeof row.id==='string'){if(materials.has(row.id)||references.has(row.id))ambiguous.add(row.id);materials.set(row.id,row);}
  for(const id of ambiguous){references.delete(id);materials.delete(id);}
+ const segmentParents=new Map([...materials].filter(([,row])=>row.referenceSegment===true&&references.has(row.relatedReferenceId)).map(([id,row])=>[id,row.relatedReferenceId]));
  const usedReferences=new Map(),usedMaterials=new Map(),unresolved=[],associated=new Set();
  for(const chapter of rows.filter(row=>row&&!isOutlineReferenceChapter(row))){
   for(const id of Array.isArray(chapter.sourceIds)?chapter.sourceIds:[])associated.add(id);
   for(const match of String(chapter.text||'').matchAll(/\[source:([^\]]+)\]/g)){
-   const id=match[1],occurrence={chapterId:String(chapter.id||''),chapterTitle:String(chapter.title||''),start:match.index,end:match.index+match[0].length};
-   if(references.has(id)){
-    if(!usedReferences.has(id)){const row=references.get(id),number=usedReferences.size+1;usedReferences.set(id,{...thesisReferenceMetadata(row),id,number,label:'['+number+']',text:formatThesisReference(row),readableSource:typeof row.text==='string'&&Boolean(row.text.trim()),occurrences:[]});}
-    usedReferences.get(id).occurrences.push(occurrence);
+   const id=match[1],canonicalId=segmentParents.get(id)||id,occurrence={chapterId:String(chapter.id||''),chapterTitle:String(chapter.title||''),start:match.index,end:match.index+match[0].length,...(canonicalId!==id?{sourceId:id}:{})};
+   if(references.has(canonicalId)){
+    if(!usedReferences.has(canonicalId)){const row=references.get(canonicalId),number=usedReferences.size+1;usedReferences.set(canonicalId,{...thesisReferenceMetadata(row),id:canonicalId,number,label:'['+number+']',text:formatThesisReference(row),readableSource:typeof row.text==='string'&&Boolean(row.text.trim()),occurrences:[]});}
+    usedReferences.get(canonicalId).occurrences.push(occurrence);
    }else if(materials.has(id)){
     if(!usedMaterials.has(id)){const row=materials.get(id),number=usedMaterials.size+1;usedMaterials.set(id,{id,number,label:'[材料'+number+']',name:String(row.name||'用户研究资料'),purpose:String(row.purpose||''),occurrences:[]});}
     usedMaterials.get(id).occurrences.push(occurrence);
    }else unresolved.push({sourceId:id,...occurrence});
   }
  }
- const associatedMaterials=[...associated].filter(id=>materials.has(id)&&!usedMaterials.has(id)).map((id,index)=>{const row=materials.get(id);return {id,label:'[关联材料'+(index+1)+']',name:String(row.name||'用户研究资料'),purpose:String(row.purpose||''),associated:true,occurrences:[]};});
+ const associatedMaterials=[...associated].filter(id=>materials.has(id)&&!segmentParents.has(id)&&!usedMaterials.has(id)).map((id,index)=>{const row=materials.get(id);return {id,label:'[关联材料'+(index+1)+']',name:String(row.name||'用户研究资料'),purpose:String(row.purpose||''),associated:true,occurrences:[]};});
  const uncitedReferences=[...references].filter(([id])=>!usedReferences.has(id)).map(([id,row],index)=>({...thesisReferenceMetadata(row),id,label:'[待引用'+(index+1)+']',text:formatThesisReference(row),readableSource:typeof row.text==='string'&&Boolean(row.text.trim()),associated:associated.has(id)}));
- return {references:[...usedReferences.values()],uncitedReferences,materials:[...usedMaterials.values()],associatedMaterials,unresolved,counts:{references:usedReferences.size,uncitedReferences:uncitedReferences.length,materials:usedMaterials.size,associatedMaterials:associatedMaterials.length,citations:[...usedReferences.values()].reduce((sum,row)=>sum+row.occurrences.length,0),unresolved:unresolved.length}};
+ return {references:[...usedReferences.values()],uncitedReferences,materials:[...usedMaterials.values()],associatedMaterials,unresolved,sourceAliases:[...segmentParents].filter(([,parent])=>usedReferences.has(parent)).map(([id,parent])=>({id,parent})),counts:{references:usedReferences.size,uncitedReferences:uncitedReferences.length,materials:usedMaterials.size,associatedMaterials:associatedMaterials.length,citations:[...usedReferences.values()].reduce((sum,row)=>sum+row.occurrences.length,0),unresolved:unresolved.length}};
 }
 export function renderThesisCitations(text,bibliography){
  const labels=new Map([...(bibliography?.references||[]),...(bibliography?.materials||[])].map(row=>[row.id,row.label])),uncited=new Set((bibliography?.uncitedReferences||[]).map(row=>row.id));
+ for(const alias of bibliography?.sourceAliases||[])if(labels.has(alias.parent))labels.set(alias.id,labels.get(alias.parent));
  return String(text??'').replace(/\[source:([^\]]+)\]/g,(_,id)=>labels.get(id)||(uncited.has(id)?'[未在正文引用]':'[来源待核对]'));
 }
 
@@ -121,6 +123,7 @@ export function thesisDocumentPresentation(snapshot={},chapters=[],{title=snapsh
   return lines.every(line=>{const match=line.match(/^\[source:([^\]]+)\]\s*(.*)$/);return match&&printedReferenceIds.has(match[1])&&references.has(match[1])&&[formatThesisReference(references.get(match[1])),legacyThesisReference(references.get(match[1])),legacyThesisReference(Object.fromEntries(['title','authors','year','doi','url'].map(key=>[key,references.get(match[1])[key]])))].some(value=>normalize(match[2])===normalize(value));});
  };
  const referenceNumbers=new Map(bibliographyModel.references.map(row=>[row.id,row.number]));
+ for(const alias of bibliographyModel.sourceAliases||[])if(referenceNumbers.has(alias.parent))referenceNumbers.set(alias.id,referenceNumbers.get(alias.parent));
  const semanticBody=text=>{const raw=String(text),citationRanges=[];let value='',cursor=0;for(const match of raw.matchAll(/\[source:([^\]]+)\]/g)){value+=raw.slice(cursor,match.index);const label=render(match[0]),start=value.length;value+=label;if(referenceNumbers.has(match[1]))citationRanges.push({start,end:value.length,number:referenceNumbers.get(match[1])});cursor=match.index+match[0].length;}value+=raw.slice(cursor);return {text:value,citationRanges};};
  const renderChapter=row=>{const title=String(row.title||'');let text=stripThesisOwnedHeadings(row.text,[title]);if(thesisFrontMatterKind(row)==='abstract_en')text=text.replace(/^(?:英文题目|English title)\s*[:：].*\n*/im,'');return [title,semanticBody(text)];};
  const manuscript=rows.filter(row=>!isOutlineReferenceChapter(row)),isAcknowledgements=row=>/^(?:致谢|acknowledg(?:e)?ments?)$/i.test(String(row.title||'').replace(/\s/g,'')),front=manuscript.filter(thesisFrontMatterKind).flatMap(renderChapter),body=manuscript.filter(row=>!thesisFrontMatterKind(row)&&!isAcknowledgements(row)).flatMap(renderChapter),acknowledgements=manuscript.filter(isAcknowledgements).flatMap(renderChapter);

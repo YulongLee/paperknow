@@ -8,6 +8,15 @@ import {normalizeThesisSnapshot,compileThesisReferences,thesisAgentTask,thesisPl
 import {thesisSnapshotFromDraft} from '../dist/workspace/writing-model.mjs';
 import {buildThesisBibliography,renderThesisCitations,presentThesisDocument,formatThesisReference,thesisDocumentPresentation} from '../dist/workspace/thesis-document.mjs';
 
+test('separate user reference segments preserve exact source IDs but share only their confirmed parent bibliography number',()=>{
+ const reference={id:'r1',title:'证据文献',authors:'作者',year:'2020',text:'第一段原文',confirmed:true};
+ const segments=[{id:'seg1',name:'片段一',text:'第二段原文',confirmed:true,referenceSegment:true,relatedReferenceId:'r1'},{id:'seg2',name:'片段二',text:'第三段原文',confirmed:true,referenceSegment:true,relatedReferenceId:'r1'},{id:'old',name:'旧独立片段',text:'旧材料',confirmed:true,relatedReferenceId:'r1'}];
+ const snapshot={title:'测试',profile:{language:'中文'},references:[reference],materials:segments},chapters=[{id:'c1',title:'第一章',text:'正文[source:r1]；片段[source:seg1]；另段[source:seg2]；旧材料[source:old]。',sourceIds:['r1','seg1','seg2','old']}];
+ const bibliography=buildThesisBibliography(snapshot,chapters);assert.equal(bibliography.references.length,1);assert.equal(bibliography.materials.length,1);assert.equal(bibliography.materials[0].id,'old');assert.deepEqual(bibliography.references[0].occurrences.map(row=>row.sourceId||'r1'),['r1','seg1','seg2']);
+ assert.equal(renderThesisCitations(chapters[0].text,bibliography),'正文[1]；片段[1]；另段[1]；旧材料[材料1]。');
+ const presentation=thesisDocumentPresentation(snapshot,chapters,{submission:true});assert.equal(presentation.citationRanges.length,3);assert.match(presentation.text,/证据文献/);assert.equal(compileThesisReferences(snapshot,['seg1','r1','seg2']).split('\n').length,1);
+});
+
 const publication={documentType:'journal',journal:'合成期刊',publisher:'合成出版机构',publicationSource:'合成来源',volume:'12',issue:'3',pages:'45-49',venue:'合成会议',accessedAt:'2026-10-23'};
 const reference=(id,extra={})=>({id,title:'合成文献'+id,authors:'合成作者',year:'2026',doi:'10.9999/'+id,url:'https://example.invalid/'+id,confirmed:true,text:'',...extra});
 const snapshot=()=>({title:'合成论文引用验收',profile:{level:'本科',language:'中文',targetWords:500},requirements:{},materials:[{id:'notebook',name:'合成研究笔记',text:'本资料只用于流程测试。'.repeat(20),confirmed:true}],references:[reference('a',publication),reference('b'),reference('catalog-only'),reference('unconfirmed',{confirmed:false})],outline:[{id:'chapter-1',title:'研究背景',targetWords:250},{id:'chapter-2',title:'研究讨论',targetWords:250}]});

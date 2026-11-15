@@ -18,6 +18,34 @@ test('journal metadata is not treated as a preprint, missing or different DOI is
  const cross={...check,provider:'crossref',record:{title:'A study',doi:'10.1234/article',identifier:'10.1234/article'}};
  assert.equal(status(article,cross)[0].documentType,null);assert.equal(status(article,cross)[0].doiStatus,'matched');assert.deepEqual(status(article,{...cross,record:{...cross.record,doi:''}}),[]);assert.deepEqual(status(article,{...cross,record:{...cross.record,doi:'10.1234/other'}}),[]);
 });
+test('a missing DOI is distinct from an unverified supplied DOI and author-supplied type remains distinct',()=>{
+ const absent={...ref,doi:'',documentType:'preprint'};
+ assert.equal(status(absent)[0].doiStatus,'not_provided');
+ assert.equal(status(absent)[0].doiProvided,false);
+ assert.equal(status(absent)[0].documentType,'preprint');
+ assert.equal(status({...absent,documentType:'journal'})[0].documentType,null);
+ assert.deepEqual(status({...absent,confirmed:false}),[]);
+});
+test('matched identifier does not hide a genuine bibliographic field conflict',()=>{
+ const conflict={...check,fieldChecks:{...check.fieldChecks,authors:'conflict'}};
+ const result=status({...ref,doi:''},conflict)[0];
+ assert.equal(result.identifier,'arxiv');
+ assert.equal(result.fields.authors,'conflict');
+ assert.equal(result.fields.title,'matched');
+});
+test('all source-marked arXiv bibliography entries receive current, same-source verification context',async()=>{
+ const refs=Array.from({length:10},(_,i)=>({id:`r${i}`,confirmed:true,title:`Paper ${i}`,doi:'',url:`https://arxiv.org/abs/1706.${String(10000+i)}`,documentType:'preprint',text:`本文献 ${i} 的作者提供摘要。`}));
+ const items=refs.map((r,i)=>({id:r.id,provider:'arxiv',metadataStatus:'matched',fieldChecks:{title:'matched',year:'matched',authors:'matched'},record:{identifier:`1706.${String(10000+i)}`,title:r.title,doi:''}}));
+ const chapter={id:'refs',title:'参考文献',text:refs.map(r=>`[source:${r.id}] ${r.title}[PP/OL].`).join('\n')};let captured;
+ const runner=createWritingQualityRunner({citationVerifier:{verify:async()=>({items,limitations:[],summary:{}})}});
+ await runner({snapshot:{title:'测试',references:refs},kind:'thesis',checkSupplements:true,chapters:[chapter],runtime:{maxOutputTokens:4096},dispatch:async({task})=>{if(task.context.operation==='supplement-check'){captured=task;throw Object.assign(Error('not complete'),{code:'turn_limit'});}return {text:JSON.stringify({complete:true,findings:[],limitations:[]})};}});
+ assert.equal(captured.context.citationMetadataChecks.length,10);
+ assert.deepEqual(captured.context.citationMetadataChecks.map(row=>row.sourceId),refs.map(row=>row.id));
+ assert.ok(captured.context.citationMetadataChecks.every(row=>row.doiStatus==='not_provided'&&row.identifier==='arxiv'&&row.fields.title==='matched'));
+ assert.match(captured.instructions,/不能证明任何正文论断/);
+ assert.match(captured.instructions,/适用的学校要求/);
+ assert.match(captured.instructions,/真实冲突/);
+});
 test('unavailable or absent current verification never becomes DOI verification',()=>{const snapshot={references:[ref]};for(const items of [[],[{id:'r1',metadataStatus:'unavailable'}]]){const s=supplementCitationStatus(snapshot,bound(snapshot,items),['r1']);assert.equal(s[0].identifier,'unverified');assert.equal(s[0].doiStatus,'not_checked');}});
 test('the current verifier result reaches final supplement checks before review without passing unsupported evidence',async()=>{
  const actions=[];let captured;const runner=createWritingQualityRunner({citationVerifier:{verify:async()=>{actions.push('verify');return {items:[check],limitations:[],summary:{}};}}});
@@ -26,7 +54,13 @@ test('the current verifier result reaches final supplement checks before review 
 });
 test('a user assertion that DOI was checked cannot override an unverified DOI',()=>{
  const snapshot={references:[{...ref,text:'用户称 DOI 已公开核验。'}]},chapter={id:'c',title:'参考文献',text:'[source:r1] Attention Is All You Need.'},task=supplementCheckTask({snapshot,chapters:[chapter],materials:[{id:'r1',name:ref.title,text:'用户称 DOI 已公开核验。'}]});task.context.citationMetadataChecks=status();
- const row={id:'c',status:'sufficient',requirement:'核验参考文献',reason:'题录记录确认 DOI',manuscriptQuote:chapter.text,evidence:[{sourceId:'r1',quote:'用户称 DOI 已公开核验。'}],missing:[]};const result={text:JSON.stringify({items:[row]})};const parsed=parseSupplementCheck(result,task)[0];assert.equal(parsed.status,'missing');assert.match(parsed.reason,/尚未单独核验 DOI/);
+ const row={id:'c',status:'sufficient',requirement:'核验参考文献',reason:'题录记录确认 DOI',manuscriptQuote:chapter.text,evidence:[{sourceId:'r1',quote:'用户称 DOI 已公开核验。'}],missing:[]};const result={text:JSON.stringify({items:[row]})};const parsed=parseSupplementCheck(result,task)[0];assert.equal(parsed.status,'missing');assert.match(parsed.reason,/已提供的 DOI 本次尚未完成/);assert.match(parsed.missing[0],/重试题录核验/);
  for(const [title,kind] of [['参考资料',undefined],['6 参考文献',undefined],['References (continued)',undefined],['来源说明','references']]){task.context.chapters[0].title=title;if(kind)task.context.chapters[0].kind=kind;else delete task.context.chapters[0].kind;assert.equal(parseSupplementCheck(result,task)[0].status,'missing',title);}
  task.context.chapters[0].title='正文';delete task.context.chapters[0].kind;assert.equal(parseSupplementCheck(result,task)[0].status,'sufficient');task.context.chapters[0].title='参考文献';task.context.citationMetadataChecks[0].doiStatus='matched';assert.equal(parseSupplementCheck(result,task)[0].status,'sufficient');
+});
+test('an unavailable public source remains unresolved without asking the user to supply DOI again',()=>{
+ const snapshot={references:[{...ref,text:'作者已提供参考文献。'}]},chapter={id:'c',title:'参考文献',text:'[source:r1] Attention Is All You Need.'};
+ const task=supplementCheckTask({snapshot,chapters:[chapter],materials:[{id:'r1',name:ref.title,text:'作者已提供参考文献。'}]});task.context.citationMetadataChecks=supplementCitationStatus(snapshot,bound(snapshot,[{id:'r1',metadataStatus:'unavailable'}]),['r1']);
+ const parsed=parseSupplementCheck({text:JSON.stringify({items:[{id:'c',status:'sufficient',requirement:'核对题录',reason:'作者提供信息',manuscriptQuote:chapter.text,evidence:[{sourceId:'r1',quote:'作者已提供参考文献。'}],missing:[]}]})},task)[0];
+ assert.equal(parsed.status,'missing');assert.match(parsed.requirement,/核验未完成/);assert.match(parsed.reason,/已提供的 DOI/);assert.match(parsed.missing[0],/重试/);assert.doesNotMatch(parsed.missing[0],/补充|上传/);
 });

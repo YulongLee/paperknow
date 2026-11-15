@@ -12,6 +12,14 @@ function profile(value){
  for(const key of ['recognized','warnings','summary',...(value.unresolved===undefined?[]:['unresolved'])])if(!Array.isArray(value[key])||value[key].length>(['recognized','unresolved'].includes(key)?256:100)||value[key].some(text=>typeof text!=='string'||text.length>2000))fail(422,'模板解析结果无效，请重新上传');
  if(!value.recognized.length)fail(422,'未能识别模板的实际排版规则，请提供含样式的 DOCX 样例；尚未应用该模板');
  const clean={version:1,rules:value.rules,recognized:value.recognized,...(value.unresolved===undefined?{}:{unresolved:value.unresolved}),warnings:value.warnings,summary:value.summary};
+ // Preserve only bounded numeric requirements extracted by the server from
+ // this exact template. Missing submission means a pre-existing profile,
+ // whose requirements must not be guessed.
+ if(value.submission!==undefined){
+  if(!object(value.submission))fail(422,'模板解析结果无效，请重新上传');
+  clean.submission={};
+  for(const key of ['minimumReferences','minimumForeignReferences'])if(value.submission[key]!==undefined){const n=value.submission[key];if(!Number.isSafeInteger(n)||n<1||n>99)fail(422,'模板解析结果无效，请重新上传');clean.submission[key]=n;}
+ }
  let json;try{json=JSON.stringify(clean);}catch{fail(422,'模板解析结果无效，请重新上传');}
  if(Buffer.byteLength(json)>maxProfileBytes)fail(413,'模板排版规则过多，请精简模板后重新上传');
  return JSON.parse(json);

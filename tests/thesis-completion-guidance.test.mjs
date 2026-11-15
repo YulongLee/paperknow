@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {completionDiagnosis,withCompletionDiagnosis,completionResolutions} from '../backend/thesis-completion-guidance.mjs';
 import {completionPanelHTML,createCompletionDraft,completionProgressText} from '../dist/workspace/thesis-completion-panel.mjs';
-import {completionReviewPanel} from '../dist/workspace/thesis-completion-review.mjs';
+import {completionDiagnosisPanel,completionReviewPanel} from '../dist/workspace/thesis-completion-review.mjs';
 const chapters=[{id:'a',title:'分析',text:'第一章完整引用材料和研究结果'},{id:'b',title:'分析',text:'第二章完整引用材料和研究结果'}],report={phase:'materials',coverage:{total:2,checked:2,complete:true},items:[{id:'check-0-0',title:'分析',status:'sufficient',requirement:'已有依据',reason:'已提供',manuscriptQuote:'第一章完整引用材料',missing:[]},{id:'check-1-0',title:'分析',status:'missing',requirement:'补写解释',reason:'未说明',manuscriptQuote:'第二章完整引用材料',missing:['补写第二章对照解释']}]};
 test('current diagnosis is chapter-bound even with repeated titles and never mutates the authorized plan',()=>{
  const diagnosis=completionDiagnosis(report,chapters),unit={chapterId:'a',completion:{missingInformation:['已有缺项']}};
@@ -16,6 +16,24 @@ test('gap resolutions require a current completed final check and cannot treat a
  for(const [value,current]of [[final,false],[{...final,phase:'materials'},true],[{...final,coverage:{complete:false}},true]])assert.equal(completionResolutions(diagnosis,value,chapters,{current}).items[1].resolution,'pending');
  const unresolved=completionResolutions(diagnosis,{...report,phase:'final'},chapters,{current:true});assert.equal(unresolved.items[1].resolution,'needs_materials');assert.ok(unresolved.items[1].remaining.includes('补写第二章对照解释'));
  const markup=completionReviewPanel({status:'needs_materials',diagnosis:unresolved,checks:{},missing:['真实记录'],changes:[]});assert.match(markup,/AI审查与补齐结果/);assert.match(markup,/需补充事实资料/);assert.doesNotMatch(markup,/data-completion-confirm(?:\s|>)/);
+});
+
+test('pending initial diagnosis identifies its historical scope without claiming supplied evidence is missing',()=>{
+ const row={chapterId:'chapter',title:'分析',status:'missing',requirement:'对照结果',missing:['对照输出的两个数值'],manuscriptQuote:'原稿中需要核对的句子',resolution:'pending'};
+ const diagnosis={status:'checked',coverage:{checked:1},items:[row]};
+ const html=completionDiagnosisPanel(diagnosis);
+ assert.match(html,/初稿检查记录：对照输出的两个数值/);
+ assert.match(html,/资料可能已经补充，正文也可能尚未更新/);
+ assert.match(html,/待复检/);
+ assert.doesNotMatch(html,/仍需补充：/);
+ assert.doesNotMatch(html,/需补充事实资料/);
+ const currentMissing=completionDiagnosisPanel({...diagnosis,items:[{...row,resolution:'needs_materials',remaining:['实际缺失的原始数据']}]});
+ assert.match(currentMissing,/仍需补充：实际缺失的原始数据/);
+ assert.match(currentMissing,/需补充事实资料/);
+ assert.doesNotMatch(currentMissing,/资料可能已经补充/);
+ const stale=completionDiagnosisPanel({...diagnosis,items:[{...row,resolution:'needs_materials',remaining:['旧结果']}]},{changed:true});
+ assert.match(stale,/资料可能已经补充/);
+ assert.doesNotMatch(stale,/仍需补充：旧结果/);
 });
 test('one claim in the same chapter cannot resolve or replace a different missing claim',()=>{
  const diagnosis=completionDiagnosis(report,chapters);

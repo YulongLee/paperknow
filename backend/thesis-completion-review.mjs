@@ -1,4 +1,5 @@
 import {citedDuplicateDoiIssues} from './thesis-duplicate-doi.mjs';
+import {completionNewMarkers} from './thesis-new-review-markers.mjs';
 import {thesisReviewIssueIdentities} from './thesis-review-issue-identity.mjs';
 import {completionResolutions} from './thesis-completion-guidance.mjs';
 import {completionContentAudit} from './thesis-completion-audit.mjs';
@@ -6,11 +7,12 @@ import {thesisHash,thesisError} from './thesis-model.mjs';
 import {savedThesisChapters,completionManuscriptHash} from './thesis-completion.mjs';
 import {thesisCompletionNeeds} from '../dist/workspace/thesis-completion-model.mjs';
 import {supplementCheckReady} from '../dist/workspace/supplement-check-panel.mjs';
+import {thesisImageReviewItems} from './thesis-image-review.mjs';
 
 export function simulationCompletionProgress(snapshot,run,chapters,{current=false}={}){
  const saved=(snapshot.materials||[]).filter(row=>row.dataKind==='simulation'),runMaterials=(JSON.parse(run?.snapshot||'{}').materials||[]).filter(row=>row.dataKind==='simulation'),provided=new Set(saved.filter(row=>runMaterials.some(old=>old.id===row.id&&old.text===row.text&&JSON.stringify(old.simulation)===JSON.stringify(row.simulation))).map(row=>row.id));
  const cited=new Set(chapters.flatMap(row=>[...String(row.text||'').matchAll(/\[source:([^\]]+)\]/g)].map(match=>match[1])));
- return {savedCount:saved.length,records:saved.reduce((sum,row)=>sum+(row.simulation?.recipe?.sampleSize||0),0),includedCount:saved.filter(row=>provided.has(row.id)).length,usedCount:saved.filter(row=>provided.has(row.id)&&cited.has(row.id)).length,checked:current&&supplementCheckReady(JSON.parse(run?.quality||'null'))};
+ return {savedCount:saved.length,records:saved.reduce((sum,row)=>sum+(row.simulation?.recipe?.sampleSize||0),0),includedCount:saved.filter(row=>provided.has(row.id)).length,usedCount:saved.filter(row=>provided.has(row.id)&&cited.has(row.id)).length,checked:current&&supplementCheckReady(JSON.parse(run?.quality||'null'),{requireCitationCoverage:true})};
 }
 
 // Confirmation is tied to immutable chapter versions AND the current research,
@@ -34,19 +36,21 @@ export function completionReview(db,row,run){
   ...audit.issues.filter(issue=>/^cover_|reference_minimum|foreign_references|citations_missing/.test(issue.code)).map(issue=>issue.message),
   ...(quality?.supplementCheck?.items||[]).filter(item=>item.status==='missing').flatMap(item=>(item.missing||[]).map(text=>item.title+'：'+text))
  ])].slice(0,60);
- const findings=[...(quality?.consistency?.findings||[]),...(quality?.reviews||[]).flatMap(review=>review.findings||[])];
- const issues=[...citedDuplicateDoiIssues(snapshot,chapters),...audit.issues.filter(issue=>!/^cover_|reference_minimum|foreign_references|citations_missing/.test(issue.code)).map(issue=>({title:'终稿内容',text:issue.message})),...findings.filter(finding=>finding.severity!=='info'||finding.category==='language_expression').slice(0,40).map(finding=>({chapterId:finding.sectionId,title:finding.sectionTitle||'正文',text: String(finding.suggestion||finding.explanation||'本项仍需完善').slice(0,500)}))].slice(0,50);
+ const reviewItems=thesisReviewIssueIdentities({row,run,saved,quality,current:current&&!stale});
+ if(reviewItems.length){const basis=reviewItems[0].basis,receipts=new Set(db.prepare('SELECT issue_id FROM thesis_review_issue_receipts WHERE thesis_id=? AND user_id=? AND run_id=? AND basis=?').all(row.id,row.user_id,run.id,basis).map(receipt=>receipt.issue_id)),confirmed=new Set(db.prepare('SELECT issue_id FROM thesis_expression_confirmations WHERE thesis_id=? AND user_id=? AND run_id=? AND basis=?').all(row.id,row.user_id,run.id,basis).map(receipt=>receipt.issue_id));for(const issue of reviewItems){issue.reviewed=receipts.has(issue.id);issue.confirmed=issue.confirmable&&confirmed.has(issue.id);}}
+ const findings=[...(quality?.consistency?.findings||[]).map(finding=>({finding,source:'consistency'})),...(quality?.reviews||[]).flatMap(review=>(review.findings||[]).map(finding=>({finding,source:'review'})))];
+ const approvedFinding=({finding,source})=>reviewItems.some(item=>item.confirmable&&item.confirmed&&item.source===source&&item.chapterId===finding.sectionId&&item.offset===finding.offset&&item.quote===finding.quote&&item.category===finding.category&&item.reasonCode===(finding.reasonCode||'')&&item.severity===finding.severity);
+ const issues=[...citedDuplicateDoiIssues(snapshot,chapters),...audit.issues.filter(issue=>!/^cover_|reference_minimum|foreign_references|citations_missing/.test(issue.code)).map(issue=>({title:'终稿内容',text:issue.message})),...findings.filter(({finding})=>finding.severity!=='info'||finding.category==='language_expression').filter(row=>!approvedFinding(row)).slice(0,40).map(({finding})=>({chapterId:finding.sectionId,title:finding.sectionTitle||'正文',text: String(finding.suggestion||finding.explanation||'本项仍需完善').slice(0,500)}))].slice(0,50);
  const suggestions=[];
  const reviewMeta=JSON.parse(run.settings_meta||'{}'),billingRunId=reviewMeta.reviewOnly===true?reviewMeta.reviewPaidRunId:run.id;
  const paidStatus=db.prepare("SELECT status FROM billing_reservations WHERE job_id=? AND user_id=? ORDER BY attempt DESC LIMIT 1").get(billingRunId,row.user_id)?.status||null;
  const billingStatus=reviewMeta.reviewOnly===true&&paidStatus==='settled'?'included':paidStatus;
  const checkUnavailable=quality?.supplementCheck?.status==='unavailable';
- const status=['queued','running'].includes(run.status)?'generating':run.status!=='completed'||stale||checkUnavailable?'check_required':missing.length?'needs_materials':!supplementCheckReady(quality)||issues.length||needs.chapters.some(chapter=>chapter.needsTableTitles)?'check_required':'ready';
- const fingerprint=thesisHash({runId:run.id,snapshot:row.snapshot_hash,chapters:saved.map(chapter=>[chapter.id,chapter.record?.id||null]),metadata:row.export_metadata||null,template:row.export_template||null,quality:run.quality});
+ const imageReviews=thesisImageReviewItems(db,row,run,saved,quality,{current:current&&!stale&&run.status==='completed'}),pendingImages=imageReviews.some(image=>!image.available||!image.confirmed);
+ const status=['queued','running'].includes(run.status)?'generating':run.status!=='completed'||stale||checkUnavailable?'check_required':missing.length?'needs_materials':!supplementCheckReady(quality,{requireCitationCoverage:true})||issues.length||pendingImages||needs.chapters.some(chapter=>chapter.needsTableTitles)?'check_required':'ready';
+ const fingerprint=thesisHash({runId:run.id,snapshot:row.snapshot_hash,chapters:saved.map(chapter=>[chapter.id,chapter.record?.id||null]),metadata:row.export_metadata||null,template:row.export_template||null,quality:run.quality,expressions:reviewItems.filter(item=>item.confirmed).map(item=>item.id).sort(),images:imageReviews.filter(item=>item.confirmed).map(item=>item.id).sort()});
  const receipt=current&&status==='ready'?db.prepare('SELECT confirmed_at FROM thesis_completion_confirmations WHERE thesis_id=? AND run_id=? AND user_id=? AND fingerprint=?').get(row.id,run.id,row.user_id,fingerprint):null;
- const reviewItems=thesisReviewIssueIdentities({row,run,saved,quality,current:current&&!stale});
- if(reviewItems.length){const receipts=new Set(db.prepare('SELECT issue_id FROM thesis_review_issue_receipts WHERE thesis_id=? AND user_id=? AND run_id=? AND basis=?').all(row.id,row.user_id,run.id,reviewItems[0].basis).map(receipt=>receipt.issue_id));for(const issue of reviewItems)issue.reviewed=receipts.has(issue.id);}
- return {required:true,runId:run.id,billingStatus,status:receipt?'confirmed':status,fingerprint:current&&status==='ready'?fingerprint:null,confirmedAt:receipt?.confirmed_at||null,basisChanged:false,reportCurrent:current&&!stale,reasonCode:stale?'manuscript_updated':checkUnavailable?'check_unavailable':null,nextAction:status==='ready'?'confirm':'complete_and_check',changes,missing,issues,suggestions,reviewItems,informationMissing,diagnosis:completionResolutions(quality?.completionDiagnosis,quality?.supplementCheck,chapters,{current:current&&!stale}),simulation,simulationUsed:simulation.usedCount>0,checks:{materials:!stale&&supplementCheckReady(quality),manuscript:quality?.coverage?.complete===true&&!stale,content:missing.length===0&&issues.length===0&&!needs.chapters.some(chapter=>chapter.needsTableTitles)}};
+ return {required:true,runId:run.id,billingStatus,status:receipt?'confirmed':status,fingerprint:current&&status==='ready'?fingerprint:null,confirmedAt:receipt?.confirmed_at||null,basisChanged:false,reportCurrent:current&&!stale,reasonCode:stale?'manuscript_updated':checkUnavailable?'check_unavailable':run.status==='completed'&&quality?.supplementCheck?.status==='final_ready'&&quality.supplementCheck.citationCoverageVersion!==1?'citation_coverage_required':null,nextAction:status==='ready'?'confirm':'complete_and_check',changes,missing,issues,suggestions,reviewItems,imageReviews,newMarkers:completionNewMarkers(db,row,run,saved,{current:current&&!stale&&quality?.coverage?.complete===true&&quality?.supplementCheck?.coverage?.complete===true}),informationMissing,diagnosis:completionResolutions(quality?.completionDiagnosis,quality?.supplementCheck,chapters,{current:current&&!stale}),simulation,simulationUsed:simulation.usedCount>0,checks:{materials:!stale&&supplementCheckReady(quality,{requireCitationCoverage:true}),manuscript:quality?.coverage?.complete===true&&!stale,content:missing.length===0&&issues.length===0&&!pendingImages&&!needs.chapters.some(chapter=>chapter.needsTableTitles)}};
 }
 
 export function confirmCompletionReview(db,row,run,input,at){

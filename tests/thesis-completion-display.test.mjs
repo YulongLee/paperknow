@@ -6,7 +6,7 @@ const review={reportCurrent:true,status:'needs_materials',missing:[missing,missi
 const quality={stale:false,citations:{items:[{id:'r1',metadataStatus:'conflict'},{id:'r2',metadataStatus:'not_found'},{id:'r3',metadataStatus:'unverified'}]},supplementCheck:{items:[{title:'第二章',status:'missing',missing:['核对实验记录'],manuscriptQuote:'需要核对的原句'}]}};
 const chapters=[{id:'c2',title:'第二章',text:'前文。需要核对的原句。'}],references=[{id:'r1',title:'A <危险>'},{id:'r2',title:'B'},{id:'r3',title:'C'}];
 test('existing citation verification is displayed truthfully without removing the blocking status',()=>{
- const v=completionMissingPresentation(review,{quality,chapters,references});assert.equal(v.rows.length,2);assert.match(v.rows[0].text,/已有题录核验结果/);assert.deepEqual(v.citationRows.map(x=>x.status),['字段不一致','本次未查到','待核验']);assert.match(v.rows[1].quote,/前文。需要核对的原句。/);assert.equal(v.rows[1].chapterId,'c2');
+ const v=completionMissingPresentation(review,{quality,chapters,references});assert.equal(v.rows.length,2);assert.match(v.rows[0].text,/已尝试题录核验，部分尚未完成/);assert.deepEqual(v.citationRows.map(x=>x.status),['字段不一致','本次未查到','待核验']);assert.match(v.rows[1].quote,/前文。需要核对的原句。/);assert.equal(v.rows[1].chapterId,'c2');
  const html=completionReviewPanel(review,{quality,chapters,references});assert.match(html,/需要核对的原句/);assert.match(html,/data-completion-view="c2"/);assert.match(html,/A &lt;危险&gt;/);assert.doesNotMatch(html,/确认补充内容，编排并导出终稿/);assert.match(html,/文献对正文论断的支持/);
 });
 test('stale or unavailable verification never claims a current citation check',()=>{
@@ -15,6 +15,22 @@ test('stale or unavailable verification never claims a current citation check',(
 });
 test('distinct genuinely pending citation requirements are not collapsed or hidden',()=>{
  const a='参考文献：9条参考文献的DOI/URL结构化核验记录',b='参考文献：期刊卷期页待核对',v=completionMissingPresentation({...review,missing:[a,b]},{quality,chapters,references});assert.deepEqual(v.rows.map(row=>row.text),[a,b]);assert.ok(v.citationRows.length);
+});
+test('an unavailable citation service stays visibly unverified without hiding actual missing fields or conflicts',()=>{
+ const missingDoi='参考文献：缺少 DOI，需要补充',conflict='参考文献：作者信息不一致，请核对';
+ const q={citations:{items:[{id:'r1',metadataStatus:'unavailable'},{id:'r2',metadataStatus:'conflict'},{id:'r3',metadataStatus:'unverified'}]}};
+ const v=completionMissingPresentation({...review,missing:[missing,missingDoi,conflict]},{quality:q,references});
+ assert.match(v.rows[0].text,/已尝试题录核验，部分尚未完成/);assert.deepEqual(v.rows.slice(1).map(row=>row.text),[missingDoi,conflict]);
+ assert.deepEqual(v.citationRows.map(row=>row.status),['暂时无法核验','字段不一致','待核验']);
+ const html=completionReviewPanel({...review,missing:[missing,missingDoi,conflict]},{quality:q,references});assert.match(html,/暂时无法核验/);assert.doesNotMatch(html,/已有题录核验结果/);
+});
+test('a matched preprint with an unchecked DOI cannot be presented as a fully checked citation',()=>{
+ const q={citations:{items:[{id:'r1',metadataStatus:'matched',fieldChecks:{doi:'not_checked'}},{id:'r2',metadataStatus:'matched',fieldChecks:{doi:'matched'}}]}};
+ const v=completionMissingPresentation(review,{quality:q,references});assert.deepEqual(v.citationRows.map(row=>row.status),['题录已对应，DOI 待核验','已核对']);
+});
+test('a completely unavailable citation check never implies that any item was verified',()=>{
+ const q={citations:{items:[{id:'r1',metadataStatus:'unavailable'},{id:'r2',metadataStatus:'unverified'}]}};
+ const v=completionMissingPresentation(review,{quality:q,references});assert.match(v.rows[0].text,/题录核验暂未完成/);assert.doesNotMatch(v.rows[0].text,/部分尚未完成|已有题录核验结果/);
 });
 test('ambiguous or missing chapter quotes are not fabricated as locations',()=>{
  const v=completionMissingPresentation(review,{quality,chapters:[...chapters,{id:'other',title:'第二章',text:'需要核对的原句'}],references});assert.equal(v.rows[1].quote,'');assert.equal(v.rows[1].chapterId,null);
@@ -63,8 +79,14 @@ test('a truncated duplicate in the missing instruction is replaced only when act
 test('review acknowledgement is clearly separate from proving facts and is disabled on stale content',()=>{
  const issue={id:'a'.repeat(64),quote:'论文 <原句>',suggestion:'请核对来源',reviewed:false};
  const current={status:'check_required',reportCurrent:true,checks:{},missing:[],issues:[],changes:[],reviewItems:[issue]};
- const html=completionReviewPanel(current);assert.match(html,/标记仅表示已查看/);assert.match(html,/论文 &lt;原句&gt;/);assert.match(html,/data-issue-receipt/);assert.match(html,/标记已查看/);
+ const html=completionReviewPanel(current);assert.match(html,/已查看标记不代替资料核实/);assert.match(html,/论文 &lt;原句&gt;/);assert.match(html,/data-issue-receipt/);assert.match(html,/标记已查看/);
  assert.match(completionReviewPanel({...current,reviewItems:[{...issue,reviewed:true}]}),/撤销已查看/);
  assert.doesNotMatch(completionReviewPanel(current,{dirty:true}),/data-issue-receipt/);
  assert.doesNotMatch(completionReviewPanel({...current,reportCurrent:false}),/data-issue-receipt/);
+});
+
+test('blocking review items link to their actual chapter without dismissing evidence checks',()=>{
+ const current={status:'check_required',reportCurrent:true,checks:{},missing:[],changes:[],issues:[{chapterId:'chapter-1',title:'第一章',text:'核对来源'}, {title:'整体',text:'核对原始记录'}]};
+ const html=completionReviewPanel(current);assert.match(html,/data-completion-view="chapter-1"/);assert.match(html,/保存正文后重新检查/);assert.match(html,/核对原始记录/);assert.doesNotMatch(html,/确认补充内容，编排并导出终稿/);
+ assert.match(completionReviewPanel(current,{busy:true}),/data-completion-view="chapter-1" disabled/);
 });

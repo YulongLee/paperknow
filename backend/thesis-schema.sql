@@ -81,3 +81,9 @@ CREATE TABLE IF NOT EXISTS thesis_review_issue_receipts(
  PRIMARY KEY(thesis_id,issue_id)
 );
 CREATE INDEX IF NOT EXISTS thesis_review_issue_receipts_owner ON thesis_review_issue_receipts(user_id,thesis_id);
+CREATE TABLE IF NOT EXISTS thesis_expression_confirmations(
+ thesis_id TEXT NOT NULL REFERENCES theses(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ run_id TEXT NOT NULL REFERENCES thesis_runs(id) ON DELETE CASCADE,issue_id TEXT NOT NULL,basis TEXT NOT NULL,confirmed_at TEXT NOT NULL,
+ PRIMARY KEY(thesis_id,issue_id)
+);
+CREATE INDEX IF NOT EXISTS thesis_expression_confirmations_owner ON thesis_expression_confirmations(user_id,thesis_id);

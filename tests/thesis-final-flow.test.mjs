@@ -19,7 +19,7 @@ test('final flow derives real prerequisites, busy state and delivery eligibility
  const confirmed=paper({completionReview:{required:true,status:'confirmed'}});
  assert.equal(finalWritingState(confirmed).confirmed,true);assert.equal(finalWritingState(confirmed,{dirty:true}).confirmed,false);
  const legacy=paper({quality:{coverage:{complete:true},supplementCheck:{version:1,phase:'final',status:'final_ready',coverage:{total:1,checked:1,complete:true},items:[{status:'not_required'}]}}});
- assert.equal(finalWritingState(legacy).confirmed,true);assert.equal(finalWritingState({...legacy,quality:{...legacy.quality,stale:true}}).confirmed,false);
+ assert.equal(finalWritingState(legacy).confirmed,false);const covered={...legacy,quality:{...legacy.quality,supplementCheck:{...legacy.quality.supplementCheck,citationCoverageVersion:1}}};assert.equal(finalWritingState(covered).confirmed,true);assert.equal(finalWritingState({...covered,quality:{...covered.quality,stale:true}}).confirmed,false);
 });
 test('step navigation keeps actual inputs, focus and scroll while locking steps that lack a draft',()=>{
  const dom=new JSDOM(`<main>${finalWritingStepsHTML()}${['source','prepare','review'].map(key=>`<section data-thesis-final-stage="${key}"><textarea>${key}</textarea></section>`).join('')}</main>`),root=dom.window.document.querySelector('main'),field=root.querySelector('[data-thesis-final-stage="prepare"] textarea');

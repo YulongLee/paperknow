@@ -87,6 +87,9 @@ test('arXiv identifiers are verified in one bounded official id_list request and
 test('arXiv DOI is not verified when registration record is missing, mismatched or unavailable',async()=>{
  const input=reference({id:'arxiv:2609.00065',year:'2026',doi:'10.48550/arXiv.2609.00065'});for(const reply of [json({data:{id:'10.48550/arxiv.2609.00065',attributes:{doi:'10.48550/arxiv.2609.00065',titles:[{title:'Different title'}]}}}),json({data:{id:'10.48550/arxiv.2609.00066',attributes:{doi:'10.48550/arxiv.2609.00066',titles:[{title:'Evidence and research methods'}]}}}),new Response('unavailable',{status:503})]){const result=await createCitationVerifier({fetchImpl:async url=>new URL(url).hostname==='api.datacite.org'?reply:xml(atom([{id:'2609.00065v1'}]))}).verify([input]);assert.equal(result.items[0].record.doi,'');}
 });
+test('an arxiv match must separately disclose that a supplied DOI is not verified',async()=>{
+ const result=await createCitationVerifier({fetchImpl:async()=>xml(atom([{id:'2609.00065v1'}]))}).verify([reference({id:'arxiv:2609.00065',year:'2026',url:'https://arxiv.org/abs/2609.00065',doi:'10.1234/elsewhere'})]);assert.equal(result.items[0].metadataStatus,'matched');assert.equal(result.items[0].fieldChecks.doi,'not_checked');assert.match(result.items[0].reason,/DOI 尚未单独核验/);
+});
 
 test('an arXiv response for another version or identifier cannot verify the requested version',async()=>{
  const result=await createCitationVerifier({fetchImpl:async()=>xml(atom([{id:'2609.00065v3'}]))}).verify([reference({id:'arxiv:2609.00065v2',year:'2026',doi:''})]);
@@ -125,6 +128,18 @@ test('metadata cache is bounded, expires, and cannot be changed by a caller muta
 test('timeouts are bounded even when a provider ignores AbortSignal and errors never expose diagnostics',async()=>{
  const started=Date.now(),result=await createCitationVerifier({timeoutMs:50,fetchImpl:async()=>new Promise(()=>{})}).verify([reference()]);assert.ok(Date.now()-started<1000);assert.equal(result.items[0].metadataStatus,'unavailable');
  const failed=await createCitationVerifier({fetchImpl:async()=>{throw Error('SECRET upstream body and API key');}}).verify([reference()]);assert.equal(failed.items[0].metadataStatus,'unavailable');assert.doesNotMatch(JSON.stringify(failed),/SECRET|API key/);
+});
+test('citation lookup retries one transient transport failure without claiming unverified metadata',async()=>{
+ let calls=0;const verifier=createCitationVerifier({fetchImpl:async()=>{calls++;if(calls===1)throw Error('temporary transport failure');return json(record());}}),result=await verifier.verify([reference()]);assert.equal(calls,2);assert.equal(result.requests,2);assert.equal(result.items[0].metadataStatus,'matched');
+ let denied=0;const failed=await createCitationVerifier({maxRequests:1,fetchImpl:async()=>{denied++;throw Error('transport');}}).verify([reference()]);assert.equal(denied,1);assert.equal(failed.items[0].metadataStatus,'unverified');assert.equal(failed.items[0].reasonCode,'budget_exhausted');
+ let missingCalls=0;const missing=await createCitationVerifier({fetchImpl:async()=>{missingCalls++;return json({}, {status:404});}}).verify([reference()]);assert.equal(missingCalls,1);assert.equal(missing.items[0].metadataStatus,'not_found');
+});
+test('transient arxiv retry observes provider delay and does not require DOI',async()=>{
+ let calls=0;const waits=[],fetchImpl=async()=>{calls++;if(calls===1)throw Error('connection reset');return xml(atom([{id:'2609.00065v1'}]));};const result=await createCitationVerifier({fetchImpl,wait:async ms=>waits.push(ms)}).verify([reference({id:'arxiv:2609.00065',year:'2026',doi:''})]);assert.equal(calls,2);assert.deepEqual(waits,[3000]);assert.equal(result.items[0].metadataStatus,'matched');assert.equal(result.items[0].record.doi,'');
+});
+test('invalid JSON is not retried, and cancelling the arxiv retry wait stops promptly',async()=>{
+ let calls=0;const invalid=await createCitationVerifier({fetchImpl:async()=>{calls++;return new Response('{bad', {headers:{'content-type':'application/json'}});}}).verify([reference()]);assert.equal(calls,1);assert.equal(invalid.items[0].metadataStatus,'unavailable');
+ const controller=new AbortController();let pendingCalls=0,waiting;const ready=new Promise(resolve=>waiting=resolve);const verifier=createCitationVerifier({fetchImpl:async()=>{pendingCalls++;throw Error('network');},wait:()=>{waiting();return new Promise(()=>{});}}),run=verifier.verify([reference({id:'arxiv:2609.00065',doi:''})],{signal:controller.signal});await ready;controller.abort();await assert.rejects(run,{name:'AbortError'});assert.equal(pendingCalls,1);
 });
 
 test('bad content type, oversized responses, malformed JSON and source failure are not metadata verification',async()=>{
@@ -421,3 +436,15 @@ test('deterministic repeated transition is advisory but unsupported certainty re
 });
 
 test('quality review distinguishes rounding order and never assumes two experiments match',()=>{const task=writingReviewTask({chapters:[{id:'c',title:'比较',text:'均值差按原始数据计算，口径仍待核对。'}]});assert.match(task.instructions,/先相减再舍入/);assert.match(task.instructions,/先舍入再相减/);assert.match(task.instructions,/不猜测数值或拼接不同实验/);});
+
+test('审校提示将影响论证的数学结论与可选推导区分，保留可定位的问题',()=>{
+ const text='对所有符合条件的输入，该表达式的计算结果均为正。';
+ const task=writingReviewTask({chapters:[{id:'c',title:'方法',text}]});
+ assert.match(task.instructions,/普遍规律本身不成立/);
+ assert.match(task.instructions,/影响论证或结果.*logic\/warning/);
+ assert.match(task.instructions,/无法确定其真伪时.*不得断言一定错误/);
+ const substantive={sectionId:'c',quote:text,category:'logic',severity:'warning',explanation:'该普遍结论的适用条件需要核对，可能影响论证。',suggestion:'检查边界条件后修订结论。'};
+ assert.equal(parseWritingReview(aiResult([substantive]),task).findings[0].severity,'warning');
+ const optional={...substantive,category:'language_expression',severity:'info',explanation:'可补充推导以便读者理解。',suggestion:'按需要补充推导。'};
+ assert.equal(parseWritingReview(aiResult([optional]),task).findings[0].severity,'info');
+});

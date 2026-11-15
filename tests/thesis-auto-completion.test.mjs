@@ -9,6 +9,10 @@ import {completionPanelHTML,createCompletionDraft} from '../dist/workspace/thesi
 import {completionReviewPanel} from '../dist/workspace/thesis-completion-review.mjs';
 const source='合成测试资料，记录了限定场景下的研究方法，不代表真实实验。'.repeat(10);
 const value=()=>normalizeThesisSnapshot({title:'合成研究',profile:{level:'本科',language:'中文',targetWords:500},requirements:{deliveryVersion:1},materials:[{id:'m',name:'已知研究资料',text:source,confirmed:true}],references:[],outline:[{id:'c',title:'方法与分析',targetWords:500}]});
+test('completion distinguishes an unseen cross-chapter figure from an actual missing fact',()=>{
+ const unit={id:'u',chapterId:'c',chapterTitle:'方法与分析',title:'方法与分析',targetWords:500,part:1,parts:1,presentation:{},completion:{scope:'full',originalText:'本章说明研究目的。【待补充：真实调查记录】',missingInformation:['真实调查记录']}};
+ const task=thesisAgentTask(value(),unit,[]);assert.match(task.instructions,/不得因为本节或当前窗口未显示图表/);assert.match(task.instructions,/原稿已经存在的缺项要保留/);assert.match(task.instructions,/不能声称已识别或核验图像/);assert.ok(task.context.revision.missingInformation.includes('真实调查记录'));
+});
 test('thesis expression repair removes only a duplicate full stop while preserving the citation and numbers',()=>{
  const quote='观察结果为 12 人。[source:m]。后续安排待确认。',text='研究说明：'+quote,checkpoint={text,figures:'[]',source_ids:'["m"]',missing_evidence:'[]',trace:'[]'};
  const fixed='观察结果为 12 人。[source:m]后续安排待确认。';
@@ -34,6 +38,12 @@ test('an incomplete materials check still allows grounded expression fixes witho
 test('automatic writing receives the actual missing items instead of just a generic simulation request',()=>{
  const snapshot=value(),unit={id:'u',chapterId:'c',chapterTitle:'方法与分析',title:'方法与分析',targetWords:500,part:1,parts:1,presentation:{},completion:{scope:'full',originalText:'方法依据与分析说明尚待完善。',missingInformation:['本节的文献依据','已有模拟结果的分析说明']}};
  const task=thesisAgentTask(snapshot,unit,[]);assert.deepEqual(task.context.revision.missingInformation,unit.completion.missingInformation);assert.match(task.instructions,/逐项处理/);assert.match(task.instructions,/直接写入正文/);assert.match(task.instructions,/身份、真实实施记录及实测结果没有依据时，不得编造/);
+});
+
+test('completion prompt keeps excluded and future studies out of current required evidence without relaxing existing claims',()=>{
+ const snapshot=value(),unit={id:'u',chapterId:'c',chapterTitle:'方法与分析',title:'方法与分析',targetWords:500,part:1,parts:1,presentation:{},completion:{scope:'full',originalText:'本研究仅覆盖二维算例，扩展实验属于未来工作。',missingInformation:[]}};
+ const task=thesisAgentTask(snapshot,unit,[]);
+ assert.match(task.instructions,/排除在本研究之外/);assert.match(task.instructions,/不能写成当前必填/);assert.match(task.instructions,/实际声称已开展/);assert.match(task.instructions,/未提供时保留具体缺项/);assert.match(task.instructions,/不能删除已有缺项/);
 });
 test('expression editing cannot replace the whole checkpoint using a truncated long input',()=>{
  const snapshot=value(),text='Synthetic technical discussion. '.repeat(600)+'This ending must remain available for expression correction.',unit={id:'u',chapterId:'c',sectionId:'s',chapterTitle:'方法与分析',title:'方法与分析',targetWords:1800,part:1,parts:1,presentation:{},completion:{scope:'full'}},checkpoint={unit_id:'u',text,trace:'[]',figures:'[]'},quality={reviews:[{findings:[{sectionId:'c',category:'language_expression',quote:'This ending must remain available for expression correction.'}]}]};assert.deepEqual(completionRepairs(snapshot,[unit],[checkpoint],quality,0,{expressionOnly:true}),[]);assert.match(checkpoint.text,/ending must remain/);
@@ -73,6 +83,14 @@ test('completion rejects new numbered subsection headings that duplicate an adja
 test('overlength feedback measures restored locked text, not the short placeholder',()=>{
  const snapshot=value(),id='obj-0123456789abcdef12345678',original='原稿公式如下 [docx:'+id+']，后文保持完整。',unit={id:'u',chapterId:'c',chapterTitle:'方法与分析',title:'方法与分析',targetWords:40,part:1,parts:1,presentation:{},completion:{scope:'full',originalText:original,originalObjects:[{id}]}},revision=aliasThesisRevision({originalExcerpt:original},unit),text=revision.originalExcerpt+'\n\n'+'研究'.repeat(100)+'[source:m]',result=validateThesisCandidate({text:JSON.stringify({text,source_ids:['m'],missing_evidence:[],complete:true}),trace:[{tool:'read_material',status:'completed',materialId:'m'}]},snapshot,unit);
  assert.equal(result.valid,false);assert.equal(result.feedback.code,'word_limit_exceeded');assert.equal(result.feedback.count,researchWordCount(restoreThesisObjects(text,unit),'中文'));assert.ok(result.feedback.count>researchWordCount(text,'中文'));
+});
+test('locked metadata-only citation remains unchanged without pretending its bibliography is a readable source',()=>{
+ const snapshot=value();snapshot.references=[{id:'r',title:'未提供正文的文献',authors:'作者',year:'2020',text:'',confirmed:true}];
+ const id='obj-0123456789abcdef12345678',original='原稿依据[source:r]及公式 [docx:'+id+']。',unit={id:'u',chapterId:'c',chapterTitle:'方法与分析',title:'方法与分析',targetWords:100,part:1,parts:1,presentation:{},completion:{scope:'full',originalText:original,originalObjects:[{id}]}},task=thesisAgentTask(snapshot,unit,[]);
+ assert.match(task.instructions,/仅有题录的原稿引用按已有题录保留规则处理，不列入 source_ids/);assert.match(task.instructions,/要求仅适用于锁定块以外/);
+ const text=task.context.revision.originalExcerpt+'\n\n'+'研究'.repeat(40)+'[source:m]',candidate=source_ids=>({text:JSON.stringify({text,source_ids,missing_evidence:[],complete:true,draft:false,figures:[]}),trace:[{tool:'read_material',status:'completed',materialId:'m'}]});
+ const checked=validateThesisCandidate(candidate(['m']),snapshot,unit);assert.equal(checked.valid,true,JSON.stringify(checked.feedback));
+ assert.equal(validateThesisCandidate(candidate(['m','r']),snapshot,unit).valid,false);
 });
 
 test('unstructured scope cannot suppress a possibly needed classroom evidence marker',()=>{
@@ -137,13 +155,20 @@ test('small overage above recommendation is accepted within a fixed long-term ha
  const result=count=>({text:JSON.stringify({text:'研'.repeat(count)+'[source:m]',source_ids:['m'],missing_evidence:[],complete:true,draft:false}),trace:[{tool:'read_material',status:'completed',materialId:'m'}]});assert.equal(validateThesisCandidate(result(720),s,unit).valid,true);assert.equal(validateThesisCandidate(result(805),s,unit).feedback.code,'word_limit_exceeded');const next={...unit,targetWords:804,completion:{...unit.completion,originalText:'研'.repeat(804)}};assert.equal(thesisAgentTask(s,next,[]).context.lengthBudget.max,804);
 });
 
-test('completion respects the source rounding convention and never guesses unprovided figures',()=>{const snapshot=value(),unit={id:'u',chapterId:'c',chapterTitle:'方法',title:'方法',targetWords:400,part:1,parts:1,presentation:{},completion:{scope:'full',baselineTargetWords:400,anchorWords:400,originalText:'已有结果需要根据原始记录核对。'.repeat(20)}};const task=thesisAgentTask(snapshot,unit,[]);assert.match(task.instructions,/先相减再舍入/);assert.match(task.instructions,/先舍入再相减/);assert.match(task.instructions,/不得猜测、拼接不同实验/);});
+test('completion respects the source rounding convention and never guesses unprovided figures',()=>{const snapshot=value(),unit={id:'u',chapterId:'c',chapterTitle:'方法',title:'方法',targetWords:400,part:1,parts:1,presentation:{},completion:{scope:'full',baselineTargetWords:400,anchorWords:400,originalText:'已有结果需要根据原始记录核对。'.repeat(20)}};const task=thesisAgentTask(snapshot,unit,[]);assert.match(task.instructions,/先相减再舍入/);assert.match(task.instructions,/先舍入再相减/);assert.match(task.instructions,/不得猜测、拼接不同实验/);assert.match(task.instructions,/不能因为一个或几个算例成立，就新增/);assert.match(task.instructions,/已读取资料中有可核对的证明及适用条件/);assert.match(task.instructions,/分别舍入后的结果与先汇总再舍入的结果可能不同/);assert.match(task.instructions,/不得声称二者必然相同/);});
 
 test('preflight source hints reach completion only within the actually authorized readable range',()=>{
  const snapshot=value();snapshot.materials[0].text='文献第3.2.1节说明缩放点积注意力。'+('其他正文。'.repeat(20));snapshot.materials.push({id:'private',name:'未确认资料',text:'不能泄露的敏感正文。',confirmed:false});
  const unit={id:'u',chapterId:'c',chapterTitle:'方法',title:'方法',targetWords:400,part:1,parts:1,sourceIds:[],completionSourceIds:['m','private'],presentation:{},completion:{scope:'full',originalText:'原稿保留来源与待核对标记。[source:m]【待核对：公式位置】',missingInformation:['核对公式位置'],assessment:{status:'checked',items:[{status:'missing',requirement:'核对位置',missing:['核对公式位置'],evidence:[{sourceId:'m',quote:'文献第3.2.1节说明缩放点积注意力。'},{sourceId:'m',quote:'原文不存在的摘录'},{sourceId:'private',quote:'不能泄露的敏感正文。'}]}]}}};
  const task=thesisAgentTask(snapshot,unit,[]);assert.deepEqual(task.context.revision.assessment.items[0].evidence,[{sourceId:'m',quote:'文献第3.2.1节说明缩放点积注意力。'}]);assert.ok(!task.materials.some(row=>row.id==='private'));assert.match(task.instructions,/只是定位线索，必须实际调用 read_material/);assert.match(task.instructions,/不因短摘录存在就认定已核验全文/);assert.match(task.instructions,/不同精度的数值须按同一原始数据核算/);
  const long=structuredClone(snapshot);long.materials[0].text='甲'.repeat(44000)+'范围外的目标材料。';long.materials.push({id:'m2',name:'另一份已确认资料',text:'乙'.repeat(45000),confirmed:true});const clipped={...unit,completionSourceIds:['m','m2'],completion:{...unit.completion,assessment:{status:'checked',items:[{status:'missing',evidence:[{sourceId:'m',quote:'范围外的目标材料。'}]}]}}};const bounded=thesisAgentTask(long,clipped,[]);assert.ok(!bounded.materials.find(row=>row.id==='m').text.includes('范围外的目标材料。'));assert.equal(bounded.context.revision.assessment.items[0].evidence,undefined);
+});
+
+test('complete preflight still provides a final abstract with confirmed readable evidence',()=>{
+ const snapshot=value();snapshot.materials.push({id:'private',name:'未确认资料',text:'不应被读取的内容',confirmed:false});
+ const unit={id:'abs',chapterId:'abstract',chapterTitle:'摘要',title:'摘要',frontMatter:true,targetWords:400,part:1,parts:1,completionSourceIds:['m','private'],presentation:{},completion:{scope:'full',originalText:'本文基于已有材料分析一个限定场景。',missingInformation:[],assessment:{status:'checked',items:[{status:'sufficient',requirement:'研究设定',evidence:[{sourceId:'m',quote:'合成测试资料'}]}]}}};
+ const task=thesisAgentTask(snapshot,unit,[]);assert.ok(task.materials.some(row=>row.id==='m'));assert.ok(!task.materials.some(row=>row.id==='private'));assert.match(task.instructions,/先读取与该论断对应的已授权材料/);assert.match(task.instructions,/仅当实际读取范围仍不足时/);assert.match(task.instructions,/不得凭预审通过/);assert.match(task.instructions,/先读取该来源中直接支持这项论断的原文/);assert.match(task.instructions,/不能证明实验结果/);assert.match(task.instructions,/保留具体待核对事项/);
+ const empty=structuredClone(snapshot);empty.materials=[];const noSource=thesisAgentTask(empty,unit,[]);assert.equal(noSource.materials.length,0);assert.doesNotMatch(noSource.instructions,/先读取与该论断对应的已授权材料/);
 });
 
 test('a teaching example is prompted not to invent scope while preserving a possible real-performance marker',()=>{

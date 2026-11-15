@@ -2,3 +2,18 @@ import test from 'node:test';import assert from 'node:assert/strict';import {the
 const one='obj-0123456789abcdef12345678',two='obj-abcdef012345678912345678',text='前段。\n\n以下为公式： [docx:'+one+'] ，变量定义为 n。\n\n解释第一式。\n\n其他内容。\n\n进一步给出第二式： [docx:'+two+'] ，表示模拟数量。\n\n解释第二式。',unit={completion:{originalText:text,originalObjects:[{id:one},{id:two}]}};
 test('short locked tokens restore Word objects with surrounding paragraphs exactly',()=>{const revision=aliasThesisRevision({originalExcerpt:text,originalObjects:unit.completion.originalObjects},unit);assert.ok(!revision.originalExcerpt.includes(one));assert.ok(revision.lockedBlocks.length>=1);const result=restoreThesisObjects('新增前文。\n\n'+revision.originalExcerpt+'\n\n新增后文。',unit);assert.equal(result,'新增前文。\n\n'+text+'\n\n新增后文。');assert.deepEqual(thesisObjectAliases(unit),revision.lockedBlocks.map(x=>x.token));});
 test('missing, repeated, reordered or unknown locked positions are never silently accepted',()=>{const u={completion:{originalText:'[docx:'+one+']\n\nA\n\nB\n\nC\n\n[docx:'+two+']',originalObjects:[{id:one},{id:two}]}},r=aliasThesisRevision({originalExcerpt:u.completion.originalText},u),tokens=r.lockedBlocks.map(v=>v.token);assert.equal(tokens.length,2);for(const value of [tokens[0],tokens[0]+tokens[0]+tokens[1],tokens[1]+tokens[0],tokens[0]+tokens[1]+'【保留原稿段999】'])assert.throws(()=>restoreThesisObjects(value,u),/无法准确对应|位置标记无效/);});
+test('standalone imported tables retain every cell in automatic completion even without an image or formula',()=>{
+ const table='| 分组 | 数量 |\n| --- | --- |\n| 甲 | 60 |\n| 乙 | 40 |',original='研究说明。\n\n'+table+'\n\n结论说明。',u={completion:{originalText:original,originalObjects:[]}},revision=aliasThesisRevision({originalExcerpt:original},u);
+ assert.equal(revision.lockedBlocks.length,1);assert.ok(!revision.originalExcerpt.includes('| 甲 | 60 |'));
+ assert.equal(restoreThesisObjects(revision.originalExcerpt,u),original);
+ for(const changed of ['研究说明。\n\n结论说明。',revision.originalExcerpt.replace('【保留原稿段1】','| 甲 | 99 |')])assert.throws(()=>restoreThesisObjects(changed,u),/无法准确对应/);
+ const authorEdited={completion:{originalText:original.replace('| 甲 | 60 |','| 甲 | 65 |'),originalObjects:[]}},next=aliasThesisRevision({originalExcerpt:authorEdited.completion.originalText},authorEdited);assert.match(restoreThesisObjects(next.originalExcerpt,authorEdited),/\| 甲 \| 65 \|/);
+});
+test('a table is locked even when it directly follows the surrounding text without an empty line',()=>{
+ const text='表 1 结果\n| 项目 | 数量 |\n| --- | --- |\n| 甲 | 3 |\n后续文字。',u={completion:{originalText:text}};const revision=aliasThesisRevision({originalExcerpt:text},u);assert.equal(revision.lockedBlocks.length,1);assert.equal(restoreThesisObjects(revision.originalExcerpt,u),text);
+});
+test('tables with no outside pipes and escaped cell pipes are locked but code-fenced examples are not',()=>{
+ for(const table of ['项目 | 数值\n--- | ---\nA | 1','| 甲\\|乙 | 数值 |\n| --- | --- |\n| A | 1 |']){const u={completion:{originalText:'说明。\n\n'+table+'\n\n结束。'}};assert.equal(thesisObjectAliases(u).length,1);const revision=aliasThesisRevision({originalExcerpt:u.completion.originalText},u);assert.equal(restoreThesisObjects(revision.originalExcerpt,u),u.completion.originalText);}
+ for(const fence of ['```text','~~~text']){const u={completion:{originalText:fence+'\n| 项目 | 数值 |\n| --- | --- |\n| A | 1 |\n'+fence.slice(0,3)}};assert.deepEqual(thesisObjectAliases(u),[]);}
+});
+test('imported Word tables with up to 30 columns are protected',()=>{const row=Array.from({length:30},(_,i)=>'C'+i).join(' | '),sep=Array(30).fill('---').join(' | '),text='| '+row+' |\n| '+sep+' |\n| '+row+' |';assert.equal(thesisObjectAliases({completion:{originalText:text}}).length,1);});

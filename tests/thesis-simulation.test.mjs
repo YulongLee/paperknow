@@ -114,3 +114,10 @@ test('reference additions to final completion are account-owned and idempotent',
  const replay=(await f.request('/api/theses/'+thesis.id+'/completion',payload)).item;assert.equal(replay.version,saved.version);assert.equal(replay.snapshot.references.length,1);
  await assert.rejects(f.request('/api/theses/'+thesis.id+'/completion',payload,f.other),error=>error.status===404);
 });
+
+test('updating existing reference metadata uses version checks without changing source identity or saved chapter text',async t=>{
+ const f=fixture(t),thesis=await f.create(),saved=(await f.request('/api/theses/'+thesis.id+'/completion',{version:thesis.version,clientKey:randomUUID(),references:[{title:'Longformer',authors:'Beltagy I',year:'2020',doi:'10.48550/arXiv.2004.05150',text:'作者提供的摘要。'}]})).item;
+ const reference=saved.snapshot.references[0],payload={version:saved.version,clientKey:randomUUID(),referenceMetadataUpdates:[{referenceId:reference.id,documentType:'preprint',url:'https://arxiv.org/abs/2004.05150'}]},updated=(await f.request('/api/theses/'+thesis.id+'/completion',payload)).item;
+ assert.equal(updated.version,saved.version+1);assert.equal(updated.snapshot.references.length,1);assert.equal(updated.snapshot.references[0].id,reference.id);assert.equal(updated.snapshot.references[0].text,reference.text);assert.equal(updated.snapshot.references[0].documentType,'preprint');assert.deepEqual(updated.chapters,saved.chapters);
+ await assert.rejects(f.request('/api/theses/'+thesis.id+'/completion',{...payload,clientKey:randomUUID()}),error=>error.status===409);await assert.rejects(f.request('/api/theses/'+thesis.id+'/completion',{...payload,clientKey:randomUUID()},f.other),error=>error.status===404);
+});

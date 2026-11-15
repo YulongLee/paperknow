@@ -1,3 +1,4 @@
+import {protectedTableRanges} from './thesis-object-alias.mjs';
 import {thesisDocxObjects} from './thesis-docx-objects.mjs';
 import {researchWordCount} from './text-length.mjs';
 import {docxObjectIds} from '../dist/workspace/docx-object-markers.mjs';
@@ -10,6 +11,14 @@ import {thesisFrontMatterKind,thesisManualBackMatter,thesisCoverFields} from '..
 import {completionDiagnosis} from './thesis-completion-guidance.mjs';
 const fail=(status,message)=>{throw thesisError(status,message);};
 const referenceDoi=value=>{const doi=String(value||'').trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//iu,'').replace(/^doi\s*:\s*/iu,'').toLowerCase();return /^10\.\d{4,9}\/[^\s<>\u0000-\u001f]+$/u.test(doi)?doi:'';};
+function validateReferenceLink(reference){
+ if(reference.documentType!==undefined&&reference.documentType!==''&&!['preprint','journal','conference','book','thesis','report','webpage'].includes(reference.documentType))fail(400,'请选择支持的文献类型');
+ if(reference.url!==undefined&&reference.url!==''){
+  if(typeof reference.url!=='string'||reference.url.length>2000)fail(400,'文献网址无效');
+  let url;try{url=new URL(reference.url);}catch{fail(400,'文献网址无效');}
+  if(!['http:','https:'].includes(url.protocol)||url.username||url.password)fail(400,'文献网址无效');
+ }
+}
 const referenceTitle=value=>String(value||'').normalize('NFKC').trim().replace(/\s+/gu,' ').toLowerCase();
 const referenceAuthorsCompatible=(left,right)=>{
  if(!String(left||'').trim()||!String(right||'').trim())return true;
@@ -48,7 +57,7 @@ export function recoverableThesisSimulation(db,row){
 export function savedThesisChapters(db,row){return JSON.parse(row.snapshot).outline.map(chapter=>({...chapter,record:db.prepare('SELECT * FROM thesis_chapter_versions WHERE thesis_id=? AND chapter_id=? ORDER BY version DESC LIMIT 1').get(row.id,chapter.id)}));}
 export function completionAssessment(db,row){const chapters=savedThesisChapters(db,row).map(({record,...chapter})=>({...chapter,text:record?.text||'',figures:JSON.parse(record?.figures||'[]')}));return thesisCompletionNeeds({snapshot:JSON.parse(row.snapshot),chapters});}
 export function completionInput(row,input,config,db){
- const allowed=['version','clientKey','supplement','materials','references','referenceFragments','referenceTexts','metadata','acknowledgements','simulationRunIds'];if(!input||Object.keys(input).some(key=>!allowed.includes(key)))fail(400,'补充资料包含不支持的字段');
+ const allowed=['version','clientKey','supplement','materials','references','referenceFragments','referenceTexts','referenceMetadataUpdates','metadata','acknowledgements','simulationRunIds'];if(!input||Object.keys(input).some(key=>!allowed.includes(key)))fail(400,'补充资料包含不支持的字段');
  const snapshot=JSON.parse(row.snapshot);snapshot.requirements={...snapshot.requirements,deliveryVersion:1};const metadata={...JSON.parse(row.export_metadata||'{}')};
  if(input.metadata!==undefined){if(!input.metadata||typeof input.metadata!=='object'||Array.isArray(input.metadata)||Object.keys(input.metadata).some(key=>!Object.hasOwn(thesisCoverFields,key)||typeof input.metadata[key]!=='string'||input.metadata[key].length>200))fail(400,'封面补充信息无效');Object.assign(metadata,input.metadata);}
  if(input.supplement!==undefined&&(typeof input.supplement!=='string'||input.supplement.length>50000))fail(400,'研究补充最多 50,000 字符');
@@ -60,7 +69,7 @@ export function completionInput(row,input,config,db){
  const fragments=input.referenceFragments??[];if(!Array.isArray(fragments)||fragments.length>10||fragments.some(row=>!row||Object.keys(row).some(key=>!['referenceId','text'].includes(key))||typeof row.referenceId!=='string'||!row.referenceId||row.referenceId.length>150||typeof row.text!=='string'||!row.text.trim()||row.text.length>50000))fail(400,'请选择已有文献并填写需补充的正文片段');
  for(const fragment of fragments){const matches=snapshot.references.filter(row=>row.id===fragment.referenceId&&row.confirmed===true);if(matches.length!==1)fail(404,'所选文献不存在或尚未确认');const reference=matches[0];snapshot.materials.push({id:'material:'+randomUUID(),name:'文献补充片段：'+String(reference.title).slice(0,200),text:fragment.text.trim(),purpose:'文献补充片段（作者提供，未核验为全文）',relatedReferenceId:reference.id,confirmed:true});}
  const referenceTexts=input.referenceTexts??[];if(!Array.isArray(referenceTexts)||referenceTexts.length>10||referenceTexts.some(row=>!row||Object.keys(row).some(key=>!['referenceId','text'].includes(key))||typeof row.referenceId!=='string'||!row.referenceId||row.referenceId.length>150||typeof row.text!=='string'||!row.text.trim()||row.text.length>50000)||new Set(referenceTexts.map(row=>row.referenceId)).size!==referenceTexts.length)fail(400,'请选择已有文献并提供原文或摘要');
- for(const entry of referenceTexts){const matches=snapshot.references.filter(reference=>reference.id===entry.referenceId&&reference.confirmed===true);if(matches.length!==1)fail(404,'所选文献不存在或尚未确认');const reference=matches[0];if(String(reference.text||'').trim())fail(409,'该文献已有原文或摘要，请先在参考文献中核对，当前内容未覆盖');reference.text=entry.text.trim();reference.sourceLabel=[String(reference.sourceLabel||'').slice(0,160),'作者提供原文或摘要，文献出处未独立核验'].filter(Boolean).join('；');}
+ for(const entry of referenceTexts){const matches=snapshot.references.filter(reference=>reference.id===entry.referenceId&&reference.confirmed===true);if(matches.length!==1)fail(404,'所选文献不存在或尚未确认');const reference=matches[0];if(String(reference.text||'').trim()&&(String(reference.text||'').trim()===entry.text.trim()||snapshot.materials.some(row=>row.referenceSegment===true&&row.relatedReferenceId===reference.id&&row.text.trim()===entry.text.trim())))fail(409,'该文献已有关联的相同片段，无需重复添加');if(String(reference.text||'').trim())snapshot.materials.push({id:'material:'+randomUUID(),name:'作者提供的文献片段：'+String(reference.title).slice(0,200),text:entry.text.trim(),purpose:'作者提供的独立文献片段，出处未经独立核验，与其他片段不一定连续',relatedReferenceId:reference.id,referenceSegment:true,confirmed:true});else {reference.text=entry.text.trim();reference.sourceLabel=[String(reference.sourceLabel||'').slice(0,160),'作者提供原文或摘要，文献出处未独立核验'].filter(Boolean).join('；');}}
  const simulationIds=input.simulationRunIds??[];if(!Array.isArray(simulationIds)||simulationIds.length>3||simulationIds.some(id=>typeof id!=='string'||id.length>100)||new Set(simulationIds).size!==simulationIds.length)fail(400,'本次最多采用 3 份模拟数据');
  for(const simulationId of simulationIds){
   if(!db)fail(503,'模拟数据来源暂不可核对');const run=db.prepare('SELECT * FROM thesis_method_runs WHERE id=? AND user_id=?').get(simulationId,row.user_id);if(!run||run.status!=='completed')fail(404,'已完成的模拟任务不存在');const source=JSON.parse(run.snapshot),output=JSON.parse(run.output||'null');
@@ -71,6 +80,15 @@ export function completionInput(row,input,config,db){
   snapshot.materials.push({id:materialId,name:'AI模拟数据：'+generated.recipe.title,text:generated.text,purpose:'仿真研究数据（非实测）',dataKind:'simulation',confirmed:true,simulation:{jobId:run.id,seed:generated.seed,generatorVersion:1,recipe:generated.recipe}});
  }
  const references=input.references??[];if(!Array.isArray(references)||references.length>30||references.some(r=>!r||typeof r.title!=='string'||!r.title.trim()||typeof r.text!=='string'||!r.text.trim()))fail(400,'文献需提供真实题名与可引用正文');
+ for(const reference of references)validateReferenceLink(reference);
+ const updates=input.referenceMetadataUpdates??[];
+ if(!Array.isArray(updates)||updates.length>30||updates.some(entry=>!entry||typeof entry!=='object'||Array.isArray(entry)||Object.keys(entry).some(key=>!['referenceId','documentType','url'].includes(key))||typeof entry.referenceId!=='string'||!entry.referenceId||typeof entry.documentType!=='string'||typeof entry.url!=='string')||new Set(updates.map(entry=>entry.referenceId)).size!==updates.length)fail(400,'文献信息更新无效');
+ for(const entry of updates){
+  validateReferenceLink(entry);const matches=snapshot.references.filter(reference=>reference.id===entry.referenceId&&reference.confirmed===true);
+  if(matches.length!==1)fail(404,'所选文献不存在或尚未确认');
+  if(String(matches[0].citationText||'').trim())fail(409,'此文献保留原始题录，请先核对原始条目，不能直接覆盖');
+  matches[0].documentType=entry.documentType;matches[0].url=entry.url;
+ }
  const batchDoiCounts=new Map();for(const reference of references){const doi=referenceDoi(reference.doi);if(doi)batchDoiCounts.set(doi,(batchDoiCounts.get(doi)||0)+1);}
  for(const reference of references){
   // A user may supply text for a bibliography entry already cited in the
@@ -142,10 +160,18 @@ export function thesisCompletionPlan(db,row,basePlan,issueCodes=[],{scope='affec
     // Do not split inside a fenced code block; select its start or end.
     let opened=-1;for(const marker of text.matchAll(/^\s*(?:`{3,}|~{3,})[^\n]*$/gm)){if(marker.index>=end)break;opened=opened<0?marker.index:-1;}
     if(opened>=0){const close=/^\s*(?:`{3,}|~{3,})[^\n]*$/gm;close.lastIndex=end;const found=close.exec(text);end=opened>points.at(-1)?opened:found?found.index+found[0].length:text.length;}
+    // A table must enter one revision unit whole, otherwise its header and
+    // rows could be independently altered or silently lost. Oversized units
+    // are rejected by the existing preflight before any charge.
+    for(const table of protectedTableRanges(text))if(table.start<end&&end<table.end){end=table.start>points.at(-1)?table.start:table.end;break;}
     points.push(Math.max(points.at(-1),end));
    }
   }
   points.push(text.length);
+  // When one table spans several planned split points, preserving it whole
+  // may leave empty units. Do not ask a model to invent content for them or
+  // charge the user: require a safe outline before creating the quote.
+  if(parts>1&&protectedTableRanges(text).length&&text.trim()&&points.slice(0,-1).some((start,i)=>!text.slice(start,points[i+1]).trim()))fail(422,'原稿表格无法安全分配到当前多个写作单元，请合并对应提纲小节后重试；原稿已保留，本次未扣费。');
   unit.completion.originalText=parts>1?text.slice(points[partIndex],points[partIndex+1]):text;
   unit.completion.originalFigures=manuscriptFigures({text:unit.completion.originalText,figures:unit.completion.originalFigures||[]});
   if(docxObjectIds(unit.completion.originalText).length)unit.completion.originalObjects=thesisDocxObjects(db,row.id,row.user_id,[{text:unit.completion.originalText}]).map(({id,kind,label,plaintext})=>({id,kind,label:label.slice(0,80),...(plaintext?{plaintext:plaintext.slice(0,160)}:{})}));

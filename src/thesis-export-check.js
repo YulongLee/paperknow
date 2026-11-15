@@ -251,7 +251,7 @@ export function auditThesisSubmission(input={}) {
  if(/^(?:专科|本科|硕士|博士)$/.test(input.metadata?.level||''))for(const [key,label]of [['author','作者姓名'],['institution','学校']])if(!String(input.metadata?.[key]||'').trim())add('cover_'+key,`请在封面信息中填写${label}。`);
  for(const key of requirements.requiredCoverFields||[])if(!String(input.metadata?.[key]||'').trim())add('cover_'+key,'模板封面信息未填写完整：'+({studentId:'学号',college:'学院',graduationYear:'毕业届次',completionDate:'完成年月'}[key]||key)+'。');
  const minimum=Number.isSafeInteger(requirements.minimumReferences)?requirements.minimumReferences:1;
- if(report.counts.referenceEntries<minimum)add('reference_minimum',`当前已使用文献 ${report.counts.referenceEntries} 篇，至少需要 ${minimum} 篇有正文引用的文献${minimum===1?'；请同时核对学校数量要求':''}。`);
+ if(report.counts.referenceEntries<minimum)add('reference_minimum',`当前参考文献表可识别 ${report.counts.referenceEntries} 条，${minimum===1?'请至少提供 1 条参考文献，并核对学校数量要求':`所选模板要求至少 ${minimum} 条，请补充并核对学校要求和正文引用`}。`);
  if(!report.counts.citationOccurrences)add('citations_missing','正文尚未建立可追溯的文献引用。');
  const citedLines=lines.filter(line=>line.section==='references'&&/^\s*\[\d+\]/.test(line.text));
  if(Number.isSafeInteger(requirements.minimumForeignReferences)&&requirements.minimumForeignReferences>0){const count=citedLines.filter(line=>!/[\p{Script=Han}]/u.test(line.text.replace(/https?:\/\/\S+/g,''))).length;if(count<requirements.minimumForeignReferences)add('foreign_references',`模板要求至少 ${requirements.minimumForeignReferences} 篇外文文献，当前可识别 ${count} 篇，请补充并核对。`);}
@@ -262,7 +262,7 @@ export function auditThesisSubmission(input={}) {
  const tableNumbers=new Set();if(numberedMarkdownTables(text).some(table=>{const duplicate=tableNumbers.has(table.number)&&!table.continued;tableNumbers.add(table.number);return duplicate;}))add('table_numbers','表格编号重复，请按全文或章节统一编号，并核对正文引用。');
  const expectedFigures=Array.isArray(input.metadata?.figures)?input.metadata.figures:[],figureReview=input.quality?.figureReview;
  if(expectedFigures.length){const expectedIds=expectedFigures.map(row=>row.id),checked=figureReview?.checkedFigureIds,provided=figureReview?.figureIds;const valid=figureReview?.version===1&&figureReview.status==='completed'&&input.quality?.stale!==true&&input.quality?.coverage?.complete===true&&Array.isArray(checked)&&Array.isArray(provided)&&new Set(checked).size===checked.length&&new Set(provided).size===provided.length&&expectedIds.length===checked.length&&expectedIds.length===provided.length&&expectedIds.every(id=>checked.includes(id)&&provided.includes(id));if(!valid)add('figure_review','论文图片尚未随当前正文完整检查，请使用补充窗口自动完善并重新核对图文。');}
- const significant=(input.quality?.stale?[]:[...(input.quality?.consistency?.findings||[]),...(input.quality?.reviews||[]).flatMap(row=>row.findings||[])]).filter(row=>row.severity==='warning'&&['method_result_consistency','source_support','claim_scope','figure_consistency','table_consistency','data_support'].includes(row.category));
- if(significant.length)add('review_findings',`整稿审校仍有 ${significant.length} 项方法、图表、数据、研究结论或引用依据问题，请处理后重新核对。`);
+ const significant=(input.quality?.stale?[]:[...(input.quality?.consistency?.findings||[]),...(input.quality?.reviews||[]).flatMap(row=>row.findings||[])]).filter(row=>row.severity==='warning'&&['logic','method_result_consistency','source_support','claim_scope','figure_consistency','table_consistency','data_support'].includes(row.category));
+ if(significant.length)add('review_findings',`整稿审校仍有 ${significant.length} 项逻辑、方法、图表、数据、研究结论或引用依据问题，请处理后重新核对。`);
  return {...report,submission:{ready:issues.length===0,issues,scope:'structural_and_existing_review_only'},status:issues.length?'review_required':report.status};
 }

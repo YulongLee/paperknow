@@ -4,7 +4,7 @@ export function numberedMarkdownTables(text){
  text=String(text||'');const lines=text.split('\n'),tables=[],offsets=[];let fence='',offset=0;
  for(const line of lines){offsets.push(offset);offset+=line.length+1;}
  const cells=line=>{if(!line||!line.includes('|')||/\\\|/.test(line))return [];return line.trim().replace(/^\|/,'').replace(/\|$/,'').split('|').map(value=>value.trim());};
- const divider=row=>row.length>=2&&row.length<=20&&row.every(value=>/^:?-{3,}:?$/.test(value));
+ const divider=row=>row.length>=2&&row.length<=30&&row.every(value=>/^:?-{3,}:?$/.test(value));
  const record=(match,index,headerIndex,firstDataIndex,shortContinuation=false)=>{
   const number=match[1].replace(/[.－]/g,'-'),quote=lines[index].trim(),at=offsets[index]+lines[index].indexOf(quote),header=cells(lines[headerIndex]).join('\u0001');let endIndex=firstDataIndex;
   while(endIndex<lines.length&&cells(lines[endIndex]).length===cells(lines[headerIndex]).length)endIndex++;

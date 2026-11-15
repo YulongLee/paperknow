@@ -6,6 +6,15 @@ import {savedThesisChapters,completionManuscriptHash} from './thesis-completion.
 // created: every provider dispatch must instead use the paid session ledger.
 export function createThesisReviewLifecycle(db,config,{sessions}){
  if(!sessions||typeof sessions.open!=='function'||typeof sessions.recover!=='function')throw thesisError(500,'复查会话配置无效');
+ // Support diagnostics contain only an allowlisted classification, never
+ // model output, user materials, account credentials or provider errors.
+ db.exec(`CREATE TABLE IF NOT EXISTS thesis_review_failure_reasons(
+  run_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,thesis_id TEXT NOT NULL,attempt INTEGER NOT NULL,
+  reason TEXT NOT NULL,created_at TEXT NOT NULL);
+ CREATE TRIGGER IF NOT EXISTS thesis_review_failure_reasons_immutable BEFORE UPDATE ON thesis_review_failure_reasons BEGIN SELECT RAISE(ABORT,'复查诊断不可修改'); END;
+ CREATE TRIGGER IF NOT EXISTS thesis_review_failure_reasons_no_replace BEFORE INSERT ON thesis_review_failure_reasons WHEN EXISTS(SELECT 1 FROM thesis_review_failure_reasons WHERE run_id=NEW.run_id) BEGIN SELECT RAISE(ABORT,'复查诊断不可替换'); END;
+ CREATE TRIGGER IF NOT EXISTS thesis_review_failure_reasons_no_delete BEFORE DELETE ON thesis_review_failure_reasons BEGIN SELECT RAISE(ABORT,'复查诊断不可删除'); END;`);
+ const failureReason=(status,code)=>status==='cancelled'?'cancelled':status==='interrupted'?'interrupted':new Set(['review_budget_exhausted','review_usage_unknown','review_budget_unavailable','review_usage_conflict','review_settings_changed','review_parent_changed','review_snapshot_changed','review_identity_mismatch','review_in_flight','review_dispatch_exists','review_changed','review_incomplete','invalid_review_output','timeout','turn_limit','cost_budget','budget_exceeded','truncated','runtime_error']).has(code)?code:'other';
  const enabled=()=>{if(config.thesisReviewOnlyEnabled!==true)throw thesisError(503,'终稿复查暂未开放','review_disabled');};
  const tx=fn=>db.isTransaction?fn():thesisTransaction(db,fn);
  const clock=()=>new Date(config.thesisNow?.()??Date.now()).toISOString();
@@ -43,6 +52,21 @@ export function createThesisReviewLifecycle(db,config,{sessions}){
  }
  function current(run){const row=own(run.thesis_id,run.user_id),now=db.prepare('SELECT * FROM thesis_runs WHERE id=? AND user_id=?').get(run.id,run.user_id),job=db.prepare('SELECT status,attempt FROM jobs WHERE id=? AND user_id=?').get(run.id,run.user_id),meta=JSON.parse(now?.settings_meta||'{}');return Boolean(now&&now.status==='running'&&now.attempt===run.attempt&&job?.status==='running'&&job.attempt===run.attempt&&row.current_run_id===run.id&&row.snapshot_hash===now.snapshot_hash&&meta.reviewOnly===true&&meta.reviewBaseline===baseline(row));}
  function finish(run,quality){return tx(()=>{if(!current(run))throw thesisError(409,'论文或资料已变化，请重新检查','review_changed');const row=own(run.thesis_id,run.user_id),chapters=versions(row).map(({record,...chapter})=>({...chapter,text:record?.text||'',figures:JSON.parse(record?.figures||'[]')}));const complete=quality?.status==='completed'&&quality.coverage?.complete===true&&quality.supplementCheck?.coverage?.complete===true&&quality.snapshotHash===run.snapshot_hash&&quality.manuscriptHash===completionManuscriptHash(chapters);if(!complete)throw thesisError(502,'本次检查未完成，已保存内容保留','review_incomplete');const at=clock(),serialized=JSON.stringify(quality);assertThesisAccountQuota(db,run.user_id,Buffer.byteLength(serialized),config);db.prepare("UPDATE thesis_runs SET status='completed',stage='completed',quality=?,updated_at=? WHERE id=? AND attempt=?").run(serialized,at,run.id,run.attempt);db.prepare("UPDATE jobs SET status='completed',stage='completed',updated_at=? WHERE id=? AND user_id=?").run(at,run.id,run.user_id);db.prepare("UPDATE theses SET status='completed',version=version+1,updated_at=? WHERE id=? AND user_id=? AND current_run_id=?").run(at,run.thesis_id,run.user_id,run.id);});}
- function stop(run,status='failed'){return tx(()=>{const row=own(run.thesis_id,run.user_id),current=db.prepare('SELECT * FROM thesis_runs WHERE id=? AND user_id=?').get(run.id,run.user_id);if(!current||row.current_run_id!==run.id||current.attempt!==run.attempt||!['running','queued'].includes(current.status))return false;const at=clock(),safe=['failed','cancelled','interrupted'].includes(status)?status:'failed';db.prepare('UPDATE thesis_runs SET status=?,stage=?,error=?,updated_at=? WHERE id=?').run(safe,safe,'本次复查未完成，已保存内容保留；没有额外扣费。',at,run.id);db.prepare('UPDATE jobs SET status=?,stage=?,error=?,updated_at=? WHERE id=?').run(safe==='cancelled'?'cancelled':'failed',safe,'本次复查未完成，已保存内容保留；没有额外扣费。',at,run.id);db.prepare('UPDATE theses SET status=?,version=version+1,updated_at=? WHERE id=? AND current_run_id=?').run(safe,at,run.thesis_id,run.id);const recovered=sessions.recover({userId:run.user_id,thesisId:run.thesis_id,sessionId:JSON.parse(current.settings_meta).reviewSessionId,reviewRunId:run.id,attempt:run.attempt});if(recovered.usageConflict){const message='本次复查已停止，记录异常请联系支持；本次未额外扣费。';db.prepare('UPDATE thesis_runs SET error=? WHERE id=?').run(message,run.id);db.prepare('UPDATE jobs SET error=? WHERE id=?').run(message,run.id);}return true;});}
+ function stop(run,status='failed',code){const result=tx(()=>{const row=own(run.thesis_id,run.user_id),current=db.prepare('SELECT * FROM thesis_runs WHERE id=? AND user_id=?').get(run.id,run.user_id);if(!current||row.current_run_id!==run.id||current.attempt!==run.attempt||!['running','queued'].includes(current.status))return false;const at=clock(),safe=['failed','cancelled','interrupted'].includes(status)?status:'failed';db.prepare('UPDATE thesis_runs SET status=?,stage=?,error=?,updated_at=? WHERE id=?').run(safe,safe,'本次复查未完成，已保存内容保留；没有额外扣费。',at,run.id);db.prepare('UPDATE jobs SET status=?,stage=?,error=?,updated_at=? WHERE id=?').run(safe==='cancelled'?'cancelled':'failed',safe,'本次复查未完成，已保存内容保留；没有额外扣费。',at,run.id);db.prepare('UPDATE theses SET status=?,version=version+1,updated_at=? WHERE id=? AND current_run_id=?').run(safe,at,run.thesis_id,run.id);const recovered=sessions.recover({userId:run.user_id,thesisId:run.thesis_id,sessionId:JSON.parse(current.settings_meta).reviewSessionId,reviewRunId:run.id,attempt:run.attempt});if(recovered.usageConflict){const message='本次复查已停止，记录异常请联系支持；本次未额外扣费。';db.prepare('UPDATE thesis_runs SET error=? WHERE id=?').run(message,run.id);db.prepare('UPDATE jobs SET error=? WHERE id=?').run(message,run.id);}return true;});
+  if(result){
+   // Diagnostics are best-effort and never run inside the stopping transaction.
+   // If a caller owns an outer transaction, wait for it to finish, then verify
+   // that the same attempt really reached its terminal state before writing.
+   const safe=['failed','cancelled','interrupted'].includes(status)?status:'failed';
+   const writeDiagnostic=()=>{try{
+    if(db.isTransaction){console.warn('终稿复查诊断暂未记录；任务状态与费用核对不受影响。');return;}
+    const saved=db.prepare('SELECT status FROM thesis_runs WHERE id=? AND user_id=? AND thesis_id=? AND attempt=?').get(run.id,run.user_id,run.thesis_id,run.attempt);
+    if(saved?.status!==safe)return;
+    db.prepare('INSERT INTO thesis_review_failure_reasons(run_id,user_id,thesis_id,attempt,reason,created_at) VALUES(?,?,?,?,?,?)').run(run.id,run.user_id,run.thesis_id,run.attempt,failureReason(safe,code),clock());
+   }catch{console.warn('终稿复查诊断写入失败；任务状态与费用核对不受影响。');}};
+   if(db.isTransaction)queueMicrotask(writeDiagnostic);else writeDiagnostic();
+  }
+  return result;
+ }
  return {enqueue,current,finish,stop};
 }

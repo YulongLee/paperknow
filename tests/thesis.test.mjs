@@ -90,6 +90,14 @@ test('strict section validation rejects unknown/unread sources, shortages, trunc
  assert.throws(()=>parseThesisSection({...good,trace:[]},value,unit),/尚未实际读取/);
 });
 
+test('reading a reference parent never authenticates a separate author-supplied segment',()=>{
+ const original=snapshot(),value=normalizeThesisSnapshot({...original,references:[{id:'r1',title:'课堂反馈研究',authors:'作者',year:'2020',text:'原有参考文献摘要。',confirmed:true}],materials:[{id:'seg1',name:'用户提供的独立文献片段',text:'不连续的第二段原文。',purpose:'作者提供，未独立核验',referenceSegment:true,relatedReferenceId:'r1',confirmed:true}]});
+ const unit=thesisPlan(value)[0],task=thesisAgentTask(value,unit,[]);assert.ok(task.materials.some(row=>row.id==='seg1'&&row.text==='不连续的第二段原文。'));
+ const result={...output(task),text:JSON.stringify({text:'本文只依据实际提供的原文开展分析。'.repeat(14)+'[source:seg1]',source_ids:['seg1'],missing_evidence:[],complete:true}),trace:[{tool:'read_material',status:'completed',materialId:'r1'}]};
+ assert.throws(()=>parseThesisSection(result,value,unit),error=>error.code==='unread_source');
+ const actual={...result,trace:[{tool:'read_material',status:'completed',materialId:'seg1'}]};assert.ok(parseThesisSection(actual,value,unit).text.includes('[source:seg1]'));
+});
+
 test('actual chapter prose must stay inside the unit budget in both Chinese characters and English words',()=>{
  const boundaries=[[20,20,40],[97,77,117],[171,136,206],[199,159,239],[200,160,250],[232,185,291],[509,407,631],[999,799,1219],[1000,800,1220],[1800,1440,2180]];
  for(const language of ['中文','English'])for(const [target,min,max] of boundaries){
@@ -227,7 +235,7 @@ test('missing model usage, truncated output and insufficient evidence cannot bec
 });
 
 test('pre-dispatch budget blocks provider work and exposes a resumable failure without fake usage',async t=>{
- let calls=0;const f=fixture(t,{thesisMaxRunTokens:1000,agentTaskRunner:async({task})=>{calls++;return output(task);}});f.pay();const queued=await f.generate(await f.create()),worker=f.start();await worker.tick();assert.equal(calls,0);const item=f.get(queued.id);assert.equal(item.status,'failed');assert.match(item.job.error,/系统处理上限/);assert.match(item.job.error,/不是积分不足/);assert.equal(item.job.canResume,true);assert.equal(f.billing.balance(f.user.id).held,0);
+ let calls=0;const f=fixture(t,{thesisMaxRunTokens:1000,agentTaskRunner:async({task})=>{calls++;return output(task);}});f.pay();const queued=await f.generate(await f.create()),worker=f.start();await worker.tick();assert.equal(calls,0);const item=f.get(queued.id);assert.equal(item.status,'failed');assert.match(item.job.error,/保留处理进度/);assert.match(item.job.error,/未扣积分或套餐次数/);assert.equal(item.job.canResume,true);assert.equal(f.billing.balance(f.user.id).held,0);
 });
 
 test('runtime readiness never blocks saving and rejects unversioned/incomplete credentials',async t=>{

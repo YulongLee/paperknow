@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import JSZip from 'jszip';
+import {createWritingDocx} from '../src/writing-document.js';
+import {numberedMarkdownTables} from '../dist/workspace/numbered-markdown-tables.mjs';
+const table=(n,{outside=true}={})=>{const row=cells=>(outside?'| ':'')+cells.join(' | ')+(outside?' |':'');return [row(Array.from({length:n},(_,i)=>'栏目'+(i+1))),row(Array(n).fill('---')),row(Array.from({length:n},(_,i)=>'值'+(i+1)))].join('\n');};
+for(const n of [20,21,30])test(`${n} columns remain editable Word cells and table identity is retained`,async()=>{const text='论文标题\n\n表 1 数据\n'+table(n),zip=await JSZip.loadAsync(await createWritingDocx(text,{thesisSource:true})),xml=await zip.file('word/document.xml').async('string');assert.equal((xml.match(/<w:tbl(?=[\s>])/g)||[]).length,1);assert.equal((xml.match(/<w:tc(?=[\s>])/g)||[]).length,2*n);for(let i=1;i<=n;i++)assert.ok(xml.includes('栏目'+i)&&xml.includes('值'+i));assert.equal(numberedMarkdownTables(text).length,1);});
+test('a table wider than 30 columns fails visibly rather than silently becoming prose',async()=>{await assert.rejects(createWritingDocx('论文\n\n'+table(31)),/超过 30 列.*拆分/);await assert.rejects(createWritingDocx('论文\n\n'+table(31,{outside:false})),/超过 30 列.*拆分/);});
+test('examples inside fenced code are not treated as unsupported tables',async()=>{const zip=await JSZip.loadAsync(await createWritingDocx('论文\n\n```text\n'+table(31)+'\n```'));assert.ok(await zip.file('word/document.xml').async('string'));});
+for(const n of [21,30])test(`${n} columns survive school template placement as editable Word cells`,async()=>{const text='合成论文\n第一章 结果\n表 1 数据\n'+table(n),template=await createWritingDocx('学校模板\n{{PAPERKNOW_CONTENT}}'),zip=await JSZip.loadAsync(await createWritingDocx(text,{documentKind:'thesis',metadata:{title:'合成论文'},template:{status:'ready',bytes:template}})),xml=await zip.file('word/document.xml').async('string');assert.equal((xml.match(/<w:tbl(?=[\s>])/g)||[]).length,1);assert.equal((xml.match(/<w:tc(?=[\s>])/g)||[]).length,n*2);assert.ok(xml.includes('栏目'+n)&&xml.includes('值'+n));});

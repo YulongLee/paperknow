@@ -170,7 +170,7 @@ test('repeated request-window failures stay inside three attempts and release th
  const item=await f.generate(await f.create());await f.start().tick();const stopped=f.get(item.id);
  assert.equal(stopped.status,'failed');assert.equal(calls,3);assert.equal(stopped.job.attempt,1);assert.equal(stopped.job.recovery.automaticRetries,2);
  assert.equal(f.billing.balance(f.user.id).balance,200);assert.equal(f.billing.balance(f.user.id).held,0);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_execution_budgets').get().n,1);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='reserve'").get().n,1);assert.equal(f.db.prepare("SELECT count(*) n FROM billing_events WHERE kind='settle'").get().n,0);
- assert.match(stopped.job.error,/不是积分不足/);assert.doesNotMatch(stopped.job.error,/Token|Agent|request_reservation|maxTotalTokens/);
+ assert.match(stopped.job.error,/未扣积分或套餐次数/);assert.match(stopped.job.error,/继续生成并确认费用/);assert.doesNotMatch(stopped.job.error,/Token|Agent|request_reservation|maxTotalTokens/);
 });
 
 test('an operator token ceiling stays effective without automatic budget reset',async t=>{

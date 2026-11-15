@@ -42,6 +42,15 @@ test('binding persists real owned source and server rules across service instanc
  assert.deepEqual(reloaded.exportTemplate,item.exportTemplate);assert.equal(reloaded.fullText,item.fullText);assert.equal(f.calls.filter(row=>row.inspect).length,1,'reading immutable profile does not reinterpret its rules');
 });
 
+test('server-parsed template reference requirements are persisted per template without guessing legacy requirements',async t=>{
+ const f=fixture(t,{inspectThesisDocxTemplate:async bytes=>({...templateProfile(),submission:Buffer.from(bytes).toString().includes('school-a')?{minimumReferences:10,minimumForeignReferences:3,requiredCoverFields:['studentId']}: {}})});
+ const a=f.seed('school-a'),b=f.seed('school-b'),first=await f.set(await f.create(),a.id);
+ assert.deepEqual(first.exportTemplate.profile.submission,{minimumReferences:10,minimumForeignReferences:3});
+ assert.deepEqual((await f.request(`/api/theses/${first.id}/export-template`)).exportTemplate.profile.submission,{minimumReferences:10,minimumForeignReferences:3});
+ const second=await f.set(first,b.id);assert.deepEqual(second.exportTemplate.profile.submission,{});
+ assert.equal((await f.set(second,null)).exportTemplate,null);
+});
+
 test('template replacement is optimistic, null explicitly restores defaults, and unrelated snapshot updates retain the binding',async t=>{
  const f=fixture(t),a=f.seed('school-a'),b=f.seed('school-b'),original=await f.create(),first=await f.set(original,a.id);
  await assert.rejects(f.set(original,b.id),{status:409});assert.equal(f.service.get(first.id,f.user).exportTemplate.source.fileId,a.id);

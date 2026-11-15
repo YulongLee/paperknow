@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
 import {thesisReviewIssueIdentities} from '../backend/thesis-review-issue-identity.mjs';
+import {auditWritingConsistency} from '../backend/writing-quality.mjs';
 
 test('receipt foreign keys cascade when a run is cleaned up',()=>{
  const db=new DatabaseSync(':memory:');try{
@@ -24,4 +25,11 @@ test('each owner and document or evidence change invalidates the previous identi
 });
 test('stale, wrong-owner, ambiguous or unlocatable issues never receive identities',()=>{
  const f=fixture();for(const mutate of [x=>{x.current=false;},x=>{x.run.user_id='other';},x=>{x.run.thesis_id='other';},x=>{x.run.id='other';},x=>{x.run.status='running';},x=>{x.run.snapshot_hash='stale';},x=>{x.quality.coverage.complete=false;},x=>{x.quality.consistency.findings[0].offset=0;},x=>{x.saved[0].record.text+='需要核对的具体论文原句';},x=>{x.quality.consistency.findings[0].quote='不存在的原句';},x=>{x.saved.push(structuredClone(x.saved[0]));}]){const changed=structuredClone(f);mutate(changed);assert.deepEqual(items(changed),[]);}
+});
+test('only reproducible cosmetic issues qualify, never an AI classification or math and source claims',()=>{
+ const f=fixture(),text='首先，本节介绍背景。\n首先，本节介绍目的。\n首先，本节介绍思路。';f.saved[0].record.text=text;f.quality.consistency=auditWritingConsistency({chapters:[{id:'c1',title:'正文',text}]});const found=items(f).find(x=>x.reasonCode==='repeated_transition');assert.ok(found?.confirmable);
+ const ai=structuredClone(f);ai.quality.reviews=[{findings:[{sectionId:found.chapterId,quote:found.quote,offset:found.offset,category:'language_expression',severity:'info',reasonCode:'repeated_transition',explanation:'建议调整。'}]}];assert.equal(items(ai).find(x=>x.source==='review').confirmable,false);
+ for(const unsafe of ['首先，模型结果为 10。','首先，这里引用[source:m]。','首先，这里讨论点积。']){const changed=structuredClone(f),line=changed.saved[0].record.text.split('\n')[1];changed.saved[0].record.text=changed.saved[0].record.text.replace(line,unsafe);changed.quality.consistency=auditWritingConsistency({chapters:[{id:'c1',title:'正文',text:changed.saved[0].record.text}]});assert.equal(items(changed).find(x=>x.reasonCode==='repeated_transition')?.confirmable,false);}
+ const forged=structuredClone(f);forged.quality.consistency.findings[0].reasonCode='repeated_sentence_stop';assert.equal(items(forged)[0].confirmable,false);
+ const punctuation=structuredClone(f);punctuation.saved[0].record.text='本节介绍研究背景。。后续内容。';punctuation.quality.consistency=auditWritingConsistency({chapters:[{id:'c1',title:'正文',text:punctuation.saved[0].record.text}]});assert.equal(items(punctuation).find(row=>row.reasonCode==='repeated_sentence_stop')?.confirmable,true);
 });

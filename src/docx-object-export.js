@@ -22,6 +22,12 @@ export async function insertDocxObjects(data,text,objects=[]){
      const standalone=[...parent.getElementsByTagNameNS(WORD,'t')].map(row=>row.textContent).join('').replace(/\[docx:obj-[a-f0-9]{24}\]/g,'').trim()==='';for(const drawing of native.getElementsByTagNameNS(WP,'docPr')){drawing.setAttribute('id',String(bookmark+10000));drawing.setAttribute('name',(standalone?'PKFigure_Docx_':'PKDocx_')+object.id);}
      for(const extent of native.getElementsByTagNameNS(WP,'extent')){const cx=Number(extent.getAttribute('cx')),cy=Number(extent.getAttribute('cy'));if(cx>0&&cy>0){const scale=Math.min(1,5200000/cx,7500000/cy);extent.setAttribute('cx',String(Math.round(cx*scale)));extent.setAttribute('cy',String(Math.round(cy*scale)));}}
     }
+    // Imported objects are inserted after the template typography is applied.
+    // Fixed-height template lines clip inline pictures and tall equations.
+    // Override the line rule on the containing paragraph, leaving text and
+    // its other formatting unchanged. Explicit auto spacing needs no change.
+    let paragraph=parent;while(paragraph&&!(paragraph.namespaceURI===WORD&&paragraph.localName==='p'))paragraph=paragraph.parentNode;
+    if(paragraph){let pr=elements(paragraph).find(row=>row.namespaceURI===WORD&&row.localName==='pPr');if(!pr){pr=doc.createElementNS(WORD,'w:pPr');paragraph.insertBefore(pr,paragraph.firstChild);}let spacing=elements(pr).find(row=>row.namespaceURI===WORD&&row.localName==='spacing');if(!spacing){spacing=doc.createElementNS(WORD,'w:spacing');pr.appendChild(spacing);}const rule=spacing.getAttributeNS(WORD,'lineRule');if(!rule||rule==='exact')spacing.setAttributeNS(WORD,'w:lineRule','atLeast');}
     const start=doc.createElementNS(WORD,'w:bookmarkStart'),end=doc.createElementNS(WORD,'w:bookmarkEnd');start.setAttributeNS(WORD,'w:id',String(bookmark));start.setAttributeNS(WORD,'w:name','PKDocx_'+object.id);end.setAttributeNS(WORD,'w:id',String(bookmark++));fragments.push(start);if(object.kind==='image'){const wrapper=doc.createElementNS(WORD,'w:r');wrapper.appendChild(native);fragments.push(wrapper);}else fragments.push(native);fragments.push(end);inserted.push(object.id);cursor=match.index+match[0].length;
    }if(cursor<textNode.textContent.length)fragments.push(makeRun(textNode.textContent.slice(cursor),properties));
   }for(const fragment of fragments)parent.insertBefore(fragment,run);parent.removeChild(run);

@@ -105,17 +105,21 @@ function linkCitations(node,targets,block,ranges){
   if(cursor<value.length)node.insertBefore(makeRun(value.slice(cursor)),original);node.removeChild(original);
  }
 }
-function rewriteBlock(node,block,{reference=false,frontMatter=false,id=0,headingLevel,referenceAnchor,citationTargets,citationRanges,inputAnchor}={}){
+// Keep only clearly small tables together. Larger or text-heavy tables remain
+// splittable; Word can repeat their existing header on subsequent pages.
+function compactTable(block){return block?.type==='table'&&Array.isArray(block.rows)&&block.rows.length>=2&&block.rows.length<=4&&block.rows.every(row=>row.length<=4&&row.every(cell=>String(cell).length<=18))&&block.rows.flat().reduce((sum,cell)=>sum+String(cell).length,0)<=160;}
+function rewriteBlock(node,block,{reference=false,frontMatter=false,id=0,headingLevel,referenceAnchor,citationTargets,citationRanges,inputAnchor,keepWithNext=false}={}){
  const doc=node.ownerDocument;
  if(block.type==='table'){
   for(const para of node.getElementsByTagNameNS(W,'p'))setParagraphStyle(para,'TableText');
-  const rows=children(node,'tr');for(const [index,row] of rows.entries())for(const para of row.getElementsByTagNameNS(W,'p')){const pr=children(para,'pPr')[0],keep=doc.createElementNS(W,'w:keepNext');if(index!==0||rows.length<2)keep.setAttributeNS(W,'w:val','0');pr.appendChild(keep);}
+  const rows=children(node,'tr'),compact=compactTable(block);for(const [index,row] of rows.entries())for(const para of row.getElementsByTagNameNS(W,'p')){const pr=children(para,'pPr')[0],keep=doc.createElementNS(W,'w:keepNext');if(!(index<rows.length-1&&(index===0||compact)))keep.setAttributeNS(W,'w:val','0');pr.appendChild(keep);}
   for(const shade of [...node.getElementsByTagNameNS(W,'shd')])shade.setAttributeNS(W,'w:fill','F2F2F2');
   if(inputAnchor&&node.getElementsByTagNameNS(W,'p')[0])addBookmark(node.getElementsByTagNameNS(W,'p')[0],inputAnchor);
   return xml(node);
  }
  const level=block.literal||block.type==='formula'||block.type==='figure'?0:headingLevel??heading(block.text),role=block.literal?'Code':level?'Heading'+level:reference?'References':frontMatter?'Abstract':'Normal';
  setParagraphStyle(node,role);
+ if(keepWithNext){const keep=doc.createElementNS(W,'w:keepNext');children(node,'pPr')[0].appendChild(keep);}
  if(block.type==='figure'){const pr=children(node,'pPr')[0],jc=doc.createElementNS(W,'w:jc'),ind=doc.createElementNS(W,'w:ind'),keep=doc.createElementNS(W,'w:keepLines');jc.setAttributeNS(W,'w:val','center');ind.setAttributeNS(W,'w:firstLine','0');ind.setAttributeNS(W,'w:firstLineChars','0');pr.appendChild(jc);pr.appendChild(ind);pr.appendChild(keep);}
  if(block.type==='formula'){const pr=children(node,'pPr')[0];const jc=doc.createElementNS(W,'w:jc');jc.setAttributeNS(W,'w:val','center');pr.appendChild(jc);}
  if(level){let remaining=String(block.text).match(/^\s*#{1,3}\s+/)?.[0].length||0;for(const text of node.getElementsByTagNameNS(W,'t')){if(!remaining)break;const removed=Math.min(remaining,text.textContent.length);text.textContent=text.textContent.slice(removed);remaining-=removed;}addBookmark(node,{id,name:'PK_'+id});}
@@ -355,6 +359,7 @@ function adoptTemplateParagraphs(fragment,sourceNodes,placement,stylesDocument,r
   const explicitRole=(rules.explicitRequirements||[]).some(fact=>fact.path.startsWith('styles.'+(role.startsWith('TOC')?'TOC':role)+'.'));const styleProperty=doc.createElementNS(W,'w:pStyle');styleProperty.setAttributeNS(W,'w:val',explicitRole?style:styleId||style);properties.insertBefore(styleProperty,properties.firstChild);
   if(sample&&!styleId)for(const name of ['pageBreakBefore','keepNext','keepLines'])if(!children(properties,name).length){const property=doc.createElementNS(W,'w:'+name);property.setAttributeNS(W,'w:val','0');properties.appendChild(property);}
   // Generated table headers stay with the first body row; inherited template styles must not chain body rows together.
+  if(role==='Normal'&&children(current,'keepNext').some(item=>!['0','false','off'].includes(item.getAttributeNS(W,'val')))){for(const item of children(properties,'keepNext'))properties.removeChild(item);properties.appendChild(doc.createElementNS(W,'w:keepNext'));}
   if(role==='TableText'&&paragraph.parentNode?.localName==='tc'){const header=children(current,'keepNext').some(item=>!['0','false','off'].includes(item.getAttributeNS(W,'val')));for(const item of children(properties,'keepNext'))properties.removeChild(item);const keep=doc.createElementNS(W,'w:keepNext');if(!header)keep.setAttributeNS(W,'w:val','0');properties.appendChild(keep);}
   if(/^Heading[123]$/.test(role)){
    if(!children(properties,'outlineLvl').length){const outline=doc.createElementNS(W,'w:outlineLvl');outline.setAttributeNS(W,'w:val',String(Number(role.at(-1))-1));properties.appendChild(outline);}
@@ -383,7 +388,9 @@ function fillKnownCoverField(para,metadata){
   const match=matches[index],label=match[0].replace(/[\s:：]/g,''),from=match.index+match[0].length,to=matches[index+1]?.index??value.length,remainder=value.slice(from,to).replace(fontNote,''),key=keyFor(label,matches.slice(0,index).map(row=>row[0]).join(''));
   // Adjacent cover fields are handled independently. Existing personal names,
   // academic titles and signatures are never inferred or overwritten.
-  const provided=label==='专业班级'?[metadata.major,metadata.className].filter(Boolean).join(' '):metadata[key];if(!key||!String(provided||'').trim()||!/^[\s_＿×Xx\.．·—-]*$/.test(remainder))continue;
+  // The cover's 专业班级 is itself a complete author-entered field. Use
+  // the general major only as a fallback when no cover value is supplied.
+  const provided=label==='专业班级'?(String(metadata.className||'').trim()?metadata.className:metadata.major):metadata[key];if(!key||!String(provided||'').trim()||!/^[\s_＿×Xx\.．·—-]*$/.test(remainder))continue;
   const filled=String(provided)+(to<value.length?'   ':'');operations.push({from,to,text:filled});
  }
  // Remove explicit printing/font instructions only, retaining the original
@@ -392,6 +399,16 @@ function fillKnownCoverField(para,metadata){
  if(metadata.graduationYear)for(const match of value.matchAll(/×{4}(?=[^\n]{0,70}届)/g))operations.push({from:match.index,to:match.index+4,text:String(metadata.graduationYear)});
  if(metadata.completionDate)for(const match of value.matchAll(/二[○〇]××年×月/g))operations.push({from:match.index,to:match.index+match[0].length,text:String(metadata.completionDate)});
  replaceParagraphTextRanges(para,operations);
+ // A school cover may place 学院 and 专业班级 on the same line. Long
+ // author-entered answers can otherwise leave just the final characters on a
+ // new line. Preserve the school's font, size and underlining; only apply
+ // modest character-width compression to the two supplied values when the
+ // line exceeds its conservative single-line allowance. Never truncate text.
+ if(/学\s*院/.test(value)&&/专\s*业\s*班\s*级/.test(value)){
+  const chosenClass=String(metadata.className||'').trim()?String(metadata.className).trim():String(metadata.major||'').trim(),college=String(metadata.college||'').trim();
+  const textWidth=input=>[...String(input)].reduce((sum,char)=>sum+(/[\u2e80-\u9fff\uf900-\ufaff\uff01-\uff60]/u.test(char)?1:.5),0),complete=texts(para),dynamic=textWidth(college)+textWidth(chosenClass),total=textWidth(complete)+1.5;
+  if(dynamic&&total>29){const percent=Math.max(70,Math.min(95,Math.floor((29-(total-dynamic))/dynamic*100)));for(const t of para.getElementsByTagNameNS(W,'t'))if([college,chosenClass].some(part=>part&&t.textContent.includes(part))){const run=t.parentNode;if(run?.namespaceURI!==W||run.localName!=='r')continue;let pr=children(run,'rPr')[0];if(!pr){pr=para.ownerDocument.createElementNS(W,'w:rPr');run.insertBefore(pr,run.firstChild);}for(const old of children(pr,'w'))pr.removeChild(old);const width=para.ownerDocument.createElementNS(W,'w:w');width.setAttributeNS(W,'w:val',String(percent));pr.appendChild(width);}}
+ }
  // Two blank signature-date fields must stay on one line. The template's
  // four-character first-line indent can otherwise strand its final 日.
  if(/^\s*日期[:：]\s*年\s*月\s*日\s+日期[:：]\s*年\s*月\s*日\s*$/.test(value)){const pr=children(para,'pPr')[0];if(pr){for(const ind of children(pr,'ind')){ind.setAttributeNS(W,'w:firstLine','0');ind.setAttributeNS(W,'w:firstLineChars','0');}for(const old of children(pr,'keepLines'))pr.removeChild(old);pr.appendChild(para.ownerDocument.createElementNS(W,'w:keepLines'));}}
@@ -559,7 +576,8 @@ export async function applyThesisDocumentTemplate(bytes,{blocks=[],metadata={},t
   const block=blocks[index],value=String(block.text||'').trim();if(!value&&block.type!=='table')continue;
   if(!block.literal&&abstract(value)){const englishTitle=/abstract/i.test(value)&&metadata.englishTitle&&(!source||!placement?.regions?.some(region=>region.kind==='title_en'));if(englishTitle){const english=p(metadata.englishTitle,'Title',!source?'<w:pageBreakBefore/><w:keepNext/>':'<w:keepNext/>');front.push(english);frontGroups.abstract_en.push(english);}frontMatter=true;frontKind=/abstract/i.test(value)?'abstract_en':'abstract_zh';const rendered=anchored(p(displayHeading(value).replace(/\s/g,''),'FrontHeading',englishTitle&&!source?'<w:pageBreakBefore w:val="0"/>':''),inputAnchor(index));front.push(rendered);frontGroups[frontKind].push(rendered);continue;}
   const level=block.literal||block.type==='formula'||block.type==='figure'?0:explicitTitles.has(value)?1:heading(value);if(level){frontMatter=false;reference=referenceHeading(value);nonCitation=nonCitationHeading(value);}
-  const id=nextId(),rendered=rewriteBlock(nodes[index],block,{reference,frontMatter,id,headingLevel:level,referenceAnchor:citationTargets.get(referenceBlocks.get(index)),citationTargets:nonCitation?null:citationTargets,citationRanges,inputAnchor:inputAnchor(index)});
+  let next=index+1;while(next<blocks.length&&!String(blocks[next].text||'').trim()&&blocks[next].type!=='table')next++;const keepWithNext=!block.literal&&/^(?:表\s*\d+(?:[.\-－]\d+)*|Table\s+\d+(?:[.\-－]\d+)*)(?:\s*[:：.、]\s*|\s+)\S/i.test(value)&&compactTable(blocks[next]);
+  const id=nextId(),rendered=rewriteBlock(nodes[index],block,{reference,frontMatter,id,headingLevel:level,referenceAnchor:citationTargets.get(referenceBlocks.get(index)),citationTargets:nonCitation?null:citationTargets,citationRanges,inputAnchor:inputAnchor(index),keepWithNext});
   if(frontMatter){front.push(rendered);frontGroups[frontKind].push(rendered);}else{entries.push(rendered);if(level===1){const label=displayHeading(value).replace(/\s/g,'');if(referenceHeading(value))contentKind='references';else if(/^(?:致谢|acknowledg(?:e)?ments?)$/i.test(label))contentKind='acknowledgements';else if(/^(?:附录|appendix|appendices)/i.test(label))contentKind='appendix';else if(!nonCitationHeading(value))contentKind='body';}contentGroups[contentKind].push(rendered);if(level)headings.push({text:displayHeading(block.text),level,id});}
  }
  // Explicit slots retain the uploaded package and cover layout. Proposal
