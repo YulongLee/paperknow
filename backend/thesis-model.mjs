@@ -348,6 +348,7 @@ export function thesisAgentTask(snapshot,unit,completed){
  if(completion.scope==='full'&&String(completion.originalText||'').trim()){
   const previous=task.context.lengthBudget,actual=thesisSectionWordRange(unit,unitLanguage(snapshot,unit));
   if(previous){task.instructions=task.instructions.replace(`目标篇幅为 ${previous.target}，允许范围 ${previous.min}～${previous.max}`,`目标篇幅为 ${actual.target}，允许范围 ${actual.min}～${actual.max}`);if(unit.frontMatter){const measure=unit.frontMatter==='abstract_en'?'词':'字',previousSuggested=Math.max(previous.min,Math.min(previous.target,Math.floor(previous.max*.85))),actualSuggested=Math.max(actual.min,Math.min(actual.target,Math.floor(actual.max*.85)));task.instructions=task.instructions.replace(`本次允许的 ${previous.min}～${previous.max} ${measure}处理，建议约 ${previousSuggested} ${measure}`,`本次允许的 ${actual.min}～${actual.max} ${measure}处理，建议约 ${actualSuggested} ${measure}`);}}
+  task.instructions=task.instructions.replace('建议围绕安全篇幅 '+Math.round((previous.min+previous.max)/2),'建议围绕安全篇幅 '+Math.round((actual.min+actual.max)/2));
   task.context.lengthBudget=actual;
   const existing=researchWordCount(countableThesisText(completion.originalText,unit),unitLanguage(snapshot,unit)),room=Math.max(0,(actual.suggestedMax??actual.max)-existing),cushion=Math.min(20,Math.floor(room/4)),preferred=Math.max(existing,(actual.suggestedMax??actual.max)-cushion);task.instructions+='保留完整原稿事实、引文和对象，不因字数删除已有内容；围绕现有正文修改和补齐，不重复叙述或为达到字数而扩写。当前原稿 '+existing+'，建议控制在 '+preferred+' 以内，必要补充可使用固定的安全上限 '+actual.max+'；超过建议但未超安全上限不需反复压缩。必要补充应优先替换空泛或待补充内容。';
  }
