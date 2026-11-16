@@ -20,7 +20,8 @@ export function attachSupplementReviewEvidence(task,{snapshot={},chapters=[],bat
    // potentially mid-sentence quote alone. Ambiguous matches stay unexpanded:
    // choosing an occurrence would invent a location. The window is bounded and
    // is not proof that either its provenance or the claim has been verified.
-   const start=unique?Math.max(0,firstOffset-160):null,end=unique?Math.min(source.text.length,firstOffset+proof.quote.length+160):null;
+   const short=source.text.length<=1200;
+   const start=unique?(short?0:Math.max(0,firstOffset-160)):null,end=unique?(short?source.text.length:Math.min(source.text.length,firstOffset+proof.quote.length+160)):null;
    const candidateText=unique?source.text.slice(start,end):proof.quote,offset=start;
    const positions=[];
    // Recovery section IDs do not encode each later split's absolute offset;

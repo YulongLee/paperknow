@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {mountOnlineThesis,disposeOnlineThesis,thesisOnlineSessionChanged} from '../dist/workspace/thesis-online.mjs';
 import {createCompletionDraft,restoreCompletionDraft,setCompletionIssues,completionPanelHTML,completionProgressText,bindCompletionPanel} from '../dist/workspace/thesis-completion-panel.mjs';
+import {completionReviewPanel} from '../dist/workspace/thesis-completion-review.mjs';
+test('optional prose advice is shown separately and does not hide the ready confirmation or waive warnings',()=>{
+ const ready={required:true,status:'ready',reportCurrent:true,checks:{materials:true,manuscript:true,content:true},changes:[],reviewItems:[{source:'review',category:'language_expression',severity:'info',quote:'可选的原文句子',suggestion:'可选建议'}],editorialSuggestions:[{chapterId:'c',title:'正文',text:'精简重复句子 <script>bad()</script>'}],missing:[],issues:[]};
+ const html=completionReviewPanel(ready);assert.match(html,/表达优化建议（可选）/);assert.match(html,/不影响终稿导出/);assert.match(html,/data-completion-confirm/);assert.doesNotMatch(html,/data-issue-receipt|<script>/);assert.match(html,/&lt;script&gt;/);
+ const blocked=completionReviewPanel({...ready,status:'check_required',issues:[{title:'正文',text:'引用缺少依据'}],reviewItems:[{id:'warning',source:'review',category:'source_support',severity:'warning',quote:'实际有问题的引文',suggestion:'补充对应原文'}]});assert.doesNotMatch(blocked,/<button[^>]*data-completion-confirm(?:\s|>)/);assert.match(blocked,/引用缺少依据/);assert.match(blocked,/data-issue-receipt/);
+});
 const settle=async()=>{for(let i=0;i<10;i++)await new Promise(resolve=>setImmediate(resolve));};
 const base=()=>({id:'t1',version:1,title:'合成测试论文',status:'completed',profile:{level:'本科',language:'中文',targetWords:500},snapshot:{title:'合成测试论文',profile:{level:'本科',language:'中文',targetWords:500},requirements:{deliveryVersion:1},materials:[],references:[],outline:[{id:'c1',title:'第一章 研究'}]},outline:[{id:'c1',title:'第一章 研究'}],chapters:[{id:'c1',title:'第一章 研究',text:'已有研究论述。【待补充：实际对照数据】',sourceIds:[],version:1,status:'saved'}],job:{id:'old-run',status:'completed',completedSections:1,totalSections:1}});
 test('blocked recheck does not offer repeated submissions and explains saved content and no new charge',()=>{for(const reason of ['usage_pending','limit_reached']){const html=completionPanelHTML({...base(),recheck:{enabled:true,eligible:false,reason}},createCompletionDraft());assert.match(html,/请联系平台客服处理/);assert.match(html,/已保存的正文与资料保留，本次未额外扣费/);assert.doesNotMatch(html,/data-review-saved/);assert.match(html,/如只需继续本次检查，请先联系支持/);assert.match(html,/确认费用后可能再次收费/);assert.match(html,/<a href="#help">联系支持<\/a>/);}});
@@ -208,4 +214,11 @@ test('author can explicitly retain a classified cosmetic expression while other 
  f=fixture(t,{handle:async(path,data,record)=>{if(path.endsWith('/completion/expression-confirmation')){assert.equal(data.issueId,issue.id);assert.equal(data.runId,'old-run');const next={...record,completionReview:{...record.completionReview,reviewItems:[{...issue,confirmed:data.confirmed}]}};f.setRecord(next);return {item:structuredClone(next)};}return null;}});
  f.setRecord({...base(),completionReview:{required:true,runId:'old-run',status:'check_required',reportCurrent:true,checks:{materials:false,manuscript:true,content:false},changes:[],missing:['仍需真实记录'],issues:[],reviewItems:[issue]}});await f.ready;
  f.q('[data-thesis-writing-mode="final"]').click();await settle();let button=f.q('[data-expression-confirm]');assert.match(button.textContent,/确认保留原文/);button.click();await settle();button=f.q('[data-expression-confirm]');assert.match(button.textContent,/撤销保留原文/);assert.equal(f.q('#thesis-online-docx').disabled,true);button.click();await settle();assert.match(f.q('[data-expression-confirm]').textContent,/确认保留原文/);assert.equal(f.calls.filter(call=>call.path.endsWith('/completion/expression-confirmation')).length,2);
+});
+
+
+test('a newer saved manuscript invalidates the completion quote and restores preparation without dispatching',async t=>{
+ const f=fixture(t);await f.ready;f.q('[data-thesis-writing-mode="final"]').click();f.q('[data-completion-prepare]').click();await settle();assert.ok(f.q('[data-completion-start]'));
+ f.setRecord({...f.getRecord(),version:2});f.q('[data-thesis-refresh]').click();await settle();assert.equal(f.q('[data-completion-start]'),null);assert.ok(f.q('[data-completion-prepare]'));assert.equal(f.calls.filter(row=>row.path.endsWith('/generate')).length,0);
+ f.q('[data-completion-prepare]').click();await settle();assert.ok(f.q('[data-completion-start]'));assert.equal(f.calls.filter(row=>row.path.endsWith('/quote')).at(-1).data.version,2);assert.equal(f.calls.filter(row=>row.path.endsWith('/generate')).length,0);
 });
