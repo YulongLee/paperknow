@@ -31,6 +31,10 @@ function fixture({item=thesis(),user={id:'u1'},cap={ready:true},handler}={}){
  return {dom,ctx,calls,setItem:value=>{record=structuredClone(value);},$:selector=>document.querySelector(selector),close(){disposeOnlineThesis();dom.window.close();}};
 }
 function input(f,selector,value){const element=f.$(selector);element.value=value;element.dispatchEvent(new window.Event('input',{bubbles:true}));}
+test('completed writing units show an ongoing check rather than a completed overall progress bar',async()=>{
+ const item=thesis({status:'running',job:{operation:'completion',purpose:'completion',status:'running',stage:'checking_supplements',completedSections:6,totalSections:6},chapters:[{id:'c1',title:'第一章',version:1,status:'saved',text:'已经保存的正文。'}]}),f=fixture({item});
+ try{const stop=mountThesisStage({id:'t1',container:f.$('.dashboard'),ctx:f.ctx});await stop.ready;await settle();const progress=f.$('.thesis-progress progress');assert.ok(progress);assert.equal(progress.hasAttribute('value'),false);assert.match(progress.getAttribute('aria-label'),/正在检查内容/);assert.match(f.$('.thesis-progress').textContent,/6 \/ 6 个写作单元/);}finally{f.close();}
+});
 test('final writing previews an uploaded draft without generating, then imports it into the current manuscript',async()=>{
  const original=thesis(),uploaded=thesis({version:2,status:'draft',importedDraft:{id:'import-one',fileId:'file-one'},chapters:[{id:'c1',title:'第一章 背景',text:'用户上传初稿的完整正文。',version:1,status:'saved'}]});let read=0;
  const f=fixture({item:original,handler:async(path,data)=>{if(path==='/files')return {id:'file-one'};if(path.endsWith('/draft-import/preview'))return {preview:{fileId:'file-one',name:'用户初稿.docx',previewHash:'server-preview',version:1,characters:250,tableCount:0,referenceCount:0,chapters:[{id:'c1',title:'第一章 背景',characters:250}],warnings:[],replacesExisting:false}};if(path.endsWith('/draft-import')){assert.equal(data.previewHash,'server-preview');assert.equal(data.replaceExisting,false);f.setItem(uploaded);return {item:uploaded};}}});

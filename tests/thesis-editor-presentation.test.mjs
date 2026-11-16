@@ -9,6 +9,14 @@ test('chapter citation presentation is reversible and leaves canonical text and 
  assert.equal(view.text,'观察记录 〔材料1〕；研究讨论 〔文献1〕。再次核对 〔材料1〕。');assert.equal(view.sources.length,2);assert.equal(view.sources[0].name,'真实观察记录');assert.equal(view.sources[1].name,'研究文献题录');assert.equal(view.sources[1].hasText,false);assert.doesNotMatch(view.text,/source:|long-internal-id/);assert.equal(restoreThesisEditorText(view.text,view).text,raw);assert.deepEqual(sources,before);
 });
 
+test('confirmed linked reference excerpts are visibly distinct and preserve their individual evidence identifiers',()=>{
+ const sources={references:[{id:'reference-r',title:'论文',confirmed:true}],materials:[{id:'segment-a',name:'作者提供的文献片段',confirmed:true,referenceSegment:true,relatedReferenceId:'reference-r'},{id:'other',name:'研究材料',confirmed:true,relatedReferenceId:'reference-r'}]},raw='论述[source:segment-a][source:reference-r]；另有材料[source:other]。';
+ const view=thesisEditorPresentation(sources,raw,{bibliography:{references:[{id:'reference-r',number:1}]}});
+ assert.equal(view.text,'论述〔文献片段1〕〔文献1〕；另有材料〔材料2〕。');assert.equal(view.sources[0].kind,'reference_segment');assert.equal(restoreThesisEditorText(view.text,view).text,raw);
+ const pasted=restoreThesisEditorText(view.text+' 〔文献片段2〕',view);assert.deepEqual(pasted.unmatched,['〔文献片段2〕']);
+ const unconfirmed=thesisEditorPresentation({...sources,references:[{id:'reference-r',confirmed:false}]},'[source:segment-a]');assert.equal(unconfirmed.text,'〔材料1〕');
+});
+
 test('literal same-name short markers cause whole-chapter raw fallback instead of guessed associations',()=>{
  const raw='原有文字 〔材料1〕 与引用 [source:private-material-a-long-internal-id]。',view=thesisEditorPresentation(snapshot(),raw);
  assert.equal(view.collision,true);assert.equal(view.text,raw);assert.deepEqual(view.bindings,[]);assert.equal(restoreThesisEditorText(view.text+' 人工补充',view).text,raw+' 人工补充');assert.deepEqual(restoreThesisEditorText(view.text,view).unmatched,[]);

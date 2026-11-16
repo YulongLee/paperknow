@@ -21,6 +21,20 @@ test('unresolved, duplicated, uncited, unconfirmed and missing versions never be
  const missing=fixture();missing.chapters=missing.chapters.filter(row=>row.id!=='c1');assert.equal(thesisReviewBibliographyContext(missing.snapshot,missing.chapters).coverage,'incomplete_or_ambiguous');
  const duplicate=fixture();duplicate.chapters.push({...duplicate.chapters[0]});assert.equal(thesisReviewBibliographyContext(duplicate.snapshot,duplicate.chapters),null);
 });
+test('only cited confirmed reference segments expose their parent numbering, without claiming proof',()=>{
+ const {snapshot,chapters}=fixture();snapshot.materials=[{id:'seg-cited',name:'已引用片段',confirmed:true,referenceSegment:true,relatedReferenceId:'ref-0'},{id:'seg-unused',name:'未引用私人片段',confirmed:true,referenceSegment:true,relatedReferenceId:'ref-0'},{id:'seg-unconfirmed',confirmed:false,referenceSegment:true,relatedReferenceId:'ref-0'},{id:'untrusted',confirmed:true,relatedReferenceId:'ref-0'}];chapters[0].text+='引用片段[source:seg-cited]。';
+ let value=thesisReviewBibliographyContext(snapshot,chapters);assert.deepEqual(value.citedReferenceSegments,[{id:'seg-cited',referenceId:'ref-0'}]);assert.equal(value.citedReferenceSegmentsTruncated,false);assert.doesNotMatch(JSON.stringify(value),/seg-unused|seg-unconfirmed|未引用私人片段/);assert.match(value.scope,/关联不证明片段出处/);
+ snapshot.references.push({...snapshot.references[0]});value=thesisReviewBibliographyContext(snapshot,chapters);assert.deepEqual(value.citedReferenceSegments,[]);assert.equal(value.coverage,'incomplete_or_ambiguous');
+});
+test('a long list of cited segments is bounded and explicitly marked incomplete',()=>{
+ const {snapshot,chapters}=fixture();snapshot.materials=Array.from({length:41},(_,i)=>({id:'segment-'+i,confirmed:true,referenceSegment:true,relatedReferenceId:'ref-0'}));chapters[0].text+=snapshot.materials.map(row=>'[source:'+row.id+']').join('');
+ const value=thesisReviewBibliographyContext(snapshot,chapters);assert.equal(value.citedReferenceSegments.length,40);assert.equal(value.citedReferenceSegmentsTruncated,true);assert.equal(value.indexStatus,'partial');
+});
+test('a review batch receives only mappings for its own cited segments, without treating them as evidence',async()=>{
+ const {snapshot,chapters}=fixture();snapshot.materials=[{id:'seg-cited',confirmed:true,referenceSegment:true,relatedReferenceId:'ref-0'},{id:'seg-private',confirmed:true,referenceSegment:true,relatedReferenceId:'ref-1'}];chapters[0].text+='本句[source:seg-cited]。';
+ const seen=[],quality=await createWritingQualityRunner({citationVerifier:{verify:async()=>({status:'completed',items:[],limitations:[]})}})({kind:'thesis',snapshot,chapters,checkSupplements:false,runtime:{maxTurns:3,maxOutputTokens:2048,timeoutMs:30000},dispatch:async({task})=>{seen.push(task);return {text:JSON.stringify({complete:true,findings:[],limitations:[]}),usage:{input:10,output:10},costUsd:.001};}});
+ const linked=seen.find(task=>task.context.referenceSegmentMappings?.length);assert.deepEqual(linked.context.referenceSegmentMappings,[{id:'seg-cited',referenceId:'ref-0'}]);assert.match(linked.instructions,/关联本身不核实来源/);assert.doesNotMatch(JSON.stringify(seen),/seg-private/);assert.equal(quality.coverage.complete,true);
+});
 test('long or unparseable reference chapters advertise their limitations',()=>{
  const {snapshot,chapters}=fixture();chapters[1].text='作者备注无法解析\n'+'未解析'.repeat(500);const value=thesisReviewBibliographyContext(snapshot,chapters);assert.equal(value.savedReferenceChapters[0].entryCountReliable,false);assert.equal(value.savedReferenceChapters[0].previewTruncated,true);
  chapters[0].text='长'.repeat(600001);assert.equal(thesisReviewBibliographyContext(snapshot,chapters).coverage,'unavailable');
@@ -37,7 +51,7 @@ test('duplicate saved entries and changed manuscript versions remain explicit an
 test('all thesis review batches see the bound inventory but cannot cite other batches as their own prose',async()=>{
  const {snapshot,chapters}=fixture();chapters[0].text+='正文。'.repeat(3500);const privateRow={id:'private',title:'未引用私人题录',confirmed:true,text:'未引用私人全文'};snapshot.references.push(privateRow);
  const seen=[],quality=await createWritingQualityRunner({citationVerifier:{verify:async()=>({status:'completed',items:[],limitations:[]})}})({kind:'thesis',snapshot,chapters,checkSupplements:false,runtime:{maxTurns:3,maxOutputTokens:2048,timeoutMs:30000},dispatch:async({task})=>{
-  seen.push(task);assert.ok(JSON.stringify(task.context).length<=39000);assert.equal(task.context.bibliographyIndex.bodyCitedReferenceCount,10);assert.equal(task.context.bibliographyIndex.savedReferenceChapters[0].sourceEntries,1);assert.doesNotMatch(JSON.stringify(task),/未引用私人题录|未引用私人全文/);
+  seen.push(task);assert.ok(JSON.stringify(task.context).length<=39000);assert.equal(task.context.bibliographyIndex.bodyCitedReferenceCount,10);assert.equal(task.context.bibliographyIndex.savedReferenceChapters[0].sourceEntries,1);assert.match(task.instructions,/关联不能证明片段真实出处/);assert.doesNotMatch(JSON.stringify(task),/未引用私人题录|未引用私人全文/);
   const wrong={complete:true,findings:[{sectionId:task.context.manuscriptExcerpts[0].id,quote:'不存在于本批的完整原句',category:'source_support',severity:'warning',explanation:'检查依据。',suggestion:'核对来源。'}],limitations:[]};assert.throws(()=>parseWritingReview({text:JSON.stringify(wrong)},task));
   return{text:JSON.stringify({complete:true,findings:[],limitations:[]}),usage:{input:10,output:10},costUsd:.001};
  }});assert.ok(seen.length>=2);assert.equal(quality.coverage.complete,true);

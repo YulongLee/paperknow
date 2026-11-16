@@ -1,7 +1,7 @@
 // Short citation labels are a reversible view of this exact chapter and source
 // snapshot. Canonical chapter text and recovery drafts always retain raw IDs.
 const citationPattern=/\[source:([^\]]+)\]/g;
-const shortPattern=/〔(?:材料|文献|待核对来源|图片|原稿图片|原稿公式)\d+〕/g;
+const shortPattern=/〔(?:材料|文献片段|文献|待核对来源|图片|原稿图片|原稿公式)\d+〕/g;
 const shortLabels=text=>[...new Set(String(text).match(shortPattern)||[])];
 export function thesisEditorPresentation(snapshot={},raw='',{bibliography,figures=[],docxObjects=[]}={}){
  const original=String(raw),known=new Map();
@@ -9,7 +9,7 @@ export function thesisEditorPresentation(snapshot={},raw='',{bibliography,figure
  let nextReference=referenceNumbers.size;
  for(const row of snapshot.references||[])if(!referenceNumbers.has(row?.id))referenceNumbers.set(row?.id,++nextReference);
  for(const [rows,kind,prefix] of [[snapshot.materials||[],'material','材料'],[snapshot.references||[],'reference','文献']]){
-  rows.forEach((row,index)=>{if(typeof row?.id==='string'&&!known.has(row.id))known.set(row.id,{token:`〔${prefix}${kind==='reference'&&bibliography?referenceNumbers.get(row.id):index+1}〕`,name:String(row.name||row.title||'未命名来源'),kind,hasText:Boolean(String(row.text||'').trim()),confirmed:row.confirmed===true});});
+  rows.forEach((row,index)=>{if(typeof row?.id==='string'&&!known.has(row.id)){const linked=kind==='material'&&row.confirmed===true&&row.referenceSegment===true&&(snapshot.references||[]).some(reference=>reference?.id===row.relatedReferenceId&&reference.confirmed===true);known.set(row.id,{token:`〔${linked?'文献片段':prefix}${kind==='reference'&&bibliography?referenceNumbers.get(row.id):index+1}〕`,name:String(row.name||row.title||'未命名来源'),kind:linked?'reference_segment':kind,hasText:Boolean(String(row.text||'').trim()),confirmed:row.confirmed===true});}});
  }
  const sourceMap=new Map(),unknown=new Map();
  for(const match of original.matchAll(citationPattern)){

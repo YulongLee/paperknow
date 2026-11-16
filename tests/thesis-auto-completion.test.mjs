@@ -9,6 +9,12 @@ import {completionPanelHTML,createCompletionDraft} from '../dist/workspace/thesi
 import {completionReviewPanel} from '../dist/workspace/thesis-completion-review.mjs';
 const source='合成测试资料，记录了限定场景下的研究方法，不代表真实实验。'.repeat(10);
 const value=()=>normalizeThesisSnapshot({title:'合成研究',profile:{level:'本科',language:'中文',targetWords:500},requirements:{deliveryVersion:1},materials:[{id:'m',name:'已知研究资料',text:source,confirmed:true}],references:[],outline:[{id:'c',title:'方法与分析',targetWords:500}]});
+test('final abstract uses the same length range and feedback count as the strict submission check',()=>{
+ const snapshot=value(),unit={id:'abs',chapterId:'abs',chapterTitle:'Abstract',title:'Abstract',frontMatter:'abstract_en',targetWords:336,part:1,parts:1,presentation:{},completion:{scope:'full',baselineTargetWords:250,anchorWords:281,originalText:'Existing abstract.'}};
+ const task=thesisAgentTask(snapshot,unit,[]),range=task.context.lengthBudget;assert.ok(task.instructions.includes(`${range.min}～${range.max} 词`));assert.doesNotMatch(task.instructions,/写200～300个英文词/);
+ const text='Abstract\nEnglish title: A Synthetic Test Title\n\n'+('study '.repeat(range.max+1))+'\nKey words: study; method; result',result={text:JSON.stringify({text,source_ids:[],missing_evidence:[],complete:true,draft:false,figures:[]}),trace:[]};
+ const checked=validateThesisCandidate(result,snapshot,unit);assert.equal(checked.feedback.code,'word_limit_exceeded');assert.equal(checked.feedback.count,range.max+1);const goal=Number(checked.feedback.rule.match(/一次调整至约 (\d+) 词/)[1]);assert.ok(goal>=range.min&&goal<range.max);
+});
 test('completion distinguishes an unseen cross-chapter figure from an actual missing fact',()=>{
  const unit={id:'u',chapterId:'c',chapterTitle:'方法与分析',title:'方法与分析',targetWords:500,part:1,parts:1,presentation:{},completion:{scope:'full',originalText:'本章说明研究目的。【待补充：真实调查记录】',missingInformation:['真实调查记录']}};
  const task=thesisAgentTask(value(),unit,[]);assert.match(task.instructions,/不得因为本节或当前窗口未显示图表/);assert.match(task.instructions,/原稿已经存在的缺项要保留/);assert.match(task.instructions,/不能声称已识别或核验图像/);assert.ok(task.context.revision.missingInformation.includes('真实调查记录'));
