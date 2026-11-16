@@ -38,6 +38,11 @@ export function createSessionReviewDispatch({sessions,userId,thesisId,sessionId,
   await current();
   const available=sessions.summary(identity);
   if(!available.settingsVersion||!available.settingsModel||!available.settingsEngine||settings.version!==available.settingsVersion||settings.model!==available.settingsModel||settings.engine!==available.settingsEngine)throw thesisError(409,'原服务配置已变化，请联系支持','review_settings_changed');
+  const cacheKey=thesisHash({version:1,task,settings}),cacheIdentity={...identity,reviewRunId,attempt,cacheKey};
+  if(typeof sessions.reuse==='function'&&typeof sessions.remember==='function'){
+   const cached=sessions.reuse(cacheIdentity);
+   if(cached){const checked=await validateReviewOutput(cached);await current();if(checked?.valid===true)return {...cached,...(typeof checked.normalizedText==='string'?{text:checked.normalizedText,trace:checked.normalizedTrace||cached.trace}:{}),usage:{input:0,output:0},costUsd:0};}
+  }
   const reservedTokens=Math.min(requestedTokens,available.remainingTokens),reservedCostUsd=Math.min(requestedCostUsd,available.remainingCostUsd);
   if(!Number.isSafeInteger(reservedTokens)||reservedTokens<1||!Number.isFinite(reservedCostUsd)||reservedCostUsd<=0)throw thesisError(429,'本次复查暂未完成，请联系支持；本次未额外扣费','review_budget_exhausted');
   const boundedSettings={...settings,maxTotalTokens:reservedTokens,maxCostUsd:reservedCostUsd};
@@ -56,7 +61,9 @@ export function createSessionReviewDispatch({sessions,userId,thesisId,sessionId,
    const validated=await validateReviewOutput(output);
    if(validated?.valid!==true)throw thesisError(502,'复查内容未通过核对，已保存内容保留','invalid_review_output');
    await current();
-   return typeof validated.normalizedText==='string'?{...output,text:validated.normalizedText,trace:validated.normalizedTrace||output.trace}:output;
+   const result=typeof validated.normalizedText==='string'?{...output,text:validated.normalizedText,trace:validated.normalizedTrace||output.trace}:output;
+   if(typeof sessions.remember==='function'&&typeof sessions.reuse==='function')sessions.remember({...cacheIdentity,dispatchId:reservation.id},result);
+   return result;
   }catch(error){try{diagnostic?.({tool:'review_error',status:'failed',code:error?.code});}catch{}if(!settled){if(!dispatched&&typeof sessions.cancelBeforeDispatch==='function')sessions.cancelBeforeDispatch({...identity,dispatchId:reservation.id});else sessions.finish({...identity,dispatchId:reservation.id,usage:output?.usage||error?.usage,costUsd:output?.costUsd??error?.costUsd,errorCode:error?.code||'execution_failed'});}throw error;}
  };
 }

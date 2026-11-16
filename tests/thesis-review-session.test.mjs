@@ -5,6 +5,34 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createThesisReviewSessions} from '../backend/thesis-review-session.mjs';
+import {createSessionReviewDispatch} from '../backend/thesis-review-only.mjs';
+
+test('validated identical tasks reuse across review runs without spending or new billing; changed inputs require a new call',async t=>{
+ const f=fixture(t);let calls=0;
+ const request={task:{skill:'writing-review',context:{text:'已保存正文',source:'原始资料'}},settings:{version:'model-v1',model:'test-model',engine:'test-engine',maxTotalTokens:1000,maxCostUsd:.2},unitId:'batch',validateReviewOutput:r=>({valid:r.text==='checked'})};
+ const make=reviewRunId=>createSessionReviewDispatch({...f.request,reviewRunId,sessions:f.ledger,isCurrent:async()=>true,runner:async()=>{calls++;return{text:'checked',trace:[],usage:{input:10,output:20},costUsd:.01};}});
+ await make('review')(request);assert.equal(calls,1);
+ await assert.rejects(make('review')(request),{code:'review_dispatch_exists'});
+ f.db.exec("UPDATE thesis_runs SET status='completed' WHERE id='review'; INSERT INTO thesis_runs SELECT 'review2',thesis_id,user_id,'running',attempt,snapshot_hash,settings_version,settings_meta,0,0,0,1 FROM thesis_runs WHERE id='review'; UPDATE theses SET current_run_id='review2'");
+ const before=f.ledger.summary(f.request),cached=await make('review2')(request);
+ assert.equal(cached.costUsd,0);assert.deepEqual(cached.usage,{input:0,output:0});assert.equal(calls,1);assert.deepEqual(f.ledger.summary(f.request),before);
+ let validations=0;await make('review2')({...request,validateReviewOutput:()=>({valid:++validations>1})});assert.equal(validations,2);assert.equal(calls,2,'a failed fresh validation requires provider execution');
+ await make('review2')({...request,task:{...request.task,context:{...request.task.context,source:'资料已修改'}}});assert.equal(calls,3);
+ assert.equal(f.db.prepare('SELECT count(*) n FROM billing_reservations').get().n,1);
+});
+
+test('reuse revalidates output and cannot outlive ownership, cancellation or settled parent entitlement',async t=>{
+ const f=fixture(t),key='a'.repeat(64),a=f.ledger.reserve(f.request);
+ assert.equal(f.ledger.remember({...f.request,cacheKey:key,dispatchId:a.id},{text:'ok',trace:[]}),false);
+ f.ledger.markStarted({...f.request,dispatchId:a.id});f.ledger.finish({...f.request,dispatchId:a.id,usage:{input:10,output:20},costUsd:.01});
+ assert.equal(f.ledger.remember({...f.request,cacheKey:key,dispatchId:a.id},{text:'ok',trace:[]}),true);
+ f.db.exec("UPDATE thesis_runs SET status='completed' WHERE id='review'; INSERT INTO thesis_runs SELECT 'review2',thesis_id,user_id,'running',attempt,snapshot_hash,settings_version,settings_meta,0,0,0,1 FROM thesis_runs WHERE id='review'; UPDATE theses SET current_run_id='review2'");
+ const input={...f.request,cacheKey:key,reviewRunId:'review2'};
+ assert.equal(f.ledger.reuse(input).text,'ok');assert.equal(f.ledger.reuse({...input,cacheKey:'b'.repeat(64)}),null);
+ assert.throws(()=>f.ledger.reuse({...input,userId:'another-account'}),{status:404});
+ f.db.exec("UPDATE thesis_runs SET status='cancelled' WHERE id='review2'");assert.throws(()=>f.ledger.reuse(input),{code:'review_snapshot_changed'});
+ f.db.exec("UPDATE thesis_runs SET status='running' WHERE id='review2'; UPDATE billing_reservations SET status='released'");assert.throws(()=>f.ledger.reuse(input),{code:'review_parent_changed'});
+});
 
 function fixture(t,history=false){const dir=mkdtempSync(join(tmpdir(),'pk-review-session-')),path=join(dir,'db.sqlite'),db=new DatabaseSync(path);t.after(()=>{db.close();rmSync(dir,{recursive:true,force:true});});db.exec(`CREATE TABLE thesis_runs(id TEXT PRIMARY KEY,thesis_id TEXT,user_id TEXT,status TEXT,attempt INTEGER,snapshot_hash TEXT,settings_version TEXT,settings_meta TEXT,provider_calls INTEGER NOT NULL DEFAULT 0,input_tokens INTEGER NOT NULL DEFAULT 0,output_tokens INTEGER NOT NULL DEFAULT 0,usage_known INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE theses(id TEXT PRIMARY KEY,user_id TEXT,current_run_id TEXT,snapshot_hash TEXT);
