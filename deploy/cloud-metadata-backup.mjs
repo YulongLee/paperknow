@@ -1,10 +1,11 @@
+import {isMainModule} from './entrypoint.mjs';
 // Database recovery points in private SSE-OSS; originals/exports remain in their
 // source OSS bucket. This is not a cross-account backup of those objects.
 import {spawnSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {mkdtemp,mkdir,writeFile,readFile,rm,lstat,statfs,rename} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
-import {fileURLToPath,pathToFileURL} from 'node:url';
+import {fileURLToPath} from 'node:url';
 import {createSseDestination} from './oss-cloud-sse-snapshot.mjs';
 
 const maxDatabaseBytes=100*1024*1024,hex=/^[a-f0-9]{64}$/,uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -74,7 +75,7 @@ async function main(){
   console.log(JSON.stringify(status));
  }finally{await rm(temp,{recursive:true,force:true});}
 }
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(async()=>{
+if(isMainModule(import.meta.url))main().catch(async()=>{
  if(process.getuid?.()===0&&process.argv[2]==='backup')try{const root='/var/lib/paperknow-ops';await privateDirectory(root);const file=root+'/backup-status.json';let previous={};try{const s=await lstat(file);if(s.isSymbolicLink()||(s.mode&0o077)||s.uid!==0)throw Error('invalid state');previous=JSON.parse(await readFile(file,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}const temp=file+'.'+process.pid;await writeFile(temp,JSON.stringify({...previous,lastFailureAt:new Date().toISOString()})+'\n',{mode:0o600,flag:'wx'});await rename(temp,file);}catch{/* The service also exits failed; never expose provider diagnostics. */}
  console.error('PaperKnow cloud metadata backup/restore check failed. No live data was restored; remote partial objects may remain.');process.exitCode=1;
 });

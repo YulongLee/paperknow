@@ -1,7 +1,7 @@
+import {isMainModule} from './entrypoint.mjs';
 // Independent of the web process: no provider calls, task changes or user text.
 import {DatabaseSync} from 'node:sqlite';
 import {statfs,mkdir,readFile,writeFile,rename,lstat} from 'node:fs/promises';
-import {pathToFileURL} from 'node:url';
 import nodemailer from 'nodemailer';
 import {environmentConfig} from '../backend/config.mjs';
 
@@ -60,4 +60,4 @@ async function main(){
  const persist=async state=>{const temp=file+'.'+process.pid;await writeFile(temp,JSON.stringify(state)+'\n',{mode:0o600,flag:'wx'});await rename(temp,file);};
  const result=await deliverAlerts({previous,signals,now,send,persist}),deliveryFailures=Object.values(result.state.alerts).filter(v=>v.delivery==='failed').length;console.log(JSON.stringify({checkedAt:result.state.updatedAt,active:Object.entries(signals).filter(([,v])=>v).map(([k])=>k),notifications:result.sent,deliveryFailures}));if(deliveryFailures)process.exitCode=1;
 }
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(()=>{console.error('PaperKnow operations check failed; inspect private configuration and state.');process.exitCode=1;});
+if(isMainModule(import.meta.url))main().catch(()=>{console.error('PaperKnow operations check failed; inspect private configuration and state.');process.exitCode=1;});
