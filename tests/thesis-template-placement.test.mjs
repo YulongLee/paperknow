@@ -202,10 +202,11 @@ test('school cover preserves the explicit major-class field without concatenatin
 
 test('short table and its caption stay together while long tables keep only their repeating header with the next row',async()=>{
  const source=await fixture(),short='合成论文题目\n第一章 新正文\n表 1 教学算例\n| 分组 | 一 | 二 |\n| --- | --- | --- |\n| 甲 | 1 | 2 |\n| 乙 | 3 | 4 |\n随后解释。',long='合成论文题目\n第一章 新正文\n表 2 长表\n| 分组 | 数量 |\n| --- | --- |\n'+Array.from({length:12},(_,i)=>`| 第${i+1}组 | ${i+1} |`).join('\n')+'\n随后解释。';
- for(const [input,compact]of [[short,true],[long,false]]){
+ const wide=long.replace('| 分组 | 数量 |','| 分组 | 数量 | 条件 | 范围 | 结果 |').replace('| --- | --- |','| --- | --- | --- | --- | --- |').replace(/\| 第(\d+)组 \| (\d+) \|/g,'| 第$1组 | $2 | 直接尺寸 | 构造案例 | 通过 |');
+ for(const [input,compact]of [[short,true],[long,false],[wide,false]]){
   const bytes=await createWritingDocx(input,{documentKind:'thesis',metadata:{title:'合成论文题目'},template:{status:'ready',bytes:source}}),doc=parse(await (await JSZip.loadAsync(bytes)).file('word/document.xml').async('string')),tables=[...doc.getElementsByTagNameNS(W,'tbl')],tbl=tables.find(node=>paragraphText(node).includes('分组')),rows=[...tbl.getElementsByTagNameNS(W,'tr')],caption=paragraphRows(doc).find(row=>row.text.includes(compact?'表 1 教学算例':'表 2 长表')).node;
   const active=p=>[...p.getElementsByTagNameNS(W,'keepNext')].some(node=>!['0','false','off'].includes(node.getAttributeNS(W,'val')));
-  assert.equal(active(caption),compact);assert.ok(rows[0].getElementsByTagNameNS(W,'tblHeader').length);assert.ok(active(rows[0]));assert.equal(active(rows[1]),compact);assert.equal(active(rows.at(-1)),false);
+  assert.equal(active(caption),true);assert.ok(rows[0].getElementsByTagNameNS(W,'tblHeader').length);assert.ok(active(rows[0]));assert.equal(active(rows[1]),compact);assert.equal(active(rows.at(-1)),false);
  }
 });
 
