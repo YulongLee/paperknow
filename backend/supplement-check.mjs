@@ -75,10 +75,15 @@ function ambiguousPlannedActivity(text){
   return clause;}
  return '';
 }
+// A scoped disclaimer such as “而非本算例（d_k=2）的实测结论”
+// is not an observed result. Restrict the exemption to an immediately
+// preceding, explicit negation of this study's observation; a later or
+// neighbouring positive result remains subject to the normal evidence gate.
+function negatesStudyObservation(prefix){return /(?:并非|而非|不是|不属于|不代表)(?:本|该|当前)(?:算例|研究|实验|系统|模型)(?:[（(][^）)\n]{0,40}[）)])?的?\s*$/u.test(String(prefix||''));}
 function unsupportedObservedClaim(text){
  for(const match of String(text||'').matchAll(/[^。！？；;\n]+/gu)){const clause=match[0].trim();if(!clause)continue;
   const explicit=/(?:实际|真实)(?:测试|实验|调查|测量|采集|收集|开展|完成|参与|受试者|用户|参与者)|实测|真实(?:结果|数据|记录)/u.exec(clause);
-  if(explicit){const before=clause.slice(Math.max(0,explicit.index-8),explicit.index);if(!/(?:未|没有|并非|不是|非|不代表|不能证明|未经|无)\s*$/u.test(before))return clause;}
+  if(explicit){const before=clause.slice(Math.max(0,explicit.index-64),explicit.index);if(!/(?:未|没有|并非|不是|非|不代表|不能证明|未经|无)\s*$/u.test(before)&&!negatesStudyObservation(before))return clause;}
   if(!/(?:模拟|仿真|假设|拟|计划|未|没有|尚未|不代表|不能证明)/u.test(clause)&&/(?:受试者|参与者|用户).{0,25}(?:完成|参与|接受|反馈)|(?:实验|调查|测试).{0,16}(?:显示|表明|完成|获得|得到|达到|取得|采集|证明)/u.test(clause))return clause;
  }return '';
 }
@@ -87,7 +92,7 @@ function unsupportedObservedClaim(text){
 // remain reviewable until the calculation can be checked.
 function empiricalClaims(text){
  const claims=[];for(const match of String(text||'').matchAll(/[^。！？；;\n]+/gu)){const clause=match[0].trim();if(!clause)continue;
-  const assertions=clause.matchAll(/(?:已招募|已采集|已收集|实测|实际测试|真实测试|实际调查|实际测量|受试者.{0,24}(?:完成|参与)|参与者.{0,24}(?:完成|参与)|(?:准确率|正确率|满意度|成功率|召回率|精确率|错误率|识别率|宏平均\s*F1|macro\s*[-_ ]?F1)(?!以[^，。；;\n]{0,40}为(?:主要)?依据)(?!为(?:自拟)?(?:问卷|量表)(?:的)?(?:主观)?反馈(?=[，。；;\n\[]|$))(?!对应为[^，。；;\n\d%０-９零一二三四五六七八九十百千万]{1,40}(?:依据|反馈|问卷|题项|指标)(?=[，。；;\n]|$)).{0,12}(?:(?<![作视认称以])为|约等于|达到|是(?!否|什么)|得到|取得|显示)|(?:模拟|仿真).{0,25}(?:结果|分析|测试).{0,20}(?:显示|表明|达到))/gu);for(const assertion of assertions){const prefix=clause.slice(Math.max(0,assertion.index-12),assertion.index),before=clause.slice(0,assertion.index).split(/[，,]/u).at(-1);if(/(?:尚未|未曾|未进行|未开展|没有|无|并非|不是|不代表|无法证明|不能证明|计划|拟招募|拟开展|拟进行).{0,6}$/u.test(prefix)||/(?:不能|不应|不可).{0,50}(?:当作|视为|等同于|解释为).{0,40}$/u.test(before)||/(?:有待验证)/u.test(clause.slice(assertion.index)))continue;const suffix=String(text||'').slice(match.index+match[0].length).match(/^[。！？](?:[ \t]*|\r?\n[ \t]*)\[source:[^\]\r\n]+\](?:[ \t]*\[source:[^\]\r\n]+\])*/u)?.[0]||'';claims.push(clause+suffix);break;}
+  const assertions=clause.matchAll(/(?:已招募|已采集|已收集|实测|实际测试|真实测试|实际调查|实际测量|受试者.{0,24}(?:完成|参与)|参与者.{0,24}(?:完成|参与)|(?:准确率|正确率|满意度|成功率|召回率|精确率|错误率|识别率|宏平均\s*F1|macro\s*[-_ ]?F1)(?!以[^，。；;\n]{0,40}为(?:主要)?依据)(?!为(?:自拟)?(?:问卷|量表)(?:的)?(?:主观)?反馈(?=[，。；;\n\[]|$))(?!对应为[^，。；;\n\d%０-９零一二三四五六七八九十百千万]{1,40}(?:依据|反馈|问卷|题项|指标)(?=[，。；;\n]|$)).{0,12}(?:(?<![作视认称以])为|约等于|达到|是(?!否|什么)|得到|取得|显示)|(?:模拟|仿真).{0,25}(?:结果|分析|测试).{0,20}(?:显示|表明|达到))/gu);for(const assertion of assertions){const prefix=clause.slice(Math.max(0,assertion.index-12),assertion.index),before=clause.slice(0,assertion.index).split(/[，,]/u).at(-1);if(/(?:尚未|未曾|未进行|未开展|没有|无|并非|不是|不代表|无法证明|不能证明|计划|拟招募|拟开展|拟进行).{0,6}$/u.test(prefix)||negatesStudyObservation(before)||/(?:不能|不应|不可).{0,50}(?:当作|视为|等同于|解释为).{0,40}$/u.test(before)||/(?:有待验证)/u.test(clause.slice(assertion.index)))continue;const suffix=String(text||'').slice(match.index+match[0].length).match(/^[。！？](?:[ \t]*|\r?\n[ \t]*)\[source:[^\]\r\n]+\](?:[ \t]*\[source:[^\]\r\n]+\])*/u)?.[0]||'';claims.push(clause+suffix);break;}
  }return claims;
 }
 function measuredQuantities(value){const result=[];for(const match of String(value||'').normalize('NFKC').matchAll(/(\d+(?:\.\d+)?)\s*(%|人|名|位|例|次|份|条|秒|分钟)/gu)){const unit=match[2],kind=['人','名','位'].includes(unit)?'person':unit;result.push(Number(match[1])+':'+kind);}return [...new Set(result)];}

@@ -2,6 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {supplementCheckTask,parseSupplementCheck} from '../backend/supplement-check.mjs';
 function check(text,record){const task=supplementCheckTask({phase:'final',chapters:[{id:'c',title:'结果',text}],materials:[{id:'a',name:'原始记录',text:record}]});return parseSupplementCheck({text:JSON.stringify({items:[{id:'c',status:'sufficient',requirement:'结果',reason:'核对记录',manuscriptQuote:text,evidence:[{sourceId:'a',quote:record}],missing:[]}]})},task)[0].status;}
+test('a specific denial of this study’s observed result is not itself an experiment',()=>{
+ const disclaimer='需要说明的是，上述比较出自原文献在其自身实验条件下的叙述，而非本算例（d_k=2）的实测结论，本文未开展任何相应的对比实验。';
+ assert.equal(check(disclaimer,'资料记载了算例的研究范围。'),'sufficient');
+ for(const positive of ['上述比较并非本算例（d_k=2）的实测结论，但本研究实测准确率为90%。','上述比较并非本算例的实测结论；本研究实际测试准确率为90%。'])assert.equal(check(positive,'原始记录没有测试结果。'),'missing',positive);
+});
 test('numeric metrics cannot pass merely because unrelated sample counts match',()=>{
  for(const wording of ['约为','约等于','大约是'])assert.equal(check(`模型测试准确率${wording}0.99，29条测试样本中正确28条。[source:a]`,'实验记录：测试准确率为0.50，29条测试样本中正确28条。'),'missing');
  assert.equal(check('模型测试准确率达到99，29条测试样本中正确28条。[source:a]','实验记录：测试准确率为50，29条测试样本中正确28条。'),'missing');
