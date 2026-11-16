@@ -464,3 +464,10 @@ test('a withdrawn no-conflict observation must be corrected rather than persiste
  assert.throws(()=>parseWritingReview(aiResult([withdrawn,aiFinding({quote:'实际调查尚未执行',category:'data_support',explanation:'此处仍缺实际调查记录。'})]),task),/已撤销且无需修改/,'mixed real concerns require a full corrected response and are not silently dropped');
  const substantive={...withdrawn,explanation:'正文可以保留，但仍需补充对应研究的原始记录，才能核对依据。'};assert.equal(parseWritingReview(aiResult([substantive]),task).findings.length,1);
 });
+
+test('a numeric correction must locate its old literal rather than misread trailing zeroes in the existing new literal',()=>{
+ const quote='相邻差值为1.082与0.700，均按展示均值相减。',task=writingReviewTask({chapters:[{id:'c1',title:'结果',text:quote}]}),finding={sectionId:'c1',quote,category:'table_consistency',severity:'warning',explanation:'需统一展示小数位。',suggestion:'请把该句中的“0.70”改为“0.700”，与三位小数口径保持一致。'};
+ assert.throws(()=>parseWritingReview(aiResult([finding]),task),/旧数值不在所定位原句中/);
+ assert.equal(parseWritingReview(aiResult([{...finding,suggestion:'请核对差值0.700所用的原始数据版本，仍需独立记录。'}]),task).findings.length,1);
+ const old=quote.replace('0.700','0.70'),oldTask=writingReviewTask({chapters:[{id:'c1',title:'结果',text:old}]});assert.equal(parseWritingReview(aiResult([{...finding,quote:old}]),oldTask).findings.length,1);
+});

@@ -285,6 +285,13 @@ export function parseWritingReview(result,task){
   // candidate for correction so independent real concerns cannot be discarded.
   if(/^(?:无需修改|不需修改)[，,；;。\s]*(?:保留原句即可|保留原文即可)[。\s]*$/u.test(row.suggestion.trim())&&/(?:未发现数值冲突|未发现实质问题|本条不成立|予以撤销|不构成实质问题)/u.test(row.explanation))fail('全文审校把已撤销且无需修改的观察列为检查项；请重新提交完整结果，将范围说明移入 limitations，其他独立的实质问题仍须保留。');
   if(contradictsReviewCalendar(row,task.context.reviewCalendar?.date))fail('全文审校的日期比较与服务器日历日期不一致；请重核同日和先后顺序，保留其他独立的实质问题，不得自动视为已通过。');
+  // Require the explicitly quoted old numeric literal to be present at the
+  // reported location. 0.70 is not a token inside 0.700. Reject the complete
+  // candidate for correction; never silently waive numerical findings.
+  if(['logic','data_support','table_consistency'].includes(row.category)){
+   const proposed=row.suggestion.match(/[“「"']([+-]?\d+(?:\.\d+)?)[”」"']\s*(?:改为|改成|更正为|替换为)\s*[“「"']([+-]?\d+(?:\.\d+)?)[”」"']/u);
+   if(proposed&&proposed[1]!==proposed[2]){const tokens=[...row.quote.matchAll(/[+-]?\d+(?:\.\d+)?/gu)].map(m=>m[0]);if(!tokens.includes(proposed[1])&&tokens.includes(proposed[2]))fail('数值修改建议的旧数值不在所定位原句中，原句已含建议的新数值；请逐字核对实际位置后重新提交完整审校，保留其他独立问题。');}
+  }
   // A suggested numeric correction that repeats every quoted vector is not
   // itself evidence of an error. Reject the entire candidate for re-review;
   // never silently discard this or any independently substantive finding.
