@@ -457,3 +457,10 @@ test('overlapping source retrieval uses its existing shared budget instead of hi
 test('a short supplied source remains complete when two chapters cite the same region',()=>{
  const original='甲'.repeat(1100)+'完整边界说明。',task=writingReviewTask({snapshot:{materials:[{id:'r',confirmed:true,text:original}]},chapters:[{id:'a',title:'方法',text:'读取已有资料[source:r]。'},{id:'b',title:'结论',text:'核对已有资料[source:r]。'}]}),row=task.context.sourceEvidence.items[0];assert.equal(row.text,original);assert.equal(row.excerpted,false);assert.equal(row.scope,'provided_text');
 });
+
+test('a withdrawn no-conflict observation must be corrected rather than persisted as a blocking warning',()=>{
+ const task=writingReviewTask({chapters:manuscript()}),withdrawn=aiFinding({category:'logic',severity:'warning',explanation:'原句可以复算，未发现数值冲突；经核对本条不成立，予以撤销。',suggestion:'无需修改；保留原句即可。'});
+ assert.throws(()=>parseWritingReview(aiResult([withdrawn]),task),/已撤销且无需修改/);
+ assert.throws(()=>parseWritingReview(aiResult([withdrawn,aiFinding({quote:'实际调查尚未执行',category:'data_support',explanation:'此处仍缺实际调查记录。'})]),task),/已撤销且无需修改/,'mixed real concerns require a full corrected response and are not silently dropped');
+ const substantive={...withdrawn,explanation:'正文可以保留，但仍需补充对应研究的原始记录，才能核对依据。'};assert.equal(parseWritingReview(aiResult([substantive]),task).findings.length,1);
+});

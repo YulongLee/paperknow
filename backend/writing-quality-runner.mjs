@@ -31,6 +31,7 @@ function splitReviewPiece(piece){
 // persisting manuscript contents. The model already sees the same excerpts.
 function reviewValidationRule(candidate,task,error){
  const msg=typeof error?.message==='string'?error.message:'';
+ if(msg.includes('已撤销且无需修改'))return '你已确认该观察不成立且无需修改，不得同时把它列为问题。重新提交完整候选：保留其他独立实质问题，将未发现冲突的说明放在 limitations；不能因此宣布整体通过。';
  if(msg.includes('日期比较与服务器日历日期不一致'))return '以 context.reviewCalendar.date 为审校日：同一日不能判成晚于审校当日，不使用模型知识截止日期。重核日期比较，其他有据问题须单独保留，不得删除或宣称整体通过。';
  if(msg.includes('范围限制误列'))return '本批未提供的章节无法判断，不能当作已定位缺项；将检查范围写入 limitations。如果同一条还有实际原文支持的问题，请单独返回该问题，不能删除或标为已通过。';
  if(msg.includes('逐字片段描述与原文不一致'))return '该来源已提供的原文含被质疑的逐字片段，请重新核对该来源。逐字出现不等于支持整个论断；对仍缺依据或其他实质问题须保留并单独说明。';

@@ -281,6 +281,9 @@ export function parseWritingReview(result,task){
  const findings=body.findings.map((row,index)=>{
   if(!object(row)||typeof row.sectionId!=='string'||!sections.has(row.sectionId)||typeof row.quote!=='string'||row.quote.trim().length<6||row.quote.length>500||!reviewCategories.has(row.category)||!['info','warning'].includes(row.severity)||typeof row.explanation!=='string'||!row.explanation.trim()||row.explanation.length>1500||typeof row.suggestion!=='string'||!row.suggestion.trim()||row.suggestion.length>1500)fail('全文审校包含无法定位的检查项，草稿正文已保留。');
   const section=sections.get(row.sectionId),offset=section.text.indexOf(row.quote);if(offset<0)fail('全文审校引用的原句不在已提供正文中，未采纳该检查结果。');
+  // A retracted observation is not an actionable finding. Reject the whole
+  // candidate for correction so independent real concerns cannot be discarded.
+  if(/^(?:无需修改|不需修改)[，,；;。\s]*(?:保留原句即可|保留原文即可)[。\s]*$/u.test(row.suggestion.trim())&&/(?:未发现数值冲突|未发现实质问题|本条不成立|予以撤销|不构成实质问题)/u.test(row.explanation))fail('全文审校把已撤销且无需修改的观察列为检查项；请重新提交完整结果，将范围说明移入 limitations，其他独立的实质问题仍须保留。');
   if(contradictsReviewCalendar(row,task.context.reviewCalendar?.date))fail('全文审校的日期比较与服务器日历日期不一致；请重核同日和先后顺序，保留其他独立的实质问题，不得自动视为已通过。');
   // A suggested numeric correction that repeats every quoted vector is not
   // itself evidence of an error. Reject the entire candidate for re-review;
