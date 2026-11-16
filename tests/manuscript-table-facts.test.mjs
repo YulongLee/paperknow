@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {manuscriptTableFacts,displayedTableExtremaConflicts} from '../backend/manuscript-table-facts.mjs';
 import {auditWritingConsistency} from '../backend/writing-quality.mjs';
+import {completionContentAudit} from '../backend/thesis-completion-audit.mjs';
 import {createWritingQualityRunner} from '../backend/writing-quality-runner.mjs';
 const text='表 1 分组统计\n| 物种 | 花萼长 | 花萼宽 |\n| --- | --- | --- |\n| setosa 均值 | 5.006 | 3.418 |\n| setosa 标准差 | 0.352490 | 0.381024 |\n| versicolor 均值 | 5.936 | 2.770 |\n| versicolor 标准差 | 0.516171 | 0.313798 |\n| virginica 均值 | 6.588 | 2.974 |\n| virginica 标准差 | 0.635880 | 0.322497 |',cross={tables:[{number:'1',entireTable:true,text}]};
 test('numeric comparison separates means and deviations and catches the counterexample to all-columns minimum',()=>{
@@ -30,4 +31,9 @@ test('correct extrema, ties, partial scopes, negations, quoted examples and fenc
  assert.deepEqual(displayedTableExtremaConflicts(text.replace('3.418','2.000')+'\n\nsetosa所有变量的均值均为三组最小。'),[]);
  const tied=text.replace('0.313798','0.381024').replace('0.322497','0.381024');assert.deepEqual(displayedTableExtremaConflicts(tied+'\n\nsetosa所有变量的标准差均为三组最小。'),[]);
  assert.deepEqual(displayedTableExtremaConflicts(text+'\n\n'+text.replace('表 1','表 2')+'\n\nsetosa所有变量的标准差均为三组最小。'),[]);
+});
+test('final delivery rechecks current table assertions even if a stored quality report had no findings',()=>{
+ const snapshot={title:'统计研究',profile:{language:'中文',targetWords:500},requirements:{},materials:[],references:[],outline:[{id:'c',title:'结果',targetWords:500}]},chapters=[{id:'c',title:'结果',text:text+'\n\nsetosa所有变量的标准差均为三组最小。'}];
+ const oldQuality={consistency:{findings:[],summary:{}},reviews:[],coverage:{complete:true}},row={export_metadata:'{}'};const report=completionContentAudit(snapshot,chapters,oldQuality,row);assert.equal(report.ready,false);assert.ok(report.issues.some(v=>v.code==='displayed_table_extrema_conflict'));
+ const repaired=completionContentAudit(snapshot,[{...chapters[0],text:chapters[0].text.replace('setosa所有变量的标准差均为三组最小。','花萼宽标准差以versicolor最小。')}],oldQuality,row);assert.ok(repaired.issues.every(v=>v.code!=='displayed_table_extrema_conflict'));
 });

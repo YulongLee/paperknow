@@ -285,6 +285,13 @@ test('final empirical results require matching evidence rather than simulated or
  assert.equal(run('结果','本文没有进行任何真实受试者实验。',[],'not_required').status,'not_required');
  assert.equal(run('结果','模拟分析显示准确率为80%。',sim).status,'missing','different simulation wording requires review instead of assuming equivalence');
 });
+test('a disclosed absence of missing measured material is not itself a measured-result claim',()=>{
+ const sources=[{id:'geometry',name:'作者构造记录',confirmed:true,text:'作者定义几何案例，全部数量为构造参数，无真实用户数据。本研究没有界面截图，这不属于缺失的实测资料，全部数量均为构造案例参数而非用户数据。'}];
+ const assess=text=>{const task=supplementCheckTask({phase:'final',chapters:[{id:'c',title:'几何案例',text}],materials:sources});return parseSupplementCheck(response([{id:'c',status:'sufficient',requirement:'几何构造范围',reason:'仅为作者构造，不声称真实测量',manuscriptQuote:text,evidence:[{sourceId:'geometry',quote:sources[0].text}],missing:[]}]),task)[0];};
+ const negative='本研究没有界面截图，这不属于缺失的实测资料，全部数量均为构造案例参数而非用户数据[source:geometry]。';assert.equal(assess(negative).status,'sufficient');
+ const positive=negative.replace('。','，本研究实际测试获得了99%的准确率。');assert.equal(assess(positive).status,'missing','a preceding disclosure cannot exempt a later positive measurement claim');
+ assert.equal(assess('本研究实测准确率为99%[source:geometry]。').status,'missing');
+});
 
 test('an unrelated future plan in the same sentence cannot waive evidence for a completed recruitment',()=>{
  const text='本研究已招募100名读者，未来计划扩大样本。',task=supplementCheckTask({phase:'final',chapters:[{id:'c',title:'研究',text}]}),result=response([{id:'c',status:'not_required',requirement:'研究过程',reason:'不需要资料',manuscriptQuote:text,evidence:[],missing:[]}]);assert.equal(parseSupplementCheck(result,task)[0].status,'missing');
