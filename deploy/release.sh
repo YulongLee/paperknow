@@ -4,9 +4,21 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=deploy-common.sh
 source "$SCRIPT_DIR/deploy-common.sh"
 REF=
+PREPARE_ONLY=0
+if (( $# )) && [[ ${!#} == --prepare-only ]]; then
+  PREPARE_ONLY=1
+  set -- "${@:1:$(($#-1))}"
+fi
+DEPENDENCIES=
+DEPENDENCIES_SHA256=
 if (( $# )); then
-  [[ $# == 2 && $1 == --ref && $2 =~ ^[a-f0-9]{40}$ ]] || die 'Usage: release.sh [--ref FULL_40_CHARACTER_SHA]'
+  [[ ( $# == 2 || $# == 6 ) && $1 == --ref && $2 =~ ^[a-f0-9]{40}$ ]] || die 'Usage: release.sh [--ref FULL_SHA [--dependencies ARCHIVE --dependencies-sha256 SHA256]]'
   REF=$2
+  if (( $# == 6 )); then
+    [[ $3 == --dependencies && $5 == --dependencies-sha256 && $6 =~ ^[a-f0-9]{64}$ ]] || die 'Invalid dependency archive arguments.'
+    DEPENDENCIES=$4
+    DEPENDENCIES_SHA256=$6
+  fi
 fi
 prepare
 if [[ -z "$REF" ]]; then
@@ -49,6 +61,13 @@ else
   git_repo archive --format=tar "$SHA" | as_builder tar -x -C "$BUILD_DIR"
   [[ ! -e "$BUILD_DIR/.env" && ! -L "$BUILD_DIR/.env" && ! -e "$BUILD_DIR/.data" ]] || die 'Source archive contains local configuration or data.'
   [[ ! -e "$BUILD_DIR/$BUILD_SUCCESS_MARKER" && ! -L "$BUILD_DIR/$BUILD_SUCCESS_MARKER" ]] || die 'Source archive contains reserved build success metadata.'
+  if [[ -n "$DEPENDENCIES" ]]; then
+    /usr/bin/python3 -I "$SCRIPT_DIR/verify-dependencies.py" "$DEPENDENCIES" "$DEPENDENCIES_SHA256" "$BUILD_DIR" "$RUNTIME" || die 'Dependencies were not verified; code was not switched.'
+    as_builder tar --no-same-owner --no-same-permissions -xzf "$DEPENDENCIES" -C "$BUILD_DIR"
+    INSTALL_DEPENDENCIES=skip-verified
+  else
+    INSTALL_DEPENDENCIES=install
+  fi
   log "Building $SHA as the isolated build account"
   BUILD_UNIT=paperknow-build-${SHA:0:12}-$$.service
   systemd-run --unit="$BUILD_UNIT" --wait --pipe --collect --service-type=exec \
@@ -61,7 +80,7 @@ else
     --property="ReadWritePaths=$BUILD_DIR $BUILD_HOME" \
     /usr/bin/env -i HOME="$BUILD_HOME" PATH="$RUNTIME:/usr/bin:/bin" \
     npm_config_cache="$BUILD_HOME/npm-cache" NODE_ENV=development \
-    /bin/bash -c 'npm ci --no-audit --no-fund && npm run build && npm run check && npm test && npm prune --omit=dev --no-audit --no-fund && printf "%s\n" "$1" > .paperknow-build-success' paperknow-build "$SHA"
+    /bin/bash -c 'if [[ "$2" != skip-verified ]]; then npm ci --no-audit --no-fund || exit; fi; npm run build && npm run check && npm test && npm prune --omit=dev --no-audit --no-fund && printf "%s\n" "$1" > .paperknow-build-success' paperknow-build "$SHA" "$INSTALL_DEPENDENCIES"
   BUILD_UNIT=
   require_build_success "$BUILD_DIR"
   [[ ! -e "$BUILD_DIR/.env" && ! -L "$BUILD_DIR/.env" && ! -e "$BUILD_DIR/.data" ]] || die 'Build unexpectedly created local configuration or data.'
@@ -74,7 +93,13 @@ else
   mv -T -- "$INCOMING" "$TARGET"
   INCOMING=
 fi
+if (( PREPARE_ONLY == 1 )); then
+  log "Prepared and verified $SHA; current service unchanged."
+  exit 0
+fi
+/usr/bin/python3 -I "$SCRIPT_DIR/wait-idle.py"
 backup
+/usr/bin/python3 -I "$SCRIPT_DIR/wait-idle.py" --once
 activate "$TARGET"
 if [[ -f "$SCRIPT_DIR/retention.py" ]]; then
   # A cleanup failure must never roll back a healthy release. The daily timer retries.

@@ -1,0 +1,19 @@
+[Unit]
+Description=PaperKnow private OSS database snapshot and restore verification
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/paperknow/paperknow.env
+EnvironmentFile=/etc/paperknow/backup.env
+ExecStart=/opt/paperknow/runtime/bin/node /opt/paperknow/current/deploy/cloud-metadata-backup.mjs backup
+UMask=0077
+TimeoutStartSec=600
+MemoryMax=512M
+CPUQuota=25%
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/paperknow-ops /dev/shm

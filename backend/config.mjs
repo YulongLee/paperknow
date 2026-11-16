@@ -20,6 +20,7 @@ export function environmentConfig(env=process.env){
     aminerEnabled:env.PK_AMINER_ENABLED==='1',aminerAccess:env.PK_AMINER_ACCESS==='public'?'public':'internal',aminerApiKey:env.PK_AMINER_API_KEY||'',aminerUserId:env.PK_AMINER_USER_ID||'',aminerToken:env.PK_AMINER_TOKEN||'',aminerDailyLimit:/^(?:0|[1-9]\d{0,4})$/.test(env.PK_AMINER_DAILY_LIMIT||'')&&Number(env.PK_AMINER_DAILY_LIMIT)<=10000?Number(env.PK_AMINER_DAILY_LIMIT):100,
     ownerEmail:String(env.PK_OWNER_EMAIL||'').trim().toLowerCase(),paymentConfigKey:env.PK_PAYMENT_CONFIG_KEY,creditCodeKey:env.PK_CREDIT_CODE_KEY||undefined,
     authCodeSecret:env.PK_AUTH_CODE_SECRET,authDailyLimit:/^[1-9]\d{0,3}$/.test(env.PK_AUTH_DAILY_SEND_LIMIT||'')?Number(env.PK_AUTH_DAILY_SEND_LIMIT):100,
+    opsAlertEmail:String(env.PK_OPS_ALERT_EMAIL||'').trim(),
     emailSMTPHost:env.PK_EMAIL_SMTP_HOST,emailSMTPPort:Number(env.PK_EMAIL_SMTP_PORT||465),emailSMTPSecure:env.PK_EMAIL_SMTP_SECURE!=='0',
     emailSMTPUser:env.PK_EMAIL_SMTP_USER,emailSMTPPassword:env.PK_EMAIL_SMTP_PASSWORD,emailFrom:env.PK_EMAIL_FROM,
     smsAccessKeyId:env.PK_SMS_ACCESS_KEY_ID,smsAccessKeySecret:env.PK_SMS_ACCESS_KEY_SECRET,smsSignName:env.PK_SMS_SIGN_NAME,

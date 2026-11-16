@@ -1,0 +1,19 @@
+[Unit]
+Description=PaperKnow independent operations check and email alerts
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/paperknow/paperknow.env
+EnvironmentFile=-/etc/paperknow/backup.env
+ExecStart=/opt/paperknow/runtime/bin/node /opt/paperknow/current/deploy/ops-watch.mjs
+UMask=0077
+TimeoutStartSec=90
+MemoryMax=192M
+CPUQuota=20%
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/paperknow-ops

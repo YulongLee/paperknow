@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily PaperKnow OSS database recovery point
+
+[Timer]
+OnCalendar=*-*-* 03:35:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=10min
+Unit=paperknow-cloud-backup.service
+
+[Install]
+WantedBy=timers.target

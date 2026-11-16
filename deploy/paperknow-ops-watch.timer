@@ -1,0 +1,11 @@
+[Unit]
+Description=Check PaperKnow every two minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+RandomizedDelaySec=10
+Unit=paperknow-ops-watch.service
+
+[Install]
+WantedBy=timers.target

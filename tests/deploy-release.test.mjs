@@ -15,6 +15,7 @@ function fixture(t,{mode='success',failStep}={}){
  t.after(()=>rmSync(base,{recursive:true,force:true}));
  for(const name of ['bin','runtime','source','ops','builds','build-home','releases'])mkdirSync(join(base,name));
  copyFileSync(new URL('../deploy/release.sh',import.meta.url),join(base,'ops','release.sh'));
+ writeFileSync(join(base,'ops','wait-idle.py'),"print('Synthetic queue is idle')\n");
  const executable=(name,body)=>writeFileSync(join(base,name),'#!/bin/bash\nset -euo pipefail\n'+body,{mode:0o700});
  writeFileSync(join(base,'mode'),mode);
  if(failStep)writeFileSync(join(base,'npm-fail-step'),failStep);
@@ -72,7 +73,7 @@ case $(cat "$base/mode") in
 esac
 `);
  const target=join(base,'releases',sha);
- const run=()=>spawnSync('/bin/bash',[join(base,'ops','release.sh'),'--ref',sha],{encoding:'utf8',timeout:10000,env:{...process.env,PATH:join(base,'bin')+':'+process.env.PATH,PAPERKNOW_TEST_BASE:base,PAPERKNOW_TEST_OLD_SHA:oldSHA,PAPERKNOW_TEST_SHA:sha}});
+ const run=(...args)=>spawnSync('/bin/bash',[join(base,'ops','release.sh'),'--ref',sha,...args],{encoding:'utf8',timeout:10000,env:{...process.env,PATH:join(base,'bin')+':'+process.env.PATH,PAPERKNOW_TEST_BASE:base,PAPERKNOW_TEST_OLD_SHA:oldSHA,PAPERKNOW_TEST_SHA:sha}});
  const events=()=>existsSync(join(base,'events'))?readFileSync(join(base,'events'),'utf8'):'';
  const prepared=content=>{mkdirSync(target);writeFileSync(join(target,'.paperknow-commit'),sha+'\n');if(content!==undefined)writeFileSync(join(target,marker),content);};
  return {base,target,run,events,prepared};
@@ -128,4 +129,19 @@ test('a prepared immutable release can be reused when both commit and success ma
  const f=fixture(t);f.prepared(sha+'\n');const result=f.run();
  assert.equal(result.status,0,result.stdout+'\n'+result.stderr);assert.equal(existsSync(join(f.base,'systemd.log')),false);
  assert.match(f.events(),/^Reusing prepared immutable release /m);assert.match(f.events(),/^activate /m);
+});
+test('prepare-only builds and tests an immutable release without a snapshot or activation',t=>{
+ const f=fixture(t),r=f.run('--prepare-only');assert.equal(r.status,0,r.stderr);assert.equal(readFileSync(join(f.target,marker),'utf8'),sha+'\n');assert.doesNotMatch(f.events(),/^backup$|^activate /m);assert.equal(readFileSync(join(f.base,'npm.log'),'utf8').trim().split('\n').length,5);
+});
+test('prepare-only still cannot accept a masked failed test',t=>{
+ const f=fixture(t,{mode:'masked-failure',failStep:'test'}),r=f.run('--prepare-only');assertNotActivated(f,r);assert.equal(existsSync(f.target),false);
+});
+test('cached dependencies do not bypass validation or any build/test/prune command',t=>{
+ const f=fixture(t);writeFileSync(join(f.base,'ops','verify-dependencies.py'),"import sys\nsys.exit(1)\n");
+ const args=['--dependencies','/untrusted.tar.gz','--dependencies-sha256','a'.repeat(64)];assertNotActivated(f,f.run(...args));assert.equal(existsSync(join(f.base,'systemd.log')),false);
+ const good=fixture(t);writeFileSync(join(good.base,'ops','verify-dependencies.py'),"print('Synthetic dependency validation passed')\n");
+ mkdirSync(join(good.base,'source','node_modules'));writeFileSync(join(good.base,'source','node_modules','.package-lock.json'),'{}');
+ const archive=join(good.base,'dependencies.tar.gz'),packed=spawnSync('tar',['-czf',archive,'-C',join(good.base,'source'),'node_modules']);assert.equal(packed.status,0);
+ const r=good.run('--dependencies',archive,'--dependencies-sha256','a'.repeat(64));assert.equal(r.status,0,r.stderr);
+ assert.deepEqual(readFileSync(join(good.base,'npm.log'),'utf8').trim().split('\n'),['run build','run check','test','prune --omit=dev --no-audit --no-fund']);
 });
