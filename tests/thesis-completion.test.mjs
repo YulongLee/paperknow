@@ -12,7 +12,8 @@ import {completionReviewPanel} from '../dist/workspace/thesis-completion-review.
 import {thesisCompletionPlan,scopeCompletionFindings,completionManuscriptHash} from '../backend/thesis-completion.mjs';
 import {importedImageLimitations} from '../backend/thesis-image-review.mjs';
 import {completionDiagnosis} from '../backend/thesis-completion-guidance.mjs';
-import {thesisPlan} from '../backend/thesis-model.mjs';
+import {thesisPlan,thesisHash} from '../backend/thesis-model.mjs';
+import {savedThesisChapters} from '../backend/thesis-completion.mjs';
 import {researchWordCount} from '../backend/text-length.mjs';
 const settings={enabled:true,engine:'claude-agent-sdk',baseURL:'https://agent.example.test',model:'test-model',apiKey:'synthetic-secret',version:'v1',maxTurns:3,maxOutputTokens:4096,maxCostUsd:.5,timeoutMs:30000};
 const source='这是自动化验收使用的合成研究材料，记录了研究方法、实验步骤及结果边界，不用于任何真实论文。'.repeat(4);
@@ -513,4 +514,13 @@ test('author review cannot clear deterministic or numerical findings and cannot 
  }
  const f=fullFixture(t,{repair:true,persistentFinding:true,missing:true});let item=await completeSaved(f);await submitFull(f,item);await f.worker.tick();item=f.get(item.id);const issue=item.completionReview.reviewItems.find(i=>i.authorReviewAllowed);assert.ok(issue);const source=[...item.snapshot.materials,...item.snapshot.references].find(s=>issue.authorReviewSources.some(a=>a.id===s.id));
  item=(await f.request('/api/theses/'+item.id+'/completion/author-review',{version:item.version,runId:item.job.id,issueId:issue.id,confirmed:true,reason:'作者逐句核对已有资料，本项仅说明结论适用范围，并未补造实测结果。',sourceId:source.id,sourceQuote:source.text.slice(0,40)})).item;assert.equal(item.completionReview.status,'needs_materials');assert.ok(item.completionReview.missing.length);assert.equal(item.completionReview.checks.materials,false);
+});
+
+
+test('existing final confirmations without author review keep their pre-upgrade fingerprint',async t=>{
+ const f=fullFixture(t);let item=await completeSaved(f);await submitFull(f,item);await f.worker.tick();item=f.get(item.id);assert.equal(item.completionReview.status,'ready');
+ const row=f.db.prepare('SELECT * FROM theses WHERE id=?').get(item.id),run=f.db.prepare('SELECT * FROM thesis_runs WHERE id=?').get(item.job.id),saved=savedThesisChapters(f.db,row);
+ const legacy=thesisHash({runId:run.id,snapshot:row.snapshot_hash,chapters:saved.map(c=>[c.id,c.record?.id||null]),metadata:row.export_metadata||null,template:row.export_template||null,quality:run.quality,expressions:[],images:[]});
+ assert.equal(item.completionReview.fingerprint,legacy);
+ f.db.prepare('INSERT INTO thesis_completion_confirmations(thesis_id,run_id,user_id,fingerprint,confirmed_at) VALUES(?,?,?,?,?)').run(item.id,run.id,f.user.id,legacy,new Date().toISOString());assert.equal(f.get(item.id).completionReview.status,'confirmed');
 });
