@@ -37,3 +37,10 @@ test('whole quality review receives this run’s exact candidate and still retai
   const selected=task.context.sourceEvidence.items.find(row=>row.id==='r1');assert.ok([selected.text,...(selected.additionalWindows||[]).map(row=>row.text)].some(value=>value.includes(proof)));checked=true;const row=task.context.manuscriptExcerpts[0];return{text:JSON.stringify({complete:true,findings:[{sectionId:row.id,quote:row.text,category:'source_support',severity:'warning',explanation:'该片段尚不能证明此处全部论断。',suggestion:'核对来源和论断的对应关系。'}],limitations:[]}),usage:{input:5,output:5},costUsd:.001};}});
  assert.equal(checked,true);assert.ok(quality.reviews.flatMap(row=>row.findings).some(row=>row.category==='source_support'&&row.severity==='warning'));
 });
+
+
+test('same-source windows may support any matching citation but never become cross-source proof',()=>{
+ const source={id:'r',confirmed:true,text:'输入说明与定义。'+ '文献中的上下文。'.repeat(30)+'Attention(Q,K,V)=softmax(QK^T/sqrt(d_k))V。'},section={id:'c',text:'原论文定义如下[source:r]。'},task={instructions:'已有约束。',context:{sourceEvidence:{items:[{id:'r',text:'输入说明与定义。',offset:0,excerpted:true}]}}};
+ const n=attachSupplementReviewEvidence(task,{snapshot:{references:[source]},chapters:[section],batch:[{id:'piece',originalSectionId:'c',text:section.text}],supplementCheck:{phase:'final',coverage:{complete:true},items:[{id:'check-0-0',evidence:[{sourceId:'r',quote:'输入说明与定义。'}]}]}});
+ assert.equal(n,1);assert.ok(JSON.stringify(task.context.sourceEvidence).includes('Attention(Q,K,V)'));assert.match(task.instructions,/不要求摘录与正文标记紧邻/);assert.match(task.instructions,/不能借用其他来源/);
+});

@@ -41,7 +41,7 @@ export function attachSupplementReviewEvidence(task,{snapshot={},chapters=[],bat
   else continue;
   if(JSON.stringify(context).length>38000){if(created)sourceEvidence.items.pop();else if(appended){row.additionalWindows.pop();if(!row.additionalWindows.length)delete row.additionalWindows;}limited=true;break;}added++;
  }
- if(added){sourceEvidence.providedCount=sourceEvidence.items.length;sourceEvidence.limited=true;sourceEvidence.supplementExcerptCount=added;task.instructions=originalInstructions+'sourceEvidence 中补充的原文摘录以本次资料检查所定位的文字为线索，可能包含同一用户资料的前后文；前后文未必已由资料检查读取。均是用户提供的有限连续片段，可能取自同章其他引用位置，不是全文、来源真实性或论断已证实的证明。authorLinkedUnverified 表示作者将独立片段关联到 relatedReferenceId，其出处未经独立核验、与题录原文不一定连续；不得将片段冒充题录原文或据此断言来源真实。citationPositions 仅在可逐字定位时标记本批正文的引用位置；即使有此标记，也不能自动认定摘录支持该处论断。请独立核对正文每处引用的论断与摘录；不相关、缺失或不一致时保留 source_support 检查项。';}
+ if(added){sourceEvidence.providedCount=sourceEvidence.items.length;sourceEvidence.limited=true;sourceEvidence.supplementExcerptCount=added;task.instructions=originalInstructions+'sourceEvidence 中补充的原文摘录以本次资料检查所定位的文字为线索，可能包含同一用户资料的前后文；前后文未必已由资料检查读取。均是用户提供的有限连续片段，可能取自同章其他引用位置，不是全文、来源真实性或论断已证实的证明。authorLinkedUnverified 表示作者将独立片段关联到 relatedReferenceId，其出处未经独立核验、与题录原文不一定连续；不得将片段冒充题录原文或据此断言来源真实。citationPositions 仅在可逐字定位时标记本批正文的引用位置；即使有此标记，也不能自动认定摘录支持该处论断。同一来源 ID 的 text 与 additionalWindows 都可供本批任何引用该 ID 的位置独立核对语义，不要求摘录与正文标记紧邻，也不要求每个窗口只能支持某一个引用位置；citationPositions 只是定位线索，不限制同一来源其他窗口的适用位置。同源窗口不能拼接成连续引文，更不能借用其他来源的文字。请独立核对正文每处引用的论断与摘录；不相关、缺失或不一致时保留 source_support 检查项。';}
  if(limited)sourceEvidence.supplementExcerptsLimited=true;
  return added;
 }

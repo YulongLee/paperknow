@@ -1,4 +1,4 @@
-// Default-off citation excerpt slices for the isolated review path.
+// Bounded citation excerpt slices for dense or explicitly enabled reviews.
 // A located excerpt is NOT proof of a claim or of complete source reading.
 // Caller must supply only sources authorized for the current account/version.
 import {isOutlineReferenceChapter} from '../dist/workspace/outline-word-budget.mjs';

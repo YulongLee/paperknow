@@ -301,7 +301,7 @@ export function supplementReadHints(text,chapters){
  for(const term of ['重要性','版本','requirements'].filter(term=>manuscript.toLowerCase().includes(term.toLowerCase()))){const first=lower.indexOf(term.toLowerCase()),last=lower.lastIndexOf(term.toLowerCase());for(const pos of new Set([first,last]))if(pos>=0)add(term,pos);}
  return hints;
 }
-export async function runSupplementCheck({snapshot={},chapters=[],docxObjects=[],kind='writing',phase='final',recover=false,citationBatches=false,denseCitationSections=false,splitClaimBatches=false,runtime={},dispatch,signal,onStage=()=>{},isCurrent=()=>true,citationVerification=null}={}){
+export async function runSupplementCheck({snapshot={},chapters=[],docxObjects=[],kind='writing',phase='final',recover=false,citationBatches=false,automaticCitationBatches=false,denseCitationSections=false,splitClaimBatches=false,runtime={},dispatch,signal,onStage=()=>{},isCurrent=()=>true,citationVerification=null}={}){
  const active=async()=>{if(signal?.aborted||await isCurrent()!==true)throw Object.assign(new Error('资料检查已取消'),{name:'AbortError',status:499,code:'cancelled'});};
  const report={version:1,phase,...(kind==='thesis'&&phase==='final'?{citationCoverageVersion:1}:{}),status:'checking',checkedAt:null,items:[],coverage:{total:0,checked:0,complete:false},limitations:['检查依据为本次提供的材料，不能鉴定研究事实真伪或保证通过院校审核。']};
  if(kind==='thesis'&&phase==='final')report.imageLimitations=importedImageLimitations(chapters,docxObjects);
@@ -349,7 +349,12 @@ export async function runSupplementCheck({snapshot={},chapters=[],docxObjects=[]
   for(const section of task.context.chapters){section.expectedFigureIds=(section.figures||[]).map(figure=>figure.id);const citedCount=new Set([...section.text.matchAll(/\[source:([^\]\r\n]+)\]/gu)].map(match=>match[1])).size;section.evidenceLimit=kind==='thesis'&&phase==='final'?Math.min(24,4+citedCount):4;}
   task.instructions+='每项的 evidence 数量不可超过该章节 evidenceLimit；即使其他章节上限更高，也不能混用。证据仍需逐字属于对应的已授权来源，不得为凑数省略必要依据。';
   task.instructions+='每项 checkedFigureIds 只表示已检查当前章节 figures 中列出的结构化插图，须与该章节 expectedFigureIds 完全一致，逐字复制且不重复；expectedFigureIds=[] 时填写 []。不同章节的 ID 不可互换。importedDocxObjects 中的原稿图片不是结构化 figures，不得把其 ID 填入 checkedFigureIds；原稿图片仍按另行提示处理，不能声称已识别像素。';
-  const splitCitations=kind==='thesis'&&phase==='final'&&citationBatches===true&&citedIds.length>4;
+  // Dense batches need bounded excerpt location before semantic review; asking
+  // one response to locate every source and assess all claims proved lossy.
+  // Located excerpts alone still never clear a claim or a material gap.
+  const citationOccurrences=batch.filter(section=>!isOutlineReferenceChapter(section)).reduce((n,section)=>n+[...section.text.matchAll(/\[source:([^\]\r\n]+)\]/gu)].length,0);
+  const automaticSlices=automaticCitationBatches===true&&citedIds.length>8&&citationOccurrences>0&&citationOccurrences<=40;
+  const splitCitations=kind==='thesis'&&phase==='final'&&(citationBatches===true||automaticSlices)&&citedIds.length>4;
   if(kind==='thesis'&&phase==='final'){
    const evidenceLimit=Math.min(24,4+Math.max(0,...batch.map(section=>new Set([...section.text.matchAll(/\[source:([^\]\r\n]+)\]/gu)].map(match=>match[1])).size)));
    if(evidenceLimit>4)task.instructions=task.instructions.replace('每项最多4条证据和4条缺项','每项最多'+evidenceLimit+'条证据和4条缺项');
