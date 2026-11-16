@@ -647,6 +647,6 @@ test('readable source truncation reports the actual budgeted length and cannot m
 test('declining to call a constructed result measured improvement does not assert a real measurement',()=>{
  const source={id:'geometry',confirmed:true,name:'构造记录',text:'作者定义几何案例，仅报告几何判定；不将其称为实测改善。'};
  const check=text=>{const task=supplementCheckTask({phase:'final',chapters:[{id:'c',title:'几何案例',text}],materials:[source]});return parseSupplementCheck(response([{id:'c',status:'sufficient',requirement:'构造范围',reason:'来源支持几何判定',manuscriptQuote:text,evidence:[{sourceId:'geometry',quote:source.text}],missing:[]}]),task)[0];};
- for(const phrase of ['不将其称为实测改善','不能把上述结果视为实测改善','不得将这些结果表述为真实结果','不应称为实测改善'])assert.equal(check('本研究仅报告几何判定，'+phrase+'[source:geometry]。').status,'sufficient',phrase);
- for(const text of ['本研究仅报告几何判定，不将其称为实测改善，但本研究实际测试得到99%准确率[source:geometry]。','本研究实测准确率为99%，不将其称为真实结果[source:geometry]。','本研究计划不将其称为结果，实际测试得到99%准确率[source:geometry]。'])assert.equal(check(text).status,'missing',text);
+ for(const phrase of ['不将其称为实测改善','不将其称为跨审查者一致性或实测改善','不能把上述结果视为实测改善','不得将这些结果表述为真实结果','不应称为实测改善'])assert.equal(check('本研究仅报告几何判定，'+phrase+'[source:geometry]。').status,'sufficient',phrase);
+ for(const text of ['不将其称为跨审查者一致性或实测改善，但本研究实际测试达到99%准确率[source:geometry]。','本研究仅报告几何判定，不将其称为实测改善，但本研究实际测试得到99%准确率[source:geometry]。','本研究实测准确率为99%，不将其称为真实结果[source:geometry]。','本研究计划不将其称为结果，实际测试得到99%准确率[source:geometry]。'])assert.equal(check(text).status,'missing',text);
 });

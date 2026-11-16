@@ -32,3 +32,11 @@ test('independent manuscript review sees actual cross-chapter tables without sil
  const quality=await run({snapshot:{materials:[],references:[]},chapters,kind:'thesis',checkSupplements:false,runtime:{maxTurns:3,maxOutputTokens:4096,timeoutMs:30000},dispatch:async({task})=>{const excerpt=task.context.manuscriptExcerpts.find(row=>row.title===result.title);if(excerpt){checked=true;const table=task.context.crossChapterTables.tables.find(row=>row.number==='1');assert.equal(table.text,method.text.slice(table.offset,table.end));assert.match(table.text,/0\.669761549327/);assert.match(task.instructions,/全篇或正文统一某一精度/);assert.match(task.instructions,/不是外部研究资料/);return{text:JSON.stringify({complete:true,findings:[{sectionId:excerpt.id,quote:excerpt.text,category:'terminology',severity:'warning',explanation:'精度范围仍有歧义。',suggestion:'明确各章节适用的精度口径。'}],limitations:[]})};}return{text:JSON.stringify({complete:true,findings:[],limitations:[]})};}});
  assert.equal(checked,true);assert.ok(quality.reviews.flatMap(row=>row.findings).some(finding=>finding.severity==='warning'&&finding.category==='terminology'));
 });
+
+test('an abstract receives its single saved table without inventing a table reference or guessing between tables',()=>{
+ const abstract={id:'front-abstract_zh',title:'摘要',text:'两组案例的权重互补，仅讨论当前算例。'};
+ const context=supplementCrossTableContext([abstract],[abstract,method]);assert.equal(context.selection,'single_table_abstract_context');assert.equal(context.tables.length,1);assert.equal(context.tables[0].entireTable,true);assert.match(context.tables[0].text,/0\.669762/);
+ assert.equal(supplementCrossTableContext([abstract],[abstract,method,{...method,id:'duplicate'}]),null);
+ assert.equal(supplementCrossTableContext([{id:'ordinary',title:'其他正文',text:abstract.text}],[method]),null);
+ const clipped=supplementCrossTableContext([abstract],[method],{maxCharacters:90});assert.equal(clipped.tables[0].entireTable,false);
+});

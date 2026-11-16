@@ -1,0 +1,6 @@
+// These decisions are author responsibility records, never AI factual approval.
+export const authorReviewCategories=Object.freeze(['terminology','claim_scope','method_result_consistency','source_support','structure','language_expression']);
+export function authorReviewedFinding(quality,finding){
+ if(quality?.stale===true||quality?.coverage?.complete!==true||quality?.authorReview?.version!==1||quality.authorReview.scope!=='author_confirmation_not_independent_verification'||!['warning','info'].includes(finding?.severity)||!authorReviewCategories.includes(finding?.category))return false;
+ return (quality.authorReview.items||[]).some(item=>item.source==='review'&&item.confirmed===true&&item.chapterId===finding.sectionId&&item.offset===finding.offset&&item.quote===finding.quote&&item.category===finding.category&&item.severity===finding.severity&&String(item.reasonCode||'')===String(finding.reasonCode||'').slice(0,100)&&String(item.explanation||'')===String(finding.explanation||'').slice(0,1000)&&String(item.suggestion||'')===String(finding.suggestion||'').slice(0,1000)&&typeof item.id==='string'&&/^[a-f0-9]{64}$/.test(item.basis||'')&&typeof item.reason==='string'&&item.reason.trim().length>=20&&typeof item.sourceId==='string'&&item.sourceId&&typeof item.sourceQuote==='string'&&item.sourceQuote.trim().length>=8);
+}

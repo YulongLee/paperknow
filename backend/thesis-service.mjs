@@ -1,3 +1,4 @@
+import {recordAuthorReview} from './thesis-author-review.mjs';
 import {createThesisReviewSessions} from './thesis-review-session.mjs';
 import {createThesisReviewLifecycle} from './thesis-review-lifecycle.mjs';
 import {thesisDocumentState} from './workspace-document-state.mjs';
@@ -83,7 +84,7 @@ export function createThesisService(db,config={}){
    const manuscriptChanged=meta.completion?preflight?snapshot.outline.some(chapter=>(chapterVersion(row.id,chapter.id)?.id||null)!==(baseline.get(chapter.id)||null)):quality.manuscriptHash!==completionManuscriptHash(chapters):chapters.some(chapter=>chapter.source==='manual'||chapter.stale);
    item.quality={...quality,stale:run.snapshot_hash!==row.snapshot_hash||manuscriptChanged};
   }}
-  if(!summary){const objects=thesisDocxObjects(db,row.id,row.user_id,item.chapters);if(objects.length)item.docxObjects=objects;item.completionReview=completionReview(db,row,run);item.simulationRecovery=recoverableThesisSimulation(db,row);const imported=db.prepare('SELECT id,file_id,file_sha256,created_at,restored_at FROM thesis_draft_imports WHERE thesis_id=? AND user_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(row.id,row.user_id);if(imported&&!imported.restored_at)item.importedDraft={id:imported.id,fileId:imported.file_id,sha256:imported.file_sha256,createdAt:imported.created_at};}
+  if(!summary){const objects=thesisDocxObjects(db,row.id,row.user_id,item.chapters);if(objects.length)item.docxObjects=objects;item.completionReview=completionReview(db,row,run);if(item.quality&&item.completionReview?.authorReview)item.quality.authorReview=item.completionReview.authorReview;item.simulationRecovery=recoverableThesisSimulation(db,row);const imported=db.prepare('SELECT id,file_id,file_sha256,created_at,restored_at FROM thesis_draft_imports WHERE thesis_id=? AND user_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(row.id,row.user_id);if(imported&&!imported.restored_at)item.importedDraft={id:imported.id,fileId:imported.file_id,sha256:imported.file_sha256,createdAt:imported.created_at};}
   item.documentState=thesisDocumentState(db,row,run,summary?undefined:item.completionReview);
   return item;
  }
@@ -181,6 +182,15 @@ export function createThesisService(db,config={}){
     if(input.reviewed){const existing=db.prepare('SELECT 1 FROM thesis_review_issue_receipts WHERE thesis_id=? AND user_id=? AND issue_id=?').get(id,user.id,issue.id);if(!existing)assertThesisAccountQuota(db,user.id,512,config);
      db.prepare('INSERT INTO thesis_review_issue_receipts(thesis_id,user_id,run_id,issue_id,basis,reviewed_at) VALUES(?,?,?,?,?,?) ON CONFLICT(thesis_id,issue_id) DO UPDATE SET reviewed_at=excluded.reviewed_at').run(id,user.id,run.id,issue.id,issue.basis,clock());
     }else db.prepare('DELETE FROM thesis_review_issue_receipts WHERE thesis_id=? AND user_id=? AND issue_id=? AND basis=?').run(id,user.id,issue.id,issue.basis);
+    return {item:serialize(current)};
+   }));
+  }
+  const authorReviewPath=path.match(/^\/api\/theses\/([^/]+)\/completion\/author-review$/);
+  if(authorReviewPath){
+   const id=authorReviewPath[1];own(id,user);if(method!=='POST')fail(405,'请提交作者核对记录');const input=await readBody();fields(input,['version','runId','issueId','confirmed','reason','sourceId','sourceQuote']);
+   if(!Number.isSafeInteger(input.version)||typeof input.runId!=='string'||typeof input.issueId!=='string'||!/^[a-f0-9]{64}$/.test(input.issueId)||typeof input.confirmed!=='boolean')fail(400,'作者核对记录格式无效');
+   return response(thesisTransaction(db,()=>{const current=own(id,user);expected(input,current);const run=current.current_run_id?db.prepare('SELECT * FROM thesis_runs WHERE id=? AND user_id=?').get(current.current_run_id,user.id):null,review=run&&completionReview(db,current,run);
+    assertThesisAccountQuota(db,user.id,4096,config);if(recordAuthorReview(db,current,run,review,input,clock()))db.prepare('DELETE FROM thesis_completion_confirmations WHERE thesis_id=? AND user_id=? AND run_id=?').run(id,user.id,run.id);
     return {item:serialize(current)};
    }));
   }

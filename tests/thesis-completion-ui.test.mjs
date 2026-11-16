@@ -222,3 +222,16 @@ test('a newer saved manuscript invalidates the completion quote and restores pre
  f.setRecord({...f.getRecord(),version:2});f.q('[data-thesis-refresh]').click();await settle();assert.equal(f.q('[data-completion-start]'),null);assert.ok(f.q('[data-completion-prepare]'));assert.equal(f.calls.filter(row=>row.path.endsWith('/generate')).length,0);
  f.q('[data-completion-prepare]').click();await settle();assert.ok(f.q('[data-completion-start]'));assert.equal(f.calls.filter(row=>row.path.endsWith('/quote')).at(-1).data.version,2);assert.equal(f.calls.filter(row=>row.path.endsWith('/generate')).length,0);
 });
+
+test('source-grounded author review keeps entered proof on failure and submits only the current issue',async t=>{
+ const issue={id:'e'.repeat(64),basis:'f'.repeat(64),quote:'作者定义当前研究的范围。',category:'claim_scope',source:'review',severity:'warning',authorReviewAllowed:true,authorReviewSources:[{id:'s1',name:'作者研究记录'}]};let failed=true,f;
+ f=fixture(t,{handle:async(path,data,record)=>{if(path.endsWith('/completion/author-review')){assert.equal(data.issueId,issue.id);assert.equal(data.runId,'old-run');if(failed)throw Object.assign(Error('暂时无法保存'),{status:503});assert.equal(data.sourceId,'s1');assert.match(data.reason,/作者逐项核对/);const next={...record,completionReview:{...record.completionReview,reviewItems:[{...issue,authorReview:{confirmed:true,reason:data.reason,sourceQuote:data.sourceQuote,sourceName:'作者研究记录'}}]}};f.setRecord(next);return{item:structuredClone(next)};}return null;}});
+ f.setRecord({...base(),completionReview:{required:true,runId:'old-run',status:'check_required',reportCurrent:true,checks:{materials:false,manuscript:true,content:false},changes:[],missing:['仍需真实记录'],issues:[],reviewItems:[issue]}});await f.ready;f.q('[data-thesis-writing-mode="final"]').click();await settle();
+ for(const [selector,value]of [['[data-author-source]','s1'],['[data-author-quote]','作者定义案例并仅核对当前案例范围。'],['[data-author-reason]','作者逐项核对材料，本处内容与实际记录一致，不作跨样本和跨场景的推广。']]){const input=f.q(selector);input.value=value;input.dispatchEvent(new f.dom.window.Event('input'));}
+ f.q('[data-author-review-submit]').click();await settle();assert.match(f.q('[data-author-reason]').value,/作者逐项核对/);assert.equal(f.q('[data-author-review]').open,true);
+ failed=false;f.q('[data-author-review-submit]').click();await settle();assert.ok(f.q('[data-author-review-revoke]'));assert.equal(f.q('#thesis-online-docx').disabled,true);assert.match(f.dom.window.document.body.textContent,/仍需真实记录/);
+});
+
+test('author proof controls escape content and disappear when the manuscript or report is stale',()=>{
+ const issue={id:'e'.repeat(64),basis:'f'.repeat(64),quote:'已有正文。',authorReviewAllowed:true,authorReviewSources:[{id:'x"<script>',name:'<script>bad()</script>'}]},review={reportCurrent:true,status:'check_required',reviewItems:[issue]};const html=completionReviewPanel(review);assert.match(html,/data-author-review-submit/);assert.doesNotMatch(html,/<script>/);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(completionReviewPanel({...review,reportCurrent:false}),/data-author-review-submit/);assert.doesNotMatch(completionReviewPanel(review,{dirty:true}),/data-author-review-submit/);
+});

@@ -87,3 +87,13 @@ CREATE TABLE IF NOT EXISTS thesis_expression_confirmations(
  PRIMARY KEY(thesis_id,issue_id)
 );
 CREATE INDEX IF NOT EXISTS thesis_expression_confirmations_owner ON thesis_expression_confirmations(user_id,thesis_id);
+
+-- Append-only through the API; original AI reports and prior author decisions
+-- remain available. A decision cannot amend a chapter or supply missing data.
+CREATE TABLE IF NOT EXISTS thesis_author_review_events(
+ id TEXT PRIMARY KEY,thesis_id TEXT NOT NULL REFERENCES theses(id) ON DELETE CASCADE,
+ user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,run_id TEXT NOT NULL REFERENCES thesis_runs(id) ON DELETE CASCADE,
+ issue_id TEXT NOT NULL,basis TEXT NOT NULL,decision TEXT NOT NULL CHECK(decision IN ('keep','revoke')),
+ reason TEXT NOT NULL,source_id TEXT NOT NULL,source_quote TEXT NOT NULL,created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS thesis_author_review_events_scope ON thesis_author_review_events(user_id,thesis_id,run_id,basis,issue_id);

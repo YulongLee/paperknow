@@ -479,3 +479,38 @@ test('attaching text to a metadata-only reference invalidates the previous revie
  const f=fullFixture(t,{repair:true,persistentFinding:true});f.pay();let item=await completeSaved(f),snapshot=structuredClone(item.snapshot);snapshot.references[0].text='';item=(await f.request('/api/theses/'+item.id,{version:item.version,snapshot})).item;await submitFull(f,item);await f.worker.tick();item=f.get(item.id);assert.equal(item.completionReview.reportCurrent,true);const oldRun=item.job.id;
  item=(await f.request('/api/theses/'+item.id+'/completion',{version:item.version,clientKey:randomUUID(),referenceTexts:[{referenceId:'r1',text:'作者提供、需逐字核对的合成来源摘要。'}]})).item;assert.equal(item.completionReview.reportCurrent,false);assert.equal(item.completionReview.reasonCode,'research_updated');assert.equal(item.completionReview.fingerprint,null);await assert.rejects(f.request('/api/theses/'+item.id+'/completion/confirm',{version:item.version,runId:oldRun,fingerprint:'a'.repeat(64)}),e=>e.status===409);
 });
+
+test('a source-grounded author review is scoped, reversible, auditable and does not rewrite AI findings or charge again',async t=>{
+ const f=fullFixture(t,{repair:true,persistentFinding:true});f.pay();let item=await completeSaved(f);await submitFull(f,item);await f.worker.tick();item=f.get(item.id);
+ const issue=item.completionReview.reviewItems.find(i=>i.authorReviewAllowed);assert.ok(issue);assert.equal(issue.source,'review');
+ const source=[...item.snapshot.materials,...item.snapshot.references].find(s=>issue.authorReviewSources.some(a=>a.id===s.id));assert.ok(source);
+ const path='/api/theses/'+item.id+'/completion/author-review',input={version:item.version,runId:item.job.id,issueId:issue.id,confirmed:true,reason:'作者已逐项核对所附资料，本处表述仅限当前研究记录，未推广到其他样本或场景。',sourceId:source.id,sourceQuote:source.text.slice(0,40)};
+ const before=f.db.prepare('SELECT quality FROM thesis_runs WHERE id=?').get(item.job.id).quality,balance=f.billing.balance(f.user.id),calls=f.allCalls.length;
+ await assert.rejects(f.request(path,input,{id:'other'}),e=>e.status===404);
+ await assert.rejects(f.request(path,{...input,version:item.version-1}),e=>e.status===409);
+ await assert.rejects(f.request(path,{...input,runId:'foreign'}),e=>e.status===409);
+ await assert.rejects(f.request(path,{...input,issueId:'a'.repeat(64)}),e=>e.status===409);
+ await assert.rejects(f.request(path,{...input,reason:'已核对'}),e=>e.status===400);
+ await assert.rejects(f.request(path,{...input,sourceQuote:'这段摘录不在任何已保存的真实资料中。'}),e=>e.status===422);
+ await assert.rejects(f.request(path,{...input,sourceId:'other'}),e=>e.status===422);
+ item=(await f.request(path,input)).item;assert.equal(item.completionReview.status,'ready');assert.equal(item.quality.authorReview.items.length,1);assert.ok(item.quality.reviews.some(r=>r.findings.length));
+ assert.equal(f.db.prepare('SELECT quality FROM thesis_runs WHERE id=?').get(item.job.id).quality,before);assert.equal(f.allCalls.length,calls);assert.deepEqual(f.billing.balance(f.user.id),balance);
+ item=(await f.request(path,input)).item;assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_author_review_events').get().n,1);
+ const fingerprint=item.completionReview.fingerprint;
+ item=(await f.request('/api/theses/'+item.id+'/completion/confirm',{version:item.version,runId:item.job.id,fingerprint})).item;assert.equal(item.completionReview.status,'confirmed');
+ item=(await f.request(path,{...input,confirmed:false})).item;assert.equal(item.completionReview.status,'check_required');assert.equal(item.quality.authorReview.items.length,0);assert.equal(f.db.prepare('SELECT count(*) n FROM thesis_author_review_events').get().n,2);
+ await assert.rejects(f.request('/api/theses/'+item.id+'/completion/confirm',{version:item.version,runId:item.job.id,fingerprint}),e=>e.status===409);
+ item=(await f.request(path,input)).item;assert.equal(item.completionReview.status,'ready');assert.notEqual(item.completionReview.fingerprint,fingerprint);
+ item=await f.save(item,'c1',item.chapters.find(c=>c.id==='c1').text+'\n作者修改了研究范围。');assert.equal(item.completionReview.reportCurrent,false);assert.equal(item.quality.authorReview.items.length,0);
+ await assert.rejects(f.request(path,{...input,version:item.version}),e=>e.status===409);
+});
+
+test('author review cannot clear deterministic or numerical findings and cannot replace a missing-material check',async t=>{
+ for(const category of ['logic','table_consistency','figure_consistency','data_support']){
+  const f=fullFixture(t,{repair:true,persistentFinding:true}),original=f.config.agentTaskRunner;f.config.agentTaskRunner=async args=>{const out=await original(args);if(args.task.skill==='writing-review'){const body=JSON.parse(out.text);for(const finding of body.findings)finding.category=category;out.text=JSON.stringify(body);}return out;};
+  let item=await completeSaved(f);await submitFull(f,item);await f.worker.tick();item=f.get(item.id);assert.equal(item.job.status,'completed',item.job.error);const issue=item.completionReview.reviewItems.find(i=>i.category===category);assert.ok(issue);assert.equal(issue.authorReviewAllowed,false);
+  await assert.rejects(f.request('/api/theses/'+item.id+'/completion/author-review',{version:item.version,runId:item.job.id,issueId:issue.id,confirmed:true,reason:'作者自行确认当前表述无需修改且与当前研究材料一致。',sourceId:'r1',sourceQuote:item.snapshot.references[0].text.slice(0,40)}),e=>e.status===409);
+ }
+ const f=fullFixture(t,{repair:true,persistentFinding:true,missing:true});let item=await completeSaved(f);await submitFull(f,item);await f.worker.tick();item=f.get(item.id);const issue=item.completionReview.reviewItems.find(i=>i.authorReviewAllowed);assert.ok(issue);const source=[...item.snapshot.materials,...item.snapshot.references].find(s=>issue.authorReviewSources.some(a=>a.id===s.id));
+ item=(await f.request('/api/theses/'+item.id+'/completion/author-review',{version:item.version,runId:item.job.id,issueId:issue.id,confirmed:true,reason:'作者逐句核对已有资料，本项仅说明结论适用范围，并未补造实测结果。',sourceId:source.id,sourceQuote:source.text.slice(0,40)})).item;assert.equal(item.completionReview.status,'needs_materials');assert.ok(item.completionReview.missing.length);assert.equal(item.completionReview.checks.materials,false);
+});

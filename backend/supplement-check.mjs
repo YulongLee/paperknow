@@ -80,7 +80,7 @@ function ambiguousPlannedActivity(text){
 // is not an observed result. Restrict the exemption to an immediately
 // preceding, explicit negation of this study's observation; a later or
 // neighbouring positive result remains subject to the normal evidence gate.
-function negatesStudyObservation(prefix){return /(?:不能|不可|不得|不应|不)(?:(?:把|将)(?:其|它|上述结果|这些结果|本研究结果|本次结果))?(?:称为|视为|当作|写成|表述为)\s*$|(?:并非|而非|不是|不属于)(?:本|该|当前)(?:算例|研究|实验|系统|模型)(?:[（(][^）)\n]{0,40}[）)])?的?\s*$|(?:并非|不是|不属于)(?:缺失|缺少|待补充|待提供|需要补充|需补充)的?\s*$/u.test(String(prefix||''));}
+function negatesStudyObservation(prefix){return /(?:不能|不可|不得|不应|不)(?:(?:把|将)(?:其|它|上述结果|这些结果|本研究结果|本次结果))?(?:称为|视为|当作|写成|表述为)(?:(?:跨审查者一致性|跨评审者一致性|用户体验改善|真实研究结果)(?:或|及|以及|、))*\s*$|(?:并非|而非|不是|不属于)(?:本|该|当前)(?:算例|研究|实验|系统|模型)(?:[（(][^）)\n]{0,40}[）)])?的?\s*$|(?:并非|不是|不属于)(?:缺失|缺少|待补充|待提供|需要补充|需补充)的?\s*$/u.test(String(prefix||''));}
 function unsupportedObservedClaim(text){
  for(const match of String(text||'').matchAll(/[^。！？；;\n]+/gu)){const clause=match[0].trim();if(!clause)continue;
   for(const explicit of clause.matchAll(/(?:实际|真实)(?:测试|实验|调查|测量|采集|收集|开展|完成|参与|受试者|用户|参与者)|实测|真实(?:结果|数据|记录)/gu)){
@@ -378,10 +378,10 @@ export async function runSupplementCheck({snapshot={},chapters=[],docxObjects=[]
   // Provide the actual, uniquely located cross-chapter table for numbers
   // explicitly referenced in this batch. It is manuscript context only;
   // the existing authorized-source and exact evidence validation still apply.
-  if(phase==='final'&&batch.some(section=>/(?:表\s*|\btable\s+)\d/iu.test(section.text))){
+  if(phase==='final'&&batch.some(section=>/(?:表\s*|\btable\s+)\d/iu.test(section.text)||/^front-abstract_/.test(section.id||'')||/^摘要$|^abstract$/iu.test(section.title||''))){
    crossTableIndex??=supplementCrossTableIndex(chapters);
    const remaining=Math.max(0,Math.min(3200,38000-JSON.stringify(task.context).length-600)),cross=supplementCrossTableContext(batch,chapters,{maxCharacters:remaining,tableIndex:crossTableIndex});
-   if(cross&&JSON.stringify({...task.context,crossChapterTables:cross}).length<=38500){task.context.crossChapterTables=cross;task.instructions+='crossChapterTables 是同一篇已保存正文中与当前批明确表号对应的连续原文片段，只供跨章定位与比对，不是独立研究资料或真实性证明。只有 entireTable=true 才表示表格正文已完整展示；precedingTextTruncated 或 followingTextTruncated=true 表示相应方向的正文未完整提供，未见内容不能断定不存在。unavailable 表示未定位或表号不唯一，不代表该表不存在。不得把跨章片段作为当前章节 manuscriptQuote 或当作 sourceId/evidence；涉及实际数据、公式和结论仍须逐字核对本次授权资料，资料不足或确有冲突时保留缺项。';}
+   if(cross&&JSON.stringify({...task.context,crossChapterTables:cross}).length<=38500){task.context.crossChapterTables=cross;task.instructions+='crossChapterTables 是同一篇已保存正文中与当前批明确表号对应的连续原文片段（摘要未列出表号时，仅在全文恰有一张编号表格时附上该表供核对），只供跨章定位与比对，不是独立研究资料或真实性证明。只有 entireTable=true 才表示表格正文已完整展示；precedingTextTruncated 或 followingTextTruncated=true 表示相应方向的正文未完整提供，未见内容不能断定不存在。unavailable 表示未定位或表号不唯一，不代表该表不存在。不得把跨章片段作为当前章节 manuscriptQuote 或当作 sourceId/evidence；涉及实际数据、公式和结论仍须逐字核对本次授权资料，资料不足或确有冲突时保留缺项。';}
   }
   // Add optional anchors only after all other metadata is finalized.
   attachSupplementAnchors(task,sources);
