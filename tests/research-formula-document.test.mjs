@@ -80,3 +80,16 @@ test('plain TeX nuclear isotope notation becomes native prescripts with a real e
   const doc=convert(formula),pre=nodes(doc,'sPre');assert.equal(pre.length,1);assert.equal(pre[0].getElementsByTagNameNS(m,'sub')[0].textContent,number);assert.equal(pre[0].getElementsByTagNameNS(m,'sup')[0].textContent,mass);assert.equal(pre[0].getElementsByTagNameNS(m,'e')[0].textContent,element);assert.equal(nodes(doc,'phant').length,0);
  }
 });
+
+test('a scripted closing bracket preserves the full explicit base for Word import, including sample variance',()=>{
+ for(const tex of ['(x_j-\\bar{x})^2','s=\\sqrt{\\frac{1}{n-1}\\sum_{j=1}^{n}(x_j-\\bar{x})^2}','[a+b]_k','((a+b)^2+c)^3']){
+  const doc=convert(tex),supers=nodes(doc,'sSup'),subscripts=nodes(doc,'sSub');
+  const scripts=[...supers,...subscripts].filter(script=>{const base=Array.from(script.childNodes).find(n=>n.nodeType===1&&n.localName==='e');return base?.getElementsByTagNameNS(m,'d').length;});
+  assert.ok(scripts.length,tex);
+  for(const script of scripts){const base=Array.from(script.childNodes).find(n=>n.nodeType===1&&n.localName==='e');assert.ok(base.textContent.includes('x')||base.textContent.includes('a'),tex);}
+  for(const script of [...supers,...subscripts]){const base=Array.from(script.childNodes).find(n=>n.nodeType===1&&n.localName==='e');assert.ok(!/^[)\]}]$/.test(base?.textContent||''),tex);}
+ }
+ const nested=convert('(|x|+y)^2');assert.equal(nodes(nested,'d').length,2);assert.equal(nodes(nested,'sSup').length,1);
+ // Mixed interval delimiters and unmatched operators are not reinterpreted.
+ const interval=convert('[a,b)');assert.equal(nodes(interval,'d').length,0);assert.equal(interval.documentElement.textContent,'[a,b)');
+});

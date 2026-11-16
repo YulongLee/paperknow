@@ -50,29 +50,30 @@ function chemicalLayoutAnchor(node){
 }
 function converter(options){
  const baseStyle={size:Math.round(options.fontSize*2),color:options.color};
- // MathJax emits TeX absolute values/norms as sibling operators (including a
- // scripted closing bar), rather than mfenced. Give Word a native delimiter
- // object so its importer cannot reinterpret the bars as incomplete operators.
- function bar(node){
-  if(['mrow','mstyle'].includes(node?.localName)&&children(node).length===1)return bar(children(node)[0]);
-  if(node?.localName==='mo'&&/^[|‖]$/.test(atom(node)))return {mark:atom(node),node};
-  if(['msub','msup','msubsup'].includes(node?.localName)){const base=children(node)[0];if(base?.localName==='mo'&&/^[|‖]$/.test(atom(base)))return {mark:atom(base),node:base,script:node};}
+ // MathJax can attach an exponent to a closing bracket instead of its whole
+ // fenced base. Preserve the explicit matching group as a native delimiter:
+ // importing a scripted bare closing bracket can corrupt a Word formula.
+ function fence(node){
+  if(['mrow','mstyle'].includes(node?.localName)&&children(node).length===1)return fence(children(node)[0]);
+  if(node?.localName==='mo'&&/^[|‖()\[\]{}]$/.test(atom(node)))return {mark:atom(node),node};
+  if(['msub','msup','msubsup'].includes(node?.localName)){const base=children(node)[0];if(base?.localName==='mo'&&/^[|‖()\[\]{}]$/.test(atom(base)))return {mark:atom(base),node:base,script:node};}
   return null;
  }
  function delimited(nodes,from,to,style){
-  const opening=bar(nodes[from]),closing=bar(nodes[to]),holder=nodes[from].ownerDocument.createElementNS(mathNS,'mrow');
+  const opening=fence(nodes[from]),closing=fence(nodes[to]),holder=nodes[from].ownerDocument.createElementNS(mathNS,'mrow');
   for(const node of nodes.slice(from+1,to))holder.appendChild(node.cloneNode(true));
   let result=`<m:d><m:dPr><m:begChr m:val="${escape(opening.mark)}"/><m:endChr m:val="${escape(closing.mark)}"/><m:grow m:val="${opening.node.getAttribute('stretchy')==='false'&&closing.node.getAttribute('stretchy')==='false'?'0':'1'}"/></m:dPr>${part('e',convertMany(holder,style))}</m:d>`;
   if(closing.script){const parts=arity(closing.script,closing.script.localName==='msubsup'?3:2),sub=closing.script.localName!=='msup',sup=closing.script.localName!=='msub',tag=sub&&sup?'sSubSup':sub?'sSub':'sSup';result=`<m:${tag}>${part('e',result)}${sub?part('sub',convert(parts[1],style)):''}${sup?part('sup',convert(parts[sub?2:1],style)):''}</m:${tag}>`;}
   return result;
  }
- function closingBar(nodes,start,mark){
-  const brackets=[];
+ function closingFence(nodes,start,mark){
+  const pairs={'(':')','[':']','{':'}','|':'|','‖':'‖'},stack=[mark];
   for(let index=start+1;index<nodes.length;index++){
-   const node=nodes[index],token=node.localName==='mo'?atom(node):'';
-   if('([{'.includes(token)&&token)brackets.push(token);
-   else if(')]}'.includes(token)&&token){if(!brackets.length)return -1;brackets.pop();}
-   if(index>start+1&&!brackets.length&&bar(node)?.mark===mark)return index;
+   const next=fence(nodes[index]);if(!next)continue;
+   const token=next.mark,top=stack.at(-1);
+   if(token===pairs[top]){stack.pop();if(!stack.length)return index>start+1?index:-1;}
+   else if(pairs[token]&&!next.script)stack.push(token);
+   else if(')]}'.includes(token))return -1;
   }
   return -1;
  }
@@ -81,8 +82,8 @@ function converter(options){
   for(let index=0;index<nodes.length;index++){
    const child=nodes[index];
    if(child.nodeType!==1){const markup=convert(child,style);if(markup)result.push({node:child,markup});continue;}
-   const opening=bar(child);
-   if(opening&&!opening.script){const end=closingBar(nodes,index,opening.mark);if(end>=0){result.push({node:child,markup:delimited(nodes,index,end,style)});index=end;continue;}}
+   const opening=fence(child);
+   if(opening&&!opening.script&&'|‖([{'.includes(opening.mark)){const end=closingFence(nodes,index,opening.mark);if(end>=0&&('|‖'.includes(opening.mark)||fence(nodes[end])?.script)){result.push({node:child,markup:delimited(nodes,index,end,style)});index=end;continue;}}
    const parts=children(child),script=['msub','msup','msubsup'].includes(child.localName),next=nodes[index+1];
    const emptyBase=value=>value?.nodeType===1&&['mrow','mstyle','mi'].includes(value.localName)&&!value.textContent.trim()&&children(value).every(emptyBase);
    // TeX nuclear notation places scripts on an empty group immediately before
@@ -102,7 +103,7 @@ function converter(options){
   const color=node.getAttribute('mathcolor');if(color){if(!/^#[0-9a-f]{6}$/i.test(color))throw unsupported('自定义数学颜色');style.color=color.slice(1);}
   const items=children(node),build=child=>convert(child,style),all=()=>convertMany(node,style);
   if(['math','mrow','mstyle'].includes(name))return all();
-  if(['mi','mn','mo','mtext','ms'].includes(name)){if(items.length)throw unsupported('嵌套文本');const variant=style.variant||((name==='mi'&&[...atom(node)].length===1)?'italic':'normal');return run(name==='ms'?'"'+atom(node)+'"':atom(node),{...style,variant},name==='mtext'||name==='ms'||name==='mi'&&variant==='normal'||name==='mo'&&/^[|‖]$/.test(atom(node)));}
+  if(['mi','mn','mo','mtext','ms'].includes(name)){if(items.length)throw unsupported('嵌套文本');const variant=style.variant||((name==='mi'&&[...atom(node)].length===1)?'italic':'normal');return run(name==='ms'?'"'+atom(node)+'"':atom(node),{...style,variant},name==='mtext'||name==='ms'||name==='mi'&&variant==='normal'||name==='mo'&&/^[|‖()\[\]{}]$/.test(atom(node)));}
   if(name==='mspace'){
    const width=node.getAttribute('width')||'0';if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:em|ex|px|pt|mu)?$/.test(width))throw unsupported('自定义间距');const n=parseFloat(width);if(Math.abs(n)>100)throw unsupported('过大的间距');return n>0?run(n>=1?'\u2003':'\u2009',{...style,variant:'normal'},true):'';
   }
