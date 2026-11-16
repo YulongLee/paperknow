@@ -246,7 +246,14 @@ function citedSourceExcerpts(snapshot,excerpts){
  for(const id of ids){if(rows.length>=6||remaining<=0)break;const matches=candidates.filter(row=>row?.id===id);if(matches.length!==1)continue;
   const row=matches[0];if(row.confirmed!==true||typeof row.text!=='string'||!row.text.trim())continue;
   const citedSections=excerpts.filter(section=>[...section.text.matchAll(/\[source:([^\]\n]{1,200})\]/g)].some(match=>match[1]===id)).slice(0,2),budget=Math.min(perSource,remaining),limit=citedSections.length>1?Math.floor(budget/2):budget;
-  const windows=(citedSections.length?citedSections:[null]).map(section=>relevantCitedWindow(row.text,section?[section]:excerpts,id,limit));const selected=windows[0],text=selected.text;
+  let windows=(citedSections.length?citedSections:[null]).map(section=>relevantCitedWindow(row.text,section?[section]:excerpts,id,limit));
+  // Two chapters can retrieve the same short prefix. Reuse their combined
+  // existing allocation as one continuous window instead of losing half of
+  // the source budget to a duplicate. Disjoint windows remain independent.
+  const first=Math.min(...windows.map(window=>window.start)),last=Math.max(...windows.map(window=>window.start+window.text.length));
+  if(row.text.length<=budget)windows=[{text:row.text,start:0}];
+  else if(windows.length>1&&last-first<=budget){let end=Math.min(row.text.length,first+budget);if(end<row.text.length&&/[\uDC00-\uDFFF]/.test(row.text[end])&&/[\uD800-\uDBFF]/.test(row.text[end-1]))end--;windows=[{text:row.text.slice(first,end),start:first}];}
+  const selected=windows[0],text=selected.text;
   const additionalWindows=windows.slice(1).filter(window=>window.start!==selected.start).map(window=>({text:window.text,offset:window.start,excerpted:window.text.length<row.text.length}));remaining-=text.length+additionalWindows.reduce((sum,window)=>sum+window.text.length,0);
   rows.push({id,scope:row.scope==='abstract'?'abstract':row.referenceSegment===true||text.length<row.text.length?'excerpt':'provided_text',text,offset:selected.start,excerpted:text.length<row.text.length,totalCharacters:row.text.length,...(additionalWindows.length?{additionalWindows}:{})});
  }

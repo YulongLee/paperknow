@@ -448,3 +448,12 @@ test('审校提示将影响论证的数学结论与可选推导区分，保留�
  const optional={...substantive,category:'language_expression',severity:'info',explanation:'可补充推导以便读者理解。',suggestion:'按需要补充推导。'};
  assert.equal(parseWritingReview(aiResult([optional]),task).findings[0].severity,'info');
 });
+test('overlapping source retrieval uses its existing shared budget instead of hiding supplied statistics behind a duplicate prefix',()=>{
+ const needle='完整分组记录：0.313798、0.469911、0.635880；scope为该文件内的描述统计。',original='甲'.repeat(1000)+needle+'乙'.repeat(4000),refs=[{id:'r',confirmed:true,text:original},{id:'s',confirmed:true,text:'独立研究范围说明。'},{id:'t',confirmed:true,text:'独立方法说明。'}];
+ const chapters=[{id:'intro',title:'绪论',text:'本段描述已保存的计算记录[source:r]，研究范围[source:s]及方法[source:t]。'},{id:'method',title:'方法',text:'本段继续描述已保存的计算记录[source:r]。'}],task=writingReviewTask({snapshot:{materials:refs},chapters}),evidence=task.context.sourceEvidence,row=evidence.items.find(r=>r.id==='r');
+ assert.ok(row.text.includes(needle));assert.equal(row.excerpted,true);assert.equal(row.scope,'excerpt');assert.equal(original.slice(row.offset,row.offset+row.text.length),row.text);
+ assert.ok(evidence.items.reduce((n,r)=>n+r.text.length+(r.additionalWindows||[]).reduce((m,w)=>m+w.text.length,0),0)<=4000);assert.ok(row.text.length<=Math.floor(4000/3));
+});
+test('a short supplied source remains complete when two chapters cite the same region',()=>{
+ const original='甲'.repeat(1100)+'完整边界说明。',task=writingReviewTask({snapshot:{materials:[{id:'r',confirmed:true,text:original}]},chapters:[{id:'a',title:'方法',text:'读取已有资料[source:r]。'},{id:'b',title:'结论',text:'核对已有资料[source:r]。'}]}),row=task.context.sourceEvidence.items[0];assert.equal(row.text,original);assert.equal(row.excerpted,false);assert.equal(row.scope,'provided_text');
+});
