@@ -643,3 +643,10 @@ test('readable source truncation reports the actual budgeted length and cannot m
  const materials=Array.from({length:3},(_,i)=>({id:'m'+i,name:'长资料'+i,confirmed:true,text:'正文记录'+i+'。'+'乙'.repeat(39990)}));let inspected=false;
  const report=await runSupplementCheck({snapshot:{title:'长资料',profile:{},requirements:{},materials,references:[]},chapters:[{id:'c',title:'正文',text:'需要核对本段正文。'}],kind:'thesis',runtime,dispatch:async({task})=>{inspected=true;assert.ok(task.materials.reduce((sum,row)=>sum+row.text.length,0)<=80000);for(const source of task.context.evidence){const original=materials.find(row=>row.id===source.id),readable=task.materials.find(row=>row.id===source.id);assert.equal(source.readToolAvailable,true);assert.equal(source.readTruncated,true);assert.equal(source.totalCharacters,original.text.length);assert.equal(source.readableCharacters,readable.text.length);assert.ok(source.readableCharacters<source.totalCharacters);}return response(task.context.chapters.map(c=>({id:c.id,status:'missing',requirement:'核对',reason:'范围未覆盖',manuscriptQuote:c.text,evidence:[],missing:['请核对资料']})));}});assert.ok(inspected);assert.equal(report.status,'needs_materials');assert.equal(report.coverage.complete,true);
 });
+
+test('declining to call a constructed result measured improvement does not assert a real measurement',()=>{
+ const source={id:'geometry',confirmed:true,name:'构造记录',text:'作者定义几何案例，仅报告几何判定；不将其称为实测改善。'};
+ const check=text=>{const task=supplementCheckTask({phase:'final',chapters:[{id:'c',title:'几何案例',text}],materials:[source]});return parseSupplementCheck(response([{id:'c',status:'sufficient',requirement:'构造范围',reason:'来源支持几何判定',manuscriptQuote:text,evidence:[{sourceId:'geometry',quote:source.text}],missing:[]}]),task)[0];};
+ for(const phrase of ['不将其称为实测改善','不能把上述结果视为实测改善','不得将这些结果表述为真实结果','不应称为实测改善'])assert.equal(check('本研究仅报告几何判定，'+phrase+'[source:geometry]。').status,'sufficient',phrase);
+ for(const text of ['本研究仅报告几何判定，不将其称为实测改善，但本研究实际测试得到99%准确率[source:geometry]。','本研究实测准确率为99%，不将其称为真实结果[source:geometry]。','本研究计划不将其称为结果，实际测试得到99%准确率[source:geometry]。'])assert.equal(check(text).status,'missing',text);
+});
