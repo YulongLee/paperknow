@@ -9,6 +9,11 @@ import {completionPanelHTML,createCompletionDraft} from '../dist/workspace/thesi
 import {completionReviewPanel} from '../dist/workspace/thesis-completion-review.mjs';
 const source='合成测试资料，记录了限定场景下的研究方法，不代表真实实验。'.repeat(10);
 const value=()=>normalizeThesisSnapshot({title:'合成研究',profile:{level:'本科',language:'中文',targetWords:500},requirements:{deliveryVersion:1},materials:[{id:'m',name:'已知研究资料',text:source,confirmed:true}],references:[],outline:[{id:'c',title:'方法与分析',targetWords:500}]});
+test('completion length guidance aims inside its frozen range without accepting an overlong result',()=>{
+ const snapshot=value(),unit={id:'u',chapterId:'c',chapterTitle:'方法与分析',title:'方法与分析',targetWords:1131,part:1,parts:1,presentation:{},completion:{scope:'full',baselineTargetWords:750,anchorWords:1131,originalText:'研'.repeat(1131)}};
+ const task=thesisAgentTask(snapshot,unit,[]),range=task.context.lengthBudget,preferred=Number(task.instructions.match(/建议围绕安全篇幅 (\d+)/)[1]);assert.ok(preferred>=range.min&&preferred<range.max);assert.equal(preferred,Math.round((range.min+range.max)/2));
+ const result={text:JSON.stringify({text:'研'.repeat(range.max+1)+'[source:m]',source_ids:['m'],missing_evidence:[],complete:true,draft:false}),trace:[{tool:'read_material',status:'completed',materialId:'m'}]};assert.equal(validateThesisCandidate(result,snapshot,unit).feedback.code,'word_limit_exceeded');
+});
 test('citation rejection identifies the actual mismatch without relaxing source and original-citation checks',()=>{
  const snapshot=value(),unit={id:'u',chapterId:'c',chapterTitle:'方法与分析',title:'方法与分析',targetWords:500,part:1,parts:1,presentation:{},completion:{scope:'full',originalText:'原始论断[source:m]。'}};
  const candidate=(text,ids)=>({text:JSON.stringify({text,source_ids:ids,missing_evidence:[],complete:true,draft:false,figures:[]}),trace:[{tool:'read_material',status:'completed',materialId:'m'}]});
