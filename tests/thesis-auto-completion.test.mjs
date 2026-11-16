@@ -9,6 +9,12 @@ import {completionPanelHTML,createCompletionDraft} from '../dist/workspace/thesi
 import {completionReviewPanel} from '../dist/workspace/thesis-completion-review.mjs';
 const source='合成测试资料，记录了限定场景下的研究方法，不代表真实实验。'.repeat(10);
 const value=()=>normalizeThesisSnapshot({title:'合成研究',profile:{level:'本科',language:'中文',targetWords:500},requirements:{deliveryVersion:1},materials:[{id:'m',name:'已知研究资料',text:source,confirmed:true}],references:[],outline:[{id:'c',title:'方法与分析',targetWords:500}]});
+test('citation rejection identifies the actual mismatch without relaxing source and original-citation checks',()=>{
+ const snapshot=value(),unit={id:'u',chapterId:'c',chapterTitle:'方法与分析',title:'方法与分析',targetWords:500,part:1,parts:1,presentation:{},completion:{scope:'full',originalText:'原始论断[source:m]。'}};
+ const candidate=(text,ids)=>({text:JSON.stringify({text,source_ids:ids,missing_evidence:[],complete:true,draft:false,figures:[]}),trace:[{tool:'read_material',status:'completed',materialId:'m'}]});
+ const unknown=validateThesisCandidate(candidate('原始论断[source:m]。',['forged']),snapshot,unit);assert.equal(unknown.feedback.code,'unknown_source');assert.match(unknown.feedback.rule,/未确认的来源 ID：\["forged"\]/);assert.match(unknown.feedback.rule,/正文有标记但来源清单缺少：\["m"\]/);assert.match(unknown.feedback.rule,/不得为通过检查随意删除、替换引用或编造依据/);
+ const extra=validateThesisCandidate(candidate('原始论断[source:m]。新增文字[source:forged]。',['m']),snapshot,unit);assert.equal(extra.feedback.code,'unknown_source');assert.match(extra.feedback.rule,/正文有标记但来源清单缺少：\["forged"\]/);
+});
 test('final abstract uses the same length range and feedback count as the strict submission check',()=>{
  const snapshot=value(),unit={id:'abs',chapterId:'abs',chapterTitle:'Abstract',title:'Abstract',frontMatter:'abstract_en',targetWords:336,part:1,parts:1,presentation:{},completion:{scope:'full',baselineTargetWords:250,anchorWords:281,originalText:'Existing abstract.'}};
  const task=thesisAgentTask(snapshot,unit,[]),range=task.context.lengthBudget;assert.ok(task.instructions.includes(`${range.min}～${range.max} 词`));assert.doesNotMatch(task.instructions,/写200～300个英文词/);

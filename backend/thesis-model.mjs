@@ -258,6 +258,13 @@ export function validateThesisCandidate(result,snapshot,unit){
  try{const parsed=parseThesisSection(result,snapshot,unit);return {valid:true,length:{count:parsed.wordCount,...thesisSectionWordRange(unit,unitLanguage(snapshot,unit))}};}
  catch(error){const language=unitLanguage(snapshot,unit),range=thesisSectionWordRange(unit,language);let count=null;try{const body=JSON.parse(result.text);if(typeof body.text==='string'){const text=stripThesisOwnedHeadings(restoreThesisObjects(body.text,unit),[unit.title,unit.chapterTitle]),counted=countableThesisText(text,unit);count=thesisWordCount(counted.replace(/\[source:[^\]]+\]/g,''),language);}}catch{}
   let rule=error.code==='word_limit_exceeded'?`${error.message}。请合并重复论述并一次调整至约 ${Math.max(range.min,Math.min(range.target,Math.floor(range.max*.85)))} ${/english|英文|英语/i.test(language)?'词':'字'}，保留完整事实、引用、公式、图片和表格，不要逐字微调。`:error.message;
+  if(error.code==='unknown_source')try{
+   const body=JSON.parse(result.text),restored=restoreThesisObjects(body.text,unit),markers=[...String(restored).matchAll(/\[source:([^\]\r\n]+)\]/gu)].map(match=>match[1]),listed=Array.isArray(body.source_ids)?body.source_ids.filter(id=>typeof id==='string'):[],known=new Set(selectThesisEvidence(snapshot,unit).sources.map(row=>row.id));
+   const originals=new Set([...String(unit.completion?.originalText||'').matchAll(/\[source:([^\]\r\n]+)\]/gu)].map(match=>match[1])),metadata=new Set((snapshot.references||[]).filter(row=>row.confirmed&&!String(row.text||'').trim()&&String(row.title||'').trim()&&originals.has(row.id)).map(row=>row.id));
+   const unknown=[...new Set(listed.filter(id=>!known.has(id)))],missing=[...new Set(markers.filter(id=>!listed.includes(id)&&!metadata.has(id)))],unused=[...new Set(listed.filter(id=>!markers.includes(id)))];
+   const limited=values=>JSON.stringify(values.slice(0,20).map(id=>id.slice(0,160)))+(values.length>20?'（仅显示前20项）':'');
+   rule+=' 未确认的来源 ID：'+limited(unknown)+'；正文有标记但来源清单缺少：'+limited(missing)+'；来源清单有但正文没有标记：'+limited(unused)+'。只使用本次已确认并实际读取的来源，核对每处论断与来源的对应关系；原稿受保护引用按原顺序保留，仅有题录的原稿引用不列入 source_ids。不得为通过检查随意删除、替换引用或编造依据。';
+  }catch{}
   if(error.code==='original_citations_changed')try{
    const expected=[...String(unit.completion?.originalText||'').matchAll(/\[source:([^\]\r\n]+)\]/gu)].map(match=>match[1]),body=JSON.parse(result.text),restored=restoreThesisObjects(body.text,unit),known=new Set(expected),actual=[...String(restored).matchAll(/\[source:([^\]\r\n]+)\]/gu)].map(match=>match[1]).filter(id=>known.has(id));
    rule+=' 原稿受保护引用顺序：'+JSON.stringify(expected.slice(0,24))+(expected.length>24?'（仅显示前24项）':'')+'；候选中对应顺序：'+JSON.stringify(actual.slice(0,24))+(actual.length>24?'（仅显示前24项）':'')+'。请对照原稿在原论断附近恢复引用，不要把引用集中堆放或改变来源含义；再提交完整内容。';
