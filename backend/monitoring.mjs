@@ -1,3 +1,4 @@
+import {monitoringHistory,monitoringRange,monitoringRanges} from './monitoring-history.mjs';
 import {stat,statfs,opendir,readFile,open} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import {join,isAbsolute} from 'node:path';
@@ -75,7 +76,8 @@ export function createMonitoring(db,config={},options={}){
   const dirs=Object.fromEntries(Object.entries(options.directoryTargets||{}).filter(([key,value])=>['releases','backups','cache'].includes(key)&&typeof value==='string'));
   const dbFile=options.databasePath||db.prepare('PRAGMA database_list').all().find(item=>item.name==='main')?.file;
   const volumePath=options.volumePath||dbFile||process.cwd();
-  const maxHistory=1440,maxEvents=200;let timer=null,pending=null,started=false,lastErrorAt=null,lastSampleAt=0,lastProbeAt=0,lastManualAt=-Infinity,lastDirectoryAt=0,directoryCache={},storageCache=null;
+  db.exec('CREATE INDEX IF NOT EXISTS monitoring_samples_time ON monitoring_samples(created_at,id)');
+  const maxHistory=2880,maxEvents=200;let timer=null,pending=null,started=false,lastErrorAt=null,lastSampleAt=0,lastProbeAt=0,lastManualAt=-Infinity,lastDirectoryAt=0,directoryCache={},storageCache=null;
   const timers=options.timers||{setTimeout,clearTimeout};
   const requests=[];
   const databaseOpen=()=>db.isOpen!==false;
@@ -102,7 +104,7 @@ export function createMonitoring(db,config={},options={}){
   }
   function businessMetrics(at,s){
     const cutoff=new Date(at-86400000).toISOString(),stale=new Date(at-s.jobStaleMinutes*60000).toISOString(),heldCutoff=new Date(at-s.heldReservationMinutes*60000).toISOString(),now=new Date(at).toISOString();
-    const jobs=hasTable('jobs')?db.prepare(`SELECT sum(CASE WHEN status='queued' THEN 1 ELSE 0 END) queued,sum(CASE WHEN status='running' THEN 1 ELSE 0 END) running,sum(CASE WHEN status IN ('queued','running') AND updated_at<? THEN 1 ELSE 0 END) stale,sum(CASE WHEN status='failed' AND updated_at>=? THEN 1 ELSE 0 END) failed24h,sum(CASE WHEN status IN ('failed','completed') AND updated_at>=? THEN 1 ELSE 0 END) terminal24h FROM jobs`).get(stale,cutoff,cutoff):null;
+    const jobs=hasTable('jobs')?db.prepare(`SELECT sum(CASE WHEN status IN ('preparing','queued') THEN 1 ELSE 0 END) queued,sum(CASE WHEN status IN ('running','cancelling') THEN 1 ELSE 0 END) running,sum(CASE WHEN status IN ('preparing','queued','running','cancelling') AND updated_at<? THEN 1 ELSE 0 END) stale,sum(CASE WHEN status='failed' AND updated_at>=? THEN 1 ELSE 0 END) failed24h,sum(CASE WHEN status IN ('failed','completed') AND updated_at>=? THEN 1 ELSE 0 END) terminal24h FROM jobs`).get(stale,cutoff,cutoff):null;
     if(jobs){for(const key of Object.keys(jobs))jobs[key]??=0;jobs.failurePercent=jobs.terminal24h?finite(jobs.failed24h*100/jobs.terminal24h):null;}
     const reservations=hasTable('billing_reservations')?db.prepare("SELECT count(*) held,COALESCE(sum(credits),0) credits,COALESCE(sum(CASE WHEN updated_at<? THEN 1 ELSE 0 END),0) stale FROM billing_reservations WHERE status='held'").get(heldCutoff):null;
     const payments=hasTable('payment_orders')&&hasTable('orders')?db.prepare("SELECT count(*) pending,COALESCE(sum(CASE WHEN p.expires_at<? THEN 1 ELSE 0 END),0) expiredPending FROM payment_orders p JOIN orders o ON o.id=p.order_id WHERE o.status='pending'").get(now):null;
@@ -133,7 +135,13 @@ export function createMonitoring(db,config={},options={}){
     const failed=m.artifacts.filter(row=>row.status==='failed').reduce((n,row)=>n+row.count,0);if(failed>=s.artifactFailureWarningCount)add('artifact-failures','warning','生成文件存在存储补偿待处理',failed,s.artifactFailureWarningCount,'项');
     return alerts;
   }
-  function latest(){const row=db.prepare('SELECT created_at,payload FROM monitoring_samples ORDER BY id DESC LIMIT 1').get();return row?{...JSON.parse(row.payload),sampledAt:row.created_at}:null;}
+  function latest(){
+    for(const row of db.prepare('SELECT created_at,payload FROM monitoring_samples ORDER BY id DESC LIMIT 10').all())try{
+      const data=JSON.parse(row.payload),m=data?.metrics;
+      if(m?.disk&&m.host&&m.process&&m.database&&m.http&&Array.isArray(data.alerts)&&data.alerts.every(a=>a&&typeof a.key==='string'))return {...data,sampledAt:row.created_at};
+    }catch{/* A corrupt history row must not prevent the next healthy sample. */}
+    return null;
+  }
   async function collect(){
     const at=clock(),s=settings();if(!s.enabled)return latest();
     const info=await fsInfo(volumePath),block=Number(info.bsize),totalBytes=Number(info.blocks)*block,availableBytes=Number(info.bavail)*block;
@@ -166,6 +174,10 @@ export function createMonitoring(db,config={},options={}){
   }
   function sample(){if(pending)return pending;if(!databaseOpen()){halt();return Promise.resolve(null);}pending=collect().catch(()=>{if(!databaseOpen()){halt();return null;}lastErrorAt=new Date(clock()).toISOString();try{return latest();}catch{return null;}}).finally(()=>{pending=null;});return pending;}
   async function manualSample(){if(clock()-lastManualAt<30000)fail(429,'请等待 30 秒后再采样');lastManualAt=clock();await sample();return snapshot();}
-  function snapshot(){const s=settings(),current=latest();return {settings:s,sampler:{running:started,enabled:s.enabled,lastErrorAt,stale:!current||clock()-Date.parse(current.sampledAt)>s.sampleIntervalSeconds*2500,intervalSeconds:s.sampleIntervalSeconds},latest:current,history:db.prepare('SELECT created_at,payload FROM monitoring_samples ORDER BY id DESC LIMIT 100').all().reverse().map(row=>{const data=JSON.parse(row.payload),m=data.metrics;return {at:row.created_at,diskPercent:m.disk.usedPercent,processMemoryMiB:finite(m.process.rssBytes/MiB),loadPerCore:m.host.loadPerCore,queue:m.jobs?.queued??null,errorPercent:m.http.errorPercent,p95Ms:m.http.p95Ms,alerts:data.alerts.length};}),events:db.prepare('SELECT created_at AS at,metric,severity,status FROM monitoring_events ORDER BY id DESC LIMIT 30').all(),retention:{maximumSamples:maxHistory,maximumEvents:maxEvents,historyReturned:100,directoryScanSeconds:900,storageProbeSeconds:900},scope:{host:'整台共享服务器',process:'仅本站 Node 进程',http:'本站进程最近 5 分钟；重启后重新计数，最多 10000 请求',delivery:config.opsAlertEmail?'已配置独立邮件巡检；通知状态见运维服务，不发送短信':'仅后台告警，尚未配置独立邮件巡检'}};}
+  function snapshot({range='1h'}={}){
+    monitoringRange(range);const s=settings(),current=latest(),now=clock(),from=new Date(now-monitoringRanges[range]).toISOString(),to=new Date(now).toISOString();
+    const rows=db.prepare('SELECT created_at,payload FROM monitoring_samples WHERE created_at>=? AND created_at<=? ORDER BY created_at DESC,id DESC LIMIT ?').all(from,to,maxHistory);
+    return {settings:s,sampler:{running:started,enabled:s.enabled,lastErrorAt,stale:!current||now-Date.parse(current.sampledAt)>s.sampleIntervalSeconds*2500,intervalSeconds:s.sampleIntervalSeconds},latest:current,...monitoringHistory(rows,{range,now,intervalSeconds:s.sampleIntervalSeconds}),events:db.prepare('SELECT created_at AS at,metric,severity,status FROM monitoring_events WHERE created_at>=? AND created_at<=? ORDER BY id DESC LIMIT 30').all(from,to),retention:{maximumSamples:maxHistory,maximumEvents:maxEvents,historyReturned:240,directoryScanSeconds:900,storageProbeSeconds:900},scope:{host:'整台共享服务器',process:'仅本站 Node 进程',http:'本站进程最近5分钟；重启后重新计数，最多10000请求',delivery:config.opsAlertEmail?'已配置同机邮件巡检；执行与送达状态见运维记录，不发送短信':'仅后台告警，尚未配置独立邮件巡检'}};
+  }
   return {settings,save,snapshot,sample,manualSample,observeRequest,start(){if(started||!databaseOpen())return;started=true;void sample().finally(schedule);},async stop(){halt();if(pending)await pending;}};
 }

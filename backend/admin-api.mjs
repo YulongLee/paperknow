@@ -1,3 +1,4 @@
+import {adminTaskSearch} from '../dist/admin-task-model.mjs';
 import {readManualUrl,saveManualUrl} from './user-manual-settings.mjs';
 import {createCreditCodeService} from './credit-code-service.mjs';
 import {createAdminUserManagement} from './admin-user-management.mjs';
@@ -26,7 +27,7 @@ const definitions={
   },
   jobs:{from:`jobs t JOIN users u ON u.id=t.user_id ${identityJoins}`,
     fields:`t.id,t.user_id,t.project_id,t.type,t.status,t.stage,t.error,t.result_id,t.attempt,t.created_at,t.updated_at,${ownerFields}`,
-    search:['t.id','t.type',...sharedSearch],status:'t.status',statuses:['queued','running','failed','completed','cancelled'],order:'t.created_at DESC,t.id DESC'},
+    search:['t.id','t.type',...sharedSearch],status:'t.status',statuses:['preparing','queued','running','cancelling','failed','completed','cancelled'],order:'t.created_at DESC,t.id DESC'},
   results:{from:`results t JOIN users u ON u.id=t.user_id ${identityJoins}`,
     fields:`t.id,t.user_id,t.project_id,t.job_id,t.type,t.title,t.created_at,${ownerFields}`,
     search:['t.id','t.title','t.type',...sharedSearch],statuses:[],order:'t.created_at DESC,t.id DESC'},
@@ -84,6 +85,8 @@ export function createAdminAPI(db,worker,config,auth){
   const researchImageSettings=config.researchImageSettings||createResearchImageSettings(db,config,{audit});
   let agentTestRunning=false,agentTestAt=0;
 
+  const taskTable=name=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name));
+  const taskMetadata=()=>[(taskTable('writing_runs')?'(SELECT kind FROM writing_runs WHERE id=t.id)':'NULL')+' AS writing_kind',(taskTable('writing_runs')?'(SELECT operation FROM writing_runs WHERE id=t.id)':'NULL')+' AS writing_operation',(taskTable('tool_runs')?'(SELECT operation FROM tool_runs WHERE id=t.id)':'NULL')+' AS tool_operation'].join(',');
   function list(name,query){
     parameters(query,['page','pageSize','q','status',...(name==='users'?['accountStatus']:[])]);
     const spec=definitions[name];
@@ -93,14 +96,21 @@ export function createAdminAPI(db,worker,config,auth){
     if(search.length>100||status&&!spec.statuses.includes(status)||accountStatus&&!['active','banned'].includes(accountStatus))fail(400,'筛选参数不正确');
     const filters=[],values=[];
     if(search){
-      filters.push(`(${spec.search.map(column=>`instr(lower(COALESCE(CAST(${column} AS TEXT),'')),lower(?))>0`).join(' OR ')})`);
+      const clauses=spec.search.map(column=>`instr(lower(COALESCE(CAST(${column} AS TEXT),'')),lower(?))>0`);
       values.push(...spec.search.map(()=>search));
+      if(name==='jobs'){
+        const matching=adminTaskSearch(search),add=(column,items)=>{if(items.length){clauses.push(`${column} IN (${items.map(()=>'?').join(',')})`);values.push(...items);}};
+        add('t.type',matching.types);
+        if(taskTable('writing_runs')){add('(SELECT kind FROM writing_runs WHERE id=t.id)',matching.kinds);add('(SELECT operation FROM writing_runs WHERE id=t.id)',matching.writingOperations);}
+        if(taskTable('tool_runs'))add('(SELECT operation FROM tool_runs WHERE id=t.id)',matching.toolOperations);
+      }
+      filters.push('('+clauses.join(' OR ')+')');
     }
     if(status){filters.push(`${spec.status}=?`);values.push(spec.statusValue?spec.statusValue(status):status);}
     if(accountStatus){filters.push("COALESCE(um.status,'active')=?");values.push(accountStatus);}
     const where=filters.length?' WHERE '+filters.join(' AND '):'';
     const total=db.prepare(`SELECT count(*) n FROM ${spec.from}${where}`).get(...values).n;
-    const items=db.prepare(`SELECT ${spec.fields} FROM ${spec.from}${where} ORDER BY ${spec.order} LIMIT ? OFFSET ?`).all(...values,pageSize,(page-1)*pageSize).map(sanitize);
+    const items=db.prepare(`SELECT ${spec.fields}${name==='jobs'?','+taskMetadata():''} FROM ${spec.from}${where} ORDER BY ${spec.order} LIMIT ? OFFSET ?`).all(...values,pageSize,(page-1)*pageSize).map(sanitize);
     return {items,total,page,pageSize};
   }
 
@@ -119,7 +129,7 @@ export function createAdminAPI(db,worker,config,auth){
       jobs:count('jobs'),queued:0,running:0,failed:0,completed:0,results:count('results'),
       feedbackOpen:db.prepare("SELECT count(*) n FROM feedback f LEFT JOIN feedback_management m ON m.feedback_id=f.id WHERE COALESCE(m.status,'open')!='resolved'").get().n,
       orders:count('orders')};
-    for(const row of statusCounts)if(['queued','running','failed','completed'].includes(row.status))metrics[row.status]=row.n;
+    for(const row of statusCounts){const key=row.status==='preparing'?'queued':row.status==='cancelling'?'running':row.status;if(['queued','running','failed','completed'].includes(key))metrics[key]+=row.n;}
     const today=new Date(Date.now()+8*3600000).toISOString().slice(0,10);
     const end=Date.parse(`${today}T00:00:00Z`);
     const daily=Array.from({length:days},(_,index)=>({date:new Date(end-(days-1-index)*86400000).toISOString().slice(0,10),users:0,jobs:0}));
@@ -167,9 +177,9 @@ export function createAdminAPI(db,worker,config,auth){
     const managedUser=path.match(/^\/api\/admin\/users\/([^/]+)\/(manage|credits|membership|status)$/);
     if(managedUser){parameters(query,[]);if(!config.billing)fail(503,'账户计费管理尚未启用');if(managedUser[2]==='manage'&&method==='GET')return userManagement.detail(managedUser[1]);if(managedUser[2]!=='manage'&&method==='POST')return userManagement.mutate(actor,managedUser[1],managedUser[2],await readBody());fail(404,'用户管理接口不存在');}
     if(path.startsWith('/api/admin/monitoring')){
-      parameters(query,[]);
+      parameters(query,path==='/api/admin/monitoring'&&method==='GET'?['range']:[]);
       if(!config.monitoring)fail(503,'运行监控尚未启用');
-      if(path==='/api/admin/monitoring'&&method==='GET')return config.monitoring.snapshot();
+      if(path==='/api/admin/monitoring'&&method==='GET')return config.monitoring.snapshot({range:query.get('range')??'1h'});
       if(path==='/api/admin/monitoring/settings'&&method==='POST'){
         const input=await readBody();
         return transaction(()=>{const monitoring=config.monitoring.save(input);audit(actor,'monitoring.settings.update','setting','monitoring',{version:monitoring.version,enabled:monitoring.enabled,changedFields:Object.keys(input).filter(key=>key!=='version')});return {settings:monitoring};});

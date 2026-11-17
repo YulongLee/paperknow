@@ -334,3 +334,18 @@ test('manual refund records are admin-only, order-bound, idempotent and never ch
  assert.equal(f.db.prepare("SELECT count(*) n FROM admin_audit WHERE action='order.manual_refund_record' AND target_id=?").get('refund-order').n,2);
  assert.equal((await f.request(path,{cookie:admin.cookie})).value.records.length,2);
 });
+
+test('task administration identifies current writing/tools, searches their Chinese business names and accounts for transitional states',async t=>{
+ const f=await fixture(t),admin=await f.register(owner),userId=f.seedUser('合成管理验收',880);
+ const writingId=f.job(userId,'preparing'),toolId=f.job(userId,'cancelling'),detectorId=f.job(userId,'completed');
+ f.db.prepare('UPDATE jobs SET type=? WHERE id=?').run('writing',writingId);f.db.prepare('UPDATE jobs SET type=? WHERE id=?').run('tool_run',toolId);f.db.prepare('UPDATE jobs SET type=? WHERE id=?').run('detection_combined',detectorId);
+ const at=timestamp(),privateSnapshot=JSON.stringify({text:'private-audit-manuscript-never-return'});
+ f.db.prepare('INSERT INTO writing_runs(id,user_id,kind,operation,snapshot,input_hash,client_key,settings_version,status,stage,plan,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(writingId,userId,'article','draft',privateSnapshot,'hash','client-writing','test-version','preparing','preparing','[]',at,at);
+ f.db.prepare('INSERT INTO tool_runs(id,user_id,kind,operation,snapshot,input_hash,client_key,settings_version,status,stage,plan,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(toolId,userId,'ppt','ppt',privateSnapshot,'hash','client-tool','test-version','cancelling','cancelling','[]',at,at);
+ for(const [query,id]of [['期刊',writingId],['PPT',toolId],['联合检测',detectorId],['status=preparing',writingId],['status=cancelling',toolId]]){
+  const suffix=query.startsWith('status=')?query:'q='+encodeURIComponent(query),res=await f.request('/api/admin/jobs?'+suffix,{cookie:admin.cookie});assert.equal(res.status,200);assert.deepEqual(res.value.items.map(r=>r.id),[id]);assert.doesNotMatch(JSON.stringify(res.value),/private-audit-manuscript|snapshot|input_hash/);
+ }
+ const item=(await f.request('/api/admin/jobs?q='+writingId,{cookie:admin.cookie})).value.items[0];assert.equal(item.writing_kind,'article');assert.equal(item.writing_operation,'draft');
+ const overview=(await f.request('/api/admin/overview',{cookie:admin.cookie})).value;assert.equal(overview.metrics.queued,1);assert.equal(overview.metrics.running,1);
+ const injection=await f.request('/api/admin/jobs?q='+encodeURIComponent("' OR 1=1 --"),{cookie:admin.cookie});assert.equal(injection.status,200);assert.equal(injection.value.total,0);
+});

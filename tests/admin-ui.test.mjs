@@ -232,3 +232,11 @@ test('manual refund entry records a verified channel result without claiming to 
  await settle(()=>ui.calls.some(call=>call.url==='/api/admin/orders/order-1/manual-refunds'&&call.method==='POST'));
  const calls=ui.calls.filter(call=>call.url==='/api/admin/orders/order-1/manual-refunds'&&call.method==='POST');assert.equal(calls.length,1);assert.equal(calls[0].payload.amountCents,200);assert.equal(calls[0].payload.confirmed,true);
 });
+
+test('task list and details use the current writing business name and expose transitional state filters',async t=>{
+ const record={...job,type:'writing',writing_kind:'article',writing_operation:'draft',status:'preparing',stage:'preparing'};
+ const ui=await page(t,{hash:'#jobs',handle:url=>url.startsWith('/api/admin/jobs?')?{body:list([record])}:undefined});
+ assert.match(ui.$('tbody').textContent,/期刊文章 · 正文生成/);assert.match(ui.$('tbody').textContent,/准备中/);
+ assert.ok(ui.$('#status-filter option[value="preparing"]'));assert.ok(ui.$('#status-filter option[value="cancelling"]'));assert.equal(ui.$('#admin-search').maxLength,100);
+ ui.click('[data-detail]');assert.match(ui.$('#admin-dialog').textContent,/期刊文章 · 正文生成/);
+});

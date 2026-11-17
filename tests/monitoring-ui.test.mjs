@@ -37,3 +37,27 @@ test('failed threshold save preserves input and explains failure without reporti
  const form=f.doc.querySelector('#monitoring-form');form.elements.sampleIntervalSeconds.value='180';form.dispatchEvent(new f.win.Event('submit',{cancelable:true,bubbles:true}));await settle(()=>!form.querySelector('.form-error').hidden);
  assert.equal(form.elements.sampleIntervalSeconds.value,'180');assert.match(form.querySelector('.form-error').textContent,/已更新/);assert.equal(form.querySelector('[type="submit"]').disabled,false);
 });
+
+test('history ranges reload bounded history and preserve the selected range across refresh',async t=>{
+ const f=await fixture(t);f.doc.querySelector('[data-monitor-range="6h"]').click();
+ await settle(()=>f.doc.querySelector('[data-monitor-range="6h"]')?.getAttribute('aria-pressed')==='true');
+ assert.ok(f.calls.some(x=>x.url==='/api/admin/monitoring?range=6h'));
+ f.doc.querySelector('#refresh-view').click();await settle(()=>f.calls.filter(x=>x.url==='/api/admin/monitoring?range=6h').length===2&&f.doc.querySelector('[data-monitor-range="6h"]')?.getAttribute('aria-pressed')==='true');
+ assert.equal(f.doc.querySelector('[data-monitor-range="6h"]').getAttribute('aria-pressed'),'true');assert.equal(f.doc.querySelectorAll('[data-monitor-chart]').length,8);
+});
+test('unsaved monitoring thresholds survive range changes, sampling, navigation and browser unload until explicitly discarded',async t=>{
+ const f=await fixture(t);const input=f.doc.querySelector('[name="sampleIntervalSeconds"]');input.value='180';input.dispatchEvent(new f.win.Event('input',{bubbles:true}));
+ f.doc.querySelector('[data-monitor-range="24h"]').click();assert.match(f.doc.querySelector('#admin-dialog').textContent,/监控配置尚未保存/);assert.ok(!f.calls.some(x=>x.url.includes('range=24h')));
+ f.doc.querySelector('[data-dialog-close]').click();assert.equal(input.value,'180');
+ f.doc.querySelector('#monitor-sample').click();assert.ok(!f.calls.some(x=>x.url==='/api/admin/monitoring/sample'));f.doc.querySelector('[data-dialog-close]').click();
+ const unload=new f.win.Event('beforeunload',{cancelable:true});f.win.dispatchEvent(unload);assert.equal(unload.defaultPrevented,true);
+ f.doc.querySelector('[data-view="users"]').click();assert.equal(f.win.location.hash,'#monitoring');assert.match(f.doc.querySelector('#admin-dialog').textContent,/监控配置尚未保存/);f.doc.querySelector('[data-dialog-close]').click();
+ f.doc.querySelector('[data-monitor-range="24h"]').click();f.doc.querySelector('#discard-monitor-changes').click();await settle(()=>f.doc.querySelector('[data-monitor-range="24h"]')?.getAttribute('aria-pressed')==='true');assert.equal(f.doc.querySelector('[name="sampleIntervalSeconds"]').value,'60');
+});
+test('range reads keep existing curves visible, reject late responses and preserve the last successful chart after an error',async t=>{
+ let finishSix;
+ const f=await fixture(t,{handle(url){if(url==='/api/admin/monitoring?range=6h')return new Promise(resolve=>{finishSix=resolve;});if(url==='/api/admin/monitoring?range=24h')return {status:503,body:{error:'历史暂不可用'}};}});
+ const old=f.doc.querySelector('[data-monitor-chart="diskPercent"]');f.doc.querySelector('[data-monitor-range="6h"]').click();await settle(()=>Boolean(finishSix));assert.equal(f.doc.querySelector('[data-monitor-chart="diskPercent"]'),old);assert.equal(f.doc.querySelector('#monitor-history-loading').hidden,false);
+ f.doc.querySelector('[data-monitor-range="24h"]').click();await settle(()=>f.doc.querySelector('#admin-toast')?.textContent.includes('历史暂不可用'));assert.equal(f.doc.querySelector('[data-monitor-range="1h"]').getAttribute('aria-pressed'),'true');
+ finishSix({body:structuredClone(data)});await new Promise(resolve=>setTimeout(resolve,20));assert.equal(f.doc.querySelector('[data-monitor-range="1h"]').getAttribute('aria-pressed'),'true');assert.equal(f.doc.querySelector('[data-monitor-chart="diskPercent"]'),old);assert.equal(f.doc.querySelector('#monitor-history-loading').hidden,true);
+});

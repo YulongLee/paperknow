@@ -96,10 +96,10 @@ test('task backlog, long-running tasks, failure ratio and stale preholds are mea
 });
 test('history and transition retention remain bounded and payloads never contain request paths',async t=>{
  let low=false;const f=fixture(t,{options:{statfs:async()=>({bsize:1,blocks:60*GiB,bavail:(low?1:30)*GiB})}});
- for(let i=0;i<1450;i++){low=!low;f.advance(60000);await f.monitor.sample();}
- assert.equal(f.db.prepare('SELECT count(*) n FROM monitoring_samples').get().n,1440);
+ for(let i=0;i<2890;i++){low=!low;f.advance(60000);await f.monitor.sample();}
+ assert.equal(f.db.prepare('SELECT count(*) n FROM monitoring_samples').get().n,2880);
  assert.equal(f.db.prepare('SELECT count(*) n FROM monitoring_events').get().n,200);
- assert.equal(f.monitor.snapshot().history.length,100);assert.equal(f.monitor.snapshot().events.length,30);
+ assert.equal(f.monitor.snapshot().history.length,61);assert.ok(f.monitor.snapshot({range:'24h'}).history.length<=240);assert.equal(f.monitor.snapshot().events.length,30);
 });
 test('settings persist with versions; paused sampler cannot collect and manual sampling is rate limited',async t=>{
  const f=fixture(t);await f.monitor.sample();const samples=f.db.prepare('SELECT count(*) n FROM monitoring_samples').get().n;
@@ -138,9 +138,22 @@ test('admin monitor API independently rechecks role and validates parameters; sa
  await assert.rejects(request('/api/admin/monitoring','GET',{},null),error=>error.status===401);
  await assert.rejects(request('/api/admin/monitoring','GET',{},ordinary),error=>error.status===403);
  await assert.rejects(request('/api/admin/monitoring','GET',{},admin,new URLSearchParams('path=/etc/passwd')),error=>error.status===400);
+ for(const range of ['1h','6h','24h']){const data=await request('/api/admin/monitoring','GET',{},admin,new URLSearchParams({range}));assert.equal(data.historyMeta.range,range);assert.ok(data.history.length<=240);}
+ for(const query of ['range=7d','range=','range=1h&range=6h','range=1h&path=/etc/passwd'])await assert.rejects(request('/api/admin/monitoring','GET',{},admin,new URLSearchParams(query)),e=>e.status===400);
+ await assert.rejects(request('/api/admin/monitoring/sample','POST',{},admin,new URLSearchParams('range=6h')),e=>e.status===400);
  const saved=await request('/api/admin/monitoring/settings','POST',{version:0,enabled:true});assert.equal(saved.settings.version,1);
  assert.equal(f.db.prepare("SELECT count(*) n FROM admin_audit WHERE action='monitoring.settings.update'").get().n,1);
  await assert.rejects(request('/api/admin/monitoring/sample','POST',{url:'https://private.test'}),error=>error.status===400);
  const sampled=await request('/api/admin/monitoring/sample','POST',{});assert.ok(sampled.latest.sampledAt);
  f.db.prepare("UPDATE users SET role='user' WHERE id=?").run(admin.id);await assert.rejects(request('/api/admin/monitoring'),error=>error.status===403);
+});
+test('a corrupt latest payload cannot break the dashboard or permanently stop sampling',async t=>{
+ const f=fixture(t);await f.monitor.sample();const at=f.monitor.snapshot().latest.sampledAt;
+ f.db.prepare('INSERT INTO monitoring_samples(created_at,payload) VALUES(?,?)').run(at,'not JSON');
+ const result=f.monitor.snapshot();assert.equal(result.latest.sampledAt,at);assert.equal(result.historyMeta.invalidSamples,1);
+ f.advance(60000);await f.monitor.sample();assert.notEqual(f.monitor.snapshot().latest.sampledAt,at);assert.equal(f.monitor.snapshot().sampler.lastErrorAt,null);
+});
+test('preparing and cancelling jobs remain visible in queue and active capacity metrics',async t=>{
+ const f=fixture(t);user(f.db);const old='2026-10-18T08:00:00Z';job(f.db,{id:'prepare',status:'preparing',updatedAt:old});job(f.db,{id:'cancel',status:'cancelling',updatedAt:old});
+ await f.monitor.sample();const jobs=f.monitor.snapshot().latest.metrics.jobs;assert.equal(jobs.queued,1);assert.equal(jobs.running,1);assert.equal(jobs.stale,2);
 });
